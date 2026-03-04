@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.company_contact import CompanyContact
 from app.schemas.company_contact import CompanyContactCreate, CompanyContactUpdate, CompanyContactOut
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 
 router = APIRouter()
 

@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
 
 from app.services.parser_service import parse_excel

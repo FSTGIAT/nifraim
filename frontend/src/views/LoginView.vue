@@ -10,7 +10,7 @@
         </svg>
       </div>
       <h1>התחברות</h1>
-      <p class="subtitle">InsureFlow - מערכת ניהול עמלות ביטוח</p>
+      <p class="subtitle">Nifraim - מערכת ניהול עמלות ביטוח</p>
       <LoginForm />
     </div>
   </div>

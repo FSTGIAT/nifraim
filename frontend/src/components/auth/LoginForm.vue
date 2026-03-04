@@ -42,7 +42,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await auth.login(email.value, password.value)
-    router.push('/')
+    router.push('/workspace')
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בהתחברות'
   } finally {

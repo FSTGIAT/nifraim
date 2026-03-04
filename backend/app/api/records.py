@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.record import RecordOut, RecordPage, StatusSummary, AnalyticsResponse
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 from app.services.reconciliation_service import get_records_page, get_status_summary, get_client_records, get_analytics
 
 router = APIRouter()

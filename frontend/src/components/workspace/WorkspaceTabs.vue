@@ -6,6 +6,7 @@
         v-for="(tab, idx) in tabs"
         :key="tab.id"
         :ref="el => tabEls[idx] = el"
+        :data-tour="'tab-' + tab.id"
         class="tab-btn"
         :class="{ active: modelValue === tab.id }"
         @click="$emit('update:modelValue', tab.id)"

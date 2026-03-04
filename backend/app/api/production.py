@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.schemas.upload import ProductionFileInfo
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel
 from app.utils.sanitize import sanitize_record
 

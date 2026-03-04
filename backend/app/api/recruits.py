@@ -10,7 +10,7 @@ from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.recruit import Recruit
 from app.schemas.recruit import RecruitCreate, RecruitOut, RecruitMatchResult, RecruitComparisonResponse
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 
 router = APIRouter()
 

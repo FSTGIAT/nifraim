@@ -21,5 +21,26 @@ class UserOut(BaseModel):
     id: str
     email: str
     full_name: str | None
+    phone: str | None = None
+    is_active: bool = False
+    is_admin: bool = False
 
     model_config = {"from_attributes": True}
+
+
+class UserAdminOut(BaseModel):
+    id: str
+    email: str
+    full_name: str | None
+    phone: str | None
+    company_name: str | None
+    is_active: bool
+    is_admin: bool
+    created_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class UserAdminUpdate(BaseModel):
+    is_active: bool | None = None
+    is_admin: bool | None = None

@@ -94,6 +94,7 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
        └── WorkspaceView             ← main app (5-tab interface)
             ├── WorkspaceHeader      ← sticky top: 0, z-index: 100
             ├── WorkspaceTabs        ← sticky top: 56px, z-index: 90
+            ├── OnboardingTour       ← first-run guided tour (z-index: 5000–5002)
             └── <main>
                  ├── ProductionTab
                  │    ├── ProductionUploader   (drag-drop upload)
@@ -187,8 +188,54 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 - **Design system**: All CSS variables defined in `App.vue :root` — check there before adding any colors, radii, or shadows.
 - **RTL**: `direction: rtl` on `body`. Use `.ltr-number` class for numeric values. Use `gap` instead of directional margins.
 - **Modal pattern**: All modals use `<Teleport to="body">` with `<Transition name="modal">`, overlay + card structure.
-- **Z-index stacking**: Drop overlay: 9999, Detail modal: 1010, Filter modal: 1000, Header: 100, Tabs: 90.
+- **Z-index stacking**: Drop overlay: 9999, Onboarding tour: 5000–5002, Detail modal: 1010, Filter modal: 1000, Header: 100, Tabs: 90.
 - **Charts**: ApexCharts with Heebo font. Chart click → filter modal → customer drill-down.
+
+### Onboarding Tour (First-Time User Guide)
+
+Interactive 7-step guided tour that runs once on first login. No backend changes — uses `localStorage.getItem('onboarding_completed')`.
+
+**Architecture: Composable + Component**
+
+| File | Role |
+|------|------|
+| `composables/useOnboardingTour.js` | Step definitions, state machine, spotlight positioning, tab switching, keyboard nav |
+| `components/workspace/OnboardingTour.vue` | Renders overlay, spotlight cutout, tooltip cards, center modals via `<Teleport to="body">` |
+
+**Tour Steps (7 steps)**
+
+| # | ID | Type | Target | Title |
+|---|----|------|--------|-------|
+| 1 | welcome | center | — | !ברוכים הבאים ל-InsureFlow |
+| 2 | production | spotlight | `[data-tour="production-uploader"]` | העלאת פרודוקציה |
+| 3 | comparison | spotlight | `[data-tour="tab-comparison"]` | השוואת נפרעים |
+| 4 | commission-rates | spotlight | `[data-tour="tab-commission-rates"]` | טבלת עמלות |
+| 5 | company-emails | spotlight | `[data-tour="tab-company-emails"]` | אימיילים לחברות |
+| 6 | settings | spotlight | `[data-tour="settings-gear"]` | הגדרות |
+| 7 | done | center | — | !הכל מוכן |
+
+**Spotlight mechanism:** Box-shadow cutout technique — a transparent `<div>` over the target with `box-shadow: 0 0 0 9999px rgba(0,0,0,0.55)`. Pulsing `::after` border draws attention. Overlay stays dimmed (`tour-overlay--dimmed`) until spotlight is ready, preventing visual flash during transitions.
+
+**`data-tour` attributes** on target elements (minimal changes to existing components):
+- `WorkspaceTabs.vue` — `:data-tour="'tab-' + tab.id"` on each tab button
+- `WorkspaceHeader.vue` — `data-tour="settings-gear"` on settings button
+- `ProductionUploader.vue` — `data-tour="production-uploader"` on drop zone
+
+**Integration in `WorkspaceView.vue`:**
+- Composable receives `activeTab` ref to auto-switch tabs during tour
+- Tour starts 800ms after mount if `shouldShowTour()` returns true
+- Keyboard: `Escape` = skip, `ArrowLeft` = next (RTL), `ArrowRight` = prev (RTL)
+
+**Edge cases handled:**
+- Target not in DOM (e.g., production store still loading): retries 6x at 300ms intervals, falls back to center-style card
+- Window resize: debounced reposition at 100ms
+- Tab animation timing: 450ms delay after tab switch before measuring target
+
+**Testing:**
+```js
+localStorage.removeItem('onboarding_completed')  // Reset tour → reload page
+localStorage.setItem('onboarding_completed', 'true')  // Disable tour
+```
 
 ---
 

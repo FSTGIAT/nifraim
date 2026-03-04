@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.paying_company import PayingCompany
 from app.schemas.paying_company import PayingCompanyCreate, PayingCompanyOut
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 
 router = APIRouter()
 

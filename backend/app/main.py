@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin
 
-app = FastAPI(title="Insurance Reconciliation Dashboard", version="1.0.0")
+app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +22,8 @@ app.include_router(production.router, prefix="/api/production", tags=["productio
 app.include_router(recruits.router, prefix="/api/recruits", tags=["recruits"])
 app.include_router(paying_companies.router, prefix="/api/paying-companies", tags=["paying-companies"])
 app.include_router(company_contacts.router, prefix="/api/company-contacts", tags=["company-contacts"])
+app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 
 @app.get("/api/health")

@@ -17,6 +17,21 @@
       </div>
     </main>
 
+    <!-- Onboarding tour -->
+    <OnboardingTour
+      :is-active="tourActive"
+      :current-step="tourCurrentStep"
+      :current-step-index="tourStepIndex"
+      :total-steps="tourTotalSteps"
+      :spotlight-rect="tourSpotlightRect"
+      :tooltip-position="tourTooltipPosition"
+      :spotlight-ready="tourSpotlightReady"
+      @next="tourNext"
+      @prev="tourPrev"
+      @skip="tourSkip"
+      @complete="tourComplete"
+    />
+
     <!-- Full-page drop overlay -->
     <Teleport to="body">
       <Transition name="overlay-fade">
@@ -57,8 +72,10 @@ import { ref, computed, onMounted, onUnmounted, provide, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
+import { useOnboardingTour } from '../composables/useOnboardingTour.js'
 import WorkspaceHeader from '../components/workspace/WorkspaceHeader.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
+import OnboardingTour from '../components/workspace/OnboardingTour.vue'
 import ProductionTab from '../components/workspace/ProductionTab.vue'
 import ComparisonTab from '../components/workspace/ComparisonTab.vue'
 import RecruitsTab from '../components/workspace/RecruitsTab.vue'
@@ -71,6 +88,24 @@ const auth = useAuthStore()
 const comparisonStore = useComparisonStore()
 const activeTab = ref('production')
 
+// Onboarding tour
+const {
+  isActive: tourActive,
+  currentStep: tourCurrentStep,
+  currentStepIndex: tourStepIndex,
+  totalSteps: tourTotalSteps,
+  spotlightRect: tourSpotlightRect,
+  tooltipPosition: tourTooltipPosition,
+  spotlightReady: tourSpotlightReady,
+  shouldShowTour,
+  startTour,
+  nextStep: tourNext,
+  prevStep: tourPrev,
+  skipTour: tourSkip,
+  completeTour: tourComplete,
+  onKeydown: tourKeydown,
+  cleanup: cleanupTour,
+} = useOnboardingTour({ activeTab })
 
 // Full-page drag & drop
 const isFullPageDrag = ref(false)
@@ -130,6 +165,10 @@ onMounted(async () => {
   document.addEventListener('dragleave', onDragLeave)
   document.addEventListener('dragover', onDragOver)
   document.addEventListener('drop', onDocDrop)
+  document.addEventListener('keydown', tourKeydown)
+  if (shouldShowTour()) {
+    setTimeout(() => startTour(), 800)
+  }
 })
 
 onUnmounted(() => {
@@ -137,6 +176,8 @@ onUnmounted(() => {
   document.removeEventListener('dragleave', onDragLeave)
   document.removeEventListener('dragover', onDragOver)
   document.removeEventListener('drop', onDocDrop)
+  document.removeEventListener('keydown', tourKeydown)
+  cleanupTour()
 })
 
 function handleLogout() {

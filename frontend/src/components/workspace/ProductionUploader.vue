@@ -1,6 +1,7 @@
 <template>
   <div class="production-uploader">
     <div
+      data-tour="production-uploader"
       class="drop-zone"
       :class="{ dragging: isDragging, uploading: productionStore.uploading, 'has-file': hasFiles }"
       @dragover.prevent="handleDragOver"

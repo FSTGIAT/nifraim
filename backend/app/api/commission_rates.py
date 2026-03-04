@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.commission_rate import CommissionRate
 from app.schemas.record import CommissionRateIn, CommissionRateOut
-from app.api.deps import get_current_user
+from app.api.deps import get_paid_user as get_current_user
 from app.utils.hebrew_mappings import DEFAULT_COMMISSION_RATES
 
 router = APIRouter()
