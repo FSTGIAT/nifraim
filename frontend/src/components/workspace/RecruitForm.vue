@@ -1,0 +1,446 @@
+<template>
+  <div class="recruit-form glass-card">
+    <div class="form-header">
+      <div class="header-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+          <path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        <h3>רשימת מגויסים</h3>
+        <span class="count-badge" v-if="rows.length">{{ rows.length }}</span>
+      </div>
+      <div class="form-actions-top">
+        <button class="btn-add" @click="addRow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span>שורה חדשה</span>
+        </button>
+        <button
+          class="btn-save"
+          :disabled="!hasUnsaved || saving"
+          @click="saveAll"
+        >
+          <template v-if="saving">
+            <div class="btn-spinner"></div>
+            <span>שומר...</span>
+          </template>
+          <template v-else>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>שמור</span>
+          </template>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>ת.ז</th>
+            <th>שם פרטי</th>
+            <th>שם משפחה</th>
+            <th>חברה</th>
+            <th>מוצר</th>
+            <th>סכום</th>
+            <th class="th-action"></th>
+          </tr>
+        </thead>
+        <TransitionGroup name="row" tag="tbody">
+          <tr v-for="(row, idx) in rows" :key="row._key" :class="{ 'new-row': row._isNew }">
+            <td>
+              <input
+                v-model="row.id_number"
+                placeholder="ת.ז"
+                class="cell-input ltr-input"
+                dir="ltr"
+              />
+            </td>
+            <td>
+              <input v-model="row.first_name" placeholder="שם פרטי" class="cell-input" />
+            </td>
+            <td>
+              <input v-model="row.last_name" placeholder="שם משפחה" class="cell-input" />
+            </td>
+            <td>
+              <input v-model="row.company" placeholder="חברה" class="cell-input" />
+            </td>
+            <td>
+              <input v-model="row.product" placeholder="מוצר" class="cell-input" />
+            </td>
+            <td>
+              <input
+                v-model.number="row.amount"
+                type="number"
+                placeholder="—"
+                class="cell-input ltr-input"
+                dir="ltr"
+              />
+            </td>
+            <td class="td-action">
+              <button class="btn-remove" @click="removeRow(idx)" title="מחק">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+        </TransitionGroup>
+      </table>
+
+      <div v-if="rows.length === 0" class="empty-state">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted)">
+          <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+          <circle cx="8.5" cy="7" r="4"/>
+          <line x1="20" y1="8" x2="20" y2="14"/>
+          <line x1="23" y1="11" x2="17" y2="11"/>
+        </svg>
+        <p>אין מגויסים עדיין</p>
+        <button class="btn-add-first" @click="addRow">הוסף מגויס ראשון</button>
+      </div>
+    </div>
+
+    <Transition name="fade">
+      <p class="error-msg" v-if="error">{{ error }}</p>
+    </Transition>
+    <Transition name="fade">
+      <p class="success-msg" v-if="successMsg">{{ successMsg }}</p>
+    </Transition>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRecruitsStore } from '../../stores/recruits.js'
+
+const recruitsStore = useRecruitsStore()
+
+let keyCounter = 0
+const rows = ref([])
+const saving = ref(false)
+const error = ref('')
+const successMsg = ref('')
+
+const hasUnsaved = computed(() => rows.value.some(r => r._isNew && r.id_number && r.first_name && r.last_name))
+
+onMounted(async () => {
+  await recruitsStore.fetchRecruits()
+  syncFromStore()
+})
+
+watch(() => recruitsStore.recruits, () => {
+  syncFromStore()
+}, { deep: true })
+
+function syncFromStore() {
+  const savedRows = recruitsStore.recruits.map(r => ({
+    ...r,
+    _key: r.id || `key-${keyCounter++}`,
+    _isNew: false,
+  }))
+  const newRows = rows.value.filter(r => r._isNew)
+  rows.value = [...savedRows, ...newRows]
+}
+
+function addRow() {
+  rows.value.push({
+    _key: `new-${keyCounter++}`,
+    _isNew: true,
+    id_number: '',
+    first_name: '',
+    last_name: '',
+    company: '',
+    product: '',
+    amount: null,
+  })
+}
+
+async function removeRow(idx) {
+  const row = rows.value[idx]
+  if (!row._isNew && row.id) {
+    try {
+      await recruitsStore.deleteRecruit(row.id)
+    } catch (e) {
+      error.value = recruitsStore.error || 'שגיאה במחיקה'
+      return
+    }
+  }
+  rows.value.splice(idx, 1)
+}
+
+async function saveAll() {
+  error.value = ''
+  successMsg.value = ''
+  saving.value = true
+
+  const newItems = rows.value.filter(r => r._isNew && r.id_number && r.first_name && r.last_name)
+
+  if (newItems.length === 0) {
+    saving.value = false
+    return
+  }
+
+  try {
+    const payload = newItems.map(r => ({
+      id_number: r.id_number,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      company: r.company || null,
+      product: r.product || null,
+      amount: r.amount || null,
+    }))
+
+    await recruitsStore.createBulk(payload)
+    successMsg.value = `נשמרו ${payload.length} מגויסים`
+    rows.value = rows.value.filter(r => !r._isNew)
+    syncFromStore()
+    setTimeout(() => { successMsg.value = '' }, 3000)
+  } catch (e) {
+    error.value = recruitsStore.error || 'שגיאה בשמירה'
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+
+<style scoped>
+.recruit-form {
+  padding: 24px;
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-violet);
+}
+
+.header-title h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.count-badge {
+  background: rgba(127, 86, 217, 0.08);
+  color: var(--accent-violet);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.form-actions-top {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: all 0.25s var(--transition);
+}
+
+.btn-add:hover {
+  background: rgba(127, 86, 217, 0.08);
+  border-color: rgba(127, 86, 217, 0.08);
+  color: var(--accent-violet);
+}
+
+.btn-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, var(--accent-emerald), var(--green-deep));
+  color: white;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.3s var(--transition);
+}
+
+.btn-save:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-save:hover:not(:disabled) {
+  box-shadow: 0 8px 20px var(--green-light);
+  transform: translateY(-1px);
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Table */
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+thead th {
+  padding: 10px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.th-action { width: 40px; }
+
+tbody tr {
+  transition: all 0.2s;
+}
+
+tbody tr:hover {
+  background: var(--border-subtle);
+}
+
+tbody td {
+  padding: 3px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.td-action { width: 40px; text-align: center; }
+
+.new-row {
+  background: rgba(127, 86, 217, 0.08);
+}
+
+.cell-input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  transition: all 0.2s var(--transition);
+}
+
+.cell-input:focus {
+  border-color: var(--primary-light);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.cell-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.ltr-input { text-align: left; }
+
+.btn-remove {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+tr:hover .btn-remove { opacity: 1; }
+
+.btn-remove:hover {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 24px;
+  color: var(--text-muted);
+}
+
+.empty-state p {
+  font-size: 14px;
+  margin: 12px 0;
+}
+
+.btn-add-first {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--accent-violet);
+  border: 1px dashed rgba(127, 86, 217, 0.08);
+  transition: all 0.25s var(--transition);
+}
+
+.btn-add-first:hover {
+  background: rgba(127, 86, 217, 0.08);
+  border-color: rgba(127, 86, 217, 0.08);
+}
+
+/* Row transitions */
+.row-enter-active { animation: slideUp 0.3s var(--transition); }
+.row-leave-active { animation: fadeOut 0.2s ease-out; position: absolute; width: 100%; }
+@keyframes fadeOut { to { opacity: 0; transform: translateX(20px); } }
+
+.fade-enter-active { animation: fadeIn 0.3s; }
+.fade-leave-active { animation: fadeIn 0.2s reverse; }
+
+.error-msg {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--red-light);
+  border-radius: 8px;
+  border: 1px solid var(--red-light);
+}
+
+.success-msg {
+  color: var(--accent-emerald);
+  font-size: 13px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--green-light);
+  border-radius: 8px;
+  border: 1px solid var(--green-light);
+}
+</style>

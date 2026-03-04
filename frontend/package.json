@@ -1,0 +1,23 @@
+{
+  "name": "insurance-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "apexcharts": "^5.3.6",
+    "axios": "^1.13.5",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.28",
+    "vue-router": "^4.6.4",
+    "vue3-apexcharts": "^1.10.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "vite": "^5.4.21"
+  }
+}
