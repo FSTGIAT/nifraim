@@ -63,20 +63,22 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 
 ### Backend: `backend/app/`
 
-- **`api/`** — Thin route handlers (9 routers). Auth via `Depends(get_current_user)` on every route.
+- **`api/`** — Thin route handlers (9 routers + `deps.py` for DI helpers). Auth via `Depends(get_current_user)` on every route.
 - **`services/`** — Business logic: `parser_service.py` (Excel parsing, 7 formats), `comparison_service.py` (production vs commission matching), `reconciliation_service.py` (queries/analytics), `auth_service.py` (JWT/bcrypt).
-- **`models/`** — SQLAlchemy ORM. `record.py` (ClientRecord, 80+ columns) is the main data table.
+- **`models/`** — SQLAlchemy ORM. `record.py` (ClientRecord, ~58 columns) is the main data table.
 - **`schemas/`** — Pydantic request/response models.
 - **`utils/hebrew_mappings.py`** — The Rosetta Stone: Hebrew→English column maps + format detection signatures.
 - **`utils/sanitize.py`** — Truncates strings to MAX_LENGTHS, converts pandas Timestamps to Python `date`.
 
 ### Frontend: `frontend/src/`
 
-- **`views/WorkspaceView.vue`** — Main app: 5-tab interface (Production, Comparison, Recruits, Rates, Emails)
+- **`views/WorkspaceView.vue`** — Main app: 6-tab interface (Production, Comparison, Recruits, Rates, Emails, Unpaid Summary)
 - **`stores/`** — Pinia stores. Components use stores for API access, never call API directly.
   - Exception: `CommissionRateTable.vue` and `CompanyEmailsTab.vue` call API directly (intentional for self-contained CRUD).
 - **`components/comparison/`** — The most complex area: `ComparisonDashboard.vue` → `ComparisonTable` → `ComparisonDetail` + `CustomerDetailModal`
 - **`api/client.js`** — Axios with `/api` base, Bearer token interceptor, 401 → redirect to login.
+- **`composables/useFileUpload.js`** — Drag-drop, file validation, file picker logic (shared across uploaders).
+- **`utils/mailHelper.js`** — Opens email compose with provider support (mailto, Gmail, Outlook).
 - **`App.vue`** — CSS design system variables (Salesforce Lightning tokens), RTL root, global animations.
 
 ---
@@ -112,7 +114,8 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
                  │    └── RecruitComparisonResults
                  ├── CommissionRatesTab
                  │    └── CommissionRateTable
-                 └── CompanyEmailsTab  (self-contained CRUD)
+                 ├── CompanyEmailsTab  (self-contained CRUD)
+                 └── UnpaidSummaryTab
 ```
 
 ### Routing & Auth
@@ -159,7 +162,7 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 
 ### Tab System & Fullscreen Mode
 
-- **5 tabs:** production, comparison, recruits, commission-rates, company-emails
+- **6 tabs:** production, comparison, recruits, commission-rates, company-emails, unpaid-summary
 - **Tab indicator:** animated underline using `getBoundingClientRect()` — RTL-aware (anchors from right)
 - **Fullscreen mode:** activates when `activeTab === 'comparison' && comparisonStore.result` exists
   - Hides tabs, shows back bar, expands `max-width` to 100%
