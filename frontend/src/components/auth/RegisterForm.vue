@@ -22,9 +22,6 @@
       </template>
       <template v-else>הרשם</template>
     </button>
-    <p class="link">
-      כבר יש לך חשבון? <router-link to="/login">התחבר כאן</router-link>
-    </p>
   </form>
 </template>
 
@@ -66,38 +63,39 @@ label {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #A0A0A0;
+  color: #555;
 }
 
 input {
   width: 100%;
   padding: 14px 16px;
-  border: 1px solid #2a2a2a;
+  border: 1.5px solid #E0E0E0;
   border-radius: 10px;
   font-size: 15px;
   font-family: 'Heebo', sans-serif;
-  background: #1a1a1a;
-  color: #F5F5F5;
+  background: #FAFAFA;
+  color: #181818;
   transition: all 0.2s;
 }
 
 input:focus {
   border-color: #F57C00;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
   outline: none;
+  background: #fff;
 }
 
 input::placeholder {
-  color: #555;
+  color: #B0B0B0;
 }
 
 .btn-submit {
   width: 100%;
   padding: 14px;
-  background: #F57C00;
-  color: #0a0a0a;
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #fff;
   border: none;
-  border-radius: 12px;
+  border-radius: 50px;
   font-size: 16px;
   font-weight: 700;
   font-family: 'Heebo', sans-serif;
@@ -107,12 +105,13 @@ input::placeholder {
   gap: 8px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.25);
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: #FF9800;
+  background: linear-gradient(135deg, #E65100, #F57C00);
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.35);
 }
 
 .btn-submit:disabled {
@@ -123,38 +122,20 @@ input::placeholder {
 .btn-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(10, 10, 10, 0.3);
-  border-top-color: #0a0a0a;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 .error {
-  color: #ef5350;
+  color: #d32f2f;
   font-size: 14px;
   margin-bottom: 16px;
   padding: 10px 14px;
-  background: rgba(239, 83, 80, 0.1);
+  background: #FEF1EE;
   border-radius: 10px;
-  border: 1px solid rgba(239, 83, 80, 0.2);
-}
-
-.link {
-  text-align: center;
-  margin-top: 28px;
-  font-size: 15px;
-  color: #666;
-}
-
-.link a {
-  color: #F57C00;
-  font-weight: 600;
-  transition: color 0.2s;
-  text-decoration: none;
-}
-
-.link a:hover {
-  color: #FF9800;
+  border: 1px solid rgba(211, 47, 47, 0.15);
 }
 
 .fade-enter-active { animation: fadeIn 0.3s; }
