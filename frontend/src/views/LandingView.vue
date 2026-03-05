@@ -15,7 +15,6 @@
         </div>
         <div class="nav-links">
           <a href="#features">תכונות</a>
-          <a href="#how-it-works">איך זה עובד</a>
           <router-link to="/pricing">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
