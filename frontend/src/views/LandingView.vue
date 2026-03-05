@@ -47,7 +47,7 @@
 
     <!-- Hero Slider -->
     <section class="hero-slider" @mouseenter="pauseSlider" @mouseleave="resumeSlider">
-      <div class="slider-track" :style="{ transform: `translateX(${currentSlide * 100}%)` }">
+      <div class="slider-track" :style="{ transform: `translateX(${currentSlide * -100}%)` }">
         <!-- Slide 1: Bold Statement -->
         <div class="slide slide-1">
           <div class="slide-glow"></div>
@@ -137,7 +137,7 @@
     <!-- Features -->
     <section id="features" class="features">
       <div class="section-wrap">
-        <h2 class="section-title">למה <span class="text-orange">Nifraim</span>?</h2>
+        <h2 class="section-title">למה <span class="text-orange">Nifraim</span> ?</h2>
         <div class="features-grid">
           <div class="feature-block" v-for="(f, i) in features" :key="i">
             <span class="feature-num ltr-number">{{ String(i + 1).padStart(2, '0') }}</span>
@@ -151,7 +151,7 @@
     <!-- How It Works -->
     <section id="how-it-works" class="how-section">
       <div class="section-wrap">
-        <h2 class="section-title">איך זה <span class="text-orange">עובד</span>?</h2>
+        <h2 class="section-title">איך זה <span class="text-orange">עובד</span> ?</h2>
         <div class="timeline">
           <div class="timeline-step" v-for="(s, i) in steps" :key="i">
             <div class="timeline-circle ltr-number">{{ i + 1 }}</div>
@@ -514,7 +514,7 @@ onBeforeUnmount(() => {
 
 .slider-track {
   display: flex;
-  flex-direction: row-reverse;
+  flex-direction: row;
   height: 100%;
   transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
