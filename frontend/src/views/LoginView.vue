@@ -17,7 +17,7 @@
         <p class="brand-subtitle">מערכת ניהול עמלות מתקדמת</p>
         <div class="brand-toggle">
           <span>אין לך חשבון?</span>
-          <router-link to="/register" class="brand-toggle-link">הרשם כאן</router-link>
+          <router-link to="/signup" class="brand-toggle-link">הרשם כאן</router-link>
         </div>
       </div>
       <!-- Wave decoration -->
@@ -38,7 +38,7 @@
         <p class="form-subtitle">הזינו את הפרטים שלכם</p>
         <LoginForm />
         <p class="mobile-toggle">
-          אין לך חשבון? <router-link to="/register">הרשם כאן</router-link>
+          אין לך חשבון? <router-link to="/signup">הרשם כאן</router-link>
         </p>
       </div>
     </div>
