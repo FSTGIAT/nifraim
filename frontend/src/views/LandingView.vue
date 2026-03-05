@@ -45,6 +45,13 @@
       </Transition>
     </nav>
 
+    <!-- Floating circles -->
+    <div class="float-circle float-circle-1"></div>
+    <div class="float-circle float-circle-2"></div>
+    <div class="float-circle float-circle-3"></div>
+    <div class="float-circle float-circle-4"></div>
+    <div class="float-circle float-circle-5"></div>
+
     <!-- Hero Slider -->
     <section class="hero-slider" @mouseenter="pauseSlider" @mouseleave="resumeSlider">
       <div class="slider-track" :style="{ transform: `translateX(${currentSlide * -100}%)` }">
@@ -976,6 +983,68 @@ onBeforeUnmount(() => {
   color: var(--land-text-dim);
 }
 
+/* ── Floating Circles ── */
+.float-circle {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.float-circle-1 {
+  width: 260px;
+  height: 260px;
+  top: -60px;
+  right: -80px;
+  background: rgba(245, 124, 0, 0.04);
+  border: 1px solid rgba(245, 124, 0, 0.06);
+  animation: floatCircle 8s ease-in-out infinite;
+}
+
+.float-circle-2 {
+  width: 180px;
+  height: 180px;
+  bottom: 120px;
+  left: -50px;
+  background: rgba(245, 124, 0, 0.03);
+  border: 1px solid rgba(245, 124, 0, 0.05);
+  animation: floatCircle 6s ease-in-out infinite reverse;
+}
+
+.float-circle-3 {
+  width: 100px;
+  height: 100px;
+  top: 35%;
+  left: 8%;
+  background: rgba(245, 124, 0, 0.05);
+  animation: floatCircle 10s ease-in-out infinite 2s;
+}
+
+.float-circle-4 {
+  width: 140px;
+  height: 140px;
+  top: 60%;
+  right: 5%;
+  background: rgba(245, 124, 0, 0.03);
+  border: 1px solid rgba(245, 124, 0, 0.04);
+  animation: floatCircle 9s ease-in-out infinite 1s;
+}
+
+.float-circle-5 {
+  width: 70px;
+  height: 70px;
+  top: 15%;
+  left: 20%;
+  background: rgba(245, 124, 0, 0.06);
+  animation: floatCircle 7s ease-in-out infinite 3s reverse;
+}
+
+@keyframes floatCircle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-18px) rotate(2deg); }
+  66% { transform: translateY(10px) rotate(-1deg); }
+}
+
 /* ── Animations ── */
 @keyframes fadeInUp {
   from {
@@ -1078,6 +1147,11 @@ onBeforeUnmount(() => {
     flex-direction: column;
     text-align: center;
   }
+
+  .float-circle-1 { width: 140px; height: 140px; }
+  .float-circle-2 { width: 100px; height: 100px; }
+  .float-circle-4 { display: none; }
+  .float-circle-5 { display: none; }
 }
 
 @media (max-width: 480px) {
