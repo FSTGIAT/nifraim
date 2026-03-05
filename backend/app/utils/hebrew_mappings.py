@@ -78,6 +78,10 @@ PRODUCTION_FILE_COLUMNS = {
     "סטטוס מוצר": "product_status",
     "תאריך הצטרפות למוצר": "sign_date",
     "תאריך הצטרפות": "sign_date",
+    "סלולרי לקוח": "client_phone",
+    'דוא"ל לקוח': "client_email",
+    "שם מעסיק": "employer_name",
+    "מזהה מעסיק": "employer_id",
 }
 
 # Column mappings for Commission Report (דוח נפרעים — Mor)

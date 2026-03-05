@@ -23,6 +23,7 @@
           <div class="product-name">{{ m.production_product || '—' }}</div>
           <div class="product-meta">
             <span class="meta-item">חשבון: <span class="ltr-val">{{ m.policy_number }}</span></span>
+            <span v-if="m.track" class="meta-item">מסלול: {{ m.track }}</span>
             <span v-if="m.monthly_pct != null" class="meta-item">אחוז חודשי: <span class="ltr-val">{{ formatPct(m.monthly_pct) }}</span></span>
           </div>
         </div>
@@ -30,6 +31,14 @@
           <div v-if="m.balance != null" class="amount-item">
             <span class="amount-label">יתרה</span>
             <span class="amount-value ltr-val">{{ formatAmount(m.balance) }}</span>
+          </div>
+          <div v-if="m.management_fee != null" class="amount-item">
+            <span class="amount-label">ד.נ %</span>
+            <span class="amount-value ltr-val">{{ formatPct(m.management_fee) }}</span>
+          </div>
+          <div v-if="m.management_fee_amount > 0" class="amount-item">
+            <span class="amount-label">ד.נ ₪</span>
+            <span class="amount-value ltr-val">{{ formatAmount(m.management_fee_amount) }}</span>
           </div>
           <div v-if="expectedFromFile(m) != null" class="amount-item expected">
             <span class="amount-label">צפוי</span>
@@ -56,6 +65,7 @@
           <div class="product-name">{{ c.product || '—' }}</div>
           <div class="product-meta">
             <span v-if="c.account" class="meta-item">חשבון: <span class="ltr-val">{{ c.account }}</span></span>
+            <span v-if="c.fund_type" class="meta-item">{{ c.fund_type }}</span>
             <span v-if="c.annual_pct != null" class="meta-item">אחוז שנתי: <span class="ltr-val">{{ formatPct(c.annual_pct) }}</span></span>
             <span v-if="c.monthly_pct != null" class="meta-item">אחוז חודשי: <span class="ltr-val">{{ formatPct(c.monthly_pct) }}</span></span>
           </div>
@@ -64,6 +74,14 @@
           <div v-if="c.balance != null" class="amount-item">
             <span class="amount-label">יתרה</span>
             <span class="amount-value ltr-val">{{ formatAmount(c.balance) }}</span>
+          </div>
+          <div v-if="c.management_fee != null" class="amount-item">
+            <span class="amount-label">ד.נ %</span>
+            <span class="amount-value ltr-val">{{ formatPct(c.management_fee) }}</span>
+          </div>
+          <div v-if="c.management_fee_amount > 0" class="amount-item">
+            <span class="amount-label">ד.נ ₪</span>
+            <span class="amount-value ltr-val">{{ formatAmount(c.management_fee_amount) }}</span>
           </div>
           <div class="amount-item commission">
             <span class="amount-label">עמלה</span>
@@ -104,6 +122,7 @@
             <div class="product-meta">
               <span v-if="p.policy_number" class="meta-item">חשבון: <span class="ltr-val">{{ p.policy_number }}</span></span>
               <span v-if="p.product_type" class="meta-item">{{ p.product_type }}</span>
+              <span v-if="p.track" class="meta-item">מסלול: {{ p.track }}</span>
               <span v-if="p.company" class="meta-item">{{ p.company }}</span>
             </div>
           </div>
@@ -137,6 +156,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 
 const props = defineProps({
   customer: { type: Object, required: true },
@@ -193,15 +213,7 @@ function commissionDiffClass(matchedProduct) {
 function expectedCommission(product) {
   const rateInfo = findRateForProduct(product)
   if (!rateInfo) return null
-  // Gemel/Hishtalmut: accumulation * rate / 12
-  if (product.accumulation != null && product.accumulation !== 0) {
-    return product.accumulation * rateInfo.rate / 12
-  }
-  // Insurance: premium * rate / 12
-  if (product.premium != null && product.premium !== 0) {
-    return product.premium * rateInfo.rate * 100 / 12
-  }
-  return null
+  return calcExpectedCommission(product, rateInfo.rate)
 }
 
 const totalExpectedCommission = computed(() =>

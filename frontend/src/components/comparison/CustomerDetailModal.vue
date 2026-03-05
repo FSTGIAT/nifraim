@@ -11,6 +11,11 @@
             <div class="header-right">
               <div class="header-name">{{ customer.name }}</div>
               <div class="header-id ltr-number">ת.ז {{ customer.id_number }}</div>
+              <div v-if="customer.client_phone || customer.client_email || customer.employer_name" class="header-contact">
+                <span v-if="customer.client_phone" class="contact-item ltr-number">{{ customer.client_phone }}</span>
+                <span v-if="customer.client_email" class="contact-item ltr-number">{{ customer.client_email }}</span>
+                <span v-if="customer.employer_name" class="contact-item">{{ customer.employer_name }}</span>
+              </div>
             </div>
             <div class="header-chips">
               <span class="chip chip-commission" v-if="customer.commission_count > 0">{{ customer.commission_count }} מוצרים</span>
@@ -59,6 +64,8 @@
                 <div class="p-sub">
                   <span v-if="p.company">{{ shortCompany(p.company) }}</span>
                   <span v-if="p.policy_number" class="ltr-number">{{ p.policy_number }}</span>
+                  <span v-if="p.fund_type" class="p-tag-info">{{ p.fund_type }}</span>
+                  <span v-if="p.track" class="p-tag-info">{{ p.track }}</span>
                   <span v-if="!p.paid && !p.source" class="p-tag-production">רק בפרודוקציה</span>
                 </div>
               </div>
@@ -80,6 +87,14 @@
                 <div class="amt" v-if="p.premium > 0">
                   <span class="amt-lbl">פרמיה</span>
                   <span class="amt-val ltr-number">{{ fmtCell(p.premium) }}</span>
+                </div>
+                <div class="amt" v-if="p.management_fee != null">
+                  <span class="amt-lbl">ד.נ %</span>
+                  <span class="amt-val ltr-number amt-muted">{{ (p.management_fee * 100).toFixed(2) }}%</span>
+                </div>
+                <div class="amt" v-if="p.management_fee_amount > 0">
+                  <span class="amt-lbl">ד.נ ₪</span>
+                  <span class="amt-val ltr-number">{{ fmtCell(p.management_fee_amount) }}</span>
                 </div>
                 <div class="amt" v-if="!p.paid && !p.source && rateLabel(p)">
                   <span class="amt-lbl">אחוז</span>
@@ -120,6 +135,7 @@
 import { computed } from 'vue'
 import api from '../../api/client.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
+import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 
 const props = defineProps({
   customer: { type: Object, default: null },
@@ -217,19 +233,7 @@ function rateLabel(p) {
 function expectedCommission(p) {
   const rate = findRate(p)
   if (!rate) return null
-  // Gemel/Hishtalmut: accumulation * rate / 12 (production-only products)
-  // Check accumulation first explicitly; fallback to balance only if accumulation is absent
-  if (p.accumulation != null && p.accumulation !== 0) {
-    return p.accumulation * rate.rate / 12
-  }
-  if (p.balance != null && p.balance !== 0) {
-    return p.balance * rate.rate / 12
-  }
-  // Insurance: premium * rate_pct / 12
-  if (p.premium && p.premium !== 0) {
-    return p.premium * rate.rate * 100 / 12
-  }
-  return null
+  return calcExpectedCommission(p, rate.rate)
 }
 
 const unpaidProducts = computed(() => {
@@ -252,10 +256,11 @@ function openMail() {
     }
   }
 
-  // Build product lines
+  // Build product lines with premium
   const productLines = products.map(p => {
     const date = p.sign_date ? formatDate(p.sign_date) : ''
-    return `- ${p.product || ''}${date ? ' מתאריך ' + date : ''}`
+    const premiumStr = p.premium > 0 ? ` | פרמיה: ₪${Math.round(p.premium)}` : ''
+    return `- ${p.product || ''}${date ? ' מתאריך ' + date : ''}${premiumStr}`
   }).join('\n')
 
   const subject = `בקשת תשלום עמלות נפרעים - ${name}`
@@ -364,6 +369,8 @@ function fmtCell(val) {
 .header-right { flex: 1; min-width: 0; }
 .header-name { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-id { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.header-contact { display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.contact-item + .contact-item::before { content: '·'; margin-left: 8px; color: var(--light-gray); }
 
 .header-chips { display: flex; gap: 5px; flex-shrink: 0; }
 .chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
@@ -468,6 +475,15 @@ function fmtCell(val) {
   font-size: 11px; color: var(--text-muted); margin-top: 1px;
 }
 .p-sub span + span::before { content: '·'; margin-left: 6px; color: var(--light-gray); }
+
+.p-tag-info {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(1, 118, 211, 0.06);
+  color: var(--primary);
+}
 
 .p-tag-production {
   font-size: 9px;

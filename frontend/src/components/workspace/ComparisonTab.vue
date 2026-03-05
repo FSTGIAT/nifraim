@@ -169,6 +169,17 @@ const relevantCustomers = computed(() => {
       }
     })
     .filter(Boolean) // Remove null entries (excluded only_production customers)
+    .sort((a, b) => {
+      // Item 6: Sort by highest financial value
+      const isInsurance = comparisonStore.activeCategory === 'insurance'
+      if (isInsurance) {
+        return (b.total_premium || 0) - (a.total_premium || 0)
+      }
+      // Gemel: sort by total balance (sum of all production product accumulations)
+      const balA = (a.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
+      const balB = (b.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
+      return balB - balA
+    })
 })
 
 onMounted(() => {

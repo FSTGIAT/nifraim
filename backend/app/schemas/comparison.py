@@ -11,6 +11,11 @@ class ProductionProduct(BaseModel):
     status: str | None = None
     accumulation: float | None = None
     sign_date: str | None = None
+    track: str | None = None
+    client_phone: str | None = None
+    client_email: str | None = None
+    employer_name: str | None = None
+    employer_id: str | None = None
 
 
 class CommissionProduct(BaseModel):
@@ -20,6 +25,9 @@ class CommissionProduct(BaseModel):
     commission: float | None = None
     annual_pct: float | None = None
     monthly_pct: float | None = None
+    fund_type: str | None = None
+    management_fee: float | None = None
+    management_fee_amount: float | None = None
 
 
 class ProductMatch(BaseModel):
@@ -33,6 +41,9 @@ class ProductMatch(BaseModel):
     balance: float | None = None
     monthly_pct: float | None = None
     annual_pct: float | None = None
+    track: str | None = None
+    management_fee: float | None = None
+    management_fee_amount: float | None = None
 
 
 class PaymentStatusUpdate(BaseModel):
@@ -50,6 +61,11 @@ class UnmatchedProduction(BaseModel):
     policy_number: str | None = None
     accumulation: float | None = None
     sign_date: str | None = None
+    track: str | None = None
+    client_phone: str | None = None
+    client_email: str | None = None
+    employer_name: str | None = None
+    employer_id: str | None = None
 
 
 class UnmatchedCommission(BaseModel):
@@ -58,6 +74,7 @@ class UnmatchedCommission(BaseModel):
     commission: float | None = None
     balance: float | None = None
     company: str | None = None
+    fund_type: str | None = None
 
 
 class ProductMatchResult(BaseModel):
@@ -78,6 +95,10 @@ class ComparisonCustomer(BaseModel):
     total_premium: float = 0
     total_commission: float = 0
     has_paying_company: bool = False
+    client_phone: str | None = None
+    client_email: str | None = None
+    employer_name: str | None = None
+    employer_id: str | None = None
     production_products: list[ProductionProduct] = []
     commission_products: list[CommissionProduct] = []
     product_matches: ProductMatchResult = ProductMatchResult()

@@ -7,6 +7,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
   const loading = ref(false)
   const comparing = ref(false)
   const comparisonResult = ref(null)
+  const uploading = ref(false)
   const error = ref(null)
 
   async function fetchRecruits() {
@@ -43,6 +44,25 @@ export const useRecruitsStore = defineStore('recruits', () => {
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה ביצירת מגויסים'
       throw e
+    }
+  }
+
+  async function uploadRecruits(file, password) {
+    uploading.value = true
+    error.value = null
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (password) formData.append('password', password)
+      const res = await api.post('/recruits/upload', formData)
+      // Add uploaded recruits to the list
+      recruits.value.unshift(...res.data)
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בהעלאת קובץ'
+      throw e
+    } finally {
+      uploading.value = false
     }
   }
 
@@ -91,8 +111,9 @@ export const useRecruitsStore = defineStore('recruits', () => {
   }
 
   return {
-    recruits, loading, comparing, comparisonResult, error,
-    fetchRecruits, createRecruit, createBulk, updateRecruit, deleteRecruit,
+    recruits, loading, comparing, comparisonResult, uploading, error,
+    fetchRecruits, createRecruit, createBulk, uploadRecruits,
+    updateRecruit, deleteRecruit,
     compareRecruits, resetComparison,
   }
 })

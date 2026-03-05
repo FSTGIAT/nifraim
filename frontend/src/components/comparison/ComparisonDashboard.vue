@@ -63,10 +63,10 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value">{{ onlyProdCustomers.length }}</div>
+          <div class="kpi-value">{{ effectiveUnpaidCustomers.length }}</div>
           <div class="kpi-label">לא שולם</div>
         </div>
-        <div v-if="onlyProdCustomers.length > 0" class="kpi-actions">
+        <div v-if="effectiveUnpaidCustomers.length > 0" class="kpi-actions">
           <button
             class="kpi-action-btn kpi-action-mail"
             @click.stop="sendAllUnpaidMail"
@@ -128,6 +128,29 @@
           <div class="kpi-label">סה"כ יתרה</div>
         </div>
       </div>
+    </div>
+
+    <!-- Top Clients -->
+    <div v-if="topClientsData.length > 0" class="chart-card wide-card tc-card">
+      <div class="chart-header">
+        <h3>{{ isGemel ? 'לקוחות לפי צבירה' : 'לקוחות לפי פרמיה' }}</h3>
+        <div class="chart-actions">
+          <button
+            v-for="n in topNOptions"
+            :key="n"
+            class="toggle-btn"
+            :class="{ active: topN === n }"
+            @click="topN = n"
+          >{{ n }}</button>
+        </div>
+      </div>
+      <apexchart
+        type="bar"
+        :height="topN > 30 ? 400 : 300"
+        :options="topClientsChartOptions"
+        :series="topClientsChartSeries"
+        @dataPointSelection="onTopClientClick"
+      />
     </div>
 
     <!-- Product Breakdown Treemap -->
@@ -218,6 +241,7 @@ import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
+import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
 
 const props = defineProps({
@@ -246,9 +270,23 @@ const commissionCustomers = computed(() =>
   props.customers.filter(c => c.match_status === 'matched' || c.match_status === 'only_commission')
 )
 
+const isGemel = computed(() => {
+  const label = props.categoryLabel || ''
+  return label.includes('גמל') || label.includes('השתלמות')
+})
+
 const matchedCustomers = computed(() => props.customers.filter(c => c.match_status === 'matched'))
 const onlyProdCustomers = computed(() => props.customers.filter(c => c.match_status === 'only_production'))
 const onlyCommCustomers = computed(() => props.customers.filter(c => c.match_status === 'only_commission'))
+
+// Item 5: For gemel, exclude customers where ALL production products have accumulation = 0/null
+const effectiveUnpaidCustomers = computed(() => {
+  if (!isGemel.value) return onlyProdCustomers.value
+  return onlyProdCustomers.value.filter(c => {
+    const products = c.production_products || c.product_matches?.unmatched_production || []
+    return products.some(p => p.accumulation != null && p.accumulation > 0)
+  })
+})
 
 const commissionCustomerCount = computed(() => commissionCustomers.value.length)
 
@@ -320,20 +358,16 @@ function findRate(product) {
   return arr[0].rate
 }
 
-// KPI: total unpaid expected commission for only_production customers
-// All: value * rate / 12 | Fallback: raw premium
+// KPI: total unpaid expected commission for effective unpaid customers
 const totalUnpaidCharge = computed(() => {
   let expectedTotal = 0
   let rawTotal = 0
-  for (const c of onlyProdCustomers.value) {
+  for (const c of effectiveUnpaidCustomers.value) {
     for (const p of (c.production_products || [])) {
       const rate = findRate(p)
       if (rate) {
-        if (p.accumulation != null && p.accumulation !== 0) {
-          expectedTotal += p.accumulation * rate / 12
-        } else if (p.premium != null && p.premium !== 0) {
-          expectedTotal += p.premium * rate * 100 / 12
-        }
+        const exp = calcExpectedCommission(p, rate)
+        if (exp != null) expectedTotal += exp
       }
       rawTotal += (p.premium || 0) || (p.accumulation || 0)
     }
@@ -341,10 +375,115 @@ const totalUnpaidCharge = computed(() => {
   return expectedTotal || rawTotal
 })
 
+// ─── Top Clients ───
+
+const topNOptions = [15, 20, 50, 100]
+const topN = ref(15)
+
+const topClientsData = computed(() => {
+  const list = props.customers.map(c => {
+    const name = customerName(c)
+    let value = 0
+    let productCount = 0
+    if (isGemel.value) {
+      // Gemel: sum accumulation from all sources
+      const prodAccum = (c.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
+      const matchAccum = (c.product_matches?.matched || []).reduce((s, p) => s + (p.balance || p.accumulation || 0), 0)
+      const commAccum = (c.product_matches?.unmatched_commission || []).reduce((s, p) => s + (p.balance || 0), 0)
+      value = prodAccum || (matchAccum + commAccum)
+      productCount = (c.production_products || []).length + (c.commission_products || []).length
+    } else {
+      // Insurance: total premium
+      value = c.total_premium || 0
+      productCount = (c.production_products || []).length + (c.commission_products || []).length
+    }
+    return {
+      id_number: c.id_number,
+      name,
+      value,
+      status: c.match_status,
+      productCount,
+      _raw: c,
+    }
+  })
+    .filter(c => c.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, topN.value)
+
+  const maxVal = list.length > 0 ? list[0].value : 1
+  return list.map(c => ({ ...c, pct: Math.round((c.value / maxVal) * 100) }))
+})
+
+const STATUS_COLORS = { matched: '#0176D3', only_production: '#E8720A', only_commission: '#7F56D9' }
+
+const topClientsChartSeries = computed(() => [{
+  name: isGemel.value ? 'צבירה' : 'פרמיה',
+  data: topClientsData.value.map(c => ({
+    x: c.name,
+    y: Math.round(c.value),
+    fillColor: STATUS_COLORS[c.status] || '#0176D3',
+  })),
+}])
+
+const topClientsChartOptions = computed(() => ({
+  chart: {
+    fontFamily: 'Heebo, sans-serif',
+    background: 'transparent',
+    toolbar: { show: false },
+  },
+  plotOptions: {
+    bar: {
+      borderRadius: 4,
+      columnWidth: '60%',
+      distributed: true,
+    },
+  },
+  legend: { show: false },
+  dataLabels: {
+    enabled: topN.value <= 20,
+    formatter: (val) => formatCompact(val),
+    style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '10px', colors: ['#fff'] },
+    dropShadow: { enabled: false },
+  },
+  xaxis: {
+    labels: {
+      show: topN.value <= 30,
+      style: { fontFamily: 'Heebo, sans-serif', fontSize: '10px', fontWeight: 600, colors: '#706E6B' },
+      rotate: -45,
+      rotateAlways: topClientsData.value.length > 8,
+      trim: true,
+      maxHeight: 80,
+    },
+  },
+  yaxis: {
+    labels: {
+      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
+      formatter: (val) => formatCompact(val),
+    },
+  },
+  grid: {
+    borderColor: '#F0F0F0',
+    strokeDashArray: 3,
+  },
+  tooltip: {
+    style: { fontFamily: 'Heebo, sans-serif' },
+    y: { formatter: (val) => '₪ ' + Number(val).toLocaleString('he-IL') },
+  },
+  states: {
+    hover: { filter: { type: 'darken', value: 0.08 } },
+    active: { filter: { type: 'none' } },
+  },
+}))
+
+function onTopClientClick(_event, _chartCtx, config) {
+  const client = topClientsData.value[config.dataPointIndex]
+  if (client) openDetailFromFilter(client._raw)
+}
+
 // Status donut — all three statuses
 const statusItems = computed(() => [
   { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#0176D3' },
-  { key: 'only_production', label: 'לא שולם', count: onlyProdCustomers.value.length, color: '#E8720A' },
+  { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: '#E8720A' },
   { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: '#7F56D9' },
 ])
 
@@ -508,6 +647,9 @@ function openDetailFromFilter(c) {
     balance: p.balance || 0,
     commission: p.commission || 0,
     policy_number: p.policy_number,
+    track: p.track || null,
+    management_fee: p.management_fee ?? null,
+    management_fee_amount: p.management_fee_amount ?? null,
     paid: true,
   }))
   const unmatched = (c.product_matches?.unmatched_production || []).map(p => ({
@@ -520,6 +662,7 @@ function openDetailFromFilter(c) {
     commission: 0,
     policy_number: p.policy_number,
     sign_date: p.sign_date || null,
+    track: p.track || null,
     paid: false,
   }))
   const unmatchedComm = (c.product_matches?.unmatched_commission || []).map(p => ({
@@ -530,6 +673,9 @@ function openDetailFromFilter(c) {
     balance: p.balance || 0,
     commission: p.commission || 0,
     policy_number: p.account || '',
+    fund_type: p.fund_type || null,
+    management_fee: p.management_fee ?? null,
+    management_fee_amount: p.management_fee_amount ?? null,
     paid: true,
     source: 'commission_only',
   }))
@@ -547,6 +693,9 @@ function openDetailFromFilter(c) {
       balance: p.balance || 0,
       commission: p.commission || 0,
       policy_number: p.account || '',
+      fund_type: p.fund_type || null,
+      management_fee: p.management_fee ?? null,
+      management_fee_amount: p.management_fee_amount ?? null,
       paid: true,
       source: 'commission_only',
     }))
@@ -560,6 +709,10 @@ function openDetailFromFilter(c) {
     commission_count: c.commission_count || 0,
     total_commission: c.total_commission || 0,
     paid_commission: matched.reduce((s, p) => s + (p.commission || 0), 0),
+    client_phone: c.client_phone || null,
+    client_email: c.client_email || null,
+    employer_name: c.employer_name || null,
+    employer_id: c.employer_id || null,
     products: allProducts,
   }
 }
@@ -571,14 +724,15 @@ function onStatusClick(_event, _chartCtx, config) {
   const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
   const key = keys[config.dataPointIndex]
   if (key) {
-    const filtered = props.customers.filter(c => c.match_status === key)
-    openFilterModal(labels[key], filtered)
+    onLegendClick(key)
   }
 }
 
 function onLegendClick(key) {
   const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
-  const filtered = props.customers.filter(c => c.match_status === key)
+  const filtered = key === 'only_production'
+    ? effectiveUnpaidCustomers.value
+    : props.customers.filter(c => c.match_status === key)
   openFilterModal(labels[key] || key, filtered)
 }
 
@@ -635,22 +789,19 @@ function formatDate(dateStr) {
 }
 
 function sendAllUnpaidMail() {
-  const customers = onlyProdCustomers.value
+  const customers = effectiveUnpaidCustomers.value
   if (!customers.length) return
 
-  // Build customer lines
+  // Build customer lines with product details and premium
   const lines = customers.map(c => {
     const name = customerName(c)
     const products = c.production_products || c.product_matches?.unmatched_production || []
-    let earliest = null
-    for (const p of products) {
-      if (p.sign_date) {
-        const d = new Date(p.sign_date)
-        if (!isNaN(d) && (!earliest || d < earliest)) earliest = d
-      }
-    }
-    const dateStr = earliest ? formatDate(earliest) : ''
-    return `- ${name} ת.ז ${c.id_number}${dateStr ? ' מתאריך ' + dateStr : ''}`
+    const productLines = products.map(p => {
+      const date = p.sign_date ? formatDate(p.sign_date) : ''
+      const premiumStr = p.premium > 0 ? ` פרמיה: ₪${Math.round(p.premium)}` : ''
+      return `  - ${p.product || ''}${date ? ' מתאריך ' + date : ''}${premiumStr}`
+    }).join('\n')
+    return `- ${name} ת.ז ${c.id_number}:\n${productLines}`
   }).join('\n')
 
   // Find company email from first customer's products
@@ -684,7 +835,7 @@ ${userName}`
 }
 
 function downloadUnpaidExcel() {
-  const customers = onlyProdCustomers.value
+  const customers = effectiveUnpaidCustomers.value
   if (!customers.length) return
 
   const rows = []
@@ -1174,6 +1325,9 @@ function formatCompact(val) {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* ── Top Clients ── */
+.tc-card { margin-bottom: 16px; }
 
 .empty-chart {
   text-align: center;

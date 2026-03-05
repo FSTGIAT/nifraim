@@ -90,6 +90,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useComparisonStore } from '../../stores/comparison.js'
 import api from '../../api/client.js'
+import { calcExpectedCommission as calcExpComm } from '../../utils/commissionCalc.js'
 
 const comparisonStore = useComparisonStore()
 const commissionRates = ref([])
@@ -178,12 +179,8 @@ function findRate(product, categoryLabel) {
 function calcExpectedCommission(product, categoryLabel) {
   const rate = findRate(product, categoryLabel)
   if (rate) {
-    if (product.accumulation != null && product.accumulation !== 0) {
-      return product.accumulation * rate / 12
-    }
-    if (product.premium != null && product.premium !== 0) {
-      return product.premium * rate * 100 / 12
-    }
+    const exp = calcExpComm(product, rate)
+    if (exp != null) return exp
   }
   // Fallback: raw value
   return (product.premium || 0) || (product.accumulation || 0)

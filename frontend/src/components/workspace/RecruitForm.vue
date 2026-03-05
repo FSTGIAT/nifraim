@@ -10,6 +10,7 @@
         </svg>
         <h3>רשימת מגויסים</h3>
         <span class="count-badge" v-if="rows.length">{{ rows.length }}</span>
+        <span class="page-info" v-if="totalPages > 1">עמוד {{ currentPage }} מתוך {{ totalPages }}</span>
       </div>
       <div class="form-actions-top">
         <button class="btn-add" @click="addRow">
@@ -52,7 +53,7 @@
           </tr>
         </thead>
         <TransitionGroup name="row" tag="tbody">
-          <tr v-for="(row, idx) in rows" :key="row._key" :class="{ 'new-row': row._isNew }">
+          <tr v-for="(row, idx) in paginatedRows" :key="row._key" :class="{ 'new-row': row._isNew }">
             <td>
               <input
                 v-model="row.id_number"
@@ -83,7 +84,7 @@
               />
             </td>
             <td class="td-action">
-              <button class="btn-remove" @click="removeRow(idx)" title="מחק">
+              <button class="btn-remove" @click="removeRow(pageOffset + idx)" title="מחק">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
@@ -106,6 +107,20 @@
       </div>
     </div>
 
+    <!-- Pagination -->
+    <div class="pagination" v-if="totalPages > 1">
+      <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <template v-for="p in visiblePages" :key="p">
+        <span v-if="p === '...'" class="page-ellipsis">...</span>
+        <button v-else class="page-btn" :class="{ active: p === currentPage }" @click="currentPage = p">{{ p }}</button>
+      </template>
+      <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+    </div>
+
     <Transition name="fade">
       <p class="error-msg" v-if="error">{{ error }}</p>
     </Transition>
@@ -126,8 +141,28 @@ const rows = ref([])
 const saving = ref(false)
 const error = ref('')
 const successMsg = ref('')
+const currentPage = ref(1)
+const pageSize = 50
 
 const hasUnsaved = computed(() => rows.value.some(r => r._isNew && r.id_number && r.first_name && r.last_name))
+const totalPages = computed(() => Math.ceil(rows.value.length / pageSize))
+const pageOffset = computed(() => (currentPage.value - 1) * pageSize)
+const paginatedRows = computed(() => rows.value.slice(pageOffset.value, pageOffset.value + pageSize))
+
+const visiblePages = computed(() => {
+  const total = totalPages.value
+  const cur = currentPage.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const pages = []
+  pages.push(1)
+  if (cur > 3) pages.push('...')
+  const windowStart = Math.max(2, cur - 1)
+  const windowEnd = Math.min(total - 1, Math.max(cur + 1, 4))
+  for (let i = windowStart; i <= windowEnd; i++) pages.push(i)
+  if (cur < total - 2) pages.push('...')
+  pages.push(total)
+  return pages
+})
 
 onMounted(async () => {
   await recruitsStore.fetchRecruits()
@@ -414,6 +449,45 @@ tr:hover .btn-remove { opacity: 1; }
 .btn-add-first:hover {
   background: rgba(127, 86, 217, 0.08);
   border-color: rgba(127, 86, 217, 0.08);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.page-btn {
+  min-width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s var(--transition);
+}
+
+.page-btn:hover:not(:disabled) { background: var(--border-subtle); }
+.page-btn.active { background: var(--primary-glow); border-color: var(--primary-light); color: var(--primary); }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-ellipsis { color: var(--text-muted); font-size: 13px; padding: 0 4px; }
+
+.page-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 /* Row transitions */

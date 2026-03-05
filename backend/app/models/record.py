@@ -75,6 +75,12 @@ class ClientRecord(Base):
     commission_paid: Mapped[float | None] = mapped_column(Numeric(15, 2))
     commission_expected: Mapped[float | None] = mapped_column(Numeric(15, 2))
 
+    # Client contact & employer (from production file)
+    client_phone: Mapped[str | None] = mapped_column(String(30))
+    client_email: Mapped[str | None] = mapped_column(String(100))
+    employer_name: Mapped[str | None] = mapped_column(String(100))
+    employer_id: Mapped[str | None] = mapped_column(String(20))
+
     # Reconciliation
     reconciliation_status: Mapped[str | None] = mapped_column(String(20))
 

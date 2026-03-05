@@ -262,6 +262,11 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "status": r.get("product_status"),
                 "accumulation": r.get("accumulation"),
                 "sign_date": str(sign_date_val) if sign_date_val else None,
+                "track": r.get("track"),
+                "client_phone": r.get("client_phone"),
+                "client_email": r.get("client_email"),
+                "employer_name": r.get("employer_name"),
+                "employer_id": r.get("employer_id"),
             })
 
         # Aggregate commission data
@@ -275,6 +280,9 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "annual_pct": r.get("annual_commission_pct"),
                 "monthly_pct": r.get("monthly_commission_pct"),
                 "company": r.get("receiving_company"),
+                "fund_type": r.get("fund_type"),
+                "management_fee": r.get("management_fee"),
+                "management_fee_amount": r.get("management_fee_amount"),
             }
             for r in comm_recs
         ]
@@ -304,11 +312,17 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                     for r in comm_recs
                 )
 
+        # Aggregate client contact info from first production record
+        contact_source = prod_recs[0] if prod_recs else {}
         customers.append({
             "id_number": id_num,
             "first_name": name_source.get("first_name"),
             "last_name": name_source.get("last_name"),
             "match_status": status,
+            "client_phone": contact_source.get("client_phone"),
+            "client_email": contact_source.get("client_email"),
+            "employer_name": contact_source.get("employer_name"),
+            "employer_id": contact_source.get("employer_id"),
             "production_count": len(prod_recs),
             "commission_count": len(comm_recs),
             "paid_count": paid_count,
@@ -388,6 +402,9 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
                     "balance": _get_balance(cr),
                     "monthly_pct": cr.get("monthly_commission_pct"),
                     "annual_pct": cr.get("annual_commission_pct"),
+                    "track": pr.get("track"),
+                    "management_fee": cr.get("management_fee"),
+                    "management_fee_amount": cr.get("management_fee_amount"),
                 })
                 unmatched_prod.remove(pr)
                 unmatched_comm.remove(cr)
@@ -402,7 +419,12 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
              "premium": r.get("total_premium"),
              "policy_number": r.get("fund_policy_number"),
              "accumulation": r.get("accumulation"),
-             "sign_date": str(r["sign_date"]) if r.get("sign_date") else None}
+             "sign_date": str(r["sign_date"]) if r.get("sign_date") else None,
+             "track": r.get("track"),
+             "client_phone": r.get("client_phone"),
+             "client_email": r.get("client_email"),
+             "employer_name": r.get("employer_name"),
+             "employer_id": r.get("employer_id")}
             for r in unmatched_prod
         ],
         "unmatched_commission": [
@@ -410,7 +432,8 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
              "account": r.get("fund_policy_number"),
              "commission": _get_commission(r),
              "balance": _get_balance(r),
-             "company": _extract_short_company(r.get("fund_type") or r.get("product"), r.get("receiving_company"))}
+             "company": _extract_short_company(r.get("fund_type") or r.get("product"), r.get("receiving_company")),
+             "fund_type": r.get("fund_type")}
             for r in unmatched_comm
         ],
     }

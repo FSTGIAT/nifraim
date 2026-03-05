@@ -10,6 +10,10 @@ MAX_LENGTHS = {
     "lead_source": 100, "agent_number": 20, "reconciliation_status": 20,
     "product_type": 100, "product_status": 20, "fund_type": 100, "fund_number": 50,
     "processing_date": 20,
+    "client_phone": 30,
+    "client_email": 100,
+    "employer_name": 100,
+    "employer_id": 20,
 }
 
 DATE_FIELDS = {"sign_date", "transfer_date", "rights_assignment_date"}
