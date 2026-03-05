@@ -11,7 +11,7 @@
     <Transition name="fade">
       <p class="error" v-if="error">{{ error }}</p>
     </Transition>
-    <button type="submit" class="btn-primary" :disabled="loading">
+    <button type="submit" class="btn-submit" :disabled="loading">
       <template v-if="loading">
         <div class="btn-spinner"></div>
         <span>מתחבר...</span>
@@ -19,7 +19,7 @@
       <template v-else>התחבר</template>
     </button>
     <p class="link">
-      אין לך חשבון? <router-link to="/register">הרשם כאן</router-link>
+      אין לך חשבון? <router-link to="/signup">הרשם כאן</router-link>
     </p>
   </form>
 </template>
@@ -53,110 +53,114 @@ async function handleLogin() {
 
 <style scoped>
 .field {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 label {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
+  margin-bottom: 8px;
+  color: #A0A0A0;
 }
 
 input {
   width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
   font-size: 15px;
-  background: var(--bg-surface);
-  color: var(--text);
-  transition: all 0.25s var(--transition);
+  font-family: 'Heebo', sans-serif;
+  background: #1a1a1a;
+  color: #F5F5F5;
+  transition: all 0.2s;
 }
 
 input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  border-color: #F57C00;
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.15);
+  outline: none;
 }
 
 input::placeholder {
-  color: var(--text-muted);
+  color: #555;
 }
 
-.btn-primary {
+.btn-submit {
   width: 100%;
-  padding: 13px;
-  background: linear-gradient(135deg, var(--primary-deep), var(--primary));
-  color: white;
+  padding: 14px;
+  background: #F57C00;
+  color: #0a0a0a;
   border: none;
-  border-radius: var(--radius-sm);
-  font-size: 15px;
+  border-radius: 12px;
+  font-size: 16px;
   font-weight: 700;
-  font-family: inherit;
+  font-family: 'Heebo', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.3s var(--transition);
-  position: relative;
-  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.btn-primary::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);
-  background-size: 200% 100%;
-  animation: shimmer 3s ease-in-out infinite;
-}
-
-.btn-primary:hover:not(:disabled) {
-  box-shadow: 0 8px 24px var(--primary-light);
+.btn-submit:hover:not(:disabled) {
+  background: #FF9800;
   transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.3);
 }
 
-.btn-primary:disabled {
+.btn-submit:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(10, 10, 10, 0.3);
+  border-top-color: #0a0a0a;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 .error {
-  color: var(--red);
-  font-size: 13px;
-  margin-bottom: 14px;
-  padding: 8px 12px;
-  background: var(--red-light);
-  border-radius: 8px;
-  border: 1px solid var(--red-light);
+  color: #ef5350;
+  font-size: 14px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: rgba(239, 83, 80, 0.1);
+  border-radius: 10px;
+  border: 1px solid rgba(239, 83, 80, 0.2);
 }
 
 .link {
   text-align: center;
-  margin-top: 24px;
-  font-size: 14px;
-  color: var(--text-muted);
+  margin-top: 28px;
+  font-size: 15px;
+  color: #666;
 }
 
 .link a {
-  color: var(--primary);
+  color: #F57C00;
   font-weight: 600;
   transition: color 0.2s;
+  text-decoration: none;
 }
 
 .link a:hover {
-  color: var(--accent-cyan);
+  color: #FF9800;
 }
 
 .fade-enter-active { animation: fadeIn 0.3s; }
 .fade-leave-active { animation: fadeIn 0.2s reverse; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 </style>

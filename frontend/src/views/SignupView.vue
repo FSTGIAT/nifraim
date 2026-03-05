@@ -1,6 +1,6 @@
 <template>
   <div class="signup-page">
-    <nav class="landing-nav">
+    <nav class="auth-nav">
       <div class="nav-content">
         <router-link to="/" class="nav-brand">
           <div class="nav-icon">
@@ -120,7 +120,7 @@
       <!-- Step 4: Success -->
       <div v-if="currentStep === 3" class="step-card success-card">
         <div class="success-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
@@ -159,11 +159,9 @@ const isStep1Valid = computed(() => {
 })
 
 onMounted(() => {
-  // Pre-select plan from query
   if (route.query.plan === 'monthly' || route.query.plan === 'yearly') {
     form.value.plan = route.query.plan
   }
-  // Handle success redirect from Cardcom
   if (route.query.step === 'success') {
     currentStep.value = 3
   }
@@ -184,7 +182,6 @@ async function processPayment() {
       company_name: form.value.companyName || null,
       plan: form.value.plan,
     })
-    // Redirect to Cardcom payment page
     window.location.href = res.data.payment_url
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בתהליך התשלום. נסו שוב.'
@@ -196,18 +193,21 @@ async function processPayment() {
 <style scoped>
 .signup-page {
   min-height: 100vh;
-  background: var(--bg);
+  background: #0a0a0a;
+  color: #F5F5F5;
+  font-family: 'Heebo', sans-serif;
 }
 
-.landing-nav {
+/* Nav */
+.auth-nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid #2a2a2a;
 }
 
 .nav-content {
@@ -229,20 +229,21 @@ async function processPayment() {
 .nav-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
+  background: #F57C00;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #0a0a0a;
 }
 
 .nav-name {
   font-size: 20px;
   font-weight: 800;
-  color: var(--text);
+  color: #F5F5F5;
 }
 
+/* Content */
 .signup-content {
   max-width: 560px;
   margin: 0 auto;
@@ -268,60 +269,61 @@ async function processPayment() {
 }
 
 .step-dot {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--bg-surface);
-  border: 2px solid var(--border);
+  background: #1a1a1a;
+  border: 2px solid #2a2a2a;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: #666;
   transition: all 0.3s;
 }
 
 .progress-step.active .step-dot {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background: #F57C00;
+  border-color: #F57C00;
+  color: #0a0a0a;
 }
 
 .progress-step.done .step-dot {
-  background: var(--green);
-  border-color: var(--green);
+  background: #4caf50;
+  border-color: #4caf50;
   color: white;
 }
 
 .progress-step span {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: #666;
   font-weight: 500;
 }
 
 .progress-step.active span {
-  color: var(--primary);
+  color: #F57C00;
   font-weight: 600;
 }
 
 /* Step Card */
 .step-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
   padding: 40px 32px;
-  animation: fadeInUp 0.4s var(--transition);
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .step-card h2 {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   margin-bottom: 8px;
+  color: #F5F5F5;
 }
 
 .step-desc {
-  color: var(--text-muted);
+  color: #666;
   font-size: 15px;
   margin-bottom: 28px;
 }
@@ -336,33 +338,34 @@ async function processPayment() {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .form-group label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #A0A0A0;
 }
 
 .form-group input {
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
   font-size: 15px;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--bg-surface);
-  transition: border-color 0.2s;
+  font-family: 'Heebo', sans-serif;
+  color: #F5F5F5;
+  background: #1a1a1a;
+  transition: all 0.2s;
 }
 
 .form-group input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  border-color: #F57C00;
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.15);
+  outline: none;
 }
 
 .form-group input::placeholder {
-  color: var(--text-muted);
+  color: #555;
 }
 
 /* Buttons */
@@ -370,21 +373,23 @@ async function processPayment() {
   display: block;
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  color: white;
+  background: #F57C00;
+  color: #0a0a0a;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   font-size: 16px;
   font-weight: 700;
-  font-family: inherit;
+  font-family: 'Heebo', sans-serif;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: center;
+  text-decoration: none;
 }
 
 .btn-next:hover:not(:disabled) {
+  background: #FF9800;
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(1, 118, 211, 0.3);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.3);
 }
 
 .btn-next:disabled {
@@ -394,19 +399,20 @@ async function processPayment() {
 
 .btn-back {
   padding: 12px 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #A0A0A0;
   background: none;
+  font-family: 'Heebo', sans-serif;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-back:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: #F57C00;
+  color: #F57C00;
 }
 
 .step-actions {
@@ -428,25 +434,25 @@ async function processPayment() {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius-md);
+  border: 2px solid #2a2a2a;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .plan-option:hover {
-  border-color: var(--primary);
+  border-color: #F57C00;
 }
 
 .plan-option.selected {
-  border-color: var(--primary);
-  background: var(--primary-light);
+  border-color: #F57C00;
+  background: rgba(245, 124, 0, 0.08);
 }
 
 .plan-option-radio {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border);
+  width: 22px;
+  height: 22px;
+  border: 2px solid #3a3a3a;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -455,35 +461,38 @@ async function processPayment() {
 }
 
 .plan-option.selected .plan-option-radio {
-  border-color: var(--primary);
+  border-color: #F57C00;
 }
 
 .radio-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--primary);
+  background: #F57C00;
 }
 
 .plan-option-name {
   font-weight: 700;
+  font-size: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
+  color: #F5F5F5;
 }
 
 .plan-option-badge {
-  padding: 2px 8px;
-  background: var(--green-light);
-  color: var(--green);
+  padding: 3px 10px;
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
   border-radius: 100px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .plan-option-price {
   font-size: 14px;
-  color: var(--text-muted);
+  color: #A0A0A0;
+  margin-top: 2px;
 }
 
 /* Payment */
@@ -498,28 +507,28 @@ async function processPayment() {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  font-family: inherit;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background: #1a1a1a;
+  font-family: 'Heebo', sans-serif;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text);
+  color: #F5F5F5;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .payment-method:hover:not(.disabled):not(:disabled) {
-  border-color: var(--primary);
+  border-color: #F57C00;
 }
 
 .payment-method.active {
-  border-color: var(--primary);
-  background: var(--primary-light);
+  border-color: #F57C00;
+  background: rgba(245, 124, 0, 0.08);
 }
 
 .payment-method.disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -527,15 +536,15 @@ async function processPayment() {
   margin-right: auto;
   margin-left: 0;
   font-size: 12px;
-  color: var(--text-muted);
+  color: #666;
   font-weight: 500;
 }
 
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--border);
-  border-top-color: var(--primary);
+  border: 2px solid #2a2a2a;
+  border-top-color: #F57C00;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   margin-right: auto;
@@ -543,7 +552,7 @@ async function processPayment() {
 }
 
 .error-msg {
-  color: var(--red);
+  color: #ef5350;
   font-size: 14px;
   margin-top: 12px;
 }
@@ -555,5 +564,36 @@ async function processPayment() {
 
 .success-icon {
   margin-bottom: 20px;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  .step-card {
+    padding: 28px 20px;
+  }
+
+  .step-card h2 {
+    font-size: 22px;
+  }
+
+  .step-dot {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
 }
 </style>

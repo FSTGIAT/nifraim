@@ -1,16 +1,24 @@
 <template>
   <div class="auth-page">
-    <div class="bg-mesh"></div>
-    <div class="auth-card">
-      <div class="brand-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
+    <nav class="auth-nav">
+      <div class="nav-content">
+        <router-link to="/" class="nav-brand">
+          <div class="nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <span class="nav-name">Nifraim</span>
+        </router-link>
       </div>
+    </nav>
+
+    <div class="auth-glow"></div>
+    <div class="auth-card">
       <h1>התחברות</h1>
-      <p class="subtitle">Nifraim - מערכת ניהול עמלות ביטוח</p>
+      <p class="subtitle">מערכת ניהול עמלות ביטוח</p>
       <LoginForm />
     </div>
   </div>
@@ -22,61 +30,128 @@ import LoginForm from '../components/auth/LoginForm.vue'
 
 <style scoped>
 .auth-page {
+  --auth-bg: #0a0a0a;
+  --auth-card: #141414;
+  --auth-border: #2a2a2a;
+  --auth-border-hover: #3a3a3a;
+  --auth-text: #F5F5F5;
+  --auth-text-secondary: #A0A0A0;
+  --auth-text-dim: #666666;
+  --auth-orange: #F57C00;
+  --auth-orange-bright: #FF9800;
+  --auth-orange-glow: rgba(245, 124, 0, 0.15);
+  --auth-input-bg: #1a1a1a;
+
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  background: var(--auth-bg);
+  font-family: 'Heebo', sans-serif;
 }
 
-.bg-mesh {
+.auth-nav {
   position: fixed;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 20% 10%, var(--primary-light) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 80% 20%, rgba(34, 211, 238, 0.1) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 60% at 50% 90%, rgba(127, 86, 217, 0.08) 0%, transparent 50%);
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--auth-border);
+}
+
+.nav-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.nav-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--auth-orange);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0a0a0a;
+}
+
+.nav-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--auth-text);
+}
+
+.auth-glow {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(245, 124, 0, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
   pointer-events: none;
 }
 
 .auth-card {
   position: relative;
   z-index: 1;
-  background: var(--card-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
+  background: var(--auth-card);
+  border: 1px solid var(--auth-border);
+  border-radius: 16px;
   padding: 48px 40px;
   width: 100%;
   max-width: 420px;
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
-  animation: slideUp 0.6s var(--transition);
-}
-
-.brand-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  margin-bottom: 24px;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 800;
-  margin-bottom: 6px;
-  color: var(--text);
-  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+  color: var(--auth-text);
 }
 
 .subtitle {
-  color: var(--text-muted);
-  margin-bottom: 32px;
-  font-size: 14px;
+  color: var(--auth-text-dim);
+  margin-bottom: 36px;
+  font-size: 15px;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 36px 24px;
+    margin: 0 16px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
 }
 </style>
