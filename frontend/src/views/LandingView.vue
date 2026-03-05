@@ -1,7 +1,7 @@
 <template>
   <div class="landing">
     <!-- Nav -->
-    <nav class="landing-nav">
+    <nav class="land-nav">
       <div class="nav-content">
         <div class="nav-brand">
           <div class="nav-icon">
@@ -16,173 +16,159 @@
         <div class="nav-links">
           <a href="#features">תכונות</a>
           <a href="#how-it-works">איך זה עובד</a>
-          <a href="#demo">הדגמה</a>
-          <router-link to="/pricing" class="nav-link-pricing">תמחור</router-link>
-          <router-link to="/login" class="nav-btn-secondary">התחברות</router-link>
-          <router-link to="/signup" class="nav-btn-primary">התחל עכשיו</router-link>
+          <router-link to="/pricing">תמחור</router-link>
+          <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
+          <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
         </div>
+
+        <!-- Mobile menu button -->
+        <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="תפריט">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line v-if="!mobileMenuOpen" x1="3" y1="6" x2="21" y2="6"/>
+            <line v-if="!mobileMenuOpen" x1="3" y1="12" x2="21" y2="12"/>
+            <line v-if="!mobileMenuOpen" x1="3" y1="18" x2="21" y2="18"/>
+            <line v-if="mobileMenuOpen" x1="18" y1="6" x2="6" y2="18"/>
+            <line v-if="mobileMenuOpen" x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
+
+      <!-- Mobile menu -->
+      <Transition name="mobile-menu">
+        <div v-if="mobileMenuOpen" class="mobile-menu">
+          <a href="#features" @click="mobileMenuOpen = false">תכונות</a>
+          <a href="#how-it-works" @click="mobileMenuOpen = false">איך זה עובד</a>
+          <router-link to="/pricing" @click="mobileMenuOpen = false">תמחור</router-link>
+          <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
+          <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
+        </div>
+      </Transition>
     </nav>
 
-    <!-- Hero -->
-    <section class="hero">
-      <div class="hero-content">
-        <div class="hero-badge">מערכת נפרעים חכמה לסוכני ביטוח</div>
-        <h1>נהלו את העמלות שלכם<br>בצורה <span class="gradient-text">חכמה ומדויקת</span></h1>
-        <p class="hero-subtitle">
-          העלו קבצי אקסל מחברות הביטוח, השוו מול הפרודוקציה,
-          וגלו פערי עמלות תוך שניות. לא עוד אקסלים אינסופיים.
-        </p>
-        <div class="hero-actions">
-          <router-link to="/signup" class="btn-hero-primary">
-            התחילו בחינם
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"/>
-              <polyline points="12 5 5 12 12 19"/>
-            </svg>
-          </router-link>
-          <a href="#demo" class="btn-hero-secondary">צפו בהדגמה</a>
+    <!-- Hero Slider -->
+    <section class="hero-slider" @mouseenter="pauseSlider" @mouseleave="resumeSlider">
+      <div class="slider-track" :style="{ transform: `translateX(${currentSlide * 100}%)` }">
+        <!-- Slide 1: Bold Statement -->
+        <div class="slide slide-1">
+          <div class="slide-glow"></div>
+          <div class="slide-content">
+            <h1 class="hero-headline">ניהול עמלות.<br><span class="text-orange">פשוט.</span></h1>
+            <p class="hero-subtitle">העלו קבצים, השוו נתונים, גלו פערים — תוך שניות</p>
+            <router-link to="/signup" class="btn-primary">התחל עכשיו</router-link>
+          </div>
         </div>
-        <div class="hero-stats">
-          <div class="stat">
-            <span class="stat-number ltr-number">95%</span>
-            <span class="stat-label">חיסכון בזמן</span>
+
+        <!-- Slide 2: Numbers Impact -->
+        <div class="slide slide-2">
+          <div class="slide-grid-bg"></div>
+          <div class="slide-content">
+            <div class="impact-number ltr-number">
+              <span class="big-num">{{ currentSlide === 1 ? animatedPercent : 95 }}%</span>
+              <span class="big-label">חיסכון בזמן</span>
+            </div>
+            <div class="impact-row">
+              <div class="impact-item">
+                <span class="impact-val ltr-number">7+</span>
+                <span class="impact-lbl">פורמטים</span>
+              </div>
+              <div class="impact-divider"></div>
+              <div class="impact-item">
+                <span class="impact-val">דיוק מלא</span>
+                <span class="impact-lbl">בהשוואה</span>
+              </div>
+            </div>
           </div>
-          <div class="stat-divider"></div>
-          <div class="stat">
-            <span class="stat-number ltr-number">7+</span>
-            <span class="stat-label">פורמטים נתמכים</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat">
-            <span class="stat-number ltr-number">100%</span>
-            <span class="stat-label">דיוק בהשוואה</span>
+        </div>
+
+        <!-- Slide 3: How It's Different -->
+        <div class="slide slide-3">
+          <div class="slide-content">
+            <h2 class="slide-title">לא עוד בדיקות ידניות</h2>
+            <div class="flow-steps">
+              <div class="flow-step">
+                <div class="flow-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                </div>
+                <span>העלאה</span>
+              </div>
+              <div class="flow-line"></div>
+              <div class="flow-step">
+                <div class="flow-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                  </svg>
+                </div>
+                <span>השוואה</span>
+              </div>
+              <div class="flow-line"></div>
+              <div class="flow-step">
+                <div class="flow-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="16" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                  </svg>
+                </div>
+                <span>תובנות</span>
+              </div>
+            </div>
+            <a href="#how-it-works" class="btn-secondary">צפו איך זה עובד</a>
           </div>
         </div>
       </div>
-      <div class="hero-visual">
-        <div class="dashboard-mockup">
-          <div class="mockup-header">
-            <div class="mockup-dots">
-              <span></span><span></span><span></span>
-            </div>
-            <span class="mockup-title">Nifraim Dashboard</span>
-          </div>
-          <div class="mockup-body">
-            <div class="mockup-sidebar">
-              <div class="mockup-nav-item active"></div>
-              <div class="mockup-nav-item"></div>
-              <div class="mockup-nav-item"></div>
-              <div class="mockup-nav-item"></div>
-            </div>
-            <div class="mockup-main">
-              <div class="mockup-cards">
-                <div class="mockup-card green">
-                  <span class="mockup-card-label">תואם</span>
-                  <span class="mockup-card-value ltr-number">{{ animatedMatched }}</span>
-                </div>
-                <div class="mockup-card amber">
-                  <span class="mockup-card-label">חסר</span>
-                  <span class="mockup-card-value ltr-number">{{ animatedMissing }}</span>
-                </div>
-                <div class="mockup-card red">
-                  <span class="mockup-card-label">פער עמלה</span>
-                  <span class="mockup-card-value ltr-number">{{ animatedGap }}</span>
-                </div>
-              </div>
-              <div class="mockup-chart">
-                <div class="mockup-bar" v-for="(h, i) in barHeights" :key="i" :style="{ height: h + '%' }"></div>
-              </div>
-              <div class="mockup-table">
-                <div class="mockup-row" v-for="i in 4" :key="i"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+
+      <!-- Slider dots -->
+      <div class="slider-dots">
+        <button
+          v-for="i in 3"
+          :key="i"
+          class="dot"
+          :class="{ active: currentSlide === i - 1 }"
+          @click="goToSlide(i - 1)"
+          :aria-label="'שקופית ' + i"
+        ></button>
       </div>
     </section>
 
     <!-- Features -->
     <section id="features" class="features">
-      <div class="section-content">
-        <div class="section-header">
-          <h2>הכלים שלכם להצלחה</h2>
-          <p>כל מה שצריך כדי לנהל עמלות ביטוח בצורה מקצועית</p>
-        </div>
+      <div class="section-wrap">
+        <h2 class="section-title">למה <span class="text-orange">Nifraim</span>?</h2>
         <div class="features-grid">
-          <div class="feature-card" v-for="(f, i) in features" :key="i">
-            <div class="feature-icon" :class="f.color">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="f.iconPath"></svg>
-            </div>
+          <div class="feature-block" v-for="(f, i) in features" :key="i">
+            <span class="feature-num ltr-number">{{ String(i + 1).padStart(2, '0') }}</span>
             <h3>{{ f.title }}</h3>
-            <p>{{ f.description }}</p>
+            <p>{{ f.desc }}</p>
           </div>
         </div>
       </div>
     </section>
 
     <!-- How It Works -->
-    <section id="how-it-works" class="how-it-works">
-      <div class="section-content">
-        <div class="section-header">
-          <h2>איך זה עובד?</h2>
-          <p>שלושה צעדים פשוטים לניהול עמלות מושלם</p>
-        </div>
-        <div class="steps">
-          <div class="step" v-for="(s, i) in steps" :key="i">
-            <div class="step-number ltr-number">{{ i + 1 }}</div>
+    <section id="how-it-works" class="how-section">
+      <div class="section-wrap">
+        <h2 class="section-title">איך זה <span class="text-orange">עובד</span>?</h2>
+        <div class="timeline">
+          <div class="timeline-step" v-for="(s, i) in steps" :key="i">
+            <div class="timeline-circle ltr-number">{{ i + 1 }}</div>
             <h3>{{ s.title }}</h3>
-            <p>{{ s.description }}</p>
+            <p>{{ s.desc }}</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Demo -->
-    <section id="demo" class="demo-section">
-      <div class="section-content">
-        <div class="section-header">
-          <h2>ראו את זה בפעולה</h2>
-          <p>הנה איך נראית השוואת נפרעים במערכת</p>
-        </div>
-        <div class="demo-window">
-          <div class="demo-header">
-            <div class="mockup-dots"><span></span><span></span><span></span></div>
-            <span>השוואת נפרעים — אקסלנס גמל</span>
-          </div>
-          <div class="demo-body">
-            <div class="demo-summary">
-              <div class="demo-stat green">
-                <div class="demo-stat-value ltr-number">208</div>
-                <div class="demo-stat-label">תואם - תשלום</div>
-              </div>
-              <div class="demo-stat amber">
-                <div class="demo-stat-value ltr-number">364</div>
-                <div class="demo-stat-label">תואם - פער</div>
-              </div>
-              <div class="demo-stat red">
-                <div class="demo-stat-value ltr-number">77</div>
-                <div class="demo-stat-label">לא שולם</div>
-              </div>
-              <div class="demo-stat gray">
-                <div class="demo-stat-value ltr-number">85</div>
-                <div class="demo-stat-label">חסר בנפרעים</div>
-              </div>
-            </div>
-            <div class="demo-table">
-              <div class="demo-table-header">
-                <span>שם לקוח</span>
-                <span>ת.ז.</span>
-                <span>מוצר</span>
-                <span>סטטוס</span>
-              </div>
-              <div class="demo-table-row" v-for="(r, i) in demoRows" :key="i">
-                <span>{{ r.name }}</span>
-                <span class="ltr-number">{{ r.id }}</span>
-                <span>{{ r.product }}</span>
-                <span class="demo-badge" :class="r.statusClass">{{ r.status }}</span>
-              </div>
-            </div>
+    <!-- Numbers Strip -->
+    <section class="numbers-strip" ref="numbersSection">
+      <div class="section-wrap">
+        <div class="numbers-grid">
+          <div class="number-block" v-for="(n, i) in numbers" :key="i">
+            <span class="number-val ltr-number">{{ numbersVisible ? n.animated.value : '0' }}{{ n.suffix }}</span>
+            <span class="number-label">{{ n.label }}</span>
           </div>
         </div>
       </div>
@@ -190,22 +176,19 @@
 
     <!-- CTA -->
     <section class="cta-section">
-      <div class="section-content">
-        <h2>מוכנים להתחיל?</h2>
-        <p>הצטרפו למאות סוכני ביטוח שכבר חוסכים שעות של עבודה</p>
-        <div class="cta-actions">
-          <router-link to="/pricing" class="btn-hero-primary">צפו בתמחור</router-link>
-          <router-link to="/signup" class="btn-hero-secondary">הרשמה חינם</router-link>
-        </div>
+      <div class="cta-glow"></div>
+      <div class="section-wrap">
+        <h2 class="cta-title">מוכנים להתחיל?</h2>
+        <router-link to="/signup" class="btn-primary btn-large">התחל עכשיו</router-link>
       </div>
     </section>
 
     <!-- Footer -->
-    <footer class="landing-footer">
-      <div class="footer-content">
+    <footer class="land-footer">
+      <div class="footer-wrap">
         <div class="footer-brand">
-          <div class="nav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <div class="nav-icon small">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/>
               <path d="M2 17l10 5 10-5"/>
               <path d="M2 12l10 5 10-5"/>
@@ -213,60 +196,91 @@
           </div>
           <span>Nifraim</span>
         </div>
-        <p class="footer-text">מערכת ניהול עמלות ביטוח מתקדמת</p>
-        <p class="footer-copy ltr-number">&copy; 2026 Nifraim. All rights reserved.</p>
+        <p class="footer-tagline">מערכת ניהול עמלות מתקדמת</p>
+        <div class="footer-links">
+          <router-link to="/pricing">תמחור</router-link>
+          <router-link to="/login">התחברות</router-link>
+        </div>
+        <p class="footer-copy ltr-number">&copy; 2026 Nifraim</p>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, reactive } from 'vue'
 
-const animatedMatched = ref(0)
-const animatedMissing = ref(0)
-const animatedGap = ref(0)
-const barHeights = ref([20, 35, 50, 70, 45, 60, 80, 55, 40, 65])
+// Mobile menu
+const mobileMenuOpen = ref(false)
 
+// Slider
+const currentSlide = ref(0)
+let sliderInterval = null
+const SLIDE_COUNT = 3
+const SLIDE_DELAY = 5000
+
+function goToSlide(index) {
+  currentSlide.value = index
+}
+
+function nextSlide() {
+  currentSlide.value = (currentSlide.value + 1) % SLIDE_COUNT
+}
+
+function pauseSlider() {
+  if (sliderInterval) {
+    clearInterval(sliderInterval)
+    sliderInterval = null
+  }
+}
+
+function resumeSlider() {
+  if (!sliderInterval) {
+    sliderInterval = setInterval(nextSlide, SLIDE_DELAY)
+  }
+}
+
+// Slide 2 animated percent
+const animatedPercent = ref(0)
+function animatePercent() {
+  const duration = 1200
+  const start = performance.now()
+  function tick(now) {
+    const elapsed = now - start
+    const progress = Math.min(elapsed / duration, 1)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    animatedPercent.value = Math.round(95 * eased)
+    if (progress < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+// Features data
 const features = [
   {
-    title: 'פרסור אקסל חכם',
-    description: 'זיהוי אוטומטי של 7+ פורמטים מחברות ביטוח שונות, כולל קבצים מוגני סיסמא.',
-    color: 'blue',
-    iconPath: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+    title: 'זיהוי אוטומטי',
+    desc: 'המערכת מזהה פורמטים מ-7+ חברות שונות, כולל קבצים מוגני סיסמא.',
   },
   {
-    title: 'השוואת נפרעים',
-    description: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים, חסרים ואי-התאמות.',
-    color: 'green',
-    iconPath: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+    title: 'השוואה מדויקת',
+    desc: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים וחסרים.',
   },
   {
-    title: 'חיסכון בזמן',
-    description: 'מה שלקח שעות באקסל — לוקח שניות. העלו קבצים וקבלו תוצאות מיידיות.',
-    color: 'amber',
-    iconPath: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  },
-  {
-    title: 'מולטי-חברה',
-    description: 'תמיכה באקסלנס, הפניקס, מור, הכשרה, מנורה, אלטשולר ועוד.',
-    color: 'violet',
-    iconPath: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+    title: 'תוצאות מיידיות',
+    desc: 'מה שלקח שעות — לוקח שניות. העלו קבצים וקבלו תשובות.',
   },
 ]
 
+// Steps data
 const steps = [
-  { title: 'העלו פרודוקציה', description: 'גררו את קובץ הפרודוקציה מהסוכנות אל המערכת. זיהוי אוטומטי של הפורמט.' },
-  { title: 'השוו נפרעים', description: 'העלו דוח נפרעים מחברת הביטוח. המערכת מתאימה רשומות לפי ת.ז. ומספר פוליסה.' },
-  { title: 'קבלו תובנות', description: 'צפו בתוצאות: מי שולם, מי לא, היכן יש פערים — והפיקו דוחות לבירור.' },
+  { title: 'העלו קבצים', desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט.' },
+  { title: 'השוו נתונים', desc: 'המערכת מתאימה רשומות לפי ת.ז. ומספר פוליסה.' },
+  { title: 'קבלו תובנות', desc: 'מי שולם, מי לא, היכן יש פערים — הכל במבט אחד.' },
 ]
 
-const demoRows = [
-  { name: 'ישראל ישראלי', id: '123456789', product: 'גמל', status: 'תואם', statusClass: 'green' },
-  { name: 'שרה כהן', id: '987654321', product: 'פנסיה', status: 'פער עמלה', statusClass: 'amber' },
-  { name: 'דוד לוי', id: '456789123', product: 'ביטוח חיים', status: 'לא שולם', statusClass: 'red' },
-  { name: 'רחל אברהם', id: '321654987', product: 'גמל', status: 'חסר', statusClass: 'gray' },
-]
+// Numbers section
+const numbersSection = ref(null)
+const numbersVisible = ref(false)
 
 function animateCounter(target, finalValue, duration = 1500) {
   const start = performance.now()
@@ -274,44 +288,106 @@ function animateCounter(target, finalValue, duration = 1500) {
     const elapsed = now - start
     const progress = Math.min(elapsed / duration, 1)
     const eased = 1 - Math.pow(1 - progress, 3)
-    target.value = Math.round(finalValue * eased)
+    target.value = Math.round(finalValue * eased).toLocaleString()
     if (progress < 1) requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
 }
 
+const numbers = reactive([
+  { animated: ref('0'), suffix: '+', label: 'קבצים עובדו', final: 1000 },
+  { animated: ref('0'), suffix: '+', label: 'חברות נתמכות', final: 50 },
+  { animated: ref('0'), suffix: '%', label: 'חיסכון בזמן', final: 95 },
+])
+
+let numbersObserver = null
+
 onMounted(() => {
-  setTimeout(() => {
-    animateCounter(animatedMatched, 208)
-    animateCounter(animatedMissing, 77)
-    animateCounter(animatedGap, 364)
-  }, 600)
+  // Start slider
+  sliderInterval = setInterval(nextSlide, SLIDE_DELAY)
+
+  // Animate slide 2 percent on first visit
+  setTimeout(animatePercent, 600)
+
+  // Intersection observer for numbers
+  numbersObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !numbersVisible.value) {
+        numbersVisible.value = true
+        numbers.forEach((n) => {
+          animateCounter(n.animated, n.final)
+        })
+      }
+    },
+    { threshold: 0.3 }
+  )
+  if (numbersSection.value) {
+    numbersObserver.observe(numbersSection.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  pauseSlider()
+  if (numbersObserver) numbersObserver.disconnect()
 })
 </script>
 
 <style scoped>
+/* ── Landing Theme Variables ── */
 .landing {
+  --land-bg: #0a0a0a;
+  --land-bg-alt: #141414;
+  --land-bg-card: #1a1a1a;
+  --land-orange: #F57C00;
+  --land-orange-bright: #FF9800;
+  --land-orange-deep: #E65100;
+  --land-orange-glow: rgba(245, 124, 0, 0.15);
+  --land-text: #F5F5F5;
+  --land-text-secondary: #A0A0A0;
+  --land-text-dim: #666666;
+  --land-border: #2a2a2a;
+  --land-border-hover: #3a3a3a;
+
   min-height: 100vh;
-  background: var(--bg);
+  background: var(--land-bg);
+  color: var(--land-text);
+  font-family: 'Heebo', sans-serif;
+  direction: rtl;
+  overflow-x: hidden;
 }
 
-/* ── Nav ── */
-.landing-nav {
+.landing a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.text-orange {
+  color: var(--land-orange);
+}
+
+.section-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ── Navigation ── */
+.land-nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--land-border);
 }
 
 .nav-content {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -320,633 +396,708 @@ onMounted(() => {
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .nav-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  background: var(--land-orange);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #0a0a0a;
+}
+
+.nav-icon.small {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
 }
 
 .nav-name {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
-  color: var(--text);
+  color: var(--land-text);
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 32px;
 }
 
 .nav-links a {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--land-text-secondary);
   transition: color 0.2s;
 }
 
 .nav-links a:hover {
-  color: var(--primary);
+  color: var(--land-orange);
 }
 
-.nav-btn-secondary {
-  padding: 8px 20px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border) !important;
-  font-weight: 600 !important;
-  color: var(--text) !important;
-  transition: all 0.2s;
-}
-
-.nav-btn-secondary:hover {
-  border-color: var(--primary) !important;
-  color: var(--primary) !important;
-}
-
-.nav-btn-primary {
-  padding: 8px 20px;
-  border-radius: var(--radius-sm);
-  background: var(--primary) !important;
-  color: white !important;
+.nav-btn-ghost {
+  padding: 10px 24px;
+  border-radius: 10px;
+  border: 1px solid var(--land-orange) !important;
+  color: var(--land-orange) !important;
   font-weight: 600 !important;
   transition: all 0.2s;
 }
 
-.nav-btn-primary:hover {
-  background: var(--primary-deep) !important;
+.nav-btn-ghost:hover {
+  background: var(--land-orange-glow) !important;
 }
 
-/* ── Hero ── */
-.hero {
-  padding: 140px 24px 80px;
-  max-width: 1200px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 60px;
-  align-items: center;
-}
-
-.hero-badge {
-  display: inline-block;
-  padding: 6px 16px;
-  background: var(--primary-light);
-  color: var(--primary);
-  border-radius: 100px;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 24px;
-  animation: fadeInUp 0.6s var(--transition);
-}
-
-.hero h1 {
-  font-size: 48px;
-  font-weight: 900;
-  line-height: 1.15;
-  color: var(--text);
-  margin-bottom: 20px;
-  animation: fadeInUp 0.6s var(--transition) 0.1s both;
-}
-
-.gradient-text {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero-subtitle {
-  font-size: 18px;
-  color: var(--text-muted);
-  line-height: 1.6;
-  max-width: 500px;
-  margin-bottom: 32px;
-  animation: fadeInUp 0.6s var(--transition) 0.2s both;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 48px;
-  animation: fadeInUp 0.6s var(--transition) 0.3s both;
-}
-
-.btn-hero-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 32px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  color: white !important;
-  border-radius: var(--radius-md);
-  font-size: 16px;
-  font-weight: 700;
-  transition: all 0.3s var(--transition);
-  box-shadow: 0 4px 16px rgba(1, 118, 211, 0.3);
-}
-
-.btn-hero-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(1, 118, 211, 0.4);
-}
-
-.btn-hero-secondary {
-  display: inline-flex;
-  align-items: center;
-  padding: 14px 32px;
-  background: var(--bg-surface);
-  color: var(--text) !important;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 16px;
-  font-weight: 600;
+.nav-btn-solid {
+  padding: 10px 24px;
+  border-radius: 10px;
+  background: var(--land-orange) !important;
+  color: #0a0a0a !important;
+  font-weight: 700 !important;
   transition: all 0.2s;
 }
 
-.btn-hero-secondary:hover {
-  border-color: var(--primary);
-  color: var(--primary) !important;
+.nav-btn-solid:hover {
+  background: var(--land-orange-bright) !important;
 }
 
-.hero-stats {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  animation: fadeInUp 0.6s var(--transition) 0.4s both;
+/* Mobile menu button */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--land-text);
+  cursor: pointer;
+  padding: 8px;
 }
 
-.stat {
-  text-align: center;
-}
-
-.stat-number {
-  display: block;
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--primary);
-}
-
-.stat-label {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.stat-divider {
-  width: 1px;
-  height: 40px;
-  background: var(--border);
-}
-
-/* ── Dashboard Mockup ── */
-.hero-visual {
-  animation: fadeInUp 0.8s var(--transition) 0.3s both;
-}
-
-.dashboard-mockup {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-
-.mockup-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-}
-
-.mockup-dots {
-  display: flex;
-  gap: 6px;
-}
-
-.mockup-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--border);
-}
-
-.mockup-dots span:first-child { background: #EA001E; }
-.mockup-dots span:nth-child(2) { background: #E8720A; }
-.mockup-dots span:last-child { background: #2E844A; }
-
-.mockup-title {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.mockup-body {
-  display: flex;
-  padding: 16px;
+/* Mobile menu */
+.mobile-menu {
+  display: none;
+  flex-direction: column;
   gap: 16px;
-  min-height: 280px;
+  padding: 24px;
+  border-top: 1px solid var(--land-border);
+  background: rgba(10, 10, 10, 0.95);
 }
 
-.mockup-sidebar {
-  width: 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mockup-nav-item {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--border);
-}
-
-.mockup-nav-item.active {
-  background: var(--primary);
-}
-
-.mockup-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.mockup-cards {
-  display: flex;
-  gap: 10px;
-}
-
-.mockup-card {
-  flex: 1;
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mockup-card.green { background: var(--green-light); }
-.mockup-card.amber { background: var(--amber-light); }
-.mockup-card.red { background: var(--red-light); }
-
-.mockup-card-label {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.mockup-card-value {
-  font-size: 22px;
-  font-weight: 800;
-}
-
-.mockup-card.green .mockup-card-value { color: var(--green); }
-.mockup-card.amber .mockup-card-value { color: var(--amber); }
-.mockup-card.red .mockup-card-value { color: var(--red); }
-
-.mockup-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 80px;
+.mobile-menu a {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--land-text-secondary);
   padding: 8px 0;
 }
 
-.mockup-bar {
-  flex: 1;
-  background: linear-gradient(180deg, var(--primary) 0%, rgba(1, 118, 211, 0.3) 100%);
-  border-radius: 4px 4px 0 0;
-  transition: height 1s var(--transition);
+.mobile-menu-enter-active,
+.mobile-menu-leave-active {
+  transition: all 0.3s ease;
 }
 
-.mockup-table {
+.mobile-menu-enter-from,
+.mobile-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ── Hero Slider ── */
+.hero-slider {
+  position: relative;
+  height: 100vh;
+  min-height: 600px;
+  overflow: hidden;
+  padding-top: 72px;
+}
+
+.slider-track {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row-reverse;
+  height: 100%;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.mockup-row {
-  height: 12px;
-  background: var(--bg);
-  border-radius: 4px;
+.slide {
+  min-width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  text-align: center;
 }
 
-.mockup-row:nth-child(odd) { width: 90%; }
-
-/* ── Sections ── */
-.section-content {
-  max-width: 1200px;
-  margin: 0 auto;
+.slide-content {
+  position: relative;
+  z-index: 2;
+  max-width: 800px;
   padding: 0 24px;
 }
 
-.section-header {
-  text-align: center;
+/* Slide 1 */
+.slide-1 .slide-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(245, 124, 0, 0.12) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.hero-headline {
+  font-size: 80px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 24px;
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-subtitle {
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--land-text-secondary);
+  margin-bottom: 40px;
+  line-height: 1.6;
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+/* Slide 2 */
+.slide-2 .slide-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245, 124, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 124, 0, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+
+.impact-number {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 48px;
 }
 
-.section-header h2 {
-  font-size: 36px;
-  font-weight: 800;
-  color: var(--text);
-  margin-bottom: 12px;
+.big-num {
+  font-size: 140px;
+  font-weight: 900;
+  color: var(--land-orange);
+  line-height: 1;
+  letter-spacing: -4px;
 }
 
-.section-header p {
+.big-label {
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--land-text-secondary);
+  margin-top: 8px;
+}
+
+.impact-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+}
+
+.impact-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.impact-val {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--land-orange);
+}
+
+.impact-lbl {
+  font-size: 16px;
+  color: var(--land-text-secondary);
+}
+
+.impact-divider {
+  width: 1px;
+  height: 48px;
+  background: var(--land-border);
+}
+
+/* Slide 3 */
+.slide-title {
+  font-size: 56px;
+  font-weight: 900;
+  margin-bottom: 56px;
+}
+
+.flow-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 48px;
+}
+
+.flow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.flow-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid var(--land-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--land-orange);
+}
+
+.flow-step span {
   font-size: 18px;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--land-text);
+}
+
+.flow-line {
+  width: 80px;
+  height: 2px;
+  background: var(--land-orange);
+  opacity: 0.4;
+  margin-bottom: 32px;
+}
+
+/* Buttons */
+.btn-primary {
+  display: inline-block;
+  padding: 16px 40px;
+  background: var(--land-orange);
+  color: #0a0a0a !important;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--land-orange-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.3);
+}
+
+.btn-primary.btn-large {
+  padding: 20px 56px;
+  font-size: 22px;
+  border-radius: 14px;
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: 14px 36px;
+  border: 1px solid var(--land-orange);
+  color: var(--land-orange) !important;
+  border-radius: 12px;
+  font-size: 17px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: var(--land-orange-glow);
+}
+
+/* Slider dots */
+.slider-dots {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 10;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--land-text-dim);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  padding: 0;
+}
+
+.dot.active {
+  background: var(--land-orange);
+  box-shadow: 0 0 12px rgba(245, 124, 0, 0.5);
+}
+
+.dot:hover:not(.active) {
+  background: var(--land-text-secondary);
 }
 
 /* ── Features ── */
 .features {
-  padding: 100px 24px;
-  background: var(--bg-surface);
+  padding: 120px 24px;
+  background: var(--land-bg-alt);
+}
+
+.section-title {
+  font-size: 52px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 72px;
 }
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 48px;
 }
 
-.feature-card {
-  padding: 32px 24px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  transition: all 0.3s var(--transition);
+.feature-block {
+  padding: 40px 32px;
+  border-bottom: 2px solid var(--land-border);
+  transition: border-color 0.3s;
 }
 
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
+.feature-block:hover {
+  border-color: var(--land-orange);
 }
 
-.feature-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
+.feature-num {
+  display: block;
+  font-size: 48px;
+  font-weight: 900;
+  color: var(--land-orange);
+  margin-bottom: 20px;
+  opacity: 0.6;
 }
 
-.feature-icon.blue { background: var(--primary-light); color: var(--primary); }
-.feature-icon.green { background: var(--green-light); color: var(--green); }
-.feature-icon.amber { background: var(--amber-light); color: var(--amber); }
-.feature-icon.violet { background: rgba(127, 86, 217, 0.1); color: var(--accent-violet); }
-
-.feature-card h3 {
-  font-size: 18px;
+.feature-block h3 {
+  font-size: 26px;
   font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  color: var(--land-text);
 }
 
-.feature-card p {
-  font-size: 14px;
-  color: var(--text-muted);
-  line-height: 1.6;
+.feature-block p {
+  font-size: 17px;
+  color: var(--land-text-secondary);
+  line-height: 1.7;
 }
 
 /* ── How It Works ── */
-.how-it-works {
-  padding: 100px 24px;
+.how-section {
+  padding: 120px 24px;
+  background: var(--land-bg);
 }
 
-.steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 40px;
+.timeline {
+  display: flex;
+  justify-content: center;
+  gap: 80px;
+  position: relative;
 }
 
-.step {
+.timeline::before {
+  content: '';
+  position: absolute;
+  top: 32px;
+  right: calc(50% - 300px);
+  width: 600px;
+  height: 2px;
+  background: linear-gradient(to left, var(--land-orange), rgba(245, 124, 0, 0.2));
+}
+
+.timeline-step {
   text-align: center;
-  padding: 24px;
+  position: relative;
+  z-index: 1;
+  max-width: 240px;
 }
 
-.step-number {
-  width: 56px;
-  height: 56px;
+.timeline-circle {
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  color: white;
-  font-size: 24px;
+  border: 2px solid var(--land-orange);
+  background: var(--land-bg);
+  color: var(--land-orange);
+  font-size: 28px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 20px;
+  margin: 0 auto 24px;
 }
 
-.step h3 {
-  font-size: 20px;
+.timeline-step h3 {
+  font-size: 22px;
   font-weight: 700;
   margin-bottom: 8px;
-  color: var(--text);
+  color: var(--land-text);
 }
 
-.step p {
-  font-size: 15px;
-  color: var(--text-muted);
+.timeline-step p {
+  font-size: 16px;
+  color: var(--land-text-secondary);
   line-height: 1.6;
 }
 
-/* ── Demo ── */
-.demo-section {
+/* ── Numbers Strip ── */
+.numbers-strip {
   padding: 100px 24px;
-  background: var(--bg-surface);
+  background: var(--land-bg-card);
 }
 
-.demo-window {
-  max-width: 900px;
-  margin: 0 auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-
-.demo-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.demo-body {
-  padding: 24px;
-  background: var(--card-bg);
-}
-
-.demo-summary {
+.numbers-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.demo-stat {
-  padding: 16px;
-  border-radius: var(--radius-sm);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
   text-align: center;
 }
 
-.demo-stat.green { background: var(--green-light); }
-.demo-stat.amber { background: var(--amber-light); }
-.demo-stat.red { background: var(--red-light); }
-.demo-stat.gray { background: var(--bg); }
-
-.demo-stat-value {
-  font-size: 28px;
-  font-weight: 800;
+.number-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
-.demo-stat.green .demo-stat-value { color: var(--green); }
-.demo-stat.amber .demo-stat-value { color: var(--amber); }
-.demo-stat.red .demo-stat-value { color: var(--red); }
-.demo-stat.gray .demo-stat-value { color: var(--text-muted); }
-
-.demo-stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
+.number-val {
+  font-size: 72px;
+  font-weight: 900;
+  color: var(--land-orange);
+  line-height: 1;
 }
 
-.demo-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+.number-label {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--land-text-secondary);
 }
-
-.demo-table-header {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
-  padding: 10px 16px;
-  background: var(--bg);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-}
-
-.demo-table-row {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
-  padding: 12px 16px;
-  font-size: 14px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.demo-table-row:last-child {
-  border-bottom: none;
-}
-
-.demo-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 100px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.demo-badge.green { background: var(--green-light); color: var(--green); }
-.demo-badge.amber { background: var(--amber-light); color: var(--amber); }
-.demo-badge.red { background: var(--red-light); color: var(--red); }
-.demo-badge.gray { background: var(--bg); color: var(--text-muted); }
 
 /* ── CTA ── */
 .cta-section {
-  padding: 100px 24px;
+  padding: 140px 24px;
   text-align: center;
+  position: relative;
+  background: var(--land-bg);
 }
 
-.cta-section h2 {
-  font-size: 36px;
-  font-weight: 800;
-  margin-bottom: 12px;
+.cta-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(245, 124, 0, 0.08) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
 }
 
-.cta-section p {
-  font-size: 18px;
-  color: var(--text-muted);
-  margin-bottom: 32px;
+.cta-title {
+  font-size: 64px;
+  font-weight: 900;
+  margin-bottom: 48px;
+  position: relative;
+  z-index: 1;
 }
 
-.cta-actions {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
+.cta-section .btn-primary {
+  position: relative;
+  z-index: 1;
 }
 
 /* ── Footer ── */
-.landing-footer {
+.land-footer {
   padding: 48px 24px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-surface);
+  border-top: 1px solid var(--land-border);
+  background: var(--land-bg);
 }
 
-.footer-content {
+.footer-wrap {
   max-width: 1200px;
   margin: 0 auto;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .footer-brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
   font-size: 18px;
   font-weight: 700;
-  color: var(--text);
 }
 
-.footer-text {
+.footer-tagline {
   font-size: 14px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
+  color: var(--land-text-dim);
+}
+
+.footer-links {
+  display: flex;
+  gap: 24px;
+}
+
+.footer-links a {
+  font-size: 14px;
+  color: var(--land-text-secondary);
+  transition: color 0.2s;
+}
+
+.footer-links a:hover {
+  color: var(--land-orange);
 }
 
 .footer-copy {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--land-text-dim);
+}
+
+/* ── Animations ── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .hero {
-    grid-template-columns: 1fr;
-    padding-top: 100px;
+  .nav-links {
+    display: none;
   }
 
-  .hero h1 { font-size: 32px; }
+  .mobile-menu-btn {
+    display: block;
+  }
+
+  .mobile-menu {
+    display: flex;
+  }
+
+  .hero-headline {
+    font-size: 44px;
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+  }
+
+  .big-num {
+    font-size: 80px;
+  }
+
+  .big-label {
+    font-size: 20px;
+  }
+
+  .impact-row {
+    gap: 24px;
+  }
+
+  .impact-val {
+    font-size: 24px;
+  }
+
+  .slide-title {
+    font-size: 36px;
+  }
+
+  .flow-steps {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .flow-line {
+    width: 2px;
+    height: 32px;
+    margin-bottom: 0;
+  }
+
+  .section-title {
+    font-size: 36px;
+    margin-bottom: 48px;
+  }
 
   .features-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .steps {
     grid-template-columns: 1fr;
+    gap: 32px;
   }
 
-  .demo-summary {
-    grid-template-columns: repeat(2, 1fr);
+  .timeline {
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
   }
 
-  .nav-links a:not(.nav-btn-primary):not(.nav-btn-secondary) {
+  .timeline::before {
     display: none;
+  }
+
+  .numbers-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .number-val {
+    font-size: 56px;
+  }
+
+  .cta-title {
+    font-size: 40px;
+  }
+
+  .footer-wrap {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-headline {
+    font-size: 36px;
+  }
+
+  .big-num {
+    font-size: 64px;
+  }
+
+  .section-title {
+    font-size: 30px;
+  }
+
+  .cta-title {
+    font-size: 32px;
+  }
+
+  .btn-primary.btn-large {
+    padding: 16px 40px;
+    font-size: 18px;
   }
 }
 </style>
