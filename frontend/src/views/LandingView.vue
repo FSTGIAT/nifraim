@@ -515,6 +515,7 @@ onBeforeUnmount(() => {
 .slider-track {
   display: flex;
   flex-direction: row;
+  direction: ltr;
   height: 100%;
   transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -527,6 +528,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   position: relative;
   text-align: center;
+  direction: rtl;
 }
 
 .slide-content {
