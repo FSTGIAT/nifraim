@@ -199,8 +199,8 @@ function onOverlayClick() {
 }
 
 @keyframes tour-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(1, 118, 211, 0.3); }
-  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(1, 118, 211, 0); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.3); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(245, 124, 0, 0); }
 }
 
 /* Tooltip card */
@@ -311,7 +311,7 @@ function onOverlayClick() {
 .tour-btn--primary:hover {
   background: var(--primary-deep);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(1, 118, 211, 0.3);
+  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.3);
 }
 
 .tour-btn--ghost {

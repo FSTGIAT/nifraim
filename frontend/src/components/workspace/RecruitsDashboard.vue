@@ -186,7 +186,7 @@ const filterOptions = [
 
 const statusItems = computed(() => [
   { key: 'found', label: 'נמצא בפרודוקציה', count: props.result.found, color: '#2E844A' },
-  { key: 'client_only', label: 'לקוח קיים, מוצר חסר', count: props.result.client_only, color: '#0176D3' },
+  { key: 'client_only', label: 'לקוח קיים, מוצר חסר', count: props.result.client_only, color: '#F57C00' },
   { key: 'not_found', label: 'לא נמצא', count: props.result.not_found, color: '#E8720A' },
 ])
 
@@ -326,7 +326,7 @@ function formatNum(val) {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #2E844A 0%, #2E844A 40%, #0176D3 40%, #0176D3 65%, #E8720A 65%, #E8720A 100%);
+  background: linear-gradient(90deg, #2E844A 0%, #2E844A 40%, #F57C00 40%, #F57C00 65%, #E8720A 65%, #E8720A 100%);
 }
 
 .hero-header {
@@ -347,7 +347,7 @@ function formatNum(val) {
   font-size: 12px;
   font-weight: 700;
   color: var(--primary);
-  background: rgba(1, 118, 211, 0.08);
+  background: rgba(245, 124, 0, 0.08);
   padding: 5px 14px;
   border-radius: 20px;
 }
@@ -450,7 +450,7 @@ function formatNum(val) {
   flex-shrink: 0;
 }
 
-.kpi-blue .kpi-icon { background: rgba(1, 118, 211, 0.1); color: #0176D3; }
+.kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
 .kpi-amber .kpi-icon { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
 .kpi-amber .kpi-value { color: #E8720A; }
@@ -564,7 +564,7 @@ function formatNum(val) {
 }
 
 .dot-full_match { background: #2E844A; }
-.dot-partial_match { background: #0176D3; }
+.dot-partial_match { background: #F57C00; }
 .dot-client_only { background: #7F56D9; }
 .dot-not_found { background: #E8720A; }
 
@@ -603,7 +603,7 @@ function formatNum(val) {
 }
 
 .badge-full_match { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.badge-partial_match { background: rgba(1, 118, 211, 0.1); color: #0176D3; }
+.badge-partial_match { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
 .badge-client_only { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
 .badge-not_found { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
 .badge-count { background: var(--border-subtle); color: var(--text-muted); }
@@ -644,7 +644,7 @@ function formatNum(val) {
 }
 
 .pdot-found { background: #2E844A; }
-.pdot-client_only { background: #0176D3; }
+.pdot-client_only { background: #F57C00; }
 .pdot-not_found { background: #E8720A; }
 
 .prod-info {
@@ -693,7 +693,7 @@ function formatNum(val) {
 }
 
 .psl-found { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.psl-client_only { background: rgba(1, 118, 211, 0.1); color: #0176D3; }
+.psl-client_only { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
 .psl-not_found { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
 
 .empty-results {

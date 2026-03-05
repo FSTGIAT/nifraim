@@ -481,7 +481,7 @@ function fmtCell(val) {
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(1, 118, 211, 0.06);
+  background: rgba(245, 124, 0, 0.06);
   color: var(--primary);
 }
 

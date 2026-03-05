@@ -414,14 +414,14 @@ const topClientsData = computed(() => {
   return list.map(c => ({ ...c, pct: Math.round((c.value / maxVal) * 100) }))
 })
 
-const STATUS_COLORS = { matched: '#0176D3', only_production: '#E8720A', only_commission: '#7F56D9' }
+const STATUS_COLORS = { matched: '#F57C00', only_production: '#E8720A', only_commission: '#7F56D9' }
 
 const topClientsChartSeries = computed(() => [{
   name: isGemel.value ? 'צבירה' : 'פרמיה',
   data: topClientsData.value.map(c => ({
     x: c.name,
     y: Math.round(c.value),
-    fillColor: STATUS_COLORS[c.status] || '#0176D3',
+    fillColor: STATUS_COLORS[c.status] || '#F57C00',
   })),
 }])
 
@@ -482,7 +482,7 @@ function onTopClientClick(_event, _chartCtx, config) {
 
 // Status donut — all three statuses
 const statusItems = computed(() => [
-  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#0176D3' },
+  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#F57C00' },
   { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: '#E8720A' },
   { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: '#7F56D9' },
 ])
@@ -573,7 +573,7 @@ const statusDonutOptions = computed(() => ({
 }))
 
 // Product treemap
-const treemapColors = ['#0176D3', '#2E844A', '#7F56D9', '#06A59A', '#E8720A', '#C23934', '#38BDF8', '#F472B6', '#6366F1']
+const treemapColors = ['#F57C00', '#2E844A', '#7F56D9', '#06A59A', '#E8720A', '#C23934', '#38BDF8', '#F472B6', '#6366F1']
 
 const productTreemapSeries = computed(() => [{
   data: productBreakdown.value.map(p => ({
@@ -938,7 +938,7 @@ function formatCompact(val) {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #0176D3 0%, #0176D3 50%, #E8720A 50%, #E8720A 75%, #7F56D9 75%, #7F56D9 100%);
+  background: linear-gradient(90deg, #F57C00 0%, #F57C00 50%, #E8720A 50%, #E8720A 75%, #7F56D9 75%, #7F56D9 100%);
 }
 
 .hero-header {
@@ -959,7 +959,7 @@ function formatCompact(val) {
   font-size: 12px;
   font-weight: 700;
   color: var(--primary);
-  background: rgba(1, 118, 211, 0.08);
+  background: rgba(245, 124, 0, 0.08);
   padding: 5px 14px;
   border-radius: 20px;
 }
@@ -1062,7 +1062,7 @@ function formatCompact(val) {
   flex-shrink: 0;
 }
 
-.kpi-blue .kpi-icon { background: rgba(1, 118, 211, 0.1); color: #0176D3; }
+.kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
 .kpi-amber .kpi-icon { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
 .kpi-amber .kpi-value { color: #E8720A; }
 .kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
