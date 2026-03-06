@@ -18,6 +18,10 @@ async def lifespan(app):
     # Log startup info for debugging Railway deployments
     logger.info("=== InsureFlow starting ===")
     logger.info(f"DATABASE_URL set: {bool(os.environ.get('DATABASE_URL'))}")
+    # Debug: show all env var names containing "DATA" or "PG" or "POSTGRES"
+    db_vars = {k: v[:20] + "..." for k, v in os.environ.items()
+               if any(x in k.upper() for x in ("DATA", "PG", "POSTGRES", "DATABASE"))}
+    logger.info(f"DB-related env vars: {db_vars}")
     try:
         from app.database import engine
         async with engine.connect() as conn:
