@@ -10,9 +10,15 @@ from app.api import auth, uploads, records, commission_rates, comparison, produc
 
 app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0")
 
+# CORS: allow localhost for dev, plus any CORS_ORIGINS env var for production
+cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+extra_origins = os.environ.get("CORS_ORIGINS", "")
+if extra_origins:
+    cors_origins.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
