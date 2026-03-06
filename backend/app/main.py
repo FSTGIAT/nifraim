@@ -1,4 +1,6 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,7 +10,25 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin
 
-app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0")
+logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Log startup info for debugging Railway deployments
+    logger.info("=== InsureFlow starting ===")
+    logger.info(f"DATABASE_URL set: {bool(os.environ.get('DATABASE_URL'))}")
+    try:
+        from app.database import engine
+        async with engine.connect() as conn:
+            await conn.execute(__import__('sqlalchemy').text("SELECT 1"))
+        logger.info("Database connection: OK")
+    except Exception as e:
+        logger.error(f"Database connection FAILED: {e}")
+    yield
+
+
+app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0", lifespan=lifespan)
 
 # CORS: allow localhost for dev, plus any CORS_ORIGINS env var for production
 cors_origins = ["http://localhost:5173", "http://localhost:3000"]

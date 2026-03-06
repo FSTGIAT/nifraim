@@ -30,4 +30,9 @@ WORKDIR /app
 
 EXPOSE 8000
 
-CMD cd backend && python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD cd backend && \
+    echo "=== Starting deployment ===" && \
+    echo "DATABASE_URL is set: $([ -n \"$DATABASE_URL\" ] && echo 'yes' || echo 'NO!')" && \
+    echo "PORT: ${PORT:-8000}" && \
+    (python -m alembic upgrade head 2>&1 && echo "=== Migrations OK ===" || echo "=== Migration failed, continuing... ===") && \
+    exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
