@@ -17,11 +17,14 @@ logger = logging.getLogger("uvicorn.error")
 async def lifespan(app):
     # Log startup info for debugging Railway deployments
     logger.info("=== InsureFlow starting ===")
-    logger.info(f"DATABASE_URL set: {bool(os.environ.get('DATABASE_URL'))}")
-    # Debug: show all env var names containing "DATA" or "PG" or "POSTGRES"
-    db_vars = {k: v[:20] + "..." for k, v in os.environ.items()
-               if any(x in k.upper() for x in ("DATA", "PG", "POSTGRES", "DATABASE"))}
-    logger.info(f"DB-related env vars: {db_vars}")
+    db_url = os.environ.get('DATABASE_URL', '')
+    logger.info(f"DATABASE_URL set: {bool(db_url)}")
+    # Show the host portion only (safe to log)
+    if db_url and '@' in db_url:
+        host_part = db_url.split('@')[1].split('/')[0] if '@' in db_url else 'N/A'
+        logger.info(f"DATABASE_URL host: {host_part}")
+    else:
+        logger.info(f"DATABASE_URL value (first 30 chars): {db_url[:30]}")
     try:
         from app.database import engine
         async with engine.connect() as conn:
