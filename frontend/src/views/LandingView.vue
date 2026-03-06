@@ -36,7 +36,6 @@
       <Transition name="mobile-menu">
         <div v-if="mobileMenuOpen" class="mobile-menu">
           <a href="#features" @click="mobileMenuOpen = false">תכונות</a>
-          <a href="#how-it-works" @click="mobileMenuOpen = false">איך זה עובד</a>
           <router-link to="/pricing" @click="mobileMenuOpen = false">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
