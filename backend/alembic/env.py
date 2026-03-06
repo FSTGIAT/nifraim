@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -15,6 +16,10 @@ from app.models import User, FileUpload, ClientRecord, CommissionRate, Recruit, 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from environment if available
+if os.environ.get("DATABASE_URL_SYNC"):
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL_SYNC"])
 
 target_metadata = Base.metadata
 
