@@ -193,7 +193,7 @@ async function processPayment() {
 <style scoped>
 .signup-page {
   min-height: 100vh;
-  background: #0a0a0a;
+  background: #4A4A4A;
   color: #F5F5F5;
   font-family: 'Heebo', sans-serif;
 }
@@ -205,9 +205,9 @@ async function processPayment() {
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(10, 10, 10, 0.85);
+  background: rgba(74, 74, 74, 0.85);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid #666666;
 }
 
 .nav-content {
@@ -272,8 +272,8 @@ async function processPayment() {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #1a1a1a;
-  border: 2px solid #2a2a2a;
+  background: #5C5C5C;
+  border: 2px solid #666666;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -308,8 +308,8 @@ async function processPayment() {
 
 /* Step Card */
 .step-card {
-  background: #141414;
-  border: 1px solid #2a2a2a;
+  background: #555555;
+  border: 1px solid #666666;
   border-radius: 16px;
   padding: 40px 32px;
   animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -349,12 +349,12 @@ async function processPayment() {
 
 .form-group input {
   padding: 14px 16px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid #666666;
   border-radius: 10px;
   font-size: 15px;
   font-family: 'Heebo', sans-serif;
   color: #F5F5F5;
-  background: #1a1a1a;
+  background: #5C5C5C;
   transition: all 0.2s;
 }
 
@@ -399,7 +399,7 @@ async function processPayment() {
 
 .btn-back {
   padding: 12px 24px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid #666666;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
@@ -434,7 +434,7 @@ async function processPayment() {
   align-items: center;
   gap: 16px;
   padding: 20px;
-  border: 2px solid #2a2a2a;
+  border: 2px solid #666666;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
@@ -452,7 +452,7 @@ async function processPayment() {
 .plan-option-radio {
   width: 22px;
   height: 22px;
-  border: 2px solid #3a3a3a;
+  border: 2px solid #777777;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -507,9 +507,9 @@ async function processPayment() {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid #666666;
   border-radius: 12px;
-  background: #1a1a1a;
+  background: #5C5C5C;
   font-family: 'Heebo', sans-serif;
   font-size: 15px;
   font-weight: 600;
@@ -543,7 +543,7 @@ async function processPayment() {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid #2a2a2a;
+  border: 2px solid #666666;
   border-top-color: #F57C00;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;

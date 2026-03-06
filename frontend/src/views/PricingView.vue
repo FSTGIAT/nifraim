@@ -203,9 +203,9 @@ onBeforeUnmount(() => {
 <style scoped>
 /* ── Theme Variables ── */
 .pricing-page {
-  --land-bg: #0a0a0a;
-  --land-bg-alt: #141414;
-  --land-bg-card: #1a1a1a;
+  --land-bg: #4A4A4A;
+  --land-bg-alt: #555555;
+  --land-bg-card: #5C5C5C;
   --land-orange: #F57C00;
   --land-orange-bright: #FF9800;
   --land-orange-deep: #E65100;
@@ -213,8 +213,8 @@ onBeforeUnmount(() => {
   --land-text: #F5F5F5;
   --land-text-secondary: #A0A0A0;
   --land-text-dim: #666666;
-  --land-border: #2a2a2a;
-  --land-border-hover: #3a3a3a;
+  --land-border: #666666;
+  --land-border-hover: #777777;
 
   min-height: 100vh;
   background: var(--land-bg);
@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(10, 10, 10, 0.85);
+  background: rgba(74, 74, 74, 0.85);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--land-border);
 }
@@ -338,7 +338,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   padding: 24px;
   border-top: 1px solid var(--land-border);
-  background: rgba(10, 10, 10, 0.95);
+  background: rgba(74, 74, 74, 0.95);
 }
 
 .mobile-menu a {
