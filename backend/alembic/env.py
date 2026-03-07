@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -15,6 +16,19 @@ from app.models import User, FileUpload, ClientRecord, CommissionRate, Recruit, 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from environment variable if available
+# Railway provides DATABASE_URL — derive sync URL from it if DATABASE_URL_SYNC not set
+db_url = os.environ.get("DATABASE_URL_SYNC")
+if not db_url:
+    async_url = os.environ.get("DATABASE_URL", "")
+    if async_url:
+        db_url = async_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        # Railway sometimes provides postgres:// (old Heroku-style)
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
 

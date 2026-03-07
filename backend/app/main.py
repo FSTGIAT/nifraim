@@ -1,13 +1,51 @@
-from fastapi import FastAPI
+import os
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin
 
-app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0")
+logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Log startup info for debugging Railway deployments
+    logger.info("=== InsureFlow starting ===")
+    db_url = os.environ.get('DATABASE_URL', '')
+    logger.info(f"DATABASE_URL set: {bool(db_url)}")
+    # Show the host portion only (safe to log)
+    if db_url and '@' in db_url:
+        host_part = db_url.split('@')[1].split('/')[0] if '@' in db_url else 'N/A'
+        logger.info(f"DATABASE_URL host: {host_part}")
+    else:
+        logger.info(f"DATABASE_URL value (first 30 chars): {db_url[:30]}")
+    try:
+        from app.database import engine
+        async with engine.connect() as conn:
+            await conn.execute(__import__('sqlalchemy').text("SELECT 1"))
+        logger.info("Database connection: OK")
+    except Exception as e:
+        logger.error(f"Database connection FAILED: {e}")
+    yield
+
+
+app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0", lifespan=lifespan)
+
+# CORS: allow localhost for dev, plus any CORS_ORIGINS env var for production
+cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+extra_origins = os.environ.get("CORS_ORIGINS", "")
+if extra_origins:
+    cors_origins.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,3 +67,16 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+# Serve frontend static files in production
+STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if STATIC_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(STATIC_DIR / "index.html"))
