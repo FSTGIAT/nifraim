@@ -55,8 +55,8 @@ export const useRecruitsStore = defineStore('recruits', () => {
       formData.append('file', file)
       if (password) formData.append('password', password)
       const res = await api.post('/recruits/upload', formData)
-      // Add uploaded recruits to the list
-      recruits.value.unshift(...res.data)
+      // Re-fetch full list after bulk upload
+      await fetchRecruits()
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בהעלאת קובץ'

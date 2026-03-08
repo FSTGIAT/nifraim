@@ -114,7 +114,7 @@ async def create_bulk_recruits(
     return results
 
 
-@router.post("/upload", response_model=list[RecruitOut])
+@router.post("/upload")
 async def upload_recruits(
     file: UploadFile = File(...),
     password: str = Form(default=None),
@@ -138,18 +138,20 @@ async def upload_recruits(
     if not records:
         raise HTTPException(400, "לא נמצאו רשומות בקובץ")
 
-    created = []
+    # Deduplicate by id_number — keep first occurrence per client
+    seen_ids = set()
+    to_insert = []
     for rec in records:
         id_number = str(rec.get("id_number") or "").strip()
-        # Strip pandas float artifact (.0 suffix)
         if id_number.endswith(".0"):
             id_number = id_number[:-2]
-        if not id_number:
+        if not id_number or id_number in seen_ids:
             continue
+        seen_ids.add(id_number)
+
         first_name = str(rec.get("first_name") or "").strip()
         last_name = str(rec.get("last_name") or "").strip()
         if not first_name and not last_name:
-            # Try full_name split
             full = str(rec.get("full_name") or "").strip()
             if full:
                 parts = full.split(None, 1)
@@ -162,7 +164,7 @@ async def upload_recruits(
         product = str(rec.get("product") or rec.get("fund_type") or "").strip() or None
         amount = rec.get("expected_amount") or rec.get("actual_amount") or rec.get("total_premium")
 
-        recruit = Recruit(
+        to_insert.append(Recruit(
             user_id=user.id,
             id_number=id_number[:20],
             first_name=first_name[:100],
@@ -170,29 +172,16 @@ async def upload_recruits(
             company=company[:100] if company else None,
             product=product[:100] if product else None,
             amount=float(amount) if amount is not None else None,
-        )
-        db.add(recruit)
-        created.append(recruit)
+        ))
 
-    if not created:
+    if not to_insert:
         raise HTTPException(400, "לא נמצאו רשומות תקינות בקובץ")
 
+    # Batch insert without refreshing each row (saves memory + time)
+    db.add_all(to_insert)
     await db.commit()
 
-    results = []
-    for r in created:
-        await db.refresh(r)
-        results.append(RecruitOut(
-            id=str(r.id),
-            id_number=r.id_number,
-            first_name=r.first_name,
-            last_name=r.last_name,
-            company=r.company,
-            product=r.product,
-            amount=float(r.amount) if r.amount is not None else None,
-            created_at=r.created_at,
-        ))
-    return results
+    return {"status": "ok", "count": len(to_insert), "format": parsed.get("format", "unknown")}
 
 
 @router.put("/{recruit_id}", response_model=RecruitOut)
