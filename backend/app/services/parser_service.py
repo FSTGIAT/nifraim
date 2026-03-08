@@ -14,6 +14,7 @@ from app.utils.hebrew_mappings import (
     MENORA_COLUMNS,
     ALTSHULER_COLUMNS,
     PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
+    HAREL_NIFRAIM_COLUMNS,
     AGENT_TRACKING_SIGNATURE,
     COMPANY_REPORT_SIGNATURE,
     PHOENIX_COMMISSION_SIGNATURE,
@@ -23,6 +24,7 @@ from app.utils.hebrew_mappings import (
     MENORA_SIGNATURE,
     ALTSHULER_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_SIGNATURE,
+    HAREL_NIFRAIM_SIGNATURE,
     HEADER_SCAN_KEYWORDS,
     CANCELLATION_KEYWORDS,
 )
@@ -53,6 +55,8 @@ def detect_format(columns: list[str]) -> str:
         return "menora"
     if col_set & ALTSHULER_SIGNATURE:
         return "altshuler"
+    if col_set & HAREL_NIFRAIM_SIGNATURE:
+        return "harel_nifraim"
     if col_set & PHOENIX_INSURANCE_NIFRAIM_SIGNATURE:
         return "phoenix_insurance_nifraim"
     if col_set & PHOENIX_COMMISSION_SIGNATURE:
@@ -97,7 +101,7 @@ def parse_date(value):
         value = value.strip()
         if not value or value == "-":
             return None
-        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S"):
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%m/%Y"):
             try:
                 return datetime.strptime(value, fmt).date()
             except ValueError:
@@ -210,6 +214,8 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
         return _parse_menora(df)
     elif file_format == "altshuler":
         return _parse_altshuler(df)
+    elif file_format == "harel_nifraim":
+        return _parse_harel_nifraim(df)
     elif file_format == "phoenix_insurance_nifraim":
         return _parse_phoenix_insurance_nifraim(df)
     else:
@@ -585,6 +591,70 @@ def _parse_altshuler(df: pd.DataFrame) -> dict:
     return {
         "format": "altshuler",
         "company_source": "אלטשולר",
+        "records": records,
+    }
+
+
+def _parse_harel_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Harel commission report (הראל דוח עמלות)."""
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in HAREL_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("total_premium", "commission_paid",
+                                 "management_fee_amount", "commission_before_fee"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field == "sign_date":
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        # Clean agent_number — remove .0 artifacts
+        if record.get("agent_number"):
+            an = str(record["agent_number"])
+            if an.endswith(".0"):
+                an = an[:-2]
+            record["agent_number"] = an
+
+        # Map fund_type (ענף) to product if product is empty
+        if not record.get("product") or record["product"] in ("nan", "None", ""):
+            record["product"] = record.get("fund_type")
+
+        record["receiving_company"] = "הראל"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    return {
+        "format": "harel_nifraim",
+        "company_source": "הראל",
         "records": records,
     }
 

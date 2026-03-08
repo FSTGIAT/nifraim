@@ -170,6 +170,24 @@ PHOENIX_INSURANCE_NIFRAIM_COLUMNS = {
     "סוכן מקבל עמלה": "agent_number",
 }
 
+# Column mappings for Harel Commission Report (הראל דוח עמלות)
+HAREL_NIFRAIM_COLUMNS = {
+    "ת.ז": "id_number",
+    "שם מבוטח": "full_name",
+    "מספר פוליסה": "fund_policy_number",
+    "ענף": "fund_type",
+    "סוג פוליסה": "product",
+    "פרמיה": "total_premium",
+    "עמלה": "commission_paid",
+    "דמי גביה": "management_fee_amount",
+    "סכום תשלום": "commission_before_fee",
+    "חודש עיבוד": "processing_date",
+    "חודש תפוקה": "sign_date",
+    "מספר סוכן": "agent_number",
+    "מעסיק": "employer_name",
+    "מספר מעסיק": "employer_id",
+}
+
 # Keywords that indicate a cancelled transfer in raw text
 CANCELLATION_KEYWORDS = [
     "בוטל",
@@ -191,6 +209,7 @@ HACHSHARA_NIFRAIM_SIGNATURE = {"סכום עמלה סוכן ללא מעמ", "ית
 MENORA_SIGNATURE = {"מספר ת.ז מבוטח/עמית", "שם סוג עמלה"}
 ALTSHULER_SIGNATURE = {'ד.נ סוכן סה"כ', "ערך קופה (₪)"}
 PHOENIX_INSURANCE_NIFRAIM_SIGNATURE = {"תז המבוטח", 'סה"כ לתשלום'}
+HAREL_NIFRAIM_SIGNATURE = {"סכום תשלום", 'אופי חו"ז'}
 
 # Known header keywords for scanning buried headers
 HEADER_SCAN_KEYWORDS = {"תז העמית", "שם העמית", "תעודת זהות", "זהות", "שם פרטי",
