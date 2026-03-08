@@ -164,8 +164,10 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
     df = None
     if ext == "xlsx":
         xls = pd.ExcelFile(buf, engine=engine)
+        # Strip whitespace from sheet names for matching
+        sheet_name_map = {s.strip(): s for s in xls.sheet_names}
         production_sheets = ["מוצרי ביטוח", "מוצרי חיסכון"]
-        found_sheets = [s for s in production_sheets if s in xls.sheet_names]
+        found_sheets = [sheet_name_map[s] for s in production_sheets if s in sheet_name_map]
         if found_sheets:
             dfs = []
             for sheet_name in found_sheets:
@@ -176,6 +178,9 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
             df = pd.read_excel(xls, sheet_name=0)
     else:
         df = pd.read_excel(buf, engine=engine)
+
+    # Drop completely empty rows (some files have 1M+ empty rows)
+    df = df.dropna(how="all").reset_index(drop=True)
 
     # Clean column names
     df.columns = [str(c).strip() for c in df.columns]
@@ -240,6 +245,14 @@ def _parse_agent_tracking(df: pd.DataFrame) -> dict:
                     record[eng_field] = parse_date(val)
                 else:
                     record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            record["id_number"] = str(record["id_number"]).replace(".0", "").strip()
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            record["fund_policy_number"] = str(record["fund_policy_number"]).replace(".0", "").strip()
 
         # Store raw values
         for heb_col in ("סכום העברה צפוי", "סכום העברה בפועל"):

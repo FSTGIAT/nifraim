@@ -15,7 +15,7 @@ from app.schemas.recruit import (
 )
 from app.services.parser_service import parse_excel
 from app.services.comparison_service import _normalize_id, _extract_policy_core
-from app.api.deps import get_paid_user as get_current_user
+from app.api.deps import get_current_user
 
 router = APIRouter()
 

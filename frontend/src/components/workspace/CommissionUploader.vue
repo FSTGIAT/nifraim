@@ -2,11 +2,20 @@
   <div class="commission-uploader">
     <!-- Loading state -->
     <div v-if="comparisonStore.uploading" class="upload-loading">
-      <div class="loader">
-        <div class="loader-ring"></div>
-        <div class="loader-ring delay"></div>
+      <div class="loading-content">
+        <div class="loader">
+          <div class="loader-ring"></div>
+          <div class="loader-ring delay"></div>
+        </div>
+        <div class="loading-info">
+          <span class="loading-text">{{ compStageLabel }}</span>
+          <span class="loading-hint">{{ compStageHint }}</span>
+        </div>
       </div>
-      <span class="loading-text">משווה מול פרודוקציה...</span>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" :style="{ width: compProgressWidth }"></div>
+      </div>
+      <span class="loading-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
     </div>
 
     <!-- Upload button -->
@@ -51,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, inject, watch } from 'vue'
+import { ref, computed, inject, watch } from 'vue'
 import { useComparisonStore } from '../../stores/comparison.js'
 
 const comparisonStore = useComparisonStore()
@@ -60,6 +69,25 @@ const fileInputRef = ref(null)
 const needPassword = ref(false)
 const password = ref('')
 const error = ref('')
+const compStage = ref(0) // 0=idle, 1=uploading, 2=comparing
+
+const compStageLabel = computed(() => {
+  if (compStage.value === 1) return 'מעלה קבצי נפרעים...'
+  if (compStage.value === 2) return 'משווה מול פרודוקציה...'
+  return 'מעבד...'
+})
+
+const compStageHint = computed(() => {
+  if (compStage.value === 1) return 'מעביר קבצים לשרת'
+  if (compStage.value === 2) return 'מתאים לקוחות ומוצרים'
+  return ''
+})
+
+const compProgressWidth = computed(() => {
+  if (compStage.value === 1) return '40%'
+  if (compStage.value === 2) return '75%'
+  return '0%'
+})
 
 // Receive files from full-page drop overlay
 const droppedFiles = inject('droppedFiles', null)
@@ -91,7 +119,12 @@ function onFileSelected(e) {
 
 async function uploadFiles(files) {
   error.value = ''
+  compStage.value = 1
   try {
+    // Switch to comparing stage after a short delay (upload is fast, parsing is slow)
+    setTimeout(() => {
+      if (comparisonStore.uploading) compStage.value = 2
+    }, 1500)
     await comparisonStore.compareWithProduction(
       files,
       needPassword.value ? password.value : null,
@@ -100,6 +133,8 @@ async function uploadFiles(files) {
     needPassword.value = false
   } catch (e) {
     error.value = comparisonStore.error || 'שגיאה בהעלאה'
+  } finally {
+    compStage.value = 0
   }
 }
 </script>
@@ -147,13 +182,25 @@ async function uploadFiles(files) {
 /* Loading */
 .upload-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 14px;
-  padding: 16px 24px;
+  padding: 20px 24px;
   background: var(--card-bg);
   border: 1.5px solid var(--green-light);
   border-radius: var(--radius-md);
+}
+
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.loading-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .loader {
@@ -183,6 +230,38 @@ async function uploadFiles(files) {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.loading-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 4px;
+  background: var(--border-subtle);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-emerald), var(--accent-cyan, var(--accent-emerald)));
+  border-radius: 2px;
+  transition: width 1s ease;
+}
+
+.loading-wait-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 0.7; transform: translateY(0); }
 }
 
 /* Toggle */

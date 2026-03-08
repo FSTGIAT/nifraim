@@ -10,12 +10,49 @@
       @click="openFilePicker"
     >
       <div v-if="productionStore.uploading" class="upload-progress">
-        <div class="loader">
-          <div class="loader-ring"></div>
-          <div class="loader-ring delay"></div>
+        <div class="progress-top">
+          <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-ring delay"></div>
+          </div>
+          <span class="progress-text">{{ uploadStageLabel }}</span>
+          <span class="progress-hint">{{ uploadStageHint }}</span>
         </div>
-        <span class="progress-text">מעבד קובץ פרודוקציה...</span>
-        <span class="progress-hint">מנתח נתונים ומזהה עמודות</span>
+
+        <!-- Progress bar -->
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" :style="{ width: progressBarWidth }"></div>
+          <div class="progress-bar-glow" :style="{ width: progressBarWidth }"></div>
+        </div>
+
+        <!-- Upload steps -->
+        <div class="upload-steps">
+          <div class="upload-step" :class="{ active: uploadStage >= 1, done: uploadStage > 1 }">
+            <div class="step-icon">
+              <svg v-if="uploadStage > 1" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span v-else class="ltr-number">1</span>
+            </div>
+            <span>העלאת קובץ</span>
+          </div>
+          <div class="step-line" :class="{ filled: uploadStage > 1 }"></div>
+          <div class="upload-step" :class="{ active: uploadStage >= 2, done: uploadStage > 2 }">
+            <div class="step-icon">
+              <svg v-if="uploadStage > 2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span v-else class="ltr-number">2</span>
+            </div>
+            <span>ניתוח עמודות</span>
+          </div>
+          <div class="step-line" :class="{ filled: uploadStage > 2 }"></div>
+          <div class="upload-step" :class="{ active: uploadStage >= 3 }">
+            <div class="step-icon">
+              <span class="ltr-number">3</span>
+            </div>
+            <span>שמירת נתונים</span>
+          </div>
+        </div>
+
+        <span v-if="uploadPercent > 0 && uploadStage === 1" class="progress-percent ltr-number">{{ uploadPercent }}%</span>
+        <span v-if="uploadStage >= 2" class="progress-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
       </div>
       <div v-else class="upload-prompt">
         <div class="icon-container">
@@ -89,7 +126,7 @@
 </template>
 
 <script setup>
-import { inject, watch } from 'vue'
+import { inject, watch, ref, computed } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useFileUpload } from '../../composables/useFileUpload.js'
 
@@ -102,6 +139,31 @@ const {
   handleDrop, handleDragOver, handleDragLeave,
   handleFileInputChange,
 } = useFileUpload({ multiple: false })
+
+// Upload progress tracking
+const uploadPercent = ref(0)
+const uploadStage = ref(0) // 0=idle, 1=uploading, 2=parsing, 3=saving
+
+const uploadStageLabel = computed(() => {
+  if (uploadStage.value === 1) return 'מעלה קובץ...'
+  if (uploadStage.value === 2) return 'מנתח נתונים ומזהה עמודות...'
+  if (uploadStage.value === 3) return 'שומר נתונים במערכת...'
+  return 'מעבד...'
+})
+
+const uploadStageHint = computed(() => {
+  if (uploadStage.value === 1) return 'מעביר את הקובץ לשרת'
+  if (uploadStage.value === 2) return 'מזהה פורמט ומפענח עמודות בעברית'
+  if (uploadStage.value === 3) return 'כמעט סיימנו!'
+  return ''
+})
+
+const progressBarWidth = computed(() => {
+  if (uploadStage.value === 1) return Math.min(uploadPercent.value, 95) + '%'
+  if (uploadStage.value === 2) return '70%'
+  if (uploadStage.value === 3) return '90%'
+  return '0%'
+})
 
 // Receive files from full-page drop overlay
 const droppedFiles = inject('droppedFiles', null)
@@ -116,14 +178,34 @@ if (droppedFiles) {
 async function uploadFile() {
   if (!hasFiles.value) return
   error.value = ''
+  uploadPercent.value = 0
+  uploadStage.value = 1
   try {
     await productionStore.uploadProduction(
       files.value[0],
-      needPassword.value ? password.value : null
+      needPassword.value ? password.value : null,
+      (progressEvent) => {
+        if (progressEvent.total) {
+          uploadPercent.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        }
+        // When upload is done (100%), switch to parsing stage
+        if (uploadPercent.value >= 100) {
+          uploadStage.value = 2
+          // Simulate transition to stage 3 after a delay (backend is parsing + saving)
+          setTimeout(() => {
+            if (productionStore.uploading) {
+              uploadStage.value = 3
+            }
+          }, 3000)
+        }
+      }
     )
     clearFiles()
   } catch (e) {
     error.value = productionStore.error || 'שגיאה בהעלאת הקובץ'
+  } finally {
+    uploadStage.value = 0
+    uploadPercent.value = 0
   }
 }
 </script>
@@ -252,6 +334,10 @@ async function uploadFile() {
   animation-direction: reverse;
 }
 
+.progress-top {
+  margin-bottom: 20px;
+}
+
 .progress-text {
   display: block;
   font-size: 14px;
@@ -263,6 +349,134 @@ async function uploadFile() {
 .progress-hint {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* Progress bar */
+.progress-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: 3px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent-cyan, var(--primary)));
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.progress-bar-glow {
+  position: absolute;
+  top: -2px;
+  height: 10px;
+  background: linear-gradient(90deg, transparent 80%, var(--primary));
+  border-radius: 5px;
+  filter: blur(4px);
+  opacity: 0.6;
+  transition: width 0.5s ease;
+  pointer-events: none;
+}
+
+/* Upload steps */
+.upload-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 12px;
+}
+
+.upload-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: all 0.4s ease;
+}
+
+.upload-step.active {
+  opacity: 1;
+  color: var(--primary);
+}
+
+.upload-step.done {
+  color: var(--accent-emerald, #10b981);
+}
+
+.step-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--border-subtle);
+  color: var(--text-muted);
+  transition: all 0.4s ease;
+  flex-shrink: 0;
+}
+
+.upload-step.active .step-icon {
+  background: var(--primary-light);
+  color: var(--primary);
+  box-shadow: 0 0 12px var(--primary-light);
+  animation: stepPulse 1.5s ease-in-out infinite;
+}
+
+.upload-step.done .step-icon {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes stepPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--primary-light); }
+  50% { box-shadow: 0 0 20px var(--primary-light); }
+}
+
+.step-line {
+  width: 32px;
+  height: 2px;
+  background: var(--border-subtle);
+  margin: 0 8px;
+  transition: background 0.4s ease;
+  border-radius: 1px;
+}
+
+.step-line.filled {
+  background: var(--accent-emerald, #10b981);
+}
+
+.progress-percent {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: 4px;
+  letter-spacing: -0.5px;
+}
+
+.progress-wait-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  opacity: 0.7;
+  animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 0.7; transform: translateY(0); }
 }
 
 /* File card */
