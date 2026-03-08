@@ -484,9 +484,54 @@ async def compare_recruits(
     # Sort: not found first, then found
     results.sort(key=lambda r: (r.found_in_production, r.last_name or ""))
 
+    # ── Compute summary stats ──
+    total_premium_found = sum(r.production_premium for r in results if r.found_in_production)
+    estimated_missing_premium = sum(
+        r.amount for r in results if not r.found_in_production and r.amount
+    )
+
+    # Company breakdown
+    company_stats = {}
+    for r in results:
+        comp = r.company or "לא ידוע"
+        if comp not in company_stats:
+            company_stats[comp] = {"company": comp, "found": 0, "not_found": 0, "premium": 0}
+        if r.found_in_production:
+            company_stats[comp]["found"] += 1
+            company_stats[comp]["premium"] += r.production_premium
+        else:
+            company_stats[comp]["not_found"] += 1
+    company_breakdown = sorted(company_stats.values(), key=lambda x: x["found"] + x["not_found"], reverse=True)
+
+    # Status breakdown from production products
+    status_counts = {}
+    total_found_products = 0
+    for r in results:
+        if r.found_in_production:
+            for p in r.production_products:
+                total_found_products += 1
+                st = p.get("status", "") or ""
+                if "פעיל" in st or "active" in st.lower():
+                    label = "פעיל"
+                elif "מוקפא" in st or "frozen" in st.lower():
+                    label = "מוקפא"
+                elif "מבוטל" in st or "cancel" in st.lower():
+                    label = "מבוטל"
+                else:
+                    label = st or "אחר"
+                status_counts[label] = status_counts.get(label, 0) + 1
+
+    active_count = status_counts.get("פעיל", 0)
+    active_product_rate = (active_count / total_found_products * 100) if total_found_products > 0 else 0
+
     return RecruitComparisonResponse(
         total=len(recruits_by_id),
         found=found_count,
         not_found=len(recruits_by_id) - found_count,
         results=results,
+        total_premium_found=round(total_premium_found, 2),
+        estimated_missing_premium=round(estimated_missing_premium, 2),
+        company_breakdown=company_breakdown,
+        status_breakdown=status_counts,
+        active_product_rate=round(active_product_rate, 1),
     )

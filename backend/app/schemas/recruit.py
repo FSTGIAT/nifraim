@@ -42,6 +42,11 @@ class RecruitComparisonResponse(BaseModel):
     found: int = 0
     not_found: int = 0
     results: list[RecruitMatchResult] = []
+    total_premium_found: float = 0
+    estimated_missing_premium: float = 0
+    company_breakdown: list[dict] = []
+    status_breakdown: dict = {}
+    active_product_rate: float = 0
 
 
 # ── File upload + production comparison schemas ──

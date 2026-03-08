@@ -10,8 +10,8 @@
       <span>העלה קובץ פרודוקציה בלשונית "פרודוקציה" כדי לבדוק מגויסים מולו</span>
     </div>
 
-    <!-- Upload button -->
-    <div class="recruit-uploader">
+    <!-- Upload button — big centered when no recruits -->
+    <div class="recruit-uploader" v-if="!hasRecruits">
       <div v-if="recruitsStore.uploading" class="upload-loading-card">
         <div class="upload-loading-top">
           <div class="loader">
@@ -88,6 +88,27 @@
       </Transition>
     </div>
 
+    <!-- Upload loading card (centered, shown when uploading regardless of recruits) -->
+    <div class="recruit-uploader" v-if="hasRecruits && recruitsStore.uploading">
+      <div class="upload-loading-card">
+        <div class="upload-loading-top">
+          <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-ring delay"></div>
+          </div>
+          <div class="loading-info">
+            <span class="loading-text">{{ recruitStageLabel }}</span>
+            <span class="loading-hint">{{ recruitStageHint }}</span>
+          </div>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" :style="{ width: recruitProgressWidth }"></div>
+          <div class="progress-bar-shimmer"></div>
+        </div>
+        <span class="loading-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
+      </div>
+    </div>
+
     <!-- Inner tabs -->
     <div class="inner-tabs" v-if="recruitsStore.recruits.length > 0 || recruitsStore.comparisonResult">
       <button
@@ -115,6 +136,27 @@
         השוואה מול פרודוקציה
         <span class="tab-dot" v-if="recruitsStore.comparisonResult"></span>
       </button>
+      <!-- Small upload icon when recruits exist -->
+      <button
+        v-if="hasRecruits && !recruitsStore.uploading"
+        class="upload-icon-btn"
+        @click="openFilePicker"
+        title="העלה קובץ נוסף"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </button>
+      <input
+        v-if="hasRecruits"
+        ref="fileInputRef2"
+        type="file"
+        accept=".xlsx,.xls"
+        @change="onFileSelected"
+        style="display: none"
+      />
     </div>
 
     <!-- Tab: List -->
@@ -179,6 +221,8 @@ const productionStore = useProductionStore()
 const recruitsStore = useRecruitsStore()
 
 const fileInputRef = ref(null)
+const fileInputRef2 = ref(null)
+const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
@@ -226,7 +270,7 @@ onMounted(() => {
 })
 
 function openFilePicker() {
-  fileInputRef.value?.click()
+  (fileInputRef.value || fileInputRef2.value)?.click()
 }
 
 function onFileSelected(e) {
@@ -599,6 +643,29 @@ async function runComparison() {
   border-radius: 50%;
   background: var(--accent-emerald);
   box-shadow: 0 0 6px var(--green-light);
+}
+
+/* ── Small upload icon button ── */
+.upload-icon-btn {
+  margin-inline-start: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-light);
+  color: var(--accent-emerald);
+  border: 1.5px solid rgba(46, 132, 74, 0.15);
+  cursor: pointer;
+  transition: all 0.25s var(--transition);
+  flex-shrink: 0;
+}
+.upload-icon-btn:hover {
+  background: var(--accent-emerald);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(46, 132, 74, 0.2);
 }
 
 /* ── Compare ── */

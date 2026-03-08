@@ -44,6 +44,120 @@
       </div>
     </div>
 
+    <!-- ── Insights Section ── -->
+    <div class="insights-section">
+      <!-- Enhanced KPI Row (5 cards) -->
+      <div class="insights-kpi-row">
+        <div class="ins-kpi ins-kpi-green">
+          <span class="ins-kpi-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          </span>
+          <span class="ins-kpi-val ltr-number">₪{{ fmtNum(result.total_premium_found || 0) }}</span>
+          <span class="ins-kpi-lbl">פרמיה שנמצאה</span>
+        </div>
+        <div class="ins-kpi ins-kpi-orange">
+          <span class="ins-kpi-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <span class="ins-kpi-val ltr-number">₪{{ fmtNum(result.estimated_missing_premium || 0) }}</span>
+          <span class="ins-kpi-lbl">פרמיה חסרה (הערכה)</span>
+        </div>
+        <div class="ins-kpi ins-kpi-cyan">
+          <span class="ins-kpi-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <span class="ins-kpi-val ltr-number">{{ fmtNum(result.active_product_rate || 0) }}%</span>
+          <span class="ins-kpi-lbl">מוצרים פעילים</span>
+        </div>
+        <div class="ins-kpi ins-kpi-violet">
+          <span class="ins-kpi-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+          </span>
+          <span class="ins-kpi-val ltr-number">{{ avgProductsPerClient }}</span>
+          <span class="ins-kpi-lbl">מוצרים ממוצע ללקוח</span>
+        </div>
+        <div class="ins-kpi ins-kpi-primary">
+          <span class="ins-kpi-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </span>
+          <span class="ins-kpi-val ltr-number">{{ foundPct }}%</span>
+          <span class="ins-kpi-lbl">שיעור המרה</span>
+        </div>
+      </div>
+
+      <!-- Two-column: Company bar chart + Status donut -->
+      <div class="insights-charts-row" v-if="hasCompanyData || hasStatusData">
+        <div class="ins-chart-box" v-if="hasCompanyData">
+          <div class="ins-chart-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            פילוח לפי חברה
+          </div>
+          <apexchart
+            v-if="chartReady"
+            type="bar"
+            :options="companyChartOptions"
+            :series="companyChartSeries"
+            :height="Math.max(160, (result.company_breakdown || []).length * 38)"
+          />
+        </div>
+        <div class="ins-chart-box" v-if="hasStatusData">
+          <div class="ins-chart-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            סטטוס מוצרים שנמצאו
+          </div>
+          <apexchart
+            v-if="chartReady"
+            type="donut"
+            :options="statusChartOptions"
+            :series="statusChartSeries"
+            height="200"
+          />
+        </div>
+      </div>
+
+      <!-- Top Missing Clients -->
+      <div class="ins-missing-table" v-if="topMissing.length > 0">
+        <div class="ins-chart-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          לקוחות חסרים מובילים
+        </div>
+        <table class="mini-tbl">
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>ת.ז</th>
+              <th>חברה</th>
+              <th>מוצר</th>
+              <th>סכום</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in topMissing" :key="m.recruit_id" @click="openDetail(m)">
+              <td class="td-name">{{ m.first_name }} {{ m.last_name }}</td>
+              <td class="td-id ltr-number">{{ m.id_number }}</td>
+              <td>{{ m.company || '—' }}</td>
+              <td>{{ m.product || '—' }}</td>
+              <td class="ltr-number" style="font-weight:700;color:var(--primary)">
+                <template v-if="m.amount > 0">₪{{ fmtNum(m.amount) }}</template>
+                <template v-else>—</template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Actionable Summary Card -->
+      <div class="ins-summary-card" v-if="summaryBullets.length > 0">
+        <div class="ins-chart-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          המלצות לפעולה
+        </div>
+        <ul class="summary-bullets">
+          <li v-for="(b, i) in summaryBullets" :key="i" v-html="b"></li>
+        </ul>
+      </div>
+    </div>
+
     <!-- Segmented filter -->
     <div class="seg-filter">
       <button :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">הכל <b>{{ result.total }}</b></button>
@@ -225,6 +339,102 @@ onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
 const foundPct = computed(() => props.result.total > 0 ? Math.round((props.result.found / props.result.total) * 100) : 0)
 const missingPct = computed(() => props.result.total > 0 ? Math.round((props.result.not_found / props.result.total) * 100) : 0)
+
+// ── Insights computeds ──
+const avgProductsPerClient = computed(() => {
+  if (!props.result.found) return '0'
+  const totalProds = props.result.results
+    .filter(r => r.found_in_production)
+    .reduce((sum, r) => sum + r.production_products.length, 0)
+  return (totalProds / props.result.found).toFixed(1)
+})
+
+const hasCompanyData = computed(() => (props.result.company_breakdown || []).length > 0)
+const hasStatusData = computed(() => {
+  const sb = props.result.status_breakdown || {}
+  return Object.keys(sb).length > 0
+})
+
+const topMissing = computed(() => {
+  return props.result.results
+    .filter(r => !r.found_in_production)
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0))
+    .slice(0, 5)
+})
+
+const summaryBullets = computed(() => {
+  const bullets = []
+  const notFound = props.result.results.filter(r => !r.found_in_production)
+  if (notFound.length > 0) {
+    const totalMissing = notFound.reduce((s, r) => s + (r.amount || 0), 0)
+    bullets.push(`<strong>${notFound.length}</strong> לקוחות עם פרמיה של <strong class="ltr-number">₪${fmtNum(totalMissing)}</strong> לא נמצאו — מומלץ לפנות לחברות`)
+  }
+  const sb = props.result.status_breakdown || {}
+  const cancelled = sb['מבוטל'] || 0
+  if (cancelled > 0) {
+    bullets.push(`<strong>${cancelled}</strong> מוצרים מבוטלים — יש לבדוק מול הלקוחות`)
+  }
+  const breakdown = props.result.company_breakdown || []
+  if (breakdown.length > 0) {
+    const worst = breakdown.reduce((max, c) => c.not_found > max.not_found ? c : max, breakdown[0])
+    if (worst.not_found > 0) {
+      bullets.push(`חברת <strong>${worst.company}</strong> עם הכי הרבה חסרים (${worst.not_found})`)
+    }
+  }
+  return bullets
+})
+
+// Company bar chart
+const companyChartSeries = computed(() => {
+  const bd = props.result.company_breakdown || []
+  return [
+    { name: 'נמצאו', data: bd.map(c => c.found) },
+    { name: 'לא נמצאו', data: bd.map(c => c.not_found) },
+  ]
+})
+
+const companyChartOptions = computed(() => ({
+  chart: { type: 'bar', stacked: true, fontFamily: 'Heebo, sans-serif', toolbar: { show: false } },
+  plotOptions: { bar: { horizontal: true, barHeight: '60%', borderRadius: 4 } },
+  colors: ['#2E844A', '#E8720A'],
+  xaxis: {
+    categories: (props.result.company_breakdown || []).map(c => c.company),
+    labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
+  },
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
+  legend: { position: 'top', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
+  dataLabels: { enabled: false },
+  grid: { borderColor: 'var(--border-subtle)', strokeDashArray: 3 },
+  tooltip: { style: { fontFamily: 'Heebo, sans-serif' } },
+}))
+
+// Status donut chart
+const statusChartSeries = computed(() => {
+  const sb = props.result.status_breakdown || {}
+  return Object.values(sb)
+})
+
+const statusChartOptions = computed(() => {
+  const sb = props.result.status_breakdown || {}
+  const labels = Object.keys(sb)
+  const colorMap = { 'פעיל': '#2E844A', 'מוקפא': '#0176D3', 'מבוטל': '#EA4335', 'אחר': '#999' }
+  const colors = labels.map(l => colorMap[l] || '#999')
+  return {
+    chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
+    labels,
+    colors,
+    legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
+    dataLabels: {
+      enabled: true,
+      formatter: (val) => val.toFixed(0) + '%',
+      style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '12px' },
+      dropShadow: { enabled: false },
+    },
+    plotOptions: { pie: { donut: { size: '60%' } } },
+    stroke: { width: 2, colors: ['var(--card-bg)'] },
+    tooltip: { style: { fontFamily: 'Heebo, sans-serif' }, y: { formatter: (val) => val + ' מוצרים' } },
+  }
+})
 
 const filteredResults = computed(() => {
   if (activeFilter.value === 'found') return props.result.results.filter(r => r.found_in_production)
@@ -429,6 +639,168 @@ const chartOptions = computed(() => ({
 
 .total-kpi { background: var(--border-subtle); }
 .total-kpi .kpi-num { color: var(--text); }
+
+/* ── Insights Section ── */
+.insights-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-top: 4px;
+}
+
+.insights-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.ins-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  transition: all 0.25s var(--transition);
+}
+.ins-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+
+.ins-kpi-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.ins-kpi-val {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.ins-kpi-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.ins-kpi-green { background: var(--green-light); border-color: var(--green-light); }
+.ins-kpi-green .ins-kpi-icon { background: rgba(46,132,74,0.12); color: var(--accent-emerald); }
+.ins-kpi-green .ins-kpi-val { color: var(--accent-emerald); }
+
+.ins-kpi-orange { background: rgba(232,114,10,0.06); border-color: rgba(232,114,10,0.1); }
+.ins-kpi-orange .ins-kpi-icon { background: rgba(232,114,10,0.12); color: #E8720A; }
+.ins-kpi-orange .ins-kpi-val { color: #E8720A; }
+
+.ins-kpi-cyan { background: rgba(6,189,189,0.06); border-color: rgba(6,189,189,0.1); }
+.ins-kpi-cyan .ins-kpi-icon { background: rgba(6,189,189,0.12); color: #06BDBD; }
+.ins-kpi-cyan .ins-kpi-val { color: #06BDBD; }
+
+.ins-kpi-violet { background: rgba(127,86,217,0.06); border-color: rgba(127,86,217,0.1); }
+.ins-kpi-violet .ins-kpi-icon { background: rgba(127,86,217,0.12); color: var(--accent-violet); }
+.ins-kpi-violet .ins-kpi-val { color: var(--accent-violet); }
+
+.ins-kpi-primary { background: var(--primary-glow); border-color: rgba(1,118,211,0.1); }
+.ins-kpi-primary .ins-kpi-icon { background: rgba(1,118,211,0.12); color: var(--primary); }
+.ins-kpi-primary .ins-kpi-val { color: var(--primary); }
+
+.insights-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.ins-chart-box {
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.ins-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.ins-missing-table {
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.mini-tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.mini-tbl thead th {
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mini-tbl tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.mini-tbl tbody tr:hover { background: var(--border-subtle); }
+.mini-tbl tbody td {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+
+.ins-summary-card {
+  padding: 16px;
+  border: 1px solid rgba(232,114,10,0.15);
+  border-radius: 12px;
+  background: rgba(232,114,10,0.03);
+}
+
+.summary-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.summary-bullets li {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-right: 16px;
+  position: relative;
+  line-height: 1.6;
+}
+.summary-bullets li::before {
+  content: '•';
+  position: absolute;
+  right: 0;
+  color: #E8720A;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .insights-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .insights-kpi-row .ins-kpi:last-child { grid-column: span 2; }
+  .insights-charts-row { grid-template-columns: 1fr; }
+}
 
 /* ── Segmented filter ── */
 .seg-filter {
