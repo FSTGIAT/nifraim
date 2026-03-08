@@ -12,12 +12,47 @@
 
     <!-- Upload button -->
     <div class="recruit-uploader">
-      <div v-if="recruitsStore.uploading" class="upload-loading">
-        <div class="loader">
-          <div class="loader-ring"></div>
-          <div class="loader-ring delay"></div>
+      <div v-if="recruitsStore.uploading" class="upload-loading-card">
+        <div class="upload-loading-top">
+          <div class="loader">
+            <div class="loader-ring"></div>
+            <div class="loader-ring delay"></div>
+          </div>
+          <div class="loading-info">
+            <span class="loading-text">{{ recruitStageLabel }}</span>
+            <span class="loading-hint">{{ recruitStageHint }}</span>
+          </div>
         </div>
-        <span class="loading-text">טוען מגויסים מהקובץ...</span>
+
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" :style="{ width: recruitProgressWidth }"></div>
+          <div class="progress-bar-shimmer"></div>
+        </div>
+
+        <div class="upload-steps">
+          <div class="upload-step" :class="{ active: recruitStage >= 1, done: recruitStage > 1 }">
+            <div class="step-icon">
+              <svg v-if="recruitStage > 1" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span v-else class="ltr-number">1</span>
+            </div>
+            <span>העלאה</span>
+          </div>
+          <div class="step-line" :class="{ filled: recruitStage > 1 }"></div>
+          <div class="upload-step" :class="{ active: recruitStage >= 2, done: recruitStage > 2 }">
+            <div class="step-icon">
+              <svg v-if="recruitStage > 2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span v-else class="ltr-number">2</span>
+            </div>
+            <span>ניתוח</span>
+          </div>
+          <div class="step-line" :class="{ filled: recruitStage > 2 }"></div>
+          <div class="upload-step" :class="{ active: recruitStage >= 3 }">
+            <div class="step-icon"><span class="ltr-number">3</span></div>
+            <span>שמירה</span>
+          </div>
+        </div>
+
+        <span class="loading-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
       </div>
 
       <button v-else class="upload-btn" @click="openFilePicker">
@@ -134,7 +169,7 @@
 </template>
 
 <script setup>
-import { ref, inject, watch, onMounted } from 'vue'
+import { ref, computed, inject, watch, onMounted } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useRecruitsStore } from '../../stores/recruits.js'
 import RecruitForm from './RecruitForm.vue'
@@ -147,6 +182,28 @@ const fileInputRef = ref(null)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
+const recruitStage = ref(0) // 0=idle, 1=uploading, 2=parsing, 3=saving
+
+const recruitStageLabel = computed(() => {
+  if (recruitStage.value === 1) return 'מעלה קובץ...'
+  if (recruitStage.value === 2) return 'מנתח נתונים ומזהה מגויסים...'
+  if (recruitStage.value === 3) return 'שומר מגויסים במערכת...'
+  return 'מעבד...'
+})
+
+const recruitStageHint = computed(() => {
+  if (recruitStage.value === 1) return 'מעביר את הקובץ לשרת'
+  if (recruitStage.value === 2) return 'מפענח עמודות ומזהה פורמט'
+  if (recruitStage.value === 3) return 'כמעט סיימנו!'
+  return ''
+})
+
+const recruitProgressWidth = computed(() => {
+  if (recruitStage.value === 1) return '30%'
+  if (recruitStage.value === 2) return '65%'
+  if (recruitStage.value === 3) return '90%'
+  return '0%'
+})
 
 // Receive files from full-page drop overlay
 const droppedFiles = inject('droppedFiles', null)
@@ -186,7 +243,12 @@ function onFileSelected(e) {
 
 async function uploadFile(file) {
   recruitsStore.error = null
+  recruitStage.value = 1
   try {
+    // Transition through stages as time passes
+    setTimeout(() => { if (recruitsStore.uploading) recruitStage.value = 2 }, 1500)
+    setTimeout(() => { if (recruitsStore.uploading) recruitStage.value = 3 }, 5000)
+
     await recruitsStore.uploadRecruits(
       file,
       needPassword.value ? password.value : null
@@ -200,6 +262,8 @@ async function uploadFile(file) {
     }
   } catch (e) {
     // error handled in store
+  } finally {
+    recruitStage.value = 0
   }
 }
 
@@ -267,15 +331,27 @@ async function runComparison() {
 
 .upload-btn:active { transform: translateY(0); }
 
-.upload-loading {
+.upload-loading-card {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 16px 24px;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
   background: var(--card-bg);
   border: 1.5px solid var(--green-light);
   border-radius: var(--radius-md);
+  animation: fadeIn 0.3s ease;
+}
+
+.upload-loading-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.loading-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .loader { width: 28px; height: 28px; position: relative; flex-shrink: 0; }
@@ -297,6 +373,119 @@ async function runComparison() {
 }
 
 .loading-text { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.loading-hint { font-size: 11px; color: var(--text-muted); }
+
+/* Progress bar */
+.progress-bar-track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-emerald), var(--accent-cyan, var(--accent-emerald)));
+  border-radius: 3px;
+  transition: width 1s ease;
+}
+
+.progress-bar-shimmer {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: shimmerSlide 2s ease-in-out infinite;
+}
+
+@keyframes shimmerSlide {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Upload steps */
+.upload-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.upload-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.4;
+  transition: all 0.4s ease;
+}
+
+.upload-step.active { opacity: 1; color: var(--accent-emerald); }
+.upload-step.done { color: var(--accent-emerald); opacity: 0.8; }
+
+.step-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--border-subtle);
+  color: var(--text-muted);
+  transition: all 0.4s ease;
+  flex-shrink: 0;
+}
+
+.upload-step.active .step-icon {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-emerald);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+  animation: stepPulse 1.5s ease-in-out infinite;
+}
+
+.upload-step.done .step-icon {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  animation: none;
+}
+
+@keyframes stepPulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 16px rgba(16, 185, 129, 0.35); }
+}
+
+.step-line {
+  width: 28px;
+  height: 2px;
+  background: var(--border-subtle);
+  margin: 0 6px;
+  transition: background 0.4s ease;
+  border-radius: 1px;
+}
+
+.step-line.filled { background: var(--accent-emerald); }
+
+.loading-wait-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0.6;
+  animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 0.6; transform: translateY(0); }
+}
+
+.ltr-number { direction: ltr; unicode-bidi: embed; display: inline-block; }
 
 .options-row { margin-top: 12px; }
 

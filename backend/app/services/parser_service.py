@@ -175,11 +175,31 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                 dfs.append(sheet_df)
             df = pd.concat(dfs, ignore_index=True)
         else:
-            df = pd.read_excel(xls, sheet_name=0)
+            # Use openpyxl read_only mode to find actual row count first,
+            # avoiding loading 1M+ empty rows into memory
+            import openpyxl
+            buf.seek(0)
+            wb = openpyxl.load_workbook(buf, read_only=True, data_only=True)
+            ws = wb.worksheets[0]
+            # Count non-empty rows (stop after 50k consecutive empty rows)
+            max_row = 0
+            empty_streak = 0
+            for i, row in enumerate(ws.iter_rows(min_row=1, values_only=True), 1):
+                if any(v is not None for v in row):
+                    max_row = i
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+                    if empty_streak > 100:
+                        break
+            wb.close()
+            buf.seek(0)
+            nrows = max(max_row + 1, 10)  # read at least 10 rows
+            df = pd.read_excel(buf, engine=engine, sheet_name=0, nrows=nrows)
     else:
         df = pd.read_excel(buf, engine=engine)
 
-    # Drop completely empty rows (some files have 1M+ empty rows)
+    # Drop completely empty rows
     df = df.dropna(how="all").reset_index(drop=True)
 
     # Clean column names
