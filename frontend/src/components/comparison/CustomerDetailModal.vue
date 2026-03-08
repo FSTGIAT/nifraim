@@ -256,11 +256,12 @@ function openMail() {
     }
   }
 
-  // Build product lines with premium
+  // Build product lines with policy/account number and premium
   const productLines = products.map(p => {
     const date = p.sign_date ? formatDate(p.sign_date) : ''
     const premiumStr = p.premium > 0 ? ` | פרמיה: ₪${Math.round(p.premium)}` : ''
-    return `- ${p.product || ''}${date ? ' מתאריך ' + date : ''}${premiumStr}`
+    const policyStr = p.policy_number ? ` | מס׳ פוליסה/חשבון: ${p.policy_number}` : ''
+    return `- ${p.product || ''}${policyStr}${date ? ' מתאריך ' + date : ''}${premiumStr}`
   }).join('\n')
 
   const subject = `בקשת תשלום עמלות נפרעים - ${name}`
