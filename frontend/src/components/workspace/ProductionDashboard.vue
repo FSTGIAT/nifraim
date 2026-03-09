@@ -84,44 +84,31 @@
       </div>
     </div>
 
-    <!-- Row 1: Status Donut + Company Breakdown -->
-    <div class="charts-row-top">
-      <div class="chart-card" v-if="analytics.status_breakdown.length">
-        <div class="chart-header">
-          <h3>סטטוס מוצרים</h3>
-        </div>
-        <apexchart
-          type="donut"
-          :height="280"
-          :options="statusDonutOptions"
-          :series="statusDonutSeries"
-        />
-      </div>
-
+    <!-- Row 1: Company + Product Type side by side -->
+    <div class="charts-row">
       <div class="chart-card" v-if="analytics.company_breakdown.length">
         <div class="chart-header">
           <h3>התפלגות לפי חברה</h3>
         </div>
         <apexchart
           type="bar"
-          :height="companyChartHeight"
+          :height="chartsRowHeight"
           :options="companyChartOptions"
           :series="companyChartSeries"
         />
       </div>
-    </div>
 
-    <!-- Row 2: Product Type (full width) -->
-    <div class="chart-card" v-if="analytics.product_type_breakdown.length">
-      <div class="chart-header">
-        <h3>התפלגות לפי סוג מוצר</h3>
+      <div class="chart-card" v-if="analytics.product_type_breakdown.length">
+        <div class="chart-header">
+          <h3>התפלגות לפי סוג מוצר</h3>
+        </div>
+        <apexchart
+          type="bar"
+          :height="chartsRowHeight"
+          :options="productBarOptions"
+          :series="productBarSeries"
+        />
       </div>
-      <apexchart
-        type="bar"
-        :height="productChartHeight"
-        :options="productBarOptions"
-        :series="productBarSeries"
-      />
     </div>
 
     <!-- Row 3: Top Clients (full width) -->
@@ -194,26 +181,31 @@ function getCompanyColor(name) {
   return '#546e7a'
 }
 
-// Company chart — each bar gets its brand color
-const companyChartHeight = computed(() => Math.max(250, props.analytics.company_breakdown.length * 45))
+// Shared height for side-by-side charts — driven by the one with more items
+const chartsRowHeight = computed(() => {
+  const productCount = props.analytics.product_type_breakdown.length
+  const companyCount = props.analytics.company_breakdown.length
+  return Math.max(280, Math.max(productCount, companyCount) * 38)
+})
 
+// Company chart — each bar gets its brand color
 const companyChartOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
   plotOptions: {
-    bar: { horizontal: true, borderRadius: 6, barHeight: '60%', distributed: true },
+    bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: true },
   },
-  dataLabels: { enabled: false },
+  dataLabels: { enabled: true, formatter: v => v.toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif' } },
   xaxis: {
     categories: props.analytics.company_breakdown.map(c => c.company),
-    labels: { style: { fontFamily: 'Heebo, sans-serif' } },
+    labels: { show: false },
   },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '12px' } } },
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '13px', fontWeight: 600 } } },
   colors: props.analytics.company_breakdown.map(c => getCompanyColor(c.company)),
   legend: { show: false },
   tooltip: {
     y: { formatter: v => v.toLocaleString() + ' רשומות' },
   },
-  grid: { borderColor: 'var(--border-subtle)' },
+  grid: { borderColor: 'var(--border-subtle)', xaxis: { lines: { show: false } } },
 }))
 
 const companyChartSeries = computed(() => [{
@@ -222,8 +214,6 @@ const companyChartSeries = computed(() => [{
 }])
 
 // Product type bar — teal gradient
-const productChartHeight = computed(() => Math.max(280, props.analytics.product_type_breakdown.length * 38))
-
 const productBarOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
   plotOptions: { bar: { horizontal: true, borderRadius: 5, barHeight: '55%' } },
@@ -248,24 +238,6 @@ const productBarSeries = computed(() => [{
   name: 'רשומות',
   data: props.analytics.product_type_breakdown.map(p => p.count),
 }])
-
-// Status donut
-const statusColors = { 'פעיל': '#10b981', 'לא פעיל': '#ef4444', 'מוקפא': '#f59e0b', 'מבוטל': '#94a3b8' }
-
-const statusDonutOptions = computed(() => ({
-  chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
-  labels: props.analytics.status_breakdown.map(s => s.status),
-  colors: props.analytics.status_breakdown.map(s => statusColors[s.status] || '#94a3b8'),
-  legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '13px' },
-  dataLabels: { enabled: true, formatter: (val) => Math.round(val) + '%' },
-  plotOptions: {
-    pie: { donut: { size: '60%' } },
-  },
-}))
-
-const statusDonutSeries = computed(() =>
-  props.analytics.status_breakdown.map(s => s.count)
-)
 
 // Top clients chart
 const topClientsData = computed(() =>
@@ -363,15 +335,15 @@ const topClientsChartSeries = computed(() => [{
 }
 
 /* Charts */
-.charts-row-top {
+.charts-row {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: start;
 }
 
 @media (max-width: 800px) {
-  .charts-row-top { grid-template-columns: 1fr; }
+  .charts-row { grid-template-columns: 1fr; }
 }
 
 .chart-card {
