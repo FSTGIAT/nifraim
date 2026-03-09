@@ -62,6 +62,7 @@ class PortalCompanyBreakdown(BaseModel):
 class PortalDashboardData(BaseModel):
     customer_name: str
     id_number: str
+    period: str = ""
     products: list[PortalProduct]
     kpi: PortalKPI
     company_breakdown: list[PortalCompanyBreakdown]

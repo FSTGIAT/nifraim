@@ -161,9 +161,13 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
             customer_name = name
             break
 
+    # Extract period from production filename (e.g. "דוח פרודוקציה דצמבר 25.xlsx")
+    period_label = _extract_period(prod_upload.filename)
+
     return {
         "customer_name": customer_name or id_number,
         "id_number": id_number,
+        "period": period_label,
         "products": products,
         "kpi": {
             "product_count": len(records),
@@ -173,3 +177,26 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
         },
         "company_breakdown": sorted(company_map.values(), key=lambda x: x["premium"], reverse=True),
     }
+
+
+def _extract_period(filename: str) -> str:
+    """Extract Hebrew month + year from production filename."""
+    import re
+    months = [
+        "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+        "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+    ]
+    if not filename:
+        return ""
+    # Match Hebrew month name
+    for month in months:
+        if month in filename:
+            # Look for year number (2 or 4 digits) near the month
+            year_match = re.search(r'(\d{2,4})', filename)
+            if year_match:
+                year = year_match.group(1)
+                if len(year) == 2:
+                    year = "20" + year
+                return f"{month} {year}"
+            return month
+    return ""

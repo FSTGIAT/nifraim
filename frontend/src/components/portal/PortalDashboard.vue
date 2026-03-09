@@ -3,7 +3,10 @@
     <div class="dashboard-header">
       <div class="customer-info">
         <h2>שלום, {{ data.customer_name }}</h2>
-        <p class="id-label">ת.ז: <span class="ltr-number">{{ data.id_number }}</span></p>
+        <p class="id-label">
+          ת.ז: <span class="ltr-number">{{ data.id_number }}</span>
+          <span v-if="data.period" class="period-badge">{{ data.period }}</span>
+        </p>
       </div>
       <button class="logout-btn" @click="$emit('logout')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -66,6 +69,20 @@ defineEmits(['logout'])
   font-size: 13px;
   color: var(--text-muted);
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .ltr-number {
