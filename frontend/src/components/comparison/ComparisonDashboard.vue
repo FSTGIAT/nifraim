@@ -130,6 +130,41 @@
       </div>
     </div>
 
+    <!-- Unpaid notification strip -->
+    <Transition name="unpaid-strip">
+      <div v-if="showUnpaidStrip && effectiveUnpaidCustomers.length > 0" class="unpaid-strip">
+        <div class="unpaid-strip-pulse"></div>
+        <div class="unpaid-strip-content">
+          <div class="unpaid-strip-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="unpaid-strip-text">
+            <strong>{{ effectiveUnpaidCustomers.length }}</strong> לקוחות ללא תשלום עמלה
+            <span v-if="totalUnpaidCharge > 0" class="unpaid-strip-amount">
+              — הפסד משוער <strong class="ltr-number">{{ formatAmount(totalUnpaidCharge) }}</strong>
+            </span>
+          </div>
+          <div class="unpaid-strip-actions">
+            <button class="unpaid-strip-btn unpaid-strip-view" @click="onLegendClick('only_production')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              הצג
+            </button>
+            <button class="unpaid-strip-btn unpaid-strip-mail" @click="sendAllUnpaidMail">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+              שלח מייל
+            </button>
+            <button class="unpaid-strip-btn unpaid-strip-excel" @click="downloadUnpaidExcel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+              Excel
+            </button>
+          </div>
+        </div>
+        <button class="unpaid-strip-dismiss" @click="showUnpaidStrip = false" title="הסתר">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </Transition>
+
     <!-- Top Clients -->
     <div v-if="topClientsData.length > 0" class="chart-card wide-card tc-card">
       <div class="chart-header">
@@ -232,6 +267,14 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Clipboard notification -->
+    <Transition name="clipboard-toast">
+      <div v-if="clipboardNotice" class="clipboard-toast">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+        תוכן המייל הועתק ללוח — הדבק בגוף ההודעה
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -256,12 +299,16 @@ const authStore = useAuthStore()
 const productMetric = ref('count')
 const detailCustomer = ref(null)
 const commissionRates = ref([])
+const clipboardNotice = ref(false)
+const showUnpaidStrip = ref(false)
 
 onMounted(async () => {
   try {
     const res = await api.get('/commission-rates')
     commissionRates.value = res.data
   } catch (e) { /* rates not available */ }
+  // Reveal unpaid strip with delay for smooth entrance
+  setTimeout(() => { showUnpaidStrip.value = true }, 600)
 })
 
 // ─── Computed data ───
@@ -787,7 +834,7 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-function sendAllUnpaidMail() {
+async function sendAllUnpaidMail() {
   const customers = effectiveUnpaidCustomers.value
   if (!customers.length) return
 
@@ -831,7 +878,11 @@ ${lines}
 בברכה,
 ${userName}`
 
-  openMailCompose({ to: companyEmail, subject, body })
+  const status = await openMailCompose({ to: companyEmail, subject, body })
+  if (status === 'clipboard') {
+    clipboardNotice.value = true
+    setTimeout(() => { clipboardNotice.value = false }, 4000)
+  }
 }
 
 function downloadUnpaidExcel() {
@@ -858,6 +909,7 @@ function downloadUnpaidExcel() {
           'שם לקוח': name,
           'ת.ז': c.id_number,
           'מוצר': p.product || '',
+          'מס׳ פוליסה/חשבון': p.policy_number || '',
           'חברה': p.company || p.company_full || '',
           'תאריך הצטרפות': p.sign_date ? formatDate(p.sign_date) : '',
           'פרמיה': p.premium || 0,
@@ -1364,5 +1416,199 @@ function formatCompact(val) {
   .kpi-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Unpaid notification strip ── */
+.unpaid-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(232, 114, 10, 0.2);
+  border-inline-start: 4px solid #E8720A;
+  background: linear-gradient(135deg, rgba(232, 114, 10, 0.04) 0%, rgba(232, 114, 10, 0.08) 100%);
+  overflow: hidden;
+}
+
+.unpaid-strip-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(232, 114, 10, 0.05);
+  animation: stripPulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes stripPulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+.unpaid-strip-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.unpaid-strip-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(232, 114, 10, 0.12);
+  color: #E8720A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: iconBounce 2s ease-in-out 1;
+}
+@keyframes iconBounce {
+  0%, 100% { transform: translateY(0); }
+  15% { transform: translateY(-4px); }
+  30% { transform: translateY(0); }
+  45% { transform: translateY(-2px); }
+  60% { transform: translateY(0); }
+}
+
+.unpaid-strip-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.5;
+}
+.unpaid-strip-text strong {
+  color: #E8720A;
+  font-weight: 800;
+}
+.unpaid-strip-amount {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.unpaid-strip-amount strong {
+  color: #c0540a;
+  font-weight: 800;
+}
+
+.unpaid-strip-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
+.unpaid-strip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.2s var(--transition);
+  white-space: nowrap;
+}
+.unpaid-strip-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+}
+.unpaid-strip-btn svg { flex-shrink: 0; }
+
+.unpaid-strip-view {
+  background: rgba(1, 118, 211, 0.06);
+  color: var(--primary);
+  border-color: rgba(1, 118, 211, 0.2);
+}
+.unpaid-strip-view:hover { background: rgba(1, 118, 211, 0.12); border-color: var(--primary); }
+
+.unpaid-strip-mail {
+  background: rgba(232, 114, 10, 0.06);
+  color: #E8720A;
+  border-color: rgba(232, 114, 10, 0.2);
+}
+.unpaid-strip-mail:hover { background: rgba(232, 114, 10, 0.12); border-color: #E8720A; }
+
+.unpaid-strip-excel {
+  background: rgba(46, 132, 74, 0.06);
+  color: #2E844A;
+  border-color: rgba(46, 132, 74, 0.2);
+}
+.unpaid-strip-excel:hover { background: rgba(46, 132, 74, 0.12); border-color: #2E844A; }
+
+.unpaid-strip-dismiss {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.unpaid-strip-dismiss:hover { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
+
+/* Strip transition */
+.unpaid-strip-enter-active {
+  animation: stripSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.unpaid-strip-leave-active {
+  animation: stripSlideIn 0.25s ease reverse;
+}
+@keyframes stripSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scaleY(0.9);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+    max-height: 80px;
+  }
+}
+
+@media (max-width: 700px) {
+  .unpaid-strip-content { flex-wrap: wrap; }
+  .unpaid-strip-actions { width: 100%; justify-content: flex-start; }
+}
+
+/* ── Clipboard toast ── */
+.clipboard-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--text, #1a1a1a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  white-space: nowrap;
+}
+.clipboard-toast svg { flex-shrink: 0; }
+.clipboard-toast-enter-active { animation: toastIn 0.3s ease-out; }
+.clipboard-toast-leave-active { animation: toastIn 0.2s ease reverse; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 </style>

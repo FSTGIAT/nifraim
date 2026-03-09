@@ -151,6 +151,14 @@
         <div class="ins-chart-title">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           המלצות לפעולה
+          <span class="action-btns">
+            <button class="action-icon-btn" title="שלח מייל על חסרים" @click.stop="sendMissingMail">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </button>
+            <button class="action-icon-btn" title="הורד Excel חסרים" @click.stop="downloadMissingExcel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+          </span>
         </div>
         <ul class="summary-bullets">
           <li v-for="(b, i) in summaryBullets" :key="i" v-html="b"></li>
@@ -317,12 +325,22 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Clipboard notification -->
+    <Transition name="clipboard-toast">
+      <div v-if="clipboardNotice" class="clipboard-toast">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+        תוכן המייל הועתק ללוח — הדבק בגוף ההודעה
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import * as XLSX from 'xlsx'
 import { useRecruitsStore } from '../../stores/recruits.js'
+import { openMailCompose } from '../../utils/mailHelper.js'
 
 const props = defineProps({
   result: { type: Object, required: true },
@@ -334,6 +352,7 @@ const currentPage = ref(1)
 const pageSize = 50
 const chartReady = ref(false)
 const detailItem = ref(null)
+const clipboardNotice = ref(false)
 
 onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
@@ -467,6 +486,56 @@ const visiblePages = computed(() => {
 watch(activeFilter, () => { currentPage.value = 1 })
 
 function openDetail(item) { detailItem.value = item }
+
+function downloadMissingExcel() {
+  const missing = props.result.results.filter(r => !r.found_in_production)
+  if (!missing.length) return
+
+  const rows = missing.map(m => ({
+    'שם': `${m.first_name || ''} ${m.last_name || ''}`.trim(),
+    'ת.ז': m.id_number,
+    'חברה': m.company || '',
+    'מוצר': m.product || '',
+    'סכום': m.amount || 0,
+  }))
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'חסרים')
+  XLSX.writeFile(wb, `מגויסים_חסרים_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+}
+
+async function sendMissingMail() {
+  const missing = props.result.results.filter(r => !r.found_in_production)
+  if (!missing.length) return
+
+  // Group by company
+  const byCompany = {}
+  for (const m of missing) {
+    const co = m.company || 'לא ידוע'
+    if (!byCompany[co]) byCompany[co] = []
+    byCompany[co].push(m)
+  }
+
+  // Find company with most missing
+  const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
+  const companyName = topCompany[0]
+  const clients = topCompany[1]
+
+  const lines = clients.map(m => {
+    const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
+    return `הלקוח ${name} ת.ז ${m.id_number} אינו מופיע אצלי בפרודוקציה.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי על מנת שיופיע בדוחות.`
+  }).join('\n\n')
+
+  const subject = `בקשת בדיקה — לקוחות חסרים בפרודוקציה (${clients.length})`
+  const body = `שלום רב,\n\n${lines}\n\nבברכה`
+
+  const status = await openMailCompose({ to: '', subject, body })
+  if (status === 'clipboard') {
+    clipboardNotice.value = true
+    setTimeout(() => { clipboardNotice.value = false }, 4000)
+  }
+}
 
 function fmtNum(val) {
   if (val == null || val === 0) return '0'
@@ -1141,6 +1210,59 @@ const chartOptions = computed(() => ({
 }
 
 .ltr-number { direction: ltr; unicode-bidi: embed; display: inline-block; }
+
+/* ── Action buttons ── */
+.action-btns {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.action-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s var(--transition);
+}
+.action-icon-btn:hover {
+  background: var(--primary-glow);
+  color: var(--primary);
+  border-color: rgba(1,118,211,0.2);
+}
+
+/* ── Clipboard toast ── */
+.clipboard-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--text, #1a1a1a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  white-space: nowrap;
+}
+.clipboard-toast svg { flex-shrink: 0; }
+.clipboard-toast-enter-active { animation: toastIn 0.3s ease-out; }
+.clipboard-toast-leave-active { animation: toastIn 0.2s ease reverse; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 
 @media (max-width: 700px) {
   .dashboard-row { flex-direction: column; }
