@@ -99,16 +99,16 @@
         />
       </div>
 
-      <!-- Product Type Donut -->
+      <!-- Product Type Bar -->
       <div class="chart-card" v-if="analytics.product_type_breakdown.length">
         <div class="chart-header">
           <h3>התפלגות לפי סוג מוצר</h3>
         </div>
         <apexchart
-          type="donut"
-          :height="300"
-          :options="productDonutOptions"
-          :series="productDonutSeries"
+          type="bar"
+          :height="productChartHeight"
+          :options="productBarOptions"
+          :series="productBarSeries"
         />
       </div>
     </div>
@@ -195,21 +195,29 @@ const companyChartSeries = computed(() => [{
   data: props.analytics.company_breakdown.map(c => c.count),
 }])
 
-// Product type donut
-const productDonutOptions = computed(() => ({
-  chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
-  labels: props.analytics.product_type_breakdown.map(p => p.product_type),
-  colors: ['#4f6bed', '#22d3ee', '#10b981', '#f59e0b', '#7f56d9', '#ef4444', '#06b6d4', '#8b5cf6'],
-  legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '12px' },
+// Product type bar
+const productChartHeight = computed(() => Math.max(250, props.analytics.product_type_breakdown.length * 40))
+
+const productBarOptions = computed(() => ({
+  chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
+  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '60%' } },
   dataLabels: { enabled: false },
-  tooltip: {
-    y: { formatter: v => v.toLocaleString() },
+  xaxis: {
+    categories: props.analytics.product_type_breakdown.map(p => p.product_type),
+    labels: { style: { fontFamily: 'Heebo, sans-serif' } },
   },
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
+  colors: ['#7f56d9'],
+  tooltip: {
+    y: { formatter: v => v.toLocaleString() + ' רשומות' },
+  },
+  grid: { borderColor: 'var(--border-subtle)' },
 }))
 
-const productDonutSeries = computed(() =>
-  props.analytics.product_type_breakdown.map(p => p.count)
-)
+const productBarSeries = computed(() => [{
+  name: 'רשומות',
+  data: props.analytics.product_type_breakdown.map(p => p.count),
+}])
 
 // Status donut
 const statusColors = { 'פעיל': '#10b981', 'לא פעיל': '#ef4444', 'מוקפא': '#f59e0b', 'מבוטל': '#94a3b8' }
