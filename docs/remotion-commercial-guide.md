@@ -376,7 +376,7 @@ const greenAngle = donutProgress * 324;
 
 ### Scene 6 — Customer Portal (14s–17s)
 
-> **Reference screenshot:** Customer portal — personal dashboard for יצחק מרדכי בלומנטל
+> **Reference screenshot:** Customer portal — personal dashboard (demo customer)
 
 | Property | Value |
 |----------|-------|
@@ -389,7 +389,7 @@ This scene highlights that **every customer gets their own personal dashboard** 
 
 1. **Frame 0–10:** The Nifraim logo + brand name appears centered at top (matching portal header: orange stacked-layers icon + "Nifraim" in dark text).
 
-2. **Frame 5–20:** Customer greeting animates in: `שלום, יצחק מרדכי בלומנטל` (Hello, Yitzhak Mordechai Blumenthal), Heebo 700, `28px`. Below: `ת.ז: 56004914` + `דצמבר 2025` green badge.
+2. **Frame 5–20:** Customer greeting animates in: `שלום, דוד כהן` (Hello, David Cohen), Heebo 700, `28px`. Below: `ת.ז: 123456789` + `דצמבר 2025` green badge.
 
 3. **Frame 12–35:** Four KPI cards slide in from right (RTL), staggered:
 
@@ -573,7 +573,7 @@ All Hebrew strings used across scenes, consolidated for easy copy-paste:
 **Scene 6 — Customer Portal (from actual portal view):**
 | Hebrew Text | Translation | Style |
 |------------|-------------|-------|
-| `שלום, יצחק מרדכי בלומנטל` | Hello, Yitzhak Mordechai Blumenthal | Heebo 700, greeting |
+| `שלום, דוד כהן` | Hello, David Cohen | Heebo 700, greeting |
 | `מוצרים` | Products | KPI label |
 | `פרמיה חודשית` | Monthly Premium | KPI label |
 | `צבירה כוללת` | Total Accumulation | KPI label |
@@ -678,9 +678,150 @@ remotion-commercial/
 │   └── constants/
 │       ├── colors.ts                   # Full palette from this guide
 │       ├── tokens.ts                   # Radii, shadows, fonts
-│       └── mockData.ts                 # Real numbers from screenshots
+│       └── mockData.ts                 # Demo numbers (see section 10)
 ├── public/
-│   └── bg-music.mp3
+│   ├── bg-music.mp3
+│   └── screenshots/                    # App screenshots for video scenes
+│       ├── production-insights.png     # Scene 3: KPI strip + bar charts
+│       ├── file-comparison.png         # Scene 4: 721-customer donut + breakdowns
+│       ├── commission-dashboard.png    # Scene 5: Per-company comparison (מור)
+│       └── customer-portal.png         # Scene 6: Personal customer dashboard
 ├── package.json
 └── remotion.config.ts
 ```
+
+---
+
+## 10. Screenshot Assets & Integration
+
+### Why Use Screenshots
+
+Instead of recreating every UI element from scratch, use **actual app screenshots** as a base layer in scenes 3–6. This gives the video:
+- **Authenticity** — viewers see the real product, not a mock
+- **Speed** — fewer components to build
+- **Polish** — real data visualization looks better than simplified recreations
+
+### Screenshot Files
+
+Place these in `public/screenshots/`. Capture them from the app at **1920×1080** resolution (or higher, then scale down).
+
+| File | Scene | What to Capture | Notes |
+|------|-------|----------------|-------|
+| `production-insights.png` | 3 | Production tab → תובנות sub-tab: KPI strip + both bar charts | Crop to exclude browser chrome and sidebar |
+| `file-comparison.png` | 4 | Production tab → השוואת קבצים: main donut + company breakdown donuts | Include the status pills at top |
+| `commission-dashboard.png` | 5 | השוואת נפרעים tab → מור company: donut + KPIs + bar chart | Include the alert banner |
+| `customer-portal.png` | 6 | /portal/:token view: customer greeting + KPIs + products + donut | Full page capture |
+
+> **Privacy:** Before capturing screenshots, replace any real customer data with demo names. Use `דוד כהן` (David Cohen), `ת.ז: 123456789` as the demo customer. Bar chart names should use common demo names: `שרה לוי`, `משה אברהם`, `רחל ישראלי`, `יוסי דוידי`, `נועה גולדברג`, etc.
+
+### Integration Approach: Hybrid (Screenshot + Animated Overlays)
+
+Each scene uses the screenshot as the visual base, with animated elements layered on top.
+
+```jsx
+import { Img, staticFile, useCurrentFrame, interpolate, spring } from 'remotion';
+
+// Example: Scene 3 — Screenshot with Ken Burns pan + animated highlight
+const UploadInsightsScene = () => {
+  const frame = useCurrentFrame();
+
+  // Ken Burns: slow zoom from 110% to 100% + slight pan
+  const scale = interpolate(frame, [0, 89], [1.1, 1.0], { extrapolateRight: 'clamp' });
+  const panX = interpolate(frame, [0, 89], [30, 0], { extrapolateRight: 'clamp' });
+  const panY = interpolate(frame, [0, 89], [20, 0], { extrapolateRight: 'clamp' });
+
+  // Fade in the screenshot
+  const opacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
+
+  return (
+    <AbsoluteFill>
+      {/* Screenshot base layer */}
+      <div style={{
+        width: '100%', height: '100%', overflow: 'hidden',
+        opacity,
+      }}>
+        <Img
+          src={staticFile('screenshots/production-insights.png')}
+          style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            transform: `scale(${scale}) translate(${panX}px, ${panY}px)`,
+          }}
+        />
+      </div>
+
+      {/* Animated overlay: spotlight/highlight on KPI strip */}
+      <div style={{
+        position: 'absolute', top: 80, right: 40, left: 40,
+        height: 100, borderRadius: 16,
+        boxShadow: `0 0 0 4px #F57C00, 0 0 30px rgba(245,124,0,0.3)`,
+        opacity: interpolate(frame, [20, 30], [0, 1], { extrapolateRight: 'clamp' }),
+      }} />
+    </AbsoluteFill>
+  );
+};
+```
+
+### Scene-by-Scene Screenshot Usage
+
+**Scene 3 — Upload & Insights:**
+- Screenshot: `production-insights.png`
+- Technique: **Ken Burns zoom-out** (start zoomed on KPIs, slowly reveal full dashboard)
+- Overlay: Orange spotlight border pulses around KPI strip, then moves down to charts
+- Entry: Screenshot fades in from white after the upload animation
+
+**Scene 4 — File Comparison:**
+- Screenshot: `file-comparison.png`
+- Technique: **Zoom to detail** — start showing the full donut, then zoom into company breakdown donuts
+- Overlay: Donut segments "pop" with scale animation as camera reaches them
+- Status pills at top animate in separately before screenshot reveals
+
+**Scene 5 — Commission Dashboard:**
+- Screenshot: `commission-dashboard.png`
+- Technique: **Slide-in from right** (RTL) — screenshot slides in like a panel, revealing the dashboard
+- Overlay: Alert banner (`1 לקוחות ללא תשלום עמלה`) pulses with red glow to draw attention
+- KPI values get a brief count-up overlay before settling to match screenshot
+
+**Scene 6 — Customer Portal:**
+- Screenshot: `customer-portal.png`
+- Technique: **Device mockup reveal** — screenshot appears inside a browser/tablet frame, scales up to fill screen
+- Overlay: Customer name `שלום, דוד כהן` types in letter-by-letter (typewriter effect)
+- The `לכל לקוח — דשבורד אישי` tagline animates in as a separate overlay below
+
+### Alternative: Full Animated Scenes (No Screenshots)
+
+If you prefer fully animated scenes (no screenshots), each scene description above (sections 4.3–4.6) contains complete specifications to recreate every UI element from scratch using Remotion components. The screenshots approach is recommended for faster production and more authentic visuals.
+
+---
+
+## 11. Demo Data Reference
+
+All customer-facing data in the video should use these **fictional demo values**:
+
+### Demo Customer (Portal Scene)
+| Field | Value |
+|-------|-------|
+| Name | `דוד כהן` (David Cohen) |
+| ID | `123456789` |
+| Products | `31` |
+| Monthly Premium | `₪701` |
+| Total Accumulation | `₪9,731,021` |
+| Companies | `5` |
+
+### Demo Bar Chart Names (replace real names)
+Use these common Hebrew demo names for any customer bar charts:
+
+| Demo Name | Translation |
+|-----------|------------|
+| `שרה לוי` | Sarah Levi |
+| `משה אברהם` | Moshe Abraham |
+| `רחל ישראלי` | Rachel Israeli |
+| `יוסי דוידי` | Yossi Davidi |
+| `נועה גולדברג` | Noa Goldberg |
+| `אבי מזרחי` | Avi Mizrachi |
+| `מיכל שלום` | Michal Shalom |
+| `דני פרידמן` | Dani Friedman |
+| `טלי ברק` | Tali Barak |
+| `עומר חיים` | Omer Chaim |
+
+### Company Names (these are real and OK to use)
+Insurance company names are public and should remain as-is: `מור`, `הפניקס אקסלנס`, `הראל`, `כלל`, `מנורה מבטחים`, `מגדל`, `הכשרה`, `אלטשולר`.
