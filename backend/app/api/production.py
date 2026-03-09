@@ -229,7 +229,7 @@ async def get_production_analytics(
         )
         .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name)
-        .order_by(desc(func.sum(ClientRecord.total_premium)))
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.total_premium), 0)))
         .limit(10)
     )
     top_clients_premium = [
@@ -248,7 +248,7 @@ async def get_production_analytics(
         )
         .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name)
-        .order_by(desc(func.sum(ClientRecord.accumulation)))
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
         .limit(10)
     )
     top_clients_accumulation = [
