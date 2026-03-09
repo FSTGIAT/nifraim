@@ -113,6 +113,39 @@
           </div>
         </div>
       </div>
+
+      <!-- Company breakdown charts -->
+      <div class="charts-grid">
+        <!-- New by company -->
+        <div class="chart-card chart-card-half" v-if="newByCompany.series.length">
+          <div class="chart-title-row">
+            <span class="chart-title">חדשים לפי חברה</span>
+            <span class="chart-badge badge-green"><span class="ltr-number">{{ comparisonResult.summary.new_count }}</span></span>
+          </div>
+          <apexchart
+            type="donut"
+            height="300"
+            :options="newByCompany.options"
+            :series="newByCompany.series"
+            @dataPointSelection="(e, chart, config) => onCompanyChartClick('new', newByCompany.labels, config)"
+          />
+        </div>
+
+        <!-- Removed by company -->
+        <div class="chart-card chart-card-half" v-if="removedByCompany.series.length">
+          <div class="chart-title-row">
+            <span class="chart-title">הוסרו לפי חברה</span>
+            <span class="chart-badge badge-red"><span class="ltr-number">{{ comparisonResult.summary.removed_count }}</span></span>
+          </div>
+          <apexchart
+            type="donut"
+            height="300"
+            :options="removedByCompany.options"
+            :series="removedByCompany.series"
+            @dataPointSelection="(e, chart, config) => onCompanyChartClick('removed', removedByCompany.labels, config)"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- Filter Modal -->
@@ -329,6 +362,107 @@ const chartOptions = computed(() => ({
     y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
   },
 }))
+
+// Company palette for sub-charts
+const COMPANY_COLORS = [
+  '#6366f1', '#06b6d4', '#f43f5e', '#8b5cf6', '#14b8a6',
+  '#ec4899', '#f97316', '#0ea5e9', '#84cc16', '#a855f7',
+  '#eab308', '#64748b',
+]
+
+function groupByCompany(clients) {
+  const map = {}
+  for (const c of clients) {
+    const co = c.company || 'לא ידוע'
+    map[co] = (map[co] || 0) + 1
+  }
+  // Sort descending
+  const entries = Object.entries(map).sort((a, b) => b[1] - a[1])
+  return { labels: entries.map(e => e[0]), series: entries.map(e => e[1]) }
+}
+
+function makeCompanyChartOptions(labels, colorOffset = 0) {
+  return {
+    labels,
+    colors: labels.map((_, i) => COMPANY_COLORS[(i + colorOffset) % COMPANY_COLORS.length]),
+    chart: {
+      fontFamily: 'Heebo, sans-serif',
+      animations: { enabled: true, easing: 'easeinout', speed: 600 },
+    },
+    plotOptions: {
+      pie: {
+        expandOnClick: true,
+        donut: {
+          size: '55%',
+          labels: {
+            show: true,
+            name: { fontSize: '13px', fontWeight: 700, offsetY: -2 },
+            value: { fontSize: '20px', fontWeight: 800, offsetY: 2, formatter: (val) => Number(val).toLocaleString() },
+            total: {
+              show: true,
+              label: 'סה"כ',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: '#64748b',
+              formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
+            }
+          }
+        }
+      }
+    },
+    dataLabels: {
+      enabled: true,
+      formatter: (val) => val > 5 ? val.toFixed(0) + '%' : '',
+      style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] },
+      dropShadow: { enabled: true, top: 1, left: 0, blur: 2, opacity: 0.3 },
+    },
+    legend: {
+      position: 'bottom',
+      fontSize: '12px',
+      fontWeight: 600,
+      fontFamily: 'Heebo, sans-serif',
+      markers: { size: 7, shape: 'circle', offsetX: 6 },
+      itemMargin: { horizontal: 10, vertical: 4 },
+    },
+    stroke: { width: 2, colors: ['#fff'] },
+    tooltip: {
+      y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
+    },
+  }
+}
+
+const newByCompany = computed(() => {
+  if (!props.comparisonResult?.new_clients?.length) return { labels: [], series: [], options: {} }
+  const { labels, series } = groupByCompany(props.comparisonResult.new_clients)
+  return { labels, series, options: makeCompanyChartOptions(labels, 0) }
+})
+
+const removedByCompany = computed(() => {
+  if (!props.comparisonResult?.removed_clients?.length) return { labels: [], series: [], options: {} }
+  const { labels, series } = groupByCompany(props.comparisonResult.removed_clients)
+  return { labels, series, options: makeCompanyChartOptions(labels, 4) }
+})
+
+function onCompanyChartClick(category, labels, config) {
+  const idx = config.dataPointIndex
+  if (idx < 0) return
+  const company = labels[idx]
+  const r = props.comparisonResult
+  if (!r) return
+
+  const clientsMap = { new: r.new_clients, removed: r.removed_clients }
+  const titlesMap = { new: 'חדשים', removed: 'הוסרו' }
+  const clients = (clientsMap[category] || []).filter(c => (c.company || 'לא ידוע') === company)
+
+  if (!clients.length) return
+
+  filterModal.open = true
+  filterModal.title = `${titlesMap[category]} — ${company}`
+  filterModal.category = category
+  filterModal.customers = clients
+  searchQuery.value = ''
+  detailCustomer.value = null
+}
 
 const filteredCustomers = computed(() => {
   if (!searchQuery.value) return filterModal.customers
@@ -688,6 +822,28 @@ function formatVal(val) {
   font-size: 13px;
   font-weight: 800;
   color: var(--text);
+}
+
+/* Charts grid */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .charts-grid { grid-template-columns: 1fr; }
+}
+
+.chart-card-half {
+  padding: 20px 16px 12px;
+}
+
+.chart-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 8px;
 }
 
 /* ===== Filter Modal ===== */
