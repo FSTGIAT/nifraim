@@ -124,11 +124,23 @@
           </div>
           <apexchart
             type="donut"
-            height="300"
+            height="380"
             :options="newByCompany.options"
             :series="newByCompany.series"
             @dataPointSelection="(e, chart, config) => onCompanyChartClick('new', newByCompany.labels, config)"
           />
+          <div class="chart-legend">
+            <div
+              v-for="(label, i) in newByCompany.labels"
+              :key="label"
+              class="legend-item clickable"
+              @click="onCompanyChartClick('new', newByCompany.labels, { dataPointIndex: i })"
+            >
+              <span class="legend-dot" :style="{ background: COMPANY_COLORS[i % COMPANY_COLORS.length] }"></span>
+              <span class="legend-label">{{ label }}</span>
+              <span class="legend-value ltr-number">{{ newByCompany.series[i]?.toLocaleString() }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- Removed by company -->
@@ -139,11 +151,23 @@
           </div>
           <apexchart
             type="donut"
-            height="300"
+            height="380"
             :options="removedByCompany.options"
             :series="removedByCompany.series"
             @dataPointSelection="(e, chart, config) => onCompanyChartClick('removed', removedByCompany.labels, config)"
           />
+          <div class="chart-legend">
+            <div
+              v-for="(label, i) in removedByCompany.labels"
+              :key="label"
+              class="legend-item clickable"
+              @click="onCompanyChartClick('removed', removedByCompany.labels, { dataPointIndex: i })"
+            >
+              <span class="legend-dot" :style="{ background: COMPANY_COLORS[(i + 4) % COMPANY_COLORS.length] }"></span>
+              <span class="legend-label">{{ label }}</span>
+              <span class="legend-value ltr-number">{{ removedByCompany.series[i]?.toLocaleString() }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -387,17 +411,18 @@ function makeCompanyChartOptions(labels, colorOffset = 0) {
     colors: labels.map((_, i) => COMPANY_COLORS[(i + colorOffset) % COMPANY_COLORS.length]),
     chart: {
       fontFamily: 'Heebo, sans-serif',
-      animations: { enabled: true, easing: 'easeinout', speed: 600 },
+      animations: { enabled: true, easing: 'easeinout', speed: 800 },
+      dropShadow: { enabled: true, top: 4, left: 0, blur: 12, opacity: 0.08 },
     },
     plotOptions: {
       pie: {
         expandOnClick: true,
         donut: {
-          size: '55%',
+          size: '58%',
           labels: {
             show: true,
-            name: { fontSize: '13px', fontWeight: 700, offsetY: -2 },
-            value: { fontSize: '20px', fontWeight: 800, offsetY: 2, formatter: (val) => Number(val).toLocaleString() },
+            name: { fontSize: '14px', fontWeight: 700, offsetY: -4 },
+            value: { fontSize: '24px', fontWeight: 800, offsetY: 4, formatter: (val) => Number(val).toLocaleString() },
             total: {
               show: true,
               label: 'סה"כ',
@@ -417,14 +442,9 @@ function makeCompanyChartOptions(labels, colorOffset = 0) {
       dropShadow: { enabled: true, top: 1, left: 0, blur: 2, opacity: 0.3 },
     },
     legend: {
-      position: 'bottom',
-      fontSize: '12px',
-      fontWeight: 600,
-      fontFamily: 'Heebo, sans-serif',
-      markers: { size: 7, shape: 'circle', offsetX: 6 },
-      itemMargin: { horizontal: 10, vertical: 4 },
+      show: false,
     },
-    stroke: { width: 2, colors: ['#fff'] },
+    stroke: { width: 3, colors: ['#fff'] },
     tooltip: {
       y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
     },
