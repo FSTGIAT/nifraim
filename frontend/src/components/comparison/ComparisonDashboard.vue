@@ -528,7 +528,7 @@ function onTopClientClick(_event, _chartCtx, config) {
 
 // Status donut — all three statuses
 const statusItems = computed(() => [
-  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#F57C00' },
+  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#2E844A' },
   { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: '#E8720A' },
   { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: '#7F56D9' },
 ])
