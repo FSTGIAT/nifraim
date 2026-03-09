@@ -67,15 +67,15 @@
 
       <!-- Summary KPI strip -->
       <div class="summary-strip">
-        <div class="summary-badge badge-green">
+        <div class="summary-badge badge-green" @click="openCategory('new')">
           <span class="ltr-number">{{ comparisonResult.summary.new_count }}</span>
           <span>חדשים</span>
         </div>
-        <div class="summary-badge badge-red">
+        <div class="summary-badge badge-red" @click="openCategory('removed')">
           <span class="ltr-number">{{ comparisonResult.summary.removed_count }}</span>
           <span>הוסרו</span>
         </div>
-        <div class="summary-badge badge-amber">
+        <div class="summary-badge badge-amber" @click="openCategory('changed')">
           <span class="ltr-number">{{ comparisonResult.summary.changed_count }}</span>
           <span>שונו</span>
         </div>
@@ -85,121 +85,154 @@
         </div>
       </div>
 
-      <!-- New clients -->
-      <div class="diff-section" v-if="comparisonResult.new_clients.length">
-        <button class="diff-header diff-green" @click="toggleSection('new')">
-          <span class="diff-title">לקוחות חדשים</span>
-          <span class="diff-count">{{ comparisonResult.new_clients.length }}</span>
-          <svg :class="{ rotated: !sections.new }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-        <Transition name="collapse">
-          <div v-if="sections.new" class="diff-body">
-            <table class="diff-table">
-              <thead>
-                <tr><th>שם</th><th>ת.ז.</th><th>חברה</th><th>פרמיה</th><th>צבירה</th><th>מוצרים</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in comparisonResult.new_clients" :key="c.id_number">
-                  <td>{{ c.name }}</td>
-                  <td class="ltr-number">{{ c.id_number }}</td>
-                  <td>{{ c.company }}</td>
-                  <td class="ltr-number">{{ formatAmount(c.premium) }}</td>
-                  <td class="ltr-number">{{ formatAmount(c.accumulation) }}</td>
-                  <td class="ltr-number">{{ c.products_count }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- Removed clients -->
-      <div class="diff-section" v-if="comparisonResult.removed_clients.length">
-        <button class="diff-header diff-red" @click="toggleSection('removed')">
-          <span class="diff-title">לקוחות שהוסרו</span>
-          <span class="diff-count">{{ comparisonResult.removed_clients.length }}</span>
-          <svg :class="{ rotated: !sections.removed }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-        <Transition name="collapse">
-          <div v-if="sections.removed" class="diff-body">
-            <table class="diff-table">
-              <thead>
-                <tr><th>שם</th><th>ת.ז.</th><th>חברה</th><th>פרמיה</th><th>צבירה</th><th>מוצרים</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in comparisonResult.removed_clients" :key="c.id_number">
-                  <td>{{ c.name }}</td>
-                  <td class="ltr-number">{{ c.id_number }}</td>
-                  <td>{{ c.company }}</td>
-                  <td class="ltr-number">{{ formatAmount(c.premium) }}</td>
-                  <td class="ltr-number">{{ formatAmount(c.accumulation) }}</td>
-                  <td class="ltr-number">{{ c.products_count }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </Transition>
-      </div>
-
-      <!-- Changed clients -->
-      <div class="diff-section" v-if="comparisonResult.changed_clients.length">
-        <button class="diff-header diff-amber" @click="toggleSection('changed')">
-          <span class="diff-title">לקוחות ששונו</span>
-          <span class="diff-count">{{ comparisonResult.changed_clients.length }}</span>
-          <svg :class="{ rotated: !sections.changed }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-        <Transition name="collapse">
-          <div v-if="sections.changed" class="diff-body">
-            <div
-              v-for="c in comparisonResult.changed_clients"
-              :key="c.id_number"
-              class="changed-client"
-            >
-              <div class="cc-header" @click="toggleClient(c.id_number)">
-                <span class="cc-name">{{ c.name }}</span>
-                <span class="cc-id ltr-number">{{ c.id_number }}</span>
-                <span class="cc-company">{{ c.company }}</span>
-                <div class="cc-diffs-inline">
-                  <span v-if="c.premium_diff" class="cc-diff" :class="c.premium_diff > 0 ? 'diff-up' : 'diff-down'">
-                    פרמיה {{ c.premium_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(c.premium_diff) }}</span>
-                  </span>
-                  <span v-if="c.accumulation_diff" class="cc-diff" :class="c.accumulation_diff > 0 ? 'diff-up' : 'diff-down'">
-                    צבירה {{ c.accumulation_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(c.accumulation_diff) }}</span>
-                  </span>
-                </div>
-                <svg :class="{ rotated: !expandedClients[c.id_number] }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </div>
-              <Transition name="collapse">
-                <div v-if="expandedClients[c.id_number]" class="cc-details">
-                  <div v-for="ch in c.changes" :key="ch.field" class="cc-change-row">
-                    <span class="cc-field">{{ ch.field }}</span>
-                    <span class="cc-old ltr-number">{{ formatVal(ch.old_val) }}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="5" y1="12" x2="19" y2="12"/>
-                      <polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                    <span class="cc-new ltr-number">{{ formatVal(ch.new_val) }}</span>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-          </div>
-        </Transition>
+      <!-- Donut Chart -->
+      <div class="chart-card">
+        <apexchart
+          type="donut"
+          height="320"
+          :options="chartOptions"
+          :series="chartSeries"
+          @dataPointSelection="onChartClick"
+        />
       </div>
     </div>
+
+    <!-- Filter Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="filterModal.open" class="fm-overlay" @click.self="closeModal">
+          <div class="fm-card">
+            <!-- List view -->
+            <template v-if="!detailCustomer">
+              <div class="fm-header">
+                <div class="fm-header-info">
+                  <span class="fm-title">{{ filterModal.title }}</span>
+                  <span class="fm-count">
+                    <span class="ltr-number">{{ filterModal.customers.length }}</span> לקוחות
+                  </span>
+                </div>
+                <button class="fm-close" @click="closeModal">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Search -->
+              <div class="fm-search-wrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input v-model="searchQuery" class="fm-search" placeholder="חיפוש לפי שם או ת.ז." />
+              </div>
+
+              <div class="fm-list">
+                <div
+                  v-for="c in filteredCustomers"
+                  :key="c.id_number"
+                  class="fm-row"
+                  @click="openDetail(c)"
+                >
+                  <div class="fm-row-main">
+                    <span class="fm-row-name">{{ c.name }}</span>
+                    <span class="fm-row-id ltr-number">{{ c.id_number }}</span>
+                    <span class="fm-row-company">{{ c.company }}</span>
+                  </div>
+                  <div class="fm-row-stats">
+                    <span v-if="c.premium" class="fm-row-stat">פרמיה <span class="ltr-number">{{ formatAmount(c.premium) }}</span></span>
+                    <span v-if="c.accumulation" class="fm-row-stat">צבירה <span class="ltr-number">{{ formatAmount(c.accumulation) }}</span></span>
+                    <span class="fm-row-stat">
+                      <span class="ltr-number">{{ c.products_count }}</span> מוצרים
+                    </span>
+                  </div>
+                  <svg class="fm-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                  </svg>
+                </div>
+                <div v-if="!filteredCustomers.length" class="fm-empty">לא נמצאו תוצאות</div>
+              </div>
+            </template>
+
+            <!-- Detail view -->
+            <template v-else>
+              <div class="fm-header">
+                <button class="fm-back-btn" @click="detailCustomer = null">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                  </svg>
+                  חזרה לרשימה
+                </button>
+                <button class="fm-close" @click="closeModal">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="detail-content">
+                <!-- Customer info card -->
+                <div class="detail-info-card">
+                  <div class="detail-name">{{ detailCustomer.name }}</div>
+                  <div class="detail-meta">
+                    <span class="ltr-number">{{ detailCustomer.id_number }}</span>
+                    <span class="detail-sep">·</span>
+                    <span>{{ detailCustomer.company }}</span>
+                  </div>
+                  <div class="detail-stats">
+                    <div class="detail-stat">
+                      <span class="detail-stat-label">פרמיה</span>
+                      <span class="detail-stat-value ltr-number">{{ formatAmount(detailCustomer.premium) }}</span>
+                    </div>
+                    <div class="detail-stat">
+                      <span class="detail-stat-label">צבירה</span>
+                      <span class="detail-stat-value ltr-number">{{ formatAmount(detailCustomer.accumulation) }}</span>
+                    </div>
+                    <div class="detail-stat">
+                      <span class="detail-stat-label">מוצרים</span>
+                      <span class="detail-stat-value ltr-number">{{ detailCustomer.products_count }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Changes (for changed customers) -->
+                <div v-if="filterModal.category === 'changed' && detailCustomer.changes?.length" class="detail-changes">
+                  <h5 class="detail-changes-title">שינויים שזוהו</h5>
+
+                  <!-- Premium / accumulation diffs -->
+                  <div v-if="detailCustomer.premium_diff || detailCustomer.accumulation_diff" class="detail-diffs-row">
+                    <div v-if="detailCustomer.premium_diff" class="detail-diff-badge" :class="detailCustomer.premium_diff > 0 ? 'diff-up' : 'diff-down'">
+                      פרמיה {{ detailCustomer.premium_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(detailCustomer.premium_diff) }}</span>
+                    </div>
+                    <div v-if="detailCustomer.accumulation_diff" class="detail-diff-badge" :class="detailCustomer.accumulation_diff > 0 ? 'diff-up' : 'diff-down'">
+                      צבירה {{ detailCustomer.accumulation_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(detailCustomer.accumulation_diff) }}</span>
+                    </div>
+                  </div>
+
+                  <div class="detail-changes-list">
+                    <div v-for="ch in detailCustomer.changes" :key="ch.field" class="detail-change-row">
+                      <span class="detail-change-field">{{ ch.field }}</span>
+                      <div class="detail-change-vals">
+                        <span class="detail-val-old ltr-number">{{ formatVal(ch.old_val) }}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                        <span class="detail-val-new ltr-number">{{ formatVal(ch.new_val) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
@@ -211,15 +244,122 @@ const props = defineProps({
 const emit = defineEmits(['compare', 'reset'])
 
 const selectedFileId = ref(null)
-const sections = reactive({ new: true, removed: true, changed: true })
-const expandedClients = reactive({})
+const searchQuery = ref('')
+const detailCustomer = ref(null)
 
-function toggleSection(key) {
-  sections[key] = !sections[key]
+const filterModal = reactive({
+  open: false,
+  title: '',
+  category: '',
+  customers: [],
+})
+
+// Chart
+const CATEGORIES = [
+  { key: 'new', label: 'חדשים', color: '#10b981' },
+  { key: 'removed', label: 'הוסרו', color: '#ef4444' },
+  { key: 'changed', label: 'שונו', color: '#f59e0b' },
+  { key: 'unchanged', label: 'ללא שינוי', color: '#94a3b8' },
+]
+
+const chartSeries = computed(() => {
+  if (!props.comparisonResult) return []
+  const s = props.comparisonResult.summary
+  return [s.new_count, s.removed_count, s.changed_count, s.unchanged_count]
+})
+
+const chartOptions = computed(() => ({
+  labels: CATEGORIES.map(c => c.label),
+  colors: CATEGORIES.map(c => c.color),
+  chart: {
+    fontFamily: 'Heebo, sans-serif',
+    animations: { enabled: true, easing: 'easeinout', speed: 600 },
+    events: {
+      dataPointSelection: (_e, _chart, config) => {
+        onChartClick(_e, _chart, config)
+      }
+    }
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '62%',
+        labels: {
+          show: true,
+          name: { fontSize: '14px', fontWeight: 700 },
+          value: { fontSize: '22px', fontWeight: 800, formatter: (val) => Number(val).toLocaleString() },
+          total: {
+            show: true,
+            label: 'סה"כ לקוחות',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: '#64748b',
+            formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
+          }
+        }
+      }
+    }
+  },
+  dataLabels: { enabled: false },
+  legend: {
+    position: 'bottom',
+    fontSize: '13px',
+    fontWeight: 600,
+    markers: { size: 8, shape: 'circle', offsetX: 4 },
+    itemMargin: { horizontal: 12, vertical: 4 },
+  },
+  stroke: { width: 2, colors: ['#fff'] },
+  tooltip: {
+    y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
+  },
+}))
+
+const filteredCustomers = computed(() => {
+  if (!searchQuery.value) return filterModal.customers
+  const q = searchQuery.value.toLowerCase()
+  return filterModal.customers.filter(c =>
+    (c.name && c.name.toLowerCase().includes(q)) ||
+    (c.id_number && c.id_number.includes(q))
+  )
+})
+
+function onChartClick(_e, _chart, config) {
+  const idx = config.dataPointIndex
+  if (idx < 0) return
+  const cat = CATEGORIES[idx]
+  openCategory(cat.key)
 }
 
-function toggleClient(id) {
-  expandedClients[id] = !expandedClients[id]
+function openCategory(key) {
+  const r = props.comparisonResult
+  if (!r) return
+
+  if (key === 'unchanged') return // no client list available
+
+  const map = {
+    new: { title: 'לקוחות חדשים', customers: r.new_clients },
+    removed: { title: 'לקוחות שהוסרו', customers: r.removed_clients },
+    changed: { title: 'לקוחות ששונו', customers: r.changed_clients },
+  }
+
+  const info = map[key]
+  if (!info || !info.customers?.length) return
+
+  filterModal.open = true
+  filterModal.title = info.title
+  filterModal.category = key
+  filterModal.customers = info.customers
+  searchQuery.value = ''
+  detailCustomer.value = null
+}
+
+function openDetail(customer) {
+  detailCustomer.value = customer
+}
+
+function closeModal() {
+  filterModal.open = false
+  detailCustomer.value = null
 }
 
 function runCompare() {
@@ -432,6 +572,22 @@ function formatVal(val) {
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.summary-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.summary-badge.badge-gray {
+  cursor: default;
+}
+
+.summary-badge.badge-gray:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .badge-green { background: var(--green-light); color: var(--accent-emerald); }
@@ -439,147 +595,336 @@ function formatVal(val) {
 .badge-amber { background: var(--amber-light); color: var(--amber); }
 .badge-gray { background: var(--border-subtle); color: var(--text-muted); }
 
-/* Diff sections */
-.diff-section {
-  border-radius: var(--radius-md);
-  overflow: hidden;
+/* Chart card */
+.chart-card {
+  background: var(--card-bg);
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px 16px 8px;
 }
 
-.diff-header {
+/* ===== Filter Modal ===== */
+.fm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1010;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.fm-card {
+  background: var(--card-bg, #fff);
+  border-radius: var(--radius-lg, 16px);
+  width: 100%;
+  max-width: 620px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+}
+
+.fm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.fm-header-info {
+  display: flex;
+  align-items: baseline;
   gap: 10px;
-  width: 100%;
-  padding: 12px 18px;
-  font-size: 13px;
+}
+
+.fm-title {
+  font-size: 16px;
   font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-  text-align: right;
+  color: var(--text);
 }
 
-.diff-green { background: rgba(16, 185, 129, 0.06); color: var(--accent-emerald); border-right: 3px solid var(--accent-emerald); }
-.diff-red { background: rgba(239, 68, 68, 0.06); color: var(--red); border-right: 3px solid var(--red); }
-.diff-amber { background: rgba(245, 158, 11, 0.06); color: var(--amber); border-right: 3px solid var(--amber); }
-
-.diff-count {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  background: rgba(0,0,0,0.06);
-}
-
-.diff-header svg {
-  margin-inline-start: auto;
-  transition: transform 0.25s;
-  opacity: 0.5;
-}
-
-.diff-header svg.rotated { transform: rotate(-90deg); }
-
-.diff-body {
-  padding: 0;
-  overflow: auto;
-}
-
-/* Table */
-.diff-table {
-  width: 100%;
-  border-collapse: collapse;
+.fm-count {
   font-size: 12px;
-}
-
-.diff-table th {
-  padding: 8px 14px;
-  text-align: right;
-  font-weight: 600;
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.fm-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.fm-close:hover {
   background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 11px;
+  color: var(--text);
 }
 
-.diff-table td {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+.fm-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--primary);
+  transition: opacity 0.2s;
 }
 
-.diff-table tbody tr:hover { background: var(--bg-surface); }
+.fm-back-btn:hover { opacity: 0.7; }
 
-/* Changed clients */
-.changed-client {
+/* Search */
+.fm-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
   border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
-.changed-client:last-child { border-bottom: none; }
+.fm-search-wrap svg { color: var(--text-muted); flex-shrink: 0; }
 
-.cc-header {
+.fm-search {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+}
+
+.fm-search::placeholder { color: var(--text-muted); }
+
+/* List */
+.fm-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.fm-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 18px;
+  padding: 14px 22px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.cc-header:hover { background: var(--bg-surface); }
+.fm-row:last-child { border-bottom: none; }
 
-.cc-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.cc-id { font-size: 11px; color: var(--text-muted); }
-.cc-company { font-size: 11px; color: var(--text-muted); }
+.fm-row:hover { background: var(--bg-surface); }
 
-.cc-diffs-inline {
+.fm-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fm-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.fm-row-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fm-row-company {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fm-row-stats {
+  display: flex;
+  gap: 10px;
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
+.fm-row-stat {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.fm-row-chevron {
+  color: var(--text-muted);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.fm-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ===== Detail view ===== */
+.detail-content {
+  padding: 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.detail-info-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.detail-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.detail-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.detail-sep { margin: 0 6px; }
+
+.detail-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.detail-stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Changes section */
+.detail-changes {
+  margin-top: 4px;
+}
+
+.detail-changes-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.detail-diffs-row {
   display: flex;
   gap: 8px;
-  margin-inline-start: auto;
+  margin-bottom: 16px;
 }
 
-.cc-diff {
-  font-size: 11px;
+.detail-diff-badge {
+  font-size: 12px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 4px 12px;
+  border-radius: 8px;
 }
 
 .diff-up { background: var(--green-light); color: var(--accent-emerald); }
 .diff-down { background: var(--red-light); color: var(--red); }
 
-.cc-header svg {
-  transition: transform 0.25s;
-  opacity: 0.4;
-  flex-shrink: 0;
+.detail-changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.cc-header svg.rotated { transform: rotate(-90deg); }
-
-.cc-details {
-  padding: 0 18px 12px 18px;
+.detail-change-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--bg-surface);
 }
 
-.cc-change-row {
+.detail-change-row:nth-child(odd) {
+  background: transparent;
+}
+
+.detail-change-field {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.detail-change-vals {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
-  font-size: 12px;
 }
 
-.cc-field {
+.detail-change-vals svg { color: var(--text-muted); opacity: 0.4; flex-shrink: 0; }
+
+.detail-val-old {
+  font-size: 13px;
+  color: var(--red);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.detail-val-new {
+  font-size: 13px;
+  color: var(--accent-emerald);
   font-weight: 600;
-  color: var(--text-secondary);
-  min-width: 60px;
 }
 
-.cc-old { color: var(--red); text-decoration: line-through; opacity: 0.7; }
-.cc-new { color: var(--accent-emerald); font-weight: 600; }
+/* ===== Modal transition ===== */
+.modal-enter-active { animation: modalIn 0.25s ease; }
+.modal-leave-active { animation: modalIn 0.2s ease reverse; }
 
-.cc-change-row svg { color: var(--text-muted); opacity: 0.4; flex-shrink: 0; }
+@keyframes modalIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-/* Transitions */
+.modal-enter-active .fm-card { animation: cardIn 0.25s ease; }
+.modal-leave-active .fm-card { animation: cardIn 0.2s ease reverse; }
+
+@keyframes cardIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Collapse transition (kept for potential reuse) */
 .collapse-enter-active { animation: collapseIn 0.25s ease; }
 .collapse-leave-active { animation: collapseIn 0.2s ease reverse; }
 
