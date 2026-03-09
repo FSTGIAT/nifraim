@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.services.auth_service import decode_token
+from app.models.portal_link import CustomerPortalLink
+from app.services.auth_service import decode_token, decode_portal_token
 
 security = HTTPBearer()
 
@@ -41,3 +42,24 @@ async def get_admin_user(
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
+
+
+async def get_portal_session(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerPortalLink:
+    """Validate a portal JWT and return the associated portal link."""
+    payload = decode_portal_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid portal session")
+    portal_token = payload.get("sub")
+    result = await db.execute(
+        select(CustomerPortalLink).where(CustomerPortalLink.token == portal_token)
+    )
+    link = result.scalar_one_or_none()
+    if not link or not link.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Portal link expired or revoked")
+    from datetime import datetime
+    if link.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Portal link expired")
+    return link

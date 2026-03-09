@@ -55,6 +55,11 @@ const routes = [
     component: () => import('../views/AdminView.vue'),
     meta: { requiresAuth: true, requiresAdmin: true },
   },
+  {
+    path: '/portal/:token',
+    name: 'CustomerPortal',
+    component: () => import('../views/CustomerPortalView.vue'),
+  },
 ]
 
 const router = createRouter({
@@ -71,7 +76,7 @@ router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token')
 
   // Public routes — anyone can access
-  const publicNames = ['Landing', 'Pricing', 'Signup', 'Login', 'Register', 'SubscriptionExpired']
+  const publicNames = ['Landing', 'Pricing', 'Signup', 'Login', 'Register', 'SubscriptionExpired', 'CustomerPortal']
   if (publicNames.includes(to.name)) {
     // Redirect authenticated users away from login/register
     if ((to.name === 'Login' || to.name === 'Register') && token) {

@@ -16,3 +16,5 @@ xlrd==2.0.1
 msoffcrypto-tool==5.4.2
 pandas==2.2.3
 httpx==0.28.1
+aiosmtplib==5.1.0
+email-validator==2.2.0

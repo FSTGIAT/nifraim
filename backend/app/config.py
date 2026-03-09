@@ -22,7 +22,14 @@ class Settings(BaseSettings):
     SMS_019_PASSWORD: str = ""
     SMS_019_COMPANY_ID: str = ""
 
-    model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env")}
+    # SMTP Email
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+
+    model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
 
 settings = Settings()

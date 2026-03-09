@@ -28,3 +28,4 @@ class User(Base):
     paying_companies = relationship("PayingCompany", back_populates="user", cascade="all, delete-orphan")
     company_contacts = relationship("CompanyContact", back_populates="user", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    portal_links = relationship("CustomerPortalLink", back_populates="user", cascade="all, delete-orphan")

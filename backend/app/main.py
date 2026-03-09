@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal
 
 app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0")
 
@@ -29,6 +29,7 @@ app.include_router(paying_companies.router, prefix="/api/paying-companies", tags
 app.include_router(company_contacts.router, prefix="/api/company-contacts", tags=["company-contacts"])
 app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(portal.router, prefix="/api/portal", tags=["portal"])
 
 
 @app.get("/api/health")

@@ -207,6 +207,9 @@
     <Transition name="fade">
       <p class="error-msg" v-if="recruitsStore.error">{{ recruitsStore.error }}</p>
     </Transition>
+
+    <!-- Portal Links Manager -->
+    <PortalLinksManager />
   </div>
 </template>
 
@@ -216,6 +219,7 @@ import { useProductionStore } from '../../stores/production.js'
 import { useRecruitsStore } from '../../stores/recruits.js'
 import RecruitForm from './RecruitForm.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
+import PortalLinksManager from './PortalLinksManager.vue'
 
 const productionStore = useProductionStore()
 const recruitsStore = useRecruitsStore()
