@@ -121,7 +121,7 @@
                 <span>תובנות</span>
               </div>
             </div>
-            <a href="#how-it-works" class="btn-secondary">צפו איך זה עובד</a>
+            <a href="#video-demo" class="btn-secondary">צפו איך זה עובד</a>
           </div>
         </div>
       </div>
@@ -153,10 +153,34 @@
       </div>
     </section>
 
+    <!-- Video Demo -->
+    <section id="video-demo" class="video-section">
+      <div class="section-wrap">
+        <h2 class="section-title">איך זה <span class="text-orange">עובד</span> ?</h2>
+        <div class="video-container" :class="{ playing: videoPlaying }">
+          <video
+            ref="demoVideo"
+            src="/videos/nifraim-commercial.mp4"
+            playsinline
+            muted
+            preload="metadata"
+            poster="/videos/nifraim-poster.jpg"
+            @play="videoPlaying = true"
+            @pause="videoPlaying = false"
+            @ended="videoPlaying = false"
+          />
+          <button v-if="!videoPlaying" class="video-play-btn" @click="playVideo">
+            <span class="play-icon">▶</span>
+            <span>צפו בהדגמה</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
     <!-- How It Works -->
     <section id="how-it-works" class="how-section">
       <div class="section-wrap">
-        <h2 class="section-title">איך זה <span class="text-orange">עובד</span> ?</h2>
+        <h2 class="section-title">שלושה <span class="text-orange">צעדים</span> פשוטים</h2>
         <div class="timeline">
           <div class="timeline-step" v-for="(s, i) in steps" :key="i">
             <div class="timeline-circle ltr-number">{{ i + 1 }}</div>
@@ -258,6 +282,14 @@ function animatePercent() {
     if (progress < 1) requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
+}
+
+// Video
+const demoVideo = ref(null)
+const videoPlaying = ref(false)
+
+function playVideo() {
+  demoVideo.value?.play()
 }
 
 // Features data
@@ -807,6 +839,71 @@ onBeforeUnmount(() => {
   line-height: 1.7;
 }
 
+/* ── Video Demo ── */
+.video-section {
+  padding: 120px 24px;
+  background: var(--land-bg);
+}
+
+.video-container {
+  position: relative;
+  max-width: 960px;
+  margin: 48px auto 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  aspect-ratio: 16 / 9;
+  background: #1a1a1a;
+}
+
+.video-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.video-play-btn {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Heebo', sans-serif;
+  cursor: pointer;
+  border: none;
+  transition: background 0.3s;
+}
+
+.video-play-btn:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.play-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--land-orange);
+  color: #0a0a0a;
+  font-size: 32px;
+  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.4);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.video-play-btn:hover .play-icon {
+  transform: scale(1.1);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.5);
+}
+
 /* ── How It Works ── */
 .how-section {
   padding: 120px 24px;
@@ -1126,6 +1223,25 @@ onBeforeUnmount(() => {
 
   .timeline::before {
     display: none;
+  }
+
+  .video-section {
+    padding: 80px 16px;
+  }
+
+  .video-container {
+    margin-top: 32px;
+    border-radius: 12px;
+  }
+
+  .play-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 26px;
+  }
+
+  .video-play-btn {
+    font-size: 17px;
   }
 
   .numbers-grid {
