@@ -171,7 +171,6 @@
           />
           <button v-if="!videoPlaying" class="video-play-btn" @click="playVideo">
             <span class="play-icon">▶</span>
-            <span>צפו בהדגמה</span>
           </button>
         </div>
       </div>
@@ -849,11 +848,28 @@ onBeforeUnmount(() => {
   position: relative;
   max-width: 960px;
   margin: 48px auto 0;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
   aspect-ratio: 16 / 9;
-  background: #1a1a1a;
+  background: #111;
+  border: 1px solid rgba(245, 124, 0, 0.15);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 80px rgba(245, 124, 0, 0.06);
+  transition: box-shadow 0.4s, border-color 0.4s;
+}
+
+.video-container:hover {
+  border-color: rgba(245, 124, 0, 0.25);
+  box-shadow:
+    0 32px 100px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 100px rgba(245, 124, 0, 0.1);
+}
+
+.video-container.playing {
+  border-color: rgba(245, 124, 0, 0.3);
 }
 
 .video-container video {
@@ -867,41 +883,42 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  background: rgba(0, 0, 0, 0.45);
-  color: white;
-  font-size: 20px;
-  font-weight: 600;
-  font-family: 'Heebo', sans-serif;
+  background: rgba(0, 0, 0, 0.35);
   cursor: pointer;
   border: none;
   transition: background 0.3s;
 }
 
 .video-play-btn:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .play-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   background: var(--land-orange);
   color: #0a0a0a;
-  font-size: 32px;
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.4);
-  transition: transform 0.3s, box-shadow 0.3s;
+  font-size: 28px;
+  padding-right: 3px;
+  box-shadow:
+    0 8px 32px rgba(245, 124, 0, 0.4),
+    0 0 0 8px rgba(245, 124, 0, 0.12),
+    0 0 0 16px rgba(245, 124, 0, 0.06);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s;
 }
 
 .video-play-btn:hover .play-icon {
-  transform: scale(1.1);
-  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.5);
+  transform: scale(1.12);
+  box-shadow:
+    0 12px 40px rgba(245, 124, 0, 0.5),
+    0 0 0 10px rgba(245, 124, 0, 0.15),
+    0 0 0 20px rgba(245, 124, 0, 0.08);
 }
 
 /* ── How It Works ── */
@@ -1231,17 +1248,16 @@ onBeforeUnmount(() => {
 
   .video-container {
     margin-top: 32px;
-    border-radius: 12px;
+    border-radius: 14px;
   }
 
   .play-icon {
-    width: 64px;
-    height: 64px;
-    font-size: 26px;
-  }
-
-  .video-play-btn {
-    font-size: 17px;
+    width: 56px;
+    height: 56px;
+    font-size: 22px;
+    box-shadow:
+      0 6px 24px rgba(245, 124, 0, 0.4),
+      0 0 0 6px rgba(245, 124, 0, 0.12);
   }
 
   .numbers-grid {
