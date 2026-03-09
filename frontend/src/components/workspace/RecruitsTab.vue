@@ -161,6 +161,16 @@
 
     <!-- Tab: List -->
     <div v-if="innerTab === 'list'">
+      <div class="list-toolbar">
+        <button class="btn-portal-links" @click="showPortalLinks = true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+          </svg>
+          קישורים ללקוחות
+          <span class="portal-badge" v-if="activePortalLinks > 0">{{ activePortalLinks }}</span>
+        </button>
+      </div>
       <RecruitForm />
     </div>
 
@@ -208,8 +218,8 @@
       <p class="error-msg" v-if="recruitsStore.error">{{ recruitsStore.error }}</p>
     </Transition>
 
-    <!-- Portal Links Manager -->
-    <PortalLinksManager />
+    <!-- Portal Links Modal -->
+    <PortalLinksManager :show="showPortalLinks" @close="showPortalLinks = false" />
   </div>
 </template>
 
@@ -217,12 +227,14 @@
 import { ref, computed, inject, watch, onMounted } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useRecruitsStore } from '../../stores/recruits.js'
+import { usePortalStore } from '../../stores/portal.js'
 import RecruitForm from './RecruitForm.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
 import PortalLinksManager from './PortalLinksManager.vue'
 
 const productionStore = useProductionStore()
 const recruitsStore = useRecruitsStore()
+const portalStore = usePortalStore()
 
 const fileInputRef = ref(null)
 const fileInputRef2 = ref(null)
@@ -230,6 +242,10 @@ const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
+const showPortalLinks = ref(false)
+const activePortalLinks = computed(() =>
+  portalStore.links.filter(l => l.is_active && new Date(l.expires_at) > new Date()).length
+)
 const recruitStage = ref(0) // 0=idle, 1=uploading, 2=parsing, 3=saving
 
 const recruitStageLabel = computed(() => {
@@ -744,6 +760,47 @@ async function runComparison() {
 
 .fade-enter-active { animation: fadeIn 0.3s; }
 .fade-leave-active { animation: fadeIn 0.2s reverse; }
+
+/* ── List toolbar ── */
+.list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.btn-portal-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s var(--transition);
+}
+
+.btn-portal-links svg { color: var(--primary); }
+
+.btn-portal-links:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(245, 124, 0, 0.1);
+}
+
+.portal-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--primary-light);
+  color: var(--primary);
+}
 
 .error-msg {
   color: var(--red);
