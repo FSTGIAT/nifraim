@@ -136,6 +136,7 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
             "product_status": r.product_status,
             "sign_date": r.sign_date.isoformat() if r.sign_date else None,
             "fund_policy_number": r.fund_policy_number,
+            "track": r.track,
         })
 
     # KPIs

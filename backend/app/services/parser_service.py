@@ -166,7 +166,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
         xls = pd.ExcelFile(buf, engine=engine)
         # Strip whitespace from sheet names for matching
         sheet_name_map = {s.strip(): s for s in xls.sheet_names}
-        production_sheets = ["מוצרי ביטוח", "מוצרי חיסכון"]
+        production_sheets = ["מוצרי ביטוח", "מוצרי חיסכון", "מסלולי השקעה"]
         found_sheets = [sheet_name_map[s] for s in production_sheets if s in sheet_name_map]
         if found_sheets:
             dfs = []

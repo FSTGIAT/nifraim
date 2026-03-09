@@ -44,6 +44,7 @@ class PortalProduct(BaseModel):
     product_status: str | None
     sign_date: str | None
     fund_policy_number: str | None
+    track: str | None
 
 
 class PortalKPI(BaseModel):

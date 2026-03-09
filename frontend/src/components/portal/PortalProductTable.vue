@@ -14,6 +14,10 @@
               חברה
               <span v-if="sortKey === 'receiving_company'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
             </th>
+            <th @click="sortBy('track')">
+              אפיק השקעה
+              <span v-if="sortKey === 'track'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
+            </th>
             <th @click="sortBy('total_premium')">
               פרמיה
               <span v-if="sortKey === 'total_premium'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
@@ -30,6 +34,7 @@
             <td>{{ p.product || '—' }}</td>
             <td>{{ p.product_type || '—' }}</td>
             <td>{{ p.receiving_company || '—' }}</td>
+            <td>{{ p.track || '—' }}</td>
             <td class="ltr-number">{{ p.total_premium ? formatNum(p.total_premium) : '—' }}</td>
             <td class="ltr-number">{{ p.accumulation ? formatNum(p.accumulation) : '—' }}</td>
             <td>
@@ -39,7 +44,7 @@
             </td>
           </tr>
           <tr v-if="!products.length">
-            <td colspan="6" class="empty">אין מוצרים להצגה</td>
+            <td colspan="7" class="empty">אין מוצרים להצגה</td>
           </tr>
         </tbody>
       </table>

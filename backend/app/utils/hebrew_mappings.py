@@ -82,6 +82,10 @@ PRODUCTION_FILE_COLUMNS = {
     'דוא"ל לקוח': "client_email",
     "שם מעסיק": "employer_name",
     "מזהה מעסיק": "employer_id",
+    # מסלולי השקעה sheet columns
+    "שם מסלול": "track",
+    "צבירה במסלול": "accumulation",
+    "צבירה במוצר": "accumulation",
 }
 
 # Column mappings for Commission Report (דוח נפרעים — Mor)
