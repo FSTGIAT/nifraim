@@ -13,7 +13,7 @@ async def send_portal_email(to_email: str, customer_name: str, portal_url: str, 
     html_body = f"""
     <div dir="rtl" style="font-family: 'Heebo', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="color: #F57C00; font-size: 24px; margin: 0;">InsureFlow</h1>
+            <h1 style="color: #F57C00; font-size: 24px; margin: 0;">Nifraim</h1>
         </div>
         <h2 style="color: #181818; font-size: 20px;">שלום {customer_name},</h2>
         <p style="color: #3E3E3C; font-size: 16px; line-height: 1.8;">
@@ -32,13 +32,13 @@ async def send_portal_email(to_email: str, customer_name: str, portal_url: str, 
         </p>
         <hr style="border: none; border-top: 1px solid #DDDBDA; margin: 24px 0;" />
         <p style="color: #706E6B; font-size: 12px; text-align: center;">
-            בברכה, InsureFlow
+            בברכה, Nifraim
         </p>
     </div>
     """
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "תיק הביטוח האישי שלך — InsureFlow"
+    msg["Subject"] = "תיק הביטוח האישי שלך — Nifraim"
     msg["From"] = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
