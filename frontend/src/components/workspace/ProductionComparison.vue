@@ -170,6 +170,94 @@
           </div>
         </div>
       </div>
+
+      <!-- ===== Changed Insights Section ===== -->
+      <div v-if="changedInsights.totalClients > 0" class="changed-section">
+        <div class="changed-section-header">
+          <span class="changed-section-title">שונו — תובנות</span>
+          <span class="chart-badge badge-amber"><span class="ltr-number">{{ changedInsights.totalClients }}</span> לקוחות</span>
+        </div>
+
+        <!-- KPI cards -->
+        <div class="changed-kpi-strip">
+          <div class="changed-kpi" :class="changedInsights.totalPremiumDiff >= 0 ? 'kpi-green' : 'kpi-red'">
+            <span class="changed-kpi-value ltr-number">{{ changedInsights.totalPremiumDiff >= 0 ? '+' : '' }}{{ formatAmount(changedInsights.totalPremiumDiff) }}</span>
+            <span class="changed-kpi-label">שינוי פרמיה כולל</span>
+          </div>
+          <div class="changed-kpi" :class="changedInsights.totalAccumulationDiff >= 0 ? 'kpi-green' : 'kpi-red'">
+            <span class="changed-kpi-value ltr-number">{{ changedInsights.totalAccumulationDiff >= 0 ? '+' : '' }}{{ formatAmount(changedInsights.totalAccumulationDiff) }}</span>
+            <span class="changed-kpi-label">שינוי צבירה כולל</span>
+          </div>
+          <div class="changed-kpi kpi-clickable" @click="openChangedByType('פרמיה')">
+            <span class="changed-kpi-value ltr-number">{{ changedInsights.premiumCount }}</span>
+            <span class="changed-kpi-label">שינוי פרמיה</span>
+          </div>
+          <div class="changed-kpi kpi-clickable" @click="openChangedByType('צבירה')">
+            <span class="changed-kpi-value ltr-number">{{ changedInsights.accumulationCount }}</span>
+            <span class="changed-kpi-label">שינוי צבירה</span>
+          </div>
+          <div class="changed-kpi kpi-clickable" @click="openChangedByType('מוצרים')">
+            <span class="changed-kpi-value ltr-number">{{ changedInsights.productCount }}</span>
+            <span class="changed-kpi-label">שינוי מוצרים</span>
+          </div>
+        </div>
+
+        <!-- Charts row: donut + bar -->
+        <div class="charts-grid">
+          <!-- Change type donut -->
+          <div class="chart-card chart-card-half">
+            <div class="chart-title-row">
+              <span class="chart-title">שונו לפי סוג שינוי</span>
+              <span class="chart-subtitle">לחץ על פרוסה לצפייה בפרטים</span>
+            </div>
+            <apexchart
+              type="donut"
+              height="380"
+              :options="changeTypeChartOptions"
+              :series="changeTypeChartSeries"
+              @dataPointSelection="onChangeTypeChartClick"
+            />
+            <div class="chart-legend">
+              <div
+                v-for="(ct, i) in CHANGE_TYPES"
+                :key="ct.field"
+                class="legend-item clickable"
+                @click="openChangedByType(ct.field)"
+              >
+                <span class="legend-dot" :style="{ background: ct.color }"></span>
+                <span class="legend-label">{{ ct.label }}</span>
+                <span class="legend-value ltr-number">{{ changeTypeChartSeries[i]?.toLocaleString() || 0 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top changers bar chart -->
+          <div class="chart-card chart-card-half">
+            <div class="chart-title-row">
+              <span class="chart-title">גדולי השינויים</span>
+              <div class="bar-toggle">
+                <button
+                  class="bar-toggle-btn"
+                  :class="{ active: barMode === 'premium' }"
+                  @click="barMode = 'premium'"
+                >פרמיה</button>
+                <button
+                  class="bar-toggle-btn"
+                  :class="{ active: barMode === 'accumulation' }"
+                  @click="barMode = 'accumulation'"
+                >צבירה</button>
+              </div>
+            </div>
+            <apexchart
+              type="bar"
+              height="380"
+              :options="topChangersChartOptions"
+              :series="topChangersChartSeries"
+              @dataPointSelection="onBarChartClick"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Filter Modal -->
@@ -462,6 +550,198 @@ const removedByCompany = computed(() => {
   const { labels, series } = groupByCompany(props.comparisonResult.removed_clients)
   return { labels, series, options: makeCompanyChartOptions(labels, 4) }
 })
+
+// ===== Changed Insights =====
+const CHANGE_TYPES = [
+  { field: 'פרמיה', label: 'פרמיה', color: '#6366f1' },
+  { field: 'צבירה', label: 'צבירה', color: '#06b6d4' },
+  { field: 'מוצרים', label: 'מוצרים', color: '#f59e0b' },
+]
+
+const barMode = ref('premium')
+
+const changedInsights = computed(() => {
+  const clients = props.comparisonResult?.changed_clients || []
+  if (!clients.length) return { totalClients: 0, totalPremiumDiff: 0, totalAccumulationDiff: 0, premiumCount: 0, accumulationCount: 0, productCount: 0, topPremium: [], topAccumulation: [] }
+
+  let totalPremiumDiff = 0
+  let totalAccumulationDiff = 0
+  let premiumCount = 0
+  let accumulationCount = 0
+  let productCount = 0
+
+  for (const c of clients) {
+    totalPremiumDiff += (c.premium_diff || 0)
+    totalAccumulationDiff += (c.accumulation_diff || 0)
+    if (c.changes?.some(ch => ch.field === 'פרמיה')) premiumCount++
+    if (c.changes?.some(ch => ch.field === 'צבירה')) accumulationCount++
+    if (c.changes?.some(ch => ch.field === 'מוצרים')) productCount++
+  }
+
+  const topPremium = [...clients]
+    .filter(c => c.premium_diff)
+    .sort((a, b) => Math.abs(b.premium_diff) - Math.abs(a.premium_diff))
+    .slice(0, 10)
+
+  const topAccumulation = [...clients]
+    .filter(c => c.accumulation_diff)
+    .sort((a, b) => Math.abs(b.accumulation_diff) - Math.abs(a.accumulation_diff))
+    .slice(0, 10)
+
+  return { totalClients: clients.length, totalPremiumDiff, totalAccumulationDiff, premiumCount, accumulationCount, productCount, topPremium, topAccumulation }
+})
+
+const changeTypeChartSeries = computed(() => {
+  const ins = changedInsights.value
+  return [ins.premiumCount, ins.accumulationCount, ins.productCount]
+})
+
+const changeTypeChartOptions = computed(() => ({
+  labels: CHANGE_TYPES.map(c => c.label),
+  colors: CHANGE_TYPES.map(c => c.color),
+  chart: {
+    fontFamily: 'Heebo, sans-serif',
+    animations: { enabled: true, easing: 'easeinout', speed: 800 },
+    dropShadow: { enabled: true, top: 4, left: 0, blur: 12, opacity: 0.08 },
+  },
+  plotOptions: {
+    pie: {
+      expandOnClick: true,
+      donut: {
+        size: '58%',
+        labels: {
+          show: true,
+          name: { fontSize: '14px', fontWeight: 700, offsetY: -4 },
+          value: { fontSize: '24px', fontWeight: 800, offsetY: 4, formatter: (val) => Number(val).toLocaleString() },
+          total: {
+            show: true,
+            label: 'סוגי שינויים',
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#64748b',
+            formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
+          }
+        }
+      }
+    }
+  },
+  dataLabels: {
+    enabled: true,
+    formatter: (val) => val > 5 ? val.toFixed(0) + '%' : '',
+    style: { fontSize: '11px', fontWeight: 700, colors: ['#fff'] },
+    dropShadow: { enabled: true, top: 1, left: 0, blur: 2, opacity: 0.3 },
+  },
+  legend: { show: false },
+  stroke: { width: 3, colors: ['#fff'] },
+  tooltip: {
+    y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
+  },
+}))
+
+const topChangersData = computed(() => {
+  const ins = changedInsights.value
+  return barMode.value === 'premium' ? ins.topPremium : ins.topAccumulation
+})
+
+const topChangersChartSeries = computed(() => {
+  const data = topChangersData.value
+  const diffKey = barMode.value === 'premium' ? 'premium_diff' : 'accumulation_diff'
+  return [{
+    name: barMode.value === 'premium' ? 'שינוי פרמיה' : 'שינוי צבירה',
+    data: data.map(c => Math.round(c[diffKey] || 0)),
+  }]
+})
+
+const topChangersChartOptions = computed(() => {
+  const data = topChangersData.value
+  const diffKey = barMode.value === 'premium' ? 'premium_diff' : 'accumulation_diff'
+  const names = data.map(c => c.name || c.id_number || '---')
+  return {
+    chart: {
+      fontFamily: 'Heebo, sans-serif',
+      toolbar: { show: false },
+    },
+    plotOptions: {
+      bar: {
+        horizontal: true,
+        borderRadius: 4,
+        barHeight: '65%',
+        distributed: true,
+        colors: {
+          ranges: [
+            { from: -999999999, to: -0.01, color: '#ef4444' },
+            { from: 0, to: 999999999, color: '#10b981' },
+          ]
+        }
+      }
+    },
+    colors: data.map(c => (c[diffKey] || 0) >= 0 ? '#10b981' : '#ef4444'),
+    dataLabels: {
+      enabled: true,
+      formatter: (val) => (val >= 0 ? '+' : '') + '₪' + Math.abs(val).toLocaleString(),
+      style: { fontSize: '11px', fontWeight: 700, colors: ['#1e293b'] },
+      offsetX: 6,
+    },
+    xaxis: {
+      labels: {
+        formatter: (val) => '₪' + Math.abs(Math.round(val)).toLocaleString(),
+        style: { fontFamily: 'Heebo, sans-serif', fontSize: '10px' },
+      }
+    },
+    yaxis: {
+      labels: {
+        style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', fontWeight: 600 },
+        maxWidth: 120,
+      }
+    },
+    labels: names,
+    legend: { show: false },
+    tooltip: {
+      y: { formatter: (val) => (val >= 0 ? '+' : '') + '₪' + Math.abs(val).toLocaleString() }
+    },
+    grid: {
+      borderColor: 'var(--border-subtle)',
+      xaxis: { lines: { show: true } },
+      yaxis: { lines: { show: false } },
+    },
+  }
+})
+
+function onChangeTypeChartClick(_e, _chart, config) {
+  const idx = config.dataPointIndex
+  if (idx < 0) return
+  openChangedByType(CHANGE_TYPES[idx].field)
+}
+
+function openChangedByType(field) {
+  const clients = props.comparisonResult?.changed_clients || []
+  const filtered = clients.filter(c => c.changes?.some(ch => ch.field === field))
+  if (!filtered.length) return
+
+  filterModal.open = true
+  filterModal.title = `שונו — ${field}`
+  filterModal.category = 'changed'
+  filterModal.customers = filtered
+  searchQuery.value = ''
+  detailCustomer.value = null
+}
+
+function onBarChartClick(_e, _chart, config) {
+  const idx = config.dataPointIndex
+  if (idx < 0) return
+  const data = topChangersData.value
+  if (idx < data.length) {
+    openDetail(data[idx])
+    // Also ensure modal is open with changed clients context
+    if (!filterModal.open) {
+      filterModal.open = true
+      filterModal.title = 'גדולי השינויים'
+      filterModal.category = 'changed'
+      filterModal.customers = props.comparisonResult?.changed_clients || []
+      searchQuery.value = ''
+    }
+  }
+}
 
 function onCompanyChartClick(category, labels, config) {
   const idx = config.dataPointIndex
@@ -864,6 +1144,103 @@ function formatVal(val) {
   font-weight: 700;
   padding: 2px 10px;
   border-radius: 8px;
+}
+
+/* ===== Changed Insights Section ===== */
+.changed-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.changed-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.changed-section-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.changed-kpi-strip {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.changed-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  flex: 1;
+  min-width: 110px;
+  transition: all 0.2s;
+}
+
+.changed-kpi.kpi-clickable {
+  cursor: pointer;
+}
+
+.changed-kpi.kpi-clickable:hover {
+  border-color: var(--border);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.changed-kpi.kpi-green { border-color: rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.06); }
+.changed-kpi.kpi-red { border-color: rgba(239, 68, 68, 0.25); background: rgba(239, 68, 68, 0.06); }
+
+.changed-kpi-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.kpi-green .changed-kpi-value { color: var(--accent-emerald); }
+.kpi-red .changed-kpi-value { color: var(--red); }
+
+.changed-kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Bar chart toggle */
+.bar-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-surface);
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+}
+
+.bar-toggle-btn {
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.bar-toggle-btn.active {
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.bar-toggle-btn:not(.active):hover {
+  color: var(--text-secondary);
 }
 
 /* ===== Filter Modal ===== */
