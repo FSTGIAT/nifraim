@@ -180,7 +180,7 @@ async def get_production_analytics(
         )
         .where(ClientRecord.upload_id == uid, ClientRecord.receiving_company.isnot(None))
         .group_by(ClientRecord.receiving_company)
-        .order_by(desc(func.count()))
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
     )
     company_breakdown = [
         {"company": r[0], "count": r[1], "premium": float(r[2]), "accumulation": float(r[3])}

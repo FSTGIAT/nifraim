@@ -194,7 +194,7 @@ const companyChartOptions = computed(() => ({
   plotOptions: {
     bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: true },
   },
-  dataLabels: { enabled: true, formatter: v => v.toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif' } },
+  dataLabels: { enabled: true, formatter: v => '₪' + v.toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif' } },
   xaxis: {
     categories: props.analytics.company_breakdown.map(c => c.company),
     labels: { show: false },
@@ -203,14 +203,14 @@ const companyChartOptions = computed(() => ({
   colors: props.analytics.company_breakdown.map(c => getCompanyColor(c.company)),
   legend: { show: false },
   tooltip: {
-    y: { formatter: v => v.toLocaleString() + ' רשומות' },
+    y: { formatter: v => '₪' + v.toLocaleString() },
   },
   grid: { borderColor: 'var(--border-subtle)', xaxis: { lines: { show: false } } },
 }))
 
 const companyChartSeries = computed(() => [{
-  name: 'רשומות',
-  data: props.analytics.company_breakdown.map(c => c.count),
+  name: 'צבירה',
+  data: props.analytics.company_breakdown.map(c => c.accumulation),
 }])
 
 // Product type bar — teal gradient
