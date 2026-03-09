@@ -87,13 +87,31 @@
 
       <!-- Donut Chart -->
       <div class="chart-card">
+        <div class="chart-title-row">
+          <span class="chart-title">התפלגות שינויים</span>
+          <span class="chart-subtitle">לחץ על פרוסה לצפייה בפרטים</span>
+        </div>
         <apexchart
           type="donut"
-          height="320"
+          height="400"
           :options="chartOptions"
           :series="chartSeries"
           @dataPointSelection="onChartClick"
         />
+        <!-- Custom legend -->
+        <div class="chart-legend">
+          <div
+            v-for="(cat, i) in CATEGORIES"
+            :key="cat.key"
+            class="legend-item"
+            :class="{ clickable: cat.key !== 'unchanged' }"
+            @click="cat.key !== 'unchanged' && openCategory(cat.key)"
+          >
+            <span class="legend-dot" :style="{ background: cat.color }"></span>
+            <span class="legend-label">{{ cat.label }}</span>
+            <span class="legend-value ltr-number">{{ chartSeries[i]?.toLocaleString() || 0 }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -273,16 +291,18 @@ const chartOptions = computed(() => ({
   colors: CATEGORIES.map(c => c.color),
   chart: {
     fontFamily: 'Heebo, sans-serif',
-    animations: { enabled: true, easing: 'easeinout', speed: 600 },
+    animations: { enabled: true, easing: 'easeinout', speed: 800 },
+    dropShadow: { enabled: true, top: 4, left: 0, blur: 12, opacity: 0.08 },
   },
   plotOptions: {
     pie: {
+      expandOnClick: true,
       donut: {
-        size: '62%',
+        size: '58%',
         labels: {
           show: true,
-          name: { fontSize: '14px', fontWeight: 700 },
-          value: { fontSize: '22px', fontWeight: 800, formatter: (val) => Number(val).toLocaleString() },
+          name: { fontSize: '15px', fontWeight: 700, offsetY: -4 },
+          value: { fontSize: '26px', fontWeight: 800, offsetY: 4, formatter: (val) => Number(val).toLocaleString() },
           total: {
             show: true,
             label: 'סה"כ לקוחות',
@@ -295,15 +315,16 @@ const chartOptions = computed(() => ({
       }
     }
   },
-  dataLabels: { enabled: false },
-  legend: {
-    position: 'bottom',
-    fontSize: '13px',
-    fontWeight: 600,
-    markers: { size: 8, shape: 'circle', offsetX: 4 },
-    itemMargin: { horizontal: 12, vertical: 4 },
+  dataLabels: {
+    enabled: true,
+    formatter: (val) => val > 3 ? val.toFixed(0) + '%' : '',
+    style: { fontSize: '12px', fontWeight: 700, colors: ['#fff'] },
+    dropShadow: { enabled: true, top: 1, left: 0, blur: 2, opacity: 0.3 },
   },
-  stroke: { width: 2, colors: ['#fff'] },
+  legend: {
+    show: false,
+  },
+  stroke: { width: 3, colors: ['#fff'] },
   tooltip: {
     y: { formatter: (val) => val.toLocaleString() + ' לקוחות' }
   },
@@ -595,7 +616,78 @@ function formatVal(val) {
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 16px);
-  padding: 24px 16px 8px;
+  padding: 28px 24px 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chart-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.chart-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chart-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Custom legend */
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 0 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s;
+}
+
+.legend-item.clickable {
+  cursor: pointer;
+}
+
+.legend-item.clickable:hover {
+  border-color: var(--border);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.legend-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
 }
 
 /* ===== Filter Modal ===== */
