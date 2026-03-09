@@ -274,11 +274,6 @@ const chartOptions = computed(() => ({
   chart: {
     fontFamily: 'Heebo, sans-serif',
     animations: { enabled: true, easing: 'easeinout', speed: 600 },
-    events: {
-      dataPointSelection: (_e, _chart, config) => {
-        onChartClick(_e, _chart, config)
-      }
-    }
   },
   plotOptions: {
     pie: {
