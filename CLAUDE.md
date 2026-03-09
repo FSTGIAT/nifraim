@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# InsureFlow — Insurance Reconciliation Dashboard
+# Nifraim — Insurance Reconciliation Dashboard
 
 Read `.xlsx` files, parse Hebrew columns, reconcile production vs. commission records, and present insights through a Hebrew RTL interface. Before writing code, plan the architecture and document it in `.claude/plans/`.
 
@@ -98,7 +98,16 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
             └── <main>
                  ├── ProductionTab
                  │    ├── ProductionUploader   (drag-drop upload)
-                 │    └── ProductionFileInfo   (file metadata)
+                 │    ├── ProductionDashboard  (KPIs, analytics charts)
+                 │    └── ProductionComparison (file comparison)
+                 │         ├── Summary KPI strip (new/removed/changed/unchanged)
+                 │         ├── Main donut chart (התפלגות שינויים)
+                 │         ├── Company breakdown donuts (חדשים/הוסרו לפי חברה)
+                 │         ├── Changed insights section (שונו — תובנות)
+                 │         │    ├── KPI cards (premium/accumulation diffs + type counts)
+                 │         │    ├── Change type donut (שונו לפי סוג שינוי)
+                 │         │    └── Top changers bar chart (גדולי השינויים)
+                 │         └── FilterModal + detail view (z-index: 1010)
                  ├── ComparisonTab
                  │    ├── CommissionUploader   (drag-drop multi-file)
                  │    └── ComparisonDashboard  (charts + filter modal)
@@ -110,10 +119,19 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
                  │              └── ComparisonDetail (expandable row)
                  ├── RecruitsTab
                  │    ├── RecruitForm
-                 │    └── RecruitComparisonResults
+                 │    ├── RecruitComparisonResults
+                 │    └── PortalLinksManager (collapsible)
+                 │         └── PortalGenerateModal
                  ├── CommissionRatesTab
                  │    └── CommissionRateTable
                  └── CompanyEmailsTab  (self-contained CRUD)
+
+  └── CustomerPortalView          ← public /portal/:token
+       ├── PortalPasswordForm     ← password entry
+       └── PortalDashboard        ← after auth
+            ├── PortalKPIStrip
+            ├── PortalCompanyChart (ApexCharts donut)
+            └── PortalProductTable (sortable)
 ```
 
 ### Routing & Auth
@@ -124,16 +142,16 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 /         → WorkspaceView (requiresAuth)
 /dashboard → DashboardView (requiresAuth)
 /analytics → AnalyticsView (requiresAuth)
+/portal/:token → CustomerPortalView (public, no auth)
 ```
 
 - `router/index.js` uses `beforeEach` guard checking `localStorage.getItem('token')`
 - Unauthenticated users redirect to `/login`; authenticated users redirect away from login/register
 
-### API Client (`api/client.js`)
+### API Client (`api/client.js`) + Portal Client (`api/portalClient.js`)
 
-- Axios instance with `baseURL: '/api'` (Vite proxy to backend:8000)
-- **Request interceptor:** adds `Authorization: Bearer ${token}` from localStorage
-- **Response interceptor:** on 401 → remove token + redirect to `/login`
+- `client.js`: Axios with `baseURL: '/api'`, Bearer token from localStorage, 401 → redirect to /login
+- `portalClient.js`: Separate axios for portal, Bearer token from **sessionStorage**, no 401 redirect
 - All API calls go through Pinia stores, never from components directly
 
 ### Pinia Stores — State Management
@@ -147,6 +165,7 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 | `useRecordsStore` | `records[]`, `summary`, `pagination`, `filters` | `/records`, `/records/summary`, `/records/client/{id}` | Tightly coupled filter/pagination state |
 | `useRecruitsStore` | `recruits[]`, `comparisonResult` | `/recruits`, `/recruits/bulk`, `/recruits/compare` | Full CRUD with optimistic local updates |
 | `useAnalyticsStore` | `data` | `/records/analytics` | Read-only data loader |
+| `usePortalStore` | `links[]`, `dashboardData`, `authenticated` | `/portal/*` | Agent-side link CRUD + customer-side portal access |
 
 ### Component Communication
 
@@ -276,6 +295,52 @@ ComparisonTab receives result
   → ComparisonTable: sortable customer list with expandable details
      → Expand row → ComparisonDetail (side-by-side products)
 ```
+
+### 4. Production Comparison (file-to-file diff)
+```
+User uploads new production file (replaces old)
+  → POST /api/production/compare { current_upload_id, previous_upload_id }
+  → Groups records by id_number, diffs premium/accumulation/products_count
+  → Returns { summary, new_clients[], removed_clients[], changed_clients[] }
+
+ProductionComparison.vue displays:
+  1. Summary KPI strip (new/removed/changed/unchanged counts)
+  2. Main donut (התפלגות שינויים) — click slice → filter modal
+  3. Company breakdown donuts (חדשים/הוסרו לפי חברה)
+  4. Changed insights section (שונו — תובנות):
+     - KPI cards: total premium/accumulation diffs + counts by change type
+     - Donut: change type distribution (פרמיה/צבירה/מוצרים)
+     - Horizontal bar: top 10 changers with premium/accumulation toggle
+  5. All charts drill into shared FilterModal → detail view
+
+changed_clients[] structure per client:
+  { id_number, name, company, premium_diff, accumulation_diff,
+    changes: [{ field: "פרמיה"|"צבירה"|"מוצרים", old_val, new_val }] }
+```
+
+### 5. Customer Portal (Shareable Link)
+```
+Agent generates portal link (POST /api/portal/generate)
+  → token_urlsafe(48), bcrypt password, 30-day expiry
+  → Agent shares URL + password via WhatsApp/email
+
+Customer opens /portal/:token
+  → PortalPasswordForm → POST /api/portal/{token}/access (PUBLIC)
+  → Verify: active + not expired + rate limit (5 fails/15min) + bcrypt
+  → Returns portal JWT (4h, type:"portal", sessionStorage)
+
+Authenticated customer → GET /api/portal/{token}/dashboard
+  → Query ClientRecord WHERE user_id (agent) + id_number + active production
+  → Returns: products[], KPIs (premium/accumulation/count), company_breakdown[]
+
+Agent manages links in RecruitsTab → PortalLinksManager (collapsible section)
+  → Generate modal: auto-fill name+email from production records
+  → Copy URL, send email (SMTP), revoke per link
+```
+
+**Security**: Portal JWTs have `type: "portal"` — rejected by `decode_token()` (agent auth). Rate limiting stored in DB (`failed_attempts`, `last_failed_at`). Data doubly scoped: agent's `user_id` + customer's `id_number`.
+
+**Key files**: `models/portal_link.py`, `services/portal_service.py`, `api/portal.py`, `CustomerPortalView.vue`, `stores/portal.js`, `components/portal/*`, `components/workspace/PortalLinksManager.vue`
 
 ---
 
