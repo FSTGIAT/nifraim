@@ -21,7 +21,7 @@
     <!-- KPI Strip -->
     <PortalKPIStrip :kpi="data.kpi" />
 
-    <!-- Company Chart -->
+    <!-- Company Chart + Products -->
     <div class="section-grid">
       <PortalCompanyChart :breakdown="data.company_breakdown" />
       <PortalProductTable :products="data.products" />
