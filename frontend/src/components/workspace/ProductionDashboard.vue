@@ -84,38 +84,8 @@
       </div>
     </div>
 
-    <!-- Charts Row -->
-    <div class="charts-row">
-      <!-- Company Breakdown -->
-      <div class="chart-card" v-if="analytics.company_breakdown.length">
-        <div class="chart-header">
-          <h3>התפלגות לפי חברה</h3>
-        </div>
-        <apexchart
-          type="bar"
-          :height="companyChartHeight"
-          :options="companyChartOptions"
-          :series="companyChartSeries"
-        />
-      </div>
-
-      <!-- Product Type Bar -->
-      <div class="chart-card" v-if="analytics.product_type_breakdown.length">
-        <div class="chart-header">
-          <h3>התפלגות לפי סוג מוצר</h3>
-        </div>
-        <apexchart
-          type="bar"
-          :height="productChartHeight"
-          :options="productBarOptions"
-          :series="productBarSeries"
-        />
-      </div>
-    </div>
-
-    <!-- Bottom Row: Status + Top Clients -->
-    <div class="charts-row-bottom">
-      <!-- Status Donut -->
+    <!-- Row 1: Status Donut + Company Breakdown -->
+    <div class="charts-row-top">
       <div class="chart-card" v-if="analytics.status_breakdown.length">
         <div class="chart-header">
           <h3>סטטוס מוצרים</h3>
@@ -128,22 +98,47 @@
         />
       </div>
 
-      <!-- Top Clients -->
-      <div class="chart-card" v-if="topClientsData.length">
+      <div class="chart-card" v-if="analytics.company_breakdown.length">
         <div class="chart-header">
-          <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
-          <div class="chart-actions">
-            <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
-            <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
-          </div>
+          <h3>התפלגות לפי חברה</h3>
         </div>
         <apexchart
           type="bar"
-          :height="320"
-          :options="topClientsChartOptions"
-          :series="topClientsChartSeries"
+          :height="companyChartHeight"
+          :options="companyChartOptions"
+          :series="companyChartSeries"
         />
       </div>
+    </div>
+
+    <!-- Row 2: Product Type (full width) -->
+    <div class="chart-card" v-if="analytics.product_type_breakdown.length">
+      <div class="chart-header">
+        <h3>התפלגות לפי סוג מוצר</h3>
+      </div>
+      <apexchart
+        type="bar"
+        :height="productChartHeight"
+        :options="productBarOptions"
+        :series="productBarSeries"
+      />
+    </div>
+
+    <!-- Row 3: Top Clients (full width) -->
+    <div class="chart-card" v-if="topClientsData.length">
+      <div class="chart-header">
+        <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
+        <div class="chart-actions">
+          <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
+          <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
+        </div>
+      </div>
+      <apexchart
+        type="bar"
+        :height="320"
+        :options="topClientsChartOptions"
+        :series="topClientsChartSeries"
+      />
     </div>
   </div>
 </template>
@@ -174,19 +169,47 @@ const activePercent = computed(() => {
   return Math.round((active.count / total) * 100)
 })
 
-// Company chart
-const companyChartHeight = computed(() => Math.max(250, props.analytics.company_breakdown.length * 40))
+// Insurance company brand colors
+const companyColors = {
+  'אקסלנס': '#1a3b6b',
+  'הפניקס': '#f57c00',
+  'מנורה': '#00897b',
+  'הכשרה': '#c62828',
+  'מור': '#0277bd',
+  'אלטשולר': '#1a237e',
+  'כלל': '#6a1b9a',
+  'הראל': '#2e7d32',
+  'מגדל': '#d32f2f',
+  'איילון': '#00838f',
+  'פסגות': '#4527a0',
+  'אנליסט': '#37474f',
+  'ילין לפידות': '#00695c',
+  'מיטב': '#0d47a1',
+}
+
+function getCompanyColor(name) {
+  for (const [key, color] of Object.entries(companyColors)) {
+    if (name.includes(key)) return color
+  }
+  return '#546e7a'
+}
+
+// Company chart — each bar gets its brand color
+const companyChartHeight = computed(() => Math.max(250, props.analytics.company_breakdown.length * 45))
 
 const companyChartOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '60%' } },
+  plotOptions: {
+    bar: { horizontal: true, borderRadius: 6, barHeight: '60%', distributed: true },
+  },
   dataLabels: { enabled: false },
   xaxis: {
     categories: props.analytics.company_breakdown.map(c => c.company),
     labels: { style: { fontFamily: 'Heebo, sans-serif' } },
   },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif' } } },
-  colors: ['#4f6bed'],
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '12px' } } },
+  colors: props.analytics.company_breakdown.map(c => getCompanyColor(c.company)),
+  legend: { show: false },
   tooltip: {
     y: { formatter: v => v.toLocaleString() + ' רשומות' },
   },
@@ -198,19 +221,23 @@ const companyChartSeries = computed(() => [{
   data: props.analytics.company_breakdown.map(c => c.count),
 }])
 
-// Product type bar
-const productChartHeight = computed(() => Math.max(250, props.analytics.product_type_breakdown.length * 40))
+// Product type bar — teal gradient
+const productChartHeight = computed(() => Math.max(280, props.analytics.product_type_breakdown.length * 38))
 
 const productBarOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '60%' } },
+  plotOptions: { bar: { horizontal: true, borderRadius: 5, barHeight: '55%' } },
   dataLabels: { enabled: false },
   xaxis: {
     categories: props.analytics.product_type_breakdown.map(p => p.product_type),
     labels: { style: { fontFamily: 'Heebo, sans-serif' } },
   },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
-  colors: ['#7f56d9'],
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' }, maxWidth: 200 } },
+  colors: ['#0891b2'],
+  fill: {
+    type: 'gradient',
+    gradient: { shade: 'light', type: 'horizontal', shadeIntensity: 0.15, opacityFrom: 0.9, opacityTo: 1 },
+  },
   tooltip: {
     y: { formatter: v => v.toLocaleString() + ' רשומות' },
   },
@@ -229,8 +256,11 @@ const statusDonutOptions = computed(() => ({
   chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
   labels: props.analytics.status_breakdown.map(s => s.status),
   colors: props.analytics.status_breakdown.map(s => statusColors[s.status] || '#94a3b8'),
-  legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '12px' },
+  legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '13px' },
   dataLabels: { enabled: true, formatter: (val) => Math.round(val) + '%' },
+  plotOptions: {
+    pie: { donut: { size: '60%' } },
+  },
 }))
 
 const statusDonutSeries = computed(() =>
@@ -333,14 +363,15 @@ const topClientsChartSeries = computed(() => [{
 }
 
 /* Charts */
-.charts-row {
+.charts-row-top {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 2fr;
   gap: 16px;
+  align-items: start;
 }
 
 @media (max-width: 800px) {
-  .charts-row { grid-template-columns: 1fr; }
+  .charts-row-top { grid-template-columns: 1fr; }
 }
 
 .chart-card {
@@ -348,16 +379,6 @@ const topClientsChartSeries = computed(() => [{
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 20px;
-}
-
-.charts-row-bottom {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 16px;
-}
-
-@media (max-width: 800px) {
-  .charts-row-bottom { grid-template-columns: 1fr; }
 }
 
 .chart-header {
