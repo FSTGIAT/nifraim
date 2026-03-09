@@ -386,11 +386,10 @@ const topClientsData = computed(() => {
     let value = 0
     let productCount = 0
     if (isGemel.value) {
-      // Gemel: sum accumulation from all sources
-      const prodAccum = (c.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
+      // Gemel: sum accumulation only from company-specific data (matched + commission)
       const matchAccum = (c.product_matches?.matched || []).reduce((s, p) => s + (p.balance || p.accumulation || 0), 0)
       const commAccum = (c.product_matches?.unmatched_commission || []).reduce((s, p) => s + (p.balance || 0), 0)
-      value = prodAccum || (matchAccum + commAccum)
+      value = matchAccum + commAccum
       productCount = (c.production_products || []).length + (c.commission_products || []).length
     } else {
       // Insurance: total premium
