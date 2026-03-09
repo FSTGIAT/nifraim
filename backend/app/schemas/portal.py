@@ -57,6 +57,7 @@ class PortalKPI(BaseModel):
 class PortalCompanyBreakdown(BaseModel):
     company: str
     premium: float
+    accumulation: float
     count: int
 
 

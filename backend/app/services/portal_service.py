@@ -144,13 +144,14 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
     total_accumulation = sum(float(r.accumulation or 0) for r in records)
     companies = set(r.receiving_company for r in records if r.receiving_company)
 
-    # Company breakdown
+    # Company breakdown (by accumulation — more meaningful than premium)
     company_map: dict[str, dict] = {}
     for r in records:
         co = r.receiving_company or "אחר"
         if co not in company_map:
-            company_map[co] = {"company": co, "premium": 0.0, "count": 0}
+            company_map[co] = {"company": co, "premium": 0.0, "accumulation": 0.0, "count": 0}
         company_map[co]["premium"] += float(r.total_premium or 0)
+        company_map[co]["accumulation"] += float(r.accumulation or 0)
         company_map[co]["count"] += 1
 
     # Customer name from first record
@@ -176,7 +177,7 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
             "total_accumulation": round(total_accumulation, 2),
             "company_count": len(companies),
         },
-        "company_breakdown": sorted(company_map.values(), key=lambda x: x["premium"], reverse=True),
+        "company_breakdown": sorted(company_map.values(), key=lambda x: x["accumulation"], reverse=True),
     }
 
 

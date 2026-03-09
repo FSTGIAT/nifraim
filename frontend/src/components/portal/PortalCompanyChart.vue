@@ -26,7 +26,7 @@ async function renderChart() {
   if (chart) chart.destroy()
 
   const labels = props.breakdown.map(b => b.company)
-  const series = props.breakdown.map(b => b.premium)
+  const series = props.breakdown.map(b => b.accumulation || b.premium)
 
   chart = new ApexCharts(chartContainer.value, {
     chart: {
@@ -57,7 +57,7 @@ async function renderChart() {
             show: true,
             total: {
               show: true,
-              label: 'סה"כ פרמיה',
+              label: 'סה"כ צבירה',
               fontSize: '12px',
               color: '#706E6B',
               formatter: (w) => {
