@@ -30,8 +30,11 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
     url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
   }
 
+  // mailto: has a ~2000 char OS limit; Gmail/Outlook web URLs can handle much more
+  const maxLen = provider === 'mailto' ? 1800 : 32000
+
   // If URL is too long, open compose without body and copy body to clipboard
-  if (url.length > 1800) {
+  if (url.length > maxLen) {
     let shortUrl
     if (provider === 'gmail') {
       const params = new URLSearchParams()
