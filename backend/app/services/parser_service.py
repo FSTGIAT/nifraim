@@ -161,12 +161,14 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
 
     # Try to detect named sheets for production files
     # Read ALL relevant sheets (מוצרי ביטוח + מוצרי חיסכון) and concatenate
+    # מסלולי השקעה is read separately and merged by (id_number, fund_policy_number)
     df = None
+    track_lookup = {}  # (id_number, fund_policy_number) → track name
     if ext == "xlsx":
         xls = pd.ExcelFile(buf, engine=engine)
         # Strip whitespace from sheet names for matching
         sheet_name_map = {s.strip(): s for s in xls.sheet_names}
-        production_sheets = ["מוצרי ביטוח", "מוצרי חיסכון", "מסלולי השקעה"]
+        production_sheets = ["מוצרי ביטוח", "מוצרי חיסכון"]
         found_sheets = [sheet_name_map[s] for s in production_sheets if s in sheet_name_map]
         if found_sheets:
             dfs = []
@@ -174,6 +176,27 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                 sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
                 dfs.append(sheet_df)
             df = pd.concat(dfs, ignore_index=True)
+            # Build track lookup from מסלולי השקעה sheet
+            track_sheet_key = "מסלולי השקעה"
+            if track_sheet_key in sheet_name_map:
+                track_df = pd.read_excel(xls, sheet_name=sheet_name_map[track_sheet_key])
+                track_df.columns = [str(c).strip() for c in track_df.columns]
+                id_col = next((c for c in track_df.columns if c in ("מספר ת.ז", "ת.ז", "ת.ז.")), None)
+                acct_col = next((c for c in track_df.columns if c in ("מס' חשבון/פוליסה", "מספר חשבון/פוליסה")), None)
+                track_col = next((c for c in track_df.columns if c in ("שם מסלול",)), None)
+                if id_col and acct_col and track_col:
+                    for _, trow in track_df.iterrows():
+                        tid = trow.get(id_col)
+                        tacct = trow.get(acct_col)
+                        tname = trow.get(track_col)
+                        if pd.notna(tid) and pd.notna(tacct) and pd.notna(tname):
+                            tid_str = str(tid).strip()
+                            if tid_str.endswith(".0"):
+                                tid_str = tid_str[:-2]
+                            tacct_str = str(tacct).strip()
+                            if tacct_str.endswith(".0"):
+                                tacct_str = tacct_str[:-2]
+                            track_lookup[(tid_str, tacct_str)] = str(tname).strip()
         else:
             # Use openpyxl read_only mode to find actual row count first,
             # avoiding loading 1M+ empty rows into memory
@@ -230,7 +253,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
     elif file_format == "company_report":
         return _parse_company_report(df)
     elif file_format == "production":
-        return _parse_production(df)
+        return _parse_production(df, track_lookup=track_lookup)
     elif file_format == "nifraim":
         return _parse_nifraim(df)
     elif file_format == "hachshara_nifraim":
@@ -376,7 +399,7 @@ def _parse_company_report(df: pd.DataFrame) -> dict:
     }
 
 
-def _parse_production(df: pd.DataFrame) -> dict:
+def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None) -> dict:
     """Parse production file (קובץ פרודוקציה)."""
     records = []
 
@@ -399,6 +422,15 @@ def _parse_production(df: pd.DataFrame) -> dict:
             if id_str.endswith(".0"):
                 id_str = id_str[:-2]
             record["id_number"] = id_str
+
+        # Merge track from מסלולי השקעה lookup
+        if track_lookup and record.get("id_number") and record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"]).strip()
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            track_val = track_lookup.get((record["id_number"], fpn))
+            if track_val:
+                record["track"] = track_val
 
         # Map product_status to is_active
         ps = record.get("product_status", "")
