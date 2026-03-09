@@ -32,7 +32,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-green">
+      <div class="kpi-card kpi-green" :title="'₪' + Math.round(analytics.total_premium).toLocaleString()">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="1" x2="12" y2="23"/>
@@ -45,7 +45,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-amber">
+      <div class="kpi-card kpi-amber" :title="'₪' + Math.round(analytics.total_accumulation).toLocaleString()">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
@@ -156,6 +156,9 @@ const topMetric = ref('premium')
 
 function formatAmount(val) {
   if (!val || val === 0) return '₪0'
+  const abs = Math.abs(val)
+  if (abs >= 1_000_000) return '₪' + (val / 1_000_000).toFixed(1) + 'M'
+  if (abs >= 10_000) return '₪' + Math.round(val / 1000).toLocaleString() + 'K'
   return '₪' + Math.round(val).toLocaleString()
 }
 
