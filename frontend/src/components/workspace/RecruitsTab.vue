@@ -699,7 +699,7 @@ async function runComparison() {
   align-items: center;
   gap: 10px;
   padding: 14px 36px;
-  background: linear-gradient(135deg, var(--accent-violet), var(--primary-deep));
+  background: linear-gradient(135deg, var(--primary), var(--primary-deep));
   color: white;
   border-radius: 14px;
   font-size: 15px;
@@ -720,7 +720,7 @@ async function runComparison() {
 }
 
 .btn-compare:hover:not(:disabled) {
-  box-shadow: 0 8px 32px rgba(127, 86, 217, 0.08);
+  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.15);
   transform: translateY(-2px);
 }
 
