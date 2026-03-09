@@ -13,7 +13,7 @@
         </div>
         <div class="kpi-data">
           <div class="kpi-value ltr-number">{{ analytics.total_records.toLocaleString() }}</div>
-          <div class="kpi-label">רשומות</div>
+          <div class="kpi-label">מוצרים</div>
         </div>
       </div>
 
