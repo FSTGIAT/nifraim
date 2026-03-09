@@ -16,24 +16,30 @@
     <div class="portal-content">
       <!-- Password Form -->
       <PortalPasswordForm
-        v-if="!portalStore.authenticated"
+        v-if="state === 'login'"
         :token="token"
-        :loading="loading"
+        :loading="loggingIn"
         :error="portalStore.error"
         @submit="onLogin"
       />
 
+      <!-- Loading dashboard data -->
+      <div v-else-if="state === 'loading'" class="portal-loading">
+        <div class="spinner"></div>
+        <p>טוען נתונים...</p>
+      </div>
+
       <!-- Dashboard -->
       <PortalDashboard
-        v-else-if="portalStore.dashboardData"
+        v-else-if="state === 'dashboard'"
         :data="portalStore.dashboardData"
         @logout="onLogout"
       />
 
-      <!-- Loading dashboard data -->
-      <div v-else-if="loading" class="portal-loading">
-        <div class="spinner"></div>
-        <p>טוען נתונים...</p>
+      <!-- Error state -->
+      <div v-else-if="state === 'error'" class="portal-error">
+        <p>{{ portalStore.error || 'שגיאה בטעינת הנתונים' }}</p>
+        <button @click="state = 'login'; portalStore.logout()">נסה שוב</button>
       </div>
     </div>
   </div>
@@ -49,21 +55,32 @@ import PortalDashboard from '../components/portal/PortalDashboard.vue'
 const route = useRoute()
 const portalStore = usePortalStore()
 const token = computed(() => route.params.token)
-const loading = ref(false)
 
-async function onLogin() {
-  loading.value = true
+const state = ref('login')   // login | loading | dashboard | error
+const loggingIn = ref(false)
+
+async function onLogin(password) {
+  loggingIn.value = true
+  portalStore.error = null
   try {
+    await portalStore.accessPortal(token.value, password)
+    // Password accepted — now fetch dashboard
+    state.value = 'loading'
     await portalStore.fetchDashboard(token.value)
+    state.value = 'dashboard'
   } catch {
-    // error shown in store
+    if (state.value === 'loading') {
+      state.value = 'error'
+    }
+    // If still on login, error is shown by the form
   } finally {
-    loading.value = false
+    loggingIn.value = false
   }
 }
 
 function onLogout() {
   portalStore.logout()
+  state.value = 'login'
 }
 </script>
 
@@ -130,5 +147,31 @@ function onLogout() {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 16px;
+}
+
+.portal-error {
+  text-align: center;
+  padding: 60px 0;
+}
+
+.portal-error p {
+  color: var(--red);
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+.portal-error button {
+  padding: 10px 24px;
+  background: var(--primary);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  transition: all 0.2s var(--transition);
+}
+
+.portal-error button:hover {
+  background: var(--primary-deep);
 }
 </style>

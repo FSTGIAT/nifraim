@@ -52,7 +52,6 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { usePortalStore } from '../../stores/portal.js'
 
 const props = defineProps({
   token: String,
@@ -61,7 +60,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['submit'])
-const portalStore = usePortalStore()
 const password = ref('')
 const showPassword = ref(false)
 const passwordInput = ref(null)
@@ -70,14 +68,9 @@ onMounted(() => {
   passwordInput.value?.focus()
 })
 
-async function onSubmit() {
+function onSubmit() {
   if (!password.value) return
-  try {
-    await portalStore.accessPortal(props.token, password.value)
-    emit('submit')
-  } catch {
-    // error shown in store
-  }
+  emit('submit', password.value)
 }
 </script>
 
