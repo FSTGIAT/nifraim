@@ -113,34 +113,37 @@
       </div>
     </div>
 
-    <!-- Status Donut -->
-    <div class="chart-card chart-narrow" v-if="analytics.status_breakdown.length">
-      <div class="chart-header">
-        <h3>סטטוס מוצרים</h3>
-      </div>
-      <apexchart
-        type="donut"
-        :height="280"
-        :options="statusDonutOptions"
-        :series="statusDonutSeries"
-      />
-    </div>
-
-    <!-- Top Clients -->
-    <div class="chart-card wide-card" v-if="topClientsData.length">
-      <div class="chart-header">
-        <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
-        <div class="chart-actions">
-          <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
-          <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
+    <!-- Bottom Row: Status + Top Clients -->
+    <div class="charts-row-bottom">
+      <!-- Status Donut -->
+      <div class="chart-card" v-if="analytics.status_breakdown.length">
+        <div class="chart-header">
+          <h3>סטטוס מוצרים</h3>
         </div>
+        <apexchart
+          type="donut"
+          :height="280"
+          :options="statusDonutOptions"
+          :series="statusDonutSeries"
+        />
       </div>
-      <apexchart
-        type="bar"
-        :height="320"
-        :options="topClientsChartOptions"
-        :series="topClientsChartSeries"
-      />
+
+      <!-- Top Clients -->
+      <div class="chart-card" v-if="topClientsData.length">
+        <div class="chart-header">
+          <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
+          <div class="chart-actions">
+            <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
+            <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
+          </div>
+        </div>
+        <apexchart
+          type="bar"
+          :height="320"
+          :options="topClientsChartOptions"
+          :series="topClientsChartSeries"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -347,12 +350,14 @@ const topClientsChartSeries = computed(() => [{
   padding: 20px;
 }
 
-.chart-narrow {
-  max-width: 420px;
+.charts-row-bottom {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
 }
 
-.wide-card {
-  width: 100%;
+@media (max-width: 800px) {
+  .charts-row-bottom { grid-template-columns: 1fr; }
 }
 
 .chart-header {
