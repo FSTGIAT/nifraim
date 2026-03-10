@@ -185,6 +185,7 @@
             <th>מוצר</th>
             <th>מוצרים בפרודוקציה</th>
             <th>פרמיה</th>
+            <th>סטטוס לקוח</th>
           </tr>
         </thead>
         <tbody>
@@ -210,6 +211,31 @@
             <td class="td-premium ltr-number">
               <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
               <template v-else>—</template>
+            </td>
+            <td class="td-customer-status" @click.stop>
+              <div v-if="!item.found_in_production" class="status-select-wrap">
+                <select
+                  class="status-select"
+                  :class="customerStatusClass(customerStatuses[item.recruit_id])"
+                  :value="customerStatuses[item.recruit_id] || ''"
+                  @change="onStatusChange(item.recruit_id, $event)"
+                >
+                  <option value="">בחר סטטוס...</option>
+                  <option value="עבר סוכן">עבר סוכן</option>
+                  <option value="משך את הכסף">משך את הכסף</option>
+                  <option value="__custom__">אחר (הקלד)...</option>
+                </select>
+                <input
+                  v-if="customInputId === item.recruit_id"
+                  class="status-custom-input"
+                  v-model="customInputVal"
+                  placeholder="הקלד סטטוס..."
+                  @keydown.enter="confirmCustomStatus(item.recruit_id)"
+                  @blur="confirmCustomStatus(item.recruit_id)"
+                  ref="customInputRef"
+                />
+              </div>
+              <span v-else class="status-found-label">בפרודוקציה</span>
             </td>
           </tr>
         </tbody>
@@ -320,6 +346,29 @@
               </svg>
               <p>לקוח זה לא נמצא בקובץ הפרודוקציה</p>
               <span>יש לוודא שהלקוח קיים במערכת או שת.ז תקין</span>
+
+              <div class="modal-status-edit" @click.stop>
+                <label class="modal-status-label">סטטוס לקוח:</label>
+                <select
+                  class="status-select"
+                  :class="customerStatusClass(customerStatuses[detailItem.recruit_id])"
+                  :value="customerStatuses[detailItem.recruit_id] || ''"
+                  @change="onStatusChange(detailItem.recruit_id, $event)"
+                >
+                  <option value="">בחר סטטוס...</option>
+                  <option value="עבר סוכן">עבר סוכן</option>
+                  <option value="משך את הכסף">משך את הכסף</option>
+                  <option value="__custom__">אחר (הקלד)...</option>
+                </select>
+                <input
+                  v-if="customInputId === detailItem.recruit_id"
+                  class="status-custom-input"
+                  v-model="customInputVal"
+                  placeholder="הקלד סטטוס..."
+                  @keydown.enter="confirmCustomStatus(detailItem.recruit_id)"
+                  @blur="confirmCustomStatus(detailItem.recruit_id)"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -353,6 +402,10 @@ const pageSize = 50
 const chartReady = ref(false)
 const detailItem = ref(null)
 const clipboardNotice = ref(false)
+const customerStatuses = ref({})
+const customInputId = ref(null)
+const customInputVal = ref('')
+const customInputRef = ref(null)
 
 onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
@@ -497,6 +550,7 @@ function downloadMissingExcel() {
     'חברה': m.company || '',
     'מוצר': m.product || '',
     'סכום': m.amount || 0,
+    'סטטוס': customerStatuses.value[m.recruit_id] || '',
   }))
 
   const ws = XLSX.utils.json_to_sheet(rows)
@@ -535,6 +589,37 @@ async function sendMissingMail() {
     clipboardNotice.value = true
     setTimeout(() => { clipboardNotice.value = false }, 4000)
   }
+}
+
+function onStatusChange(recruitId, event) {
+  const val = event.target.value
+  if (val === '__custom__') {
+    customInputId.value = recruitId
+    customInputVal.value = ''
+    nextTick(() => {
+      const inputs = document.querySelectorAll('.status-custom-input')
+      const last = inputs[inputs.length - 1]
+      if (last) last.focus()
+    })
+  } else {
+    customerStatuses.value[recruitId] = val
+    customInputId.value = null
+  }
+}
+
+function confirmCustomStatus(recruitId) {
+  if (customInputVal.value.trim()) {
+    customerStatuses.value[recruitId] = customInputVal.value.trim()
+  }
+  customInputId.value = null
+  customInputVal.value = ''
+}
+
+function customerStatusClass(status) {
+  if (!status) return ''
+  if (status === 'עבר סוכן') return 'cs-moved'
+  if (status === 'משך את הכסף') return 'cs-withdrew'
+  return 'cs-custom'
 }
 
 function fmtNum(val) {
@@ -1270,5 +1355,107 @@ const chartOptions = computed(() => ({
   .kpi-row { width: 100%; }
   .seg-filter { width: 100%; display: flex; }
   .seg-filter button { flex: 1; }
+}
+
+/* ── Customer Status Column ── */
+.td-customer-status {
+  min-width: 140px;
+}
+
+.status-select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 10px center;
+  padding-left: 28px;
+}
+
+.status-select:hover {
+  border-color: var(--primary);
+}
+
+.status-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+  outline: none;
+}
+
+.status-select.cs-moved {
+  background-color: rgba(232, 114, 10, 0.08);
+  border-color: rgba(232, 114, 10, 0.3);
+  color: #E8720A;
+}
+
+.status-select.cs-withdrew {
+  background-color: rgba(239, 83, 80, 0.08);
+  border-color: rgba(239, 83, 80, 0.3);
+  color: #ef5350;
+}
+
+.status-select.cs-custom {
+  background-color: rgba(1, 118, 211, 0.08);
+  border-color: rgba(1, 118, 211, 0.3);
+  color: #0176D3;
+}
+
+.status-custom-input {
+  padding: 6px 10px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+}
+
+.status-found-label {
+  font-size: 12px;
+  color: #2E844A;
+  font-weight: 600;
+}
+
+.modal-status-edit {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.modal-status-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.modal-status-edit .status-select {
+  width: 220px;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.modal-status-edit .status-custom-input {
+  width: 220px;
+  font-size: 13px;
+  padding: 8px 12px;
 }
 </style>
