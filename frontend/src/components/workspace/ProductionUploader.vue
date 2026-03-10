@@ -1,127 +1,136 @@
 <template>
   <div class="production-uploader">
-    <div
-      data-tour="production-uploader"
-      class="drop-zone"
-      :class="{ dragging: isDragging, uploading: productionStore.uploading, 'has-file': hasFiles }"
-      @dragover.prevent="handleDragOver"
-      @dragleave="handleDragLeave"
-      @drop.prevent="handleDrop"
-      @click="openFilePicker"
-    >
-      <div v-if="productionStore.uploading" class="upload-progress">
-        <div class="progress-top">
-          <div class="loader">
-            <div class="loader-ring"></div>
-            <div class="loader-ring delay"></div>
-          </div>
-          <span class="progress-text">{{ uploadStageLabel }}</span>
-          <span class="progress-hint">{{ uploadStageHint }}</span>
-        </div>
-
-        <!-- Progress bar -->
-        <div class="progress-bar-track">
-          <div class="progress-bar-fill" :style="{ width: progressBarWidth }"></div>
-          <div class="progress-bar-glow" :style="{ width: progressBarWidth }"></div>
-        </div>
-
-        <!-- Upload steps -->
-        <div class="upload-steps">
-          <div class="upload-step" :class="{ active: uploadStage >= 1, done: uploadStage > 1 }">
-            <div class="step-icon">
-              <svg v-if="uploadStage > 1" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span v-else class="ltr-number">1</span>
-            </div>
-            <span>העלאת קובץ</span>
-          </div>
-          <div class="step-line" :class="{ filled: uploadStage > 1 }"></div>
-          <div class="upload-step" :class="{ active: uploadStage >= 2, done: uploadStage > 2 }">
-            <div class="step-icon">
-              <svg v-if="uploadStage > 2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span v-else class="ltr-number">2</span>
-            </div>
-            <span>ניתוח עמודות</span>
-          </div>
-          <div class="step-line" :class="{ filled: uploadStage > 2 }"></div>
-          <div class="upload-step" :class="{ active: uploadStage >= 3 }">
-            <div class="step-icon">
-              <span class="ltr-number">3</span>
-            </div>
-            <span>שמירת נתונים</span>
-          </div>
-        </div>
-
-        <span v-if="uploadPercent > 0 && uploadStage === 1" class="progress-percent ltr-number">{{ uploadPercent }}%</span>
-        <span v-if="uploadStage >= 2" class="progress-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
-      </div>
-      <div v-else class="upload-prompt">
-        <div class="icon-container">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-        </div>
-        <h3>העלאת קובץ פרודוקציה</h3>
-        <p>גרור קובץ Excel לכאן או לחץ לבחירה</p>
-        <div class="format-badges">
-          <span class="format-badge">.xlsx</span>
-          <span class="format-badge">.xls</span>
-        </div>
-      </div>
-      <div class="drop-zone-glow"></div>
-    </div>
-    <input
-      ref="fileInputRef"
-      type="file"
-      accept=".xlsx,.xls"
-      @change="handleFileInputChange"
-      style="display: none"
-    />
-
-    <!-- File card preview -->
-    <Transition name="slide-down">
-      <div v-if="hasFiles && !productionStore.uploading" class="file-card-list">
-        <div class="file-card">
-          <div class="file-card-icon" :class="fileDetails[0].extension">
-            <span class="file-ext-label ltr-number">.{{ fileDetails[0].extension }}</span>
-          </div>
-          <div class="file-card-info">
-            <span class="file-card-name">{{ fileDetails[0].name }}</span>
-            <span class="file-card-size ltr-number">{{ fileDetails[0].size }}</span>
-          </div>
-          <button class="file-card-remove" @click.stop="clearFiles" title="הסר">&times;</button>
-        </div>
-        <button class="upload-btn" @click.stop="uploadFile">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          העלה קובץ
-        </button>
-      </div>
-    </Transition>
-
-    <div class="options-row">
-      <label class="toggle-label">
-        <div class="toggle" :class="{ on: needPassword }">
-          <input type="checkbox" v-model="needPassword" />
-          <div class="toggle-track"><div class="toggle-thumb"></div></div>
-        </div>
-        <span>קובץ מוצפן</span>
-      </label>
+    <!-- Animated orange wave background -->
+    <div class="wave-bg">
+      <svg class="wave wave-1" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <path d="M0,160L48,170.7C96,181,192,203,288,197.3C384,192,480,160,576,149.3C672,139,768,149,864,170.7C960,192,1056,224,1152,218.7C1248,213,1344,171,1392,149.3L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      </svg>
+      <svg class="wave wave-2" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <path d="M0,224L48,213.3C96,203,192,181,288,186.7C384,192,480,224,576,234.7C672,245,768,235,864,213.3C960,192,1056,160,1152,165.3C1248,171,1344,213,1392,234.7L1440,256L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      </svg>
+      <svg class="wave wave-3" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <path d="M0,288L48,272C96,256,192,224,288,218.7C384,213,480,235,576,245.3C672,256,768,256,864,240C960,224,1056,192,1152,186.7C1248,181,1344,203,1392,213.3L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      </svg>
     </div>
 
-    <Transition name="slide-down">
-      <div class="password-field" v-if="needPassword">
-        <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
-      </div>
-    </Transition>
+    <!-- Content -->
+    <div class="uploader-content">
+      <div
+        data-tour="production-uploader"
+        class="drop-zone"
+        :class="{ dragging: isDragging, uploading: productionStore.uploading, 'has-file': hasFiles }"
+        @dragover.prevent="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop.prevent="handleDrop"
+        @click="openFilePicker"
+      >
+        <div v-if="productionStore.uploading" class="upload-progress">
+          <div class="progress-top">
+            <div class="loader">
+              <div class="loader-ring"></div>
+              <div class="loader-ring delay"></div>
+            </div>
+            <span class="progress-text">{{ uploadStageLabel }}</span>
+            <span class="progress-hint">{{ uploadStageHint }}</span>
+          </div>
 
-    <Transition name="fade">
-      <p class="error-msg" v-if="error">{{ error }}</p>
-    </Transition>
+          <!-- Progress bar -->
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" :style="{ width: progressBarWidth }"></div>
+          </div>
+
+          <!-- Upload steps -->
+          <div class="upload-steps">
+            <div class="upload-step" :class="{ active: uploadStage >= 1, done: uploadStage > 1 }">
+              <div class="step-icon">
+                <svg v-if="uploadStage > 1" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span v-else class="ltr-number">1</span>
+              </div>
+              <span>העלאת קובץ</span>
+            </div>
+            <div class="step-line" :class="{ filled: uploadStage > 1 }"></div>
+            <div class="upload-step" :class="{ active: uploadStage >= 2, done: uploadStage > 2 }">
+              <div class="step-icon">
+                <svg v-if="uploadStage > 2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span v-else class="ltr-number">2</span>
+              </div>
+              <span>ניתוח עמודות</span>
+            </div>
+            <div class="step-line" :class="{ filled: uploadStage > 2 }"></div>
+            <div class="upload-step" :class="{ active: uploadStage >= 3 }">
+              <div class="step-icon">
+                <span class="ltr-number">3</span>
+              </div>
+              <span>שמירת נתונים</span>
+            </div>
+          </div>
+
+          <span v-if="uploadPercent > 0 && uploadStage === 1" class="progress-percent ltr-number">{{ uploadPercent }}%</span>
+          <span v-if="uploadStage >= 2" class="progress-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
+        </div>
+        <div v-else class="upload-prompt">
+          <div class="icon-circle">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <h3>גרור קובץ Excel או לחץ לבחירה</h3>
+        </div>
+      </div>
+      <input
+        ref="fileInputRef"
+        type="file"
+        accept=".xlsx,.xls"
+        @change="handleFileInputChange"
+        style="display: none"
+      />
+
+      <!-- File card preview -->
+      <Transition name="slide-down">
+        <div v-if="hasFiles && !productionStore.uploading" class="file-card-list">
+          <div class="file-card">
+            <div class="file-card-icon" :class="fileDetails[0].extension">
+              <span class="file-ext-label ltr-number">.{{ fileDetails[0].extension }}</span>
+            </div>
+            <div class="file-card-info">
+              <span class="file-card-name">{{ fileDetails[0].name }}</span>
+              <span class="file-card-size ltr-number">{{ fileDetails[0].size }}</span>
+            </div>
+            <button class="file-card-remove" @click.stop="clearFiles" title="הסר">&times;</button>
+          </div>
+          <button class="upload-btn" @click.stop="uploadFile">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            העלה קובץ
+          </button>
+        </div>
+      </Transition>
+
+      <div class="options-row">
+        <label class="toggle-label">
+          <div class="toggle" :class="{ on: needPassword }">
+            <input type="checkbox" v-model="needPassword" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </div>
+          <span>קובץ מוצפן</span>
+        </label>
+      </div>
+
+      <Transition name="slide-down">
+        <div class="password-field" v-if="needPassword">
+          <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
+        </div>
+      </Transition>
+
+      <Transition name="fade">
+        <p class="error-msg" v-if="error">{{ error }}</p>
+      </Transition>
+    </div>
   </div>
 </template>
 
@@ -212,110 +221,128 @@ async function uploadFile() {
 
 <style scoped>
 .production-uploader {
-  max-width: 520px;
-  margin: 0 auto;
+  position: relative;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+/* ─── Animated waves ─── */
+.wave-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  pointer-events: none;
+}
+
+.wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  height: 140px;
+}
+
+.wave-1 {
+  fill: rgba(245, 124, 0, 0.06);
+  animation: waveSlide 12s linear infinite;
+}
+
+.wave-2 {
+  fill: rgba(245, 124, 0, 0.04);
+  animation: waveSlide 16s linear infinite reverse;
+  bottom: -8px;
+}
+
+.wave-3 {
+  fill: rgba(245, 124, 0, 0.025);
+  animation: waveSlide 20s linear infinite;
+  bottom: -16px;
+}
+
+@keyframes waveSlide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ─── Content area ─── */
+.uploader-content {
+  position: relative;
+  z-index: 1;
+  max-width: 400px;
+  width: 100%;
+}
+
+/* ─── Drop zone ─── */
 .drop-zone {
   position: relative;
-  border: 1.5px dashed var(--primary-light);
+  border: 1.5px dashed rgba(245, 124, 0, 0.25);
   border-radius: var(--radius-lg);
-  padding: 56px 32px;
+  padding: 36px 28px;
   text-align: center;
   cursor: pointer;
   transition: all 0.4s var(--transition);
-  background: var(--card-bg);
-  overflow: hidden;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
 }
 
 .drop-zone.has-file {
-  padding: 32px;
+  padding: 28px;
 }
 
-.drop-zone-glow {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 50% 50%, var(--primary-light), transparent 70%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s;
+.drop-zone:hover {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.1);
 }
 
-.drop-zone:hover .drop-zone-glow,
-.drop-zone.dragging .drop-zone-glow {
-  opacity: 1;
-}
-
-.drop-zone:hover,
 .drop-zone.dragging {
-  border-color: var(--primary-light);
-  transform: translateY(-4px);
-  box-shadow: 0 20px 60px var(--primary-light), 0 0 0 1px var(--primary-light);
+  border-color: var(--primary);
+  background: rgba(255, 243, 224, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.15), 0 0 0 3px rgba(245, 124, 0, 0.08);
 }
 
 .drop-zone.uploading {
   pointer-events: none;
-  border-color: var(--primary-light);
+  border-color: rgba(245, 124, 0, 0.2);
 }
 
-.icon-container {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 20px;
-  background: linear-gradient(135deg, var(--primary-light), rgba(34, 211, 238, 0.1));
-  border: 1px solid var(--primary-light);
-  border-radius: 20px;
+/* ─── Upload prompt (empty state) ─── */
+.icon-circle {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  background: var(--primary);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary);
+  color: #fff;
   transition: all 0.3s var(--transition);
 }
 
-.drop-zone:hover .icon-container {
-  transform: scale(1.05);
-  box-shadow: 0 8px 24px var(--primary-light);
+.drop-zone:hover .icon-circle {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(245, 124, 0, 0.3);
 }
 
 .upload-prompt h3 {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 6px;
-  letter-spacing: -0.3px;
-}
-
-.upload-prompt p {
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.format-badges {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  margin-top: 16px;
-}
-
-.format-badge {
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text-muted);
-  background: var(--border-subtle);
-  border: 1px solid var(--border-subtle);
-  font-family: monospace;
-  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  letter-spacing: -0.2px;
 }
 
-/* Loader */
+/* ─── Upload progress ─── */
 .loader {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   position: relative;
-  margin: 0 auto 16px;
+  margin: 0 auto 14px;
 }
 
 .loader-ring {
@@ -329,14 +356,12 @@ async function uploadFile() {
 
 .loader-ring.delay {
   inset: 6px;
-  border-top-color: var(--accent-cyan);
+  border-top-color: #FF9800;
   animation-duration: 1.5s;
   animation-direction: reverse;
 }
 
-.progress-top {
-  margin-bottom: 20px;
-}
+.progress-top { margin-bottom: 16px; }
 
 .progress-text {
   display: block;
@@ -351,72 +376,52 @@ async function uploadFile() {
   color: var(--text-muted);
 }
 
-/* Progress bar */
 .progress-bar-track {
   position: relative;
   width: 100%;
-  height: 6px;
+  height: 5px;
   background: var(--border-subtle);
   border-radius: 3px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--accent-cyan, var(--primary)));
+  background: linear-gradient(90deg, var(--primary), #FF9800);
   border-radius: 3px;
   transition: width 0.5s ease;
 }
 
-.progress-bar-glow {
-  position: absolute;
-  top: -2px;
-  height: 10px;
-  background: linear-gradient(90deg, transparent 80%, var(--primary));
-  border-radius: 5px;
-  filter: blur(4px);
-  opacity: 0.6;
-  transition: width 0.5s ease;
-  pointer-events: none;
-}
-
-/* Upload steps */
 .upload-steps {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .upload-step {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 5px;
+  font-size: 11px;
   color: var(--text-muted);
   opacity: 0.5;
   transition: all 0.4s ease;
 }
 
-.upload-step.active {
-  opacity: 1;
-  color: var(--primary);
-}
-
-.upload-step.done {
-  color: var(--accent-emerald, #10b981);
-}
+.upload-step.active { opacity: 1; color: var(--primary); }
+.upload-step.done { color: var(--accent-emerald, #10b981); }
 
 .step-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   background: var(--border-subtle);
   color: var(--text-muted);
@@ -427,7 +432,7 @@ async function uploadFile() {
 .upload-step.active .step-icon {
   background: var(--primary-light);
   color: var(--primary);
-  box-shadow: 0 0 12px var(--primary-light);
+  box-shadow: 0 0 10px rgba(245, 124, 0, 0.15);
   animation: stepPulse 1.5s ease-in-out infinite;
 }
 
@@ -439,76 +444,71 @@ async function uploadFile() {
 }
 
 @keyframes stepPulse {
-  0%, 100% { box-shadow: 0 0 8px var(--primary-light); }
-  50% { box-shadow: 0 0 20px var(--primary-light); }
+  0%, 100% { box-shadow: 0 0 8px rgba(245, 124, 0, 0.1); }
+  50% { box-shadow: 0 0 16px rgba(245, 124, 0, 0.2); }
 }
 
 .step-line {
-  width: 32px;
+  width: 28px;
   height: 2px;
   background: var(--border-subtle);
-  margin: 0 8px;
+  margin: 0 6px;
   transition: background 0.4s ease;
   border-radius: 1px;
 }
 
-.step-line.filled {
-  background: var(--accent-emerald, #10b981);
-}
+.step-line.filled { background: var(--accent-emerald, #10b981); }
 
 .progress-percent {
   display: block;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--primary);
   margin-top: 4px;
-  letter-spacing: -0.5px;
 }
 
 .progress-wait-hint {
   display: block;
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 8px;
+  margin-top: 6px;
   opacity: 0.7;
-  animation: fadeInUp 0.5s ease;
+  animation: fadeUp 0.5s ease;
 }
 
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(6px); }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 0.7; transform: translateY(0); }
 }
 
-/* File card */
-.file-card-list {
-  margin-top: 12px;
-}
+/* ─── File card ─── */
+.file-card-list { margin-top: 10px; }
 
 .file-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--card-bg);
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   transition: all 0.25s var(--transition);
 }
 
 .file-card:hover {
-  border-color: var(--primary-light);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-color: rgba(245, 124, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .file-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-weight: 700;
 }
 
 .file-card-icon.xlsx {
@@ -522,7 +522,7 @@ async function uploadFile() {
 }
 
 .file-ext-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   font-family: monospace;
   letter-spacing: 0.3px;
@@ -540,7 +540,7 @@ async function uploadFile() {
 }
 
 .file-card-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
   overflow: hidden;
@@ -553,17 +553,17 @@ async function uploadFile() {
 .file-card-size {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .file-card-remove {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   cursor: pointer;
-  padding: 0 6px;
+  padding: 0 4px;
   line-height: 1;
   transition: color 0.2s;
   flex-shrink: 0;
@@ -577,13 +577,13 @@ async function uploadFile() {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  margin-top: 10px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 11px;
   border: none;
   border-radius: 10px;
   background: var(--primary);
   color: #fff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -592,14 +592,14 @@ async function uploadFile() {
 
 .upload-btn:hover {
   background: var(--primary-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(245, 124, 0, 0.25);
 }
 
 .upload-btn:active { transform: translateY(0); }
 
-/* Toggle */
-.options-row { margin-top: 16px; }
+/* ─── Options ─── */
+.options-row { margin-top: 14px; }
 
 .toggle-label {
   display: flex;
@@ -638,11 +638,11 @@ async function uploadFile() {
 .toggle.on .toggle-thumb {
   right: 18px;
   background: var(--primary);
-  box-shadow: 0 0 8px var(--primary-light);
+  box-shadow: 0 0 8px rgba(245, 124, 0, 0.2);
 }
 
-/* Password */
-.password-field { margin-top: 12px; }
+/* ─── Password ─── */
+.password-field { margin-top: 10px; }
 
 .password-field input {
   width: 100%;
@@ -658,14 +658,14 @@ async function uploadFile() {
 
 .password-field input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.1);
 }
 
-/* Transitions */
+/* ─── Transitions ─── */
 .slide-down-enter-active { animation: slideDown 0.3s var(--transition); }
 .slide-down-leave-active { animation: slideDown 0.2s var(--transition) reverse; }
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -675,7 +675,7 @@ async function uploadFile() {
 .error-msg {
   color: var(--red);
   font-size: 13px;
-  margin-top: 12px;
+  margin-top: 10px;
   text-align: center;
   padding: 8px 12px;
   background: var(--red-light);
