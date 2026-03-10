@@ -313,10 +313,10 @@ async function uploadFiles(files) {
   gap: 10px;
   width: 100%;
   padding: 16px 24px;
-  border: 1.5px solid var(--border-subtle);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--card-bg);
-  color: var(--text);
+  background: var(--accent-orange);
+  color: #fff;
   font-size: 15px;
   font-weight: 700;
   font-family: inherit;
@@ -325,15 +325,14 @@ async function uploadFiles(files) {
 }
 
 .upload-btn svg {
-  color: var(--accent-emerald);
+  color: #fff;
   flex-shrink: 0;
 }
 
 .upload-btn:hover {
-  border-color: var(--accent-emerald);
-  background: var(--green-light);
+  background: var(--accent-orange-hover);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(46, 132, 74, 0.1);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.25);
 }
 
 .upload-btn:active {
