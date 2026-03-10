@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     CARDCOM_SUCCESS_URL: str = "http://localhost:5173/signup?step=success"
     CARDCOM_FAILURE_URL: str = "http://localhost:5173/signup?step=payment"
     CARDCOM_WEBHOOK_URL: str = "http://localhost:8000/api/subscription/webhook"
+    CARDCOM_CSS_URL: str = ""
 
     # 019SMS
     SMS_019_USERNAME: str = ""

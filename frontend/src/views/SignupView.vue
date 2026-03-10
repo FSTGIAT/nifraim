@@ -198,41 +198,27 @@
             </span>
           </div>
 
-          <div class="payment-methods">
-            <button class="payment-method" :class="{ active: true }" @click="processPayment" :disabled="loading || !agreedToTerms" style="animation-delay: 0ms">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-                <line x1="1" y1="10" x2="23" y2="10"/>
-              </svg>
-              <span>כרטיס אשראי</span>
+          <!-- Cardcom iframe or pre-payment state -->
+          <div v-if="paymentUrl" class="cardcom-iframe-wrap">
+            <iframe :src="paymentUrl" class="cardcom-iframe" frameborder="0" allowpaymentrequest></iframe>
+          </div>
+          <div v-else>
+            <label class="terms-checkbox">
+              <input type="checkbox" v-model="agreedToTerms" />
+              <span class="checkmark"></span>
+              <span>אני מסכים/ה לתנאי השימוש ולהוראת הקבע</span>
+            </label>
+
+            <button class="btn-next" style="margin-top: 20px" @click="processPayment" :disabled="loading || !agreedToTerms">
+              <span v-if="!loading">המשך לתשלום</span>
+              <span v-else>טוען טופס תשלום...</span>
               <span v-if="loading" class="spinner"></span>
             </button>
-            <div class="payment-method disabled" style="animation-delay: 80ms">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                <line x1="12" y1="18" x2="12.01" y2="18"/>
-              </svg>
-              <span>Bit</span>
-              <span class="coming-soon">בקרוב</span>
-            </div>
-            <div class="payment-method disabled" style="animation-delay: 160ms">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              </svg>
-              <span>PayBox</span>
-              <span class="coming-soon">בקרוב</span>
-            </div>
           </div>
-
-          <label class="terms-checkbox">
-            <input type="checkbox" v-model="agreedToTerms" />
-            <span class="checkmark"></span>
-            <span>אני מסכים/ה לתנאי השימוש ולהוראת הקבע</span>
-          </label>
 
           <p v-if="error" class="error-msg">{{ error }}</p>
           <div class="step-actions">
-            <button class="btn-back" @click="goBack(1)">
+            <button class="btn-back" @click="paymentUrl ? (paymentUrl = '') : goBack(1)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -294,6 +280,7 @@ const stepDirection = ref('step-forward')
 const loading = ref(false)
 const error = ref('')
 const agreedToTerms = ref(false)
+const paymentUrl = ref('')
 
 const step1Fields = [
   { key: 'fullName', label: 'שם מלא *', type: 'text', required: true, placeholder: 'ישראל ישראלי' },
@@ -345,7 +332,8 @@ async function processPayment() {
       company_name: form.value.companyName || null,
       plan: form.value.plan,
     })
-    window.location.href = res.data.payment_url
+    paymentUrl.value = res.data.payment_url
+    loading.value = false
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בתהליך התשלום. נסו שוב.'
     loading.value = false
@@ -1046,6 +1034,22 @@ async function processPayment() {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.35);
   font-weight: 500;
+}
+
+/* ── Cardcom iframe ── */
+.cardcom-iframe-wrap {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 16px;
+}
+
+.cardcom-iframe {
+  width: 100%;
+  min-height: 380px;
+  border: none;
+  display: block;
 }
 
 /* ── Terms checkbox ── */

@@ -51,6 +51,9 @@ async def create_payment_page(
             "CreateToken": True,
             "MaxNumOfPayments": 1,
             "Language": "he",
+            "CssUrl": settings.CARDCOM_CSS_URL,
+            "ShowCardOwnerPhone": False,
+            "ShowCardOwnerEmail": False,
             "Document": {
                 "DocTypeToCreate": 101,  # Tax Invoice + Receipt (חשבונית מס/קבלה)
                 "Name": user_name,
