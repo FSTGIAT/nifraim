@@ -32,7 +32,7 @@
           <span class="kpi-lbl">נמצאו</span>
           <span class="kpi-pct ltr-number">{{ foundPct }}%</span>
         </div>
-        <div class="kpi missing-kpi" @click="activeFilter = 'not_found'">
+        <div class="kpi missing-kpi" @click="showMissingModal = true">
           <span class="kpi-num ltr-number">{{ result.not_found }}</span>
           <span class="kpi-lbl">לא נמצאו</span>
           <span class="kpi-pct ltr-number">{{ missingPct }}%</span>
@@ -375,6 +375,100 @@
       </Transition>
     </Teleport>
 
+    <!-- Missing Customers Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showMissingModal" class="modal-overlay" @click.self="showMissingModal = false">
+          <div class="modal-card missing-modal-card">
+            <div class="modal-head">
+              <button class="modal-x" @click="showMissingModal = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <div class="modal-id-row">
+                <div>
+                  <div class="modal-name">לקוחות שלא נמצאו בפרודוקציה</div>
+                  <div class="modal-id-num">{{ notFoundList.length }} לקוחות</div>
+                </div>
+                <span class="modal-status-chip chip-missing">לא נמצאו</span>
+              </div>
+            </div>
+
+            <!-- Search -->
+            <div class="mm-search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="mm-search" v-model="missingSearch" placeholder="חיפוש לפי שם או ת.ז..." />
+            </div>
+
+            <!-- Action buttons -->
+            <div class="mm-actions">
+              <button class="mm-action-btn" @click="downloadMissingExcel(); showMissingModal = false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                הורד Excel
+              </button>
+              <button class="mm-action-btn" @click="sendMissingMail(); showMissingModal = false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                שלח מייל
+              </button>
+            </div>
+
+            <!-- Table -->
+            <div class="mm-table-wrap">
+              <table class="mm-table">
+                <thead>
+                  <tr>
+                    <th>שם</th>
+                    <th>ת.ז</th>
+                    <th>חברה</th>
+                    <th>מוצר</th>
+                    <th>סכום</th>
+                    <th>סטטוס</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in filteredMissingList"
+                    :key="item.recruit_id"
+                    class="mm-row"
+                    @click="showMissingModal = false; openDetail(item)"
+                  >
+                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
+                    <td class="td-id ltr-number">{{ item.id_number }}</td>
+                    <td>{{ item.company || '—' }}</td>
+                    <td>{{ item.product || '—' }}</td>
+                    <td class="ltr-number" style="font-weight:700;color:var(--primary)">
+                      <template v-if="item.amount > 0">₪{{ fmtNum(item.amount) }}</template>
+                      <template v-else>—</template>
+                    </td>
+                    <td @click.stop>
+                      <select
+                        class="status-select status-select-sm"
+                        :class="customerStatusClass(customerStatuses[item.recruit_id])"
+                        :value="customerStatuses[item.recruit_id] || ''"
+                        @change="onStatusChange(item.recruit_id, $event)"
+                      >
+                        <option value="">—</option>
+                        <option value="עבר סוכן">עבר סוכן</option>
+                        <option value="משך את הכסף">משך את הכסף</option>
+                        <option value="__custom__">אחר...</option>
+                      </select>
+                      <input
+                        v-if="customInputId === item.recruit_id"
+                        class="status-custom-input status-custom-input-sm"
+                        v-model="customInputVal"
+                        placeholder="הקלד..."
+                        @keydown.enter="confirmCustomStatus(item.recruit_id)"
+                        @blur="confirmCustomStatus(item.recruit_id)"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Clipboard notification -->
     <Transition name="clipboard-toast">
       <div v-if="clipboardNotice" class="clipboard-toast">
@@ -406,11 +500,24 @@ const customerStatuses = ref({})
 const customInputId = ref(null)
 const customInputVal = ref('')
 const customInputRef = ref(null)
+const showMissingModal = ref(false)
+const missingSearch = ref('')
 
 onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
 const foundPct = computed(() => props.result.total > 0 ? Math.round((props.result.found / props.result.total) * 100) : 0)
 const missingPct = computed(() => props.result.total > 0 ? Math.round((props.result.not_found / props.result.total) * 100) : 0)
+
+const notFoundList = computed(() => props.result.results.filter(r => !r.found_in_production))
+
+const filteredMissingList = computed(() => {
+  const q = missingSearch.value.trim().toLowerCase()
+  if (!q) return notFoundList.value
+  return notFoundList.value.filter(r => {
+    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+    return name.includes(q) || (r.id_number || '').includes(q)
+  })
+})
 
 // ── Insights computeds ──
 const avgProductsPerClient = computed(() => {
@@ -1457,5 +1564,122 @@ const chartOptions = computed(() => ({
   width: 220px;
   font-size: 13px;
   padding: 8px 12px;
+}
+
+/* ── Missing Modal ── */
+.missing-modal-card {
+  max-width: 800px;
+  width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.mm-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.mm-search {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.mm-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mm-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mm-action-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(245, 124, 0, 0.06);
+}
+
+.mm-table-wrap {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.mm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mm-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.mm-table th {
+  background: var(--header-bg);
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mm-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.mm-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mm-row:hover {
+  background: rgba(245, 124, 0, 0.04);
+}
+
+.status-select-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+  padding-left: 22px;
+}
+
+.status-custom-input-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+  width: 100%;
+  margin-top: 4px;
 }
 </style>
