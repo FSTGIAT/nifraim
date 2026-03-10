@@ -8,7 +8,7 @@ from app.schemas.subscription import SignupRequest, SignupResponse, Subscription
 from app.services.subscription_service import (
     create_signup, activate_subscription, get_subscription_status, cancel_subscription,
 )
-from app.services.payment_service import verify_webhook, get_lp_result, is_cardcom_configured
+from app.services.payment_service import verify_webhook, get_lp_result
 
 router = APIRouter()
 
@@ -26,17 +26,6 @@ async def signup(req: SignupRequest, db: AsyncSession = Depends(get_db)):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    # Dev mode: Cardcom not configured — auto-activate user
-    if not payment_url and not is_cardcom_configured():
-        await activate_subscription(
-            db=db,
-            user_id=str(user.id),
-            plan=req.plan,
-            last4_digits="0000",
-            card_brand="Demo",
-        )
-        return SignupResponse(user_id=str(user.id), demo_mode=True)
 
     if not payment_url:
         raise HTTPException(status_code=502, detail="Payment service unavailable")
@@ -147,22 +136,6 @@ async def renew(
     )
     db.add(sub)
     await db.commit()
-
-    # Dev mode: Cardcom not configured — auto-activate
-    if not is_cardcom_configured():
-        sub.status = "active"
-        from datetime import datetime, timedelta
-        now = datetime.utcnow()
-        duration = PLAN_DURATIONS.get(plan, timedelta(days=30))
-        sub.started_at = now
-        sub.expires_at = now + duration
-        sub.next_charge_at = now + duration
-        sub.last_charge_at = now
-        sub.last4_digits = "0000"
-        sub.card_brand = "Demo"
-        user.is_active = True
-        await db.commit()
-        return SignupResponse(user_id=str(user.id), demo_mode=True)
 
     # Create payment page
     payment_url, lp_code = await create_payment_page(

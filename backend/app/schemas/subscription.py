@@ -12,7 +12,6 @@ class SignupRequest(BaseModel):
 class SignupResponse(BaseModel):
     payment_url: str | None = None
     user_id: str
-    demo_mode: bool = False
 
 
 class SubscriptionStatus(BaseModel):

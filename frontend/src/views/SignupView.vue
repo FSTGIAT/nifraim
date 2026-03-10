@@ -345,13 +345,7 @@ async function processPayment() {
       company_name: form.value.companyName || null,
       plan: form.value.plan,
     })
-    if (res.data.demo_mode) {
-      // Dev mode: no Cardcom configured, user auto-activated
-      goToStep(3)
-      loading.value = false
-    } else {
-      window.location.href = res.data.payment_url
-    }
+    window.location.href = res.data.payment_url
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בתהליך התשלום. נסו שוב.'
     loading.value = false
