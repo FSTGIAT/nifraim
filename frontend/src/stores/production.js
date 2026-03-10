@@ -6,6 +6,7 @@ export const useProductionStore = defineStore('production', () => {
   const currentFile = ref(null)
   const loading = ref(false)
   const uploading = ref(false)
+  const justUploaded = ref(false)
   const error = ref(null)
 
   // Analytics
@@ -43,6 +44,7 @@ export const useProductionStore = defineStore('production', () => {
         onUploadProgress: onProgress,
       })
       currentFile.value = res.data
+      justUploaded.value = true
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בהעלאת קובץ פרודוקציה'
@@ -113,7 +115,7 @@ export const useProductionStore = defineStore('production', () => {
   }
 
   return {
-    currentFile, loading, uploading, error,
+    currentFile, loading, uploading, justUploaded, error,
     analytics, analyticsLoading,
     history, comparisonResult, comparing,
     fetchCurrent, uploadProduction, removeCurrent,

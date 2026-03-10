@@ -156,21 +156,24 @@ onMounted(() => {
   productionStore.fetchCurrent()
 })
 
-// When file loads, fetch analytics + suggest compare only after a real upload
-// Note: in the store, currentFile is set while uploading is still true,
-// so checking uploading distinguishes real uploads from page-load fetches
-watch(() => productionStore.currentFile, async (newVal) => {
+// When file loads, fetch analytics
+watch(() => productionStore.currentFile, (newVal) => {
   if (newVal) {
     productionStore.fetchAnalytics()
-    if (productionStore.uploading) {
-      await productionStore.fetchHistory()
-      if (productionStore.history.length > 0) {
-        previousFile.value = productionStore.history[0]
-        showCompareModal.value = true
-      }
-    }
   }
 }, { immediate: true })
+
+// After a real upload completes, suggest comparing with previous file
+watch(() => productionStore.justUploaded, async (newVal) => {
+  if (newVal) {
+    productionStore.justUploaded = false
+    await productionStore.fetchHistory()
+    if (productionStore.history.length > 0) {
+      previousFile.value = productionStore.history[0]
+      showCompareModal.value = true
+    }
+  }
+})
 
 function switchToComparison() {
   innerTab.value = 'comparison'
