@@ -235,14 +235,20 @@
           <div class="fm-card">
             <div class="fm-header">
               <div class="fm-title">{{ filterModal.title }}</div>
-              <span class="fm-count">{{ filterModal.customers.length }} לקוחות</span>
+              <span class="fm-count">{{ filteredModalCustomers.length }} לקוחות</span>
               <button class="fm-close" @click="closeFilterModal">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            <div class="fm-search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input v-model="filterSearchQuery" class="fm-search" placeholder="חיפוש לפי שם או ת.ז." />
+            </div>
             <div class="fm-list">
               <div
-                v-for="c in filterModal.customers"
+                v-for="c in filteredModalCustomers"
                 :key="c.id_number"
                 class="fm-row"
                 @click="openDetailFromFilter(c)"
@@ -261,7 +267,7 @@
                 </div>
                 <svg class="fm-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
-              <div v-if="filterModal.customers.length === 0" class="fm-empty">אין תוצאות</div>
+              <div v-if="filteredModalCustomers.length === 0" class="fm-empty">אין תוצאות</div>
             </div>
           </div>
         </div>
@@ -671,6 +677,16 @@ const productTreemapOptions = computed(() => ({
 
 // ─── Filter Modal ───
 const filterModal = ref({ open: false, title: '', customers: [] })
+const filterSearchQuery = ref('')
+
+const filteredModalCustomers = computed(() => {
+  if (!filterSearchQuery.value) return filterModal.value.customers
+  const q = filterSearchQuery.value.toLowerCase()
+  return filterModal.value.customers.filter(c =>
+    (customerName(c).toLowerCase().includes(q)) ||
+    (c.id_number && c.id_number.includes(q))
+  )
+})
 
 function openFilterModal(title, customers) {
   filterModal.value = { open: true, title, customers }
@@ -678,6 +694,7 @@ function openFilterModal(title, customers) {
 
 function closeFilterModal() {
   filterModal.value = { open: false, title: '', customers: [] }
+  filterSearchQuery.value = ''
 }
 
 function customerName(c) {
@@ -1265,6 +1282,26 @@ function formatCompact(val) {
   transition: all 0.15s;
 }
 .fm-close:hover { background: var(--border-subtle); color: var(--text); }
+
+.fm-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.fm-search-wrap svg { color: var(--text-muted); flex-shrink: 0; }
+.fm-search {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+}
+.fm-search::placeholder { color: var(--text-muted); }
 
 .fm-list {
   flex: 1;

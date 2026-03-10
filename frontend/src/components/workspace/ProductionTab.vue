@@ -112,6 +112,31 @@
         </div>
       </template>
     </template>
+
+    <!-- Compare suggestion modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showCompareModal" class="compare-suggest-overlay" @click.self="showCompareModal = false">
+          <div class="compare-suggest-card">
+            <div class="cs-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <h3 class="cs-title">קובץ חדש הועלה בהצלחה!</h3>
+            <p class="cs-body">רוצה להשוות עם הקובץ הקודם?</p>
+            <div v-if="previousFile" class="cs-file">
+              <span class="cs-file-name">{{ previousFile.filename }}</span>
+              <span class="cs-file-meta ltr-number">{{ previousFile.record_count?.toLocaleString() }} רשומות</span>
+            </div>
+            <div class="cs-actions">
+              <button class="cs-btn cs-btn-primary" @click="acceptCompare">השווה עכשיו</button>
+              <button class="cs-btn cs-btn-ghost" @click="showCompareModal = false">אחר כך</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -125,6 +150,8 @@ import ProductionComparison from './ProductionComparison.vue'
 const productionStore = useProductionStore()
 const innerTab = ref('insights')
 const fileInputRef = ref(null)
+const showCompareModal = ref(false)
+const previousFile = ref(null)
 
 onMounted(() => {
   productionStore.fetchCurrent()
@@ -154,13 +181,25 @@ function onFileSelected(e) {
     const file = files[0]
     const ext = file.name.split('.').pop().toLowerCase()
     if (ext === 'xlsx' || ext === 'xls') {
-      productionStore.uploadProduction(file).then(() => {
+      productionStore.uploadProduction(file).then(async () => {
         productionStore.fetchAnalytics()
-        productionStore.fetchHistory()
+        await productionStore.fetchHistory()
+        if (productionStore.history.length > 0) {
+          previousFile.value = productionStore.history[0]
+          showCompareModal.value = true
+        }
       })
     }
   }
   e.target.value = ''
+}
+
+function acceptCompare() {
+  if (productionStore.currentFile && previousFile.value) {
+    handleCompare(productionStore.currentFile.id, previousFile.value.id)
+    innerTab.value = 'comparison'
+  }
+  showCompareModal.value = false
 }
 
 async function handleDelete() {
@@ -381,5 +420,126 @@ async function handleCompare(currentId, previousId) {
   direction: ltr;
   unicode-bidi: embed;
   display: inline-block;
+}
+
+/* Compare suggestion modal */
+.compare-suggest-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1010;
+  backdrop-filter: blur(4px);
+}
+
+.compare-suggest-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px 28px;
+  max-width: 380px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15);
+}
+
+.cs-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  background: var(--primary-light);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+}
+
+.cs-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.cs-body {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.cs-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+
+.cs-file-name {
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.cs-file-meta {
+  color: var(--text-muted);
+}
+
+.cs-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-btn {
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s var(--transition);
+}
+
+.cs-btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+}
+
+.cs-btn-primary:hover {
+  background: var(--primary-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(245, 124, 0, 0.25);
+}
+
+.cs-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.cs-btn-ghost:hover {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+/* Modal transition */
+.modal-enter-active { animation: modalIn 0.3s var(--transition); }
+.modal-leave-active { animation: modalIn 0.2s var(--transition) reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

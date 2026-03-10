@@ -579,10 +579,10 @@ async function uploadFile() {
   width: 100%;
   margin-top: 10px;
   padding: 12px;
-  border: 1px solid var(--primary-light);
+  border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--primary-light), rgba(34, 211, 238, 0.1));
-  color: var(--primary);
+  background: var(--primary);
+  color: #fff;
   font-size: 15px;
   font-weight: 700;
   font-family: inherit;
@@ -591,9 +591,9 @@ async function uploadFile() {
 }
 
 .upload-btn:hover {
-  background: linear-gradient(135deg, var(--primary-light), rgba(34, 211, 238, 0.15));
+  background: var(--primary-deep);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px var(--primary-light);
+  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.25);
 }
 
 .upload-btn:active { transform: translateY(0); }

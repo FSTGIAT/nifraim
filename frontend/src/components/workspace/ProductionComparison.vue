@@ -921,7 +921,7 @@ function formatVal(val) {
   align-items: center;
   gap: 10px;
   padding: 12px 28px;
-  background: linear-gradient(135deg, var(--accent-violet), var(--primary-deep));
+  background: var(--primary);
   color: white;
   border-radius: 12px;
   font-size: 14px;
@@ -933,7 +933,8 @@ function formatVal(val) {
 
 .btn-compare:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(127, 86, 217, 0.15);
+  background: var(--primary-deep);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.2);
 }
 
 .btn-compare:disabled { opacity: 0.4; cursor: not-allowed; }
