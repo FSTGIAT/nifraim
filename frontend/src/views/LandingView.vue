@@ -163,15 +163,12 @@
             src="/videos/nifraim-commercial.mp4"
             playsinline
             muted
+            loop
             preload="metadata"
             poster="/videos/nifraim-poster.jpg"
             @play="videoPlaying = true"
             @pause="videoPlaying = false"
-            @ended="videoPlaying = false"
           />
-          <button v-if="!videoPlaying" class="video-play-btn" @click="playVideo">
-            <span class="play-icon">▶</span>
-          </button>
         </div>
       </div>
     </section>
@@ -290,10 +287,6 @@ const videoSection = ref(null)
 const videoVisible = ref(false)
 let videoObserver = null
 
-function playVideo() {
-  demoVideo.value?.play()
-}
-
 // Features data
 const features = [
   {
@@ -367,8 +360,11 @@ onMounted(() => {
   // Intersection observer for video section
   videoObserver = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && !videoVisible.value) {
-        videoVisible.value = true
+      if (entries[0].isIntersecting) {
+        if (!videoVisible.value) videoVisible.value = true
+        demoVideo.value?.play()
+      } else {
+        demoVideo.value?.pause()
       }
     },
     { threshold: 0.2 }
@@ -898,48 +894,6 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-.video-play-btn {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-  border: none;
-  transition: background 0.3s;
-}
-
-.video-play-btn:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.play-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: var(--land-orange);
-  color: #0a0a0a;
-  font-size: 28px;
-  padding-right: 3px;
-  box-shadow:
-    0 8px 32px rgba(245, 124, 0, 0.4),
-    0 0 0 8px rgba(245, 124, 0, 0.12),
-    0 0 0 16px rgba(245, 124, 0, 0.06);
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s;
-}
-
-.video-play-btn:hover .play-icon {
-  transform: scale(1.12);
-  box-shadow:
-    0 12px 40px rgba(245, 124, 0, 0.5),
-    0 0 0 10px rgba(245, 124, 0, 0.15),
-    0 0 0 20px rgba(245, 124, 0, 0.08);
-}
-
 /* Video entrance animation */
 .video-container.video-entered {
   animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -949,11 +903,6 @@ onBeforeUnmount(() => {
 .video-container.video-entered:not(:hover):not(.playing) {
   animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards,
              glowPulse 4s ease-in-out 1s infinite;
-}
-
-/* Play button pulse ring */
-.video-container.video-entered:not(.playing) .play-icon {
-  animation: playPulse 2.5s ease-in-out 1.2s infinite;
 }
 
 @keyframes videoEntrance {
@@ -979,21 +928,6 @@ onBeforeUnmount(() => {
       0 24px 80px rgba(0, 0, 0, 0.5),
       0 0 0 1px rgba(255, 255, 255, 0.04),
       0 0 100px rgba(245, 124, 0, 0.12);
-  }
-}
-
-@keyframes playPulse {
-  0%, 100% {
-    box-shadow:
-      0 8px 32px rgba(245, 124, 0, 0.4),
-      0 0 0 8px rgba(245, 124, 0, 0.12),
-      0 0 0 16px rgba(245, 124, 0, 0.06);
-  }
-  50% {
-    box-shadow:
-      0 8px 32px rgba(245, 124, 0, 0.4),
-      0 0 0 12px rgba(245, 124, 0, 0.18),
-      0 0 0 24px rgba(245, 124, 0, 0.08);
   }
 }
 
@@ -1339,15 +1273,6 @@ onBeforeUnmount(() => {
     }
   }
 
-  .play-icon {
-    width: 56px;
-    height: 56px;
-    font-size: 22px;
-    box-shadow:
-      0 6px 24px rgba(245, 124, 0, 0.4),
-      0 0 0 6px rgba(245, 124, 0, 0.12);
-  }
-
   .numbers-grid {
     grid-template-columns: 1fr;
     gap: 32px;
@@ -1401,8 +1326,7 @@ onBeforeUnmount(() => {
     transform: none;
   }
   .video-container.video-entered,
-  .video-container.video-entered:not(:hover):not(.playing),
-  .video-container.video-entered:not(.playing) .play-icon {
+  .video-container.video-entered:not(:hover):not(.playing) {
     animation: none;
   }
 }
