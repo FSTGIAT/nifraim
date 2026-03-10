@@ -315,7 +315,7 @@ async function uploadFiles(files) {
   padding: 16px 24px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--accent-orange);
+  background: linear-gradient(135deg, #F57C00, #FF9800);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
@@ -330,7 +330,7 @@ async function uploadFiles(files) {
 }
 
 .upload-btn:hover {
-  background: var(--accent-orange-hover);
+  background: linear-gradient(135deg, #E65100, #F57C00);
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(245, 124, 0, 0.25);
 }
