@@ -51,8 +51,50 @@
                 <option value="gmail">Gmail</option>
                 <option value="outlook">Outlook</option>
               </select>
+
+              <!-- Subscription info -->
+              <div v-if="subStore.status" class="settings-sub-section">
+                <label class="settings-label">מנוי</label>
+                <div class="sub-info">
+                  <span class="sub-plan">{{ subStore.status.plan === 'monthly' ? 'חודשי' : 'שנתי' }}</span>
+                  <span class="sub-status" :class="subStore.status.status">{{ subStatusLabel }}</span>
+                </div>
+                <div v-if="subStore.status.last4_digits" class="sub-card-info">
+                  כרטיס: <span class="ltr-number">****{{ subStore.status.last4_digits }}</span>
+                </div>
+                <div v-if="subStore.status.next_charge_at" class="sub-next-charge">
+                  חיוב הבא: <span class="ltr-number">{{ formatDate(subStore.status.next_charge_at) }}</span>
+                </div>
+                <button
+                  v-if="subStore.status.is_recurring"
+                  class="btn-cancel-sub"
+                  @click="showCancelConfirm = true"
+                >
+                  ביטול הוראת קבע
+                </button>
+              </div>
             </div>
           </Transition>
+
+          <!-- Cancel subscription confirmation -->
+          <Teleport to="body">
+            <Transition name="modal">
+              <div v-if="showCancelConfirm" class="modal-overlay" @click.self="showCancelConfirm = false">
+                <div class="modal-card">
+                  <h3>ביטול הוראת קבע</h3>
+                  <p>האם לבטל את החידוש האוטומטי?</p>
+                  <p class="modal-note">הגישה למערכת תישמר עד תום תקופת המנוי הנוכחית.</p>
+                  <div class="modal-actions">
+                    <button class="modal-btn cancel" @click="showCancelConfirm = false">חזרה</button>
+                    <button class="modal-btn confirm" @click="handleCancelSub" :disabled="cancelLoading">
+                      <span v-if="cancelLoading" class="spinner-sm"></span>
+                      <span v-else>אישור ביטול</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </Teleport>
         </div>
         <button class="btn-logout" @click="$emit('logout')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -70,9 +112,11 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useComparisonStore } from '../../stores/comparison.js'
+import { useSubscriptionStore } from '../../stores/subscription.js'
 
 const auth = useAuthStore()
 const comparisonStore = useComparisonStore()
+const subStore = useSubscriptionStore()
 defineEmits(['logout'])
 
 const searchOpen = ref(false)
@@ -114,7 +158,41 @@ function onClickOutside(e) {
   }
 }
 
-onMounted(() => document.addEventListener('click', onClickOutside))
+// ─── Subscription ───
+const showCancelConfirm = ref(false)
+const cancelLoading = ref(false)
+
+const subStatusLabel = computed(() => {
+  const s = subStore.status?.status
+  if (s === 'active') return 'פעיל'
+  if (s === 'cancelled') return 'מבוטל'
+  if (s === 'expired') return 'פג תוקף'
+  return s || ''
+})
+
+function formatDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString('he-IL')
+}
+
+async function handleCancelSub() {
+  cancelLoading.value = true
+  try {
+    await subStore.cancelSubscription()
+    showCancelConfirm.value = false
+    settingsOpen.value = false
+  } catch {
+    // error handled in store
+  } finally {
+    cancelLoading.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', onClickOutside)
+  subStore.fetchStatus()
+})
 onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 </script>
 
@@ -342,5 +420,181 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
 
 .header-search-input::placeholder {
   color: var(--text-muted);
+}
+
+/* ── Subscription section in settings ── */
+.settings-sub-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sub-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sub-plan {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sub-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.sub-status.active {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.sub-status.cancelled {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.sub-status.expired {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.sub-card-info,
+.sub-next-charge {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.btn-cancel-sub {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--red);
+  background: var(--red-light);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.btn-cancel-sub:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: var(--red);
+}
+
+/* ── Cancel confirmation modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  text-align: center;
+}
+
+.modal-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.modal-card p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.modal-note {
+  font-size: 13px !important;
+  color: var(--text-muted) !important;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-btn.cancel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.modal-btn.cancel:hover {
+  border-color: var(--text-muted);
+}
+
+.modal-btn.confirm {
+  background: var(--red);
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-btn.confirm:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.modal-btn.confirm:disabled {
+  opacity: 0.6;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.modal-enter-active { animation: modalIn 0.2s ease-out; }
+.modal-leave-active { animation: modalIn 0.15s reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ltr-number {
+  direction: ltr;
+  unicode-bidi: embed;
+  display: inline-block;
 }
 </style>

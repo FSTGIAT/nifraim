@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -10,7 +11,9 @@ from app.models.user import User
 from app.models.subscription import Subscription
 from app.services.auth_service import hash_password
 from app.services.sms_service import send_password_sms
-from app.services.payment_service import create_payment_page
+from app.services.payment_service import create_payment_page, charge_token
+
+logger = logging.getLogger(__name__)
 
 PLAN_PRICES = {
     "monthly": Decimal("295.00"),
@@ -54,25 +57,26 @@ async def create_signup(
     db.add(user)
     await db.flush()
 
-    # Create pending subscription
-    sub = Subscription(
-        user_id=user.id,
-        plan=plan,
-        amount=float(PLAN_PRICES[plan]),
-        status="pending",
-    )
-    db.add(sub)
-    await db.commit()
-    await db.refresh(user)
-
-    # Create Cardcom payment page
-    payment_url = await create_payment_page(
+    # Create Cardcom payment page (with token creation)
+    payment_url, lp_code = await create_payment_page(
         amount=float(PLAN_PRICES[plan]),
         description=f"Nifraim - מנוי {'חודשי' if plan == 'monthly' else 'שנתי'}",
         user_email=email,
         user_id=str(user.id),
         plan=plan,
     )
+
+    # Create pending subscription
+    sub = Subscription(
+        user_id=user.id,
+        plan=plan,
+        amount=float(PLAN_PRICES[plan]),
+        status="pending",
+        cardcom_low_profile_code=lp_code,
+    )
+    db.add(sub)
+    await db.commit()
+    await db.refresh(user)
 
     return user, payment_url
 
@@ -82,6 +86,9 @@ async def activate_subscription(
     user_id: str,
     plan: str,
     cardcom_token: str | None = None,
+    token_exp_date: str | None = None,
+    last4_digits: str | None = None,
+    card_brand: str | None = None,
     amount: float | None = None,
 ) -> User | None:
     """Activate user subscription after successful payment. Generates and sends password via SMS."""
@@ -106,6 +113,12 @@ async def activate_subscription(
         sub.started_at = now
         sub.expires_at = now + duration
         sub.cardcom_token = cardcom_token
+        sub.token_exp_date = token_exp_date
+        sub.last4_digits = last4_digits
+        sub.card_brand = card_brand
+        sub.last_charge_at = now
+        sub.next_charge_at = now + duration
+        sub.retry_count = 0
         if amount:
             sub.amount = amount
     else:
@@ -115,8 +128,13 @@ async def activate_subscription(
             amount=amount or float(PLAN_PRICES.get(plan, 0)),
             status="active",
             cardcom_token=cardcom_token,
+            token_exp_date=token_exp_date,
+            last4_digits=last4_digits,
+            card_brand=card_brand,
             started_at=now,
             expires_at=now + duration,
+            last_charge_at=now,
+            next_charge_at=now + duration,
         )
         db.add(sub)
 
@@ -138,7 +156,7 @@ async def get_subscription_status(db: AsyncSession, user: User) -> dict:
     """Get current subscription status for a user."""
     result = await db.execute(
         select(Subscription)
-        .where(Subscription.user_id == user.id, Subscription.status == "active")
+        .where(Subscription.user_id == user.id, Subscription.status.in_(["active", "cancelled"]))
         .order_by(Subscription.expires_at.desc())
     )
     sub = result.scalar_one_or_none()
@@ -149,6 +167,10 @@ async def get_subscription_status(db: AsyncSession, user: User) -> dict:
             "plan": None,
             "expires_at": None,
             "status": "none",
+            "next_charge_at": None,
+            "last4_digits": None,
+            "card_brand": None,
+            "is_recurring": False,
         }
 
     # Check expiration
@@ -162,14 +184,100 @@ async def get_subscription_status(db: AsyncSession, user: User) -> dict:
             "plan": sub.plan,
             "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
             "status": "expired",
+            "next_charge_at": None,
+            "last4_digits": sub.last4_digits,
+            "card_brand": sub.card_brand,
+            "is_recurring": False,
         }
 
     return {
         "is_active": True,
         "plan": sub.plan,
         "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
-        "status": "active",
+        "status": sub.status,
+        "next_charge_at": sub.next_charge_at.isoformat() if sub.next_charge_at else None,
+        "last4_digits": sub.last4_digits,
+        "card_brand": sub.card_brand,
+        "is_recurring": sub.status == "active" and sub.next_charge_at is not None,
     }
+
+
+async def cancel_subscription(db: AsyncSession, user: User) -> dict:
+    """Cancel auto-renewal. Access continues until expires_at."""
+    result = await db.execute(
+        select(Subscription)
+        .where(Subscription.user_id == user.id, Subscription.status == "active")
+        .order_by(Subscription.expires_at.desc())
+    )
+    sub = result.scalar_one_or_none()
+
+    if not sub:
+        return {"success": False, "message": "No active subscription found"}
+
+    sub.status = "cancelled"
+    sub.next_charge_at = None  # Stop renewals
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Subscription cancelled. Access continues until expiry.",
+        "expires_at": sub.expires_at.isoformat() if sub.expires_at else None,
+    }
+
+
+async def process_renewals(db: AsyncSession) -> dict:
+    """Process all due recurring charges. Called by scheduler daily."""
+    now = datetime.utcnow()
+    stats = {"processed": 0, "success": 0, "failed": 0, "deactivated": 0}
+
+    # Find active subscriptions due for renewal
+    result = await db.execute(
+        select(Subscription)
+        .where(
+            Subscription.status == "active",
+            Subscription.next_charge_at <= now,
+            Subscription.cardcom_token.isnot(None),
+        )
+    )
+    subs = list(result.scalars().all())
+    stats["processed"] = len(subs)
+
+    for sub in subs:
+        charge_result = await charge_token(sub.cardcom_token, float(sub.amount))
+
+        if charge_result:
+            # Success — extend subscription
+            duration = PLAN_DURATIONS.get(sub.plan, timedelta(days=30))
+            sub.expires_at = now + duration
+            sub.next_charge_at = now + duration
+            sub.last_charge_at = now
+            sub.retry_count = 0
+            stats["success"] += 1
+            logger.info(f"Renewal success for user {sub.user_id}, next charge: {sub.next_charge_at}")
+        else:
+            # Failure — increment retry
+            sub.retry_count = (sub.retry_count or 0) + 1
+            stats["failed"] += 1
+
+            if sub.retry_count >= 3:
+                # Deactivate after 3 failures
+                sub.status = "expired"
+                sub.next_charge_at = None
+                # Deactivate user
+                user_result = await db.execute(select(User).where(User.id == sub.user_id))
+                user = user_result.scalar_one_or_none()
+                if user:
+                    user.is_active = False
+                stats["deactivated"] += 1
+                logger.warning(f"Subscription deactivated for user {sub.user_id} after 3 failed charges")
+            else:
+                # Retry tomorrow
+                sub.next_charge_at = now + timedelta(days=1)
+                logger.warning(f"Renewal failed for user {sub.user_id}, retry {sub.retry_count}/3")
+
+    await db.commit()
+    logger.info(f"Renewal processing complete: {stats}")
+    return stats
 
 
 async def get_all_subscriptions(db: AsyncSession) -> list[Subscription]:

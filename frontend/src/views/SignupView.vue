@@ -1,9 +1,47 @@
 <template>
   <div class="signup-page">
-    <!-- Animated background -->
-    <div class="bg-glow bg-glow-1"></div>
-    <div class="bg-glow bg-glow-2"></div>
-    <div class="bg-glow bg-glow-3"></div>
+    <!-- Floating blur circles -->
+    <div class="float-circle fc-1"></div>
+    <div class="float-circle fc-2"></div>
+    <div class="float-circle fc-3"></div>
+    <div class="float-circle fc-4"></div>
+
+    <!-- Animated waves at bottom -->
+    <div class="wave-bg">
+      <div class="shimmer"></div>
+      <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="swg1" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
+            <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
+            <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
+            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#swg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
+      </svg>
+      <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="swg2" x1="100%" y1="0%" x2="0%" y2="0%">
+            <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
+            <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
+            <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#swg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
+      </svg>
+      <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="swg3" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
+            <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#swg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
+      </svg>
+    </div>
 
     <nav class="auth-nav">
       <div class="nav-content">
@@ -28,12 +66,12 @@
         </div>
         <div class="progress-step" v-for="(s, i) in stepLabels" :key="i" :class="{ active: currentStep >= i, done: currentStep > i }">
           <div class="step-dot-wrap">
-            <div class="step-dot ltr-number">
+            <div class="step-dot">
               <Transition name="step-check" mode="out-in">
-                <svg v-if="currentStep > i" key="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-if="currentStep > i" key="check" class="step-check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                <span v-else :key="i">{{ i + 1 }}</span>
+                <span v-else :key="i" class="ltr-number">{{ i + 1 }}</span>
               </Transition>
             </div>
             <div v-if="currentStep >= i" class="step-dot-ring"></div>
@@ -84,7 +122,7 @@
             </div>
             <div>
               <h2>בחירת מסלול</h2>
-              <p class="step-desc">בחרו את המסלול המתאים לכם</p>
+              <p class="step-desc">מנוי חודשי עם הוראת קבע</p>
             </div>
           </div>
           <div class="plan-options">
@@ -97,6 +135,7 @@
               <div class="plan-option-info">
                 <div class="plan-option-name">חודשי</div>
                 <div class="plan-option-price"><span class="ltr-number">&#8362;295</span> / חודש</div>
+                <div class="plan-option-recur">הוראת קבע — חיוב אוטומטי מדי חודש</div>
               </div>
             </div>
             <div class="plan-option" :class="{ selected: form.plan === 'yearly' }" @click="form.plan = 'yearly'" style="animation-delay: 100ms">
@@ -111,6 +150,7 @@
                   <span class="plan-option-badge">חודש חינם!</span>
                 </div>
                 <div class="plan-option-price"><span class="ltr-number">&#8362;3,245</span> / שנה</div>
+                <div class="plan-option-recur">הוראת קבע — חיוב אוטומטי מדי שנה</div>
               </div>
               <div class="plan-popular">מומלץ</div>
             </div>
@@ -142,11 +182,24 @@
             </div>
             <div>
               <h2>תשלום</h2>
-              <p class="step-desc">בחרו אמצעי תשלום</p>
+              <p class="step-desc">הכרטיס יחויב אוטומטית מדי חודש</p>
             </div>
           </div>
+
+          <div class="recurring-notice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            <span>
+              חיוב אוטומטי {{ form.plan === 'monthly' ? 'חודשי' : 'שנתי' }} —
+              <strong class="ltr-number">&#8362;{{ form.plan === 'monthly' ? '295' : '3,245' }}</strong>
+              {{ form.plan === 'monthly' ? 'בחודש' : 'בשנה' }}
+            </span>
+          </div>
+
           <div class="payment-methods">
-            <button class="payment-method" :class="{ active: true }" @click="processPayment" :disabled="loading" style="animation-delay: 0ms">
+            <button class="payment-method" :class="{ active: true }" @click="processPayment" :disabled="loading || !agreedToTerms" style="animation-delay: 0ms">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
                 <line x1="1" y1="10" x2="23" y2="10"/>
@@ -170,6 +223,13 @@
               <span class="coming-soon">בקרוב</span>
             </div>
           </div>
+
+          <label class="terms-checkbox">
+            <input type="checkbox" v-model="agreedToTerms" />
+            <span class="checkmark"></span>
+            <span>אני מסכים/ה לתנאי השימוש ולהוראת הקבע</span>
+          </label>
+
           <p v-if="error" class="error-msg">{{ error }}</p>
           <div class="step-actions">
             <button class="btn-back" @click="goBack(1)">
@@ -193,6 +253,22 @@
           <h2>!ההרשמה הושלמה בהצלחה</h2>
           <p class="step-desc">הסיסמא שלכם נשלחה ב-SMS למספר {{ form.phone }}</p>
           <p class="step-desc">בדקו את ההודעות והתחברו למערכת</p>
+
+          <div class="success-details">
+            <div class="success-detail-row">
+              <span class="detail-label">מסלול:</span>
+              <span class="detail-value">{{ form.plan === 'monthly' ? 'חודשי' : 'שנתי' }}</span>
+            </div>
+            <div class="success-detail-row">
+              <span class="detail-label">חיוב הבא:</span>
+              <span class="detail-value">{{ form.plan === 'monthly' ? 'בעוד 30 יום' : 'בעוד שנה' }}</span>
+            </div>
+            <div class="success-detail-row">
+              <span class="detail-label">סוג מנוי:</span>
+              <span class="detail-value">הוראת קבע — חידוש אוטומטי</span>
+            </div>
+          </div>
+
           <router-link to="/login" class="btn-next">
             <span>כניסה למערכת</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -217,6 +293,7 @@ const currentStep = ref(0)
 const stepDirection = ref('step-forward')
 const loading = ref(false)
 const error = ref('')
+const agreedToTerms = ref(false)
 
 const step1Fields = [
   { key: 'fullName', label: 'שם מלא *', type: 'text', required: true, placeholder: 'ישראל ישראלי' },
@@ -257,6 +334,7 @@ function goBack(step) {
 }
 
 async function processPayment() {
+  if (!agreedToTerms.value) return
   loading.value = true
   error.value = ''
   try {
@@ -267,7 +345,13 @@ async function processPayment() {
       company_name: form.value.companyName || null,
       plan: form.value.plan,
     })
-    window.location.href = res.data.payment_url
+    if (res.data.demo_mode) {
+      // Dev mode: no Cardcom configured, user auto-activated
+      goToStep(3)
+      loading.value = false
+    } else {
+      window.location.href = res.data.payment_url
+    }
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בתהליך התשלום. נסו שוב.'
     loading.value = false
@@ -285,47 +369,121 @@ async function processPayment() {
   overflow: hidden;
 }
 
-/* Animated background glows */
-.bg-glow {
+/* ─── Floating blur circles ─── */
+.float-circle {
   position: fixed;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.15;
   pointer-events: none;
   z-index: 0;
 }
 
-.bg-glow-1 {
-  width: 500px;
-  height: 500px;
-  background: #F57C00;
-  top: -150px;
-  right: -100px;
-  animation: glowFloat 12s ease-in-out infinite;
+.fc-1 {
+  width: 260px;
+  height: 260px;
+  top: 5%;
+  right: -80px;
+  background: rgba(245, 124, 0, 0.06);
+  border: 1px solid rgba(245, 124, 0, 0.08);
+  animation: floatBob 8s ease-in-out infinite;
 }
 
-.bg-glow-2 {
-  width: 400px;
-  height: 400px;
-  background: #FF9800;
-  bottom: -100px;
-  left: -100px;
-  animation: glowFloat 10s ease-in-out infinite reverse;
+.fc-2 {
+  width: 180px;
+  height: 180px;
+  bottom: 30%;
+  left: -50px;
+  background: rgba(245, 124, 0, 0.045);
+  border: 1px solid rgba(245, 124, 0, 0.06);
+  animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 
-.bg-glow-3 {
-  width: 300px;
-  height: 300px;
-  background: #E65100;
-  top: 50%;
-  left: 50%;
-  animation: glowFloat 14s ease-in-out infinite 3s;
+.fc-3 {
+  width: 100px;
+  height: 100px;
+  top: 35%;
+  left: 10%;
+  background: rgba(245, 124, 0, 0.06);
+  animation: floatBob 10s ease-in-out infinite 2s;
 }
 
-@keyframes glowFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -40px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.9); }
+.fc-4 {
+  width: 140px;
+  height: 140px;
+  top: 60%;
+  right: 8%;
+  background: rgba(245, 124, 0, 0.04);
+  border: 1px solid rgba(245, 124, 0, 0.05);
+  animation: floatBob 9s ease-in-out infinite 1s;
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-16px) rotate(2deg); }
+  66% { transform: translateY(8px) rotate(-1deg); }
+}
+
+/* ─── Waves fixed to bottom ─── */
+.wave-bg {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 200px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.shimmer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  z-index: 1;
+  overflow: hidden;
+  mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 200, 100, 0.08) 35%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 200, 100, 0.08) 65%,
+    transparent 100%
+  );
+  animation: shimmerSweep 7s ease-in-out infinite;
+}
+
+@keyframes shimmerSweep {
+  0%   { left: -80%; }
+  100% { left: 180%; }
+}
+
+.wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+}
+
+.wave-1 { animation: waveSlide 14s linear infinite; }
+.wave-2 { animation: waveSlide 18s linear infinite reverse; }
+.wave-3 { animation: waveSlide 22s linear infinite; }
+
+@keyframes waveSlide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 /* Nav */
@@ -493,6 +651,12 @@ async function processPayment() {
 .progress-step.done span {
   color: #66BB6A;
   font-weight: 600;
+}
+
+/* Step check icon */
+.step-check-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 /* Step check transition */
@@ -813,6 +977,35 @@ async function processPayment() {
   margin-top: 2px;
 }
 
+.plan-option-recur {
+  font-size: 12px;
+  color: rgba(255, 152, 0, 0.7);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Recurring notice ── */
+.recurring-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: rgba(245, 124, 0, 0.08);
+  border: 1px solid rgba(245, 124, 0, 0.15);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  color: #FFB74D;
+  font-size: 14px;
+  animation: fieldFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.recurring-notice svg {
+  flex-shrink: 0;
+  color: #FF9800;
+}
+
 /* ── Payment ── */
 .payment-methods {
   display: flex;
@@ -859,6 +1052,49 @@ async function processPayment() {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.35);
   font-weight: 500;
+}
+
+/* ── Terms checkbox ── */
+.terms-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  user-select: none;
+}
+
+.terms-checkbox input {
+  display: none;
+}
+
+.checkmark {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.terms-checkbox input:checked + .checkmark {
+  background: #F57C00;
+  border-color: #F57C00;
+}
+
+.terms-checkbox input:checked + .checkmark::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid #1a1a1a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .spinner {
@@ -913,12 +1149,45 @@ async function processPayment() {
   100% { transform: scale(1) rotate(0); opacity: 1; }
 }
 
+.success-details {
+  margin: 24px auto 28px;
+  max-width: 320px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 18px 22px;
+  text-align: right;
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+}
+
+.success-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.success-detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.detail-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #FFB74D;
+}
+
 .success-card h2 {
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
 }
 
 .success-card .btn-next {
-  margin-top: 24px;
+  margin-top: 0;
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
 }
 
@@ -929,6 +1198,12 @@ async function processPayment() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.ltr-number {
+  direction: ltr;
+  unicode-bidi: embed;
+  display: inline-block;
 }
 
 /* ── Responsive ── */
@@ -960,6 +1235,11 @@ async function processPayment() {
 
   .progress-bar {
     margin-bottom: 36px;
+  }
+
+  .recurring-notice {
+    font-size: 13px;
+    padding: 12px 14px;
   }
 }
 </style>

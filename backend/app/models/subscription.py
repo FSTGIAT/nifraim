@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Numeric, ForeignKey
+from sqlalchemy import String, DateTime, Integer, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,8 +17,15 @@ class Subscription(Base):
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")  # pending / active / cancelled / expired
     cardcom_token: Mapped[str] = mapped_column(String(255), nullable=True)
+    token_exp_date: Mapped[str] = mapped_column(String(10), nullable=True)  # Token expiration from Cardcom
+    last4_digits: Mapped[str] = mapped_column(String(4), nullable=True)
+    card_brand: Mapped[str] = mapped_column(String(20), nullable=True)  # Visa/Mastercard/etc
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    next_charge_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    last_charge_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    cardcom_low_profile_code: Mapped[str] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="subscriptions")

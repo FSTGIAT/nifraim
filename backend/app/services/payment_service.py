@@ -6,6 +6,13 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 CARDCOM_CREATE_URL = "https://secure.cardcom.solutions/api/v11/LowProfile/Create"
+CARDCOM_LP_RESULT_URL = "https://secure.cardcom.solutions/api/v11/LowProfile/GetLpResult"
+CARDCOM_CHARGE_URL = "https://secure.cardcom.solutions/api/v11/Transactions/Transaction"
+
+
+def is_cardcom_configured() -> bool:
+    """Check if Cardcom credentials are set."""
+    return bool(settings.CARDCOM_TERMINAL and settings.CARDCOM_API_NAME and settings.CARDCOM_API_PASSWORD)
 
 
 async def create_payment_page(
@@ -14,8 +21,12 @@ async def create_payment_page(
     user_email: str,
     user_id: str,
     plan: str,
-) -> str | None:
-    """Create a Cardcom low-profile payment page. Returns the URL to redirect the user to."""
+) -> tuple[str | None, str | None]:
+    """Create a Cardcom low-profile payment page with token creation.
+    Returns (payment_url, low_profile_code) tuple."""
+    if not is_cardcom_configured():
+        logger.warning("Cardcom not configured — dev mode, skipping payment")
+        return None, None
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(CARDCOM_CREATE_URL, json={
@@ -37,20 +48,72 @@ async def create_payment_page(
                     "Field2": plan,
                 },
                 "MaxPayments": 1,
+                "CreateToken": True,
             })
             resp.raise_for_status()
             data = resp.json()
             if data.get("LowProfileUrl"):
-                return data["LowProfileUrl"]
+                return data["LowProfileUrl"], data.get("LowProfileCode")
             logger.error(f"Cardcom response missing URL: {data}")
-            return None
+            return None, None
     except Exception as e:
         logger.error(f"Cardcom create payment failed: {e}")
+        return None, None
+
+
+async def get_lp_result(low_profile_code: str) -> dict | None:
+    """Retrieve token and payment details from a completed LowProfile transaction."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(CARDCOM_LP_RESULT_URL, json={
+                "TerminalNumber": settings.CARDCOM_TERMINAL,
+                "ApiName": settings.CARDCOM_API_NAME,
+                "ApiPassword": settings.CARDCOM_API_PASSWORD,
+                "LowProfileCode": low_profile_code,
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "token": data.get("Token"),
+                "token_exp_date": data.get("TokenExDate"),
+                "last4_digits": data.get("Last4Digits"),
+                "card_brand": data.get("CardBrand"),
+                "amount": data.get("Amount"),
+            }
+    except Exception as e:
+        logger.error(f"Cardcom GetLpResult failed: {e}")
+        return None
+
+
+async def charge_token(token: str, amount: float) -> dict | None:
+    """Charge a saved card token for recurring payment. Returns transaction data or None on failure."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(CARDCOM_CHARGE_URL, json={
+                "TerminalNumber": settings.CARDCOM_TERMINAL,
+                "ApiName": settings.CARDCOM_API_NAME,
+                "ApiPassword": settings.CARDCOM_API_PASSWORD,
+                "Token": token,
+                "Amount": amount,
+                "Currency": "1",  # ILS
+                "Document": {
+                    "Type": "1",  # Invoice
+                },
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            # Cardcom returns ResponseCode 0 on success
+            if data.get("ResponseCode") == 0:
+                return data
+            logger.error(f"Cardcom charge failed: code={data.get('ResponseCode')}, desc={data.get('Description')}")
+            return None
+    except Exception as e:
+        logger.error(f"Cardcom charge_token failed: {e}")
         return None
 
 
 def verify_webhook(data: dict) -> dict | None:
-    """Parse and validate Cardcom webhook payload. Returns user_id and plan if valid."""
+    """Parse and validate Cardcom webhook payload. Returns user_id, plan, and token info if valid."""
     try:
         terminal = data.get("TerminalNumber")
         if str(terminal) != str(settings.CARDCOM_TERMINAL):
@@ -61,6 +124,9 @@ def verify_webhook(data: dict) -> dict | None:
             "user_id": data.get("CustomFields", {}).get("Field1"),
             "plan": data.get("CustomFields", {}).get("Field2"),
             "cardcom_token": data.get("Token"),
+            "token_exp_date": data.get("TokenExDate"),
+            "last4_digits": data.get("Last4Digits"),
+            "card_brand": data.get("CardBrand"),
             "amount": data.get("Amount"),
         }
     except Exception as e:

@@ -10,8 +10,9 @@ class SignupRequest(BaseModel):
 
 
 class SignupResponse(BaseModel):
-    payment_url: str
+    payment_url: str | None = None
     user_id: str
+    demo_mode: bool = False
 
 
 class SubscriptionStatus(BaseModel):
@@ -19,6 +20,10 @@ class SubscriptionStatus(BaseModel):
     plan: str | None = None
     expires_at: str | None = None
     status: str | None = None
+    next_charge_at: str | None = None
+    last4_digits: str | None = None
+    card_brand: str | None = None
+    is_recurring: bool = False
 
 
 class SubscriptionOut(BaseModel):
@@ -29,6 +34,10 @@ class SubscriptionOut(BaseModel):
     status: str
     started_at: str | None
     expires_at: str | None
+    next_charge_at: str | None = None
+    last4_digits: str | None = None
+    card_brand: str | None = None
+    retry_count: int = 0
     created_at: str
 
     model_config = {"from_attributes": True}
