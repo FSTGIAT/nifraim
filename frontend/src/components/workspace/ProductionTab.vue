@@ -152,20 +152,18 @@ const innerTab = ref('insights')
 const fileInputRef = ref(null)
 const showCompareModal = ref(false)
 const previousFile = ref(null)
+const justUploaded = ref(false)
 
 onMounted(() => {
   productionStore.fetchCurrent()
 })
 
-// Track whether the initial load has completed
-const initialLoadDone = ref(false)
-
-// When file loads, fetch analytics + suggest compare on new uploads
-watch(() => productionStore.currentFile, async (newVal, oldVal) => {
+// When file loads, fetch analytics + suggest compare only after a real upload
+watch(() => productionStore.currentFile, async (newVal) => {
   if (newVal) {
     productionStore.fetchAnalytics()
-    // Only show compare modal on actual uploads, not initial page load
-    if (initialLoadDone.value) {
+    if (justUploaded.value) {
+      justUploaded.value = false
       await productionStore.fetchHistory()
       if (productionStore.history.length > 0) {
         previousFile.value = productionStore.history[0]
@@ -173,8 +171,14 @@ watch(() => productionStore.currentFile, async (newVal, oldVal) => {
       }
     }
   }
-  initialLoadDone.value = true
 }, { immediate: true })
+
+// Detect when an upload finishes (uploading goes from true → false)
+watch(() => productionStore.uploading, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    justUploaded.value = true
+  }
+})
 
 function switchToComparison() {
   innerTab.value = 'comparison'
