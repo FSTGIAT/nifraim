@@ -211,11 +211,7 @@ async def compare_with_production(
 
         # Debug: log parse results
         ids_with_val = [r.get("id_number") for r in comm_result["records"] if r.get("id_number")]
-        logger.warning(
-            "PARSE DEBUG: file=%s format=%s company=%s total_records=%d records_with_id=%d sample_ids=%s",
-            commission_file.filename, comm_result["format"], comm_result.get("company_source"),
-            len(comm_result["records"]), len(ids_with_val), ids_with_val[:3]
-        )
+        print(f"PARSE DEBUG: file={commission_file.filename} format={comm_result['format']} company={comm_result.get('company_source')} total_records={len(comm_result['records'])} records_with_id={len(ids_with_val)} sample_ids={ids_with_val[:3]}", flush=True)
 
         # Save commission upload to DB
         comm_upload = FileUpload(
@@ -271,14 +267,11 @@ async def compare_with_production(
     # Debug: log production and commission stats
     prod_ids_with_val = [r.get("id_number") for r in prod_dicts if r.get("id_number")]
     comm_ids_with_val = [r.get("id_number") for r in all_commission_records if r.get("id_number")]
-    logger.warning(
-        "COMPARISON DEBUG: prod_records=%d prod_with_id=%d comm_records=%d comm_with_id=%d category=%s",
-        len(prod_dicts), len(prod_ids_with_val), len(all_commission_records), len(comm_ids_with_val), category
-    )
+    print(f"COMPARISON DEBUG: prod_records={len(prod_dicts)} prod_with_id={len(prod_ids_with_val)} comm_records={len(all_commission_records)} comm_with_id={len(comm_ids_with_val)} category={category}", flush=True)
 
     # Compute comparison with ALL commission records merged
     comparison = compute_comparison(prod_dicts, all_commission_records, paying_names, category_override=category)
-    logger.warning("COMPARISON RESULT: %s", comparison["summary"])
+    print(f"COMPARISON RESULT: {comparison['summary']}", flush=True)
     comparison["commission_company_source"] = company_sources[0] if len(company_sources) == 1 else None
     comparison["commission_company_sources"] = sorted(set(company_sources))
     return comparison
