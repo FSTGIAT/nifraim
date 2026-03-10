@@ -157,7 +157,7 @@
     <section id="video-demo" class="video-section">
       <div class="section-wrap">
         <h2 class="section-title">איך זה <span class="text-orange">עובד</span> ?</h2>
-        <div class="video-container" :class="{ playing: videoPlaying }">
+        <div ref="videoSection" class="video-container" :class="{ playing: videoPlaying, 'video-entered': videoVisible }">
           <video
             ref="demoVideo"
             src="/videos/nifraim-commercial.mp4"
@@ -286,6 +286,9 @@ function animatePercent() {
 // Video
 const demoVideo = ref(null)
 const videoPlaying = ref(false)
+const videoSection = ref(null)
+const videoVisible = ref(false)
+let videoObserver = null
 
 function playVideo() {
   demoVideo.value?.play()
@@ -360,11 +363,25 @@ onMounted(() => {
   if (numbersSection.value) {
     numbersObserver.observe(numbersSection.value)
   }
+
+  // Intersection observer for video section
+  videoObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !videoVisible.value) {
+        videoVisible.value = true
+      }
+    },
+    { threshold: 0.2 }
+  )
+  if (videoSection.value) {
+    videoObserver.observe(videoSection.value)
+  }
 })
 
 onBeforeUnmount(() => {
   pauseSlider()
   if (numbersObserver) numbersObserver.disconnect()
+  if (videoObserver) videoObserver.disconnect()
 })
 </script>
 
@@ -858,6 +875,8 @@ onBeforeUnmount(() => {
     0 0 0 1px rgba(255, 255, 255, 0.04),
     0 0 80px rgba(245, 124, 0, 0.06);
   transition: box-shadow 0.4s, border-color 0.4s;
+  opacity: 0;
+  transform: translateY(48px) scale(0.96);
 }
 
 .video-container:hover {
@@ -919,6 +938,63 @@ onBeforeUnmount(() => {
     0 12px 40px rgba(245, 124, 0, 0.5),
     0 0 0 10px rgba(245, 124, 0, 0.15),
     0 0 0 20px rgba(245, 124, 0, 0.08);
+}
+
+/* Video entrance animation */
+.video-container.video-entered {
+  animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Ambient glow pulse (after entrance, paused on hover/play) */
+.video-container.video-entered:not(:hover):not(.playing) {
+  animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             glowPulse 4s ease-in-out 1s infinite;
+}
+
+/* Play button pulse ring */
+.video-container.video-entered:not(.playing) .play-icon {
+  animation: playPulse 2.5s ease-in-out 1.2s infinite;
+}
+
+@keyframes videoEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(48px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow:
+      0 24px 80px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.04),
+      0 0 80px rgba(245, 124, 0, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 24px 80px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.04),
+      0 0 100px rgba(245, 124, 0, 0.12);
+  }
+}
+
+@keyframes playPulse {
+  0%, 100% {
+    box-shadow:
+      0 8px 32px rgba(245, 124, 0, 0.4),
+      0 0 0 8px rgba(245, 124, 0, 0.12),
+      0 0 0 16px rgba(245, 124, 0, 0.06);
+  }
+  50% {
+    box-shadow:
+      0 8px 32px rgba(245, 124, 0, 0.4),
+      0 0 0 12px rgba(245, 124, 0, 0.18),
+      0 0 0 24px rgba(245, 124, 0, 0.08);
+  }
 }
 
 /* ── How It Works ── */
@@ -1249,6 +1325,18 @@ onBeforeUnmount(() => {
   .video-container {
     margin-top: 32px;
     border-radius: 14px;
+    transform: translateY(32px) scale(0.97);
+  }
+
+  @keyframes videoEntrance {
+    from {
+      opacity: 0;
+      transform: translateY(32px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .play-icon {
@@ -1304,6 +1392,18 @@ onBeforeUnmount(() => {
   .btn-primary.btn-large {
     padding: 16px 40px;
     font-size: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-container {
+    opacity: 1;
+    transform: none;
+  }
+  .video-container.video-entered,
+  .video-container.video-entered:not(:hover):not(.playing),
+  .video-container.video-entered:not(.playing) .play-icon {
+    animation: none;
   }
 }
 </style>
