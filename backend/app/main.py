@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -56,5 +56,14 @@ if FRONTEND_DIR.is_dir():
     async def serve_spa(request: Request, full_path: str):
         file_path = FRONTEND_DIR / full_path
         if file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIR / "index.html")
+            resp = FileResponse(file_path)
+            # Hashed assets can be cached aggressively
+            if full_path.startswith("assets/"):
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+        # index.html must never be cached — ensures fresh deploys are picked up
+        resp = FileResponse(FRONTEND_DIR / "index.html")
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
