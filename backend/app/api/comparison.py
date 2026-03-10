@@ -1,8 +1,11 @@
+import logging
 import uuid
 
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -206,6 +209,14 @@ async def compare_with_production(
         except Exception as e:
             raise HTTPException(400, f"שגיאה בפענוח {commission_file.filename}: {str(e)}")
 
+        # Debug: log parse results
+        ids_with_val = [r.get("id_number") for r in comm_result["records"] if r.get("id_number")]
+        logger.warning(
+            "PARSE DEBUG: file=%s format=%s company=%s total_records=%d records_with_id=%d sample_ids=%s",
+            commission_file.filename, comm_result["format"], comm_result.get("company_source"),
+            len(comm_result["records"]), len(ids_with_val), ids_with_val[:3]
+        )
+
         # Save commission upload to DB
         comm_upload = FileUpload(
             user_id=user.id,
@@ -257,8 +268,17 @@ async def compare_with_production(
     )
     paying_names = [p.company_name for p in paying_result.scalars().all()]
 
+    # Debug: log production and commission stats
+    prod_ids_with_val = [r.get("id_number") for r in prod_dicts if r.get("id_number")]
+    comm_ids_with_val = [r.get("id_number") for r in all_commission_records if r.get("id_number")]
+    logger.warning(
+        "COMPARISON DEBUG: prod_records=%d prod_with_id=%d comm_records=%d comm_with_id=%d category=%s",
+        len(prod_dicts), len(prod_ids_with_val), len(all_commission_records), len(comm_ids_with_val), category
+    )
+
     # Compute comparison with ALL commission records merged
     comparison = compute_comparison(prod_dicts, all_commission_records, paying_names, category_override=category)
+    logger.warning("COMPARISON RESULT: %s", comparison["summary"])
     comparison["commission_company_source"] = company_sources[0] if len(company_sources) == 1 else None
     comparison["commission_company_sources"] = sorted(set(company_sources))
     return comparison
