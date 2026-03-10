@@ -192,6 +192,69 @@ HAREL_NIFRAIM_COLUMNS = {
     "מספר מעסיק": "employer_id",
 }
 
+# Column mappings for Clal Life Commission Report (כלל חיים)
+CLAL_LIFE_NIFRAIM_COLUMNS = {
+    "ת.ז/מזהה מבוטח ראשי": "id_number",
+    "שם מבוטח ראשי": "full_name",
+    "מספר פוליסה": "fund_policy_number",
+    "סטטוס פוליסה": "is_active",
+    "תאריך תחילת ביטוח של הפוליסה": "sign_date",
+    "תאריך עיבוד": "processing_date",
+    "סך פרמיה": "total_premium",
+    'סה"כ עמלה': "commission_paid",
+    "סך עמלה מפרמיה": "commission_before_fee",
+    "סך עמלה מצבירה": "management_fee_amount",
+    "מס' סוכן מקבל עמלה": "agent_number",
+    "שם מעסיק בפוליסה": "employer_name",
+}
+
+# Column mappings for Clal Health Commission Report (כלל בריאות)
+CLAL_HEALTH_NIFRAIM_COLUMNS = {
+    "זיהוי מבוטח": "id_number",
+    "שם מבוטח": "full_name",
+    "מספר פוליסה": "fund_policy_number",
+    "סטטוס פוליסה": "is_active",
+    "תאריך תחילה": "sign_date",
+    "תקבול בפועל": "total_premium",
+    'סה"כ לתשלום': "commission_paid",
+    "תשלום עמלה בפועל - נפרעים": "commission_before_fee",
+    "תשלום עמלה בפועל - ניהול": "management_fee_amount",
+    "מספר סוכן עמלה": "agent_number",
+}
+
+# Column mappings for Migdal Commission Report (מגדל)
+MIGDAL_NIFRAIM_COLUMNS = {
+    "ת.ז מבוטח": "id_number",
+    "שם מבוטח": "full_name",
+    "מספר פוליסה": "fund_policy_number",
+    "סוג פוליסה": "product",
+    "חודש תחילת ביטוח": "sign_date",
+    "תאריך תשלום": "processing_date",
+    "פרמיה משולמת": "total_premium",
+    "עמלה": "commission_paid",
+    "דמי גביה": "management_fee_amount",
+    'סה"כ': "commission_before_fee",
+    "מספר מקבל עמלה": "agent_number",
+    "שם מפעל": "employer_name",
+}
+
+# Column mappings for Ayalon Commission Report (איילון)
+AYALON_NIFRAIM_COLUMNS = {
+    "ת.ז מבוטח": "id_number",
+    "שם מלא מבוטח": "full_name",
+    "מספר פוליסה": "fund_policy_number",
+    "תיאור מוצר": "product",
+    "תאריך תחילת ביטוח": "sign_date",
+    "תאריך נכונות": "processing_date",
+    "פרמיה נפרעת": "total_premium",
+    "סך עמלת סוכן": "commission_paid",
+    "סך דמי צבירה": "management_fee_amount",
+    "סכום צבירה": "balance",
+    "מספר סוכן": "agent_number",
+    "שם מפעל": "employer_name",
+    "מספר מפעל": "employer_id",
+}
+
 # Keywords that indicate a cancelled transfer in raw text
 CANCELLATION_KEYWORDS = [
     "בוטל",
@@ -214,13 +277,19 @@ MENORA_SIGNATURE = {"מספר ת.ז מבוטח/עמית", "שם סוג עמלה"
 ALTSHULER_SIGNATURE = {'ד.נ סוכן סה"כ', "ערך קופה (₪)"}
 PHOENIX_INSURANCE_NIFRAIM_SIGNATURE = {"תז המבוטח", 'סה"כ לתשלום'}
 HAREL_NIFRAIM_SIGNATURE = {"סכום תשלום", 'אופי חו"ז'}
+CLAL_LIFE_NIFRAIM_SIGNATURE = {"ת.ז/מזהה מבוטח ראשי", "סך עמלה מפרמיה"}
+CLAL_HEALTH_NIFRAIM_SIGNATURE = {"זיהוי מבוטח", "תשלום עמלה בפועל - נפרעים"}
+MIGDAL_NIFRAIM_SIGNATURE = {"פרמיה משולמת", "ת.ז מבוטח"}
+AYALON_NIFRAIM_SIGNATURE = {"פרמיה נפרעת", "סך עמלת סוכן"}
 
 # Known header keywords for scanning buried headers
 HEADER_SCAN_KEYWORDS = {"תז העמית", "שם העמית", "תעודת זהות", "זהות", "שם פרטי",
                         "עמלת סוכן", "יתרת סוף חודש", 'עמלה לתשלום כולל מע"מ',
                         "עמלה ללא ניכוי דמי סליקה", "אחוז עמלה שנתית נטו",
                         "ת.ז מבוטח", "סכום עמלה סוכן ללא מעמ",
-                        "מספר ת.ז מבוטח/עמית", "תז המבוטח"}
+                        "מספר ת.ז מבוטח/עמית", "תז המבוטח",
+                        "ת.ז/מזהה מבוטח ראשי", "זיהוי מבוטח", "פרמיה משולמת",
+                        "פרמיה נפרעת"}
 
 # Default commission rates from the rate table image
 DEFAULT_COMMISSION_RATES = [

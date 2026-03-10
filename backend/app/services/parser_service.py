@@ -15,6 +15,10 @@ from app.utils.hebrew_mappings import (
     ALTSHULER_COLUMNS,
     PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
     HAREL_NIFRAIM_COLUMNS,
+    CLAL_LIFE_NIFRAIM_COLUMNS,
+    CLAL_HEALTH_NIFRAIM_COLUMNS,
+    MIGDAL_NIFRAIM_COLUMNS,
+    AYALON_NIFRAIM_COLUMNS,
     AGENT_TRACKING_SIGNATURE,
     COMPANY_REPORT_SIGNATURE,
     PHOENIX_COMMISSION_SIGNATURE,
@@ -25,6 +29,10 @@ from app.utils.hebrew_mappings import (
     ALTSHULER_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_SIGNATURE,
     HAREL_NIFRAIM_SIGNATURE,
+    CLAL_LIFE_NIFRAIM_SIGNATURE,
+    CLAL_HEALTH_NIFRAIM_SIGNATURE,
+    MIGDAL_NIFRAIM_SIGNATURE,
+    AYALON_NIFRAIM_SIGNATURE,
     HEADER_SCAN_KEYWORDS,
     CANCELLATION_KEYWORDS,
 )
@@ -57,6 +65,14 @@ def detect_format(columns: list[str]) -> str:
         return "altshuler"
     if col_set & HAREL_NIFRAIM_SIGNATURE:
         return "harel_nifraim"
+    if col_set & CLAL_LIFE_NIFRAIM_SIGNATURE:
+        return "clal_life_nifraim"
+    if col_set & CLAL_HEALTH_NIFRAIM_SIGNATURE:
+        return "clal_health_nifraim"
+    if col_set & AYALON_NIFRAIM_SIGNATURE:
+        return "ayalon_nifraim"
+    if col_set & MIGDAL_NIFRAIM_SIGNATURE:
+        return "migdal_nifraim"
     if col_set & PHOENIX_INSURANCE_NIFRAIM_SIGNATURE:
         return "phoenix_insurance_nifraim"
     if col_set & PHOENIX_COMMISSION_SIGNATURE:
@@ -266,6 +282,14 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
         return _parse_harel_nifraim(df)
     elif file_format == "phoenix_insurance_nifraim":
         return _parse_phoenix_insurance_nifraim(df)
+    elif file_format == "clal_life_nifraim":
+        return _parse_clal_life_nifraim(df)
+    elif file_format == "clal_health_nifraim":
+        return _parse_clal_health_nifraim(df)
+    elif file_format == "migdal_nifraim":
+        return _parse_migdal_nifraim(df)
+    elif file_format == "ayalon_nifraim":
+        return _parse_ayalon_nifraim(df)
     else:
         # Try to parse as generic — map whatever columns we can
         return _parse_generic(df)
@@ -787,6 +811,250 @@ def _parse_phoenix_insurance_nifraim(df: pd.DataFrame) -> dict:
     return {
         "format": "phoenix_insurance_nifraim",
         "company_source": "הפניקס",
+        "records": records,
+    }
+
+
+def _parse_clal_life_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Clal Life commission report (כלל חיים)."""
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in CLAL_LIFE_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("total_premium", "commission_paid",
+                                 "commission_before_fee", "management_fee_amount"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field in ("sign_date", "processing_date"):
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        # Clean agent_number — remove .0 artifacts
+        if record.get("agent_number"):
+            an = str(record["agent_number"])
+            if an.endswith(".0"):
+                an = an[:-2]
+            record["agent_number"] = an
+
+        record["receiving_company"] = "כלל"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    return {
+        "format": "clal_life_nifraim",
+        "company_source": "כלל",
+        "records": records,
+    }
+
+
+def _parse_clal_health_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Clal Health commission report (כלל בריאות)."""
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in CLAL_HEALTH_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("total_premium", "commission_paid",
+                                 "commission_before_fee", "management_fee_amount"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field == "sign_date":
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        # Clean agent_number — remove .0 artifacts
+        if record.get("agent_number"):
+            an = str(record["agent_number"])
+            if an.endswith(".0"):
+                an = an[:-2]
+            record["agent_number"] = an
+
+        record["receiving_company"] = "כלל"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    return {
+        "format": "clal_health_nifraim",
+        "company_source": "כלל",
+        "records": records,
+    }
+
+
+def _parse_migdal_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Migdal commission report (מגדל)."""
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in MIGDAL_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("total_premium", "commission_paid",
+                                 "management_fee_amount", "commission_before_fee"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field in ("sign_date", "processing_date"):
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        # Clean agent_number — remove .0 artifacts
+        if record.get("agent_number"):
+            an = str(record["agent_number"])
+            if an.endswith(".0"):
+                an = an[:-2]
+            record["agent_number"] = an
+
+        record["receiving_company"] = "מגדל"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    return {
+        "format": "migdal_nifraim",
+        "company_source": "מגדל",
+        "records": records,
+    }
+
+
+def _parse_ayalon_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Ayalon commission report (איילון)."""
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in AYALON_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("total_premium", "commission_paid",
+                                 "management_fee_amount", "balance"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field in ("sign_date", "processing_date"):
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number — remove .0 artifacts
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        # Clean agent_number — remove .0 artifacts
+        if record.get("agent_number"):
+            an = str(record["agent_number"])
+            if an.endswith(".0"):
+                an = an[:-2]
+            record["agent_number"] = an
+
+        # Cross-compatibility: map balance for unified display
+        if record.get("balance"):
+            record["month_end_balance"] = record["balance"]
+
+        record["receiving_company"] = "איילון"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    return {
+        "format": "ayalon_nifraim",
+        "company_source": "איילון",
         "records": records,
     }
 

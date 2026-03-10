@@ -450,6 +450,10 @@ Company names are dynamic. New companies appear automatically in filters and cha
 | `hachshara_nifraim` | הכשרה (Hachshara) | xlsx | `{"סכום עמלה סוכן ללא מעמ", "יתרת צבירה"}` |
 | `menora_nifraim` | מנורה (Menora) | xlsx | `{"שם סוכן ראשי", "דמי ניהול מצבירה"}` |
 | `altshuler_nifraim` | אלטשולר (Altshuler) | xlsx | `{"שיעור עמלה", "דמי ניהול"}` |
+| `clal_life_nifraim` | כלל חיים (Clal Life) | xlsx | `{"ת.ז/מזהה מבוטח ראשי", "סך עמלה מפרמיה"}` |
+| `clal_health_nifraim` | כלל בריאות (Clal Health) | xlsx | `{"זיהוי מבוטח", "תשלום עמלה בפועל - נפרעים"}` |
+| `migdal_nifraim` | מגדל (Migdal) | xlsx | `{"פרמיה משולמת", "ת.ז מבוטח"}` |
+| `ayalon_nifraim` | איילון (Ayalon) | xlsx | `{"פרמיה נפרעת", "סך עמלת סוכן"}` |
 | `production` | Agent production | xlsx | `{"תאריך הצטרפות", "סטטוס מוצר"}` |
 
 ---
