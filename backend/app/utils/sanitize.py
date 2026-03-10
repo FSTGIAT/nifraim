@@ -39,6 +39,10 @@ def sanitize_record(rec: dict) -> dict:
             else:
                 out[k] = None
             continue
+        # Convert date objects in string fields (e.g. processing_date is VARCHAR)
+        if k in MAX_LENGTHS and isinstance(v, (date, datetime)):
+            out[k] = v.strftime("%Y-%m-%d") if not isinstance(v, pd.Timestamp) else str(v.date())
+            continue
         # Truncate strings
         if k in MAX_LENGTHS and isinstance(v, str):
             out[k] = v[:MAX_LENGTHS[k]]
