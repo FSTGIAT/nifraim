@@ -8,7 +8,7 @@ from app.schemas.subscription import SignupRequest, SignupResponse, Subscription
 from app.services.subscription_service import (
     create_signup, activate_subscription, get_subscription_status, cancel_subscription,
 )
-from app.services.payment_service import verify_webhook, is_cardcom_configured
+from app.services.payment_service import verify_webhook, get_lp_result, is_cardcom_configured
 
 router = APIRouter()
 
@@ -46,10 +46,35 @@ async def signup(req: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/webhook")
 async def webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    data = await request.json()
+    """Handle Cardcom webhook after payment.
+    Cardcom sends LowProfileCode — we call GetLpResult to get full payment details."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Cardcom may send as JSON or form data
+    content_type = request.headers.get("content-type", "")
+    if "json" in content_type:
+        data = await request.json()
+    else:
+        form = await request.form()
+        data = dict(form)
+
+    logger.info(f"Cardcom webhook received: {data}")
     parsed = verify_webhook(data)
     if not parsed or not parsed.get("user_id"):
         raise HTTPException(status_code=400, detail="Invalid webhook data")
+
+    # If we have a LowProfileCode, call GetLpResult for full details (token, card info)
+    lp_code = parsed.get("low_profile_code")
+    if lp_code:
+        lp_result = await get_lp_result(lp_code)
+        if lp_result:
+            # Merge GetLpResult data (more reliable than webhook payload)
+            parsed["cardcom_token"] = lp_result.get("token") or parsed.get("cardcom_token")
+            parsed["token_exp_date"] = lp_result.get("token_exp_date") or parsed.get("token_exp_date")
+            parsed["last4_digits"] = lp_result.get("last4_digits") or parsed.get("last4_digits")
+            parsed["card_brand"] = lp_result.get("card_brand") or parsed.get("card_brand")
+            parsed["amount"] = lp_result.get("amount") or parsed.get("amount")
 
     user = await activate_subscription(
         db=db,
@@ -144,6 +169,7 @@ async def renew(
         amount=float(PLAN_PRICES.get(plan, Decimal("295.00"))),
         description=f"Nifraim - חידוש מנוי {'חודשי' if plan == 'monthly' else 'שנתי'}",
         user_email=user.email,
+        user_name=user.full_name,
         user_id=str(user.id),
         plan=plan,
     )

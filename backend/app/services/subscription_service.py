@@ -62,6 +62,7 @@ async def create_signup(
         amount=float(PLAN_PRICES[plan]),
         description=f"Nifraim - מנוי {'חודשי' if plan == 'monthly' else 'שנתי'}",
         user_email=email,
+        user_name=full_name,
         user_id=str(user.id),
         plan=plan,
     )
@@ -243,7 +244,19 @@ async def process_renewals(db: AsyncSession) -> dict:
     stats["processed"] = len(subs)
 
     for sub in subs:
-        charge_result = await charge_token(sub.cardcom_token, float(sub.amount))
+        # Fetch user info for invoice generation
+        user_result = await db.execute(select(User).where(User.id == sub.user_id))
+        user = user_result.scalar_one_or_none()
+
+        plan_label = "חודשי" if sub.plan == "monthly" else "שנתי"
+        charge_result = await charge_token(
+            token=sub.cardcom_token,
+            amount=float(sub.amount),
+            token_exp_date=sub.token_exp_date,
+            customer_name=user.full_name if user else None,
+            customer_email=user.email if user else None,
+            description=f"Nifraim - חידוש מנוי {plan_label}",
+        )
 
         if charge_result:
             # Success — extend subscription
@@ -263,9 +276,6 @@ async def process_renewals(db: AsyncSession) -> dict:
                 # Deactivate after 3 failures
                 sub.status = "expired"
                 sub.next_charge_at = None
-                # Deactivate user
-                user_result = await db.execute(select(User).where(User.id == sub.user_id))
-                user = user_result.scalar_one_or_none()
                 if user:
                     user.is_active = False
                 stats["deactivated"] += 1
