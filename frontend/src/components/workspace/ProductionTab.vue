@@ -157,11 +157,23 @@ onMounted(() => {
   productionStore.fetchCurrent()
 })
 
-// When file loads, fetch analytics
-watch(() => productionStore.currentFile, (newVal) => {
+// Track whether the initial load has completed
+const initialLoadDone = ref(false)
+
+// When file loads, fetch analytics + suggest compare on new uploads
+watch(() => productionStore.currentFile, async (newVal, oldVal) => {
   if (newVal) {
     productionStore.fetchAnalytics()
+    // Only show compare modal on actual uploads, not initial page load
+    if (initialLoadDone.value) {
+      await productionStore.fetchHistory()
+      if (productionStore.history.length > 0) {
+        previousFile.value = productionStore.history[0]
+        showCompareModal.value = true
+      }
+    }
   }
+  initialLoadDone.value = true
 }, { immediate: true })
 
 function switchToComparison() {
@@ -181,14 +193,7 @@ function onFileSelected(e) {
     const file = files[0]
     const ext = file.name.split('.').pop().toLowerCase()
     if (ext === 'xlsx' || ext === 'xls') {
-      productionStore.uploadProduction(file).then(async () => {
-        productionStore.fetchAnalytics()
-        await productionStore.fetchHistory()
-        if (productionStore.history.length > 0) {
-          previousFile.value = productionStore.history[0]
-          showCompareModal.value = true
-        }
-      })
+      productionStore.uploadProduction(file)
     }
   }
   e.target.value = ''
