@@ -1,15 +1,39 @@
 <template>
   <div class="production-uploader">
-    <!-- Animated orange wave background -->
+    <!-- Animated shimmery orange waves — centered vertically -->
     <div class="wave-bg">
-      <svg class="wave wave-1" viewBox="0 0 1440 320" preserveAspectRatio="none">
-        <path d="M0,160L48,170.7C96,181,192,203,288,197.3C384,192,480,160,576,149.3C672,139,768,149,864,170.7C960,192,1056,224,1152,218.7C1248,213,1344,171,1392,149.3L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      <div class="shimmer"></div>
+      <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="wg1" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
+            <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
+            <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
+            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#wg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
       </svg>
-      <svg class="wave wave-2" viewBox="0 0 1440 320" preserveAspectRatio="none">
-        <path d="M0,224L48,213.3C96,203,192,181,288,186.7C384,192,480,224,576,234.7C672,245,768,235,864,213.3C960,192,1056,160,1152,165.3C1248,171,1344,213,1392,234.7L1440,256L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="wg2" x1="100%" y1="0%" x2="0%" y2="0%">
+            <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
+            <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
+            <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#wg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
       </svg>
-      <svg class="wave wave-3" viewBox="0 0 1440 320" preserveAspectRatio="none">
-        <path d="M0,288L48,272C96,256,192,224,288,218.7C384,213,480,235,576,245.3C672,256,768,256,864,240C960,224,1056,192,1152,186.7C1248,181,1344,203,1392,213.3L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"/>
+      <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="wg3" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
+            <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#wg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
       </svg>
     </div>
 
@@ -76,7 +100,7 @@
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </div>
-          <h3>גרור קובץ Excel או לחץ לבחירה</h3>
+          <h3>טען קובץ פרודוקציה</h3>
         </div>
       </div>
       <input
@@ -228,13 +252,37 @@ async function uploadFile() {
   justify-content: center;
 }
 
-/* ─── Animated waves ─── */
+/* ─── Animated waves — centered vertically ─── */
 .wave-bg {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 180px;
   overflow: hidden;
-  border-radius: var(--radius-lg);
   pointer-events: none;
+}
+
+.shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 183, 77, 0.08) 45%,
+    rgba(255, 152, 0, 0.12) 50%,
+    rgba(255, 183, 77, 0.08) 55%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  animation: shimmerSlide 5s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes shimmerSlide {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .wave {
@@ -242,24 +290,19 @@ async function uploadFile() {
   bottom: 0;
   left: 0;
   width: 200%;
-  height: 140px;
+  height: 100%;
 }
 
 .wave-1 {
-  fill: rgba(245, 124, 0, 0.06);
-  animation: waveSlide 12s linear infinite;
+  animation: waveSlide 14s linear infinite;
 }
 
 .wave-2 {
-  fill: rgba(245, 124, 0, 0.04);
-  animation: waveSlide 16s linear infinite reverse;
-  bottom: -8px;
+  animation: waveSlide 18s linear infinite reverse;
 }
 
 .wave-3 {
-  fill: rgba(245, 124, 0, 0.025);
-  animation: waveSlide 20s linear infinite;
-  bottom: -16px;
+  animation: waveSlide 22s linear infinite;
 }
 
 @keyframes waveSlide {
