@@ -152,18 +152,17 @@ const innerTab = ref('insights')
 const fileInputRef = ref(null)
 const showCompareModal = ref(false)
 const previousFile = ref(null)
-const justUploaded = ref(false)
-
 onMounted(() => {
   productionStore.fetchCurrent()
 })
 
 // When file loads, fetch analytics + suggest compare only after a real upload
+// Note: in the store, currentFile is set while uploading is still true,
+// so checking uploading distinguishes real uploads from page-load fetches
 watch(() => productionStore.currentFile, async (newVal) => {
   if (newVal) {
     productionStore.fetchAnalytics()
-    if (justUploaded.value) {
-      justUploaded.value = false
+    if (productionStore.uploading) {
       await productionStore.fetchHistory()
       if (productionStore.history.length > 0) {
         previousFile.value = productionStore.history[0]
@@ -172,13 +171,6 @@ watch(() => productionStore.currentFile, async (newVal) => {
     }
   }
 }, { immediate: true })
-
-// Detect when an upload finishes (uploading goes from true → false)
-watch(() => productionStore.uploading, (newVal, oldVal) => {
-  if (oldVal === true && newVal === false) {
-    justUploaded.value = true
-  }
-})
 
 function switchToComparison() {
   innerTab.value = 'comparison'
