@@ -42,7 +42,16 @@ async def create_signup(
     result = await db.execute(select(User).where(User.email == email))
     existing = result.scalar_one_or_none()
     if existing:
-        raise ValueError("Email already registered")
+        if existing.is_active:
+            raise ValueError("Email already registered")
+        # Inactive user from abandoned signup — clean up and allow retry
+        await db.execute(
+            select(Subscription).where(Subscription.user_id == existing.id)
+        )
+        from sqlalchemy import delete
+        await db.execute(delete(Subscription).where(Subscription.user_id == existing.id))
+        await db.execute(delete(User).where(User.id == existing.id))
+        await db.flush()
 
     # Create user with temporary password (will be replaced after payment)
     temp_password = secrets.token_urlsafe(16)
