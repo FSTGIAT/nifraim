@@ -367,6 +367,7 @@ Agent manages links in RecruitsTab → PortalLinksManager (collapsible section)
 | **Teleport modals** | All modals use `<Teleport to="body">` with overlay + card pattern |
 | **CSS variables** | Salesforce Lightning Design tokens in `App.vue` root styles — never hardcode colors |
 | **Conditional amounts** | Only show financial values when > 0, never show dashes for empty |
+| **Empty state decoration** | Pre-upload / empty states use floating orange blur circles (`position: fixed`, `border-radius: 50%`, `rgba(245,124,0,...)`, `floatBob` animation) + animated SVG waves at page bottom (`position: fixed; bottom: 0`, 3 layers with gradient fills + shimmer sweep masked to wave shape). See `ProductionUploader.vue` and `CommissionUploader.vue` as reference. Use unique SVG gradient IDs per component (e.g. `wg1` vs `cwg1`). |
 
 ### Naming Conventions
 

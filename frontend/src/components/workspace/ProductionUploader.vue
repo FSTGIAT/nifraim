@@ -1,6 +1,12 @@
 <template>
   <div class="production-uploader">
-    <!-- Animated shimmery orange waves — centered vertically -->
+    <!-- Floating blur circles -->
+    <div class="float-circle fc-1"></div>
+    <div class="float-circle fc-2"></div>
+    <div class="float-circle fc-3"></div>
+    <div class="float-circle fc-4"></div>
+
+    <!-- Animated waves at bottom -->
     <div class="wave-bg">
       <div class="shimmer"></div>
       <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
@@ -252,37 +258,104 @@ async function uploadFile() {
   justify-content: center;
 }
 
-/* ─── Animated waves — centered vertically ─── */
+/* ─── Floating blur circles ─── */
+.float-circle {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fc-1 {
+  width: 220px;
+  height: 220px;
+  top: 10%;
+  right: -60px;
+  background: rgba(245, 124, 0, 0.045);
+  border: 1px solid rgba(245, 124, 0, 0.06);
+  animation: floatBob 8s ease-in-out infinite;
+}
+
+.fc-2 {
+  width: 160px;
+  height: 160px;
+  bottom: 25%;
+  left: -40px;
+  background: rgba(245, 124, 0, 0.035);
+  border: 1px solid rgba(245, 124, 0, 0.05);
+  animation: floatBob 6.5s ease-in-out infinite reverse;
+}
+
+.fc-3 {
+  width: 90px;
+  height: 90px;
+  top: 30%;
+  left: 8%;
+  background: rgba(245, 124, 0, 0.05);
+  animation: floatBob 10s ease-in-out infinite 2s;
+}
+
+.fc-4 {
+  width: 120px;
+  height: 120px;
+  top: 55%;
+  right: 6%;
+  background: rgba(245, 124, 0, 0.03);
+  border: 1px solid rgba(245, 124, 0, 0.04);
+  animation: floatBob 9s ease-in-out infinite 1s;
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-16px) rotate(2deg); }
+  66% { transform: translateY(8px) rotate(-1deg); }
+}
+
+/* ─── Waves fixed to bottom of page ─── */
 .wave-bg {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 180px;
+  bottom: 0;
+  height: 200px;
   overflow: hidden;
   pointer-events: none;
+  z-index: 0;
 }
 
 .shimmer {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 30%,
-    rgba(255, 183, 77, 0.08) 45%,
-    rgba(255, 152, 0, 0.12) 50%,
-    rgba(255, 183, 77, 0.08) 55%,
-    transparent 70%
-  );
-  background-size: 300% 100%;
-  animation: shimmerSlide 5s ease-in-out infinite;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
   z-index: 1;
+  overflow: hidden;
+  mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
 }
 
-@keyframes shimmerSlide {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 200, 100, 0.1) 35%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 200, 100, 0.1) 65%,
+    transparent 100%
+  );
+  animation: shimmerSweep 7s ease-in-out infinite;
+}
+
+@keyframes shimmerSweep {
+  0%   { left: -80%; }
+  100% { left: 180%; }
 }
 
 .wave {
@@ -293,17 +366,9 @@ async function uploadFile() {
   height: 100%;
 }
 
-.wave-1 {
-  animation: waveSlide 14s linear infinite;
-}
-
-.wave-2 {
-  animation: waveSlide 18s linear infinite reverse;
-}
-
-.wave-3 {
-  animation: waveSlide 22s linear infinite;
-}
+.wave-1 { animation: waveSlide 14s linear infinite; }
+.wave-2 { animation: waveSlide 18s linear infinite reverse; }
+.wave-3 { animation: waveSlide 22s linear infinite; }
 
 @keyframes waveSlide {
   0%   { transform: translateX(0); }
