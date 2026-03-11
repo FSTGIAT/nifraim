@@ -173,6 +173,29 @@
       <button :class="{ active: activeFilter === 'not_found' }" @click="activeFilter = 'not_found'">לא נמצאו <b>{{ result.not_found }}</b></button>
     </div>
 
+    <!-- Company & Product filters -->
+    <div class="slice-filters">
+      <div class="slice-filter">
+        <label>חברה</label>
+        <select v-model="companyFilter">
+          <option value="">הכל ({{ uniqueCompanies.length }})</option>
+          <option v-for="c in uniqueCompanies" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </div>
+      <div class="slice-filter">
+        <label>מוצר</label>
+        <select v-model="productFilter">
+          <option value="">הכל ({{ uniqueProducts.length }})</option>
+          <option v-for="p in uniqueProducts" :key="p" :value="p">{{ p }}</option>
+        </select>
+      </div>
+      <button v-if="companyFilter || productFilter" class="slice-clear" @click="companyFilter = ''; productFilter = ''">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        נקה סינון
+      </button>
+      <span class="slice-count" v-if="companyFilter || productFilter">{{ filteredResults.length }} תוצאות</span>
+    </div>
+
     <!-- Results table -->
     <div class="tbl-wrap">
       <table class="tbl">
@@ -502,6 +525,8 @@ const customInputVal = ref('')
 const customInputRef = ref(null)
 const showMissingModal = ref(false)
 const missingSearch = ref('')
+const companyFilter = ref('')
+const productFilter = ref('')
 
 onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
@@ -615,10 +640,29 @@ const statusChartOptions = computed(() => {
   }
 })
 
+const uniqueCompanies = computed(() => {
+  const set = new Set()
+  for (const r of props.result.results) {
+    if (r.company) set.add(r.company)
+  }
+  return [...set].sort()
+})
+
+const uniqueProducts = computed(() => {
+  const set = new Set()
+  for (const r of props.result.results) {
+    if (r.product) set.add(r.product)
+  }
+  return [...set].sort()
+})
+
 const filteredResults = computed(() => {
-  if (activeFilter.value === 'found') return props.result.results.filter(r => r.found_in_production)
-  if (activeFilter.value === 'not_found') return props.result.results.filter(r => !r.found_in_production)
-  return props.result.results
+  let list = props.result.results
+  if (activeFilter.value === 'found') list = list.filter(r => r.found_in_production)
+  if (activeFilter.value === 'not_found') list = list.filter(r => !r.found_in_production)
+  if (companyFilter.value) list = list.filter(r => r.company === companyFilter.value)
+  if (productFilter.value) list = list.filter(r => r.product === productFilter.value)
+  return list
 })
 
 const totalPages = computed(() => Math.ceil(filteredResults.value.length / pageSize))
@@ -643,7 +687,7 @@ const visiblePages = computed(() => {
   return pages
 })
 
-watch(activeFilter, () => { currentPage.value = 1 })
+watch([activeFilter, companyFilter, productFilter], () => { currentPage.value = 1 })
 
 function openDetail(item) { detailItem.value = item }
 
@@ -1091,6 +1135,84 @@ const chartOptions = computed(() => ({
 .seg-filter button.active {
   background: var(--primary);
   color: #fff;
+}
+
+/* ── Slice Filters (Company & Product) ── */
+.slice-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.slice-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slice-filter label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.slice-filter select {
+  padding: 6px 28px 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 8px center;
+  transition: all 0.2s;
+  min-width: 120px;
+}
+
+.slice-filter select:hover {
+  border-color: var(--primary);
+}
+
+.slice-filter select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+  outline: none;
+}
+
+.slice-clear {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  border-radius: 8px;
+  background: rgba(239, 83, 80, 0.06);
+  color: #ef5350;
+  font-family: 'Heebo', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slice-clear:hover {
+  background: rgba(239, 83, 80, 0.12);
+}
+
+.slice-count {
+  font-size: 12px;
+  color: var(--primary);
+  font-weight: 700;
 }
 
 /* ── Table ── */
