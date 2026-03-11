@@ -111,7 +111,7 @@
             type="donut"
             :options="statusChartOptions"
             :series="statusChartSeries"
-            height="200"
+            height="240"
           />
         </div>
       </div>
@@ -1251,6 +1251,7 @@ const chartOptions = computed(() => ({
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   background: var(--card-bg);
+  overflow: hidden;
 }
 
 .ins-chart-title {
