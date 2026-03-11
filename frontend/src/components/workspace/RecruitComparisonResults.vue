@@ -85,12 +85,13 @@
         </div>
       </div>
 
-      <!-- Two-column: Company bar chart + Status donut -->
-      <div class="insights-charts-row" v-if="hasCompanyData || hasStatusData">
-        <div class="ins-chart-box" v-if="hasCompanyData">
+      <!-- Three-column: Company bar + Product donut + Status donut -->
+      <div class="insights-charts-row insights-charts-row-3" v-if="hasCompanyData || hasProductData || hasStatusData">
+        <div class="ins-chart-box ins-chart-clickable" v-if="hasCompanyData">
           <div class="ins-chart-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
             פילוח לפי חברה
+            <span class="chart-click-hint">לחץ לפירוט</span>
           </div>
           <apexchart
             v-if="chartReady"
@@ -98,6 +99,20 @@
             :options="companyChartOptions"
             :series="companyChartSeries"
             :height="Math.max(160, (result.company_breakdown || []).length * 38)"
+          />
+        </div>
+        <div class="ins-chart-box ins-chart-clickable" v-if="hasProductData">
+          <div class="ins-chart-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+            פילוח לפי מוצר
+            <span class="chart-click-hint">לחץ לפירוט</span>
+          </div>
+          <apexchart
+            v-if="chartReady"
+            type="donut"
+            :options="productChartOptions"
+            :series="productChartSeries"
+            height="220"
           />
         </div>
         <div class="ins-chart-box" v-if="hasStatusData">
@@ -110,7 +125,7 @@
             type="donut"
             :options="statusChartOptions"
             :series="statusChartSeries"
-            height="200"
+            height="220"
           />
         </div>
       </div>
@@ -492,6 +507,94 @@
       </Transition>
     </Teleport>
 
+    <!-- Chart Drill-Down Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="drillModal.show" class="modal-overlay" @click.self="drillModal.show = false">
+          <div class="modal-card missing-modal-card">
+            <div class="modal-head">
+              <button class="modal-x" @click="drillModal.show = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <div class="modal-id-row">
+                <div>
+                  <div class="modal-name">{{ drillModal.title }}</div>
+                  <div class="modal-id-num">{{ drillModalCustomers.length }} לקוחות</div>
+                </div>
+                <span class="modal-status-chip" :class="drillModal.type === 'company' ? 'chip-company' : 'chip-product'">
+                  {{ drillModal.value }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Summary strip -->
+            <div class="drill-summary">
+              <div class="drill-stat">
+                <span class="drill-stat-val ltr-number">{{ drillModalFound }}</span>
+                <span class="drill-stat-lbl">נמצאו</span>
+              </div>
+              <div class="drill-stat">
+                <span class="drill-stat-val drill-stat-missing ltr-number">{{ drillModalMissing }}</span>
+                <span class="drill-stat-lbl">לא נמצאו</span>
+              </div>
+              <div class="drill-stat">
+                <span class="drill-stat-val drill-stat-premium ltr-number">₪{{ fmtNum(drillModalPremium) }}</span>
+                <span class="drill-stat-lbl">פרמיה</span>
+              </div>
+            </div>
+
+            <!-- Search -->
+            <div class="mm-search-wrap" style="margin: 0 20px 12px 20px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="mm-search" v-model="drillModal.search" placeholder="חיפוש לפי שם או ת.ז..." />
+            </div>
+
+            <!-- Table -->
+            <div class="mm-table-wrap" style="margin: 0 20px 16px 20px">
+              <table class="mm-table">
+                <thead>
+                  <tr>
+                    <th style="width:28px"></th>
+                    <th>שם</th>
+                    <th>ת.ז</th>
+                    <th>חברה</th>
+                    <th>מוצר</th>
+                    <th>מוצרים</th>
+                    <th>פרמיה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in drillModalFiltered"
+                    :key="item.recruit_id"
+                    class="mm-row"
+                    @click="drillModal.show = false; openDetail(item)"
+                  >
+                    <td>
+                      <span v-if="item.found_in_production" class="dot dot-found"></span>
+                      <span v-else class="dot dot-missing"></span>
+                    </td>
+                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
+                    <td class="td-id ltr-number">{{ item.id_number }}</td>
+                    <td>{{ item.company || '—' }}</td>
+                    <td>{{ item.product || '—' }}</td>
+                    <td class="ltr-number">
+                      <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
+                      <span v-else class="prod-badge prod-badge-zero">0</span>
+                    </td>
+                    <td class="ltr-number" style="font-weight:700;color:var(--primary)">
+                      <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
+                      <template v-else>—</template>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Clipboard notification -->
     <Transition name="clipboard-toast">
       <div v-if="clipboardNotice" class="clipboard-toast">
@@ -527,6 +630,7 @@ const showMissingModal = ref(false)
 const missingSearch = ref('')
 const companyFilter = ref('')
 const productFilter = ref('')
+const drillModal = ref({ show: false, type: '', value: '', title: '', search: '' })
 
 onMounted(() => { nextTick(() => { chartReady.value = true }) })
 
@@ -558,6 +662,45 @@ const hasStatusData = computed(() => {
   const sb = props.result.status_breakdown || {}
   return Object.keys(sb).length > 0
 })
+const hasProductData = computed(() => uniqueProducts.value.length > 1)
+
+// Product breakdown data
+const productBreakdown = computed(() => {
+  const map = {}
+  for (const r of props.result.results) {
+    const prod = r.product || 'לא ידוע'
+    if (!map[prod]) map[prod] = { product: prod, found: 0, not_found: 0, total: 0 }
+    map[prod].total++
+    if (r.found_in_production) map[prod].found++
+    else map[prod].not_found++
+  }
+  return Object.values(map).sort((a, b) => b.total - a.total)
+})
+
+// Drill-down modal computeds
+const drillModalCustomers = computed(() => {
+  if (!drillModal.value.show) return []
+  const { type, value } = drillModal.value
+  return props.result.results.filter(r => {
+    if (type === 'company') return (r.company || 'לא ידוע') === value
+    if (type === 'product') return (r.product || 'לא ידוע') === value
+    return false
+  })
+})
+
+const drillModalFiltered = computed(() => {
+  const q = (drillModal.value.search || '').trim().toLowerCase()
+  const list = drillModalCustomers.value
+  if (!q) return list
+  return list.filter(r => {
+    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+    return name.includes(q) || (r.id_number || '').includes(q)
+  })
+})
+
+const drillModalFound = computed(() => drillModalCustomers.value.filter(r => r.found_in_production).length)
+const drillModalMissing = computed(() => drillModalCustomers.value.filter(r => !r.found_in_production).length)
+const drillModalPremium = computed(() => drillModalCustomers.value.reduce((s, r) => s + (r.production_premium || 0), 0))
 
 const topMissing = computed(() => {
   return props.result.results
@@ -598,18 +741,32 @@ const companyChartSeries = computed(() => {
 })
 
 const companyChartOptions = computed(() => ({
-  chart: { type: 'bar', stacked: true, fontFamily: 'Heebo, sans-serif', toolbar: { show: false } },
+  chart: {
+    type: 'bar', stacked: true, fontFamily: 'Heebo, sans-serif', toolbar: { show: false },
+    events: {
+      dataPointSelection: (_e, _chart, config) => {
+        const bd = props.result.company_breakdown || []
+        const company = bd[config.dataPointIndex]
+        if (company) openDrillModal('company', company.company)
+      },
+    },
+  },
   plotOptions: { bar: { horizontal: true, barHeight: '60%', borderRadius: 4 } },
   colors: ['#2E844A', '#E8720A'],
   xaxis: {
     categories: (props.result.company_breakdown || []).map(c => c.company),
     labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
   },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
+  yaxis: {
+    labels: {
+      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', cursor: 'pointer' },
+    },
+  },
   legend: { position: 'top', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
   dataLabels: { enabled: false },
   grid: { borderColor: 'var(--border-subtle)', strokeDashArray: 3 },
   tooltip: { style: { fontFamily: 'Heebo, sans-serif' } },
+  states: { active: { filter: { type: 'darken', value: 0.75 } } },
 }))
 
 // Status donut chart
@@ -637,6 +794,38 @@ const statusChartOptions = computed(() => {
     plotOptions: { pie: { donut: { size: '60%' } } },
     stroke: { width: 2, colors: ['var(--card-bg)'] },
     tooltip: { style: { fontFamily: 'Heebo, sans-serif' }, y: { formatter: (val) => val + ' מוצרים' } },
+  }
+})
+
+// Product donut chart
+const productChartSeries = computed(() => productBreakdown.value.map(p => p.total))
+
+const productChartOptions = computed(() => {
+  const labels = productBreakdown.value.map(p => p.product)
+  const productColors = ['#0176D3', '#7F56D9', '#06BDBD', '#E8720A', '#2E844A', '#EA4335', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6']
+  return {
+    chart: {
+      type: 'donut', fontFamily: 'Heebo, sans-serif',
+      events: {
+        dataPointSelection: (_e, _chart, config) => {
+          const prod = productBreakdown.value[config.dataPointIndex]
+          if (prod) openDrillModal('product', prod.product)
+        },
+      },
+    },
+    labels,
+    colors: productColors.slice(0, labels.length),
+    legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
+    dataLabels: {
+      enabled: true,
+      formatter: (val) => val.toFixed(0) + '%',
+      style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '11px' },
+      dropShadow: { enabled: false },
+    },
+    plotOptions: { pie: { donut: { size: '58%' } } },
+    stroke: { width: 2, colors: ['var(--card-bg)'] },
+    tooltip: { style: { fontFamily: 'Heebo, sans-serif' }, y: { formatter: (val) => val + ' לקוחות' } },
+    states: { active: { filter: { type: 'darken', value: 0.75 } } },
   }
 })
 
@@ -690,6 +879,16 @@ const visiblePages = computed(() => {
 watch([activeFilter, companyFilter, productFilter], () => { currentPage.value = 1 })
 
 function openDetail(item) { detailItem.value = item }
+
+function openDrillModal(type, value) {
+  drillModal.value = {
+    show: true,
+    type,
+    value,
+    title: type === 'company' ? `לקוחות — ${value}` : `לקוחות — ${value}`,
+    search: '',
+  }
+}
 
 function downloadMissingExcel() {
   const missing = props.result.results.filter(r => !r.found_in_production)
@@ -1022,6 +1221,31 @@ const chartOptions = computed(() => ({
   gap: 14px;
 }
 
+.insights-charts-row-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.ins-chart-clickable {
+  cursor: pointer;
+  transition: all 0.25s var(--transition);
+}
+.ins-chart-clickable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 4px 20px rgba(1, 118, 211, 0.08);
+}
+
+.chart-click-hint {
+  margin-inline-start: auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--primary);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.ins-chart-clickable:hover .chart-click-hint {
+  opacity: 1;
+}
+
 .ins-chart-box {
   padding: 16px;
   border: 1px solid var(--border-subtle);
@@ -1101,10 +1325,14 @@ const chartOptions = computed(() => ({
   font-weight: 700;
 }
 
+@media (max-width: 900px) {
+  .insights-charts-row-3 { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 700px) {
   .insights-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .insights-kpi-row .ins-kpi:last-child { grid-column: span 2; }
   .insights-charts-row { grid-template-columns: 1fr; }
+  .insights-charts-row-3 { grid-template-columns: 1fr; }
 }
 
 /* ── Segmented filter ── */
@@ -1389,6 +1617,8 @@ const chartOptions = computed(() => ({
 }
 .chip-found { background: var(--green-light); color: var(--accent-emerald); }
 .chip-missing { background: rgba(232,114,10,0.08); color: #E8720A; }
+.chip-company { background: rgba(1,118,211,0.08); color: #0176D3; }
+.chip-product { background: rgba(127,86,217,0.08); color: #7F56D9; }
 
 /* Modal sections */
 .modal-section {
@@ -1790,6 +2020,41 @@ const chartOptions = computed(() => ({
 
 .mm-row:hover {
   background: rgba(245, 124, 0, 0.04);
+}
+
+/* ── Drill-Down Modal Summary ── */
+.drill-summary {
+  display: flex;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.drill-stat {
+  flex: 1;
+  text-align: center;
+  padding: 10px 8px;
+  border-radius: 10px;
+  background: var(--border-subtle);
+}
+
+.drill-stat-val {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent-emerald);
+  letter-spacing: -0.5px;
+}
+
+.drill-stat-missing { color: #E8720A; }
+.drill-stat-premium { color: var(--primary); font-size: 16px; }
+
+.drill-stat-lbl {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .status-select-sm {
