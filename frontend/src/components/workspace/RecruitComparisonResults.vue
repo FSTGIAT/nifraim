@@ -85,8 +85,8 @@
         </div>
       </div>
 
-      <!-- Three-column: Company bar + Product donut + Status donut -->
-      <div class="insights-charts-row insights-charts-row-3" v-if="hasCompanyData || hasProductData || hasStatusData">
+      <!-- Row 1: Company bar + Status donut -->
+      <div class="insights-charts-row" v-if="hasCompanyData || hasStatusData">
         <div class="ins-chart-box ins-chart-clickable" v-if="hasCompanyData">
           <div class="ins-chart-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -101,20 +101,6 @@
             :height="Math.max(160, (result.company_breakdown || []).length * 38)"
           />
         </div>
-        <div class="ins-chart-box ins-chart-clickable" v-if="hasProductData">
-          <div class="ins-chart-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
-            פילוח לפי מוצר
-            <span class="chart-click-hint">לחץ לפירוט</span>
-          </div>
-          <apexchart
-            v-if="chartReady"
-            type="donut"
-            :options="productChartOptions"
-            :series="productChartSeries"
-            height="220"
-          />
-        </div>
         <div class="ins-chart-box" v-if="hasStatusData">
           <div class="ins-chart-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -125,9 +111,25 @@
             type="donut"
             :options="statusChartOptions"
             :series="statusChartSeries"
-            height="220"
+            height="200"
           />
         </div>
+      </div>
+
+      <!-- Row 2: Product horizontal bar (full width) -->
+      <div class="ins-chart-box ins-chart-clickable ins-chart-full" v-if="hasProductData">
+        <div class="ins-chart-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+          פילוח לפי מוצר
+          <span class="chart-click-hint">לחץ לפירוט</span>
+        </div>
+        <apexchart
+          v-if="chartReady"
+          type="bar"
+          :options="productChartOptions"
+          :series="productChartSeries"
+          :height="Math.max(180, productBreakdown.length * 36)"
+        />
       </div>
 
       <!-- Top Missing Clients -->
@@ -797,37 +799,35 @@ const statusChartOptions = computed(() => {
   }
 })
 
-// Product donut chart
-const productChartSeries = computed(() => productBreakdown.value.map(p => p.total))
+// Product horizontal bar chart (stacked found/not_found)
+const productChartSeries = computed(() => [
+  { name: 'נמצאו', data: productBreakdown.value.map(p => p.found) },
+  { name: 'לא נמצאו', data: productBreakdown.value.map(p => p.not_found) },
+])
 
-const productChartOptions = computed(() => {
-  const labels = productBreakdown.value.map(p => p.product)
-  const productColors = ['#0176D3', '#7F56D9', '#06BDBD', '#E8720A', '#2E844A', '#EA4335', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6']
-  return {
-    chart: {
-      type: 'donut', fontFamily: 'Heebo, sans-serif',
-      events: {
-        dataPointSelection: (_e, _chart, config) => {
-          const prod = productBreakdown.value[config.dataPointIndex]
-          if (prod) openDrillModal('product', prod.product)
-        },
+const productChartOptions = computed(() => ({
+  chart: {
+    type: 'bar', stacked: true, fontFamily: 'Heebo, sans-serif', toolbar: { show: false },
+    events: {
+      dataPointSelection: (_e, _chart, config) => {
+        const prod = productBreakdown.value[config.dataPointIndex]
+        if (prod) openDrillModal('product', prod.product)
       },
     },
-    labels,
-    colors: productColors.slice(0, labels.length),
-    legend: { position: 'bottom', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
-    dataLabels: {
-      enabled: true,
-      formatter: (val) => val.toFixed(0) + '%',
-      style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '11px' },
-      dropShadow: { enabled: false },
-    },
-    plotOptions: { pie: { donut: { size: '58%' } } },
-    stroke: { width: 2, colors: ['var(--card-bg)'] },
-    tooltip: { style: { fontFamily: 'Heebo, sans-serif' }, y: { formatter: (val) => val + ' לקוחות' } },
-    states: { active: { filter: { type: 'darken', value: 0.75 } } },
-  }
-})
+  },
+  plotOptions: { bar: { horizontal: true, barHeight: '55%', borderRadius: 4 } },
+  colors: ['#2E844A', '#E8720A'],
+  xaxis: {
+    categories: productBreakdown.value.map(p => p.product),
+    labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
+  },
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' }, maxWidth: 180 } },
+  legend: { position: 'top', fontFamily: 'Heebo, sans-serif', fontSize: '11px' },
+  dataLabels: { enabled: false },
+  grid: { borderColor: 'var(--border-subtle)', strokeDashArray: 3 },
+  tooltip: { style: { fontFamily: 'Heebo, sans-serif' } },
+  states: { active: { filter: { type: 'darken', value: 0.75 } } },
+}))
 
 const uniqueCompanies = computed(() => {
   const set = new Set()
@@ -1221,8 +1221,8 @@ const chartOptions = computed(() => ({
   gap: 14px;
 }
 
-.insights-charts-row-3 {
-  grid-template-columns: 1fr 1fr 1fr;
+.ins-chart-full {
+  width: 100%;
 }
 
 .ins-chart-clickable {
@@ -1325,14 +1325,10 @@ const chartOptions = computed(() => ({
   font-weight: 700;
 }
 
-@media (max-width: 900px) {
-  .insights-charts-row-3 { grid-template-columns: 1fr 1fr; }
-}
 @media (max-width: 700px) {
   .insights-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .insights-kpi-row .ins-kpi:last-child { grid-column: span 2; }
   .insights-charts-row { grid-template-columns: 1fr; }
-  .insights-charts-row-3 { grid-template-columns: 1fr; }
 }
 
 /* ── Segmented filter ── */
