@@ -294,12 +294,19 @@ const topClientsChartSeries = computed(() => [{
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  transition: all 0.25s var(--transition);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .kpi-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.10);
+  border-color: rgba(0,0,0,0.08);
+}
+
+.kpi-card:active {
+  transform: translateY(-1px) scale(0.98);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 
 .kpi-icon {
@@ -318,6 +325,13 @@ const topClientsChartSeries = computed(() => [{
 .kpi-amber .kpi-icon { background: var(--amber-light); color: var(--amber); }
 .kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: var(--accent-violet); }
 .kpi-emerald .kpi-icon { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+.kpi-blue:hover { border-color: rgba(37, 99, 235, 0.25); box-shadow: 0 12px 32px rgba(37, 99, 235, 0.12); }
+.kpi-cyan:hover { border-color: rgba(34, 211, 238, 0.25); box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12); }
+.kpi-green:hover { border-color: rgba(16, 185, 129, 0.25); box-shadow: 0 12px 32px rgba(16, 185, 129, 0.12); }
+.kpi-amber:hover { border-color: rgba(245, 158, 11, 0.25); box-shadow: 0 12px 32px rgba(245, 158, 11, 0.12); }
+.kpi-violet:hover { border-color: rgba(127, 86, 217, 0.25); box-shadow: 0 12px 32px rgba(127, 86, 217, 0.12); }
+.kpi-emerald:hover { border-color: rgba(16, 185, 129, 0.25); box-shadow: 0 12px 32px rgba(16, 185, 129, 0.12); }
 
 .kpi-data { min-width: 0; }
 
