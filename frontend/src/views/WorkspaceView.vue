@@ -9,10 +9,10 @@
         <Transition name="tab-switch" mode="out-in">
           <ProductionTab v-if="activeTab === 'production'" key="production" />
           <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" />
-          <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
           <UnpaidSummaryTab v-else-if="activeTab === 'unpaid-summary'" key="unpaid-summary" />
           <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
           <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
+          <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
         </Transition>
       </div>
     </main>

@@ -60,10 +60,10 @@ defineEmits(['update:modelValue'])
 const tabs = [
   { id: 'production', label: 'פרודוקציה', gradient: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(34,211,238,0.2))' },
   { id: 'comparison', label: 'השוואת נפרעים', gradient: 'linear-gradient(135deg, rgba(52,211,153,0.2), rgba(34,211,238,0.2))' },
-  { id: 'recruits', label: 'גיוס חדש', gradient: 'linear-gradient(135deg, rgba(167,139,250,0.2), rgba(251,113,133,0.2))' },
   { id: 'unpaid-summary', label: 'סיכום חובות', gradient: 'linear-gradient(135deg, rgba(234,0,30,0.2), rgba(232,114,10,0.2))' },
   { id: 'commission-rates', label: 'טבלת עמלות', gradient: 'linear-gradient(135deg, rgba(251,191,36,0.2), rgba(245,158,11,0.2))' },
   { id: 'company-emails', label: 'אימיילים לחברות', gradient: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(99,102,241,0.2))' },
+  { id: 'recruits', label: 'My File', gradient: 'linear-gradient(135deg, rgba(167,139,250,0.2), rgba(251,113,133,0.2))' },
 ]
 
 const tabsRef = ref(null)
