@@ -1,8 +1,28 @@
+import os
+
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from app.config import settings
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+
+async def _send_email(msg: MIMEMultipart):
+    """Send email via SMTP with proper EHLO hostname."""
+    use_tls = settings.SMTP_PORT == 465
+    smtp = aiosmtplib.SMTP(
+        hostname=settings.SMTP_HOST,
+        port=settings.SMTP_PORT,
+        use_tls=use_tls,
+        start_tls=not use_tls,
+        local_hostname="nifraim.com",
+    )
+    await smtp.connect()
+    await smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+    await smtp.send_message(msg)
+    await smtp.quit()
 
 
 async def send_portal_email(to_email: str, customer_name: str, portal_url: str, password: str) -> bool:
@@ -43,12 +63,46 @@ async def send_portal_email(to_email: str, customer_name: str, portal_url: str, 
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    await aiosmtplib.send(
-        msg,
-        hostname=settings.SMTP_HOST,
-        port=settings.SMTP_PORT,
-        username=settings.SMTP_USER,
-        password=settings.SMTP_PASSWORD,
-        start_tls=True,
-    )
+    await _send_email(msg)
+    return True
+
+
+async def send_reset_password_email(to_email: str, name: str, token: str) -> bool:
+    """Send password reset email via SMTP."""
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        raise ValueError("SMTP not configured")
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+
+    html_body = f"""
+    <div dir="rtl" style="font-family: 'Heebo', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #F57C00; font-size: 24px; margin: 0;">Nifraim</h1>
+        </div>
+        <h2 style="color: #181818; font-size: 20px;">שלום{' ' + name if name else ''},</h2>
+        <p style="color: #3E3E3C; font-size: 16px; line-height: 1.8;">
+            קיבלנו בקשה לאיפוס הסיסמה שלך. לחצו על הכפתור למטה כדי לבחור סיסמה חדשה.
+        </p>
+        <div style="background: #F3F3F3; border-radius: 8px; padding: 20px; margin: 24px 0; text-align: center;">
+            <a href="{reset_url}" style="display: inline-block; padding: 14px 32px; background: #F57C00; color: white; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 700;">
+                איפוס סיסמה
+            </a>
+        </div>
+        <p style="color: #706E6B; font-size: 13px; line-height: 1.6;">
+            הקישור תקף לשעה אחת. אם לא ביקשתם לאפס את הסיסמה, התעלמו מהודעה זו.
+        </p>
+        <hr style="border: none; border-top: 1px solid #DDDBDA; margin: 24px 0;" />
+        <p style="color: #706E6B; font-size: 12px; text-align: center;">
+            בברכה, Nifraim
+        </p>
+    </div>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "איפוס סיסמה — Nifraim"
+    msg["From"] = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    await _send_email(msg)
     return True

@@ -27,6 +27,16 @@ const routes = [
     component: () => import('../views/RegisterView.vue'),
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('../views/ForgotPasswordView.vue'),
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => import('../views/ResetPasswordView.vue'),
+  },
+  {
     path: '/subscription-expired',
     name: 'SubscriptionExpired',
     component: () => import('../views/SubscriptionExpiredView.vue'),
@@ -76,7 +86,7 @@ router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token')
 
   // Public routes — anyone can access
-  const publicNames = ['Landing', 'Pricing', 'Signup', 'Login', 'Register', 'SubscriptionExpired', 'CustomerPortal']
+  const publicNames = ['Landing', 'Pricing', 'Signup', 'Login', 'Register', 'ForgotPassword', 'ResetPassword', 'SubscriptionExpired', 'CustomerPortal']
   if (publicNames.includes(to.name)) {
     // Redirect authenticated users away from login/register
     if ((to.name === 'Login' || to.name === 'Register') && token) {

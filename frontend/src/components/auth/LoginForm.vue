@@ -8,6 +8,9 @@
       <label>סיסמה</label>
       <input type="password" v-model="password" required placeholder="••••••••" dir="ltr" />
     </div>
+    <div class="forgot-row">
+      <router-link to="/forgot-password" class="forgot-link">שכחתי סיסמה</router-link>
+    </div>
     <Transition name="fade">
       <p class="error" v-if="error">{{ error }}</p>
     </Transition>
@@ -121,6 +124,25 @@ input::placeholder {
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+
+.forgot-row {
+  text-align: start;
+  margin-bottom: 18px;
+  margin-top: -8px;
+}
+
+.forgot-link {
+  font-size: 13px;
+  color: #F57C00;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.forgot-link:hover {
+  color: #E65100;
+  text-decoration: underline;
 }
 
 .error {

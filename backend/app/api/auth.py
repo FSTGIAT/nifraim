@@ -1,11 +1,15 @@
+import secrets
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister, UserLogin, Token, UserOut
+from app.schemas.user import UserRegister, UserLogin, Token, UserOut, ForgotPasswordRequest, ResetPasswordRequest
 from app.services.auth_service import hash_password, verify_password, create_access_token
+from app.services.email_service import send_reset_password_email
 from app.api.deps import get_current_user
 
 router = APIRouter()
@@ -39,6 +43,49 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     token = create_access_token(str(user.id))
     return Token(access_token=token)
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="האימייל לא נמצא במערכת")
+
+    token = secrets.token_urlsafe(32)
+    user.password_reset_token = token
+    user.password_reset_expires = datetime.utcnow() + timedelta(hours=1)
+    await db.commit()
+
+    try:
+        await send_reset_password_email(user.email, user.full_name or "", token)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to send reset email: {e}")
+        raise HTTPException(status_code=500, detail=f"שגיאה בשליחת האימייל: {e}")
+
+    return {"message": "קישור לאיפוס סיסמה נשלח לאימייל שלך"}
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(User).where(
+            User.password_reset_token == data.token,
+            User.password_reset_expires > datetime.utcnow(),
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="קישור לא תקין או שפג תוקפו")
+
+    user.hashed_password = hash_password(data.password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+    await db.commit()
+
+    return {"message": "הסיסמה שונתה בהצלחה"}
 
 
 @router.get("/me", response_model=UserOut)

@@ -28,6 +28,15 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
 class UserAdminOut(BaseModel):
     id: str
     email: str

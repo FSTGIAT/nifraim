@@ -19,6 +19,8 @@ class User(Base):
     company_name: Mapped[str] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    password_reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_reset_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     uploads = relationship("FileUpload", back_populates="user", cascade="all, delete-orphan")
