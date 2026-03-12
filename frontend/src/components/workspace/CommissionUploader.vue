@@ -5,6 +5,9 @@
     <div class="float-circle fc-2"></div>
     <div class="float-circle fc-3"></div>
     <div class="float-circle fc-4"></div>
+    <div class="float-circle fc-5"></div>
+    <div class="float-circle fc-6"></div>
+    <div class="float-circle fc-7"></div>
 
     <!-- Animated waves at bottom -->
     <div class="wave-bg">
@@ -234,6 +237,35 @@ async function uploadFiles(files) {
   background: rgba(245, 124, 0, 0.03);
   border: 1px solid rgba(245, 124, 0, 0.04);
   animation: floatBob 9s ease-in-out infinite 1s;
+}
+
+.fc-5 {
+  width: 50px;
+  height: 50px;
+  top: 18%;
+  right: 22%;
+  background: rgba(255, 152, 0, 0.055);
+  animation: floatBob 7s ease-in-out infinite 3s;
+}
+
+.fc-6 {
+  width: 280px;
+  height: 280px;
+  bottom: 8%;
+  right: -90px;
+  background: rgba(245, 124, 0, 0.025);
+  border: 1px solid rgba(245, 124, 0, 0.035);
+  animation: floatBob 12s ease-in-out infinite 0.5s;
+}
+
+.fc-7 {
+  width: 65px;
+  height: 65px;
+  bottom: 35%;
+  left: 18%;
+  background: rgba(255, 183, 77, 0.06);
+  border: 1px solid rgba(255, 183, 77, 0.05);
+  animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
 }
 
 @keyframes floatBob {
