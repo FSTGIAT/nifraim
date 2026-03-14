@@ -14,7 +14,6 @@
           <span class="nav-name">Nifraim</span>
         </div>
         <div class="nav-links">
-          <a href="#features">תכונות</a>
           <router-link to="/pricing">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
@@ -35,7 +34,6 @@
       <!-- Mobile menu -->
       <Transition name="mobile-menu">
         <div v-if="mobileMenuOpen" class="mobile-menu">
-          <a href="#features" @click="mobileMenuOpen = false">תכונות</a>
           <router-link to="/pricing" @click="mobileMenuOpen = false">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
@@ -55,7 +53,15 @@
       <div class="slider-track" :style="{ transform: `translateX(${currentSlide * -100}%)` }">
         <!-- Slide 1: Bold Statement -->
         <div class="slide slide-1">
-          <div class="slide-glow"></div>
+          <video
+            class="slide-bg-video"
+            src="/videos/hero-brand.mp4"
+            autoplay
+            loop
+            muted
+            playsinline
+          />
+          <div class="slide-bg-overlay"></div>
           <div class="slide-content">
             <h1 class="hero-headline">ניהול עמלות.<br><span class="text-orange">חכם.</span></h1>
             <p class="hero-subtitle">העלו קבצים, השוו נתונים, גלו פערים — תוך שניות</p>
@@ -65,7 +71,8 @@
 
         <!-- Slide 2: Numbers Impact -->
         <div class="slide slide-2">
-          <div class="slide-grid-bg"></div>
+          <video class="slide-bg-video" src="/videos/hero-brand.mp4" autoplay loop muted playsinline />
+          <div class="slide-bg-overlay"></div>
           <div class="slide-content">
             <div class="impact-number ltr-number">
               <span class="big-num">{{ currentSlide === 1 ? animatedPercent : 95 }}%</span>
@@ -87,6 +94,8 @@
 
         <!-- Slide 3: How It's Different -->
         <div class="slide slide-3">
+          <video class="slide-bg-video" src="/videos/hero-brand.mp4" autoplay loop muted playsinline />
+          <div class="slide-bg-overlay"></div>
           <div class="slide-content">
             <h2 class="slide-title">לא עוד בדיקות ידניות</h2>
             <div class="flow-steps">
@@ -124,12 +133,37 @@
             <a href="#video-demo" class="btn-secondary">צפו איך זה עובד</a>
           </div>
         </div>
+
+        <!-- Slide 4: Customer Portal -->
+        <div class="slide slide-4">
+          <video class="slide-bg-video" src="/videos/hero-brand.mp4" autoplay loop muted playsinline />
+          <div class="slide-bg-overlay"></div>
+          <div class="slide-content">
+            <h1 class="hero-headline">פורטל <span class="text-orange">לקוחות</span></h1>
+            <p class="hero-subtitle">שתפו תיק ביטוח עם הלקוחות שלכם — בלחיצת כפתור</p>
+            <div class="portal-highlights-row">
+              <div class="portal-highlight-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>גישה מאובטחת</span>
+              </div>
+              <div class="portal-highlight-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>עוזר AI</span>
+              </div>
+              <div class="portal-highlight-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span>מעקב שינויים</span>
+              </div>
+            </div>
+            <a href="#portal-section" class="btn-secondary">גלו עוד</a>
+          </div>
+        </div>
       </div>
 
       <!-- Slider dots -->
       <div class="slider-dots">
         <button
-          v-for="i in 3"
+          v-for="i in SLIDE_COUNT"
           :key="i"
           class="dot"
           :class="{ active: currentSlide === i - 1 }"
@@ -187,6 +221,81 @@
       </div>
     </section>
 
+    <!-- Portal Section -->
+    <section id="portal-section" class="portal-section">
+      <div class="section-wrap">
+        <h2 class="section-title">פורטל <span class="text-orange">לקוחות</span></h2>
+        <p class="portal-intro">שתפו את תיק הביטוח עם הלקוחות — חוויה מותאמת אישית, מאובטחת ומקצועית</p>
+
+        <div class="portal-features-grid">
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-kpi">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+            </div>
+            <h3>דשבורד אישי</h3>
+            <p>מדדי KPI, גרפים וטבלאות — כל המידע במבט אחד</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-ai">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h3>עוזר AI חכם</h3>
+            <p>הלקוחות שואלים, הבינה המלאכותית עונה — על התיק שלהם</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-changes">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <h3>התראות שינויים</h3>
+            <p>הלקוח מקבל התראה אוטומטית כשמשהו משתנה בתיק</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-secure">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <h3>גישה מאובטחת</h3>
+            <p>קישור ייחודי עם סיסמא, תוקף מוגבל והגנה מפני ניסיונות חדירה</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-trend">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <h3>גרפים היסטוריים</h3>
+            <p>מעקב אחר פרמיה וצבירה לאורך זמן — תמונה ברורה</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-print">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+            </div>
+            <h3>הדפסת דוחות</h3>
+            <p>הלקוח מדפיס דוח מסודר של כל תיק הביטוח שלו</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Numbers Strip -->
     <section class="numbers-strip" ref="numbersSection">
       <div class="section-wrap">
@@ -201,7 +310,15 @@
 
     <!-- CTA -->
     <section class="cta-section">
-      <div class="cta-glow"></div>
+      <video
+        class="cta-bg-video"
+        src="/videos/brand-loop.mp4"
+        autoplay
+        loop
+        muted
+        playsinline
+      />
+      <div class="cta-overlay"></div>
       <div class="section-wrap">
         <h2 class="cta-title">מוכנים להתחיל?</h2>
         <router-link to="/signup" class="btn-primary btn-large">התחל עכשיו</router-link>
@@ -241,7 +358,7 @@ const mobileMenuOpen = ref(false)
 // Slider
 const currentSlide = ref(0)
 let sliderInterval = null
-const SLIDE_COUNT = 3
+const SLIDE_COUNT = 4
 const SLIDE_DELAY = 5000
 
 function goToSlide(index) {
@@ -465,6 +582,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
 }
 
+
 .nav-name {
   font-size: 22px;
   font-weight: 800;
@@ -587,7 +705,25 @@ onBeforeUnmount(() => {
   padding: 0 24px;
 }
 
-/* Slide 1 */
+/* Slide 1 — Background Video */
+.slide-bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.slide-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(74, 74, 74, 0.55);
+  z-index: 1;
+  pointer-events: none;
+}
+
 .slide-1 .slide-glow {
   position: absolute;
   top: 50%;
@@ -726,6 +862,28 @@ onBeforeUnmount(() => {
   background: var(--land-orange);
   opacity: 0.4;
   margin-bottom: 32px;
+}
+
+.portal-highlights-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin: 32px 0 40px;
+}
+
+.portal-highlight-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--land-text-secondary);
+}
+
+.portal-highlight-item svg {
+  color: var(--land-orange);
+  flex-shrink: 0;
 }
 
 /* Buttons */
@@ -1022,6 +1180,71 @@ onBeforeUnmount(() => {
   color: var(--land-text-secondary);
 }
 
+/* ── Portal Section ── */
+.portal-section {
+  padding: 120px 24px;
+  background: var(--land-bg-alt);
+}
+
+.portal-intro {
+  text-align: center;
+  font-size: 20px;
+  color: var(--land-text-secondary);
+  margin-top: -48px;
+  margin-bottom: 64px;
+  line-height: 1.6;
+}
+
+.portal-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.portal-feature-card {
+  padding: 36px 28px;
+  background: var(--land-bg-card);
+  border-radius: 16px;
+  border: 1px solid var(--land-border);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.portal-feature-card:hover {
+  border-color: var(--land-orange);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 0 40px rgba(245, 124, 0, 0.06);
+}
+
+.portal-feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.portal-icon-kpi { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
+.portal-icon-ai { background: rgba(127, 86, 217, 0.12); color: #7F56D9; }
+.portal-icon-changes { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
+.portal-icon-secure { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
+.portal-icon-trend { background: rgba(59, 130, 246, 0.12); color: #3B82F6; }
+.portal-icon-print { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
+
+.portal-feature-card h3 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--land-text);
+}
+
+.portal-feature-card p {
+  font-size: 15px;
+  color: var(--land-text-secondary);
+  line-height: 1.6;
+}
+
 /* ── CTA ── */
 .cta-section {
   padding: 140px 24px;
@@ -1030,15 +1253,20 @@ onBeforeUnmount(() => {
   background: var(--land-bg);
 }
 
-.cta-glow {
+.cta-bg-video {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.08) 0%, transparent 70%);
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.cta-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(74, 74, 74, 0.5), rgba(74, 74, 74, 0.75));
   pointer-events: none;
 }
 
@@ -1193,12 +1421,27 @@ onBeforeUnmount(() => {
     display: flex;
   }
 
+  .portal-highlights-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
   .hero-headline {
     font-size: 44px;
   }
 
   .hero-subtitle {
     font-size: 18px;
+  }
+
+  .portal-features-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .portal-intro {
+    font-size: 17px;
+    margin-bottom: 40px;
   }
 
   .big-num {
