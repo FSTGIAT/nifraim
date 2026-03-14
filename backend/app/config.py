@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     SMS_019_PASSWORD: str = ""
     SMS_019_COMPANY_ID: str = ""
 
+    # Anthropic AI
+    ANTHROPIC_API_KEY: str = ""
+
     # SMTP Email
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

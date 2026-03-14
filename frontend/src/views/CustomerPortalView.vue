@@ -33,6 +33,7 @@
       <PortalDashboard
         v-else-if="state === 'dashboard'"
         :data="portalStore.dashboardData"
+        :token="token"
         @logout="onLogout"
       />
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,10 +12,12 @@ from app.api.deps import get_current_user, get_portal_session
 from app.schemas.portal import (
     PortalLinkCreate, PortalLinkOut,
     PortalAccessRequest, PortalAccessResponse,
-    PortalDashboardData,
+    PortalDashboardData, PortalHistoryResponse,
+    PortalChatRequest,
 )
 from app.services.portal_service import (
     create_portal_link, get_agent_links, revoke_link, verify_portal_access, get_portal_dashboard,
+    get_portal_history,
 )
 from app.services.auth_service import create_portal_token
 from app.services.email_service import send_portal_email
@@ -89,6 +92,43 @@ async def get_dashboard(
     if not data:
         raise HTTPException(status_code=404, detail="לא נמצאו נתונים עבור לקוח זה")
     return data
+
+
+@router.get("/{token}/history", response_model=PortalHistoryResponse)
+async def get_history(
+    token: str,
+    link: CustomerPortalLink = Depends(get_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get snapshot history for trend charts."""
+    snapshots = await get_portal_history(db, link.id)
+    return {"snapshots": snapshots}
+
+
+@router.post("/{token}/chat")
+async def portal_chat(
+    token: str,
+    body: PortalChatRequest,
+    link: CustomerPortalLink = Depends(get_portal_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI chat for portal customers — streams SSE responses."""
+    from app.services.portal_ai_service import stream_portal_chat, check_rate_limit
+
+    if not check_rate_limit(token):
+        raise HTTPException(status_code=429, detail="הגעת למגבלת ההודעות. נסה שוב מאוחר יותר.")
+
+    dashboard_data = await get_portal_dashboard(db, link.user_id, link.customer_id_number)
+    if not dashboard_data:
+        raise HTTPException(status_code=404, detail="לא נמצאו נתונים")
+
+    history = [{"role": m.role, "content": m.content} for m in body.history]
+
+    return StreamingResponse(
+        stream_portal_chat(dashboard_data, body.question, history),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/{token}/send-email")

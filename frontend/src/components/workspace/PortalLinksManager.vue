@@ -1,117 +1,199 @@
 <template>
-  <!-- Trigger button (placed by parent) -->
-  <!-- This component is the modal itself, toggled by :show prop -->
-  <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-        <div class="modal-card">
-          <!-- Header -->
-          <div class="modal-header">
-            <div class="header-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+  <!-- Embedded mode: inline card (no modal overlay) -->
+  <div v-if="embedded && show" class="embedded-portal">
+    <div class="embedded-header">
+      <div class="header-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+        <span>פורטל לקוחות</span>
+        <span class="link-count" v-if="activeLinks.length">{{ activeLinks.length }} פעילים</span>
+      </div>
+    </div>
+    <div class="embedded-body">
+      <button class="btn-generate" @click="showGenerateModal = true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        צור קישור חדש
+      </button>
+      <div v-if="portalStore.loading && !portalStore.links.length" class="loading-state">
+        <div class="mini-spinner"></div>
+        <span>טוען קישורים...</span>
+      </div>
+      <div v-else-if="portalStore.links.length" class="links-list">
+        <div
+          v-for="link in portalStore.links"
+          :key="link.id"
+          class="link-row"
+          :class="{ revoked: !link.is_active, expired: isExpired(link) }"
+        >
+          <div class="link-info">
+            <span class="link-name">{{ link.customer_name }}</span>
+            <span class="link-id ltr-number">{{ link.customer_id_number }}</span>
+          </div>
+          <div class="link-meta">
+            <span class="link-status" :class="linkStatusClass(link)">
+              {{ linkStatusLabel(link) }}
+            </span>
+            <span class="link-date">{{ formatDate(link.created_at) }}</span>
+            <span v-if="link.last_accessed_at" class="link-accessed">
+              נצפה: {{ formatDate(link.last_accessed_at) }}
+            </span>
+          </div>
+          <div class="link-actions" v-if="link.is_active && !isExpired(link)">
+            <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
+              <svg v-if="copiedToken !== link.token" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
               </svg>
-              <span>קישורים ללקוחות</span>
-              <span class="link-count" v-if="activeLinks.length">{{ activeLinks.length }}</span>
-            </div>
-            <button class="close-btn" @click="$emit('close')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </button>
+            <button
+              v-if="link.customer_email"
+              class="action-btn email"
+              @click="sendEmail(link)"
+              title="שלח באימייל"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+            </button>
+            <button class="action-btn revoke" @click="revokeLink(link)" title="בטל קישור">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           </div>
+        </div>
+      </div>
+      <div v-else class="empty-state">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+        <p>אין קישורים פעילים</p>
+        <span>צור קישור חדש כדי לשתף תיק ביטוח עם לקוח</span>
+      </div>
+    </div>
 
-          <!-- Body -->
-          <div class="modal-body">
-            <!-- Generate button -->
-            <button class="btn-generate" @click="showGenerateModal = true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              צור קישור חדש
-            </button>
+    <PortalGenerateModal
+      :show="showGenerateModal"
+      @close="showGenerateModal = false"
+      @generated="onGenerated"
+    />
+  </div>
 
-            <!-- Loading -->
-            <div v-if="portalStore.loading && !portalStore.links.length" class="loading-state">
-              <div class="mini-spinner"></div>
-              <span>טוען קישורים...</span>
+  <!-- Modal mode (original) -->
+  <template v-else>
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
+          <div class="modal-card">
+            <div class="modal-header">
+              <div class="header-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                </svg>
+                <span>קישורים ללקוחות</span>
+                <span class="link-count" v-if="activeLinks.length">{{ activeLinks.length }}</span>
+              </div>
+              <button class="close-btn" @click="$emit('close')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
-
-            <!-- Links list -->
-            <div v-else-if="portalStore.links.length" class="links-list">
-              <div
-                v-for="link in portalStore.links"
-                :key="link.id"
-                class="link-row"
-                :class="{ revoked: !link.is_active, expired: isExpired(link) }"
-              >
-                <div class="link-info">
-                  <span class="link-name">{{ link.customer_name }}</span>
-                  <span class="link-id ltr-number">{{ link.customer_id_number }}</span>
-                </div>
-                <div class="link-meta">
-                  <span class="link-status" :class="linkStatusClass(link)">
-                    {{ linkStatusLabel(link) }}
-                  </span>
-                  <span class="link-date">{{ formatDate(link.created_at) }}</span>
-                  <span v-if="link.last_accessed_at" class="link-accessed">
-                    נצפה: {{ formatDate(link.last_accessed_at) }}
-                  </span>
-                </div>
-                <div class="link-actions" v-if="link.is_active && !isExpired(link)">
-                  <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
-                    <svg v-if="copiedToken !== link.token" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </button>
-                  <button
-                    v-if="link.customer_email"
-                    class="action-btn email"
-                    @click="sendEmail(link)"
-                    title="שלח באימייל"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                      <polyline points="22,6 12,13 2,6"/>
-                    </svg>
-                  </button>
-                  <button class="action-btn revoke" @click="revokeLink(link)" title="בטל קישור">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
+            <div class="modal-body">
+              <button class="btn-generate" @click="showGenerateModal = true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                צור קישור חדש
+              </button>
+              <div v-if="portalStore.loading && !portalStore.links.length" class="loading-state">
+                <div class="mini-spinner"></div>
+                <span>טוען קישורים...</span>
+              </div>
+              <div v-else-if="portalStore.links.length" class="links-list">
+                <div
+                  v-for="link in portalStore.links"
+                  :key="link.id"
+                  class="link-row"
+                  :class="{ revoked: !link.is_active, expired: isExpired(link) }"
+                >
+                  <div class="link-info">
+                    <span class="link-name">{{ link.customer_name }}</span>
+                    <span class="link-id ltr-number">{{ link.customer_id_number }}</span>
+                  </div>
+                  <div class="link-meta">
+                    <span class="link-status" :class="linkStatusClass(link)">
+                      {{ linkStatusLabel(link) }}
+                    </span>
+                    <span class="link-date">{{ formatDate(link.created_at) }}</span>
+                    <span v-if="link.last_accessed_at" class="link-accessed">
+                      נצפה: {{ formatDate(link.last_accessed_at) }}
+                    </span>
+                  </div>
+                  <div class="link-actions" v-if="link.is_active && !isExpired(link)">
+                    <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
+                      <svg v-if="copiedToken !== link.token" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                      </svg>
+                      <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    </button>
+                    <button
+                      v-if="link.customer_email"
+                      class="action-btn email"
+                      @click="sendEmail(link)"
+                      title="שלח באימייל"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                      </svg>
+                    </button>
+                    <button class="action-btn revoke" @click="revokeLink(link)" title="בטל קישור">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <!-- Empty -->
-            <div v-else class="empty-state">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-              </svg>
-              <p>אין קישורים פעילים</p>
-              <span>צור קישור חדש כדי לשתף תיק ביטוח עם לקוח</span>
+              <div v-else class="empty-state">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                </svg>
+                <p>אין קישורים פעילים</p>
+                <span>צור קישור חדש כדי לשתף תיק ביטוח עם לקוח</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Transition>
-  </Teleport>
+      </Transition>
+    </Teleport>
 
-  <PortalGenerateModal
-    :show="showGenerateModal"
-    @close="showGenerateModal = false"
-    @generated="onGenerated"
-  />
+    <PortalGenerateModal
+      :show="showGenerateModal"
+      @close="showGenerateModal = false"
+      @generated="onGenerated"
+    />
+  </template>
 </template>
 
 <script setup>
@@ -121,6 +203,7 @@ import PortalGenerateModal from './PortalGenerateModal.vue'
 
 defineProps({
   show: Boolean,
+  embedded: { type: Boolean, default: false },
 })
 
 defineEmits(['close'])
@@ -198,6 +281,26 @@ function onGenerated() {
 </script>
 
 <style scoped>
+/* Embedded mode */
+.embedded-portal {
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.embedded-header {
+  display: flex;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.embedded-body {
+  padding: 20px 24px;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

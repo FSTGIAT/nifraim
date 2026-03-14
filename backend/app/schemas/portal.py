@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PortalLinkCreate(BaseModel):
@@ -68,3 +68,32 @@ class PortalDashboardData(BaseModel):
     products: list[PortalProduct]
     kpi: PortalKPI
     company_breakdown: list[PortalCompanyBreakdown]
+    recent_changes: dict | None = None
+
+
+# --- Snapshot schemas ---
+
+class PortalSnapshotOut(BaseModel):
+    snapshot_date: datetime
+    period_label: str
+    kpi: dict
+    has_changes: bool
+    changes_json: dict | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PortalHistoryResponse(BaseModel):
+    snapshots: list[PortalSnapshotOut]
+
+
+# --- AI Chat schemas ---
+
+class PortalChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class PortalChatRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=300)
+    history: list[PortalChatMessage] = []

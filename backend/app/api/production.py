@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +12,17 @@ from app.models.record import ClientRecord
 from app.schemas.upload import ProductionFileInfo, ProductionAnalytics, ProductionCompareResponse
 from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel
+from app.services.portal_service import create_snapshots_for_upload
 from app.utils.sanitize import sanitize_record
 
 router = APIRouter()
+
+
+async def _create_snapshots_bg(user_id, upload_id):
+    """Background task to create portal snapshots after production upload."""
+    from app.database import async_session
+    async with async_session() as db:
+        await create_snapshots_for_upload(db, user_id, upload_id)
 
 
 async def _get_production_upload(db: AsyncSession, user_id: uuid.UUID) -> FileUpload | None:
@@ -42,6 +50,7 @@ async def _get_companies_for_upload(db: AsyncSession, upload_id: uuid.UUID) -> l
 
 @router.post("/upload", response_model=ProductionFileInfo)
 async def upload_production(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     password: str = Form(default=None),
     db: AsyncSession = Depends(get_db),
@@ -93,6 +102,9 @@ async def upload_production(
 
     await db.commit()
     await db.refresh(upload)
+
+    # Create portal snapshots in background (non-blocking)
+    background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
 
     companies = await _get_companies_for_upload(db, upload.id)
 

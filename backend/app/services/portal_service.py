@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -6,9 +7,12 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.portal_link import CustomerPortalLink
+from app.models.portal_snapshot import PortalSnapshot
 from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.services.auth_service import hash_password, verify_password
+
+logger = logging.getLogger(__name__)
 
 
 def generate_token() -> str:
@@ -166,19 +170,53 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
     # Extract period from production filename (e.g. "דוח פרודוקציה דצמבר 25.xlsx")
     period_label = _extract_period(prod_upload.filename)
 
+    kpi = {
+        "product_count": len(records),
+        "total_premium": round(total_premium, 2),
+        "total_accumulation": round(total_accumulation, 2),
+        "company_count": len(companies),
+    }
+    company_breakdown = sorted(company_map.values(), key=lambda x: x["accumulation"], reverse=True)
+
+    # Check for recent changes from snapshots
+    recent_changes = await _get_recent_changes(db, user_id, id_number)
+
     return {
         "customer_name": customer_name or id_number,
         "id_number": id_number,
         "period": period_label,
         "products": products,
-        "kpi": {
-            "product_count": len(records),
-            "total_premium": round(total_premium, 2),
-            "total_accumulation": round(total_accumulation, 2),
-            "company_count": len(companies),
-        },
-        "company_breakdown": sorted(company_map.values(), key=lambda x: x["accumulation"], reverse=True),
+        "kpi": kpi,
+        "company_breakdown": company_breakdown,
+        "recent_changes": recent_changes,
     }
+
+
+async def _get_recent_changes(db: AsyncSession, user_id: uuid.UUID, id_number: str) -> dict | None:
+    """Get latest changes from the most recent snapshot with has_changes=True."""
+    # Find any portal link for this customer
+    link_result = await db.execute(
+        select(CustomerPortalLink.id).where(
+            CustomerPortalLink.user_id == user_id,
+            CustomerPortalLink.customer_id_number == id_number,
+            CustomerPortalLink.is_active == True,
+        ).limit(1)
+    )
+    link_id = link_result.scalar_one_or_none()
+    if not link_id:
+        return None
+
+    snapshot_result = await db.execute(
+        select(PortalSnapshot).where(
+            PortalSnapshot.portal_link_id == link_id,
+            PortalSnapshot.has_changes == True,
+        ).order_by(PortalSnapshot.snapshot_date.desc()).limit(1)
+    )
+    snapshot = snapshot_result.scalar_one_or_none()
+    if not snapshot or not snapshot.changes_json:
+        return None
+
+    return snapshot.changes_json
 
 
 def _extract_period(filename: str) -> str:
@@ -202,3 +240,147 @@ def _extract_period(filename: str) -> str:
                 return f"{month} {year}"
             return month
     return ""
+
+
+# --- Snapshot Functions ---
+
+def diff_snapshots(current_products: list[dict], previous_products: list[dict]) -> dict | None:
+    """Diff two product lists by fund_policy_number. Returns changes or None."""
+    curr_by_key = {}
+    for p in current_products:
+        key = p.get("fund_policy_number") or ""
+        if key:
+            curr_by_key[key] = p
+
+    prev_by_key = {}
+    for p in previous_products:
+        key = p.get("fund_policy_number") or ""
+        if key:
+            prev_by_key[key] = p
+
+    curr_keys = set(curr_by_key.keys())
+    prev_keys = set(prev_by_key.keys())
+
+    added = []
+    for k in curr_keys - prev_keys:
+        p = curr_by_key[k]
+        added.append({
+            "product": p.get("product"),
+            "receiving_company": p.get("receiving_company"),
+            "total_premium": p.get("total_premium"),
+            "accumulation": p.get("accumulation"),
+        })
+
+    removed = []
+    for k in prev_keys - curr_keys:
+        p = prev_by_key[k]
+        removed.append({
+            "product": p.get("product"),
+            "receiving_company": p.get("receiving_company"),
+            "total_premium": p.get("total_premium"),
+            "accumulation": p.get("accumulation"),
+        })
+
+    changed = []
+    for k in curr_keys & prev_keys:
+        c = curr_by_key[k]
+        p = prev_by_key[k]
+        diffs = []
+        for field in ("total_premium", "accumulation"):
+            cv = c.get(field) or 0
+            pv = p.get(field) or 0
+            if abs(cv - pv) > 0.01:
+                diffs.append({"field": field, "old_val": pv, "new_val": cv})
+        if c.get("product_status") != p.get("product_status"):
+            diffs.append({"field": "product_status", "old_val": p.get("product_status"), "new_val": c.get("product_status")})
+        if diffs:
+            changed.append({
+                "product": c.get("product"),
+                "receiving_company": c.get("receiving_company"),
+                "changes": diffs,
+            })
+
+    if not added and not removed and not changed:
+        return None
+
+    return {"added": added, "removed": removed, "changed": changed}
+
+
+async def create_snapshots_for_upload(db: AsyncSession, user_id: uuid.UUID, upload_id: uuid.UUID):
+    """Create snapshots for all active portal links of this user."""
+    try:
+        # Get all active portal links for this user
+        links_result = await db.execute(
+            select(CustomerPortalLink).where(
+                CustomerPortalLink.user_id == user_id,
+                CustomerPortalLink.is_active == True,
+            )
+        )
+        links = list(links_result.scalars().all())
+        if not links:
+            return
+
+        for link in links:
+            try:
+                dashboard = await get_portal_dashboard(db, user_id, link.customer_id_number)
+                if not dashboard:
+                    continue
+
+                # Check for previous snapshot to diff
+                prev_result = await db.execute(
+                    select(PortalSnapshot).where(
+                        PortalSnapshot.portal_link_id == link.id,
+                    ).order_by(PortalSnapshot.snapshot_date.desc()).limit(1)
+                )
+                prev_snapshot = prev_result.scalar_one_or_none()
+
+                has_changes = False
+                changes_json = None
+
+                if prev_snapshot:
+                    changes = diff_snapshots(dashboard["products"], prev_snapshot.products_json)
+                    if changes:
+                        has_changes = True
+                        changes_json = changes
+
+                snapshot = PortalSnapshot(
+                    portal_link_id=link.id,
+                    upload_id=upload_id,
+                    user_id=user_id,
+                    customer_id_number=link.customer_id_number,
+                    period_label=dashboard.get("period", ""),
+                    kpi_json=dashboard["kpi"],
+                    products_json=dashboard["products"],
+                    company_breakdown_json=dashboard["company_breakdown"],
+                    has_changes=has_changes,
+                    changes_json=changes_json,
+                )
+                db.add(snapshot)
+            except Exception as e:
+                logger.error(f"Snapshot creation failed for link {link.id}: {e}")
+                continue
+
+        await db.commit()
+    except Exception as e:
+        logger.error(f"create_snapshots_for_upload error: {e}")
+
+
+async def get_portal_history(db: AsyncSession, portal_link_id: uuid.UUID, limit: int = 12) -> list[dict]:
+    """Get snapshot history for a portal link."""
+    result = await db.execute(
+        select(PortalSnapshot).where(
+            PortalSnapshot.portal_link_id == portal_link_id,
+        ).order_by(PortalSnapshot.snapshot_date.desc()).limit(limit)
+    )
+    snapshots = list(result.scalars().all())
+
+    return [
+        {
+            "snapshot_date": s.snapshot_date.isoformat(),
+            "period_label": s.period_label,
+            "kpi": s.kpi_json,
+            "has_changes": s.has_changes,
+            "changes_json": s.changes_json,
+        }
+        for s in snapshots
+    ]

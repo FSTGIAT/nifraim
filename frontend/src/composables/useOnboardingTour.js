@@ -58,7 +58,7 @@ const TOUR_STEPS = [
   },
 ]
 
-export function useOnboardingTour({ activeTab }) {
+export function useOnboardingTour({ activeTab, viewMode }) {
   const isActive = ref(false)
   const currentStepIndex = ref(0)
   const spotlightRect = ref(null)
@@ -161,11 +161,21 @@ export function useOnboardingTour({ activeTab }) {
     const step = TOUR_STEPS[index]
     if (!step) return
 
-    // Switch tab if needed
-    if (step.switchTab && activeTab.value !== step.switchTab) {
-      activeTab.value = step.switchTab
+    // Switch to content mode + tab if needed
+    if (step.switchTab) {
+      if (viewMode && viewMode.value !== 'content') {
+        viewMode.value = 'content'
+        await nextTick()
+        await new Promise(r => setTimeout(r, 450))
+      }
+      if (activeTab.value !== step.switchTab) {
+        activeTab.value = step.switchTab
+        await nextTick()
+        await new Promise(r => setTimeout(r, 450))
+      }
+    } else if (step.type === 'spotlight' && viewMode && viewMode.value !== 'content') {
+      viewMode.value = 'content'
       await nextTick()
-      // Wait for tab animation to settle
       await new Promise(r => setTimeout(r, 450))
     }
 

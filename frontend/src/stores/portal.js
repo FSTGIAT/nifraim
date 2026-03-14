@@ -13,6 +13,7 @@ export const usePortalStore = defineStore('portal', () => {
   const dashboardData = ref(null)
   const customerName = ref('')
   const authenticated = ref(false)
+  const history = ref([])
 
   // ─── Agent-side methods ───
 
@@ -106,17 +107,27 @@ export const usePortalStore = defineStore('portal', () => {
     }
   }
 
+  async function fetchHistory(token) {
+    try {
+      const res = await portalApi.get(`/${token}/history`)
+      history.value = res.data.snapshots || []
+    } catch {
+      history.value = []
+    }
+  }
+
   function logout() {
     sessionStorage.removeItem('portal_token')
     authenticated.value = false
     dashboardData.value = null
     customerName.value = ''
+    history.value = []
   }
 
   return {
     links, loading, error,
-    dashboardData, customerName, authenticated,
+    dashboardData, customerName, authenticated, history,
     fetchLinks, generateLink, revokeLink, sendEmail, getCustomerInfo,
-    accessPortal, fetchDashboard, logout,
+    accessPortal, fetchDashboard, fetchHistory, logout,
   }
 })

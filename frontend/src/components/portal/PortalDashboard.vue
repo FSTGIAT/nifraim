@@ -1,6 +1,6 @@
 <template>
   <div class="portal-dashboard">
-    <div class="dashboard-header">
+    <div class="dashboard-header print-header-hidden">
       <div class="customer-info">
         <h2>שלום, {{ data.customer_name }}</h2>
         <p class="id-label">
@@ -8,37 +8,96 @@
           <span v-if="data.period" class="period-badge">{{ data.period }}</span>
         </p>
       </div>
-      <button class="logout-btn" @click="$emit('logout')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-        יציאה
-      </button>
+      <div class="header-actions">
+        <button class="print-btn" @click="printReport" title="הדפסת דוח">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          הדפסת דוח
+        </button>
+        <button class="logout-btn" @click="$emit('logout')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          יציאה
+        </button>
+      </div>
     </div>
+
+    <!-- Print-only header -->
+    <div class="print-only-header">
+      <h1>דוח תיק ביטוחי — {{ data.customer_name }}</h1>
+      <p>ת.ז: {{ data.id_number }} | תקופה: {{ data.period || '—' }} | תאריך הפקה: {{ printDate }}</p>
+    </div>
+
+    <!-- Changes Banner -->
+    <PortalChangesBanner
+      v-if="data.recent_changes"
+      :changes="data.recent_changes"
+    />
 
     <!-- KPI Strip -->
     <PortalKPIStrip :kpi="data.kpi" />
+
+    <!-- Trend Chart -->
+    <PortalTrendChart :snapshots="portalStore.history" />
 
     <!-- Company Chart + Products -->
     <div class="section-grid">
       <PortalCompanyChart :breakdown="data.company_breakdown" />
       <PortalProductTable :products="data.products" />
     </div>
+
+    <!-- Print footer -->
+    <div class="print-only-footer">
+      הופק על ידי Nifraim | {{ printDate }}
+    </div>
+
+    <!-- AI Chat -->
+    <PortalAIChat v-if="token" :token="token" />
   </div>
 </template>
 
 <script setup>
+import { onMounted, computed } from 'vue'
+import { usePortalStore } from '../../stores/portal.js'
 import PortalKPIStrip from './PortalKPIStrip.vue'
 import PortalCompanyChart from './PortalCompanyChart.vue'
 import PortalProductTable from './PortalProductTable.vue'
+import PortalTrendChart from './PortalTrendChart.vue'
+import PortalChangesBanner from './PortalChangesBanner.vue'
+import PortalAIChat from './PortalAIChat.vue'
 
-defineProps({
+const props = defineProps({
   data: Object,
+  token: String,
 })
 
 defineEmits(['logout'])
+
+const portalStore = usePortalStore()
+
+const printDate = computed(() => {
+  return new Date().toLocaleDateString('he-IL', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+})
+
+function printReport() {
+  window.print()
+}
+
+onMounted(() => {
+  if (props.token) {
+    portalStore.fetchHistory(props.token)
+  }
+})
 </script>
 
 <style scoped>
@@ -91,6 +150,34 @@ defineEmits(['logout'])
   display: inline-block;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  transition: all 0.2s var(--transition);
+  cursor: pointer;
+}
+
+.print-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary-light);
+  background: var(--primary-light);
+}
+
 .logout-btn {
   display: flex;
   align-items: center;
@@ -104,6 +191,7 @@ defineEmits(['logout'])
   color: var(--text-muted);
   background: var(--card-bg);
   transition: all 0.2s var(--transition);
+  cursor: pointer;
 }
 
 .logout-btn:hover {
@@ -119,9 +207,81 @@ defineEmits(['logout'])
   margin-top: 20px;
 }
 
+/* Print-only elements (hidden on screen) */
+.print-only-header,
+.print-only-footer {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .section-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ───── Print Styles ───── */
+@media print {
+  .portal-dashboard {
+    animation: none;
+    padding: 0;
+  }
+
+  .print-header-hidden,
+  .print-btn,
+  .logout-btn,
+  .header-actions {
+    display: none !important;
+  }
+
+  .print-only-header {
+    display: block;
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 12px;
+  }
+
+  .print-only-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: #000;
+  }
+
+  .print-only-header p {
+    font-size: 12px;
+    color: #555;
+    margin: 0;
+  }
+
+  .print-only-footer {
+    display: block;
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 12px;
+    border-top: 1px solid #999;
+    font-size: 11px;
+    color: #777;
+  }
+
+  .section-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Remove shadows and borders for clean print */
+  :deep(.trend-chart-card),
+  :deep(.kpi-strip),
+  :deep(.portal-company-chart),
+  :deep(.portal-product-table) {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+  }
+
+  /* Hide changes banner in print */
+  :deep(.changes-banner) {
+    display: none !important;
   }
 }
 </style>

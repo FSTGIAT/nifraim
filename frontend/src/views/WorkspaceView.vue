@@ -51,12 +51,14 @@
           </svg>
         </div>
 
-        <WorkspaceTabs
-          v-model="activeTab"
-          :view-mode="viewMode"
-          @select-card="onCardSelect"
-        />
-        <AiChatWidget />
+        <div class="home-content">
+          <WorkspaceTabs
+            v-model="activeTab"
+            :view-mode="viewMode"
+            @select-card="onCardSelect"
+          />
+          <AiChatWidget @navigate-tab="onCardSelect" />
+        </div>
       </div>
 
       <!-- CONTENT MODE -->
@@ -76,6 +78,7 @@
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
+              <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
             </Transition>
           </div>
         </main>
@@ -150,6 +153,7 @@ import { ref, computed, onMounted, onUnmounted, provide, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
+import { useProductionStore } from '../stores/production.js'
 import { useOnboardingTour } from '../composables/useOnboardingTour.js'
 import WorkspaceHeader from '../components/workspace/WorkspaceHeader.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
@@ -161,23 +165,26 @@ import RecruitsTab from '../components/workspace/RecruitsTab.vue'
 import UnpaidSummaryTab from '../components/workspace/UnpaidSummaryTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
+import PortalTab from '../components/workspace/PortalTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const comparisonStore = useComparisonStore()
+const productionStore = useProductionStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
 
 // Tab order for navigation
-const tabOrder = ['production', 'comparison', 'unpaid-summary', 'commission-rates', 'company-emails', 'recruits']
+const tabOrder = ['production', 'comparison', 'unpaid-summary', 'commission-rates', 'company-emails', 'recruits', 'portal']
 const tabLabels = {
   'production': 'פרודוקציה',
   'comparison': 'השוואת נפרעים',
   'unpaid-summary': 'סיכום חובות',
   'commission-rates': 'טבלת עמלות',
   'company-emails': 'אימיילים לחברות',
-  'recruits': 'My File',
+  'recruits': 'ניהול תיק אישי',
+  'portal': 'פורטל לקוחות',
 }
 
 const currentIndex = computed(() => tabOrder.indexOf(activeTab.value))
@@ -198,9 +205,40 @@ function goPrev() {
   }
 }
 
-function onCardSelect(tabId) {
+function onCardSelect(payload) {
+  // Accept string or { tab, company, uploadId } object
+  const tabId = typeof payload === 'string' ? payload : payload.tab
+  const company = typeof payload === 'object' ? payload.company : null
+  const uploadId = typeof payload === 'object' ? payload.uploadId : null
+
   activeTab.value = tabId
   viewMode.value = 'content'
+
+  // Auto-select comparison category if company is provided
+  if (tabId === 'comparison' && company) {
+    const cats = ['gemel_hishtalmut', 'insurance']
+    // Find category with a cached result matching the company
+    const matchedCat = cats.find(cat => {
+      const r = comparisonStore.results[cat]
+      if (!r) return false
+      const sources = r.commission_company_sources || []
+      const source = r.commission_company_source || ''
+      const allSources = sources.length ? sources : (source ? [source] : [])
+      return allSources.some(s =>
+        s.includes(company) || company.includes(s)
+      )
+    })
+    if (matchedCat) {
+      comparisonStore.selectCategory(matchedCat)
+    } else if (uploadId && productionStore.currentFile?.id) {
+      // No cached result — auto-trigger comparison computation
+      comparisonStore.autoCompare(productionStore.currentFile.id, uploadId).catch(() => {})
+    } else {
+      // Fallback: select first category with any result
+      const fallback = cats.find(cat => comparisonStore.results[cat])
+      if (fallback) comparisonStore.selectCategory(fallback)
+    }
+  }
 }
 
 function goHome() {
@@ -333,6 +371,11 @@ function handleLogout() {
 /* ─── Home view blur circles ─── */
 .home-view {
   position: relative;
+}
+
+.home-content {
+  position: relative;
+  z-index: 1;
 }
 
 .float-circle {

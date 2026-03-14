@@ -106,6 +106,26 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
+  async function autoCompare(productionUploadId, commissionUploadId) {
+    uploading.value = true
+    error.value = null
+    try {
+      const formData = new FormData()
+      formData.append('production_upload_id', productionUploadId)
+      formData.append('commission_upload_id', commissionUploadId)
+      const res = await api.post('/comparison/compute', formData)
+      const cat = res.data.commission_category || 'gemel_hishtalmut'
+      results[cat] = res.data
+      activeCategory.value = cat
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בחישוב ההשוואה'
+      throw e
+    } finally {
+      uploading.value = false
+    }
+  }
+
   function reset() {
     activeCategory.value = null
     results.gemel_hishtalmut = null
@@ -119,6 +139,6 @@ export const useComparisonStore = defineStore('comparison', () => {
     activeCategory, results, result,
     uploading, error, filterStatus, searchQuery,
     selectCategory, clearCategory, hasResultFor, resetCategory,
-    uploadAndCompare, compareExisting, compareWithProduction, reset,
+    uploadAndCompare, compareExisting, compareWithProduction, autoCompare, reset,
   }
 })
