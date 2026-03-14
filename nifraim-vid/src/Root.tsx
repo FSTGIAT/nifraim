@@ -20,7 +20,7 @@ export const RemotionRoot: React.FC = () => {
         id="NifraimMarketing"
         component={NifraimMarketing}
         durationInFrames={
-          870
+          871
         } /* 906 total - 35 overlap (7 transitions × 5 frames) */
         fps={30}
         width={1920}
