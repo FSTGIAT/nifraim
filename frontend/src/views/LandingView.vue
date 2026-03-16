@@ -1,7 +1,12 @@
 <template>
-  <div class="landing">
+  <div class="landing" ref="landingRoot">
+    <!-- Progress Bar -->
+    <div class="progress-bar" ref="progressBar"></div>
+
+    <!-- Grain overlay via CSS pseudo-element on .landing -->
+
     <!-- Nav -->
-    <nav class="land-nav">
+    <nav class="land-nav" ref="landNav">
       <div class="nav-content">
         <div class="nav-brand">
           <div class="nav-icon">
@@ -14,7 +19,9 @@
           <span class="nav-name">Nifraim</span>
         </div>
         <div class="nav-links">
-          <a href="#features">תכונות</a>
+          <a href="#how" @click.prevent="scrollToSection('how')">איך זה עובד</a>
+          <a href="#features" @click.prevent="scrollToSection('features')">יכולות</a>
+          <a href="#portal" @click.prevent="scrollToSection('portal')">פורטל לקוחות</a>
           <router-link to="/pricing">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
@@ -35,7 +42,9 @@
       <!-- Mobile menu -->
       <Transition name="mobile-menu">
         <div v-if="mobileMenuOpen" class="mobile-menu">
-          <a href="#features" @click="mobileMenuOpen = false">תכונות</a>
+          <a href="#how" @click.prevent="scrollToSection('how')">איך זה עובד</a>
+          <a href="#features" @click.prevent="scrollToSection('features')">יכולות</a>
+          <a href="#portal" @click.prevent="scrollToSection('portal')">פורטל לקוחות</a>
           <router-link to="/pricing" @click="mobileMenuOpen = false">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
@@ -43,15 +52,17 @@
       </Transition>
     </nav>
 
-    <!-- Floating circles -->
-    <div class="float-circle float-circle-1"></div>
-    <div class="float-circle float-circle-2"></div>
-    <div class="float-circle float-circle-3"></div>
-    <div class="float-circle float-circle-4"></div>
-    <div class="float-circle float-circle-5"></div>
+    <!-- Floating circles (hero only) -->
+    <div class="float-circle float-circle-1" ref="fc1"></div>
+    <div class="float-circle float-circle-2" ref="fc2"></div>
+    <div class="float-circle float-circle-3" ref="fc3"></div>
+    <div class="float-circle float-circle-4" ref="fc4"></div>
+    <div class="float-circle float-circle-5" ref="fc5"></div>
 
-    <!-- Hero -->
-    <section class="hero">
+    <!-- ================================ -->
+    <!-- HERO (unchanged)                 -->
+    <!-- ================================ -->
+    <section class="hero" ref="heroSection">
       <div class="hero-bg-image"></div>
       <div class="hero-overlay"></div>
       <div class="hero-content">
@@ -59,279 +70,573 @@
       </div>
     </section>
 
-    <!-- Features -->
-    <section id="features" class="features">
-      <div class="section-wrap">
-        <h2 class="section-title">למה <span class="text-orange">Nifraim</span> ?</h2>
-        <div class="features-grid">
-          <div class="feature-block" v-for="(f, i) in features" :key="i">
-            <span class="feature-num ltr-number">{{ String(i + 1).padStart(2, '0') }}</span>
-            <h3>{{ f.title }}</h3>
-            <p>{{ f.desc }}</p>
+    <!-- ================================ -->
+    <!-- CHAPTER 02: PINNED STATS (dark)  -->
+    <!-- ================================ -->
+    <section class="chapter-stats chapter--dark" ref="chapterStats">
+      <div class="chapter-num" aria-hidden="true">02</div>
+      <div class="stats-wrapper" ref="statsWrapper">
+        <div class="stat-slide" ref="stat1">
+          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
+          <p class="stat-label">קבצים עובדו במערכת</p>
+        </div>
+        <div class="stat-slide" ref="stat2">
+          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
+          <p class="stat-label">חברות ביטוח נתמכות</p>
+        </div>
+        <div class="stat-slide" ref="stat3">
+          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
+          <p class="stat-label">חיסכון בזמן עבודה</p>
+        </div>
+        <div class="stats-conclusion" ref="statsConclusion">
+          <h3>הכל אוטומטי.</h3>
+          <span class="copper-line"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================ -->
+    <!-- CHAPTER 03: HOW IT WORKS (cream) -->
+    <!-- ================================ -->
+    <section class="chapter-how" id="how" ref="chapterHow">
+      <div class="chapter-num" aria-hidden="true">03</div>
+      <div class="how-header" ref="howHeader">
+        <span class="how-label">איך זה עובד</span>
+        <h2 class="how-title">שלושה צעדים פשוטים</h2>
+      </div>
+      <div class="how-steps">
+        <div class="how-step" v-for="(s, i) in howSteps" :key="i" ref="howStepEls">
+          <div v-if="i > 0" class="how-connector"></div>
+          <div class="how-step-num ltr-number">{{ String(i + 1).padStart(2, '0') }}</div>
+          <div class="how-step-icon" v-html="s.icon"></div>
+          <h3>{{ s.title }}</h3>
+          <p>{{ s.desc }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================ -->
+    <!-- CHAPTER 04: FEATURES HORIZ (dark)-->
+    <!-- ================================ -->
+    <section class="chapter-features chapter--dark" id="features" ref="chapterFeatures">
+      <div class="chapter-num" aria-hidden="true">04</div>
+      <div class="features-header">
+        <span class="features-label">יכולות המערכת</span>
+        <h2 class="features-title">למה Nifraim?</h2>
+      </div>
+      <div class="features-track" ref="featuresTrack">
+        <div class="feature-card" v-for="(f, i) in featureCards" :key="i">
+          <div class="feature-card-bg">
+            <img :src="f.image" :alt="f.title" loading="lazy">
+          </div>
+          <div class="feature-card-content">
+            <div class="feature-card-number ltr-number">{{ f.num }}</div>
+            <h3 class="feature-card-name">{{ f.title }}</h3>
+            <p class="feature-card-desc">{{ f.desc }}</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Video Demo -->
-    <section id="video-demo" class="video-section">
-      <div class="section-wrap">
-        <h2 class="section-title">איך זה <span class="text-orange">עובד</span> ?</h2>
-        <div ref="videoSection" class="video-container" :class="{ playing: videoPlaying, 'video-entered': videoVisible }">
-          <video
-            ref="demoVideo"
-            src="/videos/nifraim-commercial.mp4"
-            playsinline
-            muted
-            loop
-            preload="metadata"
-            poster="/videos/nifraim-poster.jpg"
-            @play="videoPlaying = true"
-            @pause="videoPlaying = false"
-          />
-        </div>
+    <!-- ================================ -->
+    <!-- CHAPTER 05: PORTAL BENTO (cream) -->
+    <!-- ================================ -->
+    <section class="chapter-portal" id="portal" ref="chapterPortal">
+      <div class="chapter-num" aria-hidden="true">05</div>
+      <div class="portal-header">
+        <span class="portal-label">פורטל לקוחות</span>
+        <h2 class="portal-title">שתפו את תיק הביטוח</h2>
+        <p class="portal-sub">חוויה מותאמת אישית, מאובטחת ומקצועית — הלקוחות שלכם רואים את הכל</p>
       </div>
-    </section>
-
-    <!-- How It Works -->
-    <section id="how-it-works" class="how-section">
-      <div class="section-wrap">
-        <h2 class="section-title">שלושה <span class="text-orange">צעדים</span> פשוטים</h2>
-        <div class="timeline">
-          <div class="timeline-step" v-for="(s, i) in steps" :key="i">
-            <div class="timeline-circle ltr-number">{{ i + 1 }}</div>
-            <h3>{{ s.title }}</h3>
-            <p>{{ s.desc }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Numbers Strip -->
-    <section class="numbers-strip" ref="numbersSection">
-      <div class="section-wrap">
-        <div class="numbers-grid">
-          <div class="number-block" v-for="(n, i) in numbers" :key="i">
-            <span class="number-val ltr-number">{{ numbersVisible ? n.animated.value : '0' }}{{ n.suffix }}</span>
-            <span class="number-label">{{ n.label }}</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Portal Section -->
-    <section id="portal-section" class="portal-section">
-      <div class="section-wrap">
-        <h2 class="section-title">פורטל <span class="text-orange">לקוחות</span></h2>
-        <p class="portal-intro">שתפו את תיק הביטוח עם הלקוחות — חוויה מותאמת אישית, מאובטחת ומקצועית</p>
-
-        <div class="portal-features-grid">
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-kpi">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                <line x1="3" y1="9" x2="21" y2="9"/>
-                <line x1="9" y1="21" x2="9" y2="9"/>
-              </svg>
+      <div class="portal-grid">
+        <!-- Featured card -->
+        <div class="portal-card portal-card-featured" data-portal-card>
+          <div>
+            <div class="pc-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             </div>
             <h3>דשבורד אישי</h3>
-            <p>מדדי KPI, גרפים וטבלאות — כל המידע במבט אחד</p>
+            <p>מדדי KPI, גרפים וטבלאות — כל המידע במבט אחד. הלקוח רואה את התיק שלו בצורה ויזואלית ומסודרת.</p>
           </div>
+          <div class="portal-card-img">
+            <img src="/images/landing/hero-dashboard.jpg" alt="Customer dashboard" loading="lazy">
+          </div>
+        </div>
 
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-ai">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </div>
-            <h3>עוזר AI חכם</h3>
-            <p>הלקוחות שואלים, הבינה המלאכותית עונה — על התיק שלהם</p>
+        <div class="portal-card" data-portal-card>
+          <div class="pc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           </div>
+          <h3>עוזר AI חכם</h3>
+          <p>הלקוחות שואלים, הבינה המלאכותית עונה — על התיק שלהם</p>
+        </div>
 
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-changes">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-            </div>
-            <h3>התראות שינויים</h3>
-            <p>הלקוח מקבל התראה אוטומטית כשמשהו משתנה בתיק</p>
+        <div class="portal-card" data-portal-card>
+          <div class="pc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
           </div>
+          <h3>התראות שינויים</h3>
+          <p>הלקוח מקבל התראה אוטומטית כשמשהו משתנה בתיק הביטוח</p>
+        </div>
 
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-secure">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-            </div>
-            <h3>גישה מאובטחת</h3>
-            <p>קישור ייחודי עם סיסמא, תוקף מוגבל והגנה מפני ניסיונות חדירה</p>
+        <div class="portal-card" data-portal-card>
+          <div class="pc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
+          <h3>גישה מאובטחת</h3>
+          <p>קישור ייחודי עם סיסמא, תוקף מוגבל והגנה מפני חדירה</p>
+        </div>
 
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-trend">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-            </div>
-            <h3>גרפים היסטוריים</h3>
-            <p>מעקב אחר פרמיה וצבירה לאורך זמן — תמונה ברורה</p>
+        <div class="portal-card" data-portal-card>
+          <div class="pc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
+          <h3>גרפים היסטוריים</h3>
+          <p>מעקב פרמיה וצבירה לאורך זמן — תמונה ברורה</p>
+        </div>
 
-          <div class="portal-feature-card">
-            <div class="portal-feature-icon portal-icon-print">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 6 2 18 2 18 9"/>
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                <rect x="6" y="14" width="12" height="8"/>
-              </svg>
-            </div>
-            <h3>הדפסת דוחות</h3>
-            <p>הלקוח מדפיס דוח מסודר של כל תיק הביטוח שלו</p>
+        <div class="portal-card" data-portal-card>
+          <div class="pc-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           </div>
+          <h3>הדפסת דוחות</h3>
+          <p>דוח מסודר של כל תיק הביטוח — מוכן להדפסה</p>
         </div>
       </div>
     </section>
 
-    <!-- CTA -->
-    <section class="cta-section">
-      <video
-        class="cta-bg-video"
-        src="/videos/brand-loop.mp4"
-        autoplay
-        loop
-        muted
-        playsinline
-      />
+    <!-- ================================ -->
+    <!-- CHAPTER 06: CTA (dark)           -->
+    <!-- ================================ -->
+    <section class="chapter-cta chapter--dark" id="cta" ref="chapterCta">
+      <div class="chapter-num" aria-hidden="true">06</div>
+      <div class="cta-bg-visual">
+        <img src="/images/landing/ai-network.jpg" alt="" aria-hidden="true">
+      </div>
       <div class="cta-overlay"></div>
-      <div class="section-wrap">
-        <h2 class="cta-title">מוכנים להתחיל?</h2>
-        <router-link to="/signup" class="btn-primary btn-large">התחל עכשיו</router-link>
+      <div class="cta-content" ref="ctaContent">
+        <h2 class="cta-headline">מוכנים <span>להתחיל?</span></h2>
+        <p class="cta-sub">הצטרפו לעשרות סוכני ביטוח שכבר חוסכים שעות עבודה כל שבוע</p>
+        <router-link to="/signup" class="cta-btn">התחל עכשיו</router-link>
       </div>
     </section>
 
     <!-- Footer -->
     <footer class="land-footer">
-      <div class="footer-wrap">
+      <div class="footer-inner">
         <div class="footer-brand">
-          <div class="nav-icon small">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <span>Nifraim</span>
+          <span class="fb-name">Nifraim</span>
+          <span class="fb-tag">מערכת ניהול עמלות מתקדמת</span>
         </div>
-        <p class="footer-tagline">מערכת ניהול עמלות מתקדמת</p>
         <div class="footer-links">
           <router-link to="/pricing">תמחור</router-link>
           <router-link to="/login">התחברות</router-link>
         </div>
-        <p class="footer-copy ltr-number">&copy; 2026 Nifraim</p>
+        <p class="footer-copy ltr-number">&copy; 2026 Nifraim. כל הזכויות שמורות.</p>
       </div>
     </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, reactive } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import Lenis from 'lenis'
+
+gsap.registerPlugin(ScrollTrigger)
+
+// Refs
+const landingRoot = ref(null)
+const landNav = ref(null)
+const progressBar = ref(null)
+const heroSection = ref(null)
+const fc1 = ref(null)
+const fc2 = ref(null)
+const fc3 = ref(null)
+const fc4 = ref(null)
+const fc5 = ref(null)
+const chapterStats = ref(null)
+const statsWrapper = ref(null)
+const stat1 = ref(null)
+const stat2 = ref(null)
+const stat3 = ref(null)
+const statsConclusion = ref(null)
+const chapterHow = ref(null)
+const howHeader = ref(null)
+const howStepEls = ref([])
+const chapterFeatures = ref(null)
+const featuresTrack = ref(null)
+const chapterPortal = ref(null)
+const chapterCta = ref(null)
+const ctaContent = ref(null)
 
 // Mobile menu
 const mobileMenuOpen = ref(false)
 
-// Video
-const demoVideo = ref(null)
-const videoPlaying = ref(false)
-const videoSection = ref(null)
-const videoVisible = ref(false)
-let videoObserver = null
-
-// Features data
-const features = [
-  {
-    title: 'זיהוי אוטומטי',
-    desc: 'המערכת מזהה פורמטים מ-7+ חברות שונות, כולל קבצים מוגני סיסמא.',
-  },
-  {
-    title: 'השוואה מדויקת',
-    desc: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים וחסרים.',
-  },
-  {
-    title: 'תוצאות מיידיות',
-    desc: 'מה שלקח שעות — לוקח שניות. העלו קבצים וקבלו תשובות.',
-  },
-]
-
-// Steps data
-const steps = [
-  { title: 'העלו קבצים', desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט.' },
-  { title: 'השוו נתונים', desc: 'המערכת מתאימה רשומות לפי ת.ז. ומספר פוליסה.' },
-  { title: 'קבלו תובנות', desc: 'מי שולם, מי לא, היכן יש פערים — הכל במבט אחד.' },
-]
-
-// Numbers section
-const numbersSection = ref(null)
-const numbersVisible = ref(false)
-
-function animateCounter(target, finalValue, duration = 1500) {
-  const start = performance.now()
-  function tick(now) {
-    const elapsed = now - start
-    const progress = Math.min(elapsed / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    target.value = Math.round(finalValue * eased).toLocaleString()
-    if (progress < 1) requestAnimationFrame(tick)
+// Smooth scroll to anchor
+function scrollToSection(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  if (lenis) {
+    lenis.scrollTo(el, { offset: -72 })
+  } else {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
-  requestAnimationFrame(tick)
+  mobileMenuOpen.value = false
 }
 
-const numbers = reactive([
-  { animated: ref('0'), suffix: '+', label: 'קבצים עובדו', final: 1000 },
-  { animated: ref('0'), suffix: '+', label: 'חברות נתמכות', final: 50 },
-  { animated: ref('0'), suffix: '%', label: 'חיסכון בזמן', final: 95 },
-])
+// Data
+const statData = [
+  { target: 1000, suffix: '+' },
+  { target: 50, suffix: '+' },
+  { target: 95, suffix: '%' },
+]
 
-let numbersObserver = null
+const howSteps = [
+  {
+    title: 'העלו קבצים',
+    desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט — כולל קבצים מוגני סיסמא מ-7+ חברות.',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+  },
+  {
+    title: 'השוו נתונים',
+    desc: 'המערכת מתאימה רשומות לפי ת.ז. ומספר פוליסה. התאמה אוטומטית בין פרודוקציה לנפרעים.',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>'
+  },
+  {
+    title: 'קבלו תובנות',
+    desc: 'מי שולם, מי לא, היכן יש פערים — הכל במבט אחד. תוצאות מיידיות, ללא בדיקות ידניות.',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>'
+  },
+]
+
+const featureCards = [
+  { num: 'יכולת 01', title: 'זיהוי אוטומטי', desc: 'המערכת מזהה פורמטים מ-7+ חברות שונות, כולל קבצים מוגני סיסמא. ללא הגדרות מראש.', image: '/images/landing/ai-network.jpg' },
+  { num: 'יכולת 02', title: 'השוואה מדויקת', desc: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים, חסרים ואי-התאמות בשניות.', image: '/images/landing/data-flow.jpg' },
+  { num: 'יכולת 03', title: 'תוצאות מיידיות', desc: 'מה שלקח שעות — לוקח שניות. העלו קבצים וקבלו תשובות. ייצוא לאקסל בלחיצה.', image: '/images/landing/dashboard.jpg' },
+  { num: 'יכולת 04', title: 'ניתוח AI חכם', desc: 'בינה מלאכותית שמבינה את הנתונים שלכם. שאלו שאלות — קבלו תובנות מהתיק.', image: '/images/landing/portal.jpg' },
+]
+
+// Lenis + GSAP setup
+let lenis = null
+let lenisTickerFn = null
+let rafId = null
+
+function animateStatCounter(el, target, suffix) {
+  const obj = { val: 0 }
+  gsap.to(obj, {
+    val: target,
+    duration: 1.5,
+    ease: 'power2.out',
+    onUpdate: () => {
+      el.textContent = (target >= 100 ? Math.round(obj.val).toLocaleString() : Math.round(obj.val)) + suffix
+    }
+  })
+}
 
 onMounted(() => {
-  // Intersection observer for numbers
-  numbersObserver = new IntersectionObserver(
-    (entries) => {
-      if (entries[0].isIntersecting && !numbersVisible.value) {
-        numbersVisible.value = true
-        numbers.forEach((n) => {
-          animateCounter(n.animated, n.final)
-        })
-      }
-    },
-    { threshold: 0.3 }
-  )
-  if (numbersSection.value) {
-    numbersObserver.observe(numbersSection.value)
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  // Lenis smooth scroll
+  if (!prefersReduced) {
+    lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      orientation: 'vertical',
+      smoothWheel: true,
+    })
+    lenis.on('scroll', ScrollTrigger.update)
+    lenisTickerFn = (time) => { if (lenis) lenis.raf(time * 1000) }
+    gsap.ticker.add(lenisTickerFn)
+    gsap.ticker.lagSmoothing(0)
   }
 
-  // Intersection observer for video section
-  videoObserver = new IntersectionObserver(
-    (entries) => {
-      if (entries[0].isIntersecting) {
-        if (!videoVisible.value) videoVisible.value = true
-        demoVideo.value?.play()
-      } else {
-        demoVideo.value?.pause()
+  // Progress bar
+  const onScroll = () => {
+    if (!progressBar.value) return
+    const h = document.documentElement
+    progressBar.value.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100 + '%'
+  }
+  window.addEventListener('scroll', onScroll, { passive: true })
+
+  // Floating circles fade out after hero
+  if (!prefersReduced) {
+    ScrollTrigger.create({
+      trigger: heroSection.value,
+      start: 'top top',
+      end: 'bottom top',
+      onLeave: () => {
+        gsap.to([fc1.value, fc2.value, fc3.value, fc4.value, fc5.value], {
+          opacity: 0, duration: 0.5
+        })
+      },
+      onEnterBack: () => {
+        gsap.to([fc1.value, fc2.value, fc3.value, fc4.value, fc5.value], {
+          opacity: 1, duration: 0.5
+        })
       }
-    },
-    { threshold: 0.2 }
-  )
-  if (videoSection.value) {
-    videoObserver.observe(videoSection.value)
+    })
+
+    // Nav light/dark toggle per section
+    // Light sections (cream): chapters 3 (how), 5 (portal) → nav--light
+    // Dark sections: hero, chapters 2 (stats), 4 (features), 6 (cta) → no nav--light
+    const setNavLight = () => landNav.value?.classList.add('nav--light')
+    const setNavDark = () => landNav.value?.classList.remove('nav--light')
+
+    // After hero → chapter 2 (dark) — nav stays dark
+    // Chapter 3 (cream) → light nav
+    ScrollTrigger.create({
+      trigger: chapterHow.value,
+      start: 'top 50%',
+      end: 'bottom 50%',
+      onEnter: setNavLight,
+      onLeaveBack: setNavDark,
+      onLeave: setNavDark,
+      onEnterBack: setNavLight,
+    })
+
+    // Chapter 5 (cream) → light nav
+    ScrollTrigger.create({
+      trigger: chapterPortal.value,
+      start: 'top 50%',
+      end: 'bottom 50%',
+      onEnter: setNavLight,
+      onLeaveBack: setNavDark,
+      onLeave: setNavDark,
+      onEnterBack: setNavLight,
+    })
+
+    // ---- CHAPTER 2: Pinned Stats ----
+    const statSlides = [stat1.value, stat2.value, stat3.value]
+    const conclusionEl = statsConclusion.value
+    let conclusionShown = false
+    const slideActive = [false, false, false]
+
+    // Show first stat immediately when entering the section
+    ScrollTrigger.create({
+      trigger: chapterStats.value,
+      start: 'top 80%',
+      once: true,
+      onEnter: () => {
+        if (stat1.value) {
+          slideActive[0] = true
+          gsap.fromTo(stat1.value,
+            { opacity: 0, y: 50, scale: 0.95 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power3.out' }
+          )
+          const accentEl = stat1.value.querySelector('.stat-accent')
+          if (accentEl) animateStatCounter(accentEl, statData[0].target, statData[0].suffix)
+        }
+      }
+    })
+
+    ScrollTrigger.create({
+      trigger: chapterStats.value,
+      start: 'top top',
+      end: '+=100%',
+      pin: true,
+      pinSpacing: true,
+      onUpdate: (self) => {
+        const p = self.progress
+
+        // 3 slides: 0–0.28, 0.28–0.56, 0.56–0.80, conclusion 0.80+
+        statSlides.forEach((s, i) => {
+          if (!s) return
+          const start = i * 0.28
+          const end = start + 0.28
+          if (p >= start && p < end) {
+            if (!slideActive[i]) {
+              slideActive[i] = true
+              gsap.killTweensOf(s)
+              gsap.fromTo(s,
+                { opacity: 0, y: 40, scale: 0.95 },
+                { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'power3.out' }
+              )
+              const accentEl = s.querySelector('.stat-accent')
+              if (accentEl) {
+                animateStatCounter(accentEl, statData[i].target, statData[i].suffix)
+              }
+            }
+          } else {
+            if (slideActive[i]) {
+              slideActive[i] = false
+              gsap.killTweensOf(s)
+              gsap.to(s, { opacity: 0, y: p > end ? -30 : 30, scale: 0.95, duration: 0.25, ease: 'power2.in' })
+            }
+          }
+        })
+
+        // Conclusion
+        if (p >= 0.82) {
+          if (!conclusionShown) {
+            conclusionShown = true
+            gsap.killTweensOf(conclusionEl)
+            gsap.fromTo(conclusionEl,
+              { opacity: 0, scale: 0.9 },
+              { opacity: 1, scale: 1, duration: 0.5, ease: 'power3.out' }
+            )
+          }
+        } else {
+          if (conclusionShown) {
+            conclusionShown = false
+            gsap.killTweensOf(conclusionEl)
+            gsap.to(conclusionEl, { opacity: 0, scale: 0.9, duration: 0.25, ease: 'power2.in' })
+          }
+        }
+      }
+    })
+
+    // ---- CHAPTER 3: How It Works ----
+    gsap.set(howHeader.value, { opacity: 0, y: 30 })
+    ScrollTrigger.create({
+      trigger: chapterHow.value,
+      start: 'top 70%',
+      once: true,
+      onEnter: () => {
+        gsap.to(howHeader.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' })
+      }
+    })
+
+    if (howStepEls.value) {
+      howStepEls.value.forEach((step, i) => {
+        gsap.set(step, { opacity: 0, y: 40 })
+        ScrollTrigger.create({
+          trigger: step,
+          start: 'top 80%',
+          once: true,
+          onEnter: () => {
+            gsap.to(step, { opacity: 1, y: 0, duration: 0.7, delay: i * 0.15, ease: 'power3.out' })
+          }
+        })
+      })
+    }
+
+    // ---- CHAPTER 4: Features Horizontal Scroll ----
+    const featTrack = featuresTrack.value
+    if (featTrack) {
+      ScrollTrigger.matchMedia({
+        // Desktop: horizontal scroll
+        '(min-width: 769px)': function() {
+          const getScrollDist = () => featTrack.scrollWidth - window.innerWidth
+
+          gsap.to(featTrack, {
+            x: () => -getScrollDist(),
+            ease: 'none',
+            scrollTrigger: {
+              trigger: chapterFeatures.value,
+              start: 'top top',
+              end: () => '+=' + (getScrollDist() + window.innerWidth * 0.3),
+              pin: true,
+              scrub: 1,
+              invalidateOnRefresh: true
+            }
+          })
+        },
+        // Mobile: no pin, stack vertically (handled by CSS)
+      })
+    }
+
+    // ---- CHAPTER 5: Portal Cards ----
+    const portalCardEls = document.querySelectorAll('[data-portal-card]')
+    portalCardEls.forEach((card, i) => {
+      gsap.set(card, { opacity: 0, y: 40 })
+      ScrollTrigger.create({
+        trigger: card,
+        start: 'top 85%',
+        once: true,
+        onEnter: () => {
+          gsap.to(card, { opacity: 1, y: 0, duration: 0.6, delay: i * 0.1, ease: 'power3.out' })
+        }
+      })
+    })
+
+    // ---- CHAPTER 6: CTA ----
+    gsap.set(ctaContent.value, { opacity: 0, y: 40 })
+    ScrollTrigger.create({
+      trigger: chapterCta.value,
+      start: 'top 60%',
+      once: true,
+      onEnter: () => {
+        gsap.to(ctaContent.value, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' })
+      }
+    })
+
+    // CTA parallax
+    gsap.to('.cta-bg-visual img', {
+      y: -40,
+      scrollTrigger: {
+        trigger: chapterCta.value,
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1
+      }
+    })
+
+  } else {
+    // ---- Reduced Motion Fallback ----
+    // Stats: show all inline
+    ;[stat1.value, stat2.value, stat3.value].forEach((s, i) => {
+      if (!s) return
+      s.style.position = 'relative'
+      s.style.opacity = '1'
+      s.style.marginBottom = '60px'
+      const accentEl = s.querySelector('.stat-accent')
+      if (accentEl) accentEl.textContent = statData[i].target + statData[i].suffix
+    })
+    if (statsConclusion.value) {
+      statsConclusion.value.style.opacity = '1'
+      statsConclusion.value.style.position = 'relative'
+    }
+
+    // How steps
+    if (howHeader.value) {
+      howHeader.value.style.opacity = '1'
+      howHeader.value.style.transform = 'none'
+    }
+    if (howStepEls.value) {
+      howStepEls.value.forEach(el => { el.style.opacity = '1'; el.style.transform = 'none' })
+    }
+
+    // Features: stack vertically
+    if (featuresTrack.value) {
+      featuresTrack.value.style.flexDirection = 'column'
+      featuresTrack.value.style.width = '100%'
+      featuresTrack.value.style.height = 'auto'
+      featuresTrack.value.style.padding = '120px 24px'
+    }
+    document.querySelectorAll('.feature-card').forEach(c => {
+      c.style.width = '100%'
+      c.style.minWidth = 'auto'
+      c.style.opacity = '1'
+    })
+
+    // Portal cards
+    document.querySelectorAll('[data-portal-card]').forEach(el => {
+      el.style.opacity = '1'; el.style.transform = 'none'
+    })
+
+    // CTA
+    if (ctaContent.value) {
+      ctaContent.value.style.opacity = '1'
+      ctaContent.value.style.transform = 'none'
+    }
   }
 })
 
 onBeforeUnmount(() => {
-  if (numbersObserver) numbersObserver.disconnect()
-  if (videoObserver) videoObserver.disconnect()
+  ScrollTrigger.getAll().forEach(t => t.kill())
+  if (lenisTickerFn) {
+    gsap.ticker.remove(lenisTickerFn)
+    lenisTickerFn = null
+  }
+  if (lenis) {
+    lenis.destroy()
+    lenis = null
+  }
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+  }
 })
 </script>
 
@@ -341,15 +646,33 @@ onBeforeUnmount(() => {
   --land-bg: #4A4A4A;
   --land-bg-alt: #555555;
   --land-bg-card: #5C5C5C;
-  --land-orange: #F57C00;
-  --land-orange-bright: #FF9800;
-  --land-orange-deep: #E65100;
-  --land-orange-glow: rgba(245, 124, 0, 0.15);
+  --land-orange: #E8660A;
+  --land-orange-bright: #F57C00;
+  --land-orange-deep: #C85A00;
+  --land-orange-glow: rgba(232, 102, 10, 0.1);
   --land-text: #F5F5F5;
   --land-text-secondary: #A0A0A0;
   --land-text-dim: #666666;
   --land-border: #666666;
   --land-border-hover: #777777;
+
+  /* Cream palette (chapters 3, 5) */
+  --cream-bg: #F5F0EB;
+  --cream-surface: #EDE8E1;
+  --cream-surface-2: #E8E2DA;
+  --cream-surface-3: #F9F6F2;
+  --cream-text: #2D2522;
+  --cream-text-muted: rgba(45, 37, 34, 0.6);
+  --cream-text-dim: rgba(45, 37, 34, 0.35);
+
+  /* Dark section palette (chapters 2, 4, 6) */
+  --dark-section: #2D2522;
+  --dark-surface: #3A3330;
+  --text-light: #F5F0EB;
+  --text-light-muted: rgba(245, 240, 235, 0.6);
+
+  --transition-fast: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 
   min-height: 100vh;
   background: var(--land-bg);
@@ -357,6 +680,18 @@ onBeforeUnmount(() => {
   font-family: 'Heebo', sans-serif;
   direction: rtl;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* Grain overlay */
+.landing::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .landing a {
@@ -364,14 +699,47 @@ onBeforeUnmount(() => {
   text-decoration: none;
 }
 
-.text-orange {
-  color: var(--land-orange);
+::selection {
+  background: var(--land-orange);
+  color: #fff;
 }
 
 .section-wrap {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
+}
+
+/* ── Progress Bar ── */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
+  z-index: 1000;
+  width: 0;
+  will-change: width;
+}
+
+/* ── Chapter Numbers ── */
+.chapter-num {
+  position: absolute;
+  top: 5%;
+  left: 5%;
+  font-family: 'Heebo', sans-serif;
+  font-size: clamp(100px, 15vw, 200px);
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(45, 37, 34, 0.04);
+  line-height: 1;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.chapter--dark .chapter-num {
+  -webkit-text-stroke-color: rgba(245, 240, 235, 0.05);
 }
 
 /* ── Navigation ── */
@@ -384,6 +752,52 @@ onBeforeUnmount(() => {
   background: rgba(74, 74, 74, 0.85);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--land-border);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+/* Nav light mode (after hero) */
+.land-nav.nav--light {
+  background: rgba(245, 240, 235, 0.9);
+  border-bottom-color: rgba(45, 37, 34, 0.06);
+}
+
+.land-nav.nav--light .nav-name {
+  color: var(--cream-text);
+}
+
+.land-nav.nav--light .nav-icon {
+  background: var(--cream-text);
+  color: var(--cream-bg);
+}
+
+.land-nav.nav--light .nav-links a {
+  color: var(--cream-text-muted);
+}
+
+.land-nav.nav--light .nav-links a:hover {
+  color: var(--land-orange);
+}
+
+.land-nav.nav--light .nav-btn-ghost {
+  border-color: var(--cream-text) !important;
+  color: var(--cream-text) !important;
+}
+
+.land-nav.nav--light .nav-btn-ghost:hover {
+  background: rgba(45, 37, 34, 0.05) !important;
+}
+
+.land-nav.nav--light .nav-btn-solid {
+  background: var(--cream-text) !important;
+  color: var(--cream-bg) !important;
+}
+
+.land-nav.nav--light .nav-btn-solid:hover {
+  background: var(--dark-section) !important;
+}
+
+.land-nav.nav--light .mobile-menu-btn {
+  color: var(--cream-text);
 }
 
 .nav-content {
@@ -411,18 +825,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   color: #0a0a0a;
-}
-
-.nav-icon.small {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .nav-name {
   font-size: 22px;
   font-weight: 800;
   color: var(--land-text);
+  transition: color var(--transition-fast);
 }
 
 .nav-links {
@@ -476,6 +886,7 @@ onBeforeUnmount(() => {
   color: var(--land-text);
   cursor: pointer;
   padding: 8px;
+  transition: color var(--transition-fast);
 }
 
 /* Mobile menu */
@@ -486,6 +897,11 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-top: 1px solid var(--land-border);
   background: rgba(74, 74, 74, 0.95);
+}
+
+.land-nav.nav--light .mobile-menu {
+  background: rgba(245, 240, 235, 0.97);
+  border-top-color: rgba(45, 37, 34, 0.06);
 }
 
 .mobile-menu a {
@@ -550,22 +966,23 @@ onBeforeUnmount(() => {
   padding: 16px 48px;
   border-radius: 12px;
   background: linear-gradient(135deg, #f57c00, #ff9800);
-  color: #fff;
+  color: #fff !important;
   text-decoration: none;
   box-shadow: 0 8px 32px rgba(245, 124, 0, 0.4);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   cursor: pointer;
   letter-spacing: 0.5px;
 }
+
+/* Use a wrapper approach: keep translateX(-50%) stable, animate via filter/box-shadow only */
 .hero-cta:hover {
-  transform: translateX(-50%) translateY(-4px) scale(1.06);
   box-shadow: 0 12px 40px rgba(245, 124, 0, 0.5);
-}
-.hero-cta:active {
-  transform: translateX(-50%) translateY(-1px) scale(0.98);
+  filter: brightness(1.1);
 }
 
-/* Buttons */
+.hero-cta:active {
+  filter: brightness(0.95);
+}
+
 .btn-primary {
   display: inline-block;
   padding: 16px 40px;
@@ -581,406 +998,11 @@ onBeforeUnmount(() => {
 
 .btn-primary:hover {
   background: var(--land-orange-bright);
-  transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(245, 124, 0, 0.3);
 }
 
-.btn-primary.btn-large {
-  padding: 20px 56px;
-  font-size: 22px;
-  border-radius: 14px;
-}
-
-.btn-secondary {
-  display: inline-block;
-  padding: 14px 36px;
-  border: 1px solid var(--land-orange);
-  color: var(--land-orange) !important;
-  border-radius: 12px;
-  font-size: 17px;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  background: var(--land-orange-glow);
-}
-
-/* ── Features ── */
-.features {
-  padding: 120px 24px;
-  background: var(--land-bg-alt);
-}
-
-.section-title {
-  font-size: 52px;
-  font-weight: 800;
-  text-align: center;
-  margin-bottom: 72px;
-}
-
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 48px;
-}
-
-.feature-block {
-  padding: 40px 32px;
-  border-bottom: 2px solid var(--land-border);
-  transition: border-color 0.3s;
-}
-
-.feature-block:hover {
-  border-color: var(--land-orange);
-}
-
-.feature-num {
-  display: block;
-  font-size: 48px;
-  font-weight: 900;
-  color: var(--land-orange);
-  margin-bottom: 20px;
-  opacity: 0.6;
-}
-
-.feature-block h3 {
-  font-size: 26px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: var(--land-text);
-}
-
-.feature-block p {
-  font-size: 17px;
-  color: var(--land-text-secondary);
-  line-height: 1.7;
-}
-
-/* ── Video Demo ── */
-.video-section {
-  padding: 120px 24px;
-  background: var(--land-bg);
-}
-
-.video-container {
-  position: relative;
-  max-width: 960px;
-  margin: 48px auto 0;
-  border-radius: 20px;
-  overflow: hidden;
-  aspect-ratio: 16 / 9;
-  background: #111;
-  border: 1px solid rgba(245, 124, 0, 0.15);
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 0 80px rgba(245, 124, 0, 0.06);
-  transition: box-shadow 0.4s, border-color 0.4s;
-  opacity: 0;
-  transform: translateY(48px) scale(0.96);
-}
-
-.video-container:hover {
-  border-color: rgba(245, 124, 0, 0.25);
-  box-shadow:
-    0 32px 100px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 0 100px rgba(245, 124, 0, 0.1);
-}
-
-.video-container.playing {
-  border-color: rgba(245, 124, 0, 0.3);
-}
-
-.video-container video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* Video entrance animation */
-.video-container.video-entered {
-  animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Ambient glow pulse (after entrance, paused on hover/play) */
-.video-container.video-entered:not(:hover):not(.playing) {
-  animation: videoEntrance 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards,
-             glowPulse 4s ease-in-out 1s infinite;
-}
-
-@keyframes videoEntrance {
-  from {
-    opacity: 0;
-    transform: translateY(48px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes glowPulse {
-  0%, 100% {
-    box-shadow:
-      0 24px 80px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.04),
-      0 0 80px rgba(245, 124, 0, 0.06);
-  }
-  50% {
-    box-shadow:
-      0 24px 80px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.04),
-      0 0 100px rgba(245, 124, 0, 0.12);
-  }
-}
-
-/* ── How It Works ── */
-.how-section {
-  padding: 120px 24px;
-  background: var(--land-bg);
-}
-
-.timeline {
-  display: flex;
-  justify-content: center;
-  gap: 80px;
-  position: relative;
-}
-
-.timeline::before {
-  content: '';
-  position: absolute;
-  top: 32px;
-  right: calc(50% - 300px);
-  width: 600px;
-  height: 2px;
-  background: linear-gradient(to left, var(--land-orange), rgba(245, 124, 0, 0.2));
-}
-
-.timeline-step {
-  text-align: center;
-  position: relative;
-  z-index: 1;
-  max-width: 240px;
-}
-
-.timeline-circle {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 2px solid var(--land-orange);
-  background: var(--land-bg);
-  color: var(--land-orange);
-  font-size: 28px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 24px;
-}
-
-.timeline-step h3 {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--land-text);
-}
-
-.timeline-step p {
-  font-size: 16px;
-  color: var(--land-text-secondary);
-  line-height: 1.6;
-}
-
-/* ── Numbers Strip ── */
-.numbers-strip {
-  padding: 100px 24px;
-  background: var(--land-bg-card);
-}
-
-.numbers-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 40px;
-  text-align: center;
-}
-
-.number-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.number-val {
-  font-size: 72px;
-  font-weight: 900;
-  color: var(--land-orange);
-  line-height: 1;
-}
-
-.number-label {
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-}
-
-/* ── Portal Section ── */
-.portal-section {
-  padding: 120px 24px;
-  background: var(--land-bg-alt);
-}
-
-.portal-intro {
-  text-align: center;
-  font-size: 20px;
-  color: var(--land-text-secondary);
-  margin-top: -48px;
-  margin-bottom: 64px;
-  line-height: 1.6;
-}
-
-.portal-features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
-}
-
-.portal-feature-card {
-  padding: 36px 28px;
-  background: var(--land-bg-card);
-  border-radius: 16px;
-  border: 1px solid var(--land-border);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.portal-feature-card:hover {
-  border-color: var(--land-orange);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 0 40px rgba(245, 124, 0, 0.06);
-}
-
-.portal-feature-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-}
-
-.portal-icon-kpi { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
-.portal-icon-ai { background: rgba(127, 86, 217, 0.12); color: #7F56D9; }
-.portal-icon-changes { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
-.portal-icon-secure { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
-.portal-icon-trend { background: rgba(59, 130, 246, 0.12); color: #3B82F6; }
-.portal-icon-print { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
-
-.portal-feature-card h3 {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--land-text);
-}
-
-.portal-feature-card p {
-  font-size: 15px;
-  color: var(--land-text-secondary);
-  line-height: 1.6;
-}
-
-/* ── CTA ── */
-.cta-section {
-  padding: 140px 24px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.cta-bg-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.cta-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 10, 10, 0.5);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.cta-title {
-  font-size: 64px;
-  font-weight: 900;
-  margin-bottom: 48px;
-  position: relative;
-  z-index: 2;
-  color: #fff;
-}
-
-.cta-section .btn-primary {
-  position: relative;
-  z-index: 2;
-}
-
-/* ── Footer ── */
-.land-footer {
-  padding: 48px 24px;
-  border-top: 1px solid var(--land-border);
-  background: var(--land-bg);
-}
-
-.footer-wrap {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.footer-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.footer-tagline {
-  font-size: 14px;
-  color: var(--land-text-dim);
-}
-
-.footer-links {
-  display: flex;
-  gap: 24px;
-}
-
-.footer-links a {
-  font-size: 14px;
-  color: var(--land-text-secondary);
-  transition: color 0.2s;
-}
-
-.footer-links a:hover {
-  color: var(--land-orange);
-}
-
-.footer-copy {
-  font-size: 13px;
-  color: var(--land-text-dim);
+.btn-primary:not(.hero-cta):hover {
+  transform: translateY(-2px);
 }
 
 /* ── Floating Circles ── */
@@ -1045,19 +1067,611 @@ onBeforeUnmount(() => {
   66% { transform: translateY(10px) rotate(-1deg); }
 }
 
-/* ── Animations ── */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
+/* ══════════════════════════════════════ */
+/* CHAPTER 2: PINNED STATS (dark)        */
+/* ══════════════════════════════════════ */
+.chapter-stats {
+  position: relative;
+  min-height: 100vh;
+  background: var(--dark-section);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.stats-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.stat-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  opacity: 0;
+  padding: 0 24px;
+  pointer-events: none;
+}
+
+.stat-number {
+  font-size: clamp(64px, 15vw, 160px);
+  font-weight: 900;
+  color: var(--text-light);
+  letter-spacing: -3px;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+
+.stat-accent {
+  color: var(--land-orange);
+}
+
+.stat-label {
+  font-size: clamp(1rem, 2vw, 1.5rem);
+  color: var(--text-light-muted);
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.stats-conclusion {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.stats-conclusion h3 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  color: var(--text-light);
+  letter-spacing: -1px;
+}
+
+.copper-line {
+  display: block;
+  width: 60px;
+  height: 3px;
+  background: var(--land-orange);
+  margin-top: 20px;
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════ */
+/* CHAPTER 3: HOW IT WORKS (cream)       */
+/* ══════════════════════════════════════ */
+.chapter-how {
+  position: relative;
+  min-height: 100vh;
+  background: var(--cream-surface);
+  overflow: hidden;
+  padding: 120px 24px;
+}
+
+.how-header {
+  text-align: center;
+  margin-bottom: 80px;
+  position: relative;
+  z-index: 2;
+}
+
+.how-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--land-orange);
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.how-title {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 800;
+  color: var(--cream-text);
+  letter-spacing: -1px;
+}
+
+.how-steps {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px;
+  position: relative;
+  z-index: 2;
+}
+
+.how-step {
+  position: relative;
+  padding: 40px 32px;
+  border-radius: 20px;
+  background: var(--cream-surface-3);
+  border: 1px solid rgba(45, 37, 34, 0.06);
+  transition: all var(--transition-smooth);
+}
+
+.how-step:hover {
+  border-color: rgba(232, 102, 10, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(45, 37, 34, 0.08);
+}
+
+.how-step-num {
+  font-size: 4rem;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(45, 37, 34, 0.08);
+  line-height: 1;
+  margin-bottom: 20px;
+}
+
+.how-step-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--land-orange-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.how-step-icon :deep(svg) {
+  width: 24px;
+  height: 24px;
+  color: var(--land-orange);
+}
+
+.how-step h3 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--cream-text);
+  margin-bottom: 12px;
+}
+
+.how-step p {
+  font-size: 0.95rem;
+  color: var(--cream-text-muted);
+  line-height: 1.7;
+}
+
+.how-connector {
+  position: absolute;
+  top: 50%;
+  width: 40px;
+  right: calc(100% + 0px);
+  height: 1px;
+  background: linear-gradient(to right, rgba(232, 102, 10, 0.2), transparent);
+}
+
+/* ══════════════════════════════════════ */
+/* CHAPTER 4: FEATURES HORIZONTAL (dark) */
+/* ══════════════════════════════════════ */
+.chapter-features {
+  position: relative;
+  min-height: 100vh;
+  background: var(--dark-section);
+  overflow: hidden;
+}
+
+.features-header {
+  position: absolute;
+  top: 60px;
+  right: 0;
+  left: 0;
+  text-align: center;
+  z-index: 5;
+  padding: 0 24px;
+}
+
+.features-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--land-orange);
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.features-title {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 800;
+  color: var(--text-light);
+  letter-spacing: -1px;
+}
+
+.features-track {
+  display: flex;
+  gap: 32px;
+  padding: 160px 48px 60px 48px;
+  will-change: transform;
+  direction: ltr;
+}
+
+.features-track::after {
+  content: '';
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.feature-card {
+  min-width: clamp(340px, 55vw, 640px);
+  height: clamp(380px, 50vh, 480px);
+  border-radius: 20px;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(245, 240, 235, 0.08);
+  transition: border-color var(--transition-fast);
+  direction: rtl;
+}
+
+.feature-card:hover {
+  border-color: rgba(245, 240, 235, 0.15);
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(45, 37, 34, 0.95) 30%, rgba(45, 37, 34, 0.2));
+  z-index: 1;
+}
+
+.feature-card-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.feature-card-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feature-card-content {
+  position: relative;
+  z-index: 2;
+}
+
+.feature-card-number {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--land-orange);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.feature-card-name {
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  font-weight: 800;
+  color: var(--text-light);
+  line-height: 1.1;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.feature-card-desc {
+  font-size: 0.92rem;
+  color: var(--text-light-muted);
+  line-height: 1.7;
+  max-width: 380px;
+}
+
+/* ══════════════════════════════════════ */
+/* CHAPTER 5: PORTAL BENTO GRID (cream)  */
+/* ══════════════════════════════════════ */
+.chapter-portal {
+  position: relative;
+  padding: 120px 24px;
+  background: var(--cream-bg);
+  overflow: hidden;
+}
+
+.portal-header {
+  text-align: center;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 2;
+}
+
+.portal-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--land-orange);
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.portal-title {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 800;
+  color: var(--cream-text);
+  letter-spacing: -1px;
+  margin-bottom: 16px;
+}
+
+.portal-sub {
+  font-size: 1rem;
+  color: var(--cream-text-muted);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+.portal-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto;
+  gap: 20px;
+  position: relative;
+  z-index: 2;
+}
+
+.portal-card {
+  padding: 32px;
+  border-radius: 20px;
+  background: var(--cream-surface-3);
+  border: 1px solid rgba(45, 37, 34, 0.05);
+  transition: all var(--transition-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.portal-card:hover {
+  border-color: rgba(232, 102, 10, 0.12);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(45, 37, 34, 0.08);
+}
+
+.portal-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, rgba(232, 102, 10, 0.04), transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.portal-card-featured {
+  grid-column: span 2;
+  grid-row: span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.portal-card-featured .portal-card-img {
+  margin-top: 24px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(45, 37, 34, 0.06);
+  flex: 1;
+  min-height: 200px;
+}
+
+.portal-card-featured .portal-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portal-card .pc-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--land-orange-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.portal-card .pc-icon :deep(svg) {
+  width: 20px;
+  height: 20px;
+  color: var(--land-orange);
+}
+
+.portal-card h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--cream-text);
+  margin-bottom: 8px;
+}
+
+.portal-card p {
+  font-size: 0.88rem;
+  color: var(--cream-text-muted);
+  line-height: 1.7;
+}
+
+/* ══════════════════════════════════════ */
+/* CHAPTER 6: CTA (dark)                 */
+/* ══════════════════════════════════════ */
+.chapter-cta {
+  position: relative;
+  min-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--dark-section);
+}
+
+.cta-bg-visual {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.cta-bg-visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.1;
+  filter: blur(2px);
+}
+
+.chapter-cta .cta-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(45, 37, 34, 0.6), rgba(45, 37, 34, 0.95));
+  z-index: 1;
+}
+
+.cta-content {
+  position: relative;
+  z-index: 3;
+  text-align: center;
+  padding: 0 24px;
+  max-width: 700px;
+}
+
+.cta-headline {
+  font-size: clamp(2.5rem, 7vw, 5rem);
+  font-weight: 900;
+  color: var(--text-light);
+  line-height: 1.05;
+  margin-bottom: 20px;
+  letter-spacing: -2px;
+}
+
+.cta-headline span {
+  color: var(--land-orange);
+}
+
+.cta-sub {
+  font-size: 1.1rem;
+  color: var(--text-light-muted);
+  margin-bottom: 36px;
+  line-height: 1.7;
+}
+
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--land-orange);
+  color: #fff !important;
+  padding: 20px 52px;
+  border-radius: 40px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  transition: all var(--transition-fast);
+  min-height: 56px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 40px rgba(232, 102, 10, 0.2);
+}
+
+.cta-btn:hover {
+  background: var(--land-orange-deep);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(232, 102, 10, 0.4);
+}
+
+/* ══════════════════════════════════════ */
+/* FOOTER                                */
+/* ══════════════════════════════════════ */
+.land-footer {
+  background: var(--dark-section);
+  border-top: 1px solid rgba(245, 240, 235, 0.04);
+  padding: 60px 24px 40px;
+}
+
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fb-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--land-orange);
+}
+
+.fb-tag {
+  font-size: 0.82rem;
+  color: var(--text-light-muted);
+}
+
+.footer-links {
+  display: flex;
+  gap: 28px;
+}
+
+.footer-links a {
+  font-size: 0.85rem;
+  color: var(--text-light-muted);
+  transition: color var(--transition-fast);
+}
+
+.footer-links a:hover {
+  color: var(--land-orange);
+}
+
+.footer-copy {
+  font-size: 0.75rem;
+  color: rgba(245, 240, 235, 0.3);
+  width: 100%;
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(245, 240, 235, 0.04);
+}
+
+/* ══════════════════════════════════════ */
+/* RESPONSIVE                            */
+/* ══════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .portal-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .portal-card-featured {
+    grid-column: span 2;
+    grid-row: span 1;
   }
 }
 
-/* ── Responsive ── */
 @media (max-width: 768px) {
   .nav-links {
     display: none;
@@ -1071,73 +1685,63 @@ onBeforeUnmount(() => {
     display: flex;
   }
 
-  .section-title {
-    font-size: 36px;
-    margin-bottom: 48px;
-  }
-
-  .features-grid {
+  .how-steps {
     grid-template-columns: 1fr;
-    gap: 32px;
+    max-width: 500px;
   }
 
-  .timeline {
+  .how-connector {
+    display: none !important;
+  }
+
+  /* Features: stack vertically on mobile */
+  .chapter-features {
+    min-height: auto;
+  }
+
+  .features-header {
+    position: relative;
+    top: auto;
+    padding-top: 60px;
+    padding-bottom: 20px;
+  }
+
+  .features-track {
     flex-direction: column;
-    align-items: center;
-    gap: 40px;
+    padding: 24px;
+    direction: rtl;
   }
 
-  .timeline::before {
+  .features-track::after {
     display: none;
   }
 
-  .video-section {
-    padding: 80px 16px;
+  .feature-card {
+    min-width: auto;
+    width: 100%;
+    height: 380px;
   }
 
-  .video-container {
-    margin-top: 32px;
-    border-radius: 14px;
-    transform: translateY(32px) scale(0.97);
-  }
-
-  @keyframes videoEntrance {
-    from {
-      opacity: 0;
-      transform: translateY(32px) scale(0.97);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  .numbers-grid {
+  .portal-grid {
     grid-template-columns: 1fr;
-    gap: 32px;
   }
 
-  .number-val {
-    font-size: 56px;
+  .portal-card-featured {
+    grid-column: span 1;
+    grid-row: span 1;
   }
 
-  .portal-features-grid {
-    grid-template-columns: 1fr;
-    gap: 20px;
+  .chapter-num {
+    font-size: clamp(60px, 16vw, 120px);
   }
 
-  .portal-intro {
-    font-size: 17px;
-    margin-bottom: 40px;
-  }
-
-  .cta-title {
-    font-size: 40px;
-  }
-
-  .footer-wrap {
+  .footer-inner {
     flex-direction: column;
     text-align: center;
+  }
+
+  .footer-links {
+    justify-content: center;
   }
 
   .float-circle-1 { width: 140px; height: 140px; }
@@ -1147,28 +1751,24 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 480px) {
-  .section-title {
-    font-size: 30px;
+  .cta-headline {
+    font-size: clamp(2rem, 8vw, 3rem);
   }
 
-  .cta-title {
-    font-size: 32px;
-  }
-
-  .btn-primary.btn-large {
-    padding: 16px 40px;
-    font-size: 18px;
+  .cta-btn {
+    padding: 16px 36px;
+    font-size: 1rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .video-container {
-    opacity: 1;
-    transform: none;
-  }
-  .video-container.video-entered,
-  .video-container.video-entered:not(:hover):not(.playing) {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 </style>
