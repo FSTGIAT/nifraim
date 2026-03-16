@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nifraim Landing Hero - Mockup</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Heebo', sans-serif;
+      direction: rtl;
+      background: #faf8f5;
+      color: #1a1a1a;
+      overflow-x: hidden;
+    }
+
+    /* ─── NAV ─── */
+    .nav {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 100;
+      background: rgba(250, 248, 245, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      padding: 0 48px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .nav-brand svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: #555;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: #1a1a1a;
+    }
+
+    .nav-btn-ghost {
+      padding: 8px 20px;
+      border: 1.5px solid #333;
+      border-radius: 8px;
+      font-weight: 600 !important;
+      color: #333 !important;
+    }
+
+    .nav-btn-solid {
+      padding: 8px 24px;
+      background: #1a1a1a;
+      color: white !important;
+      border-radius: 8px;
+      font-weight: 600 !important;
+    }
+
+    /* ─── HERO SECTION ─── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 120px 80px 80px;
+      gap: 60px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ─── TEXT COLUMN (RIGHT in RTL) ─── */
+    .hero-text {
+      flex: 1;
+      max-width: 560px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(249, 115, 22, 0.08);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      border-radius: 50px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #c2410c;
+      margin-bottom: 32px;
+    }
+
+    .hero-badge::before {
+      content: '——';
+      letter-spacing: -3px;
+      color: #f97316;
+    }
+
+    .hero-title {
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-title .accent {
+      color: #f97316;
+    }
+
+    .hero-subtitle {
+      font-size: 18px;
+      line-height: 1.7;
+      color: #666;
+      margin-bottom: 40px;
+      max-width: 460px;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 32px;
+      background: #f97316;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      font-family: 'Heebo', sans-serif;
+      cursor: pointer;
+      transition: all 0.25s;
+      text-decoration: none;
+    }
+
+    .btn-primary:hover {
+      background: #ea580c;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(249, 115, 22, 0.3);
+    }
+
+    .btn-primary .arrow {
+      font-size: 18px;
+      transition: transform 0.2s;
+    }
+
+    .btn-primary:hover .arrow {
+      transform: translateX(-3px);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      background: transparent;
+      color: #333;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      font-family: 'Heebo', sans-serif;
+      cursor: pointer;
+      transition: all 0.25s;
+      text-decoration: none;
+    }
+
+    .btn-secondary:hover {
+      border-color: #999;
+      background: rgba(0,0,0,0.03);
+    }
+
+    .btn-secondary .play-icon {
+      width: 20px;
+      height: 20px;
+      border: 2px solid currentColor;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    /* Trust stats row */
+    .hero-trust {
+      display: flex;
+      gap: 40px;
+    }
+
+    .trust-item {
+      text-align: center;
+    }
+
+    .trust-number {
+      font-size: 28px;
+      font-weight: 800;
+      color: #f97316;
+      direction: ltr;
+      display: inline-block;
+    }
+
+    .trust-label {
+      font-size: 12px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    /* ─── IMAGE COLUMN (LEFT in RTL) ─── */
+    .hero-visual {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .hero-image-wrapper {
+      position: relative;
+      width: 520px;
+      height: 620px;
+      border-radius: 20px;
+      overflow: visible;
+    }
+
+    .hero-image {
+      width: 100%;
+      height: 100%;
+      border-radius: 20px;
+      object-fit: cover;
+      background: linear-gradient(135deg, #e8ddd4 0%, #d4c4b0 50%, #c9b99a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* Placeholder person silhouette */
+    .hero-image::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 300px;
+      height: 400px;
+      background: linear-gradient(180deg, rgba(180,160,140,0.6) 0%, rgba(160,140,120,0.8) 100%);
+      border-radius: 150px 150px 0 0;
+    }
+
+    .placeholder-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+      text-align: center;
+      color: #888;
+    }
+
+    .placeholder-text .icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+
+    .placeholder-text p {
+      font-size: 14px;
+    }
+
+    /* ─── KPI FLOATING CARDS ─── */
+    .kpi-card {
+      position: absolute;
+      background: white;
+      border-radius: 14px;
+      padding: 18px 22px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+      z-index: 10;
+      min-width: 180px;
+      animation: float 4s ease-in-out infinite;
+    }
+
+    .kpi-card-1 {
+      top: 40px;
+      left: -50px;
+      animation-delay: 0s;
+    }
+
+    .kpi-card-2 {
+      bottom: 120px;
+      left: -70px;
+      animation-delay: 1.5s;
+    }
+
+    .kpi-card-3 {
+      bottom: 40px;
+      right: -40px;
+      animation-delay: 3s;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .kpi-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    .kpi-icon.orange {
+      background: rgba(249, 115, 22, 0.12);
+      color: #f97316;
+    }
+
+    .kpi-icon.blue {
+      background: rgba(59, 130, 246, 0.12);
+      color: #3b82f6;
+    }
+
+    .kpi-icon.green {
+      background: rgba(34, 197, 94, 0.12);
+      color: #22c55e;
+    }
+
+    .kpi-number {
+      font-size: 28px;
+      font-weight: 800;
+      color: #1a1a1a;
+      direction: ltr;
+      display: inline-block;
+    }
+
+    .kpi-unit {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    .kpi-badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 10px;
+      border-radius: 50px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .kpi-badge.green {
+      background: rgba(34, 197, 94, 0.1);
+      color: #16a34a;
+    }
+
+    /* ─── SCROLL INDICATOR ─── */
+    .scroll-indicator {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: #999;
+      font-size: 12px;
+      animation: bounce 2s infinite;
+    }
+
+    .scroll-line {
+      width: 1px;
+      height: 30px;
+      background: linear-gradient(to bottom, #ccc, transparent);
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(6px); }
+    }
+
+    /* ─── MOCKUP LABEL ─── */
+    .mockup-label {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #ff4444;
+      color: white;
+      text-align: center;
+      padding: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 9999;
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 1024px) {
+      .hero {
+        flex-direction: column;
+        padding: 120px 32px 60px;
+        text-align: center;
+      }
+      .hero-text { max-width: 100%; }
+      .hero-subtitle { max-width: 100%; }
+      .hero-buttons { justify-content: center; }
+      .hero-trust { justify-content: center; }
+      .hero-image-wrapper { width: 400px; height: 480px; }
+    }
+
+    @media (max-width: 640px) {
+      .hero-title { font-size: 36px; }
+      .hero-buttons { flex-direction: column; align-items: stretch; }
+      .hero-image-wrapper { width: 300px; height: 380px; }
+      .kpi-card { transform: scale(0.85); }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- MOCKUP BANNER -->
+  <div class="mockup-label">MOCKUP — Nifraim Landing Page Hero Section (Phase 1)</div>
+
+  <!-- NAV -->
+  <nav class="nav" style="top: 28px;">
+    <div class="nav-brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span>Nifraim</span>
+    </div>
+    <div class="nav-links">
+      <a href="#">איך זה עובד</a>
+      <a href="#">יכולות</a>
+      <a href="#">פורטל לקוחות</a>
+      <a href="#">תמחור</a>
+      <a href="#" class="nav-btn-ghost">התחברות</a>
+      <a href="#" class="nav-btn-solid">התחל עכשיו</a>
+    </div>
+  </nav>
+
+  <!-- HERO SECTION -->
+  <section class="hero" style="padding-top: 160px;">
+
+    <!-- TEXT COLUMN (Right in RTL) -->
+    <div class="hero-text">
+      <div class="hero-badge">מערכת AI לסוכני ביטוח</div>
+
+      <h1 class="hero-title">
+        בדיקת עמלות<br>
+        נפרעים והקפים<br>
+        <span class="accent">עם AI</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        העלו קבצים, השוו נתונים, גלו פערים — תוך שניות. המערכת
+        מזהה אוטומטית פורמטים מ-7+ חברות ומתאימה בין
+        פרודוקציה לנפרעים.
+      </p>
+
+      <div class="hero-buttons">
+        <a href="#" class="btn-primary">
+          <span class="arrow">←</span>
+          התחל עכשיו
+        </a>
+        <a href="#" class="btn-secondary">
+          <span class="play-icon">▶</span>
+          צפו איך זה עובד
+        </a>
+      </div>
+
+      <div class="hero-trust">
+        <div class="trust-item">
+          <div class="trust-number">95%</div>
+          <div class="trust-label">חיסכון בזמן</div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-number">+7</div>
+          <div class="trust-label">פורמטים נתמכים</div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-number">100%</div>
+          <div class="trust-label">דיוק בהתאמה</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMAGE COLUMN (Left in RTL) -->
+    <div class="hero-visual">
+      <div class="hero-image-wrapper">
+        <div class="hero-image">
+          <div class="placeholder-text">
+            <div class="icon">👨‍💻</div>
+            <p>Image Placeholder<br><small>Professional man, ~40, laptop</small></p>
+          </div>
+        </div>
+
+        <!-- KPI Card 1: Files Processed -->
+        <div class="kpi-card kpi-card-1">
+          <div class="kpi-icon orange">📊</div>
+          <div>
+            <span class="kpi-number">₪54,300</span>
+          </div>
+          <div class="kpi-label">עמלות שנמצאו</div>
+          <div class="kpi-badge green">↑ 12.5%</div>
+        </div>
+
+        <!-- KPI Card 2: Processing Speed -->
+        <div class="kpi-card kpi-card-2">
+          <div class="kpi-icon blue">⏱️</div>
+          <div>
+            <span class="kpi-number">3.2</span><span class="kpi-unit">s</span>
+          </div>
+          <div class="kpi-label">זמן עיבוד ממוצע</div>
+        </div>
+
+        <!-- KPI Card 3: Files Count -->
+        <div class="kpi-card kpi-card-3">
+          <div class="kpi-icon green">📁</div>
+          <div>
+            <span class="kpi-number">1,247</span>
+          </div>
+          <div class="kpi-label">קבצים עובדו היום</div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Scroll Indicator -->
+  <div class="scroll-indicator">
+    גלול למטה
+    <div class="scroll-line"></div>
+  </div>
+
+</body>
+</html>
