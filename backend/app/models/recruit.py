@@ -19,6 +19,7 @@ class Recruit(Base):
     company: Mapped[str | None] = mapped_column(String(100))
     product: Mapped[str | None] = mapped_column(String(100))
     amount: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    customer_status: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="recruits")

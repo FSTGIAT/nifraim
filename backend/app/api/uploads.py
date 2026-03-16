@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -38,6 +38,36 @@ async def upload_file(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
+    # Determine file category from format type
+    fmt = result["format"]
+    if fmt == "production":
+        file_category = "production"
+    elif fmt in (
+        "agent_tracking", "company_report", "nifraim",
+        "hachshara_nifraim", "menora", "altshuler",
+        "clal_life_nifraim", "clal_health_nifraim", "migdal_nifraim",
+        "ayalon_nifraim", "harel_nifraim", "phoenix_insurance_nifraim",
+    ):
+        file_category = "commission"
+    else:
+        file_category = "general"
+
+    # Keep only latest previous upload with same filename (for monthly comparison)
+    # Delete older duplicates but keep one for history
+    old_uploads_result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.filename == file.filename,
+            FileUpload.file_category == file_category,
+        ).order_by(desc(FileUpload.uploaded_at))
+    )
+    old_uploads = old_uploads_result.scalars().all()
+    # Keep the first (latest) old upload, delete the rest
+    for old in old_uploads[1:]:
+        await db.delete(old)
+    if old_uploads:
+        await db.flush()
+
     upload = FileUpload(
         user_id=user.id,
         filename=file.filename,
@@ -45,6 +75,7 @@ async def upload_file(
         company_source=result["company_source"],
         record_count=len(result["records"]),
         format_type=result["format"],
+        file_category=file_category,
     )
     db.add(upload)
     await db.flush()

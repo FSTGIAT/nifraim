@@ -19,6 +19,7 @@ class RecruitOut(BaseModel):
     company: str | None = None
     product: str | None = None
     amount: float | None = None
+    customer_status: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -32,6 +33,7 @@ class RecruitMatchResult(BaseModel):
     company: str | None = None
     product: str | None = None
     amount: float | None = None
+    customer_status: str | None = None
     found_in_production: bool = False
     production_products: list[dict] = []
     production_premium: float = 0

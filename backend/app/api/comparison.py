@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -69,6 +69,7 @@ async def dual_upload(
         company_source=prod_result["company_source"],
         record_count=len(prod_result["records"]),
         format_type=prod_result["format"],
+        file_category="production",
     )
     comm_upload = FileUpload(
         user_id=user.id,
@@ -77,6 +78,7 @@ async def dual_upload(
         company_source=comm_result["company_source"],
         record_count=len(comm_result["records"]),
         format_type=comm_result["format"],
+        file_category="commission",
     )
     db.add(prod_upload)
     db.add(comm_upload)
@@ -212,6 +214,20 @@ async def compare_with_production(
         # Debug: log parse results
         ids_with_val = [r.get("id_number") for r in comm_result["records"] if r.get("id_number")]
         print(f"PARSE DEBUG: file={commission_file.filename} format={comm_result['format']} company={comm_result.get('company_source')} total_records={len(comm_result['records'])} records_with_id={len(ids_with_val)} sample_ids={ids_with_val[:3]}", flush=True)
+
+        # Keep only latest previous upload with same filename (for monthly comparison)
+        old_uploads_result = await db.execute(
+            select(FileUpload).where(
+                FileUpload.user_id == user.id,
+                FileUpload.filename == commission_file.filename,
+                FileUpload.file_category == "commission",
+            ).order_by(desc(FileUpload.uploaded_at))
+        )
+        old_uploads = old_uploads_result.scalars().all()
+        for old in old_uploads[1:]:
+            await db.delete(old)
+        if old_uploads:
+            await db.flush()
 
         # Save commission upload to DB
         comm_upload = FileUpload(

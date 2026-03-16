@@ -45,3 +45,4 @@ class ProductionCompareResponse(BaseModel):
     new_clients: list[dict]
     removed_clients: list[dict]
     changed_clients: list[dict]
+    unchanged_clients: list[dict] = []

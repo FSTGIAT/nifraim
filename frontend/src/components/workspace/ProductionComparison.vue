@@ -65,6 +65,21 @@
         </button>
       </div>
 
+      <!-- Comparison context: which files -->
+      <div class="compare-context" v-if="comparisonResult.summary.current_filename">
+        <div class="compare-file compare-file-current">
+          <span class="cf-label">{{ currentMonthLabel }}</span>
+          <span class="cf-date ltr-number" v-if="comparisonResult.summary.current_date">{{ formatDate(comparisonResult.summary.current_date) }}</span>
+        </div>
+        <svg class="compare-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/>
+        </svg>
+        <div class="compare-file compare-file-previous">
+          <span class="cf-label">{{ previousMonthLabel }}</span>
+          <span class="cf-date ltr-number" v-if="comparisonResult.summary.previous_date">{{ formatDate(comparisonResult.summary.previous_date) }}</span>
+        </div>
+      </div>
+
       <!-- Summary KPI strip -->
       <div class="summary-strip">
         <div class="summary-badge badge-green" @click="openCategory('new')">
@@ -169,6 +184,33 @@
             </div>
           </div>
         </div>
+
+        <!-- Changed by company -->
+        <div class="chart-card chart-card-half" v-if="changedByCompany.series.length">
+          <div class="chart-title-row">
+            <span class="chart-title">שונו לפי חברה</span>
+            <span class="chart-badge badge-amber"><span class="ltr-number">{{ comparisonResult.summary.changed_count }}</span></span>
+          </div>
+          <apexchart
+            type="donut"
+            height="380"
+            :options="changedByCompany.options"
+            :series="changedByCompany.series"
+            @dataPointSelection="(e, chart, config) => onCompanyChartClick('changed', changedByCompany.labels, config)"
+          />
+          <div class="chart-legend">
+            <div
+              v-for="(label, i) in changedByCompany.labels"
+              :key="label"
+              class="legend-item clickable"
+              @click="onCompanyChartClick('changed', changedByCompany.labels, { dataPointIndex: i })"
+            >
+              <span class="legend-dot" :style="{ background: COMPANY_COLORS[(i + 8) % COMPANY_COLORS.length] }"></span>
+              <span class="legend-label">{{ label }}</span>
+              <span class="legend-value ltr-number">{{ changedByCompany.series[i]?.toLocaleString() }}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ===== Changed Insights Section ===== -->
@@ -183,10 +225,33 @@
           <div class="changed-kpi" :class="changedInsights.totalPremiumDiff >= 0 ? 'kpi-green' : 'kpi-red'">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.totalPremiumDiff >= 0 ? '+' : '' }}{{ formatAmount(changedInsights.totalPremiumDiff) }}</span>
             <span class="changed-kpi-label">שינוי פרמיה כולל</span>
+            <span v-if="comparisonResult.summary.premium_positive || comparisonResult.summary.premium_negative" class="kpi-split">
+              <span class="kpi-split-up ltr-number" v-if="comparisonResult.summary.premium_positive">&#x25B2; {{ comparisonResult.summary.premium_positive }}</span>
+              <span class="kpi-split-down ltr-number" v-if="comparisonResult.summary.premium_negative">&#x25BC; {{ comparisonResult.summary.premium_negative }}</span>
+            </span>
           </div>
           <div class="changed-kpi" :class="changedInsights.totalAccumulationDiff >= 0 ? 'kpi-green' : 'kpi-red'">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.totalAccumulationDiff >= 0 ? '+' : '' }}{{ formatAmount(changedInsights.totalAccumulationDiff) }}</span>
             <span class="changed-kpi-label">שינוי צבירה כולל</span>
+            <span v-if="comparisonResult.summary.accum_positive || comparisonResult.summary.accum_negative" class="kpi-split">
+              <span class="kpi-split-up ltr-number" v-if="comparisonResult.summary.accum_positive">&#x25B2; {{ comparisonResult.summary.accum_positive }}</span>
+              <span class="kpi-split-down ltr-number" v-if="comparisonResult.summary.accum_negative">&#x25BC; {{ comparisonResult.summary.accum_negative }}</span>
+            </span>
+          </div>
+          <div class="changed-kpi kpi-pink" v-if="comparisonResult.summary.has_commission_data">
+            <span class="changed-kpi-value ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+            <span class="changed-kpi-label">סה"כ עמלה (נפרעים)</span>
+            <span class="kpi-split">
+              <span class="kpi-split-up kpi-split-clickable ltr-number" @click="openCommissionFilter('has')">&#x25B2; {{ comparisonResult.summary.commission_positive_count }} עם עמלה</span>
+              <span class="kpi-split-down kpi-split-clickable ltr-number" v-if="comparisonResult.summary.commission_zero_count" @click="openCommissionFilter('zero')">&#x25BC; {{ comparisonResult.summary.commission_zero_count }} ללא עמלה</span>
+            </span>
+            <span v-if="comparisonResult.summary.commission_diff_positive || comparisonResult.summary.commission_diff_negative" class="kpi-split" style="margin-top:2px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.06)">
+              <span class="kpi-split-up kpi-split-clickable ltr-number" @click="openCommissionFilter('positive')">&#x25B2; {{ comparisonResult.summary.commission_diff_positive }} עלייה</span>
+              <span class="kpi-split-down kpi-split-clickable ltr-number" @click="openCommissionFilter('negative')">&#x25BC; {{ comparisonResult.summary.commission_diff_negative }} ירידה</span>
+            </span>
+            <span v-else-if="comparisonResult.summary.commission_positive_count" class="kpi-no-diff-note">
+              הועלה סט נפרעים אחד — העלה נפרעים חדשים להשוואה
+            </span>
           </div>
           <div class="changed-kpi kpi-clickable" @click="openChangedByType('פרמיה')">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.premiumCount }}</span>
@@ -200,6 +265,12 @@
             <span class="changed-kpi-value ltr-number">{{ changedInsights.productCount }}</span>
             <span class="changed-kpi-label">שינוי מוצרים</span>
           </div>
+        </div>
+
+        <!-- No commission data note -->
+        <div v-if="comparisonResult.summary.has_commission_data === false" class="no-commission-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          אין קבצי נפרעים — העלה קבצי נפרעים בלשונית השוואה כדי לראות נתוני עמלות
         </div>
 
         <!-- Charts row: donut + bar -->
@@ -258,6 +329,103 @@
           </div>
         </div>
       </div>
+
+      <!-- ===== Clients Table ===== -->
+      <div class="clients-table-section">
+        <div class="table-header-row">
+          <span class="table-section-title">רשימת לקוחות</span>
+          <div class="table-filter-tabs">
+            <button
+              v-for="tab in tableTabs"
+              :key="tab.key"
+              class="table-tab"
+              :class="{ active: tableFilter === tab.key }"
+              @click="tableFilter = tab.key"
+            >
+              {{ tab.label }}
+              <b class="ltr-number">{{ tab.count }}</b>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input v-model="tableSearch" class="table-search" placeholder="חיפוש לפי שם או ת.ז..." />
+        </div>
+
+        <div class="tbl-wrap">
+          <table class="pc-table">
+            <thead>
+              <tr>
+                <th style="width:28px"></th>
+                <th>שם</th>
+                <th>ת.ז</th>
+                <th>חברה</th>
+                <th>מוצרים</th>
+                <th>פרמיה</th>
+                <th>צבירה</th>
+                <th v-if="comparisonResult.summary.has_commission_data">עמלה</th>
+                <th v-if="tableFilter === 'changed'">שינוי</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="c in paginatedTableClients"
+                :key="c.id_number"
+                class="pc-row"
+                @click="openDetail(c)"
+              >
+                <td>
+                  <span class="pc-dot" :class="tableFilter === 'new' ? 'dot-new' : tableFilter === 'removed' ? 'dot-removed' : 'dot-changed'"></span>
+                </td>
+                <td class="td-name">{{ c.name }}</td>
+                <td class="td-id"><span class="ltr-number">{{ c.id_number }}</span></td>
+                <td class="td-company" :title="c.company">{{ c.company || '—' }}</td>
+                <td><span class="ltr-number">{{ c.products_count }}</span></td>
+                <td>
+                  <span v-if="c.premium" class="ltr-number">{{ formatAmount(c.premium) }}</span>
+                  <span v-else>—</span>
+                </td>
+                <td>
+                  <span v-if="c.accumulation" class="ltr-number">{{ formatAmount(c.accumulation) }}</span>
+                  <span v-else>—</span>
+                </td>
+                <td v-if="comparisonResult.summary.has_commission_data">
+                  <span v-if="c.commission" class="ltr-number">{{ formatAmount(c.commission) }}</span>
+                  <span v-else>—</span>
+                </td>
+                <td v-if="tableFilter === 'changed'" class="td-changes">
+                  <span v-if="c.premium_diff" class="change-pill" :class="c.premium_diff > 0 ? 'pill-up' : 'pill-down'">
+                    פרמיה {{ c.premium_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(c.premium_diff) }}</span>
+                  </span>
+                  <span v-if="c.accumulation_diff" class="change-pill" :class="c.accumulation_diff > 0 ? 'pill-up' : 'pill-down'">
+                    צבירה {{ c.accumulation_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(c.accumulation_diff) }}</span>
+                  </span>
+                  <span v-if="c.commission_diff" class="change-pill" :class="c.commission_diff > 0 ? 'pill-up' : 'pill-down'">
+                    {{ c.commission_diff > 0 ? '▲' : '▼' }} עמלה <span class="ltr-number">{{ c.commission_diff > 0 ? '+' : '' }}{{ formatAmount(c.commission_diff) }}</span>
+                  </span>
+                </td>
+              </tr>
+              <tr v-if="!paginatedTableClients.length">
+                <td :colspan="tableFilter === 'changed' ? 9 : 8" class="pc-empty">לא נמצאו תוצאות</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pc-pagination" v-if="tableTotalPages > 1">
+          <button class="pg-btn" :disabled="tablePage === 1" @click="tablePage--">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <span class="pg-info ltr-number">{{ tablePage }} / {{ tableTotalPages }}</span>
+          <button class="pg-btn" :disabled="tablePage === tableTotalPages" @click="tablePage++">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Filter Modal -->
@@ -281,6 +449,36 @@
                 </button>
               </div>
 
+              <!-- Company filter pills (commission modal only) -->
+              <div v-if="filterModal.category === 'commission' && comparisonResult?.summary?.commission_by_company?.length > 1" class="fm-company-filter">
+                <button
+                  class="company-pill"
+                  :class="{ active: !commissionCompanyFilter }"
+                  @click="commissionCompanyFilter = null"
+                >
+                  הכל
+                  <span class="pill-amount ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+                </button>
+                <button
+                  v-for="co in comparisonResult.summary.commission_by_company"
+                  :key="co.company"
+                  class="company-pill"
+                  :class="{ active: commissionCompanyFilter === co.company }"
+                  @click="commissionCompanyFilter = co.company"
+                >
+                  {{ co.company }}
+                  <span class="pill-amount ltr-number">{{ formatAmount(co.total) }}</span>
+                  <span class="pill-count ltr-number">({{ co.clients_count }})</span>
+                </button>
+              </div>
+
+              <!-- Filtered total -->
+              <div v-if="filterModal.category === 'commission'" class="fm-filtered-total">
+                <span>סה"כ עמלה:</span>
+                <span class="ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(filteredCommissionTotal) }}</span>
+                <span class="ltr-number" style="color:var(--text-muted);font-size:0.82rem">({{ filteredCustomers.length }} לקוחות)</span>
+              </div>
+
               <!-- Search -->
               <div class="fm-search-wrap">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -289,30 +487,60 @@
                 <input v-model="searchQuery" class="fm-search" placeholder="חיפוש לפי שם או ת.ז." />
               </div>
 
-              <div class="fm-list">
-                <div
-                  v-for="c in filteredCustomers"
-                  :key="c.id_number"
-                  class="fm-row"
-                  @click="openDetail(c)"
-                >
-                  <div class="fm-row-main">
-                    <span class="fm-row-name">{{ c.name }}</span>
-                    <span class="fm-row-id ltr-number">{{ c.id_number }}</span>
-                    <span class="fm-row-company">{{ c.company }}</span>
-                  </div>
-                  <div class="fm-row-stats">
-                    <span v-if="c.premium" class="fm-row-stat">פרמיה <span class="ltr-number">{{ formatAmount(c.premium) }}</span></span>
-                    <span v-if="c.accumulation" class="fm-row-stat">צבירה <span class="ltr-number">{{ formatAmount(c.accumulation) }}</span></span>
-                    <span class="fm-row-stat">
-                      <span class="ltr-number">{{ c.products_count }}</span> מוצרים
-                    </span>
-                  </div>
-                  <svg class="fm-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="15 18 9 12 15 6"/>
-                  </svg>
-                </div>
-                <div v-if="!filteredCustomers.length" class="fm-empty">לא נמצאו תוצאות</div>
+              <div class="fm-table-wrap">
+                <table class="fm-table">
+                  <thead>
+                    <tr>
+                      <th>שם</th>
+                      <th>ת.ז</th>
+                      <th>חברה</th>
+                      <th>מוצרים</th>
+                      <th>פרמיה</th>
+                      <th>צבירה</th>
+                      <th v-if="filterModal.category === 'changed' || filterModal.category === 'commission'">עמלה</th>
+                      <th v-if="filterModal.category === 'changed'">שינוי</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="c in filteredCustomers"
+                      :key="c.id_number"
+                      class="fm-table-row"
+                      @click="openDetail(c)"
+                    >
+                      <td class="td-name">{{ c.name }}</td>
+                      <td class="td-id"><span class="ltr-number">{{ c.id_number }}</span></td>
+                      <td class="td-company" :title="c.company">{{ c.company || '—' }}</td>
+                      <td><span class="ltr-number">{{ c.products_count }}</span></td>
+                      <td>
+                        <span v-if="c.premium" class="ltr-number">{{ formatAmount(c.premium) }}</span>
+                        <span v-else>—</span>
+                      </td>
+                      <td>
+                        <span v-if="c.accumulation" class="ltr-number">{{ formatAmount(c.accumulation) }}</span>
+                        <span v-else>—</span>
+                      </td>
+                      <td v-if="filterModal.category === 'changed' || filterModal.category === 'commission'">
+                        <span v-if="clientCommission(c)" class="ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(clientCommission(c)) }}</span>
+                        <span v-else>—</span>
+                        <span v-if="c.commission_diff && filterModal.category === 'commission' && !commissionCompanyFilter" class="change-pill" :class="c.commission_diff > 0 ? 'pill-up' : 'pill-down'" style="margin-right:6px">
+                          {{ c.commission_diff > 0 ? '▲' : '▼' }} <span class="ltr-number">{{ c.commission_diff > 0 ? '+' : '' }}{{ formatAmount(c.commission_diff) }}</span>
+                        </span>
+                      </td>
+                      <td v-if="filterModal.category === 'changed'" class="td-changes">
+                        <span v-if="c.premium_diff" class="change-pill" :class="c.premium_diff > 0 ? 'pill-up' : 'pill-down'">
+                          {{ c.premium_diff > 0 ? '▲' : '▼' }} פרמיה <span class="ltr-number">{{ c.premium_diff > 0 ? '+' : '' }}{{ formatAmount(c.premium_diff) }}</span>
+                        </span>
+                        <span v-if="c.accumulation_diff" class="change-pill" :class="c.accumulation_diff > 0 ? 'pill-up' : 'pill-down'">
+                          {{ c.accumulation_diff > 0 ? '▲' : '▼' }} צבירה <span class="ltr-number">{{ c.accumulation_diff > 0 ? '+' : '' }}{{ formatAmount(c.accumulation_diff) }}</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr v-if="!filteredCustomers.length">
+                      <td colspan="8" class="fm-empty">לא נמצאו תוצאות</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </template>
 
@@ -351,6 +579,10 @@
                       <span class="detail-stat-label">צבירה</span>
                       <span class="detail-stat-value ltr-number">{{ formatAmount(detailCustomer.accumulation) }}</span>
                     </div>
+                    <div class="detail-stat" v-if="detailCustomer.commission || detailCustomer.commission_prev">
+                      <span class="detail-stat-label">עמלה (נפרעים)</span>
+                      <span class="detail-stat-value ltr-number">{{ formatAmount(detailCustomer.commission) }}</span>
+                    </div>
                     <div class="detail-stat">
                       <span class="detail-stat-label">מוצרים</span>
                       <span class="detail-stat-value ltr-number">{{ detailCustomer.products_count }}</span>
@@ -365,24 +597,107 @@
                   <!-- Premium / accumulation diffs -->
                   <div v-if="detailCustomer.premium_diff || detailCustomer.accumulation_diff" class="detail-diffs-row">
                     <div v-if="detailCustomer.premium_diff" class="detail-diff-badge" :class="detailCustomer.premium_diff > 0 ? 'diff-up' : 'diff-down'">
-                      פרמיה {{ detailCustomer.premium_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(detailCustomer.premium_diff) }}</span>
+                      <span>{{ detailCustomer.premium_diff > 0 ? '▲' : '▼' }}</span>
+                      פרמיה <span class="ltr-number">{{ detailCustomer.premium_diff > 0 ? '+' : '' }}{{ formatAmount(detailCustomer.premium_diff) }}</span>
                     </div>
                     <div v-if="detailCustomer.accumulation_diff" class="detail-diff-badge" :class="detailCustomer.accumulation_diff > 0 ? 'diff-up' : 'diff-down'">
-                      צבירה {{ detailCustomer.accumulation_diff > 0 ? '+' : '' }}<span class="ltr-number">{{ formatAmount(detailCustomer.accumulation_diff) }}</span>
+                      <span>{{ detailCustomer.accumulation_diff > 0 ? '▲' : '▼' }}</span>
+                      צבירה <span class="ltr-number">{{ detailCustomer.accumulation_diff > 0 ? '+' : '' }}{{ formatAmount(detailCustomer.accumulation_diff) }}</span>
                     </div>
                   </div>
 
-                  <div class="detail-changes-list">
-                    <div v-for="ch in detailCustomer.changes" :key="ch.field" class="detail-change-row">
-                      <span class="detail-change-field">{{ ch.field }}</span>
-                      <div class="detail-change-vals">
-                        <span class="detail-val-old ltr-number">{{ formatVal(ch.old_val) }}</span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                        </svg>
-                        <span class="detail-val-new ltr-number">{{ formatVal(ch.new_val) }}</span>
+                  <!-- Changes table: old → new -->
+                  <table class="changes-table">
+                    <thead>
+                      <tr>
+                        <th class="ct-col-field">שדה</th>
+                        <th class="ct-col-val">{{ previousMonthLabel }}</th>
+                        <th class="ct-col-arrow"></th>
+                        <th class="ct-col-val">{{ currentMonthLabel }}</th>
+                        <th class="ct-col-val">הפרש</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="ch in detailCustomer.changes" :key="ch.field">
+                        <td class="ct-field">{{ ch.field }}</td>
+                        <td class="ct-old"><span class="ltr-number">{{ formatVal(ch.old_val) }}</span></td>
+                        <td class="ct-arrow">→</td>
+                        <td class="ct-new"><span class="ltr-number">{{ formatVal(ch.new_val) }}</span></td>
+                        <td class="ct-diff" v-if="typeof ch.old_val === 'number'" :class="ch.new_val - ch.old_val > 0 ? 'diff-up-text' : 'diff-down-text'">
+                          <span class="ltr-number">{{ ch.new_val - ch.old_val > 0 ? '+' : '' }}{{ formatVal(ch.new_val - ch.old_val) }}</span>
+                        </td>
+                        <td v-else class="ct-diff">—</td>
+                      </tr>
+                      <tr v-if="detailCustomer.commission && detailCustomer.commission_prev != null" class="ct-commission-row">
+                        <td class="ct-field">עמלה</td>
+                        <td class="ct-old"><span class="ltr-number">{{ formatAmount(detailCustomer.commission_prev || 0) }}</span></td>
+                        <td class="ct-arrow">→</td>
+                        <td class="ct-new"><span class="ltr-number ct-commission-val">{{ formatAmount(detailCustomer.commission || 0) }}</span></td>
+                        <td class="ct-diff" :class="(detailCustomer.commission_diff || 0) > 0 ? 'diff-up-text' : (detailCustomer.commission_diff || 0) < 0 ? 'diff-down-text' : ''">
+                          <span class="ltr-number">{{ (detailCustomer.commission_diff || 0) > 0 ? '+' : '' }}{{ formatAmount(detailCustomer.commission_diff || 0) }}</span>
+                        </td>
+                      </tr>
+                      <!-- commission without comparison data: shown in breakdown below -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Commission detail (for commission + changed modals) -->
+                <div v-if="(filterModal.category === 'commission' || filterModal.category === 'changed') && detailCustomer.commission_details?.length" class="detail-changes">
+                  <h5 class="detail-changes-title">פירוט עמלה לפי חברה</h5>
+
+                  <!-- Per-company breakdown -->
+                  <div v-if="detailCustomer.commission_details?.length" class="commission-company-breakdown">
+                    <div
+                      v-for="d in detailCustomer.commission_details"
+                      :key="d.company"
+                      class="commission-company-row"
+                    >
+                      <span class="commission-company-name">{{ d.company }}</span>
+                      <span class="commission-company-amount ltr-number">{{ formatAmount(d.commission) }}</span>
+                    </div>
+                    <div v-if="detailCustomer.commission_details.length > 1" class="commission-company-row commission-total-row">
+                      <span class="commission-company-name" style="font-weight:700">סה"כ</span>
+                      <span class="commission-company-amount ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(detailCustomer.commission) }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Diff section: show diff or "no previous data" message -->
+                  <template v-if="detailCustomer.commission_diff">
+                    <div class="detail-diffs-row" style="margin-top:12px">
+                      <div class="detail-diff-badge" :class="detailCustomer.commission_diff > 0 ? 'diff-up' : 'diff-down'">
+                        <span>{{ detailCustomer.commission_diff > 0 ? '▲' : '▼' }}</span>
+                        שינוי עמלה <span class="ltr-number">{{ detailCustomer.commission_diff > 0 ? '+' : '' }}{{ formatAmount(detailCustomer.commission_diff) }}</span>
                       </div>
                     </div>
+                    <table class="changes-table">
+                      <thead>
+                        <tr>
+                          <th class="ct-col-field">שדה</th>
+                          <th class="ct-col-val">{{ previousMonthLabel }}</th>
+                          <th class="ct-col-arrow"></th>
+                          <th class="ct-col-val">{{ currentMonthLabel }}</th>
+                          <th class="ct-col-val">הפרש</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr class="ct-commission-row">
+                          <td class="ct-field">עמלה</td>
+                          <td class="ct-old"><span class="ltr-number">{{ formatAmount(detailCustomer.commission_prev || 0) }}</span></td>
+                          <td class="ct-arrow">→</td>
+                          <td class="ct-new"><span class="ltr-number ct-commission-val">{{ formatAmount(detailCustomer.commission || 0) }}</span></td>
+                          <td class="ct-diff" :class="(detailCustomer.commission_diff || 0) > 0 ? 'diff-up-text' : (detailCustomer.commission_diff || 0) < 0 ? 'diff-down-text' : ''">
+                            <span class="ltr-number">{{ (detailCustomer.commission_diff || 0) > 0 ? '+' : '' }}{{ formatAmount(detailCustomer.commission_diff || 0) }}</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </template>
+                  <div v-else class="no-commission-diff-note">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <span>הועלה סט נפרעים אחד — העלה נפרעים חדשים לתקופה הבאה כדי לראות השוואת עמלות</span>
                   </div>
                 </div>
               </div>
@@ -395,7 +710,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
@@ -409,6 +724,10 @@ const emit = defineEmits(['compare', 'reset'])
 const selectedFileId = ref(null)
 const searchQuery = ref('')
 const detailCustomer = ref(null)
+const tableFilter = ref('changed')
+const tableSearch = ref('')
+const tablePage = ref(1)
+const tablePageSize = 30
 
 const filterModal = reactive({
   open: false,
@@ -416,6 +735,7 @@ const filterModal = reactive({
   category: '',
   customers: [],
 })
+const commissionCompanyFilter = ref(null) // null = all companies
 
 // Chart
 const CATEGORIES = [
@@ -549,6 +869,12 @@ const removedByCompany = computed(() => {
   if (!props.comparisonResult?.removed_clients?.length) return { labels: [], series: [], options: {} }
   const { labels, series } = groupByCompany(props.comparisonResult.removed_clients)
   return { labels, series, options: makeCompanyChartOptions(labels, 4) }
+})
+
+const changedByCompany = computed(() => {
+  if (!props.comparisonResult?.changed_clients?.length) return { labels: [], series: [], options: {} }
+  const { labels, series } = groupByCompany(props.comparisonResult.changed_clients)
+  return { labels, series, options: makeCompanyChartOptions(labels, 8) }
 })
 
 // ===== Changed Insights =====
@@ -707,10 +1033,79 @@ const topChangersChartOptions = computed(() => {
   }
 })
 
+// ===== Table =====
+const tableTabs = computed(() => {
+  const r = props.comparisonResult
+  if (!r) return []
+  return [
+    { key: 'changed', label: 'שונו', count: r.summary.changed_count },
+    { key: 'new', label: 'חדשים', count: r.summary.new_count },
+    { key: 'removed', label: 'הוסרו', count: r.summary.removed_count },
+  ]
+})
+
+const tableClients = computed(() => {
+  const r = props.comparisonResult
+  if (!r) return []
+  const map = { new: r.new_clients, removed: r.removed_clients, changed: r.changed_clients }
+  let list = map[tableFilter.value] || []
+  const q = tableSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(c =>
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.id_number && c.id_number.includes(q))
+    )
+  }
+  return list
+})
+
+const tableTotalPages = computed(() => Math.ceil(tableClients.value.length / tablePageSize))
+const paginatedTableClients = computed(() => {
+  const start = (tablePage.value - 1) * tablePageSize
+  return tableClients.value.slice(start, start + tablePageSize)
+})
+
+watch([tableFilter, tableSearch], () => { tablePage.value = 1 })
+
 function onChangeTypeChartClick(_e, _chart, config) {
   const idx = config.dataPointIndex
   if (idx < 0) return
   openChangedByType(CHANGE_TYPES[idx].field)
+}
+
+function openCommissionFilter(type) {
+  const r = props.comparisonResult
+  if (!r) return
+  const allClients = [...(r.new_clients || []), ...(r.removed_clients || []), ...(r.changed_clients || []), ...(r.unchanged_clients || [])]
+  let filtered, title
+  if (type === 'positive') {
+    // Diff mode: commission went up
+    filtered = allClients.filter(c => (c.commission_diff || 0) > 0.01)
+    title = 'לקוחות עם עליית עמלה'
+  } else if (type === 'negative') {
+    // Diff mode: commission went down
+    filtered = allClients.filter(c => (c.commission_diff || 0) < -0.01)
+    title = 'לקוחות עם ירידת עמלה'
+  } else if (type === 'has') {
+    // Absolute mode: has commission
+    filtered = allClients.filter(c => (c.commission || 0) > 0)
+    title = 'לקוחות עם עמלה'
+  } else if (type === 'zero') {
+    // Absolute mode: no commission
+    filtered = allClients.filter(c => (c.commission || 0) === 0)
+    title = 'לקוחות ללא עמלה'
+  } else {
+    return
+  }
+  if (!filtered.length) return
+
+  filterModal.open = true
+  filterModal.title = title
+  filterModal.category = 'commission'
+  filterModal.customers = filtered
+  searchQuery.value = ''
+  detailCustomer.value = null
+  commissionCompanyFilter.value = null
 }
 
 function openChangedByType(field) {
@@ -750,8 +1145,8 @@ function onCompanyChartClick(category, labels, config) {
   const r = props.comparisonResult
   if (!r) return
 
-  const clientsMap = { new: r.new_clients, removed: r.removed_clients }
-  const titlesMap = { new: 'חדשים', removed: 'הוסרו' }
+  const clientsMap = { new: r.new_clients, removed: r.removed_clients, changed: r.changed_clients }
+  const titlesMap = { new: 'חדשים', removed: 'הוסרו', changed: 'שונו' }
   const clients = (clientsMap[category] || []).filter(c => (c.company || 'לא ידוע') === company)
 
   if (!clients.length) return
@@ -765,12 +1160,32 @@ function onCompanyChartClick(category, labels, config) {
 }
 
 const filteredCustomers = computed(() => {
-  if (!searchQuery.value) return filterModal.customers
+  let list = filterModal.customers
+  // Filter by commission company if active
+  if (commissionCompanyFilter.value && filterModal.category === 'commission') {
+    list = list.filter(c =>
+      c.commission_details?.some(d => d.company === commissionCompanyFilter.value)
+    )
+  }
+  if (!searchQuery.value) return list
   const q = searchQuery.value.toLowerCase()
-  return filterModal.customers.filter(c =>
+  return list.filter(c =>
     (c.name && c.name.toLowerCase().includes(q)) ||
     (c.id_number && c.id_number.includes(q))
   )
+})
+
+// Commission amount for display — respects company filter
+function clientCommission(c) {
+  if (!commissionCompanyFilter.value || !c.commission_details) return c.commission
+  const entry = c.commission_details.find(d => d.company === commissionCompanyFilter.value)
+  return entry ? entry.commission : 0
+}
+
+// Total commission for filtered view
+const filteredCommissionTotal = computed(() => {
+  if (filterModal.category !== 'commission') return 0
+  return filteredCustomers.value.reduce((sum, c) => sum + clientCommission(c), 0)
 })
 
 function onChartClick(_e, _chart, config) {
@@ -823,9 +1238,26 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
+// Extract month label from production filename (e.g., "דוח פרודוקציה פברואר 26.xlsx" → "פברואר 26")
+function extractMonthLabel(filename) {
+  if (!filename) return ''
+  const match = filename.replace('.xlsx', '').replace('.xls', '')
+    .replace('דוח פרודוקציה', '').trim()
+  return match || filename
+}
+
+const currentMonthLabel = computed(() =>
+  extractMonthLabel(props.comparisonResult?.summary?.current_filename) || 'חדש'
+)
+const previousMonthLabel = computed(() =>
+  extractMonthLabel(props.comparisonResult?.summary?.previous_filename) || 'ישן'
+)
+
 function formatAmount(val) {
   if (!val || val === 0) return '₪0'
-  return '₪' + Math.round(val).toLocaleString()
+  const num = Math.round(val)
+  if (num < 0) return '-₪' + Math.abs(num).toLocaleString()
+  return '₪' + num.toLocaleString()
 }
 
 function formatVal(val) {
@@ -1214,6 +1646,34 @@ function formatVal(val) {
   color: var(--text-muted);
 }
 
+.changed-kpi.kpi-pink { border-color: rgba(236, 72, 153, 0.25); background: rgba(236, 72, 153, 0.06); }
+.kpi-pink .changed-kpi-value { color: #ec4899; }
+
+.kpi-split {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kpi-split-up { color: var(--accent-emerald); }
+.kpi-split-down { color: var(--red); }
+.kpi-split-clickable { cursor: pointer; border-radius: 4px; padding: 1px 4px; transition: background 0.15s; }
+.kpi-split-clickable:hover { background: rgba(0,0,0,0.06); }
+
+.no-commission-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-subtle);
+}
+
 /* Bar chart toggle */
 .bar-toggle {
   display: flex;
@@ -1260,8 +1720,8 @@ function formatVal(val) {
   background: var(--card-bg, #fff);
   border-radius: var(--radius-lg, 16px);
   width: 100%;
-  max-width: 620px;
-  max-height: 80vh;
+  max-width: 820px;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1326,6 +1786,102 @@ function formatVal(val) {
 .fm-back-btn:hover { opacity: 0.7; }
 
 /* Search */
+.fm-company-filter {
+  display: flex;
+  gap: 6px;
+  padding: 12px 22px 0;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.company-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-subtle, #e2e8f0);
+  background: var(--card-bg, #fff);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--text-secondary, #64748b);
+  transition: all 0.15s ease;
+}
+.company-pill:hover { border-color: #ec4899; color: #ec4899; }
+.company-pill.active {
+  background: #ec4899;
+  border-color: #ec4899;
+  color: #fff;
+}
+.company-pill .pill-amount { font-weight: 700; font-size: 11.5px; }
+.company-pill .pill-count { font-size: 10.5px; opacity: 0.7; }
+.company-pill.active .pill-amount,
+.company-pill.active .pill-count { color: #fff; }
+
+.fm-filtered-total {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 22px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.commission-company-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.commission-company-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: rgba(236, 72, 153, 0.04);
+}
+
+.commission-company-name { font-size: 13.5px; color: var(--text); }
+.commission-company-amount { font-size: 13.5px; font-weight: 600; color: #ec4899; }
+
+.commission-total-row {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 9px;
+  background: transparent;
+}
+
+.no-commission-diff-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  color: #92400e;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.no-commission-diff-note svg { flex-shrink: 0; color: #f59e0b; }
+
+.kpi-no-diff-note {
+  display: block;
+  font-size: 10.5px;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  text-align: center;
+}
+
 .fm-search-wrap {
   display: flex;
   align-items: center;
@@ -1350,69 +1906,64 @@ function formatVal(val) {
 .fm-search::placeholder { color: var(--text-muted); }
 
 /* List */
-.fm-list {
-  overflow-y: auto;
+.fm-table-wrap {
+  overflow: auto;
   flex: 1;
+  padding: 0 22px;
 }
 
-.fm-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 22px;
+.fm-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fm-table th {
+  padding: 10px 10px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--card-bg);
+  z-index: 1;
+}
+
+.fm-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.fm-table-row {
   cursor: pointer;
   transition: background 0.15s;
-  border-bottom: 1px solid var(--border-subtle);
 }
 
-.fm-row:last-child { border-bottom: none; }
+.fm-table-row:hover { background: var(--bg-surface); }
 
-.fm-row:hover { background: var(--bg-surface); }
+.fm-table .td-name { font-weight: 600; }
+.fm-table .td-id { font-size: 12px; color: var(--text-muted); }
+.fm-table .td-company { font-size: 12px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.fm-table .td-changes { display: flex; gap: 4px; flex-wrap: nowrap; }
 
-.fm-row-main {
-  display: flex;
+.fm-table .change-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.fm-row-name {
-  font-size: 13px;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text);
   white-space: nowrap;
 }
 
-.fm-row-id {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.fm-row-company {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.fm-row-stats {
-  display: flex;
-  gap: 10px;
-  margin-inline-start: auto;
-  flex-shrink: 0;
-}
-
-.fm-row-stat {
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.fm-row-chevron {
-  color: var(--text-muted);
-  opacity: 0.4;
-  flex-shrink: 0;
-}
+.fm-table .pill-up { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.fm-table .pill-down { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 
 .fm-empty {
   padding: 32px;
@@ -1501,46 +2052,55 @@ function formatVal(val) {
 .diff-up { background: var(--green-light); color: var(--accent-emerald); }
 .diff-down { background: var(--red-light); color: var(--red); }
 
-.detail-changes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.detail-change-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--bg-surface);
-}
-
-.detail-change-row:nth-child(odd) {
-  background: transparent;
-}
-
-.detail-change-field {
+.changes-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  min-width: 80px;
+  margin-top: 4px;
 }
 
-.detail-change-vals {
+.changes-table th,
+.changes-table td {
+  padding: 10px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.changes-table th {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.changes-table td {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ct-col-field { width: 60px; }
+.ct-col-arrow { width: 28px; }
+.ct-col-val { min-width: 90px; }
+
+.ct-field { font-weight: 600; color: var(--text); }
+.ct-old { color: var(--text-muted); }
+.ct-new { color: var(--text); font-weight: 600; }
+.ct-arrow { text-align: center; color: var(--text-muted); padding: 10px 4px; font-size: 12px; }
+.ct-diff { font-weight: 700; font-size: 12px; }
+.diff-up-text { color: var(--accent-emerald); }
+.diff-down-text { color: var(--red); }
+
+.ct-commission-row { background: rgba(236, 72, 153, 0.04); }
+.ct-commission-info {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-
-.detail-change-vals svg { color: var(--text-muted); opacity: 0.4; flex-shrink: 0; }
-
-.detail-val-old {
-  font-size: 13px;
-  color: var(--red);
-  text-decoration: line-through;
-  opacity: 0.7;
+.ct-commission-note {
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
+.ct-commission-val { font-weight: 700; color: #ec4899; }
+.ct-commission-note { font-size: 11px; color: var(--text-muted); margin-right: 6px; }
 
 .detail-val-new {
   font-size: 13px;
@@ -1579,4 +2139,245 @@ function formatVal(val) {
   unicode-bidi: embed;
   display: inline-block;
 }
+
+/* Comparison context */
+.compare-context {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+
+.compare-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.cf-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.compare-file-current .cf-label {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.compare-file-previous .cf-label {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.cf-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.cf-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.compare-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ===== Clients Table ===== */
+.clients-table-section {
+  margin-top: 24px;
+}
+
+.table-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.table-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.table-filter-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-surface);
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+
+.table-tab {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 8px;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-tab:hover { color: var(--text); }
+.table-tab.active {
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.table-tab b { color: var(--primary); }
+
+.table-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+
+.table-search-wrap svg { color: var(--text-muted); flex-shrink: 0; }
+
+.table-search {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  width: 100%;
+  outline: none;
+}
+
+.tbl-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.pc-table {
+  min-width: 800px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pc-table th,
+.pc-table td {
+  padding: 10px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pc-table th {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pc-table td {
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+
+.pc-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pc-row:hover { background: var(--bg-surface); }
+
+.pc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-new { background: #10b981; }
+.dot-removed { background: #ef4444; }
+.dot-changed { background: #f59e0b; }
+
+.td-name { font-weight: 600; }
+.td-id { font-size: 12px; color: var(--text-muted); }
+.td-company { font-size: 12px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+
+.td-changes {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.change-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill-up { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.pill-down { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+.pc-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pc-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.pg-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.pg-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.pg-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.pg-info { font-size: 12px; color: var(--text-muted); font-weight: 600; }
 </style>

@@ -50,92 +50,12 @@
     <div class="float-circle float-circle-4"></div>
     <div class="float-circle float-circle-5"></div>
 
-    <!-- Hero Slider -->
-    <section class="hero-slider" @mouseenter="pauseSlider" @mouseleave="resumeSlider">
-      <div class="slider-track" :style="{ transform: `translateX(${currentSlide * -100}%)` }">
-        <!-- Slide 1: Bold Statement -->
-        <div class="slide slide-1">
-          <div class="slide-glow"></div>
-          <div class="slide-content">
-            <h1 class="hero-headline">ניהול עמלות.<br><span class="text-orange">חכם.</span></h1>
-            <p class="hero-subtitle">העלו קבצים, השוו נתונים, גלו פערים — תוך שניות</p>
-            <router-link to="/signup" class="btn-primary">התחל עכשיו</router-link>
-          </div>
-        </div>
-
-        <!-- Slide 2: Numbers Impact -->
-        <div class="slide slide-2">
-          <div class="slide-grid-bg"></div>
-          <div class="slide-content">
-            <div class="impact-number ltr-number">
-              <span class="big-num">{{ currentSlide === 1 ? animatedPercent : 95 }}%</span>
-              <span class="big-label">חיסכון בזמן</span>
-            </div>
-            <div class="impact-row">
-              <div class="impact-item">
-                <span class="impact-val ltr-number">7+</span>
-                <span class="impact-lbl">פורמטים</span>
-              </div>
-              <div class="impact-divider"></div>
-              <div class="impact-item">
-                <span class="impact-val">דיוק מלא</span>
-                <span class="impact-lbl">בהשוואה</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Slide 3: How It's Different -->
-        <div class="slide slide-3">
-          <div class="slide-content">
-            <h2 class="slide-title">לא עוד בדיקות ידניות</h2>
-            <div class="flow-steps">
-              <div class="flow-step">
-                <div class="flow-icon">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                </div>
-                <span>העלאה</span>
-              </div>
-              <div class="flow-line"></div>
-              <div class="flow-step">
-                <div class="flow-icon">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                  </svg>
-                </div>
-                <span>השוואה</span>
-              </div>
-              <div class="flow-line"></div>
-              <div class="flow-step">
-                <div class="flow-icon">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="16" x2="12" y2="12"/>
-                    <line x1="12" y1="8" x2="12.01" y2="8"/>
-                  </svg>
-                </div>
-                <span>תובנות</span>
-              </div>
-            </div>
-            <a href="#video-demo" class="btn-secondary">צפו איך זה עובד</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Slider dots -->
-      <div class="slider-dots">
-        <button
-          v-for="i in 3"
-          :key="i"
-          class="dot"
-          :class="{ active: currentSlide === i - 1 }"
-          @click="goToSlide(i - 1)"
-          :aria-label="'שקופית ' + i"
-        ></button>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-bg-image"></div>
+      <div class="hero-overlay"></div>
+      <div class="hero-content">
+        <router-link to="/signup" class="btn-primary hero-cta">התחל עכשיו</router-link>
       </div>
     </section>
 
@@ -199,9 +119,92 @@
       </div>
     </section>
 
+    <!-- Portal Section -->
+    <section id="portal-section" class="portal-section">
+      <div class="section-wrap">
+        <h2 class="section-title">פורטל <span class="text-orange">לקוחות</span></h2>
+        <p class="portal-intro">שתפו את תיק הביטוח עם הלקוחות — חוויה מותאמת אישית, מאובטחת ומקצועית</p>
+
+        <div class="portal-features-grid">
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-kpi">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+            </div>
+            <h3>דשבורד אישי</h3>
+            <p>מדדי KPI, גרפים וטבלאות — כל המידע במבט אחד</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-ai">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h3>עוזר AI חכם</h3>
+            <p>הלקוחות שואלים, הבינה המלאכותית עונה — על התיק שלהם</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-changes">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <h3>התראות שינויים</h3>
+            <p>הלקוח מקבל התראה אוטומטית כשמשהו משתנה בתיק</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-secure">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <h3>גישה מאובטחת</h3>
+            <p>קישור ייחודי עם סיסמא, תוקף מוגבל והגנה מפני ניסיונות חדירה</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-trend">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <h3>גרפים היסטוריים</h3>
+            <p>מעקב אחר פרמיה וצבירה לאורך זמן — תמונה ברורה</p>
+          </div>
+
+          <div class="portal-feature-card">
+            <div class="portal-feature-icon portal-icon-print">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+            </div>
+            <h3>הדפסת דוחות</h3>
+            <p>הלקוח מדפיס דוח מסודר של כל תיק הביטוח שלו</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- CTA -->
     <section class="cta-section">
-      <div class="cta-glow"></div>
+      <video
+        class="cta-bg-video"
+        src="/videos/brand-loop.mp4"
+        autoplay
+        loop
+        muted
+        playsinline
+      />
+      <div class="cta-overlay"></div>
       <div class="section-wrap">
         <h2 class="cta-title">מוכנים להתחיל?</h2>
         <router-link to="/signup" class="btn-primary btn-large">התחל עכשיו</router-link>
@@ -237,48 +240,6 @@ import { ref, onMounted, onBeforeUnmount, reactive } from 'vue'
 
 // Mobile menu
 const mobileMenuOpen = ref(false)
-
-// Slider
-const currentSlide = ref(0)
-let sliderInterval = null
-const SLIDE_COUNT = 3
-const SLIDE_DELAY = 5000
-
-function goToSlide(index) {
-  currentSlide.value = index
-}
-
-function nextSlide() {
-  currentSlide.value = (currentSlide.value + 1) % SLIDE_COUNT
-}
-
-function pauseSlider() {
-  if (sliderInterval) {
-    clearInterval(sliderInterval)
-    sliderInterval = null
-  }
-}
-
-function resumeSlider() {
-  if (!sliderInterval) {
-    sliderInterval = setInterval(nextSlide, SLIDE_DELAY)
-  }
-}
-
-// Slide 2 animated percent
-const animatedPercent = ref(0)
-function animatePercent() {
-  const duration = 1200
-  const start = performance.now()
-  function tick(now) {
-    const elapsed = now - start
-    const progress = Math.min(elapsed / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    animatedPercent.value = Math.round(95 * eased)
-    if (progress < 1) requestAnimationFrame(tick)
-  }
-  requestAnimationFrame(tick)
-}
 
 // Video
 const demoVideo = ref(null)
@@ -335,12 +296,6 @@ const numbers = reactive([
 let numbersObserver = null
 
 onMounted(() => {
-  // Start slider
-  sliderInterval = setInterval(nextSlide, SLIDE_DELAY)
-
-  // Animate slide 2 percent on first visit
-  setTimeout(animatePercent, 600)
-
   // Intersection observer for numbers
   numbersObserver = new IntersectionObserver(
     (entries) => {
@@ -375,7 +330,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  pauseSlider()
   if (numbersObserver) numbersObserver.disconnect()
   if (videoObserver) videoObserver.disconnect()
 })
@@ -552,180 +506,63 @@ onBeforeUnmount(() => {
   transform: translateY(-8px);
 }
 
-/* ── Hero Slider ── */
-.hero-slider {
+/* ── Hero ── */
+.hero {
   position: relative;
   height: 100vh;
   min-height: 600px;
   overflow: hidden;
   padding-top: 72px;
-}
-
-.slider-track {
-  display: flex;
-  flex-direction: row;
-  direction: ltr;
-  height: 100%;
-  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.slide {
-  min-width: 100%;
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   text-align: center;
-  direction: rtl;
 }
 
-.slide-content {
-  position: relative;
-  z-index: 2;
-  max-width: 800px;
-  padding: 0 24px;
-}
-
-/* Slide 1 */
-.slide-1 .slide-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.12) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.hero-headline {
-  font-size: 80px;
-  font-weight: 900;
-  line-height: 1.1;
-  margin-bottom: 24px;
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.hero-subtitle {
-  font-size: 22px;
-  font-weight: 400;
-  color: var(--land-text-secondary);
-  margin-bottom: 40px;
-  line-height: 1.6;
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-}
-
-/* Slide 2 */
-.slide-2 .slide-grid-bg {
+.hero-bg-image {
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(245, 124, 0, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(245, 124, 0, 0.05) 1px, transparent 1px);
-  background-size: 60px 60px;
+  background: url('/images/hero-bg.png') center center / cover no-repeat;
+  z-index: 0;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.15);
+  z-index: 1;
   pointer-events: none;
 }
 
-.impact-number {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 48px;
+.hero-content {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
 }
 
-.big-num {
-  font-size: 140px;
-  font-weight: 900;
-  color: var(--land-orange);
-  line-height: 1;
-  letter-spacing: -4px;
+.hero-cta {
+  position: absolute;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 16px 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f57c00, #ff9800);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.4);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: pointer;
+  letter-spacing: 0.5px;
 }
-
-.big-label {
-  font-size: 28px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-  margin-top: 8px;
+.hero-cta:hover {
+  transform: translateX(-50%) translateY(-4px) scale(1.06);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.5);
 }
-
-.impact-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
-}
-
-.impact-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.impact-val {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--land-orange);
-}
-
-.impact-lbl {
-  font-size: 16px;
-  color: var(--land-text-secondary);
-}
-
-.impact-divider {
-  width: 1px;
-  height: 48px;
-  background: var(--land-border);
-}
-
-/* Slide 3 */
-.slide-title {
-  font-size: 56px;
-  font-weight: 900;
-  margin-bottom: 56px;
-}
-
-.flow-steps {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
-  margin-bottom: 48px;
-}
-
-.flow-step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.flow-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 2px solid var(--land-orange);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--land-orange);
-}
-
-.flow-step span {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--land-text);
-}
-
-.flow-line {
-  width: 80px;
-  height: 2px;
-  background: var(--land-orange);
-  opacity: 0.4;
-  margin-bottom: 32px;
+.hero-cta:active {
+  transform: translateX(-50%) translateY(-1px) scale(0.98);
 }
 
 /* Buttons */
@@ -767,37 +604,6 @@ onBeforeUnmount(() => {
 
 .btn-secondary:hover {
   background: var(--land-orange-glow);
-}
-
-/* Slider dots */
-.slider-dots {
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 12px;
-  z-index: 10;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--land-text-dim);
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s;
-  padding: 0;
-}
-
-.dot.active {
-  background: var(--land-orange);
-  box-shadow: 0 0 12px rgba(245, 124, 0, 0.5);
-}
-
-.dot:hover:not(.active) {
-  background: var(--land-text-secondary);
 }
 
 /* ── Features ── */
@@ -1022,23 +828,94 @@ onBeforeUnmount(() => {
   color: var(--land-text-secondary);
 }
 
+/* ── Portal Section ── */
+.portal-section {
+  padding: 120px 24px;
+  background: var(--land-bg-alt);
+}
+
+.portal-intro {
+  text-align: center;
+  font-size: 20px;
+  color: var(--land-text-secondary);
+  margin-top: -48px;
+  margin-bottom: 64px;
+  line-height: 1.6;
+}
+
+.portal-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.portal-feature-card {
+  padding: 36px 28px;
+  background: var(--land-bg-card);
+  border-radius: 16px;
+  border: 1px solid var(--land-border);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.portal-feature-card:hover {
+  border-color: var(--land-orange);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 0 40px rgba(245, 124, 0, 0.06);
+}
+
+.portal-feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.portal-icon-kpi { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
+.portal-icon-ai { background: rgba(127, 86, 217, 0.12); color: #7F56D9; }
+.portal-icon-changes { background: rgba(245, 158, 11, 0.12); color: #F59E0B; }
+.portal-icon-secure { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
+.portal-icon-trend { background: rgba(59, 130, 246, 0.12); color: #3B82F6; }
+.portal-icon-print { background: rgba(245, 124, 0, 0.12); color: var(--land-orange); }
+
+.portal-feature-card h3 {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--land-text);
+}
+
+.portal-feature-card p {
+  font-size: 15px;
+  color: var(--land-text-secondary);
+  line-height: 1.6;
+}
+
 /* ── CTA ── */
 .cta-section {
   padding: 140px 24px;
   text-align: center;
   position: relative;
-  background: var(--land-bg);
+  overflow: hidden;
 }
 
-.cta-glow {
+.cta-bg-video {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.08) 0%, transparent 70%);
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.cta-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.5);
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -1047,12 +924,13 @@ onBeforeUnmount(() => {
   font-weight: 900;
   margin-bottom: 48px;
   position: relative;
-  z-index: 1;
+  z-index: 2;
+  color: #fff;
 }
 
 .cta-section .btn-primary {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 /* ── Footer ── */
@@ -1193,45 +1071,6 @@ onBeforeUnmount(() => {
     display: flex;
   }
 
-  .hero-headline {
-    font-size: 44px;
-  }
-
-  .hero-subtitle {
-    font-size: 18px;
-  }
-
-  .big-num {
-    font-size: 80px;
-  }
-
-  .big-label {
-    font-size: 20px;
-  }
-
-  .impact-row {
-    gap: 24px;
-  }
-
-  .impact-val {
-    font-size: 24px;
-  }
-
-  .slide-title {
-    font-size: 36px;
-  }
-
-  .flow-steps {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .flow-line {
-    width: 2px;
-    height: 32px;
-    margin-bottom: 0;
-  }
-
   .section-title {
     font-size: 36px;
     margin-bottom: 48px;
@@ -1282,6 +1121,16 @@ onBeforeUnmount(() => {
     font-size: 56px;
   }
 
+  .portal-features-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .portal-intro {
+    font-size: 17px;
+    margin-bottom: 40px;
+  }
+
   .cta-title {
     font-size: 40px;
   }
@@ -1298,14 +1147,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 480px) {
-  .hero-headline {
-    font-size: 36px;
-  }
-
-  .big-num {
-    font-size: 64px;
-  }
-
   .section-title {
     font-size: 30px;
   }

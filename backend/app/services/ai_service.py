@@ -351,7 +351,76 @@ def _pct(part: int, total: int) -> str:
     return f"{part * 100 / total:.0f}"
 
 
-async def build_user_context(db: AsyncSession, user_id) -> str | None:
+STOP_WORDS = {'האם', 'מה', 'כמה', 'של', 'את', 'לי', 'על', 'יש', 'אם', 'או',
+              'הוא', 'היא', 'זה', 'זו', 'לא', 'כן', 'איפה', 'למה', 'מי', 'איך',
+              'בפרודוקציה', 'מופיע', 'נמצא', 'שלי', 'שלו', 'שלה', 'לו', 'לה',
+              'גם', 'עם', 'בין', 'כל', 'אני', 'הם', 'הן', 'אנחנו', 'אתה', 'את'}
+
+
+async def _search_customers(db: AsyncSession, upload_id, question: str) -> str | None:
+    """Search for specific customers mentioned in the question."""
+    import re
+
+    # Extract potential ID numbers (5+ digits)
+    id_patterns = re.findall(r'\d{5,}', question)
+
+    # Extract Hebrew name words (filter stop words)
+    words = re.findall(r'[\u0590-\u05FF]+', question)
+    name_words = [w for w in words if w not in STOP_WORDS and len(w) > 1]
+
+    if not id_patterns and not name_words:
+        return None
+
+    results = []
+
+    # Search by ID number
+    for id_pat in id_patterns:
+        q = await db.execute(
+            select(ClientRecord).where(
+                ClientRecord.upload_id == upload_id,
+                ClientRecord.id_number.like(f"%{id_pat}%"),
+            ).limit(10)
+        )
+        results.extend(q.scalars().all())
+
+    # Search by name
+    for word in name_words[:3]:  # limit to 3 name words
+        q = await db.execute(
+            select(ClientRecord).where(
+                ClientRecord.upload_id == upload_id,
+                (ClientRecord.first_name.ilike(f"%{word}%")) |
+                (ClientRecord.last_name.ilike(f"%{word}%")),
+            ).limit(10)
+        )
+        results.extend(q.scalars().all())
+
+    if not results:
+        return None
+
+    # Deduplicate by id
+    seen = set()
+    unique = []
+    for r in results:
+        if r.id not in seen:
+            seen.add(r.id)
+            unique.append(r)
+
+    lines = ["\n--- תוצאות חיפוש לקוחות ---"]
+    for r in unique[:10]:
+        name = f"{r.first_name or ''} {r.last_name or ''}".strip()
+        premium = float(r.total_premium or 0)
+        accum = float(r.accumulation or 0)
+        lines.append(
+            f"שם: {name}, ת.ז: {r.id_number}, חברה: {r.receiving_company or '—'}, "
+            f"מוצר: {r.product_type or r.product or '—'}, "
+            f"סטטוס: {r.product_status or '—'}, "
+            f"פרמיה: {premium:,.0f}₪, צבירה: {accum:,.0f}₪"
+        )
+
+    return "\n".join(lines)
+
+
+async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
     prod_context, prod_upload = await _get_production_context(db, user_id)
     if not prod_context:
         return None
@@ -367,13 +436,19 @@ async def build_user_context(db: AsyncSession, user_id) -> str | None:
         if myfile_context:
             context_parts.append(myfile_context)
 
+        # Search for specific customers if question contains names/IDs
+        if question:
+            search_context = await _search_customers(db, prod_upload.id, question)
+            if search_context:
+                context_parts.append(search_context)
+
     return "\n\n".join(context_parts)
 
 
 async def stream_chat(
     db: AsyncSession, user_id, question: str, history: list[dict]
 ) -> AsyncGenerator[str, None]:
-    context = await build_user_context(db, user_id)
+    context = await build_user_context(db, user_id, question=question)
     if context is None:
         yield f"data: {json.dumps({'text': 'אין נתונים במערכת. יש להעלות קבצים תחילה.'}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'done': True})}\n\n"

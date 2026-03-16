@@ -63,13 +63,13 @@
               </svg>
             </td>
             <td>{{ fullName(customer) }}</td>
-            <td class="ltr-number">{{ customer.id_number }}</td>
+            <td><span class="ltr-number">{{ customer.id_number }}</span></td>
             <td class="center">
               <span v-if="commissionCount(customer) > 0" class="badge-commission">{{ commissionCount(customer) }}</span>
               <span v-else class="dim">—</span>
             </td>
-            <td class="num ltr-number">{{ formatAmount(customerCommission(customer)) }}</td>
-            <td class="num ltr-number">{{ formatAmount(customerBalance(customer)) }}</td>
+            <td class="num"><span class="ltr-number">{{ formatAmount(customerCommission(customer)) }}</span></td>
+            <td class="num"><span class="ltr-number">{{ formatAmount(customerBalance(customer)) }}</span></td>
             <td>
               <div class="status-wrap">
                 <ComparisonBadge :status="customer.match_status" />

@@ -27,7 +27,7 @@
         />
       </div>
       <div class="kpi-row">
-        <div class="kpi found-kpi" @click="activeFilter = 'found'">
+        <div class="kpi found-kpi" @click="showFoundModal = true">
           <span class="kpi-num ltr-number">{{ result.found }}</span>
           <span class="kpi-lbl">נמצאו</span>
           <span class="kpi-pct ltr-number">{{ foundPct }}%</span>
@@ -151,12 +151,14 @@
           <tbody>
             <tr v-for="m in topMissing" :key="m.recruit_id" @click="openDetail(m)">
               <td class="td-name">{{ m.first_name }} {{ m.last_name }}</td>
-              <td class="td-id ltr-number">{{ m.id_number }}</td>
+              <td class="td-id"><span class="ltr-number">{{ m.id_number }}</span></td>
               <td>{{ m.company || '—' }}</td>
               <td>{{ m.product || '—' }}</td>
-              <td class="ltr-number" style="font-weight:700;color:var(--primary)">
-                <template v-if="m.amount > 0">₪{{ fmtNum(m.amount) }}</template>
-                <template v-else>—</template>
+              <td>
+                <span class="ltr-number" style="font-weight:700;color:var(--primary)">
+                  <template v-if="m.amount > 0">₪{{ fmtNum(m.amount) }}</template>
+                  <template v-else>—</template>
+                </span>
               </td>
             </tr>
           </tbody>
@@ -241,16 +243,20 @@
               <span v-else class="dot dot-missing"></span>
             </td>
             <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-            <td class="td-id ltr-number">{{ item.id_number }}</td>
+            <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
             <td class="td-company">{{ item.company || '—' }}</td>
             <td class="td-product">{{ item.product || '—' }}</td>
-            <td class="td-prod-count ltr-number">
-              <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
-              <span v-else class="prod-badge prod-badge-zero">0</span>
+            <td class="td-prod-count">
+              <span class="ltr-number">
+                <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
+                <span v-else class="prod-badge prod-badge-zero">0</span>
+              </span>
             </td>
-            <td class="td-premium ltr-number">
-              <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
-              <template v-else>—</template>
+            <td class="td-premium">
+              <span class="ltr-number">
+                <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
+                <template v-else>—</template>
+              </span>
             </td>
             <td class="td-customer-status" @click.stop>
               <div v-if="!item.found_in_production" class="status-select-wrap">
@@ -363,9 +369,11 @@
                       <td>
                         <span class="status-tag" :class="statusClass(p.status)">{{ statusLabel(p.status) }}</span>
                       </td>
-                      <td class="pt-premium ltr-number">
-                        <template v-if="p.premium > 0">₪{{ fmtNum(p.premium) }}</template>
-                        <template v-else>—</template>
+                      <td class="pt-premium">
+                        <span class="ltr-number">
+                          <template v-if="p.premium > 0">₪{{ fmtNum(p.premium) }}</template>
+                          <template v-else>—</template>
+                        </span>
                       </td>
                     </tr>
                   </tbody>
@@ -426,7 +434,7 @@
               </button>
               <div class="modal-id-row">
                 <div>
-                  <div class="modal-name">לקוחות שלא נמצאו בפרודוקציה</div>
+                  <div class="modal-name">דוחות שלא נמצאו בדוח מעקב אישי</div>
                   <div class="modal-id-num">{{ notFoundList.length }} לקוחות</div>
                 </div>
                 <span class="modal-status-chip chip-missing">לא נמצאו</span>
@@ -472,12 +480,14 @@
                     @click="showMissingModal = false; openDetail(item)"
                   >
                     <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-                    <td class="td-id ltr-number">{{ item.id_number }}</td>
+                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
                     <td>{{ item.company || '—' }}</td>
                     <td>{{ item.product || '—' }}</td>
-                    <td class="ltr-number" style="font-weight:700;color:var(--primary)">
-                      <template v-if="item.amount > 0">₪{{ fmtNum(item.amount) }}</template>
-                      <template v-else>—</template>
+                    <td>
+                      <span class="ltr-number" style="font-weight:700;color:var(--primary)">
+                        <template v-if="item.amount > 0">₪{{ fmtNum(item.amount) }}</template>
+                        <template v-else>—</template>
+                      </span>
                     </td>
                     <td @click.stop>
                       <select
@@ -499,6 +509,68 @@
                         @keydown.enter="confirmCustomStatus(item.recruit_id)"
                         @blur="confirmCustomStatus(item.recruit_id)"
                       />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Found Customers Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showFoundModal" class="modal-overlay" @click.self="showFoundModal = false">
+          <div class="modal-card missing-modal-card">
+            <div class="modal-head">
+              <button class="modal-x" @click="showFoundModal = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <div class="modal-id-row">
+                <div>
+                  <div class="modal-name">לקוחות שנמצאו בפרודוקציה</div>
+                  <div class="modal-id-num">{{ foundList.length }} לקוחות</div>
+                </div>
+                <span class="modal-status-chip chip-found">נמצאו</span>
+              </div>
+            </div>
+
+            <!-- Search -->
+            <div class="mm-search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input class="mm-search" v-model="foundSearch" placeholder="חיפוש לפי שם או ת.ז..." />
+            </div>
+
+            <!-- Table -->
+            <div class="mm-table-wrap">
+              <table class="mm-table">
+                <thead>
+                  <tr>
+                    <th>שם</th>
+                    <th>ת.ז</th>
+                    <th>חברה</th>
+                    <th>מוצרים</th>
+                    <th>פרמיה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in filteredFoundList"
+                    :key="item.recruit_id"
+                    class="mm-row"
+                    @click="showFoundModal = false; openDetail(item)"
+                  >
+                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
+                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
+                    <td>{{ item.company || '—' }}</td>
+                    <td><span class="ltr-number">{{ item.production_products.length }}</span></td>
+                    <td>
+                      <span class="ltr-number" style="font-weight:700;color:var(--accent-emerald)">
+                        <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
+                        <template v-else>—</template>
+                      </span>
                     </td>
                   </tr>
                 </tbody>
@@ -577,16 +649,20 @@
                       <span v-else class="dot dot-missing"></span>
                     </td>
                     <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-                    <td class="td-id ltr-number">{{ item.id_number }}</td>
+                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
                     <td>{{ item.company || '—' }}</td>
                     <td>{{ item.product || '—' }}</td>
-                    <td class="ltr-number">
-                      <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
-                      <span v-else class="prod-badge prod-badge-zero">0</span>
+                    <td>
+                      <span class="ltr-number">
+                        <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
+                        <span v-else class="prod-badge prod-badge-zero">0</span>
+                      </span>
                     </td>
-                    <td class="ltr-number" style="font-weight:700;color:var(--primary)">
-                      <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
-                      <template v-else>—</template>
+                    <td>
+                      <span class="ltr-number" style="font-weight:700;color:var(--primary)">
+                        <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
+                        <template v-else>—</template>
+                      </span>
                     </td>
                   </tr>
                 </tbody>
@@ -612,6 +688,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import { useRecruitsStore } from '../../stores/recruits.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
+import api from '../../api/client.js'
 
 const props = defineProps({
   result: { type: Object, required: true },
@@ -630,21 +707,49 @@ const customInputVal = ref('')
 const customInputRef = ref(null)
 const showMissingModal = ref(false)
 const missingSearch = ref('')
+const showFoundModal = ref(false)
+const foundSearch = ref('')
 const companyFilter = ref('')
 const productFilter = ref('')
 const drillModal = ref({ show: false, type: '', value: '', title: '', search: '' })
 
-onMounted(() => { nextTick(() => { chartReady.value = true }) })
+// Initialize customer statuses from saved data
+function initStatuses() {
+  const statuses = {}
+  for (const r of props.result.results) {
+    if (r.customer_status) {
+      statuses[r.recruit_id] = r.customer_status
+    }
+  }
+  customerStatuses.value = statuses
+}
+
+onMounted(() => {
+  nextTick(() => { chartReady.value = true })
+  initStatuses()
+})
+
+watch(() => props.result, () => { initStatuses() })
 
 const foundPct = computed(() => props.result.total > 0 ? Math.round((props.result.found / props.result.total) * 100) : 0)
 const missingPct = computed(() => props.result.total > 0 ? Math.round((props.result.not_found / props.result.total) * 100) : 0)
 
 const notFoundList = computed(() => props.result.results.filter(r => !r.found_in_production))
+const foundList = computed(() => props.result.results.filter(r => r.found_in_production))
 
 const filteredMissingList = computed(() => {
   const q = missingSearch.value.trim().toLowerCase()
   if (!q) return notFoundList.value
   return notFoundList.value.filter(r => {
+    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+    return name.includes(q) || (r.id_number || '').includes(q)
+  })
+})
+
+const filteredFoundList = computed(() => {
+  const q = foundSearch.value.trim().toLowerCase()
+  if (!q) return foundList.value
+  return foundList.value.filter(r => {
     const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
     return name.includes(q) || (r.id_number || '').includes(q)
   })
@@ -941,6 +1046,10 @@ async function sendMissingMail() {
   }
 }
 
+function persistStatus(recruitId, status) {
+  api.patch(`/recruits/${recruitId}/status`, { status }).catch(() => {})
+}
+
 function onStatusChange(recruitId, event) {
   const val = event.target.value
   if (val === '__custom__') {
@@ -954,12 +1063,15 @@ function onStatusChange(recruitId, event) {
   } else {
     customerStatuses.value[recruitId] = val
     customInputId.value = null
+    persistStatus(recruitId, val)
   }
 }
 
 function confirmCustomStatus(recruitId) {
   if (customInputVal.value.trim()) {
-    customerStatuses.value[recruitId] = customInputVal.value.trim()
+    const status = customInputVal.value.trim()
+    customerStatuses.value[recruitId] = status
+    persistStatus(recruitId, status)
   }
   customInputId.value = null
   customInputVal.value = ''

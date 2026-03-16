@@ -148,9 +148,20 @@ async def delete_current_production(
     user: User = Depends(get_current_user),
 ):
     """Remove current production file."""
+    from app.models.portal_snapshot import PortalSnapshot
+
     upload = await _get_production_upload(db, user.id)
     if not upload:
         raise HTTPException(status_code=404, detail="לא נמצא קובץ פרודוקציה פעיל")
+
+    # Delete related portal snapshots and client records first (FK constraints)
+    from sqlalchemy import delete as sql_delete
+    await db.execute(
+        sql_delete(PortalSnapshot).where(PortalSnapshot.upload_id == upload.id)
+    )
+    await db.execute(
+        sql_delete(ClientRecord).where(ClientRecord.upload_id == upload.id)
+    )
 
     await db.delete(upload)
     await db.commit()
@@ -319,6 +330,107 @@ class CompareRequest(BaseModel):
     previous_upload_id: str
 
 
+async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividing_date):
+    """Build current and previous {id_number: total_commission} split by dividing_date.
+
+    For each unique filename:
+    - current: latest upload overall
+    - previous: latest upload ON or BEFORE dividing_date; if none exists, falls back
+      to the current version (file unchanged → diff = 0)
+
+    Returns:
+        current_comm: {id_number: total}
+        previous_comm: {id_number: total}
+        has_data: bool
+        current_comm_detail: {id_number: [{company, commission}, ...]}  — per-company breakdown
+    """
+    all_result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user_id,
+            FileUpload.is_production == False,
+            FileUpload.file_category == "commission",
+        ).order_by(desc(FileUpload.uploaded_at))
+    )
+    all_uploads = all_result.scalars().all()
+
+    # For each filename find latest overall + latest before dividing_date
+    current_ids = {}   # filename → upload_id (latest overall)
+    previous_ids = {}  # filename → upload_id (latest before date)
+    upload_meta = {}   # upload_id → {company_source, filename}
+    for u in all_uploads:
+        upload_meta[u.id] = {"company": u.company_source or u.filename, "filename": u.filename}
+        if u.filename not in current_ids:
+            current_ids[u.filename] = u.id
+        if dividing_date and u.uploaded_at <= dividing_date and u.filename not in previous_ids:
+            previous_ids[u.filename] = u.id
+
+    # has_previous is only True if at least one file has a DIFFERENT upload
+    # for previous vs current (must exist in both, with different IDs)
+    has_previous = any(
+        fname in previous_ids and previous_ids[fname] != current_ids[fname]
+        for fname in current_ids
+    )
+
+    current_upload_ids = list(current_ids.values())
+    previous_upload_ids = list(previous_ids.values())
+    all_needed_ids = list(set(current_upload_ids + previous_upload_ids))
+
+    has_data = len(all_needed_ids) > 0
+
+    # Fetch records for all needed uploads in one query
+    # records_by_upload: {upload_id: {id_number: commission_sum}}
+    records_by_upload = {}
+    if all_needed_ids:
+        result = await db.execute(
+            select(ClientRecord).where(
+                ClientRecord.upload_id.in_(all_needed_ids),
+                ClientRecord.user_id == user_id,
+            )
+        )
+        for r in result.scalars().all():
+            if not r.id_number:
+                continue
+            comm_val = None
+            for field_name in ("commission_paid", "commission_before_fee", "commission_expected", "actual_amount"):
+                v = getattr(r, field_name, None)
+                if v is not None:
+                    try:
+                        comm_val = float(v)
+                    except (ValueError, TypeError):
+                        continue
+                    break
+            if comm_val is not None and comm_val != 0:
+                if r.upload_id not in records_by_upload:
+                    records_by_upload[r.upload_id] = {}
+                rec = records_by_upload[r.upload_id]
+                rec[r.id_number] = round(rec.get(r.id_number, 0.0) + comm_val, 2)
+
+    # Aggregate across uploads for each period
+    def _aggregate(upload_ids):
+        combined = {}
+        for uid in upload_ids:
+            for id_num, val in records_by_upload.get(uid, {}).items():
+                combined[id_num] = combined.get(id_num, 0.0) + val
+        return combined
+
+    current_comm = _aggregate(current_upload_ids)
+    previous_comm = _aggregate(previous_upload_ids)
+
+    # Per-company detail for current period: {id_number: [{company, commission}, ...]}
+    current_comm_detail = {}
+    for uid in current_upload_ids:
+        company = upload_meta.get(uid, {}).get("company", "?")
+        for id_num, val in records_by_upload.get(uid, {}).items():
+            if id_num not in current_comm_detail:
+                current_comm_detail[id_num] = []
+            current_comm_detail[id_num].append({
+                "company": company,
+                "commission": round(val, 2),
+            })
+
+    return current_comm, previous_comm, has_data, has_previous, current_comm_detail
+
+
 @router.post("/compare", response_model=ProductionCompareResponse)
 async def compare_productions(
     req: CompareRequest,
@@ -328,6 +440,16 @@ async def compare_productions(
     """Compare two production files: new/removed/changed clients."""
     current_id = uuid.UUID(req.current_upload_id)
     previous_id = uuid.UUID(req.previous_upload_id)
+
+    # Fetch upload metadata for file names/dates
+    current_upload = await db.execute(
+        select(FileUpload).where(FileUpload.id == current_id, FileUpload.user_id == user.id)
+    )
+    current_file = current_upload.scalar_one_or_none()
+    previous_upload = await db.execute(
+        select(FileUpload).where(FileUpload.id == previous_id, FileUpload.user_id == user.id)
+    )
+    previous_file = previous_upload.scalar_one_or_none()
 
     # Fetch records for both uploads (scoped by user_id)
     async def _fetch_grouped(upload_id):
@@ -362,6 +484,14 @@ async def compare_productions(
     current = await _fetch_grouped(current_id)
     previous = await _fetch_grouped(previous_id)
 
+    # ── Commission lookup: split by previous production upload date ──
+    # For each filename: current = latest overall, previous = latest before prev date
+    # Files not re-uploaded → same data both sides → diff = 0 (honest)
+    prev_date = previous_file.uploaded_at if previous_file else None
+    current_comm, previous_comm, has_commission_data, has_previous_commission, current_comm_detail = await _build_commission_lookups(
+        db, user.id, prev_date
+    )
+
     current_ids = set(current.keys())
     previous_ids = set(previous.keys())
 
@@ -369,22 +499,43 @@ async def compare_productions(
     removed_ids = previous_ids - current_ids
     common_ids = current_ids & previous_ids
 
+    def _comm_fields(cid):
+        curr = round(current_comm.get(cid, 0.0), 2)
+        detail = current_comm_detail.get(cid, [])
+        if has_previous_commission:
+            prev = round(previous_comm.get(cid, 0.0), 2)
+            return {
+                "commission": curr,
+                "commission_prev": prev,
+                "commission_diff": round(curr - prev, 2),
+                "commission_details": detail,
+            }
+        # No previous commission data — don't fake a diff
+        return {
+            "commission": curr,
+            "commission_prev": None,
+            "commission_diff": None,
+            "commission_details": detail,
+        }
+
     new_clients = []
     for cid in sorted(new_ids):
         c = current[cid]
         new_clients.append({"id_number": cid, "name": c["name"], "company": c["company"],
                             "premium": round(c["premium"], 2), "accumulation": round(c["accumulation"], 2),
-                            "products_count": c["products_count"]})
+                            "products_count": c["products_count"],
+                            **_comm_fields(cid)})
 
     removed_clients = []
     for cid in sorted(removed_ids):
         p = previous[cid]
         removed_clients.append({"id_number": cid, "name": p["name"], "company": p["company"],
                                 "premium": round(p["premium"], 2), "accumulation": round(p["accumulation"], 2),
-                                "products_count": p["products_count"]})
+                                "products_count": p["products_count"],
+                                **_comm_fields(cid)})
 
     changed_clients = []
-    unchanged_count = 0
+    unchanged_clients = []
     for cid in sorted(common_ids):
         c = current[cid]
         p = previous[cid]
@@ -402,18 +553,84 @@ async def compare_productions(
         if changes:
             changed_clients.append({
                 "id_number": cid, "name": c["name"], "company": c["company"],
+                "premium": round(c["premium"], 2), "accumulation": round(c["accumulation"], 2),
+                "products_count": c["products_count"],
                 "changes": changes, "premium_diff": premium_diff, "accumulation_diff": accum_diff,
+                **_comm_fields(cid),
             })
         else:
-            unchanged_count += 1
+            unchanged_clients.append({
+                "id_number": cid, "name": c["name"], "company": c["company"],
+                "premium": round(c["premium"], 2), "accumulation": round(c["accumulation"], 2),
+                "products_count": c["products_count"],
+                **_comm_fields(cid),
+            })
+
+    # Positive/negative split for premium and accumulation diffs
+    premium_positive = sum(1 for c in changed_clients if c["premium_diff"] > 0.01)
+    premium_negative = sum(1 for c in changed_clients if c["premium_diff"] < -0.01)
+    accum_positive = sum(1 for c in changed_clients if c["accumulation_diff"] > 0.01)
+    accum_negative = sum(1 for c in changed_clients if c["accumulation_diff"] < -0.01)
+
+    # Commission totals — scoped to production clients only (not all commission file clients)
+    commission_total = round(sum(current_comm.get(cid, 0) for cid in current_ids), 2)
+    if has_previous_commission:
+        commission_prev_total = round(sum(previous_comm.get(cid, 0) for cid in previous_ids), 2)
+        commission_diff_total = round(commission_total - commission_prev_total, 2)
+    else:
+        commission_prev_total = None
+        commission_diff_total = None
+
+    # Commission diff counts across ALL current production clients
+    all_clients_with_data = new_clients + removed_clients + changed_clients + unchanged_clients
+    commission_diff_positive = sum(1 for c in all_clients_with_data if (c.get("commission_diff") or 0) > 0.01)
+    commission_diff_negative = sum(1 for c in all_clients_with_data if (c.get("commission_diff") or 0) < -0.01)
+
+    # Count clients with/without commission from current commission data
+    commission_positive_count = sum(1 for cid in current_ids if current_comm.get(cid, 0) > 0)
+    commission_zero_count = sum(1 for cid in current_ids if current_comm.get(cid, 0) == 0)
+
+    # Commission breakdown by company (scoped to production clients)
+    company_totals = {}  # company → {total, clients}
+    for cid in current_ids:
+        for entry in current_comm_detail.get(cid, []):
+            co = entry["company"]
+            if co not in company_totals:
+                company_totals[co] = {"total": 0.0, "clients": set()}
+            company_totals[co]["total"] += entry["commission"]
+            if entry["commission"] != 0:
+                company_totals[co]["clients"].add(cid)
+    commission_by_company = sorted([
+        {"company": co, "total": round(data["total"], 2), "clients_count": len(data["clients"])}
+        for co, data in company_totals.items()
+        if data["total"] != 0
+    ], key=lambda x: -abs(x["total"]))
 
     summary = {
         "new_count": len(new_clients),
         "removed_count": len(removed_clients),
         "changed_count": len(changed_clients),
-        "unchanged_count": unchanged_count,
+        "unchanged_count": len(unchanged_clients),
         "total_current": len(current),
         "total_previous": len(previous),
+        "has_commission_data": has_commission_data,
+        "has_previous_commission": has_previous_commission,
+        "commission_total": round(commission_total, 2),
+        "commission_prev_total": round(commission_prev_total, 2) if commission_prev_total is not None else None,
+        "commission_diff_total": commission_diff_total,
+        "commission_diff_positive": commission_diff_positive,
+        "commission_diff_negative": commission_diff_negative,
+        "commission_positive_count": commission_positive_count,
+        "commission_zero_count": commission_zero_count,
+        "commission_by_company": commission_by_company,
+        "premium_positive": premium_positive,
+        "premium_negative": premium_negative,
+        "accum_positive": accum_positive,
+        "accum_negative": accum_negative,
+        "current_filename": current_file.filename if current_file else "",
+        "current_date": current_file.uploaded_at.isoformat() if current_file else "",
+        "previous_filename": previous_file.filename if previous_file else "",
+        "previous_date": previous_file.uploaded_at.isoformat() if previous_file else "",
     }
 
     return ProductionCompareResponse(
@@ -421,4 +638,39 @@ async def compare_productions(
         new_clients=new_clients,
         removed_clients=removed_clients,
         changed_clients=changed_clients,
+        unchanged_clients=unchanged_clients,
     )
+
+
+# Commission format types (for backfilling file_category)
+COMMISSION_FORMATS = {
+    "agent_tracking", "company_report", "nifraim",
+    "hachshara_nifraim", "menora", "altshuler",
+    "clal_life_nifraim", "clal_health_nifraim", "migdal_nifraim",
+    "ayalon_nifraim", "harel_nifraim", "phoenix_insurance_nifraim",
+}
+
+
+@router.post("/backfill-categories")
+async def backfill_file_categories(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One-time backfill: set file_category on existing uploads based on format_type."""
+    result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category.in_((None, "general")),
+        )
+    )
+    uploads = result.scalars().all()
+    updated = 0
+    for u in uploads:
+        if u.format_type == "production":
+            u.file_category = "production"
+            updated += 1
+        elif u.format_type in COMMISSION_FORMATS:
+            u.file_category = "commission"
+            updated += 1
+    await db.commit()
+    return {"updated": updated, "total_checked": len(uploads)}

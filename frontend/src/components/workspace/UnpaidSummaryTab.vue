@@ -111,8 +111,8 @@
               <td class="td-category">
                 <span class="category-pill" :class="row.catKey">{{ row.category }}</span>
               </td>
-              <td class="td-count ltr-number">{{ row.count.toLocaleString() }}</td>
-              <td class="td-amount ltr-number">{{ formatCurrency(row.amount) }}</td>
+              <td class="td-count"><span class="ltr-number">{{ row.count.toLocaleString() }}</span></td>
+              <td class="td-amount"><span class="ltr-number">{{ formatCurrency(row.amount) }}</span></td>
               <td class="td-bar">
                 <div class="bar-track">
                   <div class="bar-fill" :style="{ width: row.pct + '%' }"></div>

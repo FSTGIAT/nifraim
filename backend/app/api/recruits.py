@@ -40,6 +40,7 @@ async def list_recruits(
             company=r.company,
             product=r.product,
             amount=float(r.amount) if r.amount is not None else None,
+            customer_status=r.customer_status,
             created_at=r.created_at,
         )
         for r in recruits
@@ -182,6 +183,29 @@ async def upload_recruits(
     await db.commit()
 
     return {"status": "ok", "count": len(to_insert), "format": parsed.get("format", "unknown")}
+
+
+@router.patch("/{recruit_id}/status")
+async def update_recruit_status(
+    recruit_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Recruit).where(
+            Recruit.id == uuid.UUID(recruit_id),
+            Recruit.user_id == user.id,
+        )
+    )
+    recruit = result.scalar_one_or_none()
+    if not recruit:
+        raise HTTPException(status_code=404, detail="מגויס לא נמצא")
+
+    status = body.get("status", "")
+    recruit.customer_status = status[:50] if status else None
+    await db.commit()
+    return {"status": "ok"}
 
 
 @router.put("/{recruit_id}", response_model=RecruitOut)
@@ -476,6 +500,7 @@ async def compare_recruits(
             company=recruit.company,
             product=recruit.product,
             amount=float(recruit.amount) if recruit.amount is not None else None,
+            customer_status=recruit.customer_status,
             found_in_production=found,
             production_products=production_products,
             production_premium=total_premium,
