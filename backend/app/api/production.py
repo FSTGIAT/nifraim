@@ -13,6 +13,7 @@ from app.schemas.upload import ProductionFileInfo, ProductionAnalytics, Producti
 from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel
 from app.services.portal_service import create_snapshots_for_upload
+from app.services.comparison_service import _classify_product_type, _GEMEL_KEYWORDS, _INSURANCE_KEYWORDS
 from app.utils.sanitize import sanitize_record
 
 router = APIRouter()
@@ -380,6 +381,7 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
     # Fetch records for all needed uploads in one query
     # records_by_upload: {upload_id: {id_number: commission_sum}}
     records_by_upload = {}
+    covered_categories = set()  # which product categories have commission data
     if all_needed_ids:
         result = await db.execute(
             select(ClientRecord).where(
@@ -390,6 +392,13 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
         for r in result.scalars().all():
             if not r.id_number:
                 continue
+            # Detect which categories are covered by commission files
+            product = (r.fund_type or r.product or "").lower()
+            if product:
+                if any(kw in product for kw in _GEMEL_KEYWORDS):
+                    covered_categories.add("gemel_hishtalmut")
+                if any(kw in product for kw in _INSURANCE_KEYWORDS):
+                    covered_categories.add("insurance")
             comm_val = None
             for field_name in ("commission_paid", "commission_before_fee", "commission_expected", "actual_amount"):
                 v = getattr(r, field_name, None)
@@ -428,7 +437,7 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
                 "commission": round(val, 2),
             })
 
-    return current_comm, previous_comm, has_data, has_previous, current_comm_detail
+    return current_comm, previous_comm, has_data, has_previous, current_comm_detail, covered_categories
 
 
 @router.post("/compare", response_model=ProductionCompareResponse)
@@ -472,6 +481,7 @@ async def compare_productions(
                     "accumulation": 0.0,
                     "products_count": 0,
                     "statuses": [],
+                    "categories": set(),
                 }
             g = grouped[r.id_number]
             g["premium"] += float(r.total_premium or 0)
@@ -479,6 +489,9 @@ async def compare_productions(
             g["products_count"] += 1
             if r.product_status:
                 g["statuses"].append(r.product_status)
+            cat = _classify_product_type(r.product_type)
+            if cat:
+                g["categories"].add(cat)
         return grouped
 
     current = await _fetch_grouped(current_id)
@@ -488,7 +501,7 @@ async def compare_productions(
     # For each filename: current = latest overall, previous = latest before prev date
     # Files not re-uploaded → same data both sides → diff = 0 (honest)
     prev_date = previous_file.uploaded_at if previous_file else None
-    current_comm, previous_comm, has_commission_data, has_previous_commission, current_comm_detail = await _build_commission_lookups(
+    current_comm, previous_comm, has_commission_data, has_previous_commission, current_comm_detail, covered_categories = await _build_commission_lookups(
         db, user.id, prev_date
     )
 
@@ -587,8 +600,18 @@ async def compare_productions(
     commission_diff_negative = sum(1 for c in all_clients_with_data if (c.get("commission_diff") or 0) < -0.01)
 
     # Count clients with/without commission from current commission data
+    # Only count "ללא עמלה" for clients whose product category is covered by uploaded commission files
     commission_positive_count = sum(1 for cid in current_ids if current_comm.get(cid, 0) > 0)
-    commission_zero_count = sum(1 for cid in current_ids if current_comm.get(cid, 0) == 0)
+    commission_zero_count = 0
+    for cid in current_ids:
+        if current_comm.get(cid, 0) == 0:
+            client_cats = current[cid].get("categories", set())
+            # Count as "ללא עמלה" only if any of client's categories has commission data
+            if client_cats & covered_categories:
+                commission_zero_count += 1
+            elif not client_cats and covered_categories:
+                # Unknown category but we have some commission data — count conservatively
+                commission_zero_count += 1
 
     # Commission breakdown by company (scoped to production clients)
     company_totals = {}  # company → {total, clients}
