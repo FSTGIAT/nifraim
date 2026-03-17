@@ -52,21 +52,96 @@
       </Transition>
     </nav>
 
-    <!-- Floating circles (hero only) -->
-    <div class="float-circle float-circle-1" ref="fc1"></div>
-    <div class="float-circle float-circle-2" ref="fc2"></div>
-    <div class="float-circle float-circle-3" ref="fc3"></div>
-    <div class="float-circle float-circle-4" ref="fc4"></div>
-    <div class="float-circle float-circle-5" ref="fc5"></div>
-
     <!-- ================================ -->
-    <!-- HERO (unchanged)                 -->
+    <!-- CHAPTER 01: HERO — BENTO         -->
     <!-- ================================ -->
-    <section class="hero" ref="heroSection">
-      <div class="hero-bg-image"></div>
-      <div class="hero-overlay"></div>
-      <div class="hero-content">
-        <router-link to="/signup" class="btn-primary hero-cta">התחל עכשיו</router-link>
+    <section class="chapter-hero" ref="heroSection">
+      <div class="chapter-num" aria-hidden="true">01</div>
+      <div class="hero-gradient">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+      <div class="hero-inner">
+        <div class="hero-content" ref="heroContent">
+          <span class="hero-eyebrow" ref="heroEyebrow">
+            <span class="eyebrow-dot"></span>
+            מערכת AI לסוכני ביטוח
+          </span>
+          <h1 class="hero-headline" ref="heroHeadline">בדיקת עמלות נפרעים והקפים מבוסס <span class="highlight">AI</span></h1>
+          <p class="hero-sub" ref="heroSub">העלו קבצים, השוו נתונים, גלו פערים - תוך שניות</p>
+          <div class="hero-cta-wrap" ref="heroCtaWrap">
+            <router-link to="/signup" class="hero-btn">
+              התחל בחינם
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </router-link>
+            <a href="#how" class="hero-ghost" @click.prevent="scrollToSection('how')">
+              <span class="ghost-play">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </span>
+              איך זה עובד
+            </a>
+          </div>
+          <div class="hero-stats-row" ref="heroStatsRow">
+            <div class="hero-stat">
+              <div class="hero-stat-num ltr-number">95%</div>
+              <div class="hero-stat-label">חיסכון בזמן</div>
+            </div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat">
+              <div class="hero-stat-num ltr-number">11</div>
+              <div class="hero-stat-label">חברות נתמכות</div>
+            </div>
+            <div class="hero-stat-divider"></div>
+            <div class="hero-stat">
+              <div class="hero-stat-num ltr-number">3.2s</div>
+              <div class="hero-stat-label">זמן עיבוד ממוצע</div>
+            </div>
+          </div>
+          <!-- Trust strip — inside content column -->
+          <div class="hero-trust" ref="heroTrust">
+            <span class="trust-label">עובדים עם חברות הביטוח המובילות</span>
+            <div class="trust-logos">
+              <span>אקסלנס</span>
+              <span>הפניקס</span>
+              <span>מנורה</span>
+              <span>מגדל</span>
+              <span>הכשרה</span>
+              <span>כלל</span>
+              <span>איילון</span>
+              <span>אלטשולר</span>
+              <span>מור</span>
+            </div>
+          </div>
+        </div>
+        <div class="hero-visual" ref="heroVisual">
+          <div class="hero-dashboard">
+            <img src="/images/landing/success-man.jpg" alt="סוכן ביטוח מצליח עם Nifraim" width="768" height="1024">
+            <div class="hero-img-overlay"></div>
+          </div>
+          <!-- Floating stat cards -->
+          <div class="float-card float-card-1" ref="floatCard1">
+            <div class="fc-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div class="fc-value ltr-number">₪54,300</div>
+            <div class="fc-label">עמלות שנמצאו</div>
+            <div class="fc-badge ltr-number">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5H7z"/></svg>
+              +12.5%
+            </div>
+          </div>
+          <div class="float-card float-card-2" ref="floatCard2">
+            <div class="fc-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="fc-value ltr-number">3.2s</div>
+            <div class="fc-label">זמן עיבוד ממוצע</div>
+            <div class="fc-bar">
+              <div class="fc-bar-fill"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -251,11 +326,16 @@ const landingRoot = ref(null)
 const landNav = ref(null)
 const progressBar = ref(null)
 const heroSection = ref(null)
-const fc1 = ref(null)
-const fc2 = ref(null)
-const fc3 = ref(null)
-const fc4 = ref(null)
-const fc5 = ref(null)
+const heroContent = ref(null)
+const heroEyebrow = ref(null)
+const heroHeadline = ref(null)
+const heroSub = ref(null)
+const heroCtaWrap = ref(null)
+const heroStatsRow = ref(null)
+const heroVisual = ref(null)
+const floatCard1 = ref(null)
+const floatCard2 = ref(null)
+const heroTrust = ref(null)
 const chapterStats = ref(null)
 const statsWrapper = ref(null)
 const stat1 = ref(null)
@@ -360,51 +440,76 @@ onMounted(() => {
   }
   window.addEventListener('scroll', onScroll, { passive: true })
 
-  // Floating circles fade out after hero
+  // Nav starts light (hero is cream)
+  landNav.value?.classList.add('nav--light')
+
   if (!prefersReduced) {
-    ScrollTrigger.create({
-      trigger: heroSection.value,
-      start: 'top top',
-      end: 'bottom top',
-      onLeave: () => {
-        gsap.to([fc1.value, fc2.value, fc3.value, fc4.value, fc5.value], {
-          opacity: 0, duration: 0.5
-        })
-      },
-      onEnterBack: () => {
-        gsap.to([fc1.value, fc2.value, fc3.value, fc4.value, fc5.value], {
-          opacity: 1, duration: 0.5
-        })
-      }
+    // ---- CHAPTER 1: Hero Animations ----
+    gsap.set([heroEyebrow.value, heroSub.value, heroCtaWrap.value, heroStatsRow.value], { opacity: 0, y: 20 })
+    gsap.set(heroHeadline.value, { opacity: 0, y: 30 })
+    gsap.set(heroVisual.value, { opacity: 0, clipPath: 'inset(0 100% 0 0)' })
+    gsap.set([floatCard1.value, floatCard2.value], { opacity: 0, y: 30, scale: 0.9 })
+    gsap.set(heroTrust.value, { opacity: 0, y: 15 })
+
+    const heroTL = gsap.timeline({ delay: 0.3 })
+    heroTL
+      .to(heroEyebrow.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' })
+      .to(heroHeadline.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, '-=0.3')
+      .to(heroSub.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.3')
+      .to(heroCtaWrap.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.2')
+      .to(heroStatsRow.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.2')
+      .to(heroVisual.value, { opacity: 1, clipPath: 'inset(0 0% 0 0)', duration: 1.2, ease: 'power3.inOut' }, '-=0.8')
+      .to([floatCard1.value, floatCard2.value], { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.2, ease: 'back.out(1.5)' }, '-=0.5')
+      .to(heroTrust.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' }, '-=0.3')
+
+    // Parallax on hero content when scrolling out
+    gsap.to(heroContent.value, {
+      y: -60,
+      scrollTrigger: { trigger: heroSection.value, start: 'top top', end: 'bottom top', scrub: 1 }
     })
 
+    // Orb gentle floating animation
+    gsap.to('.orb-1', { y: -40, x: 20, duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+    gsap.to('.orb-2', { y: 30, x: -15, duration: 10, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+    gsap.to('.orb-3', { y: -20, x: 25, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+
     // Nav light/dark toggle per section
-    // Light sections (cream): chapters 3 (how), 5 (portal) → nav--light
-    // Dark sections: hero, chapters 2 (stats), 4 (features), 6 (cta) → no nav--light
+    // Hero (cream) + chapters 3, 5 → nav stays light (default)
+    // Dark sections: chapters 2 (stats), 4 (features), 6 (cta) → nav--dark (remove nav--light)
     const setNavLight = () => landNav.value?.classList.add('nav--light')
     const setNavDark = () => landNav.value?.classList.remove('nav--light')
 
-    // After hero → chapter 2 (dark) — nav stays dark
-    // Chapter 3 (cream) → light nav
+    // Chapter 2 (dark) → dark nav
     ScrollTrigger.create({
-      trigger: chapterHow.value,
+      trigger: chapterStats.value,
       start: 'top 50%',
       end: 'bottom 50%',
-      onEnter: setNavLight,
-      onLeaveBack: setNavDark,
-      onLeave: setNavDark,
-      onEnterBack: setNavLight,
+      onEnter: setNavDark,
+      onLeaveBack: setNavLight,
+      onLeave: setNavLight,
+      onEnterBack: setNavDark,
     })
 
-    // Chapter 5 (cream) → light nav
+    // Chapter 4 (dark) → dark nav
     ScrollTrigger.create({
-      trigger: chapterPortal.value,
+      trigger: chapterFeatures.value,
       start: 'top 50%',
       end: 'bottom 50%',
-      onEnter: setNavLight,
-      onLeaveBack: setNavDark,
-      onLeave: setNavDark,
-      onEnterBack: setNavLight,
+      onEnter: setNavDark,
+      onLeaveBack: setNavLight,
+      onLeave: setNavLight,
+      onEnterBack: setNavDark,
+    })
+
+    // Chapter 6 (dark) → dark nav
+    ScrollTrigger.create({
+      trigger: chapterCta.value,
+      start: 'top 50%',
+      end: 'bottom 50%',
+      onEnter: setNavDark,
+      onLeaveBack: setNavLight,
+      onLeave: setNavLight,
+      onEnterBack: setNavDark,
     })
 
     // ---- CHAPTER 2: Pinned Stats ----
@@ -922,150 +1027,453 @@ onBeforeUnmount(() => {
   transform: translateY(-8px);
 }
 
-/* ── Hero ── */
-.hero {
+/* ══════════════════════════════════════ */
+/* CHAPTER 1: HERO — BENTO (cream)       */
+/* ══════════════════════════════════════ */
+.chapter-hero {
   position: relative;
-  height: 100vh;
-  min-height: 600px;
-  overflow: hidden;
-  padding-top: 72px;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  overflow: hidden;
+  background: var(--cream-bg);
 }
 
-.hero-bg-image {
+.hero-gradient {
   position: absolute;
   inset: 0;
-  background: url('/images/hero-bg.png') center center / cover no-repeat;
   z-index: 0;
 }
 
-.hero-overlay {
+.hero-gradient .orb {
   position: absolute;
-  inset: 0;
-  background: rgba(10, 10, 10, 0.15);
-  z-index: 1;
-  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(120px);
+  will-change: transform;
+}
+
+.hero-gradient .orb-1 {
+  width: 600px;
+  height: 600px;
+  background: rgba(232, 102, 10, 0.1);
+  top: -20%;
+  left: -10%;
+}
+
+.hero-gradient .orb-2 {
+  width: 400px;
+  height: 400px;
+  background: rgba(232, 102, 10, 0.07);
+  bottom: 10%;
+  right: -5%;
+}
+
+.hero-gradient .orb-3 {
+  width: 350px;
+  height: 350px;
+  background: rgba(180, 140, 100, 0.08);
+  top: 40%;
+  left: 50%;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: 100%;
+  min-height: 100dvh;
 }
 
 .hero-content {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 110px 48px 80px 32px;
+  max-width: 640px;
+  margin-inline-start: auto;
+  margin-top: -300px;
 }
 
-.hero-cta {
-  position: absolute;
-  bottom: 18%;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 1.25rem;
-  font-weight: 700;
-  padding: 16px 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f57c00, #ff9800);
-  color: #fff !important;
-  text-decoration: none;
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.4);
-  cursor: pointer;
-  letter-spacing: 0.5px;
+.hero-eyebrow {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--land-orange);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(232, 102, 10, 0.08);
+  padding: 6px 16px 6px 12px;
+  border-radius: 40px;
+  border: 1px solid rgba(232, 102, 10, 0.15);
+  width: fit-content;
 }
 
-/* Use a wrapper approach: keep translateX(-50%) stable, animate via filter/box-shadow only */
-.hero-cta:hover {
-  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.5);
-  filter: brightness(1.1);
-}
-
-.hero-cta:active {
-  filter: brightness(0.95);
-}
-
-.btn-primary {
-  display: inline-block;
-  padding: 16px 40px;
+.eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--land-orange);
-  color: #0a0a0a !important;
-  border-radius: 12px;
-  font-size: 18px;
+  flex-shrink: 0;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.hero-headline {
+  font-size: clamp(36px, 5.5vw, 68px);
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: -1px;
+  color: var(--cream-text);
+}
+
+.hero-headline .highlight {
+  color: var(--land-orange);
+  position: relative;
+  display: inline-block;
+}
+
+.hero-headline .highlight::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  right: 0;
+  width: 100%;
+  height: 6px;
+  background: rgba(232, 102, 10, 0.15);
+  border-radius: 3px;
+}
+
+.hero-sub {
+  font-size: clamp(15px, 1.1vw, 18px);
+  color: var(--cream-text-muted);
+  line-height: 1.7;
+  max-width: 460px;
+}
+
+.hero-cta-wrap {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--land-orange);
+  color: #fff;
+  padding: 16px 40px;
+  border-radius: 40px;
+  font-size: 1.05rem;
   font-weight: 700;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all var(--transition-fast);
+  min-height: 54px;
   border: none;
   cursor: pointer;
+  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
 }
 
-.btn-primary:hover {
-  background: var(--land-orange-bright);
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.3);
-}
-
-.btn-primary:not(.hero-cta):hover {
+.hero-btn:hover {
+  background: var(--land-orange-deep);
   transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(232, 102, 10, 0.3);
 }
 
-/* ── Floating Circles ── */
-.float-circle {
-  position: fixed;
+.hero-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform var(--transition-fast);
+}
+
+.hero-btn:hover svg {
+  transform: translateX(-4px);
+}
+
+.hero-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px solid var(--cream-text);
+  color: var(--cream-text);
+  background: transparent;
+  padding: 16px 28px;
+  border-radius: 40px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  min-height: 52px;
+}
+
+.ghost-play {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
+  background: var(--cream-text);
+  color: var(--cream-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.ghost-play svg {
+  margin-right: -1px;
+}
+
+.hero-ghost:hover {
+  background: var(--cream-text);
+  color: var(--cream-bg);
+}
+
+.hero-ghost:hover .ghost-play {
+  background: var(--land-orange);
+  color: #fff;
+}
+
+.hero-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 16px;
+  padding: 16px 24px;
+  background: rgba(45, 37, 34, 0.03);
+  border-radius: 14px;
+  border: 1px solid rgba(45, 37, 34, 0.05);
+  width: fit-content;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.hero-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(45, 37, 34, 0.1);
+}
+
+.hero-stat-num {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--land-orange);
+  letter-spacing: -0.5px;
+}
+
+.hero-stat-label {
+  font-size: 0.72rem;
+  color: var(--cream-text-dim);
+  letter-spacing: 0.02em;
+}
+
+/* Hero Visual — Edge bleed to left */
+.hero-visual {
+  position: relative;
+  height: 100%;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+.hero-dashboard {
+  position: absolute;
+  top: 96px;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  overflow: hidden;
+  border-radius: 32px;
+  box-shadow: 0 8px 40px rgba(45, 37, 34, 0.12);
+}
+
+.hero-dashboard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, rgba(245, 240, 235, 0.3) 0%, transparent 30%),
+              linear-gradient(to top, rgba(45, 37, 34, 0.2) 0%, transparent 30%);
   pointer-events: none;
-  z-index: 0;
 }
 
-.float-circle-1 {
-  width: 260px;
-  height: 260px;
-  top: -60px;
-  right: -80px;
-  background: rgba(245, 124, 0, 0.04);
-  border: 1px solid rgba(245, 124, 0, 0.06);
-  animation: floatCircle 8s ease-in-out infinite;
+/* Floating stat cards */
+.float-card {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(45, 37, 34, 0.08);
+  border-radius: 14px;
+  padding: 16px 20px;
+  z-index: 3;
+  box-shadow: 0 16px 40px rgba(45, 37, 34, 0.1);
 }
 
-.float-circle-2 {
-  width: 180px;
-  height: 180px;
-  bottom: 120px;
-  left: -50px;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.05);
-  animation: floatCircle 6s ease-in-out infinite reverse;
+.float-card-1 {
+  top: 18%;
+  right: 8%;
+  animation: float1 6s ease-in-out infinite;
 }
 
-.float-circle-3 {
-  width: 100px;
-  height: 100px;
-  top: 35%;
+.float-card-2 {
+  bottom: 15%;
   left: 8%;
-  background: rgba(245, 124, 0, 0.05);
-  animation: floatCircle 10s ease-in-out infinite 2s;
+  animation: float2 7s ease-in-out infinite;
 }
 
-.float-circle-4 {
-  width: 140px;
-  height: 140px;
-  top: 60%;
-  right: 5%;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.04);
-  animation: floatCircle 9s ease-in-out infinite 1s;
+@keyframes float1 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+@keyframes float2 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(10px); } }
+
+.float-card .fc-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--land-orange-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
 }
 
-.float-circle-5 {
-  width: 70px;
-  height: 70px;
-  top: 15%;
-  left: 20%;
-  background: rgba(245, 124, 0, 0.06);
-  animation: floatCircle 7s ease-in-out infinite 3s reverse;
+.float-card .fc-icon svg {
+  width: 18px;
+  height: 18px;
+  color: var(--land-orange);
 }
 
-@keyframes floatCircle {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  33% { transform: translateY(-18px) rotate(2deg); }
-  66% { transform: translateY(10px) rotate(-1deg); }
+.float-card .fc-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--cream-text);
+  letter-spacing: -0.5px;
 }
+
+.float-card .fc-label {
+  font-size: 0.72rem;
+  color: var(--cream-text-dim);
+  margin-top: 2px;
+}
+
+.float-card .fc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(76, 175, 80, 0.1);
+  color: #2E7D32;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
+  margin-top: 6px;
+}
+
+.float-card .fc-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(45, 37, 34, 0.06);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.float-card .fc-bar-fill {
+  width: 85%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
+  border-radius: 2px;
+  animation: barFill 2s ease-out 1.5s both;
+}
+
+@keyframes barFill {
+  from { width: 0; }
+  to { width: 85%; }
+}
+
+/* Trust strip */
+.hero-trust {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.trust-label {
+  font-size: 0.72rem;
+  color: var(--cream-text-dim);
+  letter-spacing: 0.03em;
+}
+
+.trust-logos {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.trust-logos span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(45, 37, 34, 0.22);
+  letter-spacing: 0.01em;
+  transition: color 0.3s;
+}
+
+.trust-logos span:hover {
+  color: var(--land-orange);
+}
+
+/* Scroll indicator */
+.scroll-indicator {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 5;
+}
+
+.scroll-indicator span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--cream-text-dim);
+}
+
+.scroll-arrow {
+  width: 1px;
+  height: 40px;
+  background: linear-gradient(to bottom, var(--land-orange), transparent);
+  position: relative;
+  overflow: hidden;
+}
+
+.scroll-arrow::after {
+  content: '';
+  position: absolute;
+  top: -100%;
+  width: 100%;
+  height: 50%;
+  background: var(--land-orange);
+  animation: scrollPulse 2s ease-in-out infinite;
+}
+
+@keyframes scrollPulse { 0% { top: -50%; } 100% { top: 150%; } }
 
 /* ══════════════════════════════════════ */
 /* CHAPTER 2: PINNED STATS (dark)        */
@@ -1662,6 +2070,17 @@ onBeforeUnmount(() => {
 /* RESPONSIVE                            */
 /* ══════════════════════════════════════ */
 @media (max-width: 1024px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding-top: 120px;
+  }
+
+  .hero-visual {
+    max-width: 320px;
+    margin: 0 auto;
+  }
+
   .portal-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1731,6 +2150,47 @@ onBeforeUnmount(() => {
     grid-row: span 1;
   }
 
+  .hero-inner {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-content {
+    padding: 120px 24px 40px;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .hero-visual {
+    position: relative;
+    height: 400px;
+    min-height: auto;
+  }
+
+  .hero-dashboard {
+    border-radius: 0;
+  }
+
+  .hero-headline {
+    font-size: clamp(28px, 7vw, 42px);
+  }
+
+  .hero-stats-row {
+    gap: 16px;
+    padding: 14px 18px;
+  }
+
+  .trust-logos {
+    gap: 12px;
+  }
+
+  .trust-logos span {
+    font-size: 0.72rem;
+  }
+
+  .float-card {
+    display: none;
+  }
+
   .chapter-num {
     font-size: clamp(60px, 16vw, 120px);
   }
@@ -1743,14 +2203,38 @@ onBeforeUnmount(() => {
   .footer-links {
     justify-content: center;
   }
-
-  .float-circle-1 { width: 140px; height: 140px; }
-  .float-circle-2 { width: 100px; height: 100px; }
-  .float-circle-4 { display: none; }
-  .float-circle-5 { display: none; }
 }
 
 @media (max-width: 480px) {
+  .hero-cta-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-btn,
+  .hero-ghost {
+    justify-content: center;
+  }
+
+  .hero-stats-row {
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .hero-stat-divider {
+    width: 40px;
+    height: 1px;
+  }
+
+  .hero-trust .trust-logos {
+    gap: 8px;
+  }
+
+  .scroll-indicator {
+    display: none;
+  }
+
   .cta-headline {
     font-size: clamp(2rem, 8vw, 3rem);
   }

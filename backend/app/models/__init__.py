@@ -8,5 +8,7 @@ from app.models.company_contact import CompanyContact
 from app.models.subscription import Subscription
 from app.models.portal_link import CustomerPortalLink
 from app.models.portal_snapshot import PortalSnapshot
+from app.models.volume_commission_rate import VolumeCommissionRate
+from app.models.volume_bonus_payment import VolumeBonusPayment
 
-__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot"]
+__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment"]

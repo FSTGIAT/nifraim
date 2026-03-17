@@ -40,6 +40,19 @@
               השוואת קבצים
               <span class="tab-dot" v-if="productionStore.comparisonResult"></span>
             </button>
+            <button
+              class="inner-tab"
+              :class="{ active: innerTab === 'volume' }"
+              @click="innerTab = 'volume'"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20V10"/>
+                <path d="M18 20V4"/>
+                <path d="M6 20v-4"/>
+              </svg>
+              השוואה מול היקפים
+              <span class="tab-dot" v-if="volumeStore.comparisonResult"></span>
+            </button>
           </div>
 
           <!-- File pill -->
@@ -110,6 +123,11 @@
             @reset="productionStore.resetComparison()"
           />
         </div>
+
+        <!-- Tab content: Volume -->
+        <div v-if="innerTab === 'volume'">
+          <VolumeComparison />
+        </div>
       </template>
     </template>
 
@@ -143,11 +161,14 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
+import { useVolumeStore } from '../../stores/volume.js'
 import ProductionUploader from './ProductionUploader.vue'
 import ProductionDashboard from './ProductionDashboard.vue'
 import ProductionComparison from './ProductionComparison.vue'
+import VolumeComparison from './VolumeComparison.vue'
 
 const productionStore = useProductionStore()
+const volumeStore = useVolumeStore()
 const innerTab = ref('insights')
 const fileInputRef = ref(null)
 const showCompareModal = ref(false)

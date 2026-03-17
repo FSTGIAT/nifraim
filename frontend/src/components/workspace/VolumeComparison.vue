@@ -1,0 +1,643 @@
+<template>
+  <div class="volume-comparison">
+    <!-- No production file -->
+    <div v-if="!hasProduction" class="empty-state">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <p>יש להעלות קובץ פרודוקציה לפני השוואה מול היקפים</p>
+    </div>
+
+    <!-- No result: show uploader -->
+    <div v-else-if="!volumeStore.comparisonResult && !volumeStore.loading" class="upload-section">
+      <div
+        class="drop-zone"
+        :class="{ dragging }"
+        @dragenter.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @dragover.prevent
+        @drop.prevent="onDrop"
+        @click="$refs.fileInput.click()"
+      >
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p class="drop-title">העלה דוח היקפים</p>
+        <p class="drop-sub">גרור קובץ xlsx לכאן או לחץ לבחירה</p>
+      </div>
+      <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileSelect" style="display:none" />
+
+      <!-- Password modal -->
+      <Teleport to="body">
+        <Transition name="modal">
+          <div v-if="showPassword" class="pw-overlay" @click.self="showPassword = false">
+            <div class="pw-card">
+              <h4>הקובץ מוגן בסיסמה</h4>
+              <input v-model="password" type="password" class="pw-input" placeholder="סיסמה" @keyup.enter="submitWithPassword" />
+              <div class="pw-actions">
+                <button class="btn-primary" @click="submitWithPassword">אישור</button>
+                <button class="btn-ghost" @click="showPassword = false; pendingFile = null">ביטול</button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+    </div>
+
+    <!-- Loading -->
+    <div v-else-if="volumeStore.loading" class="loading-state">
+      <div class="loader">
+        <div class="loader-ring"></div>
+        <div class="loader-ring delay"></div>
+      </div>
+      <span>מנתח דוח היקפים...</span>
+    </div>
+
+    <!-- Results -->
+    <div v-else-if="volumeStore.comparisonResult" class="results-section">
+      <div class="results-header">
+        <h4>השוואה מול היקפים</h4>
+        <button class="btn-back" @click="volumeStore.reset()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+          חזרה
+        </button>
+      </div>
+
+      <!-- Summary KPI strip -->
+      <div class="summary-strip">
+        <div class="summary-badge badge-green" @click="openModal('matched')">
+          <span class="ltr-number">{{ result.summary.matched_count }}</span>
+          <span>תואמים</span>
+        </div>
+        <div class="summary-badge badge-amber" @click="openModal('production_only')">
+          <span class="ltr-number">{{ result.summary.in_production_only_count }}</span>
+          <span>בפרודוקציה בלבד</span>
+        </div>
+        <div class="summary-badge badge-blue" @click="openModal('volume_only')">
+          <span class="ltr-number">{{ result.summary.in_volume_only_count }}</span>
+          <span>בהיקפים בלבד</span>
+        </div>
+        <div class="summary-badge badge-purple" @click="openModal('recruits')">
+          <span class="ltr-number">{{ result.summary.in_recruits_not_volume_count }}</span>
+          <span>מגויסים חסרים</span>
+        </div>
+      </div>
+
+      <!-- Volume totals -->
+      <div class="volume-totals">
+        <div class="vt-card">
+          <span class="vt-label">סה"כ הפקדות</span>
+          <span class="vt-value ltr-number">{{ formatCurrency(result.summary.total_volume_deposits) }}</span>
+        </div>
+        <div class="vt-card">
+          <span class="vt-label">תפוקה לאחר ביטולים</span>
+          <span class="vt-value ltr-number">{{ formatCurrency(result.summary.total_volume_production_after_cancel) }}</span>
+        </div>
+        <div class="vt-card">
+          <span class="vt-label">לקוחות בהיקפים</span>
+          <span class="vt-value ltr-number">{{ result.summary.total_volume_clients }}</span>
+        </div>
+        <div class="vt-card">
+          <span class="vt-label">לקוחות בפרודוקציה</span>
+          <span class="vt-value ltr-number">{{ result.summary.total_production_clients }}</span>
+        </div>
+      </div>
+
+      <!-- Donut chart -->
+      <div class="chart-row">
+        <div class="chart-card">
+          <h5>התפלגות לקוחות</h5>
+          <apexchart
+            v-if="donutSeries.some(v => v > 0)"
+            type="donut"
+            :options="donutOptions"
+            :series="donutSeries"
+            height="260"
+            @dataPointSelection="onChartClick"
+          />
+        </div>
+      </div>
+
+      <!-- Volume Bonus section -->
+      <VolumeBonus />
+    </div>
+
+    <!-- ─── Drill-down Modal ─── -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="modalCategory" class="fm-overlay" @click.self="modalCategory = null">
+          <div class="fm-card">
+            <div class="fm-header">
+              <h4>{{ filterLabel }}</h4>
+              <div class="fm-header-right">
+                <span class="fm-count ltr-number">{{ filteredClients.length }} לקוחות</span>
+                <button class="fm-close" @click="modalCategory = null">&times;</button>
+              </div>
+            </div>
+
+            <!-- Search -->
+            <div class="fm-search">
+              <input v-model="searchQuery" type="text" placeholder="חיפוש לפי שם או ת.ז..." class="fm-search-input" />
+            </div>
+
+            <!-- Table -->
+            <div class="fm-table-scroll">
+              <table v-if="searchedClients.length > 0">
+                <thead>
+                  <tr>
+                    <th>ת.ז</th>
+                    <th>שם</th>
+                    <th v-if="modalCategory !== 'recruits'">חברה</th>
+                    <th v-if="modalCategory === 'matched' || modalCategory === 'production_only'" class="num">פרמיה</th>
+                    <th v-if="modalCategory === 'matched' || modalCategory === 'production_only'" class="num">צבירה</th>
+                    <th v-if="modalCategory === 'matched' || modalCategory === 'volume_only'" class="num">הפקדה</th>
+                    <th v-if="modalCategory === 'matched' || modalCategory === 'volume_only'" class="num">תפוקה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="c in paginatedClients" :key="c.id_number">
+                    <td class="ltr-number">{{ c.id_number }}</td>
+                    <td>{{ c.name }}</td>
+                    <td v-if="modalCategory !== 'recruits'">{{ c.company || '—' }}</td>
+                    <td v-if="modalCategory === 'matched' || modalCategory === 'production_only'" class="num">
+                      <span class="ltr-number">{{ c.premium > 0 ? c.premium.toLocaleString() : '—' }}</span>
+                    </td>
+                    <td v-if="modalCategory === 'matched' || modalCategory === 'production_only'" class="num">
+                      <span class="ltr-number">{{ c.accumulation > 0 ? c.accumulation.toLocaleString() : '—' }}</span>
+                    </td>
+                    <td v-if="modalCategory === 'matched' || modalCategory === 'volume_only'" class="num">
+                      <span class="ltr-number">{{ (c.volume_deposit || 0) > 0 ? c.volume_deposit.toLocaleString() : '—' }}</span>
+                    </td>
+                    <td v-if="modalCategory === 'matched' || modalCategory === 'volume_only'" class="num">
+                      <span class="ltr-number">{{ (c.volume_production_after_cancel || 0) > 0 ? c.volume_production_after_cancel.toLocaleString() : '—' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="empty-table">אין לקוחות בקטגוריה זו</div>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="searchedClients.length > pageSize" class="fm-pagination">
+              <button :disabled="page === 1" @click="page--">&rarr;</button>
+              <span class="ltr-number">{{ page }} / {{ totalPages }}</span>
+              <button :disabled="page >= totalPages" @click="page++">&larr;</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { useVolumeStore } from '../../stores/volume.js'
+import { useProductionStore } from '../../stores/production.js'
+import VolumeBonus from './VolumeBonus.vue'
+
+const volumeStore = useVolumeStore()
+const productionStore = useProductionStore()
+
+const dragging = ref(false)
+const showPassword = ref(false)
+const password = ref('')
+const pendingFile = ref(null)
+const modalCategory = ref(null)
+const searchQuery = ref('')
+const page = ref(1)
+const pageSize = 50
+
+const hasProduction = computed(() => !!productionStore.currentFile)
+const result = computed(() => volumeStore.comparisonResult)
+
+const filterLabel = computed(() => {
+  const labels = {
+    matched: 'לקוחות תואמים',
+    production_only: 'בפרודוקציה בלבד',
+    volume_only: 'בהיקפים בלבד',
+    recruits: 'מגויסים חסרים בהיקפים',
+  }
+  return labels[modalCategory.value] || ''
+})
+
+const filteredClients = computed(() => {
+  if (!result.value || !modalCategory.value) return []
+  const map = {
+    matched: result.value.matched,
+    production_only: result.value.in_production_only,
+    volume_only: result.value.in_volume_only,
+    recruits: result.value.in_recruits_not_volume,
+  }
+  return map[modalCategory.value] || []
+})
+
+const searchedClients = computed(() => {
+  if (!searchQuery.value) return filteredClients.value
+  const q = searchQuery.value.trim().toLowerCase()
+  return filteredClients.value.filter(c =>
+    (c.id_number && c.id_number.includes(q)) ||
+    (c.name && c.name.toLowerCase().includes(q))
+  )
+})
+
+const totalPages = computed(() => Math.ceil(searchedClients.value.length / pageSize))
+const paginatedClients = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return searchedClients.value.slice(start, start + pageSize)
+})
+
+function openModal(category) {
+  modalCategory.value = category
+  searchQuery.value = ''
+  page.value = 1
+}
+
+watch(modalCategory, () => { page.value = 1 })
+watch(searchQuery, () => { page.value = 1 })
+
+const donutSeries = computed(() => {
+  if (!result.value) return [0, 0, 0, 0]
+  const s = result.value.summary
+  return [s.matched_count, s.in_production_only_count, s.in_volume_only_count, s.in_recruits_not_volume_count]
+})
+
+const donutCategories = ['matched', 'production_only', 'volume_only', 'recruits']
+
+function onChartClick(e, chart, opts) {
+  const idx = opts.dataPointIndex
+  if (idx >= 0 && idx < donutCategories.length) {
+    openModal(donutCategories[idx])
+  }
+}
+
+const donutOptions = computed(() => ({
+  chart: { type: 'donut', fontFamily: 'Heebo, sans-serif', events: {} },
+  labels: ['תואמים', 'פרודוקציה בלבד', 'היקפים בלבד', 'מגויסים חסרים'],
+  colors: ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'],
+  legend: { position: 'bottom', fontSize: '12px' },
+  dataLabels: { enabled: true, formatter: (val) => val.toFixed(0) + '%' },
+  plotOptions: { pie: { donut: { size: '55%' }, expandOnClick: false } },
+  states: { hover: { filter: { type: 'darken', value: 0.85 } } },
+  tooltip: { style: { fontSize: '12px' } },
+}))
+
+function formatCurrency(val) {
+  if (!val) return '0'
+  return '₪' + Math.round(val).toLocaleString()
+}
+
+function onDrop(e) {
+  dragging.value = false
+  const files = e.dataTransfer?.files
+  if (files?.[0]) handleFile(files[0])
+}
+
+function onFileSelect(e) {
+  const files = e.target.files
+  if (files?.[0]) handleFile(files[0])
+  e.target.value = ''
+}
+
+function handleFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  if (ext !== 'xlsx' && ext !== 'xls') return
+  pendingFile.value = file
+  volumeStore.uploadAndCompare(file).catch((err) => {
+    if (err?.response?.status === 400 && err.response.data?.detail?.includes('סיסמה')) {
+      showPassword.value = true
+    }
+  })
+}
+
+function submitWithPassword() {
+  if (pendingFile.value && password.value) {
+    showPassword.value = false
+    volumeStore.uploadAndCompare(pendingFile.value, password.value)
+    password.value = ''
+  }
+}
+</script>
+
+<style scoped>
+.volume-comparison {
+  animation: slideUp 0.4s var(--transition);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state svg { margin-bottom: 12px; opacity: 0.5; }
+.empty-state p { font-size: 14px; }
+
+/* Upload */
+.upload-section { max-width: 480px; margin: 0 auto; }
+
+.drop-zone {
+  border: 2px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  color: var(--text-muted);
+}
+
+.drop-zone:hover, .drop-zone.dragging {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.drop-title { font-size: 15px; font-weight: 700; margin: 12px 0 4px; color: var(--text-secondary); }
+.drop-sub { font-size: 12px; }
+
+/* Loading */
+.loading-state {
+  text-align: center;
+  padding: 64px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loader {
+  width: 40px; height: 40px;
+  position: relative;
+  margin: 0 auto 16px;
+}
+
+.loader-ring {
+  position: absolute; inset: 0;
+  border: 2px solid transparent;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loader-ring.delay {
+  inset: 6px;
+  border-top-color: var(--accent-cyan);
+  animation-duration: 1.5s;
+  animation-direction: reverse;
+}
+
+/* Results */
+.results-section { display: flex; flex-direction: column; gap: 20px; }
+
+.results-header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.results-header h4 { font-size: 17px; font-weight: 700; color: var(--text); }
+
+.btn-back {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 8px;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  color: var(--text-secondary); cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-back:hover { background: var(--bg); color: var(--text); }
+
+/* Summary strip */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.summary-badge {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 8px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: all 0.25s;
+  border: 2px solid transparent;
+}
+
+.summary-badge:hover { transform: translateY(-2px); }
+.summary-badge .ltr-number { font-size: 22px; font-weight: 800; direction: ltr; unicode-bidi: embed; display: inline-block; }
+.summary-badge span:last-child { font-size: 11px; font-weight: 600; margin-top: 2px; }
+
+.badge-green { background: var(--green-light); color: var(--accent-emerald); }
+.badge-amber { background: var(--amber-light); color: var(--accent-amber); }
+.badge-blue { background: rgba(59, 130, 246, 0.08); color: #3b82f6; }
+.badge-purple { background: rgba(139, 92, 246, 0.08); color: #8b5cf6; }
+
+/* Volume totals */
+.volume-totals {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+}
+
+.vt-card {
+  display: flex; flex-direction: column;
+  padding: 14px; border-radius: var(--radius-sm);
+  background: var(--card-bg); border: 1px solid var(--glass-border);
+}
+
+.vt-label { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; }
+.vt-value { font-size: 16px; font-weight: 700; color: var(--text); }
+
+/* Chart */
+.chart-row { display: grid; grid-template-columns: 1fr; }
+
+.chart-card {
+  background: var(--card-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg); padding: 20px;
+}
+
+.chart-card h5 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+.chart-card :deep(.apexcharts-pie-area) { cursor: pointer; }
+
+/* Table */
+.client-table-section {
+  background: var(--card-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg); padding: 20px;
+}
+
+.table-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+
+.table-header h5 { font-size: 14px; font-weight: 700; color: var(--text); }
+.table-count { font-size: 12px; color: var(--text-muted); }
+
+.table-scroll { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead { background: var(--bg); }
+
+th {
+  padding: 8px 6px; text-align: right; font-weight: 600;
+  color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+
+th.num, td.num { text-align: left; }
+
+td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+
+.ltr-number { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+
+.empty-table {
+  text-align: center; padding: 24px;
+  color: var(--text-muted); font-size: 13px;
+}
+
+.pagination {
+  display: flex; justify-content: center; align-items: center;
+  gap: 12px; margin-top: 12px;
+}
+
+.pagination button {
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  font-family: inherit; color: var(--text-secondary);
+}
+
+.pagination button:disabled { opacity: 0.3; cursor: default; }
+
+/* ── Drill-down Modal ── */
+.fm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1010; backdrop-filter: blur(4px);
+}
+
+.fm-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  width: 90%; max-width: 800px; max-height: 85vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+}
+
+.fm-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fm-header h4 { font-size: 16px; font-weight: 700; color: var(--text); }
+
+.fm-header-right { display: flex; align-items: center; gap: 12px; }
+.fm-count { font-size: 12px; color: var(--text-muted); }
+
+.fm-close {
+  width: 28px; height: 28px;
+  border-radius: 50%; border: none;
+  background: var(--bg-surface);
+  color: var(--text-muted); font-size: 18px;
+  cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+
+.fm-close:hover { background: var(--red-light); color: var(--red); }
+
+.fm-search { padding: 12px 24px 0; }
+
+.fm-search-input {
+  width: 100%; padding: 9px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px; font-size: 13px;
+  font-family: 'Heebo', sans-serif;
+  background: var(--bg-surface); color: var(--text);
+}
+
+.fm-search-input:focus { outline: none; border-color: var(--primary); }
+
+.fm-table-scroll {
+  flex: 1; overflow: auto;
+  padding: 12px 24px;
+}
+
+.fm-pagination {
+  display: flex; justify-content: center; align-items: center;
+  gap: 12px; padding: 12px 24px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fm-pagination button {
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  font-family: inherit; color: var(--text-secondary);
+}
+
+.fm-pagination button:disabled { opacity: 0.3; cursor: default; }
+
+/* Password modal */
+.pw-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45); display: flex;
+  align-items: center; justify-content: center;
+  z-index: 1010; backdrop-filter: blur(4px);
+}
+
+.pw-card {
+  background: var(--card-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg); padding: 28px;
+  max-width: 340px; width: 90%; text-align: center;
+}
+
+.pw-card h4 { font-size: 15px; font-weight: 700; margin-bottom: 14px; color: var(--text); }
+
+.pw-input {
+  width: 100%; padding: 10px; border: 1px solid var(--glass-border);
+  border-radius: 8px; font-size: 14px; font-family: inherit;
+  background: var(--bg-surface); color: var(--text);
+  margin-bottom: 14px; text-align: center;
+}
+
+.pw-input:focus { outline: none; border-color: var(--primary); }
+
+.pw-actions { display: flex; gap: 8px; justify-content: center; }
+
+.btn-primary {
+  background: var(--primary); color: #fff; border: none;
+  border-radius: 8px; padding: 8px 20px; font-size: 13px;
+  font-weight: 700; font-family: inherit; cursor: pointer;
+}
+
+.btn-ghost {
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px; padding: 8px 20px; font-size: 13px;
+  font-weight: 600; font-family: inherit; cursor: pointer;
+}
+
+/* Modal transition */
+.modal-enter-active { animation: modalIn 0.3s var(--transition); }
+.modal-leave-active { animation: modalIn 0.2s var(--transition) reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .summary-strip { grid-template-columns: repeat(2, 1fr); }
+  .volume-totals { grid-template-columns: repeat(2, 1fr); }
+}
+</style>

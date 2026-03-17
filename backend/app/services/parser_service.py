@@ -19,6 +19,8 @@ from app.utils.hebrew_mappings import (
     CLAL_HEALTH_NIFRAIM_COLUMNS,
     MIGDAL_NIFRAIM_COLUMNS,
     AYALON_NIFRAIM_COLUMNS,
+    VOLUME_REPORT_COLUMNS,
+    VOLUME_RATES_COLUMNS,
     AGENT_TRACKING_SIGNATURE,
     COMPANY_REPORT_SIGNATURE,
     PHOENIX_COMMISSION_SIGNATURE,
@@ -33,6 +35,7 @@ from app.utils.hebrew_mappings import (
     CLAL_HEALTH_NIFRAIM_SIGNATURE,
     MIGDAL_NIFRAIM_SIGNATURE,
     AYALON_NIFRAIM_SIGNATURE,
+    VOLUME_REPORT_SIGNATURE,
     HEADER_SCAN_KEYWORDS,
     CANCELLATION_KEYWORDS,
 )
@@ -53,6 +56,8 @@ def detect_format(columns: list[str]) -> str:
     """Detect file format based on column headers."""
     col_set = set(columns)
     # Check new formats first (more specific signatures)
+    if col_set & VOLUME_REPORT_SIGNATURE:
+        return "volume_report"
     if col_set & PRODUCTION_FILE_SIGNATURE:
         return "production"
     if col_set & NIFRAIM_REPORT_SIGNATURE:
@@ -263,6 +268,38 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                 df = df.iloc[row_idx + 1:].reset_index(drop=True)
                 file_format = detect_format(df.columns.tolist())
                 break
+
+    if file_format == "volume_report":
+        return _parse_volume_report(df, file_bytes=raw, engine=engine)
+
+    # If sheet 0 didn't match volume_report, check other sheets (multi-sheet volume files)
+    if file_format == "unknown" and ext == "xlsx":
+        try:
+            buf.seek(0)
+            xls = pd.ExcelFile(buf, engine=engine)
+            if len(xls.sheet_names) > 1:
+                for sheet_idx, sname in enumerate(xls.sheet_names[1:], 1):
+                    try:
+                        sdf = pd.read_excel(xls, sheet_name=sname)
+                        sdf = sdf.dropna(how="all").reset_index(drop=True)
+                        sdf.columns = [str(c).strip() for c in sdf.columns]
+                        fmt = detect_format(sdf.columns.tolist())
+                        if fmt == "unknown":
+                            for ri in range(min(10, len(sdf))):
+                                rv = [str(v).strip() if pd.notna(v) else "" for v in sdf.iloc[ri]]
+                                rs = set(rv)
+                                if rs & HEADER_SCAN_KEYWORDS:
+                                    sdf.columns = [v if v else f"col_{i}" for i, v in enumerate(rv)]
+                                    sdf = sdf.iloc[ri + 1:].reset_index(drop=True)
+                                    fmt = detect_format(sdf.columns.tolist())
+                                    break
+                        if fmt == "volume_report":
+                            return _parse_volume_report(sdf, file_bytes=raw, engine=engine,
+                                                        standard_sheet_idx=sheet_idx)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
     if file_format == "agent_tracking":
         return _parse_agent_tracking(df)
@@ -1057,6 +1094,283 @@ def _parse_ayalon_nifraim(df: pd.DataFrame) -> dict:
         "company_source": "איילון",
         "records": records,
     }
+
+
+def _parse_volume_report(df: pd.DataFrame, file_bytes: bytes = None, engine: str = "openpyxl",
+                         standard_sheet_idx: int = 0) -> dict:
+    """Parse volume report (דוח היקפים).
+
+    The standard sheet has the אקסלנס format with רמת גורם.
+    Additional sheets may contain other companies (הראל, מור, מנורה, etc.)
+    with different column layouts — parsed separately.
+    Returns in-memory data (NOT inserted into client_records).
+    """
+    # Parse the standard sheet
+    clients, agency_rates, summary_info = _parse_volume_sheet_standard(df)
+
+    # Parse all other sheets from the same file
+    if file_bytes:
+        try:
+            buf = io.BytesIO(file_bytes)
+            xls = pd.ExcelFile(buf, engine=engine)
+            for idx, sheet_name in enumerate(xls.sheet_names):
+                if idx == standard_sheet_idx:
+                    continue  # skip the standard-format sheet
+                try:
+                    sheet_df = pd.read_excel(xls, sheet_name=sheet_name)
+                    sheet_df = sheet_df.dropna(how="all").reset_index(drop=True)
+                    extra_clients = _parse_volume_sheet_other(sheet_df, sheet_name)
+                    clients.extend(extra_clients)
+                except Exception:
+                    pass  # skip unparseable sheets
+        except Exception:
+            pass
+
+    total_deposits = sum(c.get("deposit_amount") or 0 for c in clients)
+    total_production_after_cancel = sum(c.get("production_after_cancel") or 0 for c in clients)
+
+    return {
+        "format": "volume_report",
+        "company_source": None,
+        "records": [],  # Not inserted into DB
+        "volume_data": {
+            "summary": {
+                "agent_name": summary_info.get("agent_name"),
+                "total_deposits": round(total_deposits, 2),
+                "total_production_after_cancel": round(total_production_after_cancel, 2),
+                "client_count": len(clients),
+                "unique_clients": len(set(c.get("id_number", "") for c in clients)),
+            },
+            "clients": clients,
+            "agency_rates": agency_rates,
+        },
+    }
+
+
+def _parse_volume_sheet_standard(df: pd.DataFrame) -> tuple:
+    """Parse the standard אקסלנס-format volume sheet (with רמת גורם column)."""
+    summary_info = {}
+
+    # Check if headers are still buried (not yet reassigned by parse_excel)
+    if "רמת גורם" not in df.columns and "תפוקה לאחר ביטולי שנה א" not in df.columns:
+        for row_idx in range(min(10, len(df))):
+            row_vals = [str(v).strip() if pd.notna(v) else "" for v in df.iloc[row_idx]]
+            if "רמת גורם" in row_vals or "תפוקה לאחר ביטולי שנה א" in row_vals:
+                for sum_idx in range(row_idx):
+                    sum_vals = [str(v).strip() if pd.notna(v) else "" for v in df.iloc[sum_idx]]
+                    for v in sum_vals:
+                        if v and v not in ("nan", "None", "") and len(v) > 2:
+                            if any('\u0590' <= ch <= '\u05FF' for ch in v):
+                                summary_info["agent_name"] = v
+                                break
+                    if summary_info.get("agent_name"):
+                        break
+                df.columns = [v if v else f"col_{i}" for i, v in enumerate(row_vals)]
+                df = df.iloc[row_idx + 1:].reset_index(drop=True)
+                break
+
+    all_rows = []
+    agency_rates = {}
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in VOLUME_REPORT_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("deposit_amount", "production_after_cancel",
+                                 "rate_per_million", "final_entitlement"):
+                    record[eng_field] = parse_numeric(val)
+                elif eng_field == "transfer_date":
+                    record[eng_field] = parse_date(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Clean id_number
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            id_str = id_str.lstrip('0') or '0'
+            record["id_number"] = id_str
+
+        # Clean fund_policy_number
+        if record.get("fund_policy_number"):
+            fpn = str(record["fund_policy_number"])
+            if fpn.endswith(".0"):
+                fpn = fpn[:-2]
+            record["fund_policy_number"] = fpn
+
+        factor_level = record.get("factor_level", "")
+
+        # Extract agency-level rate_per_million
+        if factor_level and "סוכנות" in factor_level:
+            company = record.get("product_type") or record.get("product") or ""
+            rpm = record.get("rate_per_million")
+            if company and rpm:
+                agency_rates[company] = rpm
+
+        # Keep agent-level rows for client data.
+        # Prefer "סוכן" (agent) rows; if none exist, fall back to "סוכנות" (agency) rows.
+        # Note: ן (nun sofit) ≠ נ (nun), so "סוכן" is NOT a substring of "סוכנות".
+        is_agent = factor_level and "סוכן" in factor_level
+        is_agency = factor_level and "סוכנות" in factor_level
+        if is_agent or is_agency:
+            full_name = record.pop("full_name", None)
+            if full_name and isinstance(full_name, str) and full_name not in ("nan", "None"):
+                parts = full_name.strip().split(maxsplit=1)
+                record["first_name"] = parts[0] if parts else None
+                record["last_name"] = parts[1] if len(parts) > 1 else None
+                record["full_name"] = full_name.strip()
+            else:
+                record["full_name"] = None
+
+            if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+                record["_is_agent"] = is_agent
+                all_rows.append(record)
+
+    # If we have agent-level rows, use only those. Otherwise use all (agency) rows.
+    has_agent_rows = any(r.get("_is_agent") for r in all_rows)
+    if has_agent_rows:
+        clients = [r for r in all_rows if r.get("_is_agent")]
+    else:
+        clients = all_rows
+    # Clean up internal flag
+    for c in clients:
+        c.pop("_is_agent", None)
+
+    # Fallback: extract agent name from data
+    if not summary_info.get("agent_name") and clients:
+        agent_name_col = "שם סוכן מוכר"
+        if agent_name_col in df.columns and len(df) > 0:
+            for _, row in df.iterrows():
+                fl = str(row.get("רמת גורם", "")).strip()
+                if "סוכן" in fl and "סוכנות" not in fl:
+                    val = row.get(agent_name_col)
+                    if pd.notna(val) and str(val).strip():
+                        summary_info["agent_name"] = str(val).strip()
+                        break
+
+    return clients, agency_rates, summary_info
+
+
+def _parse_volume_sheet_other(df: pd.DataFrame, sheet_name: str) -> list:
+    """Parse a non-standard volume sheet (הראל, מור, מנורה, ילין, etc.).
+
+    Each company has different column names. We detect and map them generically.
+    The sheet_name is used as the company/product_type.
+    """
+    # Find header row: scan first 10 rows for a row with ID-like column
+    id_col_names = {"ת.ז עמית", "ת.ז. עמית", "תז עמית", "זהות לקוח", "מס.זהות",
+                     "מספר זהות", "ת.ז לקוח", "תז לקוח", "ת.ז מבוטח"}
+    name_col_names = {"שם עמית", "שם לקוח", "שם מבוטח"}
+    deposit_col_names = {"סכום פעולה ב-₪", "סכום תנועת הפקדה", "סכום הפקדה",
+                         "סכום העברה בפועל", "פרמיה לתגמול חודשי", "פרמיה לא לתגמול חודשי",
+                         "נטו", "סהכ תפוקה לתגמול", "הפקדה חד פעמית",
+                         "פרמיה נמדדת", "סהכ פרמיה לתגמול",
+                         "תנועות העברה פנימה לפי תאריך הצת",
+                         "תנועות העברה פנימה לפי תאריך הצטרפות"}
+
+    header_idx = None
+    for i in range(min(10, len(df))):
+        row_vals = set(str(v).strip() if pd.notna(v) else "" for v in df.iloc[i])
+        if row_vals & id_col_names:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        return []
+
+    # Reassign columns
+    row_vals = [str(v).strip() if pd.notna(v) else f"col_{j}" for j, v in enumerate(df.iloc[header_idx])]
+    df.columns = row_vals
+    df = df.iloc[header_idx + 1:].reset_index(drop=True)
+
+    # Find the actual column names in this sheet
+    col_set = set(df.columns)
+    id_col = next((c for c in id_col_names if c in col_set), None)
+    name_col = next((c for c in name_col_names if c in col_set), None)
+    deposit_col = next((c for c in deposit_col_names if c in col_set), None)
+    product_col = next((c for c in ("סוג מוצר", "סוג קופה", "שם מוצר", "סוג קופה מעבירה") if c in col_set), None)
+
+    if not id_col:
+        return []
+
+    clients = []
+    for _, row in df.iterrows():
+        idn = row.get(id_col)
+        if pd.isna(idn):
+            continue
+        id_str = str(idn).strip()
+        if id_str.endswith(".0"):
+            id_str = id_str[:-2]
+        id_str = id_str.lstrip('0') or '0'
+        if not id_str or id_str in ("nan", "None", ""):
+            continue
+
+        name = str(row.get(name_col, "")).strip() if name_col else None
+        if name in ("nan", "None"):
+            name = None
+
+        deposit = parse_numeric(row.get(deposit_col)) if deposit_col else 0
+
+        product = str(row.get(product_col, "")).strip() if product_col else None
+        if product in ("nan", "None", ""):
+            product = None
+
+        record = {
+            "id_number": id_str,
+            "full_name": name,
+            "first_name": name.split()[0] if name and " " in name else name,
+            "last_name": name.split(maxsplit=1)[1] if name and " " in name else None,
+            "product_type": sheet_name,  # Use sheet name as company
+            "product": product,
+            "deposit_amount": deposit,
+            "production_after_cancel": deposit,  # best estimate: deposit ≈ production
+        }
+        clients.append(record)
+
+    return clients
+
+
+def parse_volume_rates(file_bytes: bytes, filename: str, password: str | None = None) -> list[dict]:
+    """Parse volume commission rates from Excel file."""
+    raw = file_bytes
+    if password:
+        raw = decrypt_xls(file_bytes, password)
+
+    ext = filename.rsplit(".", 1)[-1].lower()
+    engine = "openpyxl" if ext == "xlsx" else "xlrd"
+    buf = io.BytesIO(raw)
+    df = pd.read_excel(buf, engine=engine)
+
+    df = df.dropna(how="all").reset_index(drop=True)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # If all columns are "Unnamed", reassign from row 0
+    if all(c.startswith("Unnamed") for c in df.columns):
+        new_headers = [str(v).strip() if pd.notna(v) else f"col_{i}" for i, v in enumerate(df.iloc[0])]
+        df.columns = new_headers
+        df = df.iloc[1:].reset_index(drop=True)
+
+    rates = []
+    for _, row in df.iterrows():
+        record = {}
+        for heb_col, eng_field in VOLUME_RATES_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("nifraim_rate", "volume_rate_per_million",
+                                 "pension_accumulation", "changed_percent",
+                                 "conversion_to_annuity"):
+                    record[eng_field] = parse_numeric(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Skip rows without company_name
+        if record.get("company_name") and record["company_name"] not in ("nan", "None", ""):
+            rates.append(record)
+
+    return rates
 
 
 def _parse_generic(df: pd.DataFrame) -> dict:

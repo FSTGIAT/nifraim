@@ -437,6 +437,8 @@ Company names are dynamic. New companies appear automatically in filters and cha
 | **Password-protected .xls** | Use `decrypt_xls()` with msoffcrypto |
 | **Vite orphaned `-webkit-` CSS** | Old dark-theme artifacts — delete standalone `-webkit-` lines |
 | **Node 18 compatibility** | Use Vite 5, not Vite 7+ (requires Node 20) |
+| **Leading zeros in IDs** | Volume reports have `058661554`, production stores `58661554`. Always `lstrip('0')` |
+| **Multi-sheet Excel files** | Volume reports have multiple sheets per company. Use `pd.ExcelFile` + iterate `sheet_names` |
 
 ---
 
@@ -455,6 +457,63 @@ Company names are dynamic. New companies appear automatically in filters and cha
 | `migdal_nifraim` | מגדל (Migdal) | xlsx | `{"פרמיה משולמת", "ת.ז מבוטח"}` |
 | `ayalon_nifraim` | איילון (Ayalon) | xlsx | `{"פרמיה נפרעת", "סך עמלת סוכן"}` |
 | `production` | Agent production | xlsx | `{"תאריך הצטרפות", "סטטוס מוצר"}` |
+| `volume_report` | דוח היקפים (multi-sheet) | xlsx | `{"תפוקה לאחר ביטולי שנה א", "רמת גורם"}` |
+
+---
+
+## Volume Report (דוח היקפים) — Multi-Sheet Parsing
+
+Volume reports are **multi-sheet Excel files**. Each sheet is a different company with a different column layout. The parser reads ALL sheets.
+
+### Sheet Structure
+- **Sheet 1 (e.g., "פניקס גמל")**: Standard format with `רמת גורם` column. Has agent+agency duplicate rows — filter by `רמת גורם == 'סוכן'`. Detected via `VOLUME_REPORT_SIGNATURE`.
+- **Other sheets (e.g., "הראל", "מור קופג", "מנורה", "ילין גמל")**: Each has unique columns. Parsed by `_parse_volume_sheet_other()` which auto-detects ID/name/deposit columns.
+
+### Column Detection for Other Sheets
+ID columns: `ת.ז עמית`, `ת.ז. עמית`, `תז עמית`, `זהות לקוח`, `מס.זהות`, `ת.ז לקוח`, `תז לקוח`, `ת.ז מבוטח`
+Name columns: `שם עמית`, `שם לקוח`, `שם מבוטח`
+Deposit columns: `סכום פעולה ב-₪`, `סכום תנועת הפקדה`, `סכום העברה בפועל`, `נטו`, `סהכ תפוקה לתגמול`, `הפקדה חד פעמית`, `פרמיה נמדדת`, `סהכ פרמיה לתגמול`, `תנועות העברה פנימה לפי תאריך הצטרפות`
+Product columns: `סוג מוצר`, `סוג קופה`, `שם מוצר`, `סוג קופה מעבירה`
+
+The **sheet name** is used as `product_type` for non-standard sheets (e.g., "מור קופג", "מנורה").
+
+### Data Flow
+```
+Volume file uploaded → parse_excel() detects volume_report from sheet 0
+  → _parse_volume_report(df, file_bytes, engine)
+     → _parse_volume_sheet_standard(df)  — sheet 0 (אקסלנס format)
+     → _parse_volume_sheet_other(df, sheet_name)  — sheets 1..N
+  → Returns combined { clients[], agency_rates, summary }
+
+Comparison: compare_volume() matches volume clients vs production by id_number
+Bonus: calculate_bonus() groups by product_type, looks up rates in DB
+```
+
+### Key Files
+| File | Role |
+|------|------|
+| `parser_service.py` | `_parse_volume_report()`, `_parse_volume_sheet_standard()`, `_parse_volume_sheet_other()` |
+| `volume_service.py` | `compare_volume()`, `calculate_bonus()` |
+| `api/volume.py` | Upload+compare, calculate bonus, bonus payment CRUD |
+| `models/volume_commission_rate.py` | Per-company rates (rate_per_million, payment_frequency) |
+| `models/volume_bonus_payment.py` | Paid/unpaid tracking per company+year |
+| `VolumeComparison.vue` | Upload, KPI strip, donut chart, drill-down modal |
+| `VolumeBonus.vue` | Bonus table with paid status dropdown |
+| `stores/volume.js` | API calls, state management |
+
+### Standard Sheet: Agent vs Agency Rows
+The standard sheet (אקסלנס format) has `רמת גורם` column. Rows are either `סוכן` (agent) or `סוכנות` (agency).
+- **Important**: `ן` (nun sofit) ≠ `נ` (nun), so `"סוכן" in "סוכנות"` is **False** in Python.
+- If agent rows exist → use only agent rows (avoid double-counting).
+- If only agency rows exist (e.g., 2024 format with `סוכנות ראשית`) → use those.
+
+### Multi-Sheet Detection
+- `parse_excel()` first tries sheet 0 for the volume_report signature.
+- If sheet 0 doesn't match, scans other sheets. When found, passes `standard_sheet_idx` so all other sheets are parsed as "other" format.
+- Example: 2024 file has אלטשולר on sheet 0, אקסלנס on sheet 3 — parser correctly finds sheet 3 as standard and parses all 8 sheets.
+
+### ID Number Handling
+**Critical**: Volume reports may have IDs with leading zeros (e.g., `058661554`). Production stores without (e.g., `58661554`). All parsers and comparison functions must strip leading zeros: `id_str.lstrip('0') or '0'`.
 
 ---
 
