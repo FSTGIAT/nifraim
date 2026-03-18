@@ -12,6 +12,8 @@ from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.models.recruit import Recruit
+from app.models.commission_rate import CommissionRate
+from app.models.volume_commission_rate import VolumeCommissionRate
 from app.services.comparison_service import compute_comparison, _normalize_id
 
 logger = logging.getLogger(__name__)
@@ -64,23 +66,6 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
     )
     t = totals.one()
 
-    # Company breakdown
-    company_q = await db.execute(
-        select(
-            ClientRecord.receiving_company,
-            func.count().label("count"),
-            func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
-            func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
-        )
-        .where(ClientRecord.upload_id == uid, ClientRecord.receiving_company.isnot(None))
-        .group_by(ClientRecord.receiving_company)
-        .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
-    )
-    companies = [
-        f"{r[0]}({r[1]} מוצרים, פרמיה: {float(r[2]):,.0f}₪, צבירה: {float(r[3]):,.0f}₪)"
-        for r in company_q.all() if r[0] and r[0] not in ("nan", "None")
-    ]
-
     # Product type breakdown
     product_q = await db.execute(
         select(
@@ -97,6 +82,42 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
         for r in product_q.all() if r[0] and r[0] not in ("nan", "None")
     ]
 
+    # Top 10 clients by premium
+    top_premium_q = await db.execute(
+        select(
+            ClientRecord.id_number,
+            func.min(ClientRecord.first_name).label("first_name"),
+            func.min(ClientRecord.last_name).label("last_name"),
+            func.coalesce(func.sum(ClientRecord.total_premium), 0).label("total_prem"),
+        )
+        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .group_by(ClientRecord.id_number)
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.total_premium), 0)))
+        .limit(10)
+    )
+    top_premium = [
+        f"{r.first_name or ''} {r.last_name or ''}".strip() + f"({float(r.total_prem):,.0f}₪)"
+        for r in top_premium_q.all() if float(r.total_prem) > 0
+    ]
+
+    # Top 10 clients by accumulation
+    top_accum_q = await db.execute(
+        select(
+            ClientRecord.id_number,
+            func.min(ClientRecord.first_name).label("first_name"),
+            func.min(ClientRecord.last_name).label("last_name"),
+            func.coalesce(func.sum(ClientRecord.accumulation), 0).label("total_accum"),
+        )
+        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .group_by(ClientRecord.id_number)
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
+        .limit(10)
+    )
+    top_accum = [
+        f"{r.first_name or ''} {r.last_name or ''}".strip() + f"({float(r.total_accum):,.0f}₪)"
+        for r in top_accum_q.all() if float(r.total_accum) > 0
+    ]
+
     parts = [
         "=== קובץ פרודוקציה ===",
         f"שם קובץ: {prod_upload.filename}",
@@ -105,10 +126,31 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
         f"סה\"כ פרמיה: {float(t.total_premium):,.0f}₪",
         f"סה\"כ צבירה: {float(t.total_accumulation):,.0f}₪",
     ]
-    if companies:
-        parts.append(f"חברות: {', '.join(companies)}")
+    # Company breakdown with unique client counts
+    company_enriched_q = await db.execute(
+        select(
+            ClientRecord.receiving_company,
+            func.count().label("count"),
+            func.count(func.distinct(ClientRecord.id_number)).label("unique_clients"),
+            func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
+            func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
+        )
+        .where(ClientRecord.upload_id == uid, ClientRecord.receiving_company.isnot(None))
+        .group_by(ClientRecord.receiving_company)
+        .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
+    )
+    companies_enriched = [
+        f"{r[0]}({r[2]} לקוחות, {r[1]} מוצרים, פרמיה: {float(r[3]):,.0f}₪, צבירה: {float(r[4]):,.0f}₪)"
+        for r in company_enriched_q.all() if r[0] and r[0] not in ("nan", "None")
+    ]
+    if companies_enriched:
+        parts.append(f"חברות: {', '.join(companies_enriched)}")
     if products:
         parts.append(f"סוגי מוצרים: {', '.join(products)}")
+    if top_premium:
+        parts.append(f"לקוחות מובילים (פרמיה): {', '.join(top_premium)}")
+    if top_accum:
+        parts.append(f"לקוחות מובילים (צבירה): {', '.join(top_accum)}")
 
     return "\n".join(parts), prod_upload
 
@@ -238,25 +280,66 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
             for p in c.get("production_products", []):
                 unpaid_charge += (p.get("premium") or 0) or (p.get("accumulation") or 0)
 
+        # Per-company commission breakdown (matched + only_commission)
+        comm_by_company = {}
+        for c in commission_customers:
+            for p in c.get("product_matches", {}).get("matched", []):
+                co = p.get("company") or "לא ידוע"
+                comm_by_company.setdefault(co, {"count": 0, "commission": 0})
+                comm_by_company[co]["count"] += 1
+                comm_by_company[co]["commission"] += p.get("commission") or 0
+            for p in c.get("product_matches", {}).get("unmatched_commission", []):
+                co = p.get("company") or "לא ידוע"
+                comm_by_company.setdefault(co, {"count": 0, "commission": 0})
+                comm_by_company[co]["count"] += 1
+                comm_by_company[co]["commission"] += p.get("commission") or 0
+
+        # Per-company unpaid breakdown
+        unpaid_by_company = {}
+        for c in unpaid:
+            for p in c.get("production_products", []):
+                co = p.get("company") or p.get("company_full") or "לא ידוע"
+                unpaid_by_company.setdefault(co, {"customers": [], "premium": 0})
+                name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
+                if name not in [n for n, _ in unpaid_by_company[co]["customers"]]:
+                    unpaid_by_company[co]["customers"].append((name, float(p.get("premium") or 0)))
+                unpaid_by_company[co]["premium"] += float(p.get("premium") or 0)
+
         part = [
             f"\n--- השוואת נפרעים: {source} ({cat_label}) ---",
             f"קובץ נפרעים: {comm_upload.filename}",
             f"סה\"כ לקוחות בהשוואה: {dashboard_total}",
-            f"נמצא בשניהם: {len(matched)} ({_pct(len(matched), dashboard_total)}%)",
-            f"לא שולם: {len(unpaid)} ({_pct(len(unpaid), dashboard_total)}%)",
-            f"רק בנפרעים: {len(only_comm)} ({_pct(len(only_comm), dashboard_total)}%)",
-            f"לקוחות בנפרעים: {len(commission_customers)}",
-            f"סה\"כ עמלה: {total_commission:,.0f}₪",
+            f"נמצא בשניהם (משולם): {len(matched)} ({_pct(len(matched), dashboard_total)}%)",
+            f"לא שולם (בפרודוקציה אבל לא בנפרעים — חייבים לסוכן): {len(unpaid)} ({_pct(len(unpaid), dashboard_total)}%)",
+            f"רק בנפרעים (בנפרעים אבל לא בפרודוקציה — לא חייבים לסוכן): {len(only_comm)} ({_pct(len(only_comm), dashboard_total)}%)",
+            f"הערה חשובה: כש'חייבים לי' = לקוחות 'לא שולם' בלבד. 'רק בנפרעים' הם לקוחות שהחברה משלמת עליהם עמלה אבל לא מופיעים בפרודוקציה.",
+            f"סה\"כ עמלה שהתקבלה: {total_commission:,.0f}₪",
             f"סה\"כ יתרה: {total_balance:,.0f}₪",
         ]
 
+        # Commission by company
+        if comm_by_company:
+            co_lines = ", ".join(
+                f"{co}({v['count']} מוצרים, עמלה: {v['commission']:,.0f}₪)"
+                for co, v in sorted(comm_by_company.items(), key=lambda x: x[1]["commission"], reverse=True)
+            )
+            part.append(f"עמלות שהתקבלו לפי חברה: {co_lines}")
+
         if unpaid:
-            part.append(f"סה\"כ חיוב לא משולם: {unpaid_charge:,.0f}₪")
-            unpaid_names = [
-                f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
-                for c in unpaid[:10]
-            ]
-            part.append(f"לקוחות לא משולמים: {', '.join(unpaid_names)}")
+            part.append(f"סה\"כ חיוב לא משולם (חייבים לסוכן): {unpaid_charge:,.0f}₪")
+            # Unpaid by company with names and amounts
+            if unpaid_by_company:
+                for co, data in sorted(unpaid_by_company.items(), key=lambda x: x[1]["premium"], reverse=True):
+                    names_with_amounts = ", ".join(
+                        f"{name}({premium:,.0f}₪)" for name, premium in data["customers"][:5]
+                    )
+                    part.append(f"לא משולמים מ{co} ({len(data['customers'])} לקוחות, פרמיה: {data['premium']:,.0f}₪): {names_with_amounts}")
+            else:
+                unpaid_names = [
+                    f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
+                    for c in unpaid[:10]
+                ]
+                part.append(f"לקוחות לא משולמים: {', '.join(unpaid_names)}")
 
         comparison_parts.append("\n".join(part))
 
@@ -345,6 +428,42 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
     return "\n".join(parts)
 
 
+async def _get_commission_rates_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """Get commission rates and volume rates as context."""
+    # Nifraim commission rates
+    rates_result = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user_id)
+    )
+    rates = rates_result.scalars().all()
+
+    # Volume commission rates
+    vol_rates_result = await db.execute(
+        select(VolumeCommissionRate).where(VolumeCommissionRate.user_id == user_id)
+    )
+    vol_rates = vol_rates_result.scalars().all()
+
+    if not rates and not vol_rates:
+        return None
+
+    parts = ["\n--- שיעורי עמלה ---"]
+    if rates:
+        parts.append("עמלות נפרעים:")
+        for r in rates:
+            freq = f", תדירות: {r.payment_frequency}" if r.payment_frequency else ""
+            parts.append(f"  {r.company_name}: {float(r.rate) * 100:.2f}%{freq}")
+
+    if vol_rates:
+        parts.append("עמלות היקפים:")
+        for r in vol_rates:
+            nifraim = f"נפרעים: {float(r.nifraim_rate) * 100:.2f}%" if r.nifraim_rate else ""
+            volume = f"היקפים: {float(r.volume_rate_per_million):,.0f}₪/מיליון" if r.volume_rate_per_million else ""
+            freq = f", תדירות: {r.payment_frequency}" if r.payment_frequency else ""
+            rate_parts = [p for p in [nifraim, volume] if p]
+            parts.append(f"  {r.company_name}: {', '.join(rate_parts)}{freq}")
+
+    return "\n".join(parts)
+
+
 def _pct(part: int, total: int) -> str:
     if total == 0:
         return "0"
@@ -353,12 +472,12 @@ def _pct(part: int, total: int) -> str:
 
 STOP_WORDS = {'האם', 'מה', 'כמה', 'של', 'את', 'לי', 'על', 'יש', 'אם', 'או',
               'הוא', 'היא', 'זה', 'זו', 'לא', 'כן', 'איפה', 'למה', 'מי', 'איך',
-              'בפרודוקציה', 'מופיע', 'נמצא', 'שלי', 'שלו', 'שלה', 'לו', 'לה',
+              'שלי', 'שלו', 'שלה', 'לו', 'לה',
               'גם', 'עם', 'בין', 'כל', 'אני', 'הם', 'הן', 'אנחנו', 'אתה', 'את'}
 
 
-async def _search_customers(db: AsyncSession, upload_id, question: str) -> str | None:
-    """Search for specific customers mentioned in the question."""
+async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id, question: str) -> str | None:
+    """Search for specific customers mentioned in the question, in both production and commission files."""
     import re
 
     # Extract potential ID numbers (5+ digits)
@@ -371,53 +490,83 @@ async def _search_customers(db: AsyncSession, upload_id, question: str) -> str |
     if not id_patterns and not name_words:
         return None
 
-    results = []
+    # Get all upload IDs to search (production + commission)
+    upload_ids_to_search = [(prod_upload_id, "פרודוקציה")]
 
-    # Search by ID number
-    for id_pat in id_patterns:
-        q = await db.execute(
-            select(ClientRecord).where(
-                ClientRecord.upload_id == upload_id,
-                ClientRecord.id_number.like(f"%{id_pat}%"),
-            ).limit(10)
+    comm_uploads_result = await db.execute(
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user_id,
+            FileUpload.file_category == "commission",
         )
-        results.extend(q.scalars().all())
+        .order_by(desc(FileUpload.uploaded_at))
+    )
+    seen_filenames = set()
+    for u in comm_uploads_result.scalars().all():
+        if u.filename not in seen_filenames:
+            seen_filenames.add(u.filename)
+            label = f"נפרעים ({u.company_source or u.filename})"
+            upload_ids_to_search.append((u.id, label))
+        if len(seen_filenames) >= 5:
+            break
 
-    # Search by name
-    for word in name_words[:3]:  # limit to 3 name words
-        q = await db.execute(
-            select(ClientRecord).where(
-                ClientRecord.upload_id == upload_id,
-                (ClientRecord.first_name.ilike(f"%{word}%")) |
-                (ClientRecord.last_name.ilike(f"%{word}%")),
-            ).limit(10)
-        )
-        results.extend(q.scalars().all())
+    all_lines = ["\n--- תוצאות חיפוש לקוחות ---"]
 
-    if not results:
+    for upload_id, source_label in upload_ids_to_search:
+        results = []
+
+        # Search by ID number
+        for id_pat in id_patterns:
+            q = await db.execute(
+                select(ClientRecord).where(
+                    ClientRecord.upload_id == upload_id,
+                    ClientRecord.id_number.like(f"%{id_pat}%"),
+                ).limit(10)
+            )
+            results.extend(q.scalars().all())
+
+        # Search by name
+        for word in name_words[:3]:
+            q = await db.execute(
+                select(ClientRecord).where(
+                    ClientRecord.upload_id == upload_id,
+                    (ClientRecord.first_name.ilike(f"%{word}%")) |
+                    (ClientRecord.last_name.ilike(f"%{word}%")),
+                ).limit(10)
+            )
+            results.extend(q.scalars().all())
+
+        if not results:
+            continue
+
+        # Deduplicate by id
+        seen = set()
+        unique = []
+        for r in results:
+            if r.id not in seen:
+                seen.add(r.id)
+                unique.append(r)
+
+        all_lines.append(f"\n[{source_label}]")
+        for r in unique[:10]:
+            name = f"{r.first_name or ''} {r.last_name or ''}".strip()
+            premium = float(r.total_premium or 0)
+            accum = float(r.accumulation or 0)
+            commission = float(r.commission_before_fee or 0) if hasattr(r, 'commission_before_fee') and r.commission_before_fee else 0
+            line = (
+                f"שם: {name}, ת.ז: {r.id_number}, חברה: {r.receiving_company or '—'}, "
+                f"מוצר: {r.product_type or r.product or '—'}, "
+                f"סטטוס: {r.product_status or '—'}, "
+                f"פרמיה: {premium:,.0f}₪, צבירה: {accum:,.0f}₪"
+            )
+            if commission > 0:
+                line += f", עמלה: {commission:,.0f}₪"
+            all_lines.append(line)
+
+    if len(all_lines) <= 1:
         return None
 
-    # Deduplicate by id
-    seen = set()
-    unique = []
-    for r in results:
-        if r.id not in seen:
-            seen.add(r.id)
-            unique.append(r)
-
-    lines = ["\n--- תוצאות חיפוש לקוחות ---"]
-    for r in unique[:10]:
-        name = f"{r.first_name or ''} {r.last_name or ''}".strip()
-        premium = float(r.total_premium or 0)
-        accum = float(r.accumulation or 0)
-        lines.append(
-            f"שם: {name}, ת.ז: {r.id_number}, חברה: {r.receiving_company or '—'}, "
-            f"מוצר: {r.product_type or r.product or '—'}, "
-            f"סטטוס: {r.product_status or '—'}, "
-            f"פרמיה: {premium:,.0f}₪, צבירה: {accum:,.0f}₪"
-        )
-
-    return "\n".join(lines)
+    return "\n".join(all_lines)
 
 
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
@@ -438,9 +587,14 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
 
         # Search for specific customers if question contains names/IDs
         if question:
-            search_context = await _search_customers(db, prod_upload.id, question)
+            search_context = await _search_customers(db, user_id, prod_upload.id, question)
             if search_context:
                 context_parts.append(search_context)
+
+    # Commission rates (independent of production upload)
+    rates_context = await _get_commission_rates_context(db, user_id)
+    if rates_context:
+        context_parts.append(rates_context)
 
     return "\n\n".join(context_parts)
 
@@ -471,7 +625,7 @@ async def stream_chat(
     try:
         async with client.messages.stream(
             model="claude-sonnet-4-20250514",
-            max_tokens=1024,
+            max_tokens=2048,
             system=system_prompt,
             messages=messages,
         ) as stream:
