@@ -119,8 +119,8 @@ export const useRecruitsStore = defineStore('recruits', () => {
     comparisonMode.value = 'commission'
     commissionFilterCompany.value = company
     try {
-      const body = company ? { company } : {}
-      const res = await api.post('/recruits/compare-commission', body)
+      const params = company ? { company } : {}
+      const res = await api.post('/recruits/compare-commission', null, { params })
       commissionComparisonResult.value = res.data
       return res.data
     } catch (e) {

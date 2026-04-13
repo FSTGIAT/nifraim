@@ -567,12 +567,12 @@ async def compare_recruits(
 
 @router.post("/compare-commission", response_model=RecruitComparisonResponse)
 async def compare_recruits_commission(
-    body: dict | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    company: str | None = None,
 ):
-    """Compare recruits against commission (נפרעים) files. Optional body: { company: "הפניקס" }"""
-    filter_company = (body or {}).get("company")
+    """Compare recruits against commission (נפרעים) files. Optional query: ?company=הפניקס"""
+    filter_company = company
 
     # Find commission uploads, deduplicate by company_source (keep latest per company)
     comm_uploads_result = await db.execute(
