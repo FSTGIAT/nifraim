@@ -283,7 +283,7 @@
         <button
           class="btn-compare"
           :disabled="recruitsStore.comparingCommission"
-          @click="runCommissionComparison"
+          @click="runCommissionComparison(null)"
         >
           <template v-if="recruitsStore.comparingCommission">
             <div class="btn-spinner"></div>
