@@ -225,7 +225,7 @@
             <th>ת.ז</th>
             <th>חברה</th>
             <th>מוצר</th>
-            <th>מוצרים בפרודוקציה</th>
+            <th>מוצרים ב{{ sourceLabel }}</th>
             <th>פרמיה</th>
             <th>סטטוס לקוח</th>
           </tr>
@@ -281,7 +281,7 @@
                   ref="customInputRef"
                 />
               </div>
-              <span v-else class="status-found-label">בפרודוקציה</span>
+              <span v-else class="status-found-label">ב{{ sourceLabel }}</span>
             </td>
           </tr>
         </tbody>
@@ -318,7 +318,7 @@
                   <div class="modal-id-num ltr-number">ת.ז {{ detailItem.id_number }}</div>
                 </div>
                 <span class="modal-status-chip" :class="detailItem.found_in_production ? 'chip-found' : 'chip-missing'">
-                  {{ detailItem.found_in_production ? 'נמצא בפרודוקציה' : 'לא נמצא' }}
+                  {{ detailItem.found_in_production ? `נמצא ב${sourceLabel}` : 'לא נמצא' }}
                 </span>
               </div>
             </div>
@@ -349,7 +349,7 @@
             <div class="modal-section" v-if="detailItem.found_in_production && detailItem.production_products.length">
               <div class="section-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                מוצרים בפרודוקציה
+                מוצרים ב{{ sourceLabel }}
                 <span class="section-count">{{ detailItem.production_products.length }}</span>
               </div>
               <div class="prod-table-wrap">
@@ -392,7 +392,7 @@
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <p>לקוח זה לא נמצא בקובץ הפרודוקציה</p>
+              <p>לקוח זה לא נמצא בקובץ ה{{ sourceLabel }}</p>
               <span>יש לוודא שהלקוח קיים במערכת או שת.ז תקין</span>
 
               <div class="modal-status-edit" @click.stop>
@@ -530,7 +530,7 @@
               </button>
               <div class="modal-id-row">
                 <div>
-                  <div class="modal-name">לקוחות שנמצאו בפרודוקציה</div>
+                  <div class="modal-name">לקוחות שנמצאו ב{{ sourceLabel }}</div>
                   <div class="modal-id-num">{{ foundList.length }} לקוחות</div>
                 </div>
                 <span class="modal-status-chip chip-found">נמצאו</span>
@@ -695,6 +695,8 @@ const props = defineProps({
 })
 
 const recruitsStore = useRecruitsStore()
+const isCommission = computed(() => recruitsStore.comparisonMode === 'commission')
+const sourceLabel = computed(() => isCommission.value ? 'נפרעים' : 'פרודוקציה')
 const activeFilter = ref('all')
 const currentPage = ref(1)
 const pageSize = 50

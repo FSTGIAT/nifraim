@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -532,6 +532,154 @@ async def compare_recruits(
     company_breakdown = sorted(company_stats.values(), key=lambda x: x["found"] + x["not_found"], reverse=True)
 
     # Status breakdown from production products
+    status_counts = {}
+    total_found_products = 0
+    for r in results:
+        if r.found_in_production:
+            for p in r.production_products:
+                total_found_products += 1
+                st = p.get("status", "") or ""
+                if "פעיל" in st or "active" in st.lower():
+                    label = "פעיל"
+                elif "מוקפא" in st or "frozen" in st.lower():
+                    label = "מוקפא"
+                elif "מבוטל" in st or "cancel" in st.lower():
+                    label = "מבוטל"
+                else:
+                    label = st or "אחר"
+                status_counts[label] = status_counts.get(label, 0) + 1
+
+    active_count = status_counts.get("פעיל", 0)
+    active_product_rate = (active_count / total_found_products * 100) if total_found_products > 0 else 0
+
+    return RecruitComparisonResponse(
+        total=len(recruits_by_id),
+        found=found_count,
+        not_found=len(recruits_by_id) - found_count,
+        results=results,
+        total_premium_found=round(total_premium_found, 2),
+        estimated_missing_premium=round(estimated_missing_premium, 2),
+        company_breakdown=company_breakdown,
+        status_breakdown=status_counts,
+        active_product_rate=round(active_product_rate, 1),
+    )
+
+
+@router.post("/compare-commission", response_model=RecruitComparisonResponse)
+async def compare_recruits_commission(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Compare all recruits against commission (נפרעים) files."""
+    # Find commission uploads, deduplicate by filename (keep latest)
+    comm_uploads_result = await db.execute(
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "commission",
+        )
+        .order_by(desc(FileUpload.uploaded_at))
+    )
+    all_comm_uploads = comm_uploads_result.scalars().all()
+    if not all_comm_uploads:
+        raise HTTPException(404, "לא נמצאו קבצי נפרעים. יש להעלות קבצי נפרעים קודם.")
+
+    seen_filenames = set()
+    comm_uploads = []
+    for u in all_comm_uploads:
+        if u.filename not in seen_filenames:
+            seen_filenames.add(u.filename)
+            comm_uploads.append(u)
+
+    # Load all commission records grouped by normalized id
+    comm_by_id = {}
+    for upload in comm_uploads:
+        result = await db.execute(
+            select(ClientRecord).where(
+                ClientRecord.upload_id == upload.id,
+                ClientRecord.user_id == user.id,
+            )
+        )
+        for r in result.scalars().all():
+            if r.id_number:
+                comm_by_id.setdefault(_normalize_id(r.id_number), []).append(r)
+
+    # Load recruits and group by normalized id_number
+    recruits_result = await db.execute(
+        select(Recruit)
+        .where(Recruit.user_id == user.id)
+        .order_by(Recruit.created_at.desc())
+    )
+    recruits = recruits_result.scalars().all()
+
+    recruits_by_id = {}
+    for recruit in recruits:
+        key = _normalize_id(recruit.id_number)
+        if key not in recruits_by_id:
+            recruits_by_id[key] = recruit
+
+    results = []
+    found_count = 0
+
+    for norm_id, recruit in recruits_by_id.items():
+        comm_recs = comm_by_id.get(norm_id, [])
+        found = len(comm_recs) > 0
+
+        if found:
+            found_count += 1
+
+        commission_products = []
+        total_commission = 0.0
+        for r in comm_recs:
+            commission = float(r.commission_before_fee or 0) if hasattr(r, 'commission_before_fee') and r.commission_before_fee else 0
+            premium = float(r.total_premium) if r.total_premium is not None else 0
+            total_commission += commission or premium
+            commission_products.append({
+                "product": r.product or "",
+                "product_type": r.product_type or "",
+                "company": r.receiving_company or "",
+                "premium": premium,
+                "commission": commission,
+                "status": r.product_status or "",
+            })
+
+        results.append(RecruitMatchResult(
+            recruit_id=str(recruit.id),
+            id_number=recruit.id_number,
+            first_name=recruit.first_name,
+            last_name=recruit.last_name,
+            company=recruit.company,
+            product=recruit.product,
+            amount=float(recruit.amount) if recruit.amount is not None else None,
+            customer_status=recruit.customer_status,
+            found_in_production=found,
+            production_products=commission_products,
+            production_premium=total_commission,
+        ))
+
+    # Sort: not found first, then found
+    results.sort(key=lambda r: (r.found_in_production, r.last_name or ""))
+
+    # Summary stats
+    total_premium_found = sum(r.production_premium for r in results if r.found_in_production)
+    estimated_missing_premium = sum(
+        r.amount for r in results if not r.found_in_production and r.amount
+    )
+
+    # Company breakdown
+    company_stats = {}
+    for r in results:
+        comp = r.company or "לא ידוע"
+        if comp not in company_stats:
+            company_stats[comp] = {"company": comp, "found": 0, "not_found": 0, "premium": 0}
+        if r.found_in_production:
+            company_stats[comp]["found"] += 1
+            company_stats[comp]["premium"] += r.production_premium
+        else:
+            company_stats[comp]["not_found"] += 1
+    company_breakdown = sorted(company_stats.values(), key=lambda x: x["found"] + x["not_found"], reverse=True)
+
+    # Status breakdown
     status_counts = {}
     total_found_products = 0
     for r in results:

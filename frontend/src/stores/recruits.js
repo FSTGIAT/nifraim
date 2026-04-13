@@ -7,6 +7,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
   const loading = ref(false)
   const comparing = ref(false)
   const comparisonResult = ref(null)
+  const comparisonMode = ref('production') // 'production' | 'commission'
   const uploading = ref(false)
   const error = ref(null)
 
@@ -90,12 +91,14 @@ export const useRecruitsStore = defineStore('recruits', () => {
     }
   }
 
-  async function compareRecruits() {
+  async function compareRecruits(mode = 'production') {
     comparing.value = true
     error.value = null
     comparisonResult.value = null
+    comparisonMode.value = mode
     try {
-      const res = await api.post('/recruits/compare')
+      const endpoint = mode === 'commission' ? '/recruits/compare-commission' : '/recruits/compare'
+      const res = await api.post(endpoint)
       comparisonResult.value = res.data
       return res.data
     } catch (e) {
@@ -111,7 +114,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
   }
 
   return {
-    recruits, loading, comparing, comparisonResult, uploading, error,
+    recruits, loading, comparing, comparisonResult, comparisonMode, uploading, error,
     fetchRecruits, createRecruit, createBulk, uploadRecruits,
     updateRecruit, deleteRecruit,
     compareRecruits, resetComparison,
