@@ -7,7 +7,9 @@ export const useRecruitsStore = defineStore('recruits', () => {
   const loading = ref(false)
   const comparing = ref(false)
   const comparisonResult = ref(null)
-  const comparisonMode = ref('production') // 'production' | 'commission'
+  const comparisonMode = ref('production') // tracks which comparison is active
+  const comparingCommission = ref(false)
+  const commissionComparisonResult = ref(null)
   const uploading = ref(false)
   const error = ref(null)
 
@@ -91,14 +93,13 @@ export const useRecruitsStore = defineStore('recruits', () => {
     }
   }
 
-  async function compareRecruits(mode = 'production') {
+  async function compareRecruits() {
     comparing.value = true
     error.value = null
     comparisonResult.value = null
-    comparisonMode.value = mode
+    comparisonMode.value = 'production'
     try {
-      const endpoint = mode === 'commission' ? '/recruits/compare-commission' : '/recruits/compare'
-      const res = await api.post(endpoint)
+      const res = await api.post('/recruits/compare')
       comparisonResult.value = res.data
       return res.data
     } catch (e) {
@@ -109,14 +110,38 @@ export const useRecruitsStore = defineStore('recruits', () => {
     }
   }
 
+  async function compareRecruitsCommission() {
+    comparingCommission.value = true
+    error.value = null
+    commissionComparisonResult.value = null
+    comparisonMode.value = 'commission'
+    try {
+      const res = await api.post('/recruits/compare-commission')
+      commissionComparisonResult.value = res.data
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בהשוואת מגויסים מול נפרעים'
+      throw e
+    } finally {
+      comparingCommission.value = false
+    }
+  }
+
   function resetComparison() {
     comparisonResult.value = null
   }
 
+  function resetCommissionComparison() {
+    commissionComparisonResult.value = null
+  }
+
   return {
-    recruits, loading, comparing, comparisonResult, comparisonMode, uploading, error,
+    recruits, loading, comparing, comparisonResult, comparisonMode,
+    comparingCommission, commissionComparisonResult,
+    uploading, error,
     fetchRecruits, createRecruit, createBulk, uploadRecruits,
     updateRecruit, deleteRecruit,
     compareRecruits, resetComparison,
+    compareRecruitsCommission, resetCommissionComparison,
   }
 })

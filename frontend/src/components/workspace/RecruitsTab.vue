@@ -110,7 +110,7 @@
     </div>
 
     <!-- Inner tabs -->
-    <div class="inner-tabs" v-if="recruitsStore.recruits.length > 0 || recruitsStore.comparisonResult">
+    <div class="inner-tabs" v-if="recruitsStore.recruits.length > 0 || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
       <button
         class="inner-tab"
         :class="{ active: innerTab === 'list' }"
@@ -133,8 +133,19 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
-        {{ recruitsStore.comparisonResult ? (recruitsStore.comparisonMode === 'commission' ? 'השוואה מול נפרעים' : 'השוואה מול פרודוקציה') : 'השוואה מול פרודוקציה' }}
+        השוואה מול פרודוקציה
         <span class="tab-dot" v-if="recruitsStore.comparisonResult"></span>
+      </button>
+      <button
+        class="inner-tab"
+        :class="{ active: innerTab === 'commission', 'has-result': !!recruitsStore.commissionComparisonResult }"
+        @click="innerTab = 'commission'"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+        </svg>
+        השוואה מול נפרעים
+        <span class="tab-dot" v-if="recruitsStore.commissionComparisonResult"></span>
       </button>
       <!-- Small upload icon when recruits exist -->
       <button
@@ -219,34 +230,12 @@
         </div>
       </template>
 
-      <!-- Compare mode toggle + button -->
+      <!-- Compare button -->
       <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.comparisonResult">
-        <div class="compare-mode-toggle">
-          <button
-            class="mode-btn"
-            :class="{ active: compareMode === 'production' }"
-            @click="compareMode = 'production'"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-            </svg>
-            מול פרודוקציה
-          </button>
-          <button
-            class="mode-btn"
-            :class="{ active: compareMode === 'commission' }"
-            @click="compareMode = 'commission'"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-            </svg>
-            מול נפרעים
-          </button>
-        </div>
         <button
           class="btn-compare"
-          :disabled="(compareMode === 'production' && !productionStore.currentFile) || recruitsStore.comparing"
-          @click="runComparison"
+          :disabled="!productionStore.currentFile || recruitsStore.comparing"
+          @click="runProductionComparison"
         >
           <template v-if="recruitsStore.comparing">
             <div class="btn-spinner"></div>
@@ -256,10 +245,10 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
-            <span>{{ compareMode === 'commission' ? 'בדוק מול נפרעים' : 'בדוק מול פרודוקציה' }}</span>
+            <span>בדוק מול פרודוקציה</span>
           </template>
         </button>
-        <p class="compare-hint" v-if="compareMode === 'production' && !productionStore.currentFile">
+        <p class="compare-hint" v-if="!productionStore.currentFile">
           יש להעלות קובץ פרודוקציה לפני ביצוע בדיקה
         </p>
       </div>
@@ -276,6 +265,50 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
         <p>העלה קובץ גיוס כדי להתחיל בהשוואה</p>
+      </div>
+    </div>
+
+    <!-- Tab: Commission Comparison -->
+    <div v-if="innerTab === 'commission'">
+      <!-- Decoration -->
+      <template v-if="!recruitsStore.commissionComparisonResult">
+        <div class="float-circle fc-1"></div>
+        <div class="float-circle fc-2"></div>
+        <div class="float-circle fc-3"></div>
+        <div class="float-circle fc-4"></div>
+      </template>
+
+      <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult">
+        <button
+          class="btn-compare"
+          :disabled="recruitsStore.comparingCommission"
+          @click="runCommissionComparison"
+        >
+          <template v-if="recruitsStore.comparingCommission">
+            <div class="btn-spinner"></div>
+            <span>בודק...</span>
+          </template>
+          <template v-else>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+            </svg>
+            <span>בדוק מול נפרעים</span>
+          </template>
+        </button>
+      </div>
+
+      <Transition name="results">
+        <RecruitComparisonResults
+          v-if="recruitsStore.commissionComparisonResult"
+          :result="recruitsStore.commissionComparisonResult"
+        />
+      </Transition>
+
+      <div v-if="!recruitsStore.commissionComparisonResult && !recruitsStore.comparingCommission && recruitsStore.recruits.length === 0" class="empty-comparison">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+        </svg>
+        <p>העלה קובץ גיוס כדי להשוות מול נפרעים</p>
       </div>
     </div>
 
@@ -307,7 +340,6 @@ const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
-const compareMode = ref('production') // 'production' | 'commission'
 const showPortalLinks = ref(false)
 const activePortalLinks = computed(() =>
   portalStore.links.filter(l => l.is_active && new Date(l.expires_at) > new Date()).length
@@ -397,9 +429,17 @@ async function uploadFile(file) {
   }
 }
 
-async function runComparison() {
+async function runProductionComparison() {
   try {
-    await recruitsStore.compareRecruits(compareMode.value)
+    await recruitsStore.compareRecruits()
+  } catch (e) {
+    // error handled in store
+  }
+}
+
+async function runCommissionComparison() {
+  try {
+    await recruitsStore.compareRecruitsCommission()
   } catch (e) {
     // error handled in store
   }
@@ -876,38 +916,6 @@ async function runComparison() {
 .compare-section {
   text-align: center;
   padding: 24px 0;
-}
-
-.compare-mode-toggle {
-  display: inline-flex;
-  gap: 0;
-  background: var(--bg-alt, #f1f5f9);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 16px;
-}
-.mode-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  border: none;
-  cursor: pointer;
-  background: transparent;
-  color: var(--text-muted);
-  transition: all 0.2s;
-}
-.mode-btn.active {
-  background: white;
-  color: var(--primary);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-}
-.mode-btn:hover:not(.active) {
-  color: var(--text-primary);
 }
 
 .btn-compare {
