@@ -279,6 +279,7 @@
       </template>
 
       <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult">
+        <p class="compare-hint-info">ההשוואה תתבצע מול קבצי הנפרעים שהועלו בלשונית "השוואת נפרעים"</p>
         <button
           class="btn-compare"
           :disabled="recruitsStore.comparingCommission"
@@ -295,6 +296,12 @@
             <span>בדוק מול נפרעים</span>
           </template>
         </button>
+      </div>
+
+      <!-- Show which files were compared -->
+      <div v-if="recruitsStore.commissionComparisonResult?.commission_files?.length" class="commission-files-info">
+        <span>קבצי נפרעים:</span>
+        <span class="commission-file-tag" v-for="f in recruitsStore.commissionComparisonResult.commission_files" :key="f">{{ f }}</span>
       </div>
 
       <Transition name="results">
@@ -961,6 +968,17 @@ async function runCommissionComparison() {
 }
 
 .compare-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+.compare-hint-info { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+.commission-files-info {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 16px; font-size: 12px; color: var(--text-muted);
+}
+.commission-file-tag {
+  background: var(--bg-alt, #f1f5f9); padding: 2px 10px;
+  border-radius: 6px; font-weight: 600; color: var(--primary);
+  font-size: 11px;
+}
 
 .empty-comparison {
   text-align: center;

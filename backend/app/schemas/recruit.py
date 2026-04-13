@@ -49,6 +49,7 @@ class RecruitComparisonResponse(BaseModel):
     company_breakdown: list[dict] = []
     status_breakdown: dict = {}
     active_product_rate: float = 0
+    commission_files: list[str] = []
 
 
 # ── File upload + production comparison schemas ──
