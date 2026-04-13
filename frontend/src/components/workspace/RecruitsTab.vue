@@ -278,11 +278,45 @@
         <div class="float-circle fc-4"></div>
       </template>
 
+      <!-- Upload + compare section -->
       <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult">
-        <p class="compare-hint-info">ההשוואה תתבצע מול קבצי הנפרעים שהועלו בלשונית "השוואת נפרעים"</p>
+        <!-- Upload commission files -->
+        <div class="comm-upload-area">
+          <div
+            class="comm-drop-zone"
+            :class="{ dragging: commDragging }"
+            @dragenter.prevent="commDragging = true"
+            @dragleave.prevent="commDragging = false"
+            @dragover.prevent
+            @drop.prevent="onCommFileDrop"
+            @click="$refs.commFileInput.click()"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span v-if="commUploading">מעלה קבצים...</span>
+            <span v-else>העלה קבצי נפרעים להשוואה</span>
+            <span class="comm-drop-hint">גרור קבצים או לחץ לבחירה</span>
+          </div>
+          <input
+            ref="commFileInput"
+            type="file"
+            accept=".xlsx,.xls"
+            multiple
+            @change="onCommFileSelect"
+            style="display: none"
+          />
+          <!-- Show uploaded files -->
+          <div v-if="commUploadedFiles.length" class="comm-uploaded-list">
+            <span class="comm-uploaded-tag" v-for="f in commUploadedFiles" :key="f">{{ f }}</span>
+          </div>
+        </div>
+
         <button
           class="btn-compare"
-          :disabled="recruitsStore.comparingCommission"
+          :disabled="recruitsStore.comparingCommission || commUploading"
           @click="runCommissionComparison(null)"
         >
           <template v-if="recruitsStore.comparingCommission">
@@ -298,7 +332,7 @@
         </button>
       </div>
 
-      <!-- Company filter tags -->
+      <!-- Company filter tags + upload more -->
       <div v-if="recruitsStore.commissionComparisonResult?.commission_files?.length" class="commission-files-info">
         <span>סנן לפי חברה:</span>
         <button
@@ -313,6 +347,19 @@
           :class="{ active: recruitsStore.commissionFilterCompany === f }"
           @click="runCommissionComparison(f)"
         >{{ f }}</button>
+        <button class="comm-add-file-btn" @click="$refs.commFileInput2.click()" title="העלה קובץ נפרעים נוסף">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <input
+          ref="commFileInput2"
+          type="file"
+          accept=".xlsx,.xls"
+          multiple
+          @change="onCommFileSelect"
+          style="display: none"
+        />
       </div>
 
       <Transition name="results">
@@ -347,6 +394,7 @@ import { usePortalStore } from '../../stores/portal.js'
 import RecruitForm from './RecruitForm.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
 import PortalLinksManager from './PortalLinksManager.vue'
+import api from '../../api/client.js'
 
 const productionStore = useProductionStore()
 const recruitsStore = useRecruitsStore()
@@ -358,6 +406,9 @@ const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
+const commDragging = ref(false)
+const commUploading = ref(false)
+const commUploadedFiles = ref([])
 const showPortalLinks = ref(false)
 const activePortalLinks = computed(() =>
   portalStore.links.filter(l => l.is_active && new Date(l.expires_at) > new Date()).length
@@ -462,6 +513,56 @@ async function runCommissionComparison(company = null) {
     // error handled in store
   }
 }
+
+function onCommFileDrop(e) {
+  commDragging.value = false
+  const files = Array.from(e.dataTransfer.files).filter(f => {
+    const ext = f.name.split('.').pop().toLowerCase()
+    return ext === 'xlsx' || ext === 'xls'
+  })
+  if (files.length) uploadCommFiles(files)
+}
+
+function onCommFileSelect(e) {
+  const files = Array.from(e.target.files)
+  if (files.length) uploadCommFiles(files)
+  e.target.value = ''
+}
+
+async function uploadCommFiles(files) {
+  commUploading.value = true
+  recruitsStore.error = null
+  try {
+    for (const file of files) {
+      const formData = new FormData()
+      formData.append('file', file)
+      await api.post('/uploads', formData)
+    }
+    commUploadedFiles.value = files.map(f => f.name)
+    // Auto-run comparison after upload
+    await recruitsStore.compareRecruitsCommission(null)
+  } catch (e) {
+    recruitsStore.error = e.response?.data?.detail || 'שגיאה בהעלאת קובץ נפרעים'
+  } finally {
+    commUploading.value = false
+  }
+}
+
+// Load existing commission files on mount to show which are already available
+async function loadCommissionFiles() {
+  try {
+    const res = await api.get('/uploads')
+    const commFiles = res.data.filter(u => u.file_category === 'commission')
+    const seen = new Set()
+    commUploadedFiles.value = commFiles
+      .filter(u => { const k = u.company_source || u.filename; if (seen.has(k)) return false; seen.add(k); return true })
+      .map(u => u.company_source || u.filename)
+  } catch { /* ignore */ }
+}
+
+watch(() => innerTab.value, (tab) => {
+  if (tab === 'commission') loadCommissionFiles()
+})
 </script>
 
 <style scoped>
@@ -995,6 +1096,32 @@ async function runCommissionComparison(company = null) {
 .commission-file-tag.active {
   background: var(--primary); color: white; border-color: var(--primary);
 }
+
+.comm-upload-area { margin-bottom: 16px; }
+.comm-drop-zone {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px; border: 2px dashed var(--border, #e2e8f0); border-radius: 12px;
+  cursor: pointer; transition: all 0.2s; color: var(--text-muted);
+  font-size: 13px;
+}
+.comm-drop-zone:hover, .comm-drop-zone.dragging {
+  border-color: var(--primary); color: var(--primary); background: rgba(245,124,0,0.03);
+}
+.comm-drop-hint { font-size: 11px; opacity: 0.6; }
+.comm-uploaded-list {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; justify-content: center;
+}
+.comm-uploaded-tag {
+  background: var(--accent-emerald-bg, #ecfdf5); color: var(--accent-emerald, #10b981);
+  padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+}
+.comm-add-file-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px dashed var(--border, #e2e8f0); background: transparent;
+  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+}
+.comm-add-file-btn:hover { border-color: var(--primary); color: var(--primary); }
 
 .empty-comparison {
   text-align: center;
