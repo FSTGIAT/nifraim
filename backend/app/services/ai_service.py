@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -604,34 +605,80 @@ async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id
     return "\n".join(all_lines)
 
 
+def _detect_question_topics(question: str) -> set[str]:
+    """Detect which data sources are relevant to the user's question."""
+    q = question.lower()
+    topics = set()
+
+    # Always include production (base context)
+    topics.add("production")
+
+    # Commission / comparison keywords
+    if any(w in q for w in ["נפרעים", "עמלה", "עמלות", "משולם", "לא שולם", "commission", "השוואה", "השוואת"]):
+        topics.add("comparison")
+
+    # My file / recruits keywords
+    if any(w in q for w in ["קובץ אישי", "מגויס", "מגויסים", "גיוס", "תיק אישי", "ניהול תיק", "מעקב"]):
+        topics.add("myfile")
+
+    # Commission rates keywords
+    if any(w in q for w in ["שיעור", "שיעורי", "אחוז", "rates", "תעריף", "היקפים"]):
+        topics.add("rates")
+
+    # Customer search — if question has names or IDs
+    import re
+    if re.search(r'\d{5,}', question) or len([w for w in re.findall(r'[\u0590-\u05FF]+', question) if w not in STOP_WORDS and len(w) > 1]) > 0:
+        topics.add("search")
+
+    # If no specific topic detected, include everything
+    if topics == {"production"}:
+        topics = {"production", "comparison", "myfile", "rates"}
+
+    return topics
+
+
+MAX_CONTEXT_CHARS = 12000  # Keep context under ~3K tokens to avoid overload
+
+
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
     prod_context, prod_upload = await _get_production_context(db, user_id)
     if not prod_context:
         return None
 
+    topics = _detect_question_topics(question) if question else {"production", "comparison", "myfile", "rates"}
+
     context_parts = [prod_context]
 
     if prod_upload:
-        comp_context = await _get_comparison_context(db, user_id, prod_upload)
-        if comp_context:
-            context_parts.append(comp_context)
+        if "comparison" in topics:
+            comp_context = await _get_comparison_context(db, user_id, prod_upload)
+            if comp_context:
+                context_parts.append(comp_context)
 
-        myfile_context = await _get_myfile_context(db, user_id, prod_upload)
-        if myfile_context:
-            context_parts.append(myfile_context)
+        if "myfile" in topics:
+            myfile_context = await _get_myfile_context(db, user_id, prod_upload)
+            if myfile_context:
+                context_parts.append(myfile_context)
 
         # Search for specific customers if question contains names/IDs
-        if question:
+        if question and "search" in topics:
             search_context = await _search_customers(db, user_id, prod_upload.id, question)
             if search_context:
                 context_parts.append(search_context)
 
     # Commission rates (independent of production upload)
-    rates_context = await _get_commission_rates_context(db, user_id)
-    if rates_context:
-        context_parts.append(rates_context)
+    if "rates" in topics:
+        rates_context = await _get_commission_rates_context(db, user_id)
+        if rates_context:
+            context_parts.append(rates_context)
 
-    return "\n\n".join(context_parts)
+    full_context = "\n\n".join(context_parts)
+
+    # Truncate if too long to avoid API overload
+    if len(full_context) > MAX_CONTEXT_CHARS:
+        full_context = full_context[:MAX_CONTEXT_CHARS] + "\n\n[... נתונים נוספים קוצצו למניעת עומס ...]"
+
+    return full_context
 
 
 async def stream_chat(
@@ -657,19 +704,43 @@ async def stream_chat(
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    try:
-        async with client.messages.stream(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2048,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
-                yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
-    except anthropic.AuthenticationError:
-        yield f"data: {json.dumps({'text': 'שגיאה: מפתח ה-API אינו תקין.'}, ensure_ascii=False)}\n\n"
-    except Exception as e:
-        logger.error(f"AI chat error: {type(e).__name__}: {e}")
-        yield f"data: {json.dumps({'text': 'שגיאה: לא ניתן לעבד את הבקשה כרגע.'}, ensure_ascii=False)}\n\n"
+    # Try Sonnet twice (with backoff), then Haiku as fallback
+    attempts = [
+        ("claude-sonnet-4-20250514", 0),
+        ("claude-sonnet-4-20250514", 2),
+        ("claude-haiku-4-5-20251001", 1),
+    ]
+    last_error = None
+
+    for model, delay in attempts:
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            async with client.messages.stream(
+                model=model,
+                max_tokens=2048,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+            last_error = None
+            break  # success
+        except anthropic.AuthenticationError:
+            yield f"data: {json.dumps({'text': 'שגיאה: מפתח ה-API אינו תקין.'}, ensure_ascii=False)}\n\n"
+            last_error = None
+            break
+        except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+            last_error = e
+            logger.warning(f"AI chat {model} failed: {type(e).__name__}: {e}")
+            continue
+        except Exception as e:
+            last_error = e
+            logger.error(f"AI chat error: {type(e).__name__}: {e}")
+            break
+
+    if last_error:
+        logger.error(f"AI chat all attempts failed: {type(last_error).__name__}: {last_error}")
+        yield f"data: {json.dumps({'text': 'שגיאה: לא ניתן לעבד את הבקשה כרגע. נסה שוב בעוד רגע.'}, ensure_ascii=False)}\n\n"
 
     yield f"data: {json.dumps({'done': True})}\n\n"
