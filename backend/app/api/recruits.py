@@ -741,6 +741,8 @@ async def compare_recruits_commission(
 
     commission_file_names = sorted(all_company_names)
 
+    print(f"RECRUIT-COMM DEBUG: filter={filter_company} uploads={len(comm_uploads)} recruits={len(recruits_by_id)} found={found_count} not_found={len(recruits_by_id)-found_count} companies={commission_file_names}", flush=True)
+
     return RecruitComparisonResponse(
         total=len(recruits_by_id),
         found=found_count,
