@@ -571,7 +571,7 @@ async def compare_recruits_commission(
     user: User = Depends(get_current_user),
 ):
     """Compare all recruits against commission (נפרעים) files."""
-    # Find commission uploads, deduplicate by filename (keep latest)
+    # Find commission uploads, deduplicate by company_source (keep latest per company)
     comm_uploads_result = await db.execute(
         select(FileUpload)
         .where(
@@ -584,16 +584,20 @@ async def compare_recruits_commission(
     if not all_comm_uploads:
         raise HTTPException(404, "לא נמצאו קבצי נפרעים. יש להעלות קבצי נפרעים קודם.")
 
-    seen_filenames = set()
+    # Keep only latest upload per company (by company_source, fallback to filename)
+    seen_companies = set()
     comm_uploads = []
     for u in all_comm_uploads:
-        if u.filename not in seen_filenames:
-            seen_filenames.add(u.filename)
+        key = u.company_source or u.filename
+        if key not in seen_companies:
+            seen_companies.add(key)
             comm_uploads.append(u)
 
     # Load all commission records grouped by normalized id
-    comm_by_id = {}
+    # Deduplicate per client per company to avoid double-counting
+    comm_by_id = {}  # norm_id -> { company -> best_record }
     for upload in comm_uploads:
+        company_src = upload.company_source or upload.filename
         result = await db.execute(
             select(ClientRecord).where(
                 ClientRecord.upload_id == upload.id,
@@ -602,7 +606,11 @@ async def compare_recruits_commission(
         )
         for r in result.scalars().all():
             if r.id_number:
-                comm_by_id.setdefault(_normalize_id(r.id_number), []).append(r)
+                norm = _normalize_id(r.id_number)
+                if norm not in comm_by_id:
+                    comm_by_id[norm] = {}
+                # Keep all records per company (a client can have multiple products)
+                comm_by_id[norm].setdefault(company_src, []).append(r)
 
     # Load recruits and group by normalized id_number
     recruits_result = await db.execute(
@@ -622,7 +630,11 @@ async def compare_recruits_commission(
     found_count = 0
 
     for norm_id, recruit in recruits_by_id.items():
-        comm_recs = comm_by_id.get(norm_id, [])
+        client_companies = comm_by_id.get(norm_id, {})
+        # Flatten all records across companies
+        comm_recs = []
+        for recs in client_companies.values():
+            comm_recs.extend(recs)
         found = len(comm_recs) > 0
 
         if found:
@@ -635,7 +647,7 @@ async def compare_recruits_commission(
             premium = float(r.total_premium) if r.total_premium is not None else 0
             total_commission += commission or premium
             commission_products.append({
-                "product": r.product or "",
+                "product": r.product or r.product_type or "",
                 "product_type": r.product_type or "",
                 "company": r.receiving_company or "",
                 "premium": premium,
@@ -654,7 +666,7 @@ async def compare_recruits_commission(
             customer_status=recruit.customer_status,
             found_in_production=found,
             production_products=commission_products,
-            production_premium=total_commission,
+            production_premium=round(total_commission, 2),
         ))
 
     # Sort: not found first, then by commission company match, then by name
