@@ -278,40 +278,12 @@
         <div class="float-circle fc-4"></div>
       </template>
 
-      <!-- Upload + compare section -->
+      <!-- Compare + upload section -->
       <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult">
-        <!-- Upload commission files -->
-        <div class="comm-upload-area">
-          <div
-            class="comm-drop-zone"
-            :class="{ dragging: commDragging }"
-            @dragenter.prevent="commDragging = true"
-            @dragleave.prevent="commDragging = false"
-            @dragover.prevent
-            @drop.prevent="onCommFileDrop"
-            @click="$refs.commFileInput.click()"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <span v-if="commUploading">מעלה קבצים...</span>
-            <span v-else>העלה קבצי נפרעים להשוואה</span>
-            <span class="comm-drop-hint">גרור קבצים או לחץ לבחירה</span>
-          </div>
-          <input
-            ref="commFileInput"
-            type="file"
-            accept=".xlsx,.xls"
-            multiple
-            @change="onCommFileSelect"
-            style="display: none"
-          />
-          <!-- Show uploaded files -->
-          <div v-if="commUploadedFiles.length" class="comm-uploaded-list">
-            <span class="comm-uploaded-tag" v-for="f in commUploadedFiles" :key="f">{{ f }}</span>
-          </div>
+        <!-- Show existing commission files -->
+        <div v-if="commUploadedFiles.length" class="comm-uploaded-list" style="margin-bottom:12px">
+          <span>קבצי נפרעים במערכת:</span>
+          <span class="comm-uploaded-tag" v-for="f in commUploadedFiles" :key="f">{{ f }}</span>
         </div>
 
         <button
@@ -330,6 +302,26 @@
             <span>בדוק מול נפרעים</span>
           </template>
         </button>
+
+        <!-- Upload after button -->
+        <div class="comm-upload-inline">
+          <button class="comm-upload-btn" @click="$refs.commFileInput.click()" :disabled="commUploading">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span>{{ commUploading ? 'מעלה...' : 'העלה קבצי נפרעים' }}</span>
+          </button>
+          <input
+            ref="commFileInput"
+            type="file"
+            accept=".xlsx,.xls"
+            multiple
+            @change="onCommFileSelect"
+            style="display: none"
+          />
+        </div>
       </div>
 
       <!-- Company filter tags + upload more -->
@@ -1097,17 +1089,16 @@ watch(() => innerTab.value, (tab) => {
   background: var(--primary); color: white; border-color: var(--primary);
 }
 
-.comm-upload-area { margin-bottom: 16px; }
-.comm-drop-zone {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 20px; border: 2px dashed var(--border, #e2e8f0); border-radius: 12px;
-  cursor: pointer; transition: all 0.2s; color: var(--text-muted);
-  font-size: 13px;
+.comm-upload-inline { margin-top: 12px; }
+.comm-upload-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: 8px; font-size: 12px;
+  font-weight: 600; font-family: inherit;
+  border: 1px dashed var(--border, #e2e8f0); background: transparent;
+  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
 }
-.comm-drop-zone:hover, .comm-drop-zone.dragging {
-  border-color: var(--primary); color: var(--primary); background: rgba(245,124,0,0.03);
-}
-.comm-drop-hint { font-size: 11px; opacity: 0.6; }
+.comm-upload-btn:hover { border-color: var(--primary); color: var(--primary); }
+.comm-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .comm-uploaded-list {
   display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; justify-content: center;
 }

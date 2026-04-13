@@ -434,7 +434,7 @@
               </button>
               <div class="modal-id-row">
                 <div>
-                  <div class="modal-name">דוחות שלא נמצאו בדוח מעקב אישי</div>
+                  <div class="modal-name">{{ isCommission ? 'לקוחות שלא נמצאו בנפרעים' : 'דוחות שלא נמצאו בדוח מעקב אישי' }}</div>
                   <div class="modal-id-num">{{ notFoundList.length }} לקוחות</div>
                 </div>
                 <span class="modal-status-chip chip-missing">לא נמצאו</span>
