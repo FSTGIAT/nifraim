@@ -110,13 +110,17 @@ export const useRecruitsStore = defineStore('recruits', () => {
     }
   }
 
-  async function compareRecruitsCommission() {
+  const commissionFilterCompany = ref(null)
+
+  async function compareRecruitsCommission(company = null) {
     comparingCommission.value = true
     error.value = null
     commissionComparisonResult.value = null
     comparisonMode.value = 'commission'
+    commissionFilterCompany.value = company
     try {
-      const res = await api.post('/recruits/compare-commission')
+      const body = company ? { company } : {}
+      const res = await api.post('/recruits/compare-commission', body)
       commissionComparisonResult.value = res.data
       return res.data
     } catch (e) {
@@ -137,7 +141,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
 
   return {
     recruits, loading, comparing, comparisonResult, comparisonMode,
-    comparingCommission, commissionComparisonResult,
+    comparingCommission, commissionComparisonResult, commissionFilterCompany,
     uploading, error,
     fetchRecruits, createRecruit, createBulk, uploadRecruits,
     updateRecruit, deleteRecruit,

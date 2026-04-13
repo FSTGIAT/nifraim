@@ -298,10 +298,21 @@
         </button>
       </div>
 
-      <!-- Show which files were compared -->
+      <!-- Company filter tags -->
       <div v-if="recruitsStore.commissionComparisonResult?.commission_files?.length" class="commission-files-info">
-        <span>קבצי נפרעים:</span>
-        <span class="commission-file-tag" v-for="f in recruitsStore.commissionComparisonResult.commission_files" :key="f">{{ f }}</span>
+        <span>סנן לפי חברה:</span>
+        <button
+          class="commission-file-tag"
+          :class="{ active: !recruitsStore.commissionFilterCompany }"
+          @click="runCommissionComparison(null)"
+        >הכל</button>
+        <button
+          v-for="f in recruitsStore.commissionComparisonResult.commission_files"
+          :key="f"
+          class="commission-file-tag"
+          :class="{ active: recruitsStore.commissionFilterCompany === f }"
+          @click="runCommissionComparison(f)"
+        >{{ f }}</button>
       </div>
 
       <Transition name="results">
@@ -444,9 +455,9 @@ async function runProductionComparison() {
   }
 }
 
-async function runCommissionComparison() {
+async function runCommissionComparison(company = null) {
   try {
-    await recruitsStore.compareRecruitsCommission()
+    await recruitsStore.compareRecruitsCommission(company)
   } catch (e) {
     // error handled in store
   }
@@ -975,9 +986,14 @@ async function runCommissionComparison() {
   padding: 8px 16px; font-size: 12px; color: var(--text-muted);
 }
 .commission-file-tag {
-  background: var(--bg-alt, #f1f5f9); padding: 2px 10px;
-  border-radius: 6px; font-weight: 600; color: var(--primary);
-  font-size: 11px;
+  background: var(--bg-alt, #f1f5f9); padding: 4px 12px;
+  border-radius: 6px; font-weight: 600; color: var(--text-muted);
+  font-size: 11px; border: 1px solid transparent;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.commission-file-tag:hover { border-color: var(--primary); color: var(--primary); }
+.commission-file-tag.active {
+  background: var(--primary); color: white; border-color: var(--primary);
 }
 
 .empty-comparison {

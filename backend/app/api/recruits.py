@@ -567,10 +567,13 @@ async def compare_recruits(
 
 @router.post("/compare-commission", response_model=RecruitComparisonResponse)
 async def compare_recruits_commission(
+    body: dict | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Compare all recruits against commission (נפרעים) files."""
+    """Compare recruits against commission (נפרעים) files. Optional body: { company: "הפניקס" }"""
+    filter_company = (body or {}).get("company")
+
     # Find commission uploads, deduplicate by company_source (keep latest per company)
     comm_uploads_result = await db.execute(
         select(FileUpload)
@@ -586,12 +589,22 @@ async def compare_recruits_commission(
 
     # Keep only latest upload per company (by company_source, fallback to filename)
     seen_companies = set()
+    all_company_names = set()  # For response tags (always full list)
     comm_uploads = []
     for u in all_comm_uploads:
         key = u.company_source or u.filename
         if key not in seen_companies:
             seen_companies.add(key)
-            comm_uploads.append(u)
+            all_company_names.add(key)
+            # If filtering by company, only include matching uploads
+            if filter_company:
+                if filter_company in key or key in filter_company:
+                    comm_uploads.append(u)
+            else:
+                comm_uploads.append(u)
+
+    if filter_company and not comm_uploads:
+        raise HTTPException(404, f"לא נמצא קובץ נפרעים עבור {filter_company}")
 
     # Load all commission records grouped by normalized id
     # Deduplicate per client per company to avoid double-counting
@@ -622,6 +635,10 @@ async def compare_recruits_commission(
 
     recruits_by_id = {}
     for recruit in recruits:
+        # If filtering by company, only include recruits from that company
+        if filter_company and recruit.company:
+            if filter_company not in recruit.company and recruit.company not in filter_company:
+                continue
         key = _normalize_id(recruit.id_number)
         if key not in recruits_by_id:
             recruits_by_id[key] = recruit
@@ -722,7 +739,7 @@ async def compare_recruits_commission(
     active_count = status_counts.get("פעיל", 0)
     active_product_rate = (active_count / total_found_products * 100) if total_found_products > 0 else 0
 
-    commission_file_names = sorted(set(u.company_source or u.filename for u in comm_uploads))
+    commission_file_names = sorted(all_company_names)
 
     return RecruitComparisonResponse(
         total=len(recruits_by_id),
