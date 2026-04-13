@@ -657,8 +657,18 @@ async def compare_recruits_commission(
             production_premium=total_commission,
         ))
 
-    # Sort: not found first, then found
-    results.sort(key=lambda r: (r.found_in_production, r.last_name or ""))
+    # Sort: not found first, then by commission company match, then by name
+    comm_company_names = set(u.company_source or "" for u in comm_uploads if u.company_source)
+
+    def _has_comm_company(r):
+        if not r.company:
+            return 1
+        for cc in comm_company_names:
+            if cc in r.company or r.company in cc:
+                return 0
+        return 1
+
+    results.sort(key=lambda r: (r.found_in_production, _has_comm_company(r), r.last_name or ""))
 
     # Summary stats (commission comparison)
     total_premium_found = sum(r.production_premium for r in results if r.found_in_production)
@@ -700,7 +710,7 @@ async def compare_recruits_commission(
     active_count = status_counts.get("פעיל", 0)
     active_product_rate = (active_count / total_found_products * 100) if total_found_products > 0 else 0
 
-    commission_file_names = [u.company_source or u.filename for u in comm_uploads]
+    commission_file_names = sorted(set(u.company_source or u.filename for u in comm_uploads))
 
     return RecruitComparisonResponse(
         total=len(recruits_by_id),
