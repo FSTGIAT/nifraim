@@ -441,6 +441,14 @@
                   <span class="fm-count">
                     <span class="ltr-number">{{ filterModal.customers.length }}</span> לקוחות
                   </span>
+                  <button
+                    v-if="filterModal.category === 'removed'"
+                    class="action-icon-btn"
+                    title="שלח מייל על לקוחות שהוסרו"
+                    @click.stop="sendRemovedMail"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  </button>
                 </div>
                 <button class="fm-close" @click="closeModal">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -491,9 +499,13 @@
                 <table class="fm-table">
                   <thead>
                     <tr>
+                      <th v-if="filterModal.category === 'removed'" style="width:32px">
+                        <input type="checkbox" :checked="allRemovedSelected" @change="toggleSelectAll" />
+                      </th>
                       <th>שם</th>
                       <th>ת.ז</th>
                       <th>חברה</th>
+                      <th v-if="filterModal.category === 'removed' || filterModal.category === 'new'">סוג מוצר</th>
                       <th>מוצרים</th>
                       <th>פרמיה</th>
                       <th>צבירה</th>
@@ -508,9 +520,13 @@
                       class="fm-table-row"
                       @click="openDetail(c)"
                     >
+                      <td v-if="filterModal.category === 'removed'" @click.stop>
+                        <input type="checkbox" :checked="selectedRemovedIds.has(c.id_number)" @change="toggleSelected(c.id_number)" />
+                      </td>
                       <td class="td-name">{{ c.name }}</td>
                       <td class="td-id"><span class="ltr-number">{{ c.id_number }}</span></td>
                       <td class="td-company" :title="c.company">{{ c.company || '—' }}</td>
+                      <td v-if="filterModal.category === 'removed' || filterModal.category === 'new'">{{ c.product_types?.join(', ') || '—' }}</td>
                       <td><span class="ltr-number">{{ c.products_count }}</span></td>
                       <td>
                         <span v-if="c.premium" class="ltr-number">{{ formatAmount(c.premium) }}</span>
@@ -586,6 +602,10 @@
                     <div class="detail-stat">
                       <span class="detail-stat-label">מוצרים</span>
                       <span class="detail-stat-value ltr-number">{{ detailCustomer.products_count }}</span>
+                    </div>
+                    <div class="detail-stat" v-if="detailCustomer.product_types?.length">
+                      <span class="detail-stat-label">סוג מוצר</span>
+                      <span class="detail-stat-value">{{ detailCustomer.product_types.join(', ') }}</span>
                     </div>
                   </div>
                 </div>
@@ -706,11 +726,16 @@
         </div>
       </Transition>
     </Teleport>
+
+    <Transition name="fade">
+      <div v-if="clipboardNotice" class="clipboard-toast">תוכן המייל הועתק ללוח</div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
+import { openMailCompose } from '../../utils/mailHelper.js'
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
@@ -736,6 +761,8 @@ const filterModal = reactive({
   customers: [],
 })
 const commissionCompanyFilter = ref(null) // null = all companies
+const selectedRemovedIds = ref(new Set())
+const clipboardNotice = ref(false)
 
 // Chart
 const CATEGORIES = [
@@ -1157,6 +1184,7 @@ function onCompanyChartClick(category, labels, config) {
   filterModal.customers = clients
   searchQuery.value = ''
   detailCustomer.value = null
+  selectedRemovedIds.value = new Set()
 }
 
 const filteredCustomers = computed(() => {
@@ -1216,6 +1244,7 @@ function openCategory(key) {
   filterModal.customers = info.customers
   searchQuery.value = ''
   detailCustomer.value = null
+  selectedRemovedIds.value = new Set()
 }
 
 function openDetail(customer) {
@@ -1225,6 +1254,64 @@ function openDetail(customer) {
 function closeModal() {
   filterModal.open = false
   detailCustomer.value = null
+}
+
+const allRemovedSelected = computed(() => {
+  if (filterModal.category !== 'removed') return false
+  const customers = filteredCustomers.value
+  return customers.length > 0 && customers.every(c => selectedRemovedIds.value.has(c.id_number))
+})
+
+function toggleSelectAll() {
+  const customers = filteredCustomers.value
+  if (allRemovedSelected.value) {
+    selectedRemovedIds.value = new Set()
+  } else {
+    selectedRemovedIds.value = new Set(customers.map(c => c.id_number))
+  }
+}
+
+function toggleSelected(idNumber) {
+  const next = new Set(selectedRemovedIds.value)
+  if (next.has(idNumber)) {
+    next.delete(idNumber)
+  } else {
+    next.add(idNumber)
+  }
+  selectedRemovedIds.value = next
+}
+
+async function sendRemovedMail() {
+  const customers = filteredCustomers.value
+  const selected = selectedRemovedIds.value.size > 0
+    ? customers.filter(c => selectedRemovedIds.value.has(c.id_number))
+    : customers
+  if (!selected.length) return
+
+  const byCompany = {}
+  for (const c of selected) {
+    const co = c.company || 'לא ידוע'
+    if (!byCompany[co]) byCompany[co] = []
+    byCompany[co].push(c)
+  }
+
+  const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
+  const companyName = topCompany[0]
+  const clients = topCompany[1]
+
+  const lines = clients.map(c => {
+    const productInfo = c.product_types?.length ? ` (${c.product_types.join(', ')})` : ''
+    return `הלקוח ${c.name} ת.ז ${c.id_number}${productInfo} אינו מופיע אצלי בפרודוקציה החודשית האחרונה.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי.`
+  }).join('\n\n')
+
+  const subject = `בקשת בדיקה — לקוחות שהוסרו מהפרודוקציה (${clients.length})`
+  const body = `שלום רב,\n\n${lines}\n\nבברכה`
+
+  const status = await openMailCompose({ to: '', subject, body })
+  if (status === 'clipboard') {
+    clipboardNotice.value = true
+    setTimeout(() => { clipboardNotice.value = false }, 4000)
+  }
 }
 
 function runCompare() {
@@ -2380,4 +2467,21 @@ function formatVal(val) {
 .pg-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .pg-info { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+.action-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 6px;
+  border: none; background: var(--bg-alt, #f1f5f9); color: var(--text-muted);
+  cursor: pointer; transition: all 0.15s;
+  margin-right: 8px;
+}
+.action-icon-btn:hover { background: var(--primary); color: #fff; }
+
+.clipboard-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 8px;
+  font-size: 13px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

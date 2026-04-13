@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -177,6 +177,9 @@ async def upload_recruits(
 
     if not to_insert:
         raise HTTPException(400, "לא נמצאו רשומות תקינות בקובץ")
+
+    # Delete existing recruits for this user before inserting (prevents duplicates on re-upload)
+    await db.execute(delete(Recruit).where(Recruit.user_id == user.id))
 
     # Batch insert without refreshing each row (saves memory + time)
     db.add_all(to_insert)

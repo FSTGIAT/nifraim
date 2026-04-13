@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You are a specialized insurance reconciliation analyst assistant for the Nifraim platform.
+המשתמש שמדבר איתך הוא סוכן הביטוח בעל התיק. כל הנתונים למטה שייכים לו ולתיק הלקוחות שלו.
+כשהוא שואל "שלי" הוא מתכוון לנתונים שלו כסוכן — סה"כ הפרמיה, הלקוחות, העמלות וכו'.
 You have access ONLY to the user's data shown below. You MUST:
 - Answer ONLY questions about this data. Refuse anything else politely.
 - Always respond in Hebrew.
@@ -380,8 +382,10 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
             prod_by_id.setdefault(_normalize_id(r.id_number), []).append(r)
 
     found_count = 0
+    found_clients = []
     not_found = []
     total_premium_found = 0.0
+    total_recruit_amount = 0.0
     company_stats = {}
 
     for norm_id, recruit in recruits_by_id.items():
@@ -390,12 +394,16 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
         if comp not in company_stats:
             company_stats[comp] = {"found": 0, "not_found": 0, "premium": 0.0}
 
+        recruit_amount = float(recruit.amount or 0)
+        total_recruit_amount += recruit_amount
+
         if prod_recs:
             found_count += 1
             premium = sum(float(r.total_premium or 0) for r in prod_recs)
             total_premium_found += premium
             company_stats[comp]["found"] += 1
             company_stats[comp]["premium"] += premium
+            found_clients.append(recruit)
         else:
             not_found.append(recruit)
             company_stats[comp]["not_found"] += 1
@@ -404,10 +412,11 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
     not_found_count = total - found_count
 
     parts = [
-        "\n--- My File (קובץ אישי) ---",
-        f"סה\"כ לקוחות: {total}",
+        "\n--- קובץ אישי (My File) ---",
+        f"סה\"כ לקוחות בקובץ אישי: {total}",
+        f"סה\"כ סכום בקובץ אישי: {total_recruit_amount:,.0f}₪",
         f"נמצאו בפרודוקציה: {found_count} ({_pct(found_count, total)}%)",
-        f"לא נמצאו: {not_found_count} ({_pct(not_found_count, total)}%)",
+        f"לא נמצאו בפרודוקציה: {not_found_count} ({_pct(not_found_count, total)}%)",
         f"סה\"כ פרמיה של לקוחות שנמצאו: {total_premium_found:,.0f}₪",
     ]
 
@@ -418,12 +427,38 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
         )
         parts.append(f"פירוט לפי חברה: {co_lines}")
 
-    if not_found[:10]:
-        names = [
-            f"{r.first_name} {r.last_name}".strip() or r.id_number
-            for r in not_found[:10]
-        ]
-        parts.append(f"לקוחות שלא נמצאו: {', '.join(names)}")
+    # Detail not-found clients with their recruit data
+    if not_found:
+        parts.append(f"\nלקוחות שלא נמצאו בפרודוקציה ({len(not_found)}):")
+        for r in not_found[:15]:
+            name = f"{r.first_name} {r.last_name}".strip() or r.id_number
+            amt = float(r.amount or 0)
+            status = r.customer_status or ""
+            product = r.product or ""
+            detail = f"  {name} (ת.ז: {r.id_number}, חברה: {r.company or '—'}"
+            if product:
+                detail += f", מוצר: {product}"
+            if amt > 0:
+                detail += f", סכום: {amt:,.0f}₪"
+            if status:
+                detail += f", סטטוס: {status}"
+            detail += ")"
+            parts.append(detail)
+
+    # Detail found clients with recruit amounts
+    if found_clients:
+        parts.append(f"\nלקוחות שנמצאו בפרודוקציה ({len(found_clients)}):")
+        for r in found_clients[:15]:
+            name = f"{r.first_name} {r.last_name}".strip() or r.id_number
+            amt = float(r.amount or 0)
+            product = r.product or ""
+            detail = f"  {name} (ת.ז: {r.id_number}, חברה: {r.company or '—'}"
+            if product:
+                detail += f", מוצר: {product}"
+            if amt > 0:
+                detail += f", סכום: {amt:,.0f}₪"
+            detail += ")"
+            parts.append(detail)
 
     return "\n".join(parts)
 

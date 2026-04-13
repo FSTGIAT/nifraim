@@ -480,6 +480,7 @@ async def compare_productions(
                     "premium": 0.0,
                     "accumulation": 0.0,
                     "products_count": 0,
+                    "product_types": [],
                     "statuses": [],
                     "categories": set(),
                 }
@@ -489,6 +490,8 @@ async def compare_productions(
             g["products_count"] += 1
             if r.product_status:
                 g["statuses"].append(r.product_status)
+            if r.product_type:
+                g["product_types"].append(r.product_type)
             cat = _classify_product_type(r.product_type)
             if cat:
                 g["categories"].add(cat)
@@ -537,6 +540,7 @@ async def compare_productions(
         new_clients.append({"id_number": cid, "name": c["name"], "company": c["company"],
                             "premium": round(c["premium"], 2), "accumulation": round(c["accumulation"], 2),
                             "products_count": c["products_count"],
+                            "product_types": list(set(c["product_types"])),
                             **_comm_fields(cid)})
 
     removed_clients = []
@@ -545,6 +549,7 @@ async def compare_productions(
         removed_clients.append({"id_number": cid, "name": p["name"], "company": p["company"],
                                 "premium": round(p["premium"], 2), "accumulation": round(p["accumulation"], 2),
                                 "products_count": p["products_count"],
+                                "product_types": list(set(p["product_types"])),
                                 **_comm_fields(cid)})
 
     changed_clients = []

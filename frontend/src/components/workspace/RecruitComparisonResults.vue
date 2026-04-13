@@ -1068,11 +1068,9 @@ function onStatusChange(recruitId, event) {
 }
 
 function confirmCustomStatus(recruitId) {
-  if (customInputVal.value.trim()) {
-    const status = customInputVal.value.trim()
-    customerStatuses.value[recruitId] = status
-    persistStatus(recruitId, status)
-  }
+  const status = customInputVal.value.trim() || 'אחר'
+  customerStatuses.value[recruitId] = status
+  persistStatus(recruitId, status)
   customInputId.value = null
   customInputVal.value = ''
 }
