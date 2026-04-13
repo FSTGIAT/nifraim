@@ -734,8 +734,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { openMailCompose } from '../../utils/mailHelper.js'
+import api from '../../api/client.js'
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
@@ -763,6 +764,14 @@ const filterModal = reactive({
 const commissionCompanyFilter = ref(null) // null = all companies
 const selectedRemovedIds = ref(new Set())
 const clipboardNotice = ref(false)
+const companyContacts = ref([])
+
+onMounted(async () => {
+  try {
+    const res = await api.get('/company-contacts')
+    companyContacts.value = res.data
+  } catch { /* ignore */ }
+})
 
 // Chart
 const CATEGORIES = [
@@ -1281,6 +1290,14 @@ function toggleSelected(idNumber) {
   selectedRemovedIds.value = next
 }
 
+function findCompanyEmail(companyName) {
+  if (!companyName || !companyContacts.value.length) return ''
+  const match = companyContacts.value.find(c =>
+    companyName.includes(c.company_name) || c.company_name.includes(companyName)
+  )
+  return match?.email || ''
+}
+
 async function sendRemovedMail() {
   const customers = filteredCustomers.value
   const selected = selectedRemovedIds.value.size > 0
@@ -1288,6 +1305,7 @@ async function sendRemovedMail() {
     : customers
   if (!selected.length) return
 
+  // Group by company
   const byCompany = {}
   for (const c of selected) {
     const co = c.company || 'לא ידוע'
@@ -1295,19 +1313,21 @@ async function sendRemovedMail() {
     byCompany[co].push(c)
   }
 
+  // Send email per company group
   const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
   const companyName = topCompany[0]
   const clients = topCompany[1]
+  const companyEmail = findCompanyEmail(companyName)
 
   const lines = clients.map(c => {
     const productInfo = c.product_types?.length ? ` (${c.product_types.join(', ')})` : ''
     return `הלקוח ${c.name} ת.ז ${c.id_number}${productInfo} אינו מופיע אצלי בפרודוקציה החודשית האחרונה.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי.`
   }).join('\n\n')
 
-  const subject = `בקשת בדיקה — לקוחות שהוסרו מהפרודוקציה (${clients.length})`
+  const subject = `בקשת בדיקה — לקוחות שהוסרו מהפרודוקציה (${clients.length}) — ${companyName}`
   const body = `שלום רב,\n\n${lines}\n\nבברכה`
 
-  const status = await openMailCompose({ to: '', subject, body })
+  const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
     setTimeout(() => { clipboardNotice.value = false }, 4000)
