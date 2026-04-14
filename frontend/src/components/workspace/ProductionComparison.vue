@@ -442,12 +442,20 @@
                     <span class="ltr-number">{{ filterModal.customers.length }}</span> לקוחות
                   </span>
                   <button
-                    v-if="filterModal.category === 'removed'"
+                    v-if="['removed','new','changed'].includes(filterModal.category)"
                     class="action-icon-btn"
-                    title="שלח מייל על לקוחות שהוסרו"
-                    @click.stop="sendRemovedMail"
+                    title="שלח מייל"
+                    @click.stop="sendFilteredMail"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  </button>
+                  <button
+                    v-if="['removed','new','changed'].includes(filterModal.category)"
+                    class="action-icon-btn"
+                    title="הורד לאקסל"
+                    @click.stop="downloadFilteredExcel"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
                   </button>
                 </div>
                 <button class="fm-close" @click="closeModal">
@@ -457,8 +465,8 @@
                 </button>
               </div>
 
-              <!-- Company filter pills (commission modal only) -->
-              <div v-if="filterModal.category === 'commission' && comparisonResult?.summary?.commission_by_company?.length > 1" class="fm-company-filter">
+              <!-- Company filter pills (commission modal) -->
+              <div v-if="filterModal.category === 'commission' && comparisonResult?.summary?.commission_by_company?.length > 0" class="fm-company-filter">
                 <button
                   class="company-pill"
                   :class="{ active: !commissionCompanyFilter }"
@@ -477,6 +485,22 @@
                   {{ co.company }}
                   <span class="pill-amount ltr-number">{{ formatAmount(co.total) }}</span>
                   <span class="pill-count ltr-number">({{ co.clients_count }})</span>
+                </button>
+              </div>
+
+              <!-- Product filter pills (commission modal - Bug 8) -->
+              <div v-if="filterModal.category === 'commission' && commissionProducts.length > 1" class="fm-company-filter">
+                <button class="company-pill" :class="{ active: !commissionProductFilter }" @click="commissionProductFilter = null">כל המוצרים</button>
+                <button v-for="p in commissionProducts" :key="p" class="company-pill" :class="{ active: commissionProductFilter === p }" @click="commissionProductFilter = p">{{ p }}</button>
+              </div>
+
+              <!-- Company filter pills (non-commission categories - Bug 4) -->
+              <div v-if="['removed','new','changed'].includes(filterModal.category) && modalCompanyBreakdown.length > 1" class="fm-company-filter">
+                <button class="company-pill" :class="{ active: !categoryCompanyFilter }" @click="categoryCompanyFilter = null">
+                  הכל <span class="pill-count ltr-number">({{ filterModal.customers.length }})</span>
+                </button>
+                <button v-for="co in modalCompanyBreakdown" :key="co.company" class="company-pill" :class="{ active: categoryCompanyFilter === co.company }" @click="categoryCompanyFilter = co.company">
+                  {{ co.company }} <span class="pill-count ltr-number">({{ co.count }})</span>
                 </button>
               </div>
 
@@ -570,7 +594,7 @@
                   </svg>
                   חזרה לרשימה
                 </button>
-                <button class="fm-close" @click="closeModal">
+                <button class="fm-close" @click="detailCustomer = null">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
@@ -735,6 +759,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import * as XLSX from 'xlsx'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import api from '../../api/client.js'
 
@@ -762,6 +787,8 @@ const filterModal = reactive({
   customers: [],
 })
 const commissionCompanyFilter = ref(null) // null = all companies
+const categoryCompanyFilter = ref(null) // company filter for non-commission categories
+const commissionProductFilter = ref(null) // product filter for commission category
 const selectedRemovedIds = ref(new Set())
 const clipboardNotice = ref(false)
 const companyContacts = ref([])
@@ -1142,6 +1169,7 @@ function openCommissionFilter(type) {
   searchQuery.value = ''
   detailCustomer.value = null
   commissionCompanyFilter.value = null
+  commissionProductFilter.value = null
 }
 
 function openChangedByType(field) {
@@ -1194,7 +1222,44 @@ function onCompanyChartClick(category, labels, config) {
   searchQuery.value = ''
   detailCustomer.value = null
   selectedRemovedIds.value = new Set()
+  categoryCompanyFilter.value = null
 }
+
+// Company breakdown for non-commission categories (Bug 4)
+const modalCompanyBreakdown = computed(() => {
+  if (filterModal.category === 'commission') return []
+  const map = {}
+  for (const c of filterModal.customers) {
+    const co = c.company || 'לא ידוע'
+    map[co] = (map[co] || 0) + 1
+  }
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .map(([company, count]) => ({ company, count }))
+})
+
+// Product list for commission category (Bug 8)
+const commissionProducts = computed(() => {
+  if (filterModal.category !== 'commission') return []
+  const products = new Set()
+  for (const c of filterModal.customers) {
+    for (const d of (c.commission_details || [])) {
+      if (d.company) products.add(d.company) // companies are already tracked, this is for products
+    }
+    // Extract actual product names from the changed_clients commission data
+    for (const ch of (c.changes || [])) {
+      if (ch.field) products.add(ch.field)
+    }
+  }
+  // Actually get product_types from clients
+  const prods = new Set()
+  for (const c of filterModal.customers) {
+    if (c.product_types) {
+      for (const pt of c.product_types) prods.add(pt)
+    }
+  }
+  return [...prods].sort()
+})
 
 const filteredCustomers = computed(() => {
   let list = filterModal.customers
@@ -1203,6 +1268,16 @@ const filteredCustomers = computed(() => {
     list = list.filter(c =>
       c.commission_details?.some(d => d.company === commissionCompanyFilter.value)
     )
+  }
+  // Filter by commission product if active (Bug 8)
+  if (commissionProductFilter.value && filterModal.category === 'commission') {
+    list = list.filter(c =>
+      c.product_types?.includes(commissionProductFilter.value)
+    )
+  }
+  // Filter by category company if active (Bug 4)
+  if (categoryCompanyFilter.value && filterModal.category !== 'commission') {
+    list = list.filter(c => (c.company || 'לא ידוע') === categoryCompanyFilter.value)
   }
   if (!searchQuery.value) return list
   const q = searchQuery.value.toLowerCase()
@@ -1254,6 +1329,7 @@ function openCategory(key) {
   searchQuery.value = ''
   detailCustomer.value = null
   selectedRemovedIds.value = new Set()
+  categoryCompanyFilter.value = null
 }
 
 function openDetail(customer) {
@@ -1298,9 +1374,9 @@ function findCompanyEmail(companyName) {
   return match?.email || ''
 }
 
-async function sendRemovedMail() {
+async function sendFilteredMail() {
   const customers = filteredCustomers.value
-  const selected = selectedRemovedIds.value.size > 0
+  const selected = (filterModal.category === 'removed' && selectedRemovedIds.value.size > 0)
     ? customers.filter(c => selectedRemovedIds.value.has(c.id_number))
     : customers
   if (!selected.length) return
@@ -1313,25 +1389,49 @@ async function sendRemovedMail() {
     byCompany[co].push(c)
   }
 
-  // Send email per company group
   const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
   const companyName = topCompany[0]
   const clients = topCompany[1]
   const companyEmail = findCompanyEmail(companyName)
 
+  const catLabel = filterModal.title || filterModal.category
   const lines = clients.map(c => {
     const productInfo = c.product_types?.length ? ` (${c.product_types.join(', ')})` : ''
-    return `הלקוח ${c.name} ת.ז ${c.id_number}${productInfo} אינו מופיע אצלי בפרודוקציה החודשית האחרונה.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי.`
-  }).join('\n\n')
+    const premiumStr = c.premium ? ` פרמיה: ₪${Math.round(c.premium)}` : ''
+    return `- ${c.name} ת.ז ${c.id_number}${productInfo}${premiumStr}`
+  }).join('\n')
 
-  const subject = `בקשת בדיקה — לקוחות שהוסרו מהפרודוקציה (${clients.length}) — ${companyName}`
-  const body = `שלום רב,\n\n${lines}\n\nבברכה`
+  const subject = `${catLabel} (${clients.length}) — ${companyName}`
+  const body = `שלום רב,\n\nלהלן רשימת לקוחות — ${catLabel}:\n\n${lines}\n\nבברכה`
 
   const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
     setTimeout(() => { clipboardNotice.value = false }, 4000)
   }
+}
+
+function downloadFilteredExcel() {
+  const customers = filteredCustomers.value
+  if (!customers.length) return
+
+  const rows = customers.map(c => ({
+    'שם': c.name || '',
+    'ת.ז': c.id_number || '',
+    'חברה': c.company || '',
+    'סוג מוצר': c.product_types?.join(', ') || '',
+    'מוצרים': c.products_count || '',
+    'פרמיה': c.premium || 0,
+    'צבירה': c.accumulation || 0,
+  }))
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  ws['!Dir'] = 'rtl'
+  const wb = XLSX.utils.book_new()
+  const sheetName = filterModal.title || filterModal.category
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31))
+  const fileName = `${sheetName.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('he-IL')}.xlsx`
+  XLSX.writeFile(wb, fileName)
 }
 
 function runCompare() {

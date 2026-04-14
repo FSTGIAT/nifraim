@@ -10,7 +10,7 @@
     <div class="hero-card">
       <div class="hero-header">
         <h2 class="hero-title">התפלגות לקוחות</h2>
-        <span class="hero-badge">{{ props.customers.length }} לקוחות</span>
+        <span class="hero-badge">{{ displayCustomers.length }} לקוחות</span>
       </div>
       <div class="hero-body">
         <apexchart
@@ -36,6 +36,12 @@
           <span class="hero-stat-pct" :style="{ color: item.color }">{{ pctOf(item.count) }}%</span>
         </div>
       </div>
+    </div>
+
+    <!-- Company filter (when multiple commission files) -->
+    <div v-if="props.companySources.length > 1" class="company-filter-bar">
+      <button class="company-pill" :class="{ active: !companyFilter }" @click="companyFilter = null">הכל ({{ props.customers.length }})</button>
+      <button v-for="src in props.companySources" :key="src" class="company-pill" :class="{ active: companyFilter === src }" @click="companyFilter = src">{{ src }}</button>
     </div>
 
     <!-- KPI Cards Row -->
@@ -80,6 +86,44 @@
           <button
             class="kpi-action-btn kpi-action-excel"
             @click.stop="downloadUnpaidExcel"
+            title="הורד לאקסל"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <polyline points="9 15 12 18 15 15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="kpi-card kpi-violet" @click="onLegendClick('only_commission')" style="cursor:pointer">
+        <div class="kpi-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </div>
+        <div class="kpi-data">
+          <div class="kpi-value">{{ onlyCommCustomers.length }}</div>
+          <div class="kpi-label">רק בנפרעים</div>
+        </div>
+        <div v-if="onlyCommCustomers.length > 0" class="kpi-actions">
+          <button
+            class="kpi-action-btn kpi-action-mail"
+            @click.stop="sendOnlyCommissionMail"
+            title="שלח מייל על לקוחות שרק בנפרעים"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="M22 7l-10 7L2 7"/>
+            </svg>
+          </button>
+          <button
+            class="kpi-action-btn kpi-action-excel"
+            @click.stop="downloadOnlyCommissionExcel"
             title="הורד לאקסל"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -240,6 +284,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            <div v-if="modalProducts.length > 1" class="fm-product-filter">
+              <button class="company-pill" :class="{ active: !productFilter }" @click="productFilter = null">הכל</button>
+              <button v-for="p in modalProducts" :key="p" class="company-pill" :class="{ active: productFilter === p }" @click="productFilter = p">{{ p }}</button>
+            </div>
             <div class="fm-search-wrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -297,6 +345,7 @@ const props = defineProps({
   customers: { type: Array, required: true },
   categoryLabel: { type: String, default: '' },
   companySource: { type: String, default: '' },
+  companySources: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['drill-customer'])
@@ -307,6 +356,7 @@ const detailCustomer = ref(null)
 const commissionRates = ref([])
 const clipboardNotice = ref(false)
 const showUnpaidStrip = ref(false)
+const companyFilter = ref(null)
 
 onMounted(async () => {
   try {
@@ -319,8 +369,29 @@ onMounted(async () => {
 
 // ─── Computed data ───
 
+function matchesCompanyFilter(productCompany) {
+  if (!companyFilter.value || !productCompany) return false
+  const lower = productCompany.toLowerCase()
+  const cl = companyFilter.value.toLowerCase()
+  return lower.includes(cl) || cl.includes(lower)
+}
+
+const displayCustomers = computed(() => {
+  if (!companyFilter.value) return props.customers
+  return props.customers.filter(c => {
+    // Check commission products
+    const commProducts = c.commission_products || []
+    const matchedProducts = c.product_matches?.matched || []
+    const unmatchedComm = c.product_matches?.unmatched_commission || []
+    const prodProducts = c.production_products || []
+    const unmatchedProd = c.product_matches?.unmatched_production || []
+    const allProducts = [...commProducts, ...matchedProducts, ...unmatchedComm, ...prodProducts, ...unmatchedProd]
+    return allProducts.some(p => matchesCompanyFilter(p.company || p.company_full || ''))
+  })
+})
+
 const commissionCustomers = computed(() =>
-  props.customers.filter(c => c.match_status === 'matched' || c.match_status === 'only_commission')
+  displayCustomers.value.filter(c => c.match_status === 'matched' || c.match_status === 'only_commission')
 )
 
 const isGemel = computed(() => {
@@ -328,9 +399,9 @@ const isGemel = computed(() => {
   return label.includes('גמל') || label.includes('השתלמות')
 })
 
-const matchedCustomers = computed(() => props.customers.filter(c => c.match_status === 'matched'))
-const onlyProdCustomers = computed(() => props.customers.filter(c => c.match_status === 'only_production'))
-const onlyCommCustomers = computed(() => props.customers.filter(c => c.match_status === 'only_commission'))
+const matchedCustomers = computed(() => displayCustomers.value.filter(c => c.match_status === 'matched'))
+const onlyProdCustomers = computed(() => displayCustomers.value.filter(c => c.match_status === 'only_production'))
+const onlyCommCustomers = computed(() => displayCustomers.value.filter(c => c.match_status === 'only_commission'))
 
 // Item 5: For gemel, exclude customers where ALL production products have accumulation = 0/null
 const effectiveUnpaidCustomers = computed(() => {
@@ -434,7 +505,7 @@ const topNOptions = [15, 20, 50, 100]
 const topN = ref(15)
 
 const topClientsData = computed(() => {
-  const list = props.customers.map(c => {
+  const list = displayCustomers.value.map(c => {
     const name = customerName(c)
     let value = 0
     let productCount = 0
@@ -569,8 +640,8 @@ function onDrillFromModal(idNumber) {
 }
 
 function pctOf(count) {
-  if (!props.customers.length) return 0
-  return ((count / props.customers.length) * 100).toFixed(0)
+  if (!displayCustomers.value.length) return 0
+  return ((count / displayCustomers.value.length) * 100).toFixed(0)
 }
 
 // ─── Charts ───
@@ -608,7 +679,7 @@ const statusDonutOptions = computed(() => ({
             fontFamily: 'Heebo, sans-serif',
             fontSize: '14px',
             color: '#706E6B',
-            formatter: () => props.customers.length,
+            formatter: () => displayCustomers.value.length,
           },
         },
       },
@@ -678,23 +749,56 @@ const productTreemapOptions = computed(() => ({
 // ─── Filter Modal ───
 const filterModal = ref({ open: false, title: '', customers: [] })
 const filterSearchQuery = ref('')
+const productFilter = ref(null)
+
+const modalProducts = computed(() => {
+  const products = new Set()
+  for (const c of filterModal.value.customers) {
+    for (const p of (c.production_products || [])) { if (p.product) products.add(p.product) }
+    for (const p of (c.commission_products || [])) { if (p.product) products.add(p.product) }
+    for (const p of (c.product_matches?.matched || [])) {
+      const name = p.production_product || p.commission_product || p.product
+      if (name) products.add(name)
+    }
+    for (const p of (c.product_matches?.unmatched_production || [])) { if (p.product) products.add(p.product) }
+    for (const p of (c.product_matches?.unmatched_commission || [])) { if (p.product) products.add(p.product) }
+  }
+  return [...products].sort()
+})
 
 const filteredModalCustomers = computed(() => {
-  if (!filterSearchQuery.value) return filterModal.value.customers
-  const q = filterSearchQuery.value.toLowerCase()
-  return filterModal.value.customers.filter(c =>
-    (customerName(c).toLowerCase().includes(q)) ||
-    (c.id_number && c.id_number.includes(q))
-  )
+  let list = filterModal.value.customers
+  if (productFilter.value) {
+    list = list.filter(c => {
+      const allProducts = [
+        ...(c.production_products || []).map(p => p.product),
+        ...(c.commission_products || []).map(p => p.product),
+        ...(c.product_matches?.matched || []).map(p => p.production_product || p.commission_product || p.product),
+        ...(c.product_matches?.unmatched_production || []).map(p => p.product),
+        ...(c.product_matches?.unmatched_commission || []).map(p => p.product),
+      ]
+      return allProducts.some(name => name === productFilter.value)
+    })
+  }
+  if (filterSearchQuery.value) {
+    const q = filterSearchQuery.value.toLowerCase()
+    list = list.filter(c =>
+      (customerName(c).toLowerCase().includes(q)) ||
+      (c.id_number && c.id_number.includes(q))
+    )
+  }
+  return list
 })
 
 function openFilterModal(title, customers) {
   filterModal.value = { open: true, title, customers }
+  productFilter.value = null
 }
 
 function closeFilterModal() {
   filterModal.value = { open: false, title: '', customers: [] }
   filterSearchQuery.value = ''
+  productFilter.value = null
 }
 
 function customerName(c) {
@@ -795,7 +899,7 @@ function onLegendClick(key) {
   const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
   const filtered = key === 'only_production'
     ? effectiveUnpaidCustomers.value
-    : props.customers.filter(c => c.match_status === key)
+    : displayCustomers.value.filter(c => c.match_status === key)
   openFilterModal(labels[key] || key, filtered)
 }
 
@@ -890,11 +994,14 @@ async function sendAllUnpaidMail() {
 
 ${lines}
 
+קובץ אקסל עם פירוט הלקוחות הורד למחשבך — צרף אותו למייל זה.
+
 אודה לטיפולכם ותשלום רטרו בגין לקוחות אלו.
 
 בברכה,
 ${userName}`
 
+  downloadUnpaidExcel()
   const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
@@ -942,6 +1049,89 @@ function downloadUnpaidExcel() {
   XLSX.writeFile(wb, `לא_שולם_${new Date().toLocaleDateString('he-IL')}.xlsx`)
 }
 
+// ─── Only-commission mail & Excel ───
+
+async function sendOnlyCommissionMail() {
+  const customers = onlyCommCustomers.value
+  if (!customers.length) return
+
+  const lines = customers.map(c => {
+    const name = customerName(c)
+    const products = c.commission_products || c.product_matches?.unmatched_commission || []
+    const productLines = products.map(p => {
+      const balanceStr = p.balance > 0 ? ` יתרה: ₪${Math.round(p.balance)}` : ''
+      const commStr = p.commission > 0 ? ` עמלה: ₪${Math.round(p.commission)}` : ''
+      const accountStr = p.account ? ` | חשבון: ${p.account}` : ''
+      return `  - ${p.product || ''}${accountStr}${balanceStr}${commStr}`
+    }).join('\n')
+    return `- ${name} ת.ז ${c.id_number}:\n${productLines}`
+  }).join('\n')
+
+  let companyEmail = ''
+  for (const c of customers) {
+    const products = c.commission_products || c.product_matches?.unmatched_commission || []
+    for (const p of products) {
+      const rate = findRateObj(p)
+      if (rate?.company_email) {
+        companyEmail = rate.company_email
+        break
+      }
+    }
+    if (companyEmail) break
+  }
+
+  const userName = authStore.user?.full_name || ''
+  const subject = `בירור — לקוחות המופיעים רק בנפרעים (${customers.length})`
+  const body = `שלום רב,
+
+הלקוחות הבאים מופיעים בדוח הנפרעים אך לא נמצאים בפרודוקציה שלי:
+
+${lines}
+
+אודה לבירור והבהרה לגבי לקוחות אלו.
+
+בברכה,
+${userName}`
+
+  downloadOnlyCommissionExcel()
+  const status = await openMailCompose({ to: companyEmail, subject, body })
+  if (status === 'clipboard') {
+    clipboardNotice.value = true
+    setTimeout(() => { clipboardNotice.value = false }, 4000)
+  }
+}
+
+function downloadOnlyCommissionExcel() {
+  const customers = onlyCommCustomers.value
+  if (!customers.length) return
+
+  const rows = []
+  for (const c of customers) {
+    const name = customerName(c)
+    const products = c.commission_products || c.product_matches?.unmatched_commission || []
+    if (products.length === 0) {
+      rows.push({ 'שם לקוח': name, 'ת.ז': c.id_number, 'מוצר': '', 'חשבון': '', 'חברה': '', 'יתרה': '', 'עמלה': '' })
+    } else {
+      for (const p of products) {
+        rows.push({
+          'שם לקוח': name,
+          'ת.ז': c.id_number,
+          'מוצר': p.product || '',
+          'חשבון': p.account || '',
+          'חברה': p.company || '',
+          'יתרה': p.balance || 0,
+          'עמלה': p.commission || 0,
+        })
+      }
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'רק בנפרעים')
+  XLSX.writeFile(wb, `רק_בנפרעים_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+}
+
 // ─── Formatters ───
 
 function formatAmount(val) {
@@ -961,6 +1151,31 @@ function formatCompact(val) {
 .bi-dashboard {
   margin-bottom: 24px;
 }
+
+.company-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--primary-light);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+.company-filter-bar .company-pill {
+  padding: 6px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-alt, #f8f8f8);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.company-filter-bar .company-pill:hover { border-color: var(--brand); color: var(--brand); }
+.company-filter-bar .company-pill.active { background: var(--brand); color: #fff; border-color: var(--brand); }
 
 .comparison-header-bar {
   display: flex;
@@ -1138,6 +1353,8 @@ function formatCompact(val) {
 .kpi-red .kpi-value { color: #C23934; }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
 .kpi-cyan .kpi-icon { background: rgba(6, 165, 154, 0.1); color: #06A59A; }
+.kpi-violet .kpi-icon { background: rgba(139, 92, 246, 0.1); color: #8B5CF6; }
+.kpi-violet .kpi-value { color: #8B5CF6; }
 
 .kpi-data { min-width: 0; }
 .kpi-value {
@@ -1282,6 +1499,41 @@ function formatCompact(val) {
   transition: all 0.15s;
 }
 .fm-close:hover { background: var(--border-subtle); color: var(--text); }
+
+.fm-product-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.fm-product-filter .company-pill,
+.fm-company-filter .company-pill {
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-alt, #f8f8f8);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.fm-product-filter .company-pill:hover,
+.fm-company-filter .company-pill:hover { border-color: var(--brand); color: var(--brand); }
+.fm-product-filter .company-pill.active,
+.fm-company-filter .company-pill.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+.fm-company-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
 
 .fm-search-wrap {
   display: flex;

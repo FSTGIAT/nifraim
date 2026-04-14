@@ -102,6 +102,7 @@
             :customers="relevantCustomers"
             :categoryLabel="comparisonStore.result?.commission_category_label || ''"
             :companySource="comparisonStore.result?.commission_company_source || ''"
+            :companySources="comparisonStore.result?.commission_company_sources || []"
           />
         </div>
       </Transition>

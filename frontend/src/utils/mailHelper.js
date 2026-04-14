@@ -50,7 +50,7 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
     } else {
       shortUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}`
     }
-    window.open(shortUrl, '_blank')
+    window.open(shortUrl, 'email_compose')
     try {
       await navigator.clipboard.writeText(body)
     } catch {
@@ -67,6 +67,6 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
     return 'clipboard'
   }
 
-  window.open(url, '_blank')
+  window.open(url, 'email_compose')
   return 'ok'
 }
