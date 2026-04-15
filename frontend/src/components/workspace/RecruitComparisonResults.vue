@@ -306,10 +306,10 @@
     <!-- Detail Modal -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="detailItem" class="modal-overlay" @click.self="detailItem = null">
+        <div v-if="detailItem" class="modal-overlay" @click.self="closeDetail">
           <div class="modal-card">
             <div class="modal-head">
-              <button class="modal-x" @click="detailItem = null">
+              <button class="modal-x" @click="closeDetail">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               <div class="modal-id-row">
@@ -441,10 +441,21 @@
               </div>
             </div>
 
-            <!-- Search -->
+            <!-- Search + Filters -->
             <div class="mm-search-wrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input class="mm-search" v-model="missingSearch" placeholder="חיפוש לפי שם או ת.ז..." />
+            </div>
+            <div class="mm-filters">
+              <select v-model="missingCompanyFilter" class="mm-filter-select">
+                <option value="">כל החברות</option>
+                <option v-for="co in missingCompanies" :key="co" :value="co">{{ co }}</option>
+              </select>
+              <select v-model="missingProductFilter" class="mm-filter-select">
+                <option value="">כל המוצרים</option>
+                <option v-for="p in missingProducts" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span class="mm-filter-count"><span class="ltr-number">{{ filteredMissingList.length }}</span> מתוך <span class="ltr-number">{{ notFoundList.length }}</span></span>
             </div>
 
             <!-- Action buttons -->
@@ -477,7 +488,7 @@
                     v-for="item in filteredMissingList"
                     :key="item.recruit_id"
                     class="mm-row"
-                    @click="showMissingModal = false; openDetail(item)"
+                    @click="detailReturnTo = 'missing'; showMissingModal = false; openDetail(item)"
                   >
                     <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
                     <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
@@ -537,10 +548,29 @@
               </div>
             </div>
 
-            <!-- Search -->
+            <!-- Search + Filters -->
             <div class="mm-search-wrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input class="mm-search" v-model="foundSearch" placeholder="חיפוש לפי שם או ת.ז..." />
+            </div>
+            <div class="mm-filters">
+              <select v-model="foundCompanyFilter" class="mm-filter-select">
+                <option value="">כל החברות</option>
+                <option v-for="co in foundCompanies" :key="co" :value="co">{{ co }}</option>
+              </select>
+              <select v-model="foundProductFilter" class="mm-filter-select">
+                <option value="">כל המוצרים</option>
+                <option v-for="p in foundProducts" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span class="mm-filter-count"><span class="ltr-number">{{ filteredFoundList.length }}</span> מתוך <span class="ltr-number">{{ foundList.length }}</span></span>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="mm-actions">
+              <button class="mm-action-btn" @click="downloadFoundExcel()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                הורד Excel
+              </button>
             </div>
 
             <!-- Table -->
@@ -560,7 +590,7 @@
                     v-for="item in filteredFoundList"
                     :key="item.recruit_id"
                     class="mm-row"
-                    @click="showFoundModal = false; openDetail(item)"
+                    @click="detailReturnTo = 'found'; showFoundModal = false; openDetail(item)"
                   >
                     <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
                     <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
@@ -702,6 +732,7 @@ const currentPage = ref(1)
 const pageSize = 50
 const chartReady = ref(false)
 const detailItem = ref(null)
+const detailReturnTo = ref(null) // 'missing' | 'found' | null
 const clipboardNotice = ref(false)
 const customerStatuses = ref({})
 const customInputId = ref(null)
@@ -709,8 +740,12 @@ const customInputVal = ref('')
 const customInputRef = ref(null)
 const showMissingModal = ref(false)
 const missingSearch = ref('')
+const missingCompanyFilter = ref('')
+const missingProductFilter = ref('')
 const showFoundModal = ref(false)
 const foundSearch = ref('')
+const foundCompanyFilter = ref('')
+const foundProductFilter = ref('')
 const companyFilter = ref('')
 const productFilter = ref('')
 const drillModal = ref({ show: false, type: '', value: '', title: '', search: '' })
@@ -739,22 +774,57 @@ const missingPct = computed(() => props.result.total > 0 ? Math.round((props.res
 const notFoundList = computed(() => props.result.results.filter(r => !r.found_in_production))
 const foundList = computed(() => props.result.results.filter(r => r.found_in_production))
 
+// Unique companies/products for filter dropdowns
+const missingCompanies = computed(() => [...new Set(notFoundList.value.map(r => r.company).filter(Boolean))].sort())
+const missingProducts = computed(() => [...new Set(notFoundList.value.map(r => r.product).filter(Boolean))].sort())
+const foundCompanies = computed(() => [...new Set(foundList.value.map(r => r.company).filter(Boolean))].sort())
+const foundProducts = computed(() => {
+  const prods = new Set()
+  for (const r of foundList.value) {
+    for (const p of r.production_products || []) {
+      const name = p.product || p.product_type
+      if (name) prods.add(name)
+    }
+  }
+  return [...prods].sort()
+})
+
 const filteredMissingList = computed(() => {
+  let list = notFoundList.value
+  if (missingCompanyFilter.value) {
+    list = list.filter(r => r.company === missingCompanyFilter.value)
+  }
+  if (missingProductFilter.value) {
+    list = list.filter(r => r.product === missingProductFilter.value)
+  }
   const q = missingSearch.value.trim().toLowerCase()
-  if (!q) return notFoundList.value
-  return notFoundList.value.filter(r => {
-    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
-    return name.includes(q) || (r.id_number || '').includes(q)
-  })
+  if (q) {
+    list = list.filter(r => {
+      const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+      return name.includes(q) || (r.id_number || '').includes(q)
+    })
+  }
+  return list
 })
 
 const filteredFoundList = computed(() => {
+  let list = foundList.value
+  if (foundCompanyFilter.value) {
+    list = list.filter(r => r.company === foundCompanyFilter.value)
+  }
+  if (foundProductFilter.value) {
+    list = list.filter(r =>
+      (r.production_products || []).some(p => (p.product || p.product_type) === foundProductFilter.value)
+    )
+  }
   const q = foundSearch.value.trim().toLowerCase()
-  if (!q) return foundList.value
-  return foundList.value.filter(r => {
-    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
-    return name.includes(q) || (r.id_number || '').includes(q)
-  })
+  if (q) {
+    list = list.filter(r => {
+      const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+      return name.includes(q) || (r.id_number || '').includes(q)
+    })
+  }
+  return list
 })
 
 // ── Insights computeds ──
@@ -987,6 +1057,13 @@ watch([activeFilter, companyFilter, productFilter], () => { currentPage.value = 
 
 function openDetail(item) { detailItem.value = item }
 
+function closeDetail() {
+  detailItem.value = null
+  if (detailReturnTo.value === 'missing') showMissingModal.value = true
+  else if (detailReturnTo.value === 'found') showFoundModal.value = true
+  detailReturnTo.value = null
+}
+
 function openDrillModal(type, value) {
   drillModal.value = {
     show: true,
@@ -995,6 +1072,37 @@ function openDrillModal(type, value) {
     title: type === 'company' ? `לקוחות — ${value}` : `לקוחות — ${value}`,
     search: '',
   }
+}
+
+function downloadFoundExcel() {
+  const found = filteredFoundList.value
+  if (!found.length) return
+
+  const rows = []
+  for (const r of found) {
+    const name = `${r.first_name || ''} ${r.last_name || ''}`.trim()
+    if (r.production_products?.length) {
+      for (const p of r.production_products) {
+        rows.push({
+          'שם': name,
+          'ת.ז': r.id_number,
+          'חברה': r.company || '',
+          'מוצר': p.product || p.product_type || '',
+          'חברה (נפרעים)': p.company || '',
+          'פרמיה': p.premium || 0,
+          'עמלה': p.commission || 0,
+        })
+      }
+    } else {
+      rows.push({ 'שם': name, 'ת.ז': r.id_number, 'חברה': r.company || '', 'פרמיה': r.production_premium || 0 })
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'נמצאו')
+  const label = isCommission.value ? 'בנפרעים' : 'בפרודוקציה'
+  XLSX.writeFile(wb, `לקוחות_שנמצאו_${label}_${new Date().toLocaleDateString('he-IL')}.xlsx`)
 }
 
 function downloadMissingExcel() {
@@ -1017,31 +1125,46 @@ function downloadMissingExcel() {
 }
 
 async function sendMissingMail() {
-  const missing = props.result.results.filter(r => !r.found_in_production)
+  // Use filtered list (respects company/product/search filters)
+  const missing = filteredMissingList.value
   if (!missing.length) return
 
-  // Group by company
-  const byCompany = {}
-  for (const m of missing) {
-    const co = m.company || 'לא ידוע'
-    if (!byCompany[co]) byCompany[co] = []
-    byCompany[co].push(m)
+  // If company filter is set, send for that company; otherwise group by company and pick top
+  let companyName, clients
+  if (missingCompanyFilter.value) {
+    companyName = missingCompanyFilter.value
+    clients = missing
+  } else {
+    const byCompany = {}
+    for (const m of missing) {
+      const co = m.company || 'לא ידוע'
+      if (!byCompany[co]) byCompany[co] = []
+      byCompany[co].push(m)
+    }
+    const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
+    companyName = topCompany[0]
+    clients = topCompany[1]
   }
 
-  // Find company with most missing
-  const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
-  const companyName = topCompany[0]
-  const clients = topCompany[1]
+  // Look up company email from contacts
+  let companyEmail = ''
+  try {
+    const res = await api.get('/company-contacts')
+    const match = res.data.find(c => companyName.includes(c.company_name) || c.company_name.includes(companyName))
+    if (match) companyEmail = match.email
+  } catch { /* ignore */ }
 
+  const label = isCommission.value ? 'בנפרעים' : 'בפרודוקציה'
   const lines = clients.map(m => {
     const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
-    return `הלקוח ${name} ת.ז ${m.id_number} אינו מופיע אצלי בפרודוקציה.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי על מנת שיופיע בדוחות.`
+    const product = m.product ? ` (${m.product})` : ''
+    return `הלקוח ${name} ת.ז ${m.id_number}${product} אינו מופיע אצלי ${label}.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי.`
   }).join('\n\n')
 
-  const subject = `בקשת בדיקה — לקוחות חסרים בפרודוקציה (${clients.length})`
+  const subject = `בקשת בדיקה — לקוחות חסרים ${label} (${clients.length}) — ${companyName}`
   const body = `שלום רב,\n\n${lines}\n\nבברכה`
 
-  const status = await openMailCompose({ to: '', subject, body })
+  const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
     setTimeout(() => { clipboardNotice.value = false }, 4000)
@@ -2044,8 +2167,22 @@ const chartOptions = computed(() => ({
   background: var(--input-bg);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--text-muted);
+}
+
+.mm-filters {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; flex-wrap: wrap;
+}
+.mm-filter-select {
+  padding: 5px 10px; border-radius: 8px; font-size: 12px;
+  font-family: inherit; border: 1px solid var(--border-subtle);
+  background: var(--input-bg); color: var(--text-primary);
+  cursor: pointer; min-width: 100px;
+}
+.mm-filter-count {
+  font-size: 11px; color: var(--text-muted); margin-right: auto;
 }
 
 .mm-search {

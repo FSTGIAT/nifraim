@@ -1058,11 +1058,13 @@ async function sendOnlyCommissionMail() {
   const lines = customers.map(c => {
     const name = customerName(c)
     const products = c.commission_products || c.product_matches?.unmatched_commission || []
+    if (!products.length) return `- ${name} ת.ז ${c.id_number}`
     const productLines = products.map(p => {
-      const balanceStr = p.balance > 0 ? ` יתרה: ₪${Math.round(p.balance)}` : ''
-      const commStr = p.commission > 0 ? ` עמלה: ₪${Math.round(p.commission)}` : ''
-      const accountStr = p.account ? ` | חשבון: ${p.account}` : ''
-      return `  - ${p.product || ''}${accountStr}${balanceStr}${commStr}`
+      const parts = [p.product || p.product_type || '']
+      if (p.account) parts.push(`חשבון: ${p.account}`)
+      if (p.balance > 0) parts.push(`יתרה: ₪${Math.round(p.balance)}`)
+      if (p.commission > 0) parts.push(`עמלה: ₪${Math.round(p.commission)}`)
+      return `  - ${parts.filter(Boolean).join(' | ')}`
     }).join('\n')
     return `- ${name} ת.ז ${c.id_number}:\n${productLines}`
   }).join('\n')
@@ -1093,7 +1095,7 @@ ${lines}
 בברכה,
 ${userName}`
 
-  downloadOnlyCommissionExcel()
+  try { downloadOnlyCommissionExcel() } catch { /* ignore Excel error */ }
   const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
