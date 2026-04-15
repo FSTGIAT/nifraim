@@ -269,6 +269,7 @@
                   <option value="">בחר סטטוס...</option>
                   <option value="עבר סוכן">עבר סוכן</option>
                   <option value="משך את הכסף">משך את הכסף</option>
+                  <option v-if="customerStatuses[detailItem.recruit_id] && customerStatuses[detailItem.recruit_id] !== 'עבר סוכן' && customerStatuses[detailItem.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[detailItem.recruit_id]">{{ customerStatuses[detailItem.recruit_id] }}</option>
                   <option value="__custom__">אחר (הקלד)...</option>
                 </select>
                 <input
@@ -406,6 +407,7 @@
                   <option value="">בחר סטטוס...</option>
                   <option value="עבר סוכן">עבר סוכן</option>
                   <option value="משך את הכסף">משך את הכסף</option>
+                  <option v-if="customerStatuses[detailItem.recruit_id] && customerStatuses[detailItem.recruit_id] !== 'עבר סוכן' && customerStatuses[detailItem.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[detailItem.recruit_id]">{{ customerStatuses[detailItem.recruit_id] }}</option>
                   <option value="__custom__">אחר (הקלד)...</option>
                 </select>
                 <input
@@ -510,6 +512,7 @@
                         <option value="">—</option>
                         <option value="עבר סוכן">עבר סוכן</option>
                         <option value="משך את הכסף">משך את הכסף</option>
+                        <option v-if="customerStatuses[item.recruit_id] && customerStatuses[item.recruit_id] !== 'עבר סוכן' && customerStatuses[item.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
                         <option value="__custom__">אחר...</option>
                       </select>
                       <input
@@ -1154,6 +1157,26 @@ async function sendMissingMail() {
     if (match) companyEmail = match.email
   } catch { /* ignore */ }
 
+  if (!companyEmail) {
+    alert(`לא נמצא אימייל עבור "${companyName}".\nיש להוסיף אימייל בלשונית "אימיילים לחברות".`)
+    return
+  }
+
+  // Download Excel with the filtered clients
+  try {
+    const rows = clients.map(m => ({
+      'שם': `${m.first_name || ''} ${m.last_name || ''}`.trim(),
+      'ת.ז': m.id_number,
+      'חברה': m.company || '',
+      'מוצר': m.product || '',
+      'סכום': m.amount || 0,
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'חסרים')
+    XLSX.writeFile(wb, `חסרים_${companyName}_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+  } catch { /* ignore */ }
+
   const label = isCommission.value ? 'בנפרעים' : 'בפרודוקציה'
   const lines = clients.map(m => {
     const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
@@ -1162,7 +1185,7 @@ async function sendMissingMail() {
   }).join('\n\n')
 
   const subject = `בקשת בדיקה — לקוחות חסרים ${label} (${clients.length}) — ${companyName}`
-  const body = `שלום רב,\n\n${lines}\n\nבברכה`
+  const body = `שלום רב,\n\nמצורף קובץ Excel עם פירוט הלקוחות.\n\n${lines}\n\nבברכה`
 
   const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
