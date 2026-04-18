@@ -457,15 +457,21 @@ onMounted(async () => {
   if (!productionStore.currentFile && !productionStore.loading) {
     productionStore.fetchCurrent()
   }
+  // Load recruits for current category
+  await recruitsStore.fetchRecruits()
   // If there's already a comparison result, show that tab
   if (recruitsStore.comparisonResult) {
     innerTab.value = 'comparison'
   }
-  // Check if any recruits exist in any category
-  try {
-    const res = await api.get('/recruits')
-    if (res.data.length > 0) hasAnyRecruits.value = true
-  } catch { /* ignore */ }
+  // Check if any recruits exist in any category (for showing tabs vs big upload)
+  if (recruitsStore.recruits.length > 0) {
+    hasAnyRecruits.value = true
+  } else {
+    try {
+      const res = await api.get('/recruits')
+      if (res.data.length > 0) hasAnyRecruits.value = true
+    } catch { /* ignore */ }
+  }
 })
 
 function openFilePicker() {
