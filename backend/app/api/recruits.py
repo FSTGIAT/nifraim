@@ -557,7 +557,7 @@ async def compare_recruits(
         production_products = []
         total_premium = 0.0
         for r in prod_recs:
-            premium = float(r.total_premium) if r.total_premium is not None else 0
+            premium = _safe_float(r.total_premium) or 0
             total_premium += premium
             production_products.append({
                 "product": r.product or "",
@@ -574,11 +574,11 @@ async def compare_recruits(
             last_name=recruit.last_name,
             company=recruit.company,
             product=recruit.product,
-            amount=float(recruit.amount) if recruit.amount is not None else None,
+            amount=_safe_float(recruit.amount),
             customer_status=recruit.customer_status,
             found_in_production=found,
             production_products=production_products,
-            production_premium=total_premium,
+            production_premium=round(total_premium, 2),
         ))
 
     # Sort: not found first, then found
@@ -732,8 +732,8 @@ async def compare_recruits_commission(
         commission_products = []
         total_commission = 0.0
         for r in comm_recs:
-            commission = float(r.commission_before_fee or 0) if hasattr(r, 'commission_before_fee') and r.commission_before_fee else 0
-            premium = float(r.total_premium) if r.total_premium is not None else 0
+            commission = _safe_float(r.commission_before_fee) or 0
+            premium = _safe_float(r.total_premium) or 0
             total_commission += commission or premium
             commission_products.append({
                 "product": r.product or r.product_type or "",
@@ -751,7 +751,7 @@ async def compare_recruits_commission(
             last_name=recruit.last_name,
             company=recruit.company,
             product=recruit.product,
-            amount=float(recruit.amount) if recruit.amount is not None else None,
+            amount=_safe_float(recruit.amount),
             customer_status=recruit.customer_status,
             found_in_production=found,
             production_products=commission_products,
