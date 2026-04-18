@@ -1182,24 +1182,23 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border: 1.5px solid var(--cream-text);
-  color: var(--cream-text);
-  background: rgba(245, 240, 235, 0.85);
+  border: 2px solid var(--land-orange);
+  color: var(--land-orange);
+  background: transparent;
   padding: 16px 28px;
   border-radius: 40px;
   font-size: 0.95rem;
   font-weight: 600;
   transition: all var(--transition-fast);
   min-height: 52px;
-  backdrop-filter: blur(8px);
 }
 
 .ghost-play {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--cream-text);
-  color: var(--cream-bg);
+  background: var(--land-orange);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1211,13 +1210,13 @@ onBeforeUnmount(() => {
 }
 
 .hero-ghost:hover {
-  background: var(--cream-text);
+  background: var(--land-orange);
   color: #fff;
 }
 
 .hero-ghost:hover .ghost-play {
-  background: var(--land-orange);
-  color: #fff;
+  background: #fff;
+  color: var(--land-orange);
 }
 
 .hero-stats-row {
