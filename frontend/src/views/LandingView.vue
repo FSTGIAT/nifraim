@@ -1182,8 +1182,8 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border: 2px solid var(--land-orange);
-  color: var(--land-orange);
+  border: 2px solid var(--land-orange-deep);
+  color: var(--land-orange-deep);
   background: transparent;
   padding: 16px 28px;
   border-radius: 40px;
