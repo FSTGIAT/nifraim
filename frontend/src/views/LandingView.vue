@@ -1184,13 +1184,14 @@ onBeforeUnmount(() => {
   gap: 10px;
   border: 1.5px solid var(--cream-text);
   color: var(--cream-text);
-  background: transparent;
+  background: rgba(245, 240, 235, 0.85);
   padding: 16px 28px;
   border-radius: 40px;
   font-size: 0.95rem;
   font-weight: 600;
   transition: all var(--transition-fast);
   min-height: 52px;
+  backdrop-filter: blur(8px);
 }
 
 .ghost-play {
