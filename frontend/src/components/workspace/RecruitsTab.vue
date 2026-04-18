@@ -175,15 +175,16 @@
 
     <!-- Tab: List -->
     <div v-if="innerTab === 'list'">
-      <!-- Empty category: show compact upload -->
-      <div v-if="!hasRecruits && !recruitsStore.uploading" class="empty-category">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        <p>אין מגויסים ב{{ recruitsStore.activeCategory === 'insurance' ? 'ביטוח' : 'פיננסים' }}</p>
-        <button class="btn-upload-compact" @click="openFilePicker">העלה קובץ</button>
+      <!-- Empty category: show upload button matching existing design -->
+      <div v-if="!hasRecruits && !recruitsStore.uploading" class="recruit-uploader">
+        <button class="upload-btn" @click="openFilePicker">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>העלה קובץ גיוס חדש</span>
+        </button>
         <input
           ref="fileInputRef"
           type="file"

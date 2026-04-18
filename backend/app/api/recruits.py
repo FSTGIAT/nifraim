@@ -214,7 +214,11 @@ async def upload_recruits(
 
         company = str(rec.get("receiving_company") or "").strip() or None
         product = str(rec.get("product") or rec.get("fund_type") or "").strip() or None
-        amount = rec.get("expected_amount") or rec.get("actual_amount") or rec.get("total_premium")
+        raw_amount = rec.get("expected_amount") or rec.get("actual_amount") or rec.get("total_premium")
+        try:
+            amount = float(str(raw_amount).replace(',', '').replace('?', '').replace('₪', '').strip()) if raw_amount is not None else None
+        except (ValueError, TypeError):
+            amount = None
 
         to_insert.append(Recruit(
             user_id=user.id,
@@ -223,7 +227,7 @@ async def upload_recruits(
             last_name=(last_name or "—")[:100],
             company=company[:100] if company else None,
             product=product[:100] if product else None,
-            amount=float(amount) if amount is not None else None,
+            amount=amount,
             category=category,
         ))
 
