@@ -39,7 +39,7 @@ async def list_recruits(
             last_name=r.last_name,
             company=r.company,
             product=r.product,
-            amount=float(r.amount) if r.amount is not None else None,
+            amount=float(r.amount) if r.amount is not None and not (isinstance(r.amount, float) and (r.amount != r.amount)) else None,
             customer_status=r.customer_status,
             created_at=r.created_at,
         )
@@ -109,7 +109,7 @@ async def create_bulk_recruits(
             last_name=r.last_name,
             company=r.company,
             product=r.product,
-            amount=float(r.amount) if r.amount is not None else None,
+            amount=float(r.amount) if r.amount is not None and not (isinstance(r.amount, float) and (r.amount != r.amount)) else None,
             created_at=r.created_at,
         ))
     return results
@@ -217,6 +217,8 @@ async def upload_recruits(
         raw_amount = rec.get("expected_amount") or rec.get("actual_amount") or rec.get("total_premium")
         try:
             amount = float(str(raw_amount).replace(',', '').replace('?', '').replace('₪', '').strip()) if raw_amount is not None else None
+            if amount is not None and (amount != amount or amount == float('inf')):  # NaN/Inf check
+                amount = None
         except (ValueError, TypeError):
             amount = None
 
