@@ -269,7 +269,7 @@
                   <option value="">בחר סטטוס...</option>
                   <option value="עבר סוכן">עבר סוכן</option>
                   <option value="משך את הכסף">משך את הכסף</option>
-                  <option v-if="customerStatuses[detailItem.recruit_id] && customerStatuses[detailItem.recruit_id] !== 'עבר סוכן' && customerStatuses[detailItem.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[detailItem.recruit_id]">{{ customerStatuses[detailItem.recruit_id] }}</option>
+                  <option v-if="customerStatuses[item.recruit_id] && customerStatuses[item.recruit_id] !== 'עבר סוכן' && customerStatuses[item.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
                   <option value="__custom__">אחר (הקלד)...</option>
                 </select>
                 <input
