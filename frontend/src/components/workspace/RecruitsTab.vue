@@ -111,20 +111,23 @@
 
     <!-- Inner tabs -->
     <div class="inner-tabs" v-if="recruitsStore.recruits.length > 0 || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
-      <button
-        class="inner-tab"
-        :class="{ active: innerTab === 'list' }"
-        @click="innerTab = 'list'"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-          <path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-        רשימת מגויסים
-        <span class="tab-count" v-if="recruitsStore.recruits.length">{{ recruitsStore.recruits.length }}</span>
-      </button>
+      <div class="inner-tab-dropdown" :class="{ active: innerTab === 'list' }">
+        <button class="inner-tab" :class="{ active: innerTab === 'list' }" @click="innerTab = 'list'">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+            <path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          {{ recruitsStore.activeCategory === 'insurance' ? 'רשימת מגויסים ביטוח' : 'רשימת מגויסים פיננסים' }}
+          <span class="tab-count" v-if="recruitsStore.recruits.length">{{ recruitsStore.recruits.length }}</span>
+          <svg class="tab-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="tab-dropdown-menu">
+          <button :class="{ selected: recruitsStore.activeCategory === 'financial' }" @click="switchCategory('financial')">רשימת מגויסים פיננסים</button>
+          <button :class="{ selected: recruitsStore.activeCategory === 'insurance' }" @click="switchCategory('insurance')">רשימת מגויסים ביטוח</button>
+        </div>
+      </div>
       <button
         class="inner-tab"
         :class="{ active: innerTab === 'comparison', 'has-result': !!recruitsStore.comparisonResult }"
@@ -149,7 +152,7 @@
       </button>
       <!-- Small upload icon when recruits exist -->
       <button
-        v-if="hasRecruits && !recruitsStore.uploading"
+        v-if="hasRecruits && !recruitsStore.uploading && innerTab === 'list'"
         class="upload-icon-btn"
         @click="openFilePicker"
         title="העלה קובץ נוסף"
@@ -229,6 +232,15 @@
           </svg>
         </div>
       </template>
+
+      <!-- Production file info -->
+      <div v-if="productionStore.currentFile" class="prod-file-info">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span>{{ productionStore.currentFile.filename }}</span>
+        <span class="prod-file-count ltr-number">({{ productionStore.currentFile.record_count?.toLocaleString() }} רשומות)</span>
+      </div>
 
       <!-- Compare button -->
       <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.comparisonResult">
@@ -478,6 +490,11 @@ async function runProductionComparison() {
   } catch (e) {
     // error handled in store
   }
+}
+
+function switchCategory(cat) {
+  recruitsStore.setCategory(cat)
+  innerTab.value = 'list'
 }
 
 async function runCommissionComparison(company = null) {
@@ -964,6 +981,44 @@ watch(() => innerTab.value, (tab) => {
 
 .inner-tab svg { opacity: 0.5; }
 .inner-tab.active svg { opacity: 1; color: var(--primary); }
+
+.tab-chevron { opacity: 0.4; margin-right: -4px; }
+
+.inner-tab-dropdown {
+  position: relative;
+}
+.inner-tab-dropdown .tab-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  z-index: 50;
+  min-width: 200px;
+  padding: 4px;
+  margin-top: 4px;
+}
+.inner-tab-dropdown:hover .tab-dropdown-menu { display: block; }
+.tab-dropdown-menu button {
+  display: block; width: 100%; text-align: right;
+  padding: 8px 14px; font-size: 13px; font-weight: 600;
+  font-family: inherit; border: none; background: transparent;
+  color: var(--text-secondary); cursor: pointer; border-radius: 8px;
+}
+.tab-dropdown-menu button:hover { background: var(--bg-alt, #f1f5f9); }
+.tab-dropdown-menu button.selected { color: var(--primary); background: rgba(245,124,0,0.06); }
+
+.prod-file-info {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; margin: 12px 0;
+  background: var(--bg-alt, #f8fafc); border-radius: 10px;
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.prod-file-count { color: var(--text-muted); font-weight: 500; }
 
 .tab-count {
   font-size: 10px;

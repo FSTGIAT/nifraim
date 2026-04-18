@@ -22,14 +22,14 @@ router = APIRouter()
 
 @router.get("", response_model=list[RecruitOut])
 async def list_recruits(
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Recruit)
-        .where(Recruit.user_id == user.id)
-        .order_by(Recruit.created_at.desc())
-    )
+    q = select(Recruit).where(Recruit.user_id == user.id)
+    if category:
+        q = q.where(Recruit.category == category)
+    result = await db.execute(q.order_by(Recruit.created_at.desc()))
     recruits = result.scalars().all()
     return [
         RecruitOut(
@@ -119,6 +119,7 @@ async def create_bulk_recruits(
 async def upload_recruits(
     file: UploadFile = File(...),
     password: str = Form(default=None),
+    category: str = Form(default="financial"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -173,13 +174,14 @@ async def upload_recruits(
             company=company[:100] if company else None,
             product=product[:100] if product else None,
             amount=float(amount) if amount is not None else None,
+            category=category,
         ))
 
     if not to_insert:
         raise HTTPException(400, "לא נמצאו רשומות תקינות בקובץ")
 
-    # Delete existing recruits for this user before inserting (prevents duplicates on re-upload)
-    await db.execute(delete(Recruit).where(Recruit.user_id == user.id))
+    # Delete existing recruits for this user+category before inserting
+    await db.execute(delete(Recruit).where(Recruit.user_id == user.id, Recruit.category == category))
 
     # Batch insert without refreshing each row (saves memory + time)
     db.add_all(to_insert)
@@ -428,10 +430,11 @@ async def upload_and_compare(
 
 @router.post("/compare", response_model=RecruitComparisonResponse)
 async def compare_recruits(
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Compare all recruits against the active production file."""
+    """Compare recruits against the active production file."""
     # Find active production upload
     prod_upload_result = await db.execute(
         select(FileUpload).where(
@@ -458,11 +461,10 @@ async def compare_recruits(
             prod_by_id.setdefault(_normalize_id(r.id_number), []).append(r)
 
     # Load recruits and group by normalized id_number (one entry per client)
-    recruits_result = await db.execute(
-        select(Recruit)
-        .where(Recruit.user_id == user.id)
-        .order_by(Recruit.created_at.desc())
-    )
+    q = select(Recruit).where(Recruit.user_id == user.id)
+    if category:
+        q = q.where(Recruit.category == category)
+    recruits_result = await db.execute(q.order_by(Recruit.created_at.desc()))
     recruits = recruits_result.scalars().all()
 
     # Group recruits by normalized id_number
@@ -570,6 +572,7 @@ async def compare_recruits_commission(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
     company: str | None = None,
+    category: str | None = None,
 ):
     """Compare recruits against commission (נפרעים) files. Optional query: ?company=הפניקס"""
     filter_company = company
@@ -626,11 +629,10 @@ async def compare_recruits_commission(
                 comm_by_id[norm].setdefault(company_src, []).append(r)
 
     # Load recruits and group by normalized id_number
-    recruits_result = await db.execute(
-        select(Recruit)
-        .where(Recruit.user_id == user.id)
-        .order_by(Recruit.created_at.desc())
-    )
+    q = select(Recruit).where(Recruit.user_id == user.id)
+    if category:
+        q = q.where(Recruit.category == category)
+    recruits_result = await db.execute(q.order_by(Recruit.created_at.desc()))
     recruits = recruits_result.scalars().all()
 
     recruits_by_id = {}

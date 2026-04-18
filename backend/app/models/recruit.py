@@ -20,6 +20,7 @@ class Recruit(Base):
     product: Mapped[str | None] = mapped_column(String(100))
     amount: Mapped[float | None] = mapped_column(Numeric(15, 2))
     customer_status: Mapped[str | None] = mapped_column(String(50))
+    category: Mapped[str] = mapped_column(String(20), default="financial", server_default="financial")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="recruits")

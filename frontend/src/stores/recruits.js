@@ -7,17 +7,18 @@ export const useRecruitsStore = defineStore('recruits', () => {
   const loading = ref(false)
   const comparing = ref(false)
   const comparisonResult = ref(null)
-  const comparisonMode = ref('production') // tracks which comparison is active
+  const comparisonMode = ref('production')
   const comparingCommission = ref(false)
   const commissionComparisonResult = ref(null)
   const uploading = ref(false)
   const error = ref(null)
+  const activeCategory = ref('financial') // 'financial' | 'insurance'
 
   async function fetchRecruits() {
     loading.value = true
     error.value = null
     try {
-      const res = await api.get('/recruits')
+      const res = await api.get('/recruits', { params: { category: activeCategory.value } })
       recruits.value = res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בטעינת מגויסים'
@@ -56,9 +57,9 @@ export const useRecruitsStore = defineStore('recruits', () => {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('category', activeCategory.value)
       if (password) formData.append('password', password)
       const res = await api.post('/recruits/upload', formData)
-      // Re-fetch full list after bulk upload
       await fetchRecruits()
       return res.data
     } catch (e) {
@@ -99,7 +100,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
     comparisonResult.value = null
     comparisonMode.value = 'production'
     try {
-      const res = await api.post('/recruits/compare')
+      const res = await api.post('/recruits/compare', null, { params: { category: activeCategory.value } })
       comparisonResult.value = res.data
       return res.data
     } catch (e) {
@@ -119,7 +120,8 @@ export const useRecruitsStore = defineStore('recruits', () => {
     comparisonMode.value = 'commission'
     commissionFilterCompany.value = company
     try {
-      const params = company ? { company } : {}
+      const params = { category: activeCategory.value }
+      if (company) params.company = company
       const res = await api.post('/recruits/compare-commission', null, { params })
       commissionComparisonResult.value = res.data
       return res.data
@@ -139,13 +141,22 @@ export const useRecruitsStore = defineStore('recruits', () => {
     commissionComparisonResult.value = null
   }
 
+  function setCategory(cat) {
+    activeCategory.value = cat
+    // Reset comparisons when switching category
+    comparisonResult.value = null
+    commissionComparisonResult.value = null
+    fetchRecruits()
+  }
+
   return {
     recruits, loading, comparing, comparisonResult, comparisonMode,
     comparingCommission, commissionComparisonResult, commissionFilterCompany,
-    uploading, error,
+    uploading, error, activeCategory,
     fetchRecruits, createRecruit, createBulk, uploadRecruits,
     updateRecruit, deleteRecruit,
     compareRecruits, resetComparison,
     compareRecruitsCommission, resetCommissionComparison,
+    setCategory,
   }
 })
