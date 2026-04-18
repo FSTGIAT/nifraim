@@ -137,6 +137,56 @@ async def upload_recruits(
         raise HTTPException(400, f"שגיאה בפענוח הקובץ: {str(e)}")
 
     records = parsed["records"]
+
+    # If parser returned unknown format, try direct pandas with flexible column mapping
+    if parsed.get("format") == "unknown" or not records:
+        try:
+            import pandas as pd
+            from io import BytesIO
+            df = pd.read_excel(BytesIO(content))
+            # Normalize column names: strip whitespace/newlines
+            col_map = {}
+            for c in df.columns:
+                clean = str(c).replace('\n', ' ').replace('\r', ' ').strip()
+                col_map[c] = clean
+            df.rename(columns=col_map, inplace=True)
+            cols = df.columns.tolist()
+
+            # Find columns by partial match
+            def _find_col(*keywords):
+                # Prefer exact start match, then contains
+                for kw in keywords:
+                    for c in cols:
+                        if c.startswith(kw) or c == kw:
+                            return c
+                for kw in keywords:
+                    for c in cols:
+                        if kw in c and len(c) < len(kw) + 15:
+                            return c
+                return None
+
+            id_col = _find_col('ת.ז', 'תעודת זהות', 'מספר זהות')
+            fname_col = _find_col('שם פרטי')
+            lname_col = _find_col('שם משפחה')
+            company_col = _find_col('חברה')
+            product_col = _find_col('מוצר', 'סוג ביטוח')
+            amount_col = _find_col('פרמיה חודשית', 'פרמיה מוערכת', 'פרמיה')
+            policy_col = _find_col('מספר פוליסה')
+
+            if id_col:
+                records = []
+                for _, row in df.iterrows():
+                    rec = {"id_number": row.get(id_col)}
+                    if fname_col: rec["first_name"] = row.get(fname_col)
+                    if lname_col: rec["last_name"] = row.get(lname_col)
+                    if company_col: rec["receiving_company"] = row.get(company_col)
+                    if product_col: rec["product"] = row.get(product_col)
+                    if amount_col: rec["total_premium"] = row.get(amount_col)
+                    if policy_col: rec["fund_policy_number"] = row.get(policy_col)
+                    records.append(rec)
+        except Exception:
+            pass
+
     if not records:
         raise HTTPException(400, "לא נמצאו רשומות בקובץ")
 
