@@ -89,30 +89,11 @@
             </div>
             <div class="hero-stat-divider"></div>
             <div class="hero-stat">
-              <div class="hero-stat-num ltr-number">11</div>
-              <div class="hero-stat-label">חברות נתמכות</div>
-            </div>
-            <div class="hero-stat-divider"></div>
-            <div class="hero-stat">
               <div class="hero-stat-num ltr-number">3.2s</div>
               <div class="hero-stat-label">זמן עיבוד ממוצע</div>
             </div>
           </div>
-          <!-- Trust strip — inside content column -->
-          <div class="hero-trust" ref="heroTrust">
-            <span class="trust-label">עובדים עם חברות הביטוח המובילות</span>
-            <div class="trust-logos">
-              <span>אקסלנס</span>
-              <span>הפניקס</span>
-              <span>מנורה</span>
-              <span>מגדל</span>
-              <span>הכשרה</span>
-              <span>כלל</span>
-              <span>איילון</span>
-              <span>אלטשולר</span>
-              <span>מור</span>
-            </div>
-          </div>
+          <!-- Trust strip removed -->
         </div>
         <div class="hero-visual" ref="heroVisual">
           <div class="hero-dashboard">
@@ -376,7 +357,7 @@ const statData = [
 const howSteps = [
   {
     title: 'העלו קבצים',
-    desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט — כולל קבצים מוגני סיסמא מ-7+ חברות.',
+    desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט.',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
   },
   {
@@ -392,7 +373,7 @@ const howSteps = [
 ]
 
 const featureCards = [
-  { num: 'יכולת 01', title: 'זיהוי אוטומטי', desc: 'המערכת מזהה פורמטים מ-7+ חברות שונות, כולל קבצים מוגני סיסמא. ללא הגדרות מראש.', image: '/images/landing/ai-network.jpg' },
+  { num: 'יכולת 01', title: 'זיהוי אוטומטי', desc: 'המערכת מזהה פורמטים מחברות שונות באופן אוטומטי. ללא הגדרות מראש.', image: '/images/landing/ai-network.jpg' },
   { num: 'יכולת 02', title: 'השוואה מדויקת', desc: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים, חסרים ואי-התאמות בשניות.', image: '/images/landing/data-flow.jpg' },
   { num: 'יכולת 03', title: 'תוצאות מיידיות', desc: 'מה שלקח שעות — לוקח שניות. העלו קבצים וקבלו תשובות. ייצוא לאקסל בלחיצה.', image: '/images/landing/dashboard.jpg' },
   { num: 'יכולת 04', title: 'ניתוח AI חכם', desc: 'בינה מלאכותית שמבינה את הנתונים שלכם. שאלו שאלות — קבלו תובנות מהתיק.', image: '/images/landing/portal.jpg' },
@@ -1230,7 +1211,7 @@ onBeforeUnmount(() => {
 
 .hero-ghost:hover {
   background: var(--cream-text);
-  color: var(--cream-bg);
+  color: #fff;
 }
 
 .hero-ghost:hover .ghost-play {
