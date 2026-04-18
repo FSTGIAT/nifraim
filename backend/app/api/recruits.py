@@ -1,3 +1,4 @@
+import math
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -20,6 +21,19 @@ from app.api.deps import get_current_user
 router = APIRouter()
 
 
+def _safe_float(val):
+    """Convert to float, return None for NaN/Inf/invalid."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("", response_model=list[RecruitOut])
 async def list_recruits(
     category: str | None = None,
@@ -39,7 +53,7 @@ async def list_recruits(
             last_name=r.last_name,
             company=r.company,
             product=r.product,
-            amount=float(r.amount) if r.amount is not None and not (isinstance(r.amount, float) and (r.amount != r.amount)) else None,
+            amount=_safe_float(r.amount),
             customer_status=r.customer_status,
             created_at=r.created_at,
         )
@@ -109,7 +123,7 @@ async def create_bulk_recruits(
             last_name=r.last_name,
             company=r.company,
             product=r.product,
-            amount=float(r.amount) if r.amount is not None and not (isinstance(r.amount, float) and (r.amount != r.amount)) else None,
+            amount=_safe_float(r.amount),
             created_at=r.created_at,
         ))
     return results
