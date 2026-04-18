@@ -343,18 +343,31 @@ function submitWithPassword() {
 .upload-section { max-width: 480px; margin: 0 auto; }
 
 .drop-zone {
-  border: 2px dashed var(--border-subtle);
+  position: relative;
+  border: 1.5px dashed rgba(245, 124, 0, 0.25);
   border-radius: var(--radius-lg);
-  padding: 48px 24px;
+  padding: 40px 28px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.4s var(--transition);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
   color: var(--text-muted);
 }
 
-.drop-zone:hover, .drop-zone.dragging {
+.drop-zone:hover {
   border-color: var(--primary);
-  background: var(--primary-light);
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.1);
+  color: var(--primary);
+}
+
+.drop-zone.dragging {
+  border-color: var(--primary);
+  background: rgba(255, 243, 224, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.15), 0 0 0 3px rgba(245, 124, 0, 0.08);
   color: var(--primary);
 }
 
