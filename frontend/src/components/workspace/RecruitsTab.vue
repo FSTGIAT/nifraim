@@ -10,8 +10,8 @@
       <span>העלה קובץ פרודוקציה בלשונית "פרודוקציה" כדי לבדוק מגויסים מולו</span>
     </div>
 
-    <!-- Upload button — big centered when no recruits -->
-    <div class="recruit-uploader" v-if="!hasRecruits">
+    <!-- Upload button — big centered only on first use (no recruits in any category) -->
+    <div class="recruit-uploader" v-if="!hasRecruits && !hasAnyRecruits">
       <div v-if="recruitsStore.uploading" class="upload-loading-card">
         <div class="upload-loading-top">
           <div class="loader">
@@ -110,7 +110,7 @@
     </div>
 
     <!-- Inner tabs -->
-    <div class="inner-tabs" v-if="recruitsStore.recruits.length > 0 || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
+    <div class="inner-tabs" v-if="hasRecruits || hasAnyRecruits || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
       <div class="inner-tab-dropdown" :class="{ active: innerTab === 'list' }">
         <button class="inner-tab" :class="{ active: innerTab === 'list' }" @click="innerTab = 'list'">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -175,17 +175,37 @@
 
     <!-- Tab: List -->
     <div v-if="innerTab === 'list'">
-      <div class="list-toolbar">
-        <button class="btn-portal-links" @click="showPortalLinks = true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-          </svg>
-          קישורים ללקוחות
-          <span class="portal-badge" v-if="activePortalLinks > 0">{{ activePortalLinks }}</span>
-        </button>
+      <!-- Empty category: show compact upload -->
+      <div v-if="!hasRecruits && !recruitsStore.uploading" class="empty-category">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>אין מגויסים ב{{ recruitsStore.activeCategory === 'insurance' ? 'ביטוח' : 'פיננסים' }}</p>
+        <button class="btn-upload-compact" @click="openFilePicker">העלה קובץ</button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept=".xlsx,.xls"
+          @change="onFileSelected"
+          style="display: none"
+        />
       </div>
-      <RecruitForm />
+
+      <template v-else>
+        <div class="list-toolbar">
+          <button class="btn-portal-links" @click="showPortalLinks = true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+            קישורים ללקוחות
+            <span class="portal-badge" v-if="activePortalLinks > 0">{{ activePortalLinks }}</span>
+          </button>
+        </div>
+        <RecruitForm />
+      </template>
     </div>
 
     <!-- Tab: Comparison -->
@@ -389,6 +409,7 @@ const portalStore = usePortalStore()
 const fileInputRef = ref(null)
 const fileInputRef2 = ref(null)
 const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
+const hasAnyRecruits = ref(false)
 const needPassword = ref(false)
 const password = ref('')
 const innerTab = ref('list')
@@ -432,7 +453,7 @@ if (droppedFiles) {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!productionStore.currentFile && !productionStore.loading) {
     productionStore.fetchCurrent()
   }
@@ -440,6 +461,11 @@ onMounted(() => {
   if (recruitsStore.comparisonResult) {
     innerTab.value = 'comparison'
   }
+  // Check if any recruits exist in any category
+  try {
+    const res = await api.get('/recruits')
+    if (res.data.length > 0) hasAnyRecruits.value = true
+  } catch { /* ignore */ }
 })
 
 function openFilePicker() {
@@ -472,6 +498,7 @@ async function uploadFile(file) {
     )
     password.value = ''
     needPassword.value = false
+    hasAnyRecruits.value = true
     // Auto-run comparison after loading recruits
     if (productionStore.currentFile) {
       innerTab.value = 'comparison'
@@ -1010,6 +1037,21 @@ watch(() => innerTab.value, (tab) => {
 }
 .tab-dropdown-menu button:hover { background: var(--bg-alt, #f1f5f9); }
 .tab-dropdown-menu button.selected { color: var(--primary); background: rgba(245,124,0,0.06); }
+
+.empty-category {
+  text-align: center; padding: 48px 24px;
+  color: var(--text-muted); display: flex;
+  flex-direction: column; align-items: center; gap: 12px;
+}
+.empty-category p { font-size: 14px; font-weight: 600; margin: 0; }
+.btn-upload-compact {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 24px; border-radius: 10px;
+  background: var(--primary); color: white;
+  font-size: 13px; font-weight: 700; font-family: inherit;
+  border: none; cursor: pointer; transition: all 0.2s;
+}
+.btn-upload-compact:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,124,0,0.2); }
 
 .prod-file-info {
   display: flex; align-items: center; gap: 8px;
