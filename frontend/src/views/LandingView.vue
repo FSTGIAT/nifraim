@@ -1183,12 +1183,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   border: 2px solid var(--land-orange-deep);
-  color: var(--cream-text);
+  color: #1a1a1a;
   background: transparent;
   padding: 16px 28px;
   border-radius: 40px;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
   transition: all var(--transition-fast);
   min-height: 52px;
 }
