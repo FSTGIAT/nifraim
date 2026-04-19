@@ -2,7 +2,7 @@
   <div class="prod-dashboard">
     <!-- KPI Row -->
     <div class="kpi-row">
-      <div class="kpi-card kpi-blue">
+      <div class="kpi-card kpi-blue clickable" @click="openDrilldown('products')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
@@ -17,7 +17,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-cyan">
+      <div class="kpi-card kpi-cyan clickable" @click="openDrilldown('clients')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/>
@@ -32,7 +32,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-green" :title="'₪' + Math.round(analytics.total_premium).toLocaleString()">
+      <div class="kpi-card kpi-green clickable" :title="'₪' + Math.round(analytics.total_premium).toLocaleString()" @click="openDrilldown('premium')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="1" x2="12" y2="23"/>
@@ -45,7 +45,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-amber" :title="'₪' + Math.round(analytics.total_accumulation).toLocaleString()">
+      <div class="kpi-card kpi-amber clickable" :title="'₪' + Math.round(analytics.total_accumulation).toLocaleString()" @click="openDrilldown('accumulation')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
@@ -58,7 +58,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-violet">
+      <div class="kpi-card kpi-violet clickable" @click="openDrilldown('companies')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
@@ -71,7 +71,7 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-emerald">
+      <div class="kpi-card kpi-emerald clickable" @click="openDrilldown('status')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -127,17 +127,164 @@
         :series="topClientsChartSeries"
       />
     </div>
+    <!-- KPI Drill-down Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="drilldown" class="dd-overlay" @click.self="drilldown = null">
+          <div class="dd-card">
+            <div class="dd-header">
+              <h4>{{ drilldownTitle }}</h4>
+              <div class="dd-header-right">
+                <span class="dd-count ltr-number">{{ filteredDrillData.length }} שורות</span>
+                <button class="dd-close" @click="drilldown = null">&times;</button>
+              </div>
+            </div>
+            <div class="dd-search">
+              <input v-model="ddSearch" type="text" placeholder="חיפוש..." class="dd-search-input" />
+            </div>
+            <div class="dd-scroll">
+              <div v-if="clientsLoading" class="dd-loading">
+                <div class="loader"><div class="loader-ring"></div></div>
+                <span>טוען נתונים...</span>
+              </div>
+              <table v-else class="dd-table">
+                <thead>
+                  <tr>
+                    <template v-if="drilldown === 'companies'">
+                      <th>חברה</th>
+                      <th class="th-num">לקוחות</th>
+                      <th class="th-num">מוצרים</th>
+                      <th class="th-num">פרמיה</th>
+                      <th class="th-num">צבירה</th>
+                    </template>
+                    <template v-else-if="drilldown === 'status'">
+                      <th>סטטוס</th>
+                      <th class="th-num">מוצרים</th>
+                      <th class="th-num">אחוז</th>
+                    </template>
+                    <template v-else-if="drilldown === 'products'">
+                      <th>סוג מוצר</th>
+                      <th class="th-num">כמות</th>
+                      <th class="th-num">פרמיה</th>
+                    </template>
+                    <template v-else>
+                      <th>שם</th>
+                      <th>ת.ז</th>
+                      <th class="th-num">מוצרים</th>
+                      <th class="th-num">{{ drilldown === 'accumulation' ? 'צבירה' : 'פרמיה' }}</th>
+                    </template>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, i) in filteredDrillData" :key="i">
+                    <template v-if="drilldown === 'companies'">
+                      <td>{{ row.company }}</td>
+                      <td class="td-num"><span class="ltr-number">{{ row.unique_clients?.toLocaleString() }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.premium) }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.accumulation) }}</span></td>
+                    </template>
+                    <template v-else-if="drilldown === 'status'">
+                      <td>{{ row.status }}</td>
+                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ row.pct }}%</span></td>
+                    </template>
+                    <template v-else-if="drilldown === 'products'">
+                      <td>{{ row.product_type }}</td>
+                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.premium) }}</span></td>
+                    </template>
+                    <template v-else>
+                      <td>{{ row.name }}</td>
+                      <td><span class="ltr-number">{{ row.id_number }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ row.products }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ formatAmount(drilldown === 'accumulation' ? row.accumulation : row.premium) }}</span></td>
+                    </template>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
+import api from '../../api/client.js'
 
 const props = defineProps({
   analytics: { type: Object, required: true },
 })
 
 const topMetric = ref('premium')
+const drilldown = ref(null)
+const ddSearch = ref('')
+const clientsData = ref([])
+const clientsLoading = ref(false)
+
+const drilldownTitle = computed(() => {
+  const titles = {
+    products: 'פירוט מוצרים לפי סוג',
+    clients: 'רשימת לקוחות',
+    premium: 'לקוחות לפי פרמיה',
+    accumulation: 'לקוחות לפי צבירה',
+    companies: 'פירוט לפי חברה',
+    status: 'פירוט לפי סטטוס',
+  }
+  return titles[drilldown.value] || ''
+})
+
+const drilldownData = computed(() => {
+  if (!drilldown.value) return []
+  const a = props.analytics
+
+  if (drilldown.value === 'companies') {
+    return a.company_breakdown || []
+  }
+  if (drilldown.value === 'status') {
+    const total = a.status_breakdown.reduce((s, r) => s + r.count, 0)
+    return a.status_breakdown.map(r => ({
+      ...r,
+      pct: total ? Math.round((r.count / total) * 100) : 0,
+    }))
+  }
+  if (drilldown.value === 'products') {
+    return a.product_type_breakdown || []
+  }
+  // clients, premium, accumulation → fetched from API
+  return clientsData.value
+})
+
+const filteredDrillData = computed(() => {
+  const q = ddSearch.value.toLowerCase()
+  if (!q) return drilldownData.value
+  return drilldownData.value.filter(r => {
+    const searchable = [r.company, r.name, r.id_number, r.status, r.product_type].filter(Boolean).join(' ').toLowerCase()
+    return searchable.includes(q)
+  })
+})
+
+async function openDrilldown(type) {
+  drilldown.value = type
+  ddSearch.value = ''
+  clientsData.value = []
+
+  if (['clients', 'premium', 'accumulation'].includes(type)) {
+    clientsLoading.value = true
+    try {
+      const sort = type === 'accumulation' ? 'accumulation' : 'premium'
+      const res = await api.get('/production/clients', { params: { sort } })
+      clientsData.value = res.data
+    } catch (e) {
+      clientsData.value = []
+    } finally {
+      clientsLoading.value = false
+    }
+  }
+}
 
 function formatAmount(val) {
   if (!val || val === 0) return '₪0'
@@ -407,5 +554,137 @@ const topClientsChartSeries = computed(() => [{
   direction: ltr;
   unicode-bidi: embed;
   display: inline-block;
+}
+
+/* KPI clickable */
+.kpi-card.clickable { cursor: pointer; }
+.kpi-card.clickable:hover { transform: translateY(-2px); }
+
+/* Drill-down modal */
+.dd-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1010;
+  backdrop-filter: blur(4px);
+}
+
+.dd-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  width: 90%; max-width: 750px; max-height: 80vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.dd-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dd-header h4 { font-size: 16px; font-weight: 700; color: var(--text); }
+.dd-header-right { display: flex; align-items: center; gap: 12px; }
+.dd-count { font-size: 12px; color: var(--text-muted); }
+
+.dd-close {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dd-close:hover { background: var(--red-light); color: var(--red); border-color: transparent; }
+
+.dd-search { padding: 12px 22px 0; }
+
+.dd-search-input {
+  width: 100%; padding: 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 13px; font-family: inherit;
+  background: var(--bg); color: var(--text);
+}
+
+.dd-search-input:focus { outline: none; border-color: var(--primary); }
+
+.dd-scroll { overflow-y: auto; max-height: 55vh; padding: 12px 22px 18px; }
+
+.dd-loading {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.dd-loading .loader {
+  width: 28px; height: 28px;
+  position: relative;
+  margin: 0 auto 10px;
+}
+
+.dd-loading .loader-ring {
+  position: absolute; inset: 0;
+  border: 2px solid transparent;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.dd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.dd-table thead { background: var(--bg); }
+
+.dd-table th {
+  padding: 10px 12px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 2px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.dd-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dd-table tbody tr:hover { background: var(--bg-surface); }
+.dd-table tbody tr:last-child td { border-bottom: none; }
+
+.th-num, .td-num {
+  text-align: center;
+  width: 100px;
+}
+
+.modal-enter-active { animation: modalIn 0.3s var(--transition); }
+.modal-leave-active { animation: modalIn 0.2s var(--transition) reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

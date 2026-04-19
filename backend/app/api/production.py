@@ -251,6 +251,7 @@ async def get_production_analytics(
         select(
             ClientRecord.receiving_company,
             func.count().label("count"),
+            func.count(func.distinct(ClientRecord.id_number)).label("unique_clients"),
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
         )
@@ -259,7 +260,7 @@ async def get_production_analytics(
         .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
     )
     company_breakdown = [
-        {"company": r[0], "count": r[1], "premium": float(r[2]), "accumulation": float(r[3])}
+        {"company": r[0], "count": r[1], "unique_clients": r[2], "premium": float(r[3]), "accumulation": float(r[4])}
         for r in company_q.all() if r[0] and r[0] not in ("nan", "None")
     ]
 
@@ -344,6 +345,46 @@ async def get_production_analytics(
         top_clients_premium=top_clients_premium,
         top_clients_accumulation=top_clients_accumulation,
     )
+
+
+@router.get("/clients")
+async def get_production_clients(
+    sort: str = "premium",
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get all clients from the active production file, grouped by id_number."""
+    upload = await _get_production_upload(db, user.id)
+    if not upload:
+        return []
+
+    order_col = func.coalesce(func.sum(ClientRecord.accumulation), 0) if sort == "accumulation" else func.coalesce(func.sum(ClientRecord.total_premium), 0)
+
+    q = await db.execute(
+        select(
+            ClientRecord.id_number,
+            func.min(ClientRecord.first_name).label("first_name"),
+            func.min(ClientRecord.last_name).label("last_name"),
+            func.min(ClientRecord.receiving_company).label("company"),
+            func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
+            func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
+            func.count().label("products"),
+        )
+        .where(ClientRecord.upload_id == upload.id, ClientRecord.id_number.isnot(None))
+        .group_by(ClientRecord.id_number)
+        .order_by(desc(order_col))
+    )
+    return [
+        {
+            "id_number": r.id_number,
+            "name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
+            "company": r.company,
+            "premium": float(r.premium),
+            "accumulation": float(r.accumulation),
+            "products": r.products,
+        }
+        for r in q.all()
+    ]
 
 
 @router.get("/history", response_model=list[ProductionFileInfo])

@@ -45,7 +45,7 @@
     <template v-else>
       <!-- KPI Strip -->
       <div class="kpi-row">
-        <div class="kpi-card kpi-red">
+        <div class="kpi-card kpi-red clickable" @click="openKpiModal('open_amount')">
           <div class="kpi-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
@@ -56,7 +56,7 @@
             <span class="kpi-label">סה״כ חוב פתוח</span>
           </div>
         </div>
-        <div class="kpi-card kpi-amber">
+        <div class="kpi-card kpi-amber clickable" @click="openKpiModal('open')">
           <div class="kpi-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -67,7 +67,7 @@
             <span class="kpi-label">פריטים פתוחים</span>
           </div>
         </div>
-        <div class="kpi-card kpi-green">
+        <div class="kpi-card kpi-green clickable" @click="openKpiModal('paid')">
           <div class="kpi-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"/>
@@ -78,7 +78,7 @@
             <span class="kpi-label">שולמו</span>
           </div>
         </div>
-        <div class="kpi-card kpi-blue">
+        <div class="kpi-card kpi-blue clickable" @click="openKpiModal('companies')">
           <div class="kpi-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -188,6 +188,73 @@
         </div>
       </div>
 
+      <!-- KPI Drill-down Modal -->
+      <Teleport to="body">
+        <Transition name="modal">
+          <div v-if="kpiModal" class="fm-overlay" @click.self="kpiModal = null">
+            <div class="fm-card">
+              <div class="fm-header">
+                <h4>{{ kpiModalTitle }}</h4>
+                <div class="fm-header-right">
+                  <span class="fm-count ltr-number">{{ kpiModalData.length }} פריטים</span>
+                  <button class="fm-close" @click="kpiModal = null">&times;</button>
+                </div>
+              </div>
+              <div class="fm-search">
+                <input v-model="modalSearch" type="text" placeholder="חיפוש..." class="fm-search-input" />
+              </div>
+              <div class="fm-table-scroll">
+                <table class="fm-table">
+                  <thead>
+                    <tr>
+                      <template v-if="kpiModal === 'companies'">
+                        <th>חברה</th>
+                        <th>קטגוריה</th>
+                        <th class="th-num">פריטים</th>
+                        <th class="th-num">סכום</th>
+                      </template>
+                      <template v-else>
+                        <th>שם לקוח</th>
+                        <th>ת.ז</th>
+                        <th>חברה</th>
+                        <th>מוצר</th>
+                        <th class="th-num">סכום</th>
+                        <th>סטטוס</th>
+                      </template>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template v-if="kpiModal === 'companies'">
+                      <tr v-for="c in filteredModalData" :key="c.company">
+                        <td>
+                          <div class="company-cell">
+                            <span class="company-avatar-sm" :style="{ background: getColor(c.company) }">{{ c.company.charAt(0) }}</span>
+                            {{ c.company }}
+                          </div>
+                        </td>
+                        <td><span class="category-pill-sm" :class="c.category">{{ c.category === 'insurance' ? 'ביטוח' : 'גמל' }}</span></td>
+                        <td class="td-num"><span class="ltr-number">{{ c.count }}</span></td>
+                        <td class="td-num"><span class="ltr-number amount-val">{{ formatCurrency(c.total) }}</span></td>
+                      </tr>
+                    </template>
+                    <template v-else>
+                      <tr v-for="d in filteredModalData" :key="d.id">
+                        <td>{{ d.customer_name }}</td>
+                        <td><span class="ltr-number">{{ d.customer_id_number }}</span></td>
+                        <td>{{ d.company_name }}</td>
+                        <td>{{ d.product || '—' }}</td>
+                        <td class="td-num"><span class="ltr-number amount-val">{{ formatCurrency(d.expected_amount) }}</span></td>
+                        <td><span class="status-pill" :class="d.status">{{ statusLabel(d.status) }}</span></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
       <!-- Email toast -->
       <Transition name="fade">
         <div v-if="emailToast" class="email-toast" :class="emailToast.type">
@@ -199,12 +266,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useDebtsStore } from '../../stores/debts.js'
+import api from '../../api/client.js'
 
 const debtsStore = useDebtsStore()
 const openGroups = ref(new Set())
 const emailToast = ref(null)
+const kpiModal = ref(null) // 'open_amount' | 'open' | 'paid' | 'companies'
+const modalSearch = ref('')
+const modalDebts = ref([]) // debts loaded for modal
 
 const COMPANY_COLORS = {
   'אקסלנס': '#F57C00',
@@ -254,6 +325,62 @@ async function emailCompany(companyName) {
     emailToast.value = { type: 'error', message: typeof e === 'string' ? e : 'שגיאה בשליחה' }
   }
   setTimeout(() => { emailToast.value = null }, 4000)
+}
+
+const kpiModalTitle = computed(() => {
+  const titles = {
+    open_amount: 'חובות פתוחים — לפי סכום',
+    open: 'פריטים פתוחים',
+    paid: 'פריטים ששולמו',
+    companies: 'פירוט לפי חברה',
+  }
+  return titles[kpiModal.value] || ''
+})
+
+const kpiModalData = computed(() => {
+  if (kpiModal.value === 'companies') {
+    return debtsStore.summary?.companies || []
+  }
+  return modalDebts.value
+})
+
+const filteredModalData = computed(() => {
+  const q = modalSearch.value.toLowerCase()
+  if (!q) return kpiModalData.value
+
+  if (kpiModal.value === 'companies') {
+    return kpiModalData.value.filter(c => c.company.toLowerCase().includes(q))
+  }
+  return kpiModalData.value.filter(d =>
+    d.customer_name.toLowerCase().includes(q) ||
+    d.customer_id_number.includes(q) ||
+    d.company_name.toLowerCase().includes(q)
+  )
+})
+
+function statusLabel(status) {
+  const map = { open: 'פתוח', paid: 'שולם', disputed: 'במחלוקת', cancelled: 'בוטל' }
+  return map[status] || status
+}
+
+async function openKpiModal(type) {
+  kpiModal.value = type
+  modalSearch.value = ''
+
+  if (type === 'companies') {
+    // Companies data comes from summary, no extra fetch needed
+    return
+  }
+
+  // Fetch debts filtered by status
+  const statusMap = { open_amount: 'open', open: 'open', paid: 'paid' }
+  const status = statusMap[type]
+  try {
+    const res = await api.get('/debts', { params: { status } })
+    modalDebts.value = res.data
+  } catch (e) {
+    modalDebts.value = []
+  }
 }
 
 onMounted(() => {
@@ -650,6 +777,171 @@ onMounted(() => {
 .fade-enter-active { animation: fadeIn 0.3s; }
 .fade-leave-active { animation: fadeIn 0.2s reverse; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* KPI clickable */
+.kpi-card.clickable { cursor: pointer; }
+.kpi-card.clickable:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ── Drill-down Modal ── */
+.fm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1010;
+  backdrop-filter: blur(4px);
+}
+
+.fm-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.fm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fm-header h4 { font-size: 16px; font-weight: 700; color: var(--text); }
+
+.fm-header-right { display: flex; align-items: center; gap: 12px; }
+
+.fm-count { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+.fm-close {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.fm-close:hover { background: var(--red-light); color: var(--red); border-color: transparent; }
+
+.fm-search { padding: 12px 22px 0; }
+
+.fm-search-input {
+  width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.2s;
+}
+
+.fm-search-input:focus { outline: none; border-color: var(--primary); }
+
+.fm-table-scroll {
+  overflow-y: auto;
+  max-height: 55vh;
+  padding: 12px 22px 18px;
+}
+
+.fm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.fm-table thead { background: var(--bg); }
+
+.fm-table th {
+  padding: 10px 12px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 2px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.fm-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fm-table tbody tr:hover { background: var(--bg-surface); }
+.fm-table tbody tr:last-child td { border-bottom: none; }
+
+.th-num, .td-num {
+  text-align: center;
+  width: 100px;
+}
+
+.company-cell { display: flex; align-items: center; gap: 8px; }
+
+.company-avatar-sm {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.category-pill-sm {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.category-pill-sm.gemel_hishtalmut { background: rgba(59,130,246,0.08); color: #3b82f6; }
+.category-pill-sm.insurance { background: rgba(168,85,247,0.08); color: #a855f7; }
+
+.status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.status-pill.open { background: rgba(194,57,52,0.08); color: #C23934; }
+.status-pill.paid { background: rgba(46,132,74,0.08); color: #2E844A; }
+.status-pill.disputed { background: rgba(232,114,10,0.08); color: #E8720A; }
+.status-pill.cancelled { background: rgba(107,114,128,0.08); color: #6b7280; }
+
+/* Modal transitions */
+.modal-enter-active { animation: modalIn 0.3s var(--transition); }
+.modal-leave-active { animation: modalIn 0.2s var(--transition) reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
 
 @media (max-width: 768px) {
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
