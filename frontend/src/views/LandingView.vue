@@ -72,7 +72,7 @@
           <p class="hero-sub" ref="heroSub">העלו קבצים, השוו נתונים, גלו פערים - תוך שניות</p>
           <div class="hero-cta-wrap" ref="heroCtaWrap">
             <router-link to="/signup" class="hero-btn">
-              התחל בחינם
+              התחל
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             </router-link>
             <a href="#how" class="hero-ghost" @click.prevent="scrollToSection('how')">
