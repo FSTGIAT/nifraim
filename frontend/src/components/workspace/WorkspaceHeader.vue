@@ -12,7 +12,7 @@
         <span class="brand-name">Nifraim</span>
       </div>
       <!-- Global Search -->
-      <div class="header-search" :class="{ open: searchOpen }">
+      <div class="header-search" :class="{ open: searchOpen }" ref="searchWrapRef">
         <button class="search-btn" @click="toggleSearch" title="חיפוש לקוח">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"/>
@@ -23,12 +23,91 @@
           v-if="searchOpen"
           ref="searchRef"
           type="text"
-          v-model="comparisonStore.searchQuery"
+          v-model="searchQuery"
           placeholder="חיפוש לפי שם או ת.ז..."
           class="header-search-input"
+          @input="onSearchInput"
           @keydown.escape="closeSearch"
         />
+        <!-- Search results dropdown -->
+        <Transition name="pop">
+          <div v-if="searchOpen && searchResults.length > 0" class="search-results">
+            <div
+              v-for="r in searchResults"
+              :key="r.id_number"
+              class="search-result-item"
+              @click="openClientDetail(r.id_number)"
+            >
+              <div class="sr-info">
+                <span class="sr-name">{{ r.name }}</span>
+                <span class="sr-id ltr-number">{{ r.id_number }}</span>
+              </div>
+              <div class="sr-meta">
+                <span class="sr-company">{{ r.company }}</span>
+                <span class="sr-products ltr-number">{{ r.products }} מוצרים</span>
+              </div>
+            </div>
+          </div>
+        </Transition>
+        <div v-if="searchOpen && searching" class="search-results">
+          <div class="search-loading">מחפש...</div>
+        </div>
       </div>
+
+      <!-- Client Detail Modal -->
+      <Teleport to="body">
+        <Transition name="modal">
+          <div v-if="clientDetail" class="cd-overlay" @click.self="clientDetail = null">
+            <div class="cd-card">
+              <div class="cd-header">
+                <div>
+                  <h4>{{ clientDetail.name }}</h4>
+                  <span class="cd-id ltr-number">ת.ז {{ clientDetail.id_number }}</span>
+                </div>
+                <button class="cd-close" @click="clientDetail = null">&times;</button>
+              </div>
+              <div class="cd-kpi-row">
+                <div class="cd-kpi">
+                  <span class="cd-kpi-val ltr-number">{{ formatCurrency(clientDetail.total_premium) }}</span>
+                  <span class="cd-kpi-label">פרמיה</span>
+                </div>
+                <div class="cd-kpi">
+                  <span class="cd-kpi-val ltr-number">{{ formatCurrency(clientDetail.total_accumulation) }}</span>
+                  <span class="cd-kpi-label">צבירה</span>
+                </div>
+                <div class="cd-kpi">
+                  <span class="cd-kpi-val ltr-number">{{ clientDetail.products.length }}</span>
+                  <span class="cd-kpi-label">מוצרים</span>
+                </div>
+              </div>
+              <div class="cd-table-scroll">
+                <table class="cd-table">
+                  <thead>
+                    <tr>
+                      <th>מוצר</th>
+                      <th>חברה</th>
+                      <th class="th-num">פרמיה</th>
+                      <th class="th-num">צבירה</th>
+                      <th>סטטוס</th>
+                      <th>פוליסה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(p, i) in clientDetail.products" :key="i">
+                      <td>{{ p.product }}</td>
+                      <td>{{ p.company }}</td>
+                      <td class="td-num"><span class="ltr-number">{{ formatCurrency(p.premium) }}</span></td>
+                      <td class="td-num"><span class="ltr-number">{{ formatCurrency(p.accumulation) }}</span></td>
+                      <td>{{ p.status }}</td>
+                      <td><span class="ltr-number">{{ p.policy_number }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
 
       <div class="header-actions">
         <div class="user-pill" v-if="auth.user">
@@ -111,21 +190,31 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
-import { useComparisonStore } from '../../stores/comparison.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
+import api from '../../api/client.js'
 
 const auth = useAuthStore()
-const comparisonStore = useComparisonStore()
 const subStore = useSubscriptionStore()
 defineEmits(['logout'])
 
 const searchOpen = ref(false)
 const searchRef = ref(null)
+const searchWrapRef = ref(null)
+const searchQuery = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+const clientDetail = ref(null)
+let searchTimer = null
 
 const avatarLetter = computed(() => {
   const name = auth.user?.full_name || auth.user?.email || ''
   return name.charAt(0).toUpperCase()
 })
+
+function formatCurrency(val) {
+  if (!val) return '₪0'
+  return `₪${Math.round(val).toLocaleString()}`
+}
 
 async function toggleSearch() {
   searchOpen.value = !searchOpen.value
@@ -133,13 +222,52 @@ async function toggleSearch() {
     await nextTick()
     searchRef.value?.focus()
   } else {
-    comparisonStore.searchQuery = ''
+    searchQuery.value = ''
+    searchResults.value = []
   }
 }
 
 function closeSearch() {
   searchOpen.value = false
-  comparisonStore.searchQuery = ''
+  searchQuery.value = ''
+  searchResults.value = []
+}
+
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  const q = searchQuery.value.trim()
+  if (q.length < 2) {
+    searchResults.value = []
+    return
+  }
+  searching.value = true
+  searchTimer = setTimeout(async () => {
+    try {
+      const res = await api.get('/production/clients', { params: { search: q } })
+      searchResults.value = res.data.slice(0, 10)
+    } catch {
+      searchResults.value = []
+    } finally {
+      searching.value = false
+    }
+  }, 300)
+}
+
+async function openClientDetail(idNumber) {
+  searchResults.value = []
+  try {
+    const res = await api.get(`/production/clients/${idNumber}`)
+    clientDetail.value = res.data
+    closeSearch()
+  } catch {
+    // not found
+  }
+}
+
+function onClickOutsideSearch(e) {
+  if (searchOpen.value && searchWrapRef.value && !searchWrapRef.value.contains(e.target)) {
+    closeSearch()
+  }
 }
 
 // ─── Email provider settings ───
@@ -191,9 +319,13 @@ async function handleCancelSub() {
 
 onMounted(() => {
   document.addEventListener('click', onClickOutside)
+  document.addEventListener('click', onClickOutsideSearch)
   subStore.fetchStatus()
 })
-onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onClickOutside)
+  document.removeEventListener('click', onClickOutsideSearch)
+})
 </script>
 
 <style scoped>
@@ -596,5 +728,169 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
   direction: ltr;
   unicode-bidi: embed;
   display: inline-block;
+}
+
+/* ── Search Results Dropdown ── */
+.search-results {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  margin-top: 4px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-result-item:last-child { border-bottom: none; }
+.search-result-item:hover { background: var(--bg-surface); }
+
+.sr-info { display: flex; align-items: center; gap: 10px; }
+.sr-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.sr-id { font-size: 11px; color: var(--text-muted); }
+
+.sr-meta { display: flex; align-items: center; gap: 10px; }
+.sr-company { font-size: 11px; color: var(--text-secondary); }
+.sr-products { font-size: 10px; color: var(--text-muted); background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+
+.search-loading {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── Client Detail Modal ── */
+.cd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1010;
+  backdrop-filter: blur(4px);
+}
+
+.cd-card {
+  background: var(--card-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.cd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cd-header h4 { font-size: 18px; font-weight: 700; color: var(--text); margin: 0; }
+.cd-id { font-size: 12px; color: var(--text-muted); margin-top: 2px; display: block; }
+
+.cd-close {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cd-close:hover { background: var(--red-light); color: var(--red); border-color: transparent; }
+
+.cd-kpi-row {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cd-kpi {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px;
+  background: var(--bg);
+  border-radius: 10px;
+}
+
+.cd-kpi-val { font-size: 16px; font-weight: 800; color: var(--text); }
+.cd-kpi-label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+.cd-table-scroll {
+  overflow-y: auto;
+  max-height: 45vh;
+  padding: 0 24px 20px;
+}
+
+.cd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.cd-table thead { background: var(--bg); }
+
+.cd-table th {
+  padding: 10px 10px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 2px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.cd-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cd-table tbody tr:hover { background: var(--bg-surface); }
+
+.cd-table .th-num, .cd-table .td-num { text-align: center; width: 90px; }
+
+.modal-enter-active { animation: modalIn 0.3s var(--transition); }
+.modal-leave-active { animation: modalIn 0.2s var(--transition) reverse; }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

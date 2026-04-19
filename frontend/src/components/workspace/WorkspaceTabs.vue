@@ -26,10 +26,6 @@
             <svg v-else-if="tab.id === 'comparison'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
-            <svg v-else-if="tab.id === 'unpaid-summary'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23"/>
-              <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-            </svg>
             <svg v-else-if="tab.id === 'commission-rates'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
               <line x1="3" y1="9" x2="21" y2="9"/>
@@ -88,10 +84,6 @@
           </svg>
           <svg v-else-if="tab.id === 'comparison'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <svg v-else-if="tab.id === 'unpaid-summary'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
           </svg>
           <svg v-else-if="tab.id === 'commission-rates'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -155,13 +147,6 @@ const tabs = [
     description: 'השוואת נפרעים מול פרודוקציה',
     accent: '#22d3ee',
     accentGlow: 'rgba(34, 211, 238, 0.15)',
-  },
-  {
-    id: 'unpaid-summary',
-    label: 'סיכום חובות',
-    description: 'מעקב אחר חובות פתוחים',
-    accent: '#f43f5e',
-    accentGlow: 'rgba(244, 63, 94, 0.15)',
   },
   {
     id: 'commission-rates',

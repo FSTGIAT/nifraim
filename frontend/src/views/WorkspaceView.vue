@@ -74,7 +74,6 @@
             <Transition name="tab-switch" mode="out-in">
               <ProductionTab v-if="activeTab === 'production'" key="production" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" />
-              <UnpaidSummaryTab v-else-if="activeTab === 'unpaid-summary'" key="unpaid-summary" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
@@ -162,7 +161,6 @@ import OnboardingTour from '../components/workspace/OnboardingTour.vue'
 import ProductionTab from '../components/workspace/ProductionTab.vue'
 import ComparisonTab from '../components/workspace/ComparisonTab.vue'
 import RecruitsTab from '../components/workspace/RecruitsTab.vue'
-import UnpaidSummaryTab from '../components/workspace/UnpaidSummaryTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
@@ -176,11 +174,10 @@ const activeTab = ref('production')
 const viewMode = ref('home')
 
 // Tab order for navigation
-const tabOrder = ['production', 'comparison', 'unpaid-summary', 'commission-rates', 'company-emails', 'recruits', 'portal']
+const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal']
 const tabLabels = {
   'production': 'פרודוקציה',
   'comparison': 'השוואת נפרעים',
-  'unpaid-summary': 'סיכום חובות',
   'commission-rates': 'טבלת עמלות',
   'company-emails': 'אימיילים לחברות',
   'recruits': 'ניהול תיק אישי',

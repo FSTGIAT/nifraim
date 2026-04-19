@@ -350,6 +350,7 @@ async def get_production_analytics(
 @router.get("/clients")
 async def get_production_clients(
     sort: str = "premium",
+    search: str = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -359,6 +360,15 @@ async def get_production_clients(
         return []
 
     order_col = func.coalesce(func.sum(ClientRecord.accumulation), 0) if sort == "accumulation" else func.coalesce(func.sum(ClientRecord.total_premium), 0)
+
+    filters = [ClientRecord.upload_id == upload.id, ClientRecord.id_number.isnot(None)]
+    if search:
+        search = search.strip()
+        filters.append(
+            (ClientRecord.id_number.contains(search)) |
+            (ClientRecord.first_name.ilike(f"%{search}%")) |
+            (ClientRecord.last_name.ilike(f"%{search}%"))
+        )
 
     q = await db.execute(
         select(
@@ -370,9 +380,10 @@ async def get_production_clients(
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
             func.count().label("products"),
         )
-        .where(ClientRecord.upload_id == upload.id, ClientRecord.id_number.isnot(None))
+        .where(*filters)
         .group_by(ClientRecord.id_number)
         .order_by(desc(order_col))
+        .limit(50)
     )
     return [
         {
@@ -385,6 +396,49 @@ async def get_production_clients(
         }
         for r in q.all()
     ]
+
+
+@router.get("/clients/{id_number}")
+async def get_client_detail(
+    id_number: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get all products for a specific client from the active production file."""
+    upload = await _get_production_upload(db, user.id)
+    if not upload:
+        raise HTTPException(status_code=404, detail="אין קובץ פרודוקציה פעיל")
+
+    result = await db.execute(
+        select(ClientRecord)
+        .where(
+            ClientRecord.upload_id == upload.id,
+            ClientRecord.id_number == id_number.lstrip('0'),
+        )
+    )
+    records = result.scalars().all()
+    if not records:
+        raise HTTPException(status_code=404, detail="לקוח לא נמצא")
+
+    name = f"{records[0].first_name or ''} {records[0].last_name or ''}".strip()
+    products = []
+    for r in records:
+        products.append({
+            "product": r.product or r.product_type or "—",
+            "company": r.receiving_company or "—",
+            "premium": float(r.total_premium or 0),
+            "accumulation": float(r.accumulation or 0),
+            "status": r.product_status or "—",
+            "policy_number": r.fund_policy_number or "—",
+        })
+
+    return {
+        "id_number": id_number,
+        "name": name,
+        "products": products,
+        "total_premium": sum(p["premium"] for p in products),
+        "total_accumulation": sum(p["accumulation"] for p in products),
+    }
 
 
 @router.get("/history", response_model=list[ProductionFileInfo])
