@@ -3,6 +3,9 @@
     <div class="rate-header">
       <h3>טבלת עמלות היקף</h3>
       <div class="header-actions">
+        <button v-if="rates.length === 0" class="btn-seed" @click="seedRates" :disabled="seeding">
+          {{ seeding ? 'טוען...' : 'טען ברירת מחדל' }}
+        </button>
         <button v-if="rates.length > 0 && !addingNew" class="btn-seed" @click="startNew">+ הוסף שורה</button>
         <label class="btn-upload">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -17,7 +20,7 @@
     </div>
 
     <div v-if="rates.length === 0 && !loading" class="empty">
-      לא הוגדרו עמלות היקף. לחץ "העלה מקובץ" או הוסף ידנית.
+      לא הוגדרו עמלות היקף. לחץ "טען ברירת מחדל" או "העלה מקובץ".
     </div>
 
     <div v-if="loading" class="loading">
@@ -128,6 +131,7 @@ import api from '../../api/client.js'
 
 const rates = ref([])
 const loading = ref(false)
+const seeding = ref(false)
 const editingId = ref(null)
 const editForm = reactive({
   company_name: '',
@@ -154,6 +158,16 @@ const newForm = reactive({
 })
 
 onMounted(() => fetchRates())
+
+async function seedRates() {
+  seeding.value = true
+  try {
+    await api.post('/volume-rates/seed')
+    await fetchRates()
+  } finally {
+    seeding.value = false
+  }
+}
 
 async function fetchRates() {
   loading.value = true

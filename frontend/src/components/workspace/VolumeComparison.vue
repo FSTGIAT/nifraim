@@ -11,40 +11,78 @@
 
     <!-- No result: show uploader -->
     <div v-else-if="!volumeStore.comparisonResult && !volumeStore.loading" class="upload-section">
-      <div
-        class="drop-zone"
-        :class="{ dragging }"
-        @dragenter.prevent="dragging = true"
-        @dragleave.prevent="dragging = false"
-        @dragover.prevent
-        @drop.prevent="onDrop"
-        @click="$refs.fileInput.click()"
-      >
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Floating blur circles -->
+      <div class="float-circle fc-1"></div>
+      <div class="float-circle fc-2"></div>
+      <div class="float-circle fc-3"></div>
+      <div class="float-circle fc-4"></div>
+      <div class="float-circle fc-5"></div>
+      <div class="float-circle fc-6"></div>
+      <div class="float-circle fc-7"></div>
+
+      <!-- Animated waves at bottom -->
+      <div class="wave-bg">
+        <div class="shimmer"></div>
+        <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="vwg1" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
+              <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
+              <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#vwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
+        </svg>
+        <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="vwg2" x1="100%" y1="0%" x2="0%" y2="0%">
+              <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
+              <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
+              <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#vwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
+        </svg>
+        <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="vwg3" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
+              <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
+              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#vwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
+        </svg>
+      </div>
+
+      <button class="upload-btn" @click="$refs.fileInput.click()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <p class="drop-title">העלה דוח היקפים</p>
-        <p class="drop-sub">גרור קובץ xlsx לכאן או לחץ לבחירה</p>
-      </div>
+        <span>העלה דוח היקפים להשוואה</span>
+      </button>
       <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileSelect" style="display:none" />
 
-      <!-- Password modal -->
-      <Teleport to="body">
-        <Transition name="modal">
-          <div v-if="showPassword" class="pw-overlay" @click.self="showPassword = false">
-            <div class="pw-card">
-              <h4>הקובץ מוגן בסיסמה</h4>
-              <input v-model="password" type="password" class="pw-input" placeholder="סיסמה" @keyup.enter="submitWithPassword" />
-              <div class="pw-actions">
-                <button class="btn-primary" @click="submitWithPassword">אישור</button>
-                <button class="btn-ghost" @click="showPassword = false; pendingFile = null">ביטול</button>
-              </div>
-            </div>
+      <!-- Encrypted file option -->
+      <div class="options-row">
+        <label class="toggle-label">
+          <div class="toggle" :class="{ on: needPassword }">
+            <input type="checkbox" v-model="needPassword" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
           </div>
-        </Transition>
-      </Teleport>
+          <span>קובץ מוצפן</span>
+        </label>
+      </div>
+
+      <Transition name="slide-down">
+        <div class="password-field" v-if="needPassword">
+          <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
+        </div>
+      </Transition>
     </div>
 
     <!-- Loading -->
@@ -207,6 +245,7 @@ const productionStore = useProductionStore()
 
 const dragging = ref(false)
 const showPassword = ref(false)
+const needPassword = ref(false)
 const password = ref('')
 const pendingFile = ref(null)
 const modalCategory = ref(null)
@@ -309,7 +348,8 @@ function handleFile(file) {
   const ext = file.name.split('.').pop().toLowerCase()
   if (ext !== 'xlsx' && ext !== 'xls') return
   pendingFile.value = file
-  volumeStore.uploadAndCompare(file).catch((err) => {
+  const pw = needPassword.value ? password.value : null
+  volumeStore.uploadAndCompare(file, pw).catch((err) => {
     if (err?.response?.status === 400 && err.response.data?.detail?.includes('סיסמה')) {
       showPassword.value = true
     }
@@ -340,39 +380,229 @@ function submitWithPassword() {
 .empty-state p { font-size: 14px; }
 
 /* Upload */
-.upload-section { max-width: 480px; margin: 0 auto; }
-
-.drop-zone {
+.upload-section {
+  max-width: 560px;
+  margin: 0 auto;
   position: relative;
-  border: 1.5px dashed rgba(245, 124, 0, 0.25);
-  border-radius: var(--radius-lg);
-  padding: 40px 28px;
-  text-align: center;
+}
+
+/* Floating blur circles */
+.float-circle {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.fc-1 {
+  width: 220px; height: 220px;
+  top: 10%; right: -60px;
+  background: rgba(245, 124, 0, 0.045);
+  border: 1px solid rgba(245, 124, 0, 0.06);
+  animation: floatBob 8s ease-in-out infinite;
+}
+
+.fc-2 {
+  width: 160px; height: 160px;
+  bottom: 25%; left: -40px;
+  background: rgba(245, 124, 0, 0.035);
+  border: 1px solid rgba(245, 124, 0, 0.05);
+  animation: floatBob 6.5s ease-in-out infinite reverse;
+}
+
+.fc-3 {
+  width: 90px; height: 90px;
+  top: 30%; left: 8%;
+  background: rgba(245, 124, 0, 0.05);
+  animation: floatBob 10s ease-in-out infinite 2s;
+}
+
+.fc-4 {
+  width: 120px; height: 120px;
+  top: 55%; right: 6%;
+  background: rgba(245, 124, 0, 0.03);
+  border: 1px solid rgba(245, 124, 0, 0.04);
+  animation: floatBob 9s ease-in-out infinite 1s;
+}
+
+.fc-5 {
+  width: 50px; height: 50px;
+  top: 18%; right: 22%;
+  background: rgba(255, 152, 0, 0.055);
+  animation: floatBob 7s ease-in-out infinite 3s;
+}
+
+.fc-6 {
+  width: 280px; height: 280px;
+  bottom: 8%; right: -90px;
+  background: rgba(245, 124, 0, 0.025);
+  border: 1px solid rgba(245, 124, 0, 0.035);
+  animation: floatBob 12s ease-in-out infinite 0.5s;
+}
+
+.fc-7 {
+  width: 65px; height: 65px;
+  bottom: 35%; left: 18%;
+  background: rgba(255, 183, 77, 0.06);
+  border: 1px solid rgba(255, 183, 77, 0.05);
+  animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
+}
+
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-16px) rotate(2deg); }
+  66% { transform: translateY(8px) rotate(-1deg); }
+}
+
+/* Waves fixed to bottom */
+.wave-bg {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 200px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.shimmer {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 100%;
+  z-index: 1;
+  overflow: hidden;
+  mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -80%;
+  width: 50%; height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 200, 100, 0.1) 35%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 200, 100, 0.1) 65%,
+    transparent 100%
+  );
+  animation: shimmerSweep 7s ease-in-out infinite;
+}
+
+@keyframes shimmerSweep {
+  0%   { left: -80%; }
+  100% { left: 180%; }
+}
+
+.wave {
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 200%; height: 100%;
+}
+
+.wave-1 { animation: waveSlide 14s linear infinite; }
+.wave-2 { animation: waveSlide 18s linear infinite reverse; }
+.wave-3 { animation: waveSlide 22s linear infinite; }
+
+@keyframes waveSlide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 24px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.4s var(--transition);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
-  color: var(--text-muted);
+  transition: all 0.3s var(--transition);
 }
 
-.drop-zone:hover {
-  border-color: var(--primary);
-  background: rgba(255, 255, 255, 0.95);
+.upload-btn svg { color: #fff; flex-shrink: 0; }
+
+.upload-btn:hover {
+  background: linear-gradient(135deg, #E65100, #F57C00);
   transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.1);
-  color: var(--primary);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.25);
 }
 
-.drop-zone.dragging {
-  border-color: var(--primary);
-  background: rgba(255, 243, 224, 0.9);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(245, 124, 0, 0.15), 0 0 0 3px rgba(245, 124, 0, 0.08);
-  color: var(--primary);
+.upload-btn:active { transform: translateY(0); }
+
+/* Toggle */
+.options-row { margin-top: 12px; }
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
-.drop-title { font-size: 15px; font-weight: 700; margin: 12px 0 4px; color: var(--text-secondary); }
-.drop-sub { font-size: 12px; }
+.toggle { position: relative; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+
+.toggle-track {
+  width: 36px; height: 20px;
+  background: var(--border-subtle);
+  border-radius: 10px;
+  transition: all 0.3s var(--transition);
+  position: relative;
+}
+
+.toggle.on .toggle-track { background: var(--green-light); }
+
+.toggle-thumb {
+  width: 16px; height: 16px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  position: absolute;
+  top: 2px; right: 2px;
+  transition: all 0.3s var(--transition);
+}
+
+.toggle.on .toggle-thumb {
+  right: 18px;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--green-light);
+}
+
+.password-field { margin-top: 12px; }
+
+.password-field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg-surface);
+  color: var(--text);
+  transition: all 0.25s var(--transition);
+}
+
+.password-field input:focus {
+  border-color: var(--accent-emerald);
+  box-shadow: 0 0 0 3px var(--green-light);
+}
+
+.slide-down-enter-active { animation: slideDown 0.3s var(--transition); }
+.slide-down-leave-active { animation: slideDown 0.2s var(--transition) reverse; }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* Loading */
 .loading-state {

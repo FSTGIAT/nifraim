@@ -10,6 +10,7 @@ from app.models.volume_commission_rate import VolumeCommissionRate
 from app.schemas.volume import VolumeCommissionRateIn, VolumeCommissionRateOut
 from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_volume_rates
+from app.utils.hebrew_mappings import DEFAULT_VOLUME_RATES
 
 router = APIRouter()
 
@@ -38,6 +39,42 @@ async def list_rates(
         select(VolumeCommissionRate).where(VolumeCommissionRate.user_id == user.id)
     )
     return [_rate_to_out(r) for r in result.scalars().all()]
+
+
+@router.post("/seed", response_model=list[VolumeCommissionRateOut])
+async def seed_defaults(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Seed the default volume commission rates."""
+    existing = await db.execute(
+        select(VolumeCommissionRate).where(VolumeCommissionRate.user_id == user.id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Volume rates already exist. Delete them first to re-seed.")
+
+    rates = []
+    for item in DEFAULT_VOLUME_RATES:
+        rate = VolumeCommissionRate(
+            user_id=user.id,
+            company_name=item["company_name"],
+            nifraim_rate=item.get("nifraim_rate"),
+            volume_rate_per_million=item.get("volume_rate_per_million"),
+            pension_accumulation=item.get("pension_accumulation"),
+            changed_percent=item.get("changed_percent"),
+            conversion_to_annuity=item.get("conversion_to_annuity"),
+            payment_frequency=item.get("payment_frequency"),
+            paid_to=item.get("paid_to"),
+            notes=item.get("notes"),
+        )
+        db.add(rate)
+        rates.append(rate)
+
+    await db.commit()
+    for r in rates:
+        await db.refresh(r)
+
+    return [_rate_to_out(r) for r in rates]
 
 
 @router.post("", response_model=VolumeCommissionRateOut)

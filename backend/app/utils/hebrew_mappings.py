@@ -312,7 +312,9 @@ VOLUME_RATES_COLUMNS = {
     "תדירות": "payment_frequency",
     "תדירות תשלום": "payment_frequency",
     "למי": "paid_to",
+    "למי משולמת העמלה": "paid_to",
     "הערות": "notes",
+    "הערה": "notes",
 }
 
 # Known header keywords for scanning buried headers
@@ -341,6 +343,23 @@ DEFAULT_COMMISSION_RATES = [
     {"company_name": "אקסלנס ניהול תיקים", "rate": 0.0045, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
     {"company_name": "מור ניהול תיקים", "rate": 0.005, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": "amalotgp@more.co.il"},
     {"company_name": "מיטב דש ניהול תיקים", "rate": 0.004, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+]
+
+# Default volume commission rates from Excel
+DEFAULT_VOLUME_RATES = [
+    {"company_name": "פניקס פוליסות", "nifraim_rate": 0.40, "volume_rate_per_million": 10062, "pension_accumulation": 0, "changed_percent": 0.13, "conversion_to_annuity": 14976, "payment_frequency": "חודשי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "פניקס גמל והשתלמות", "nifraim_rate": 0.34, "volume_rate_per_million": 9000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "חודשי", "paid_to": "עיטם", "notes": "ביאור 1"},
+    {"company_name": "הראל מגוון", "nifraim_rate": 0.45, "volume_rate_per_million": 9500, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "רבעוני", "paid_to": "עיטם", "notes": "ביאור 2"},
+    {"company_name": "ילין גמל", "nifraim_rate": 0.30, "volume_rate_per_million": 6000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "חודשי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "מיטב דש", "nifraim_rate": 0.30, "volume_rate_per_million": 7500, "pension_accumulation": 4000, "changed_percent": 0.04, "conversion_to_annuity": None, "payment_frequency": "חודשי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "מור גמל", "nifraim_rate": 0.30, "volume_rate_per_million": 7250, "pension_accumulation": 2500, "changed_percent": 0.07, "conversion_to_annuity": None, "payment_frequency": "רבעוני", "paid_to": "עיטם", "notes": None},
+    {"company_name": "אנליסט", "nifraim_rate": 0.30, "volume_rate_per_million": 5000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "שנתי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "מגדל קשת", "nifraim_rate": 0.40, "volume_rate_per_million": 9000, "pension_accumulation": 2500, "changed_percent": 0.08, "conversion_to_annuity": 9945, "payment_frequency": "שנתי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "הכשרה", "nifraim_rate": 0.36, "volume_rate_per_million": 8000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "חודשי", "paid_to": "סוכן", "notes": None},
+    {"company_name": "אלטשולר", "nifraim_rate": 0.30, "volume_rate_per_million": 6400, "pension_accumulation": None, "changed_percent": 0.06, "conversion_to_annuity": None, "payment_frequency": "רבעוני", "paid_to": "סוכן", "notes": None},
+    {"company_name": "אקסלנס ניהול תיקים", "nifraim_rate": 0.50, "volume_rate_per_million": 3000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "שנתי", "paid_to": "עיטם", "notes": None},
+    {"company_name": "מור ניהול תיקים", "nifraim_rate": 0.45, "volume_rate_per_million": 4500, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "שנתי", "paid_to": "עיטם", "notes": "ביאור 3"},
+    {"company_name": "מיטב דש ניהול תיקים", "nifraim_rate": 0.50, "volume_rate_per_million": 3000, "pension_accumulation": None, "changed_percent": None, "conversion_to_annuity": None, "payment_frequency": "חודשי", "paid_to": "עיטם", "notes": None},
 ]
 
 # Hebrew status labels

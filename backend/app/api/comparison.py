@@ -16,6 +16,7 @@ from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
+from app.services.debt_service import sync_debts
 
 from app.services.parser_service import parse_excel
 from app.services.comparison_service import compute_comparison
@@ -290,6 +291,19 @@ async def compare_with_production(
     print(f"COMPARISON RESULT: {comparison['summary']}", flush=True)
     comparison["commission_company_source"] = company_sources[0] if len(company_sources) == 1 else None
     comparison["commission_company_sources"] = sorted(set(company_sources))
+
+    # Sync debts from comparison results
+    detected_category = comparison.get("commission_category", "gemel_hishtalmut")
+    try:
+        await sync_debts(
+            db, user.id, comparison,
+            production_upload_id=prod_upload.id,
+            commission_upload_id=comm_upload.id if comm_upload else None,
+            category=detected_category,
+        )
+    except Exception as e:
+        logger.warning(f"Debt sync failed: {e}")
+
     return comparison
 
 

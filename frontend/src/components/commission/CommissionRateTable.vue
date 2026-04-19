@@ -58,10 +58,10 @@
           </template>
           <template v-else>
             <td>{{ rate.company_name }}</td>
-            <td class="num ltr-number">{{ (rate.rate * 100).toFixed(2) }}%</td>
+            <td class="num"><span class="ltr-number">{{ (rate.rate * 100).toFixed(2) }}%</span></td>
             <td>{{ rate.payment_frequency || '—' }}</td>
             <td>{{ rate.paid_to || '—' }}</td>
-            <td class="ltr-number email-cell">{{ rate.company_email || '—' }}</td>
+            <td class="email-cell"><span class="ltr-number">{{ rate.company_email || '—' }}</span></td>
             <td class="actions">
               <button class="btn-edit" @click="startEdit(rate)">&#9998;</button>
               <button class="btn-del" @click="deleteRate(rate.id)">&#10005;</button>

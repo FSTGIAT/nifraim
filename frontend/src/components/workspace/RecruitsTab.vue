@@ -12,8 +12,55 @@
 
     <!-- Upload button — big centered only on first use (no recruits in any category) -->
     <div class="recruit-uploader" v-if="!hasRecruits && !hasAnyRecruits">
-      <div v-if="recruitsStore.uploading" class="upload-loading-card">
-        <div class="upload-loading-top">
+      <!-- Floating blur circles -->
+      <div class="float-circle fc-1"></div>
+      <div class="float-circle fc-2"></div>
+      <div class="float-circle fc-3"></div>
+      <div class="float-circle fc-4"></div>
+      <div class="float-circle fc-5"></div>
+      <div class="float-circle fc-6"></div>
+      <div class="float-circle fc-7"></div>
+
+      <!-- Animated waves at bottom -->
+      <div class="wave-bg">
+        <div class="shimmer"></div>
+        <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="rwg1" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
+              <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
+              <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#rwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
+        </svg>
+        <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="rwg2" x1="100%" y1="0%" x2="0%" y2="0%">
+              <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
+              <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
+              <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#rwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
+        </svg>
+        <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="rwg3" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
+              <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
+              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+            </linearGradient>
+          </defs>
+          <path fill="url(#rwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
+        </svg>
+      </div>
+
+      <!-- Loading state -->
+      <div v-if="recruitsStore.uploading" class="upload-loading">
+        <div class="loading-content">
           <div class="loader">
             <div class="loader-ring"></div>
             <div class="loader-ring delay"></div>
@@ -23,38 +70,13 @@
             <span class="loading-hint">{{ recruitStageHint }}</span>
           </div>
         </div>
-
         <div class="progress-bar-track">
           <div class="progress-bar-fill" :style="{ width: recruitProgressWidth }"></div>
-          <div class="progress-bar-shimmer"></div>
         </div>
-
-        <div class="upload-steps">
-          <div class="upload-step" :class="{ active: recruitStage >= 1, done: recruitStage > 1 }">
-            <div class="step-icon">
-              <svg v-if="recruitStage > 1" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span v-else class="ltr-number">1</span>
-            </div>
-            <span>העלאה</span>
-          </div>
-          <div class="step-line" :class="{ filled: recruitStage > 1 }"></div>
-          <div class="upload-step" :class="{ active: recruitStage >= 2, done: recruitStage > 2 }">
-            <div class="step-icon">
-              <svg v-if="recruitStage > 2" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span v-else class="ltr-number">2</span>
-            </div>
-            <span>ניתוח</span>
-          </div>
-          <div class="step-line" :class="{ filled: recruitStage > 2 }"></div>
-          <div class="upload-step" :class="{ active: recruitStage >= 3 }">
-            <div class="step-icon"><span class="ltr-number">3</span></div>
-            <span>שמירה</span>
-          </div>
-        </div>
-
         <span class="loading-wait-hint">קבצים גדולים עשויים לקחת עד דקה</span>
       </div>
 
+      <!-- Upload button -->
       <button v-else class="upload-btn" @click="openFilePicker">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -71,21 +93,50 @@
         style="display: none"
       />
 
-      <div class="options-row">
-        <label class="toggle-label">
-          <div class="toggle" :class="{ on: needPassword }">
-            <input type="checkbox" v-model="needPassword" />
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          </div>
-          <span>קובץ מוצפן</span>
-        </label>
-      </div>
+      <!-- File format guide -->
+      <div class="format-guide">
+        <button class="format-guide-toggle" @click="showFormatGuide = !showFormatGuide">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <span>איזה פורמט קובץ נדרש?</span>
+          <svg class="guide-chevron" :class="{ open: showFormatGuide }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <Transition name="slide-down">
+          <div v-if="showFormatGuide" class="format-guide-content">
+            <p class="guide-intro">הקובץ צריך להיות Excel (.xlsx / .xls) עם העמודות הבאות:</p>
 
-      <Transition name="slide-down">
-        <div class="password-field" v-if="needPassword">
-          <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
-        </div>
-      </Transition>
+            <div class="columns-section">
+              <h5>עמודות חובה</h5>
+              <div class="column-chips">
+                <span class="col-chip required">ת.ז</span>
+                <span class="col-chip required">שם פרטי</span>
+                <span class="col-chip required">שם משפחה</span>
+                <span class="col-chip required">חברה מקבלת</span>
+                <span class="col-chip required">מוצר</span>
+              </div>
+            </div>
+
+            <div class="columns-section">
+              <h5>עמודות מומלצות</h5>
+              <div class="column-chips">
+                <span class="col-chip">תאריך חתימה</span>
+                <span class="col-chip">סוג גיוס</span>
+                <span class="col-chip">מספר קופה/פוליסה</span>
+                <span class="col-chip">סכום העברה צפוי</span>
+                <span class="col-chip">סכום העברה בפועל</span>
+                <span class="col-chip">מעמד</span>
+                <span class="col-chip">פעיל/לא פעיל</span>
+                <span class="col-chip">דמי ניהול</span>
+                <span class="col-chip">מקור הליד</span>
+                <span class="col-chip">הערות</span>
+              </div>
+            </div>
+
+            <p class="guide-hint">סדר העמודות לא חשוב — המערכת מזהה אותן אוטומטית</p>
+          </div>
+        </Transition>
+      </div>
     </div>
 
     <!-- Upload loading card (centered, shown when uploading regardless of recruits) -->
@@ -175,15 +226,15 @@
 
     <!-- Tab: List -->
     <div v-if="innerTab === 'list'">
-      <!-- Empty category: show upload button matching existing design -->
-      <div v-if="!hasRecruits && !recruitsStore.uploading" class="recruit-uploader">
+      <!-- Empty category upload -->
+      <div v-if="!hasRecruits && !recruitsStore.uploading && hasAnyRecruits" class="recruit-uploader category-empty-uploader">
         <button class="upload-btn" @click="openFilePicker">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          <span>העלה קובץ גיוס חדש</span>
+          <span>העלה קובץ {{ recruitsStore.activeCategory === 'insurance' ? 'ביטוח' : 'פיננסים' }}</span>
         </button>
         <input
           ref="fileInputRef"
@@ -194,7 +245,7 @@
         />
       </div>
 
-      <template v-else>
+      <template v-if="hasRecruits || recruitsStore.uploading">
         <div class="list-toolbar">
           <button class="btn-portal-links" @click="showPortalLinks = true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -412,6 +463,7 @@ const fileInputRef2 = ref(null)
 const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const hasAnyRecruits = ref(false)
 const needPassword = ref(false)
+const showFormatGuide = ref(false)
 const password = ref('')
 const innerTab = ref('list')
 const commDragging = ref(false)
@@ -664,6 +716,35 @@ watch(() => innerTab.value, (tab) => {
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 
+.fc-5 {
+  width: 50px;
+  height: 50px;
+  top: 18%;
+  right: 22%;
+  background: rgba(255, 152, 0, 0.055);
+  animation: floatBob 7s ease-in-out infinite 3s;
+}
+
+.fc-6 {
+  width: 280px;
+  height: 280px;
+  bottom: 8%;
+  right: -90px;
+  background: rgba(245, 124, 0, 0.025);
+  border: 1px solid rgba(245, 124, 0, 0.035);
+  animation: floatBob 12s ease-in-out infinite 0.5s;
+}
+
+.fc-7 {
+  width: 65px;
+  height: 65px;
+  bottom: 35%;
+  left: 18%;
+  background: rgba(255, 183, 77, 0.06);
+  border: 1px solid rgba(255, 183, 77, 0.05);
+  animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
+}
+
 @keyframes floatBob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   33% { transform: translateY(-16px) rotate(2deg); }
@@ -741,10 +822,10 @@ watch(() => innerTab.value, (tab) => {
   gap: 10px;
   width: 100%;
   padding: 16px 24px;
-  border: 1.5px solid var(--border-subtle);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--card-bg);
-  color: var(--text);
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #fff;
   font-size: 15px;
   font-weight: 700;
   font-family: inherit;
@@ -752,29 +833,28 @@ watch(() => innerTab.value, (tab) => {
   transition: all 0.3s var(--transition);
 }
 
-.upload-btn svg { color: var(--accent-emerald); flex-shrink: 0; }
+.upload-btn svg { color: #fff; flex-shrink: 0; }
 
 .upload-btn:hover {
-  border-color: var(--accent-emerald);
-  background: var(--green-light);
+  background: linear-gradient(135deg, #E65100, #F57C00);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(46, 132, 74, 0.1);
+  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.25);
 }
 
 .upload-btn:active { transform: translateY(0); }
 
-.upload-loading-card {
+.upload-loading {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px;
   background: var(--card-bg);
   border: 1.5px solid var(--green-light);
   border-radius: var(--radius-md);
-  animation: fadeIn 0.3s ease;
 }
 
-.upload-loading-top {
+.loading-content {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -980,6 +1060,100 @@ watch(() => innerTab.value, (tab) => {
   box-shadow: 0 0 0 3px var(--green-light);
 }
 
+/* ── Format Guide ── */
+.format-guide {
+  margin-top: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.format-guide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s var(--transition);
+}
+
+.format-guide-toggle:hover {
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--bg-surface);
+}
+
+.guide-chevron {
+  margin-inline-start: auto;
+  transition: transform 0.25s ease;
+}
+
+.guide-chevron.open {
+  transform: rotate(180deg);
+}
+
+.format-guide-content {
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.guide-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.columns-section {
+  margin-bottom: 12px;
+}
+
+.columns-section h5 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.column-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.col-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.col-chip.required {
+  background: var(--primary-light);
+  border-color: rgba(245, 124, 0, 0.2);
+  color: var(--primary-deep);
+}
+
+.guide-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  font-style: italic;
+}
+
 /* ── Inner Tabs ── */
 .inner-tabs {
   display: flex;
@@ -1022,9 +1196,12 @@ watch(() => innerTab.value, (tab) => {
   position: relative;
 }
 .inner-tab-dropdown .tab-dropdown-menu {
-  display: none;
   position: absolute;
   top: 100%;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.2s ease;
   right: 0;
   background: white;
   border: 1px solid var(--border-subtle);
@@ -1035,7 +1212,11 @@ watch(() => innerTab.value, (tab) => {
   padding: 4px;
   margin-top: 4px;
 }
-.inner-tab-dropdown:hover .tab-dropdown-menu { display: block; }
+.inner-tab-dropdown:hover .tab-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
 .tab-dropdown-menu button {
   display: block; width: 100%; text-align: right;
   padding: 8px 14px; font-size: 13px; font-weight: 600;

@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
@@ -24,6 +25,28 @@ async def _create_snapshots_bg(user_id, upload_id):
     from app.database import async_session
     async with async_session() as db:
         await create_snapshots_for_upload(db, user_id, upload_id)
+
+
+async def _compute_summary_bg(user_id, upload_id):
+    """Background task to compute production summary after upload."""
+    from app.database import async_session
+    from app.services.summary_service import compute_production_summary
+    async with async_session() as db:
+        await compute_production_summary(db, user_id, upload_id)
+
+
+def _compute_data_fingerprint(records: list[dict]) -> str:
+    """Compute an MD5 fingerprint from parsed record data to detect duplicates."""
+    rows = sorted(
+        (
+            r.get("id_number") or "",
+            str(r.get("total_premium") or 0),
+            str(r.get("accumulation") or 0),
+            r.get("receiving_company") or "",
+        )
+        for r in records
+    )
+    return hashlib.md5(str(rows).encode()).hexdigest()
 
 
 async def _get_production_upload(db: AsyncSession, user_id: uuid.UUID) -> FileUpload | None:
@@ -72,9 +95,37 @@ async def upload_production(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"שגיאה בפענוח הקובץ: {str(e)}")
 
-    # Deactivate previous production file (keep file_category for history)
+    # Check if new file has different data than current production
     old_prod = await _get_production_upload(db, user.id)
     if old_prod:
+        # Build a fingerprint from the new parsed data
+        new_fingerprint = _compute_data_fingerprint(result["records"])
+        # Build fingerprint from existing records
+        old_records_q = await db.execute(
+            select(
+                ClientRecord.id_number,
+                ClientRecord.total_premium,
+                ClientRecord.accumulation,
+                ClientRecord.receiving_company,
+            )
+            .where(ClientRecord.upload_id == old_prod.id)
+            .order_by(ClientRecord.id_number)
+        )
+        old_rows = old_records_q.all()
+        old_fingerprint = hashlib.md5(
+            str(sorted(
+                (r[0] or "", str(r[1] or 0), str(r[2] or 0), r[3] or "")
+                for r in old_rows
+            )).encode()
+        ).hexdigest()
+
+        if new_fingerprint == old_fingerprint:
+            raise HTTPException(
+                status_code=400,
+                detail="הקובץ מכיל נתונים זהים לקובץ הפרודוקציה הנוכחי — לא בוצע שינוי"
+            )
+
+        # Deactivate previous production file (keep file_category for history)
         old_prod.is_production = False
 
     # Create new production upload
@@ -104,8 +155,9 @@ async def upload_production(
     await db.commit()
     await db.refresh(upload)
 
-    # Create portal snapshots in background (non-blocking)
+    # Create portal snapshots and production summary in background (non-blocking)
     background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
+    background_tasks.add_task(_compute_summary_bg, user.id, upload.id)
 
     companies = await _get_companies_for_upload(db, upload.id)
 
@@ -702,3 +754,28 @@ async def backfill_file_categories(
             updated += 1
     await db.commit()
     return {"updated": updated, "total_checked": len(uploads)}
+
+
+@router.post("/backfill-summaries")
+async def backfill_summaries(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One-time backfill: compute production summaries for all historical uploads."""
+    from app.services.summary_service import compute_production_summary
+
+    result = await db.execute(
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "production",
+        )
+        .order_by(FileUpload.uploaded_at)
+    )
+    uploads = result.scalars().all()
+    created = 0
+    for u in uploads:
+        summary = await compute_production_summary(db, user.id, u.id)
+        if summary:
+            created += 1
+    return {"created": created, "total_uploads": len(uploads)}

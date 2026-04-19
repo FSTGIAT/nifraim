@@ -1074,7 +1074,7 @@ onBeforeUnmount(() => {
   padding: 110px 48px 80px 32px;
   max-width: 640px;
   margin-inline-start: auto;
-  margin-top: -300px;
+  margin-top: -100px;
 }
 
 .hero-eyebrow {
@@ -1090,6 +1090,7 @@ onBeforeUnmount(() => {
   border-radius: 40px;
   border: 1px solid rgba(232, 102, 10, 0.15);
   width: fit-content;
+  max-width: 100%;
 }
 
 .eyebrow-dot {
@@ -1182,9 +1183,9 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  border: 2px solid var(--land-orange-deep);
-  color: #1a1a1a;
-  background: transparent;
+  border: none;
+  color: #fff;
+  background: #1a1a1a;
   padding: 16px 28px;
   border-radius: 40px;
   font-size: 0.95rem;

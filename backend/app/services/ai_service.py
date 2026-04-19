@@ -15,6 +15,7 @@ from app.models.paying_company import PayingCompany
 from app.models.recruit import Recruit
 from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
+from app.models.production_summary import ProductionSummary
 from app.services.comparison_service import compute_comparison, _normalize_id
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ You have access ONLY to the user's data shown below. You MUST:
 - Format currency values with ₪ symbol and comma separators (e.g. ₪1,234).
 - Use **bold** for important numbers and key insights.
 - Keep tables concise — max 10 rows, summarize the rest.
+- You may have access to multi-month production history. You can identify trends, growth/decline patterns, and notable changes over time.
 
 === נתוני המשתמש ===
 {context}
@@ -605,6 +607,108 @@ async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id
     return "\n".join(all_lines)
 
 
+async def _get_historical_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """Get multi-month production history from pre-computed summaries."""
+    result = await db.execute(
+        select(ProductionSummary)
+        .where(ProductionSummary.user_id == user_id)
+        .order_by(desc(ProductionSummary.upload_date))
+        .limit(12)
+    )
+    summaries = result.scalars().all()
+    if not summaries:
+        return None
+
+    parts = ["=== היסטוריית פרודוקציה ==="]
+    parts.append("חודש | לקוחות | פרמיה | צבירה | שינוי פרמיה")
+    parts.append("---|---|---|---|---")
+
+    for s in summaries:
+        premium_change = ""
+        if s.changes_json:
+            pct = s.changes_json.get("premium_diff_pct", 0)
+            if pct > 0:
+                premium_change = f"+{pct}%"
+            elif pct < 0:
+                premium_change = f"{pct}%"
+
+        parts.append(
+            f"{s.period_label} | {s.unique_clients:,} | "
+            f"{float(s.total_premium):,.0f}₪ | {float(s.total_accumulation):,.0f}₪ | "
+            f"{premium_change or '—'}"
+        )
+
+    # Add notable changes for the most recent month
+    latest = summaries[0]
+    if latest.changes_json:
+        ch = latest.changes_json
+        changes_parts = []
+        if ch.get("new_clients", 0) > 0:
+            changes_parts.append(f"+{ch['new_clients']} לקוחות חדשים")
+        if ch.get("removed_clients", 0) > 0:
+            changes_parts.append(f"-{ch['removed_clients']} עזבו")
+        if ch.get("premium_diff", 0) != 0:
+            diff = ch["premium_diff"]
+            sign = "+" if diff > 0 else ""
+            changes_parts.append(f"פרמיה {sign}{diff:,.0f}₪")
+        if changes_parts:
+            parts.append(f"\nשינויים בולטים ({latest.period_label}): {', '.join(changes_parts)}")
+
+    return "\n".join(parts)
+
+
+async def _get_customer_history(
+    db: AsyncSession, user_id: uuid.UUID, question: str
+) -> str | None:
+    """Get per-customer historical data across production uploads when a specific customer is mentioned."""
+    import re
+
+    # Extract ID number from question
+    id_match = re.search(r'\d{5,}', question)
+    if not id_match:
+        return None
+
+    search_id = id_match.group(0).lstrip('0') or '0'
+
+    # Query this customer across all production uploads
+    result = await db.execute(
+        select(
+            FileUpload.filename,
+            FileUpload.uploaded_at,
+            func.min(ClientRecord.first_name).label("first_name"),
+            func.min(ClientRecord.last_name).label("last_name"),
+            func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
+            func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
+            func.count().label("products"),
+        )
+        .join(FileUpload, ClientRecord.upload_id == FileUpload.id)
+        .where(
+            ClientRecord.id_number == search_id,
+            FileUpload.user_id == user_id,
+            FileUpload.file_category == "production",
+        )
+        .group_by(FileUpload.id, FileUpload.filename, FileUpload.uploaded_at)
+        .order_by(desc(FileUpload.uploaded_at))
+        .limit(12)
+    )
+    rows = result.all()
+    if not rows:
+        return None
+
+    name = f"{rows[0].first_name or ''} {rows[0].last_name or ''}".strip()
+    parts = [f"=== היסטוריית לקוח: {name} (ת.ז {search_id}) ==="]
+    parts.append("תקופה | פרמיה | צבירה | מוצרים")
+    parts.append("---|---|---|---")
+
+    for r in rows:
+        period = r.uploaded_at.strftime("%Y-%m")
+        parts.append(
+            f"{period} | {float(r.premium):,.0f}₪ | {float(r.accumulation):,.0f}₪ | {r.products}"
+        )
+
+    return "\n".join(parts)
+
+
 def _detect_question_topics(question: str) -> set[str]:
     """Detect which data sources are relevant to the user's question."""
     q = question.lower()
@@ -625,6 +729,12 @@ def _detect_question_topics(question: str) -> set[str]:
     if any(w in q for w in ["שיעור", "שיעורי", "אחוז", "rates", "תעריף", "היקפים"]):
         topics.add("rates")
 
+    # History / trends keywords
+    if any(w in q for w in ["מגמה", "מגמות", "היסטוריה", "שינוי", "שינויים", "חודש קודם",
+                             "חודשים", "לאורך זמן", "השוואה בין חודשים", "גדל", "ירד",
+                             "עלה", "ירידה", "עלייה", "צמיחה", "trend", "history"]):
+        topics.add("history")
+
     # Customer search — if question has names or IDs
     import re
     if re.search(r'\d{5,}', question) or len([w for w in re.findall(r'[\u0590-\u05FF]+', question) if w not in STOP_WORDS and len(w) > 1]) > 0:
@@ -632,7 +742,7 @@ def _detect_question_topics(question: str) -> set[str]:
 
     # If no specific topic detected, include everything
     if topics == {"production"}:
-        topics = {"production", "comparison", "myfile", "rates"}
+        topics = {"production", "comparison", "myfile", "rates", "history"}
 
     return topics
 
@@ -645,9 +755,21 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
     if not prod_context:
         return None
 
-    topics = _detect_question_topics(question) if question else {"production", "comparison", "myfile", "rates"}
+    topics = _detect_question_topics(question) if question else {"production", "comparison", "myfile", "rates", "history"}
 
     context_parts = [prod_context]
+
+    # Historical production trends
+    if "history" in topics:
+        hist_context = await _get_historical_context(db, user_id)
+        if hist_context:
+            context_parts.append(hist_context)
+
+        # Per-customer history if a specific ID is mentioned
+        if question:
+            cust_hist = await _get_customer_history(db, user_id, question)
+            if cust_hist:
+                context_parts.append(cust_hist)
 
     if prod_upload:
         if "comparison" in topics:

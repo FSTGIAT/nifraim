@@ -1362,7 +1362,12 @@ def parse_volume_rates(file_bytes: bytes, filename: str, password: str | None = 
                 if eng_field in ("nifraim_rate", "volume_rate_per_million",
                                  "pension_accumulation", "changed_percent",
                                  "conversion_to_annuity"):
-                    record[eng_field] = parse_numeric(val)
+                    num = parse_numeric(val)
+                    # changed_percent in Excel is already a whole percentage (e.g. 13 = 13%)
+                    # Convert to decimal fraction for storage (13 → 0.13)
+                    if eng_field == "changed_percent" and num is not None and num > 1:
+                        num = num / 100
+                    record[eng_field] = num
                 else:
                     record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
 
