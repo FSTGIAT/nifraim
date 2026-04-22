@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import String, Numeric, DateTime, ForeignKey
+from sqlalchemy import String, Numeric, DateTime, Date, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,7 @@ class Recruit(Base):
     product: Mapped[str | None] = mapped_column(String(100))
     amount: Mapped[float | None] = mapped_column(Numeric(15, 2))
     customer_status: Mapped[str | None] = mapped_column(String(50))
+    sign_date: Mapped[date | None] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(20), default="financial", server_default="financial")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

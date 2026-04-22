@@ -32,19 +32,6 @@
         </div>
       </div>
 
-      <div class="kpi-card kpi-green clickable" :title="'₪' + Math.round(analytics.total_premium).toLocaleString()" @click="openDrilldown('premium')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(analytics.total_premium) }}</div>
-          <div class="kpi-label">סה"כ פרמיה</div>
-        </div>
-      </div>
-
       <div class="kpi-card kpi-amber clickable" :title="'₪' + Math.round(analytics.total_accumulation).toLocaleString()" @click="openDrilldown('accumulation')">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

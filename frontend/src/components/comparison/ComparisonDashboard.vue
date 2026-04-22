@@ -10,7 +10,7 @@
     <div class="hero-card">
       <div class="hero-header">
         <h2 class="hero-title">התפלגות לקוחות</h2>
-        <span class="hero-badge">{{ displayCustomers.length }} לקוחות</span>
+        <span class="hero-badge">{{ statusTotal }} לקוחות</span>
       </div>
       <div class="hero-body">
         <apexchart
@@ -610,6 +610,14 @@ const statusItems = computed(() => [
   { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: '#7F56D9' },
 ])
 
+// Total shown in the hero badge and used as the percentage denominator.
+// Must match the sum of visible stats — for gemel, effectiveUnpaidCustomers
+// drops zero-accumulation rows, so displayCustomers.length would be larger
+// than the three cards sum and the %s wouldn't add up to 100.
+const statusTotal = computed(() =>
+  statusItems.value.reduce((sum, s) => sum + s.count, 0)
+)
+
 // Product breakdown
 const productBreakdown = computed(() => {
   const map = {}
@@ -640,8 +648,8 @@ function onDrillFromModal(idNumber) {
 }
 
 function pctOf(count) {
-  if (!displayCustomers.value.length) return 0
-  return ((count / displayCustomers.value.length) * 100).toFixed(0)
+  if (!statusTotal.value) return 0
+  return ((count / statusTotal.value) * 100).toFixed(0)
 }
 
 // ─── Charts ───

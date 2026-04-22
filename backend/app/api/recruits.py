@@ -55,6 +55,7 @@ async def list_recruits(
             product=r.product,
             amount=_safe_float(r.amount),
             customer_status=r.customer_status,
+            sign_date=r.sign_date,
             created_at=r.created_at,
         )
         for r in recruits
@@ -75,6 +76,7 @@ async def create_recruit(
         company=data.company[:100] if data.company else None,
         product=data.product[:100] if data.product else None,
         amount=data.amount,
+        sign_date=data.sign_date,
     )
     db.add(recruit)
     await db.commit()
@@ -87,6 +89,7 @@ async def create_recruit(
         company=recruit.company,
         product=recruit.product,
         amount=float(recruit.amount) if recruit.amount is not None else None,
+        sign_date=recruit.sign_date,
         created_at=recruit.created_at,
     )
 
@@ -107,6 +110,7 @@ async def create_bulk_recruits(
             company=item.company[:100] if item.company else None,
             product=item.product[:100] if item.product else None,
             amount=item.amount,
+            sign_date=item.sign_date,
         )
         db.add(recruit)
         created.append(recruit)
@@ -124,6 +128,7 @@ async def create_bulk_recruits(
             company=r.company,
             product=r.product,
             amount=_safe_float(r.amount),
+            sign_date=r.sign_date,
             created_at=r.created_at,
         ))
     return results
@@ -186,6 +191,8 @@ async def upload_recruits(
             product_col = _find_col('מוצר', 'סוג ביטוח')
             amount_col = _find_col('פרמיה חודשית', 'פרמיה מוערכת', 'פרמיה')
             policy_col = _find_col('מספר פוליסה')
+            # Specific date keywords only — plain 'תאריך' would hit תאריך לידה etc.
+            sign_date_col = _find_col('תאריך חתימה', 'תאריך הצטרפות', 'תאריך התחלה', 'תאריך הסכם', 'תאריך התחלת', 'תאריך תחילת')
 
             if id_col:
                 records = []
@@ -197,6 +204,7 @@ async def upload_recruits(
                     if product_col: rec["product"] = row.get(product_col)
                     if amount_col: rec["total_premium"] = row.get(amount_col)
                     if policy_col: rec["fund_policy_number"] = row.get(policy_col)
+                    if sign_date_col: rec["sign_date"] = row.get(sign_date_col)
                     records.append(rec)
         except Exception:
             pass
@@ -204,16 +212,40 @@ async def upload_recruits(
     if not records:
         raise HTTPException(400, "לא נמצאו רשומות בקובץ")
 
-    # Deduplicate by id_number — keep first occurrence per client
-    seen_ids = set()
-    to_insert = []
+    # Parse sign_date once per record so we can pick the row with the LATEST date during dedup.
+    # A customer may appear multiple times (one row per product signed across different months) —
+    # we want the latest sign so April updates a Feb-only record for the same person.
+    def _parse_sign_date(raw):
+        if raw is None or str(raw).strip() in ("", "nan", "NaT", "None"):
+            return None
+        try:
+            import pandas as pd
+            ts = pd.to_datetime(raw, errors="coerce", dayfirst=True)
+            if ts is not None and not pd.isna(ts):
+                return ts.date()
+        except Exception:
+            pass
+        return None
+
+    # Group by id_number, pick record with the latest sign_date (or first if none have dates)
+    best_by_id = {}
     for rec in records:
         id_number = str(rec.get("id_number") or "").strip()
         if id_number.endswith(".0"):
             id_number = id_number[:-2]
-        if not id_number or id_number in seen_ids:
+        if not id_number:
             continue
-        seen_ids.add(id_number)
+        sd = _parse_sign_date(rec.get("sign_date"))
+        existing = best_by_id.get(id_number)
+        if existing is None:
+            best_by_id[id_number] = (rec, sd)
+        else:
+            _, existing_sd = existing
+            if sd is not None and (existing_sd is None or sd > existing_sd):
+                best_by_id[id_number] = (rec, sd)
+
+    to_insert = []
+    for id_number, (rec, parsed_sign_date) in best_by_id.items():
 
         first_name = str(rec.get("first_name") or "").strip()
         last_name = str(rec.get("last_name") or "").strip()
@@ -244,6 +276,7 @@ async def upload_recruits(
             company=company[:100] if company else None,
             product=product[:100] if product else None,
             amount=amount,
+            sign_date=parsed_sign_date,
             category=category,
         ))
 
@@ -306,6 +339,7 @@ async def update_recruit(
     recruit.company = data.company[:100] if data.company else None
     recruit.product = data.product[:100] if data.product else None
     recruit.amount = data.amount
+    recruit.sign_date = data.sign_date
 
     await db.commit()
     await db.refresh(recruit)
@@ -317,6 +351,7 @@ async def update_recruit(
         company=recruit.company,
         product=recruit.product,
         amount=float(recruit.amount) if recruit.amount is not None else None,
+        sign_date=recruit.sign_date,
         created_at=recruit.created_at,
     )
 

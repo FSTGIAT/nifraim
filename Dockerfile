@@ -24,4 +24,4 @@ WORKDIR /app/backend
 
 EXPOSE 8080
 
-CMD sh -c "echo '=== Starting deployment ===' && python -m alembic upgrade head && echo '=== Migrations OK ===' && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"
+CMD sh -c "echo '=== Starting deployment ===' && python -m alembic upgrade heads && echo '=== Migrations OK ===' && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"

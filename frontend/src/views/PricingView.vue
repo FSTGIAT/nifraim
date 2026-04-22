@@ -48,7 +48,7 @@
     <!-- Plans -->
     <section class="plans-section" ref="plansSection">
       <div class="plans">
-        <div class="plan-card" :class="{ visible: plansVisible }" style="--delay: 0.1s">
+        <div class="plan-card featured" :class="{ visible: plansVisible }" style="--delay: 0.1s">
           <div class="plan-name">חודשי</div>
           <div class="plan-price">
             <span class="price-amount ltr-number">{{ formattedMonthly }}</span>
@@ -63,46 +63,7 @@
               {{ f }}
             </li>
           </ul>
-          <router-link to="/signup?plan=monthly" class="plan-btn">בחירת מסלול חודשי</router-link>
-        </div>
-
-        <div class="plan-card featured" :class="{ visible: plansVisible }" style="--delay: 0.25s">
-          <div class="plan-badge">חודש חינם!</div>
-          <div class="plan-name">שנתי</div>
-          <div class="plan-price">
-            <span class="price-amount ltr-number">{{ formattedYearly }}</span>
-            <span class="price-currency">₪</span>
-            <span class="price-period">/ שנה</span>
-          </div>
-          <div class="plan-savings">
-            <span class="ltr-number">₪295</span> חיסכון — חודש חינם!
-          </div>
-          <ul class="plan-features">
-            <li v-for="(f, i) in planFeatures" :key="f" :style="{ '--fi': i }">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-icon">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              {{ f }}
-            </li>
-          </ul>
-          <router-link to="/signup?plan=yearly" class="plan-btn primary">בחירת מסלול שנתי</router-link>
-        </div>
-      </div>
-    </section>
-
-    <!-- FAQ -->
-    <section class="faq" ref="faqSection">
-      <h2>שאלות <span class="text-orange">נפוצות</span></h2>
-      <div class="faq-grid">
-        <div
-          class="faq-item"
-          v-for="(q, i) in faq"
-          :key="i"
-          :class="{ visible: faqVisible }"
-          :style="{ '--delay': (i * 0.1) + 's' }"
-        >
-          <h3>{{ q.question }}</h3>
-          <p>{{ q.answer }}</p>
+          <router-link to="/signup?plan=monthly" class="plan-btn primary">בחירת מסלול</router-link>
         </div>
       </div>
     </section>
@@ -114,15 +75,11 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 
 const mobileMenuOpen = ref(false)
 const plansSection = ref(null)
-const faqSection = ref(null)
 const plansVisible = ref(false)
-const faqVisible = ref(false)
 const monthlyPrice = ref(0)
-const yearlyPrice = ref(0)
 const pricesAnimated = ref(false)
 
 const formattedMonthly = computed(() => monthlyPrice.value)
-const formattedYearly = computed(() => yearlyPrice.value.toLocaleString())
 
 const planFeatures = [
   'העלאת קבצי פרודוקציה ללא הגבלה',
@@ -131,25 +88,6 @@ const planFeatures = [
   'ניהול טבלת עמלות',
   'שליחת בירורים במייל',
   'תמיכה טכנית מלאה',
-]
-
-const faq = [
-  {
-    question: 'האם יש תקופת ניסיון?',
-    answer: 'כרגע אין תקופת ניסיון חינמית, אבל אנחנו מציעים הדגמה אישית למתעניינים.',
-  },
-  {
-    question: 'אילו חברות ביטוח נתמכות?',
-    answer: 'אקסלנס, הפניקס, מור, הכשרה, מנורה, אלטשולר — ותמיד מוסיפים חדשות.',
-  },
-  {
-    question: 'איך מתבצע התשלום?',
-    answer: 'תשלום מאובטח בכרטיס אשראי דרך Cardcom. בקרוב גם Bit ו-PayBox.',
-  },
-  {
-    question: 'אפשר לבטל מנוי?',
-    answer: 'כן, ניתן לבטל בכל עת. המנוי ימשיך עד סוף תקופת התשלום הנוכחית.',
-  },
 ]
 
 function animatePrice(targetRef, finalValue, duration = 1200) {
@@ -170,19 +108,13 @@ onMounted(() => {
   observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          if (entry.target === plansSection.value) {
-            plansVisible.value = true
-            if (!pricesAnimated.value) {
-              pricesAnimated.value = true
-              setTimeout(() => {
-                animatePrice(monthlyPrice, 295, 1200)
-                animatePrice(yearlyPrice, 3245, 1500)
-              }, 300)
-            }
-          }
-          if (entry.target === faqSection.value) {
-            faqVisible.value = true
+        if (entry.isIntersecting && entry.target === plansSection.value) {
+          plansVisible.value = true
+          if (!pricesAnimated.value) {
+            pricesAnimated.value = true
+            setTimeout(() => {
+              animatePrice(monthlyPrice, 220, 1200)
+            }, 300)
           }
           observer.unobserve(entry.target)
         }
@@ -192,7 +124,6 @@ onMounted(() => {
   )
 
   if (plansSection.value) observer.observe(plansSection.value)
-  if (faqSection.value) observer.observe(faqSection.value)
 })
 
 onBeforeUnmount(() => {
@@ -392,16 +323,17 @@ onBeforeUnmount(() => {
 .plans-section {
   max-width: 900px;
   margin: 0 auto;
-  padding: 0 24px 80px;
+  padding: 0 24px 120px;
 }
 
 .plans {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 28px;
+  display: flex;
+  justify-content: center;
 }
 
 .plan-card {
+  width: 100%;
+  max-width: 420px;
   background: var(--land-bg-alt);
   border: 1px solid var(--land-border);
   border-radius: 20px;
@@ -580,66 +512,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 32px rgba(245, 124, 0, 0.3);
 }
 
-/* ── FAQ ── */
-.faq {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 40px 24px 100px;
-}
-
-.faq h2 {
-  text-align: center;
-  font-size: 52px;
-  font-weight: 900;
-  margin-bottom: 48px;
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.faq-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.faq-item {
-  padding: 28px;
-  background: var(--land-bg-alt);
-  border: 1px solid var(--land-border);
-  border-radius: 16px;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  transition-delay: var(--delay, 0s);
-}
-
-.faq-item.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.faq-item:hover {
-  border-color: var(--land-orange);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-}
-
-.faq-item.visible:hover {
-  transition-delay: 0s;
-}
-
-.faq-item h3 {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--land-text);
-  margin-bottom: 10px;
-}
-
-.faq-item p {
-  font-size: 14px;
-  color: var(--land-text-secondary);
-  line-height: 1.7;
-}
-
 /* ── Animations ── */
 @keyframes fadeInUp {
   from {
@@ -691,15 +563,7 @@ onBeforeUnmount(() => {
   }
 
   .plans {
-    grid-template-columns: 1fr;
-  }
-
-  .faq-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .faq h2 {
-    font-size: 38px;
+    display: flex;
   }
 }
 
@@ -710,10 +574,6 @@ onBeforeUnmount(() => {
 
   .price-amount {
     font-size: 48px;
-  }
-
-  .faq h2 {
-    font-size: 32px;
   }
 }
 </style>

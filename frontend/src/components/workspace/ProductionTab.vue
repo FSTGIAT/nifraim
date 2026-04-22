@@ -232,7 +232,7 @@ async function handleDelete() {
     try {
       await productionStore.removeCurrent()
     } catch (e) {
-      // error handled in store
+      alert(productionStore.error || 'שגיאה במחיקת קובץ פרודוקציה')
     }
   }
 }

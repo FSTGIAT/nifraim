@@ -35,6 +35,7 @@ You have access ONLY to the user's data shown below. You MUST:
 - Use **bold** for important numbers and key insights.
 - Keep tables concise — max 10 rows, summarize the rest.
 - You may have access to multi-month production history. You can identify trends, growth/decline patterns, and notable changes over time.
+- The personal file (קובץ אישי) may include sign dates (תאריך חתימה) for each client. Use the "גיוסים לפי חודש" block to answer questions like "כמה גייסתי במרץ/אפריל" — count per month and by company. If a client in the personal file has a sign date after the active production file's month, they won't appear in production yet — that's expected, not an error.
 
 === נתוני המשתמש ===
 {context}
@@ -390,6 +391,13 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
     total_premium_found = 0.0
     total_recruit_amount = 0.0
     company_stats = {}
+    # Monthly breakdown by sign_date (YYYY-MM -> {total, by_company})
+    monthly_stats = {}
+
+    HEBREW_MONTHS = {
+        1: "ינואר", 2: "פברואר", 3: "מרץ", 4: "אפריל", 5: "מאי", 6: "יוני",
+        7: "יולי", 8: "אוגוסט", 9: "ספטמבר", 10: "אוקטובר", 11: "נובמבר", 12: "דצמבר",
+    }
 
     for norm_id, recruit in recruits_by_id.items():
         prod_recs = prod_by_id.get(norm_id, [])
@@ -411,8 +419,17 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
             not_found.append(recruit)
             company_stats[comp]["not_found"] += 1
 
+        # Monthly bucket by sign_date
+        if recruit.sign_date:
+            ym = recruit.sign_date.strftime("%Y-%m")
+            bucket = monthly_stats.setdefault(ym, {"total": 0, "by_company": {}})
+            bucket["total"] += 1
+            bucket["by_company"][comp] = bucket["by_company"].get(comp, 0) + 1
+
     total = len(recruits_by_id)
     not_found_count = total - found_count
+    with_sign_date = sum(1 for r in recruits_by_id.values() if r.sign_date)
+    without_sign_date = total - with_sign_date
 
     parts = [
         "\n--- קובץ אישי (My File) ---",
@@ -421,7 +438,26 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
         f"נמצאו בפרודוקציה: {found_count} ({_pct(found_count, total)}%)",
         f"לא נמצאו בפרודוקציה: {not_found_count} ({_pct(not_found_count, total)}%)",
         f"סה\"כ פרמיה של לקוחות שנמצאו: {total_premium_found:,.0f}₪",
+        f"לקוחות עם תאריך חתימה/הצטרפות: {with_sign_date} מתוך {total}",
     ]
+    if without_sign_date:
+        parts.append(
+            f"⚠ {without_sign_date} לקוחות בקובץ האישי חסר להם תאריך חתימה — "
+            "לא ייכללו בספירות החודשיות למטה. ייתכן שיש לעדכן את הקובץ או להעלות אותו שוב."
+        )
+
+    # Monthly breakdown with Hebrew month names — helps AI answer "how many in March?"
+    if monthly_stats:
+        parts.append("\nגיוסים לפי חודש (לפי תאריך חתימה):")
+        for ym in sorted(monthly_stats.keys(), reverse=True):
+            year, month_num = ym.split("-")
+            month_name = HEBREW_MONTHS.get(int(month_num), month_num)
+            bucket = monthly_stats[ym]
+            by_co = ", ".join(
+                f"{co}: {n}"
+                for co, n in sorted(bucket["by_company"].items(), key=lambda x: x[1], reverse=True)
+            )
+            parts.append(f"  {month_name} {year} ({ym}): {bucket['total']} לקוחות — {by_co}")
 
     if company_stats:
         co_lines = ", ".join(
@@ -430,38 +466,36 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
         )
         parts.append(f"פירוט לפי חברה: {co_lines}")
 
-    # Detail not-found clients with their recruit data
-    if not_found:
-        parts.append(f"\nלקוחות שלא נמצאו בפרודוקציה ({len(not_found)}):")
-        for r in not_found[:15]:
-            name = f"{r.first_name} {r.last_name}".strip() or r.id_number
-            amt = float(r.amount or 0)
-            status = r.customer_status or ""
-            product = r.product or ""
-            detail = f"  {name} (ת.ז: {r.id_number}, חברה: {r.company or '—'}"
-            if product:
-                detail += f", מוצר: {product}"
-            if amt > 0:
-                detail += f", סכום: {amt:,.0f}₪"
-            if status:
-                detail += f", סטטוס: {status}"
-            detail += ")"
-            parts.append(detail)
+    # Detail clients — sorted by sign_date desc so recent recruits come first,
+    # which matters when the global context cap truncates the tail.
+    def _format_recruit(r, include_status=False):
+        name = f"{r.first_name} {r.last_name}".strip() or r.id_number
+        amt = float(r.amount or 0)
+        product = r.product or ""
+        sign = r.sign_date.strftime("%Y-%m-%d") if r.sign_date else "—"
+        detail = f"  {name} (ת.ז: {r.id_number}, חברה: {r.company or '—'}, תאריך חתימה: {sign}"
+        if product:
+            detail += f", מוצר: {product}"
+        if amt > 0:
+            detail += f", סכום: {amt:,.0f}₪"
+        if include_status and r.customer_status:
+            detail += f", סטטוס: {r.customer_status}"
+        detail += ")"
+        return detail
 
-    # Detail found clients with recruit amounts
+    def _sort_key(r):
+        # Most recent sign_date first; rows without sign_date go last.
+        return (r.sign_date is None, -(r.sign_date.toordinal() if r.sign_date else 0))
+
+    if not_found:
+        parts.append(f"\nלקוחות שלא נמצאו בפרודוקציה ({len(not_found)}) — ייתכן שגויסו אחרי תאריך קובץ הפרודוקציה:")
+        for r in sorted(not_found, key=_sort_key):
+            parts.append(_format_recruit(r, include_status=True))
+
     if found_clients:
         parts.append(f"\nלקוחות שנמצאו בפרודוקציה ({len(found_clients)}):")
-        for r in found_clients[:15]:
-            name = f"{r.first_name} {r.last_name}".strip() or r.id_number
-            amt = float(r.amount or 0)
-            product = r.product or ""
-            detail = f"  {name} (ת.ז: {r.id_number}, חברה: {r.company or '—'}"
-            if product:
-                detail += f", מוצר: {product}"
-            if amt > 0:
-                detail += f", סכום: {amt:,.0f}₪"
-            detail += ")"
-            parts.append(detail)
+        for r in sorted(found_clients, key=_sort_key):
+            parts.append(_format_recruit(r))
 
     return "\n".join(parts)
 
@@ -747,7 +781,7 @@ def _detect_question_topics(question: str) -> set[str]:
     return topics
 
 
-MAX_CONTEXT_CHARS = 12000  # Keep context under ~3K tokens to avoid overload
+MAX_CONTEXT_CHARS = 30000  # ~7.5K tokens — big enough for full recruits + comparison context
 
 
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:

@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
+from app.models.debt import Debt
 from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
 from app.services.debt_service import sync_debts
@@ -225,9 +226,18 @@ async def compare_with_production(
             ).order_by(desc(FileUpload.uploaded_at))
         )
         old_uploads = old_uploads_result.scalars().all()
-        for old in old_uploads[1:]:
-            await db.delete(old)
-        if old_uploads:
+        to_delete = old_uploads[1:]
+        if to_delete:
+            # debts.commission_upload_id has no ON DELETE rule — null out references
+            # before deleting old uploads to avoid FK violation.
+            delete_ids = [u.id for u in to_delete]
+            await db.execute(
+                update(Debt)
+                .where(Debt.commission_upload_id.in_(delete_ids))
+                .values(commission_upload_id=None)
+            )
+            for old in to_delete:
+                await db.delete(old)
             await db.flush()
 
         # Save commission upload to DB

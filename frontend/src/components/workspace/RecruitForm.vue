@@ -13,6 +13,21 @@
         <span class="page-info" v-if="totalPages > 1">עמוד {{ currentPage }} מתוך {{ totalPages }}</span>
       </div>
       <div class="form-actions-top">
+        <div class="search-wrap">
+          <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="חפש לפי שם או ת.ז..."
+            class="search-input"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="נקה">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
         <button class="btn-add" @click="addRow">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/>
@@ -84,7 +99,7 @@
               />
             </td>
             <td class="td-action">
-              <button class="btn-remove" @click="removeRow(pageOffset + idx)" title="מחק">
+              <button class="btn-remove" @click="removeRow(row)" title="מחק">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
@@ -143,11 +158,28 @@ const error = ref('')
 const successMsg = ref('')
 const currentPage = ref(1)
 const pageSize = 50
+const searchQuery = ref('')
 
 const hasUnsaved = computed(() => rows.value.some(r => r._isNew && r.id_number && r.first_name && r.last_name))
-const totalPages = computed(() => Math.ceil(rows.value.length / pageSize))
+
+// Filter rows by name/ID before pagination. New (unsaved) rows always stay visible.
+const filteredRows = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return rows.value
+  return rows.value.filter(r => {
+    if (r._isNew) return true
+    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+    const id = String(r.id_number || '').toLowerCase()
+    return name.includes(q) || id.includes(q)
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize)))
 const pageOffset = computed(() => (currentPage.value - 1) * pageSize)
-const paginatedRows = computed(() => rows.value.slice(pageOffset.value, pageOffset.value + pageSize))
+const paginatedRows = computed(() => filteredRows.value.slice(pageOffset.value, pageOffset.value + pageSize))
+
+// Reset to page 1 whenever the search changes so results are visible
+watch(searchQuery, () => { currentPage.value = 1 })
 
 const visiblePages = computed(() => {
   const total = totalPages.value
@@ -196,8 +228,7 @@ function addRow() {
   })
 }
 
-async function removeRow(idx) {
-  const row = rows.value[idx]
+async function removeRow(row) {
   if (!row._isNew && row.id) {
     try {
       await recruitsStore.deleteRecruit(row.id)
@@ -206,7 +237,8 @@ async function removeRow(idx) {
       return
     }
   }
-  rows.value.splice(idx, 1)
+  const idx = rows.value.indexOf(row)
+  if (idx !== -1) rows.value.splice(idx, 1)
 }
 
 async function saveAll() {
@@ -281,7 +313,51 @@ async function saveAll() {
 
 .form-actions-top {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 260px;
+}
+.search-ico {
+  position: absolute;
+  right: 10px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
+  padding: 8px 32px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card, #fff);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus {
+  border-color: var(--primary, #F57C00);
+}
+.search-clear {
+  position: absolute;
+  left: 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-clear:hover {
+  color: var(--primary, #F57C00);
 }
 
 .btn-add {

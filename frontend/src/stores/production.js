@@ -59,12 +59,22 @@ export const useProductionStore = defineStore('production', () => {
     error.value = null
     try {
       await api.delete('/production/current')
+      // Verify the active production is actually gone before clearing local state.
+      const res = await api.get('/production/current')
+      if (res.data) {
+        error.value = 'המחיקה נכשלה — קובץ הפרודוקציה עדיין קיים'
+        currentFile.value = res.data
+        throw new Error(error.value)
+      }
       currentFile.value = null
       analytics.value = null
-      history.value = []
       comparisonResult.value = null
+      // Refresh history so the deleted file drops off the comparison picker.
+      await fetchHistory()
     } catch (e) {
-      error.value = e.response?.data?.detail || 'שגיאה במחיקת קובץ פרודוקציה'
+      if (!error.value) {
+        error.value = e.response?.data?.detail || 'שגיאה במחיקת קובץ פרודוקציה'
+      }
       throw e
     } finally {
       loading.value = false
@@ -92,10 +102,45 @@ export const useProductionStore = defineStore('production', () => {
     }
   }
 
+  // Parse "YYYYMM" from a production filename (Hebrew month + 2/4-digit year).
+  // Returns null if the filename doesn't carry a recognisable month.
+  function monthOrdinalFromFilename(filename) {
+    if (!filename) return null
+    const HEBREW_MONTHS = {
+      'ינואר': 1, 'פברואר': 2, 'מרץ': 3, 'מרס': 3, 'אפריל': 4,
+      'מאי': 5, 'יוני': 6, 'יולי': 7, 'אוגוסט': 8,
+      'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12,
+    }
+    const name = filename.replace(/\.(xlsx?|xls)$/i, '')
+    let month = null
+    for (const [he, num] of Object.entries(HEBREW_MONTHS)) {
+      if (name.includes(he)) { month = num; break }
+    }
+    if (!month) return null
+    const yearMatch = name.match(/\b(20)?(\d{2})\b/)
+    const year = yearMatch
+      ? (yearMatch[1] ? parseInt(yearMatch[1] + yearMatch[2]) : 2000 + parseInt(yearMatch[2]))
+      : new Date().getFullYear()
+    return year * 100 + month
+  }
+
+  function _filenameForId(id) {
+    if (currentFile.value?.id === id) return currentFile.value.filename
+    return history.value.find(f => f.id === id)?.filename || ''
+  }
+
   async function compareProductions(currentId, previousId) {
     comparing.value = true
     error.value = null
     try {
+      // Always diff newer-month → older-month regardless of upload order.
+      // If the caller-supplied "previous" file actually represents a later month,
+      // swap the two IDs so backend semantics (new = current - previous) match the user's mental model.
+      const currOrd = monthOrdinalFromFilename(_filenameForId(currentId))
+      const prevOrd = monthOrdinalFromFilename(_filenameForId(previousId))
+      if (currOrd != null && prevOrd != null && prevOrd > currOrd) {
+        ;[currentId, previousId] = [previousId, currentId]
+      }
       const res = await api.post('/production/compare', {
         current_upload_id: currentId,
         previous_upload_id: previousId,

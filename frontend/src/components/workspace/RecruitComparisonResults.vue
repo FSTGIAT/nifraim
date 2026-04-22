@@ -208,11 +208,29 @@
           <option v-for="p in uniqueProducts" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
-      <button v-if="companyFilter || productFilter" class="slice-clear" @click="companyFilter = ''; productFilter = ''">
+      <div class="slice-filter slice-search">
+        <label>חיפוש</label>
+        <div class="search-input-wrap">
+          <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            v-model="nameSearch"
+            placeholder="שם או ת.ז..."
+            class="slice-search-input"
+          />
+          <button v-if="nameSearch" class="search-clear" @click="nameSearch = ''" title="נקה">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <button v-if="companyFilter || productFilter || nameSearch" class="slice-clear" @click="companyFilter = ''; productFilter = ''; nameSearch = ''">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         נקה סינון
       </button>
-      <span class="slice-count" v-if="companyFilter || productFilter">{{ filteredResults.length }} תוצאות</span>
+      <span class="slice-count" v-if="companyFilter || productFilter || nameSearch">{{ filteredResults.length }} תוצאות</span>
     </div>
 
     <!-- Results table -->
@@ -436,7 +454,7 @@
               </button>
               <div class="modal-id-row">
                 <div>
-                  <div class="modal-name">{{ isCommission ? 'לקוחות שלא נמצאו בנפרעים' : 'דוחות שלא נמצאו בדוח מעקב אישי' }}</div>
+                  <div class="modal-name">{{ isCommission ? 'לקוחות שלא נמצאו בנפרעים' : 'לקוחות שלא נמצאו בפרודוקציה' }}</div>
                   <div class="modal-id-num">{{ notFoundList.length }} לקוחות</div>
                 </div>
                 <span class="modal-status-chip chip-missing">לא נמצאו</span>
@@ -468,7 +486,16 @@
               </button>
               <button class="mm-action-btn" @click="sendMissingMail(); showMissingModal = false">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                שלח מייל
+                שלח מייל (כל המסומנים)
+              </button>
+              <button
+                class="mm-action-btn mm-action-primary"
+                :disabled="missingSelected.size === 0"
+                @click="sendSelectedMissingMails(); showMissingModal = false"
+                :title="missingSelected.size === 0 ? 'יש לסמן לקוחות' : `שלח ${missingSelected.size} לקוחות לחברות הרלוונטיות`"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                שלח מסומנים ({{ missingSelected.size }})
               </button>
             </div>
 
@@ -477,6 +504,15 @@
               <table class="mm-table">
                 <thead>
                   <tr>
+                    <th class="th-check">
+                      <input
+                        type="checkbox"
+                        class="mm-checkbox"
+                        :checked="filteredMissingList.length > 0 && filteredMissingList.every(r => missingSelected.has(r.recruit_id))"
+                        @change="toggleMissingSelectAll(filteredMissingList)"
+                        title="סמן/בטל הכל"
+                      />
+                    </th>
                     <th>שם</th>
                     <th>ת.ז</th>
                     <th>חברה</th>
@@ -490,8 +526,17 @@
                     v-for="item in filteredMissingList"
                     :key="item.recruit_id"
                     class="mm-row"
+                    :class="{ 'mm-row-selected': missingSelected.has(item.recruit_id) }"
                     @click="detailReturnTo = 'missing'; showMissingModal = false; openDetail(item)"
                   >
+                    <td class="td-check" @click.stop>
+                      <input
+                        type="checkbox"
+                        class="mm-checkbox"
+                        :checked="missingSelected.has(item.recruit_id)"
+                        @change="toggleMissingSelect(item.recruit_id)"
+                      />
+                    </td>
                     <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
                     <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
                     <td>{{ item.company || '—' }}</td>
@@ -745,12 +790,32 @@ const showMissingModal = ref(false)
 const missingSearch = ref('')
 const missingCompanyFilter = ref('')
 const missingProductFilter = ref('')
+const missingSelected = ref(new Set())
+
+function toggleMissingSelect(id) {
+  const s = new Set(missingSelected.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  missingSelected.value = s
+}
+function toggleMissingSelectAll(filtered) {
+  const allIds = filtered.map(r => r.recruit_id)
+  const allSelected = allIds.every(id => missingSelected.value.has(id))
+  const s = new Set(missingSelected.value)
+  if (allSelected) {
+    allIds.forEach(id => s.delete(id))
+  } else {
+    allIds.forEach(id => s.add(id))
+  }
+  missingSelected.value = s
+}
 const showFoundModal = ref(false)
 const foundSearch = ref('')
 const foundCompanyFilter = ref('')
 const foundProductFilter = ref('')
 const companyFilter = ref('')
 const productFilter = ref('')
+const nameSearch = ref('')
 const drillModal = ref({ show: false, type: '', value: '', title: '', search: '' })
 
 // Initialize customer statuses from saved data
@@ -1031,6 +1096,14 @@ const filteredResults = computed(() => {
   if (activeFilter.value === 'not_found') list = list.filter(r => !r.found_in_production)
   if (companyFilter.value) list = list.filter(r => r.company === companyFilter.value)
   if (productFilter.value) list = list.filter(r => r.product === productFilter.value)
+  const q = nameSearch.value.trim().toLowerCase()
+  if (q) {
+    list = list.filter(r => {
+      const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
+      const id = String(r.id_number || '').toLowerCase()
+      return name.includes(q) || id.includes(q)
+    })
+  }
   return list
 })
 
@@ -1125,6 +1198,72 @@ function downloadMissingExcel() {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'חסרים')
   XLSX.writeFile(wb, `מגויסים_חסרים_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+}
+
+async function sendSelectedMissingMails() {
+  const selected = notFoundList.value.filter(r => missingSelected.value.has(r.recruit_id))
+  if (!selected.length) return
+
+  // Group by company
+  const byCompany = {}
+  for (const m of selected) {
+    const co = m.company || 'לא ידוע'
+    if (!byCompany[co]) byCompany[co] = []
+    byCompany[co].push(m)
+  }
+
+  // Load contacts once
+  let contacts = []
+  try {
+    const res = await api.get('/company-contacts')
+    contacts = res.data || []
+  } catch { /* ignore */ }
+
+  const missingContacts = []
+  const label = isCommission.value ? 'בנפרעים' : 'בפרודוקציה'
+  let sentCount = 0
+
+  for (const [companyName, clients] of Object.entries(byCompany)) {
+    const match = contacts.find(c => companyName.includes(c.company_name) || c.company_name.includes(companyName))
+    if (!match || !match.email) {
+      missingContacts.push(companyName)
+      continue
+    }
+
+    try {
+      const rows = clients.map(m => ({
+        'שם': `${m.first_name || ''} ${m.last_name || ''}`.trim(),
+        'ת.ז': m.id_number,
+        'חברה': m.company || '',
+        'מוצר': m.product || '',
+        'סכום': m.amount || 0,
+      }))
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'חסרים')
+      XLSX.writeFile(wb, `חסרים_${companyName}_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+    } catch { /* ignore */ }
+
+    const lines = clients.map(m => {
+      const name = `${m.first_name || ''} ${m.last_name || ''}`.trim()
+      const product = m.product ? ` (${m.product})` : ''
+      return `הלקוח ${name} ת.ז ${m.id_number}${product} אינו מופיע אצלי ${label}.\nאשמח להבין מהי הסיבה לכך, ולבדוק האם יש צורך בפעולה כלשהי מצדי.`
+    }).join('\n\n')
+
+    const subject = `בקשת בדיקה — לקוחות חסרים ${label} (${clients.length}) — ${companyName}`
+    const body = `שלום רב,\n\nמצורף קובץ Excel עם פירוט הלקוחות.\n\n${lines}\n\nבברכה`
+
+    const status = await openMailCompose({ to: match.email, subject, body })
+    sentCount++
+    if (status === 'clipboard') {
+      clipboardNotice.value = true
+      setTimeout(() => { clipboardNotice.value = false }, 4000)
+    }
+  }
+
+  if (missingContacts.length) {
+    alert(`לא נמצא אימייל עבור: ${missingContacts.join(', ')}.\nיש להוסיף אימייל בלשונית "אימיילים לחברות".\nנשלחו ${sentCount} מיילים לחברות האחרות.`)
+  }
 }
 
 async function sendMissingMail() {
@@ -1670,6 +1809,53 @@ const chartOptions = computed(() => ({
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
   outline: none;
+}
+
+.slice-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 320px;
+}
+.search-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-ico {
+  position: absolute;
+  right: 10px;
+  color: var(--text-secondary, #706e6b);
+  pointer-events: none;
+}
+.slice-search-input {
+  width: 100%;
+  padding: 6px 32px 6px 32px;
+  border: 1px solid var(--border-light, #dddbda);
+  border-radius: 8px;
+  background: var(--bg-card, #fff);
+  color: var(--text-primary, #080707);
+  font-family: 'Heebo', sans-serif;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.slice-search-input:focus {
+  border-color: var(--primary, #F57C00);
+}
+.search-clear {
+  position: absolute;
+  left: 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #706e6b);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-clear:hover {
+  color: var(--primary, #F57C00);
 }
 
 .slice-clear {
@@ -2289,6 +2475,39 @@ const chartOptions = computed(() => ({
 
 .mm-row:hover {
   background: rgba(245, 124, 0, 0.04);
+}
+
+.mm-row-selected {
+  background: rgba(245, 124, 0, 0.08);
+}
+.mm-row-selected:hover {
+  background: rgba(245, 124, 0, 0.12);
+}
+
+.th-check,
+.td-check {
+  width: 36px;
+  padding: 6px 8px !important;
+  text-align: center;
+}
+.mm-checkbox {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary, #F57C00);
+}
+.mm-action-primary {
+  background: var(--primary, #F57C00);
+  color: #fff;
+  border-color: var(--primary, #F57C00) !important;
+}
+.mm-action-primary:hover:not(:disabled) {
+  background: #E65100;
+  border-color: #E65100 !important;
+}
+.mm-action-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Drill-Down Modal Summary ── */

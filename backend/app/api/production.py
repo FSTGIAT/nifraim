@@ -202,18 +202,29 @@ async def delete_current_production(
 ):
     """Remove current production file."""
     from app.models.portal_snapshot import PortalSnapshot
+    from app.models.debt import Debt
 
     upload = await _get_production_upload(db, user.id)
     if not upload:
         raise HTTPException(status_code=404, detail="לא נמצא קובץ פרודוקציה פעיל")
 
-    # Delete related portal snapshots and client records first (FK constraints)
-    from sqlalchemy import delete as sql_delete
+    # Delete related rows first to satisfy FK constraints.
+    # debts.production_upload_id is NOT NULL → delete those debt rows.
+    # debts.commission_upload_id is nullable but may also point at this upload → handled too.
+    from sqlalchemy import delete as sql_delete, update as sql_update
     await db.execute(
         sql_delete(PortalSnapshot).where(PortalSnapshot.upload_id == upload.id)
     )
     await db.execute(
         sql_delete(ClientRecord).where(ClientRecord.upload_id == upload.id)
+    )
+    await db.execute(
+        sql_delete(Debt).where(Debt.production_upload_id == upload.id)
+    )
+    await db.execute(
+        sql_update(Debt)
+        .where(Debt.commission_upload_id == upload.id)
+        .values(commission_upload_id=None)
     )
 
     await db.delete(upload)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 
 
@@ -9,6 +9,7 @@ class RecruitCreate(BaseModel):
     company: str | None = None
     product: str | None = None
     amount: float | None = None
+    sign_date: date | None = None
 
 
 class RecruitOut(BaseModel):
@@ -20,6 +21,7 @@ class RecruitOut(BaseModel):
     product: str | None = None
     amount: float | None = None
     customer_status: str | None = None
+    sign_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
