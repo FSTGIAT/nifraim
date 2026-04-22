@@ -76,15 +76,29 @@ function onSubmit() {
 
 <style scoped>
 .password-card {
-  max-width: 400px;
+  max-width: 420px;
   margin: 60px auto 0;
-  background: var(--card-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(45, 37, 34, 0.08);
+  border-radius: 24px;
   padding: 40px 32px;
   text-align: center;
-  box-shadow: var(--shadow-lg);
-  animation: fadeInUp 0.5s var(--transition);
+  box-shadow:
+    0 40px 80px -20px rgba(45, 37, 34, 0.15),
+    0 0 0 1px rgba(232, 102, 10, 0.05);
+  position: relative;
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.password-card::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, rgba(232, 102, 10, 0.16), transparent 60%);
+  z-index: -1;
+  pointer-events: none;
 }
 
 @keyframes fadeInUp {
@@ -93,9 +107,18 @@ function onSubmit() {
 }
 
 .card-icon {
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(232, 102, 10, 0.12), rgba(232, 102, 10, 0.04));
   color: var(--primary);
-  margin-bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
 }
+
+.card-icon svg { width: 32px; height: 32px; }
 
 h2 {
   font-size: 20px;
@@ -161,20 +184,23 @@ form { display: flex; flex-direction: column; gap: 16px; }
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 14px;
+  padding: 16px;
   background: var(--primary);
   color: white;
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 40px;
   font-size: 16px;
   font-weight: 700;
   font-family: inherit;
-  transition: all 0.3s var(--transition);
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .submit-btn:hover:not(:disabled) {
   background: var(--primary-deep);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(232, 102, 10, 0.32);
 }
 
 .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }

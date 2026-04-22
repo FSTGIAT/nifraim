@@ -1,7 +1,7 @@
 <template>
-  <div class="pricing-page">
+  <div class="pricing" ref="pricingRoot">
     <!-- Nav -->
-    <nav class="land-nav">
+    <nav class="land-nav" ref="landNav">
       <div class="nav-content">
         <router-link to="/" class="nav-brand">
           <div class="nav-icon">
@@ -15,6 +15,7 @@
         </router-link>
         <div class="nav-links">
           <router-link to="/">דף הבית</router-link>
+          <router-link to="/pricing" class="active">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
         </div>
@@ -33,37 +34,72 @@
       <Transition name="mobile-menu">
         <div v-if="mobileMenuOpen" class="mobile-menu">
           <router-link to="/" @click="mobileMenuOpen = false">דף הבית</router-link>
+          <router-link to="/pricing" class="active" @click="mobileMenuOpen = false">תמחור</router-link>
           <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
           <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
         </div>
       </Transition>
     </nav>
 
-    <!-- Hero -->
-    <section class="pricing-hero">
-      <div class="hero-glow"></div>
-      <h1><span class="text-orange">תמחור</span></h1>
-    </section>
-
-    <!-- Plans -->
-    <section class="plans-section" ref="plansSection">
-      <div class="plans">
-        <div class="plan-card featured" :class="{ visible: plansVisible }" style="--delay: 0.1s">
-          <div class="plan-name">חודשי</div>
-          <div class="plan-price">
-            <span class="price-amount ltr-number">{{ formattedMonthly }}</span>
-            <span class="price-currency">₪</span>
-            <span class="price-period">/ חודש</span>
+    <!-- HERO -->
+    <section class="chapter-hero" ref="heroSection">
+      <div class="hero-gradient">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+      <div class="hero-inner">
+        <div class="hero-content" ref="heroContent">
+          <span class="hero-eyebrow" ref="heroEyebrow">
+            <span class="eyebrow-dot"></span>
+            מחיר אחד
+          </span>
+          <h1 class="hero-headline" ref="heroHeadline">
+            תמחור שקוף.<br><span class="highlight">מחיר אחד.</span>
+          </h1>
+          <p class="hero-sub" ref="heroSub">
+            גישה מלאה לכל היכולות של Nifraim — ב-₪220 לחודש.
+          </p>
+          <div class="hero-cta-wrap" ref="heroCtaWrap">
+            <router-link to="/signup?plan=monthly" class="hero-btn">
+              התחל עכשיו
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </router-link>
+            <a :href="`mailto:${contactEmail}?subject=${encodeURIComponent('שאלה על תמחור Nifraim')}`" class="hero-ghost">
+              <span class="ghost-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </span>
+              שוחחו איתנו
+            </a>
           </div>
-          <ul class="plan-features">
-            <li v-for="(f, i) in planFeatures" :key="f" :style="{ '--fi': i }">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-icon">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              {{ f }}
-            </li>
-          </ul>
-          <router-link to="/signup?plan=monthly" class="plan-btn primary">בחירת מסלול</router-link>
+        </div>
+
+        <div class="hero-visual" ref="heroVisual">
+          <div class="price-card" ref="priceCard">
+            <div class="pc-name">Nifraim</div>
+            <div class="pc-price">
+              <span class="pc-amount ltr-number" ref="priceNumber">0</span>
+              <div class="pc-unit">
+                <span class="pc-currency">₪</span>
+                <span class="pc-period">לחודש</span>
+              </div>
+            </div>
+            <div class="pc-vat">כולל מע״מ · חיוב חודשי</div>
+            <ul class="pc-bullets">
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                פורטל לקוחות ללא הגבלה
+              </li>
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                עוזר AI אישי
+              </li>
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                תמיכה מלאה
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -71,97 +107,106 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { gsap } from 'gsap'
+
+const contactEmail = 'nifraim@nifraim.com'
+
+const pricingRoot = ref(null)
+const landNav = ref(null)
+const heroSection = ref(null)
+const heroContent = ref(null)
+const heroEyebrow = ref(null)
+const heroHeadline = ref(null)
+const heroSub = ref(null)
+const heroCtaWrap = ref(null)
+const heroVisual = ref(null)
+const priceCard = ref(null)
+const priceNumber = ref(null)
 
 const mobileMenuOpen = ref(false)
-const plansSection = ref(null)
-const plansVisible = ref(false)
-const monthlyPrice = ref(0)
-const pricesAnimated = ref(false)
 
-const formattedMonthly = computed(() => monthlyPrice.value)
-
-const planFeatures = [
-  'העלאת קבצי פרודוקציה ללא הגבלה',
-  'השוואת נפרעים מכל חברות הביטוח',
-  'זיהוי אוטומטי של 7+ פורמטים',
-  'ניהול טבלת עמלות',
-  'שליחת בירורים במייל',
-  'תמיכה טכנית מלאה',
-]
-
-function animatePrice(targetRef, finalValue, duration = 1200) {
-  const start = performance.now()
-  const tick = (now) => {
-    const elapsed = now - start
-    const progress = Math.min(elapsed / duration, 1)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    targetRef.value = Math.round(eased * finalValue)
-    if (progress < 1) requestAnimationFrame(tick)
-  }
-  requestAnimationFrame(tick)
+function animateNumber(el, target, duration = 1.4) {
+  const obj = { val: 0 }
+  gsap.to(obj, {
+    val: target,
+    duration,
+    ease: 'power2.out',
+    onUpdate: () => {
+      el.textContent = Math.round(obj.val)
+    }
+  })
 }
 
-let observer = null
-
 onMounted(() => {
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting && entry.target === plansSection.value) {
-          plansVisible.value = true
-          if (!pricesAnimated.value) {
-            pricesAnimated.value = true
-            setTimeout(() => {
-              animatePrice(monthlyPrice, 220, 1200)
-            }, 300)
-          }
-          observer.unobserve(entry.target)
-        }
-      })
-    },
-    { threshold: 0.15 }
-  )
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  if (plansSection.value) observer.observe(plansSection.value)
+  // Nav always light (hero is cream)
+  landNav.value?.classList.add('nav--light')
+
+  if (prefersReduced) {
+    if (priceNumber.value) priceNumber.value.textContent = '220'
+    return
+  }
+
+  gsap.set([heroEyebrow.value, heroSub.value, heroCtaWrap.value], { opacity: 0, y: 20 })
+  gsap.set(heroHeadline.value, { opacity: 0, y: 30 })
+  gsap.set(priceCard.value, { opacity: 0, y: 40, scale: 0.96 })
+
+  const heroTL = gsap.timeline({ delay: 0.25 })
+  heroTL
+    .to(heroEyebrow.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' })
+    .to(heroHeadline.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, '-=0.3')
+    .to(heroSub.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.3')
+    .to(heroCtaWrap.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.2')
+    .to(priceCard.value, { opacity: 1, y: 0, scale: 1, duration: 0.9, ease: 'power3.out' }, '-=0.6')
+    .add(() => {
+      if (priceNumber.value) animateNumber(priceNumber.value, 220, 1.4)
+    }, '-=0.3')
+
+  gsap.to('.orb-1', { y: -40, x: 20, duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+  gsap.to('.orb-2', { y: 30, x: -15, duration: 10, repeat: -1, yoyo: true, ease: 'sine.inOut' })
+  gsap.to('.orb-3', { y: -20, x: 25, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
 })
 
 onBeforeUnmount(() => {
-  if (observer) observer.disconnect()
+  gsap.killTweensOf([heroEyebrow.value, heroHeadline.value, heroSub.value, heroCtaWrap.value, priceCard.value])
+  gsap.killTweensOf(['.orb-1', '.orb-2', '.orb-3'])
 })
 </script>
 
 <style scoped>
-/* ── Theme Variables ── */
-.pricing-page {
+/* ── Pricing Theme Variables (mirrors LandingView tokens) ── */
+.pricing {
   --land-bg: #4A4A4A;
-  --land-bg-alt: #555555;
-  --land-bg-card: #5C5C5C;
-  --land-orange: #F57C00;
-  --land-orange-bright: #FF9800;
-  --land-orange-deep: #E65100;
-  --land-orange-glow: rgba(245, 124, 0, 0.15);
+  --land-orange: #E8660A;
+  --land-orange-bright: #F57C00;
+  --land-orange-deep: #C85A00;
+  --land-orange-glow: rgba(232, 102, 10, 0.1);
   --land-text: #F5F5F5;
   --land-text-secondary: #A0A0A0;
-  --land-text-dim: #666666;
   --land-border: #666666;
-  --land-border-hover: #777777;
+
+  --cream-bg: #F5F0EB;
+  --cream-text: #2D2522;
+  --cream-text-muted: rgba(45, 37, 34, 0.6);
+  --cream-text-dim: rgba(45, 37, 34, 0.35);
+  --dark-section: #2D2522;
+
+  --transition-fast: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   min-height: 100vh;
-  background: var(--land-bg);
-  color: var(--land-text);
+  background: var(--cream-bg);
+  color: var(--cream-text);
   font-family: 'Heebo', sans-serif;
   direction: rtl;
   overflow-x: hidden;
+  position: relative;
 }
 
-.pricing-page a {
+.pricing a {
   color: inherit;
   text-decoration: none;
-}
-
-.text-orange {
-  color: var(--land-orange);
 }
 
 /* ── Navigation ── */
@@ -174,7 +219,30 @@ onBeforeUnmount(() => {
   background: rgba(74, 74, 74, 0.85);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--land-border);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
+
+.land-nav.nav--light {
+  background: rgba(245, 240, 235, 0.9);
+  border-bottom-color: rgba(45, 37, 34, 0.06);
+}
+
+.land-nav.nav--light .nav-name { color: var(--cream-text); }
+.land-nav.nav--light .nav-icon { background: var(--cream-text); color: var(--cream-bg); }
+.land-nav.nav--light .nav-links a { color: var(--cream-text-muted); }
+.land-nav.nav--light .nav-links a:hover,
+.land-nav.nav--light .nav-links a.active { color: var(--land-orange); }
+.land-nav.nav--light .nav-btn-ghost {
+  border-color: var(--cream-text) !important;
+  color: var(--cream-text) !important;
+}
+.land-nav.nav--light .nav-btn-ghost:hover { background: rgba(45, 37, 34, 0.05) !important; }
+.land-nav.nav--light .nav-btn-solid {
+  background: var(--cream-text) !important;
+  color: var(--cream-bg) !important;
+}
+.land-nav.nav--light .nav-btn-solid:hover { background: var(--dark-section) !important; }
+.land-nav.nav--light .mobile-menu-btn { color: var(--cream-text); }
 
 .nav-content {
   max-width: 1200px;
@@ -201,12 +269,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   color: #0a0a0a;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .nav-name {
   font-size: 22px;
   font-weight: 800;
   color: var(--land-text);
+  transition: color var(--transition-fast);
 }
 
 .nav-links {
@@ -222,9 +292,8 @@ onBeforeUnmount(() => {
   transition: color 0.2s;
 }
 
-.nav-links a:hover {
-  color: var(--land-orange);
-}
+.nav-links a:hover,
+.nav-links a.active { color: var(--land-orange); }
 
 .nav-btn-ghost {
   padding: 10px 24px;
@@ -235,9 +304,7 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
 }
 
-.nav-btn-ghost:hover {
-  background: var(--land-orange-glow) !important;
-}
+.nav-btn-ghost:hover { background: var(--land-orange-glow) !important; }
 
 .nav-btn-solid {
   padding: 10px 24px;
@@ -248,11 +315,8 @@ onBeforeUnmount(() => {
   transition: all 0.2s;
 }
 
-.nav-btn-solid:hover {
-  background: var(--land-orange-bright) !important;
-}
+.nav-btn-solid:hover { background: var(--land-orange-bright) !important; }
 
-/* Mobile menu button */
 .mobile-menu-btn {
   display: none;
   background: none;
@@ -260,16 +324,21 @@ onBeforeUnmount(() => {
   color: var(--land-text);
   cursor: pointer;
   padding: 8px;
+  transition: color var(--transition-fast);
 }
 
-/* Mobile menu */
 .mobile-menu {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 16px;
   padding: 24px;
   border-top: 1px solid var(--land-border);
   background: rgba(74, 74, 74, 0.95);
+}
+
+.land-nav.nav--light .mobile-menu {
+  background: rgba(245, 240, 235, 0.97);
+  border-top-color: rgba(45, 37, 34, 0.06);
 }
 
 .mobile-menu a {
@@ -280,9 +349,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-menu-enter-active,
-.mobile-menu-leave-active {
-  transition: all 0.3s ease;
-}
+.mobile-menu-leave-active { transition: all 0.3s ease; }
 
 .mobile-menu-enter-from,
 .mobile-menu-leave-to {
@@ -290,290 +357,378 @@ onBeforeUnmount(() => {
   transform: translateY(-8px);
 }
 
-/* ── Hero Section ── */
-.pricing-hero {
-  padding: 180px 24px 80px;
-  text-align: center;
+/* ── HERO (cream) ── */
+.chapter-hero {
   position: relative;
-}
-
-.hero-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.08) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-  animation: glowPulse 4s ease-in-out infinite;
-}
-
-.pricing-hero h1 {
-  font-size: 80px;
-  font-weight: 900;
-  line-height: 1.1;
-  position: relative;
-  z-index: 1;
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* ── Plans Section ── */
-.plans-section {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 24px 120px;
-}
-
-.plans {
+  min-height: 100dvh;
   display: flex;
-  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: var(--cream-bg);
 }
 
-.plan-card {
-  width: 100%;
-  max-width: 420px;
-  background: var(--land-bg-alt);
-  border: 1px solid var(--land-border);
-  border-radius: 20px;
-  padding: 44px 32px;
+.hero-gradient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.hero-gradient .orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  will-change: transform;
+}
+
+.hero-gradient .orb-1 {
+  width: 720px;
+  height: 720px;
+  background: rgba(232, 102, 10, 0.28);
+  top: -18%;
+  left: -10%;
+}
+
+.hero-gradient .orb-2 {
+  width: 520px;
+  height: 520px;
+  background: rgba(232, 102, 10, 0.22);
+  bottom: 2%;
+  right: -6%;
+}
+
+.hero-gradient .orb-3 {
+  width: 460px;
+  height: 460px;
+  background: rgba(245, 124, 0, 0.2);
+  top: 38%;
+  left: 42%;
+}
+
+.hero-inner {
   position: relative;
-  opacity: 0;
-  transform: translateY(30px);
-  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: 100%;
+  min-height: 100dvh;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 32px;
 }
 
-.plan-card.visible {
-  opacity: 1;
-  transform: translateY(0);
-  transition-delay: var(--delay, 0s);
+.hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 110px 24px 80px 0;
+  max-width: 560px;
 }
 
-.plan-card:hover {
-  transform: translateY(-6px);
-  border-color: var(--land-border-hover);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+.hero-eyebrow {
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--land-orange);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(232, 102, 10, 0.08);
+  padding: 6px 16px 6px 12px;
+  border-radius: 40px;
+  border: 1px solid rgba(232, 102, 10, 0.15);
+  width: fit-content;
+  max-width: 100%;
 }
 
-.plan-card.visible:hover {
-  transition-delay: 0s;
+.eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--land-orange);
+  flex-shrink: 0;
+  animation: dotPulse 2s ease-in-out infinite;
 }
 
-/* Featured card glow */
-.plan-card.featured {
-  border-color: var(--land-orange);
-  box-shadow: 0 0 0 1px var(--land-orange), 0 0 40px rgba(245, 124, 0, 0.08);
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
 }
 
-.plan-card.featured::before {
+.hero-headline {
+  font-size: clamp(40px, 5.5vw, 72px);
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -1px;
+  color: var(--cream-text);
+}
+
+.hero-headline .highlight {
+  color: var(--land-orange);
+  position: relative;
+  display: inline-block;
+}
+
+.hero-headline .highlight::after {
   content: '';
   position: absolute;
-  inset: -1px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.15), transparent 60%);
-  z-index: 0;
-  animation: pulseGlow 3s ease-in-out infinite;
-  pointer-events: none;
+  bottom: 4px;
+  right: 0;
+  width: 100%;
+  height: 8px;
+  background: rgba(232, 102, 10, 0.15);
+  border-radius: 3px;
+  z-index: -1;
 }
 
-.plan-card.featured:hover {
-  box-shadow: 0 0 0 1px var(--land-orange), 0 24px 64px rgba(245, 124, 0, 0.15);
+.hero-sub {
+  font-size: clamp(15px, 1.15vw, 19px);
+  color: var(--cream-text-muted);
+  line-height: 1.7;
+  max-width: 480px;
 }
 
-.plan-badge {
-  position: absolute;
-  top: -14px;
-  right: 24px;
-  padding: 6px 20px;
-  background: linear-gradient(135deg, var(--land-orange) 0%, var(--land-orange-bright) 100%);
-  color: #0a0a0a;
-  border-radius: 100px;
-  font-size: 13px;
-  font-weight: 700;
-  z-index: 1;
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.3);
-  background-size: 200% 100%;
-  animation: shimmer 3s ease-in-out infinite;
-}
-
-.plan-name {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--land-text);
-  margin-bottom: 20px;
-  position: relative;
-  z-index: 1;
-}
-
-.plan-price {
+.hero-cta-wrap {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 8px;
-  position: relative;
-  z-index: 1;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-.price-amount {
-  font-size: 60px;
-  font-weight: 900;
-  color: var(--land-text);
-  line-height: 1;
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--land-orange);
+  color: #fff;
+  padding: 16px 40px;
+  border-radius: 40px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  transition: all var(--transition-fast);
+  min-height: 54px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
 }
 
-.plan-card.featured .price-amount {
+.hero-btn:hover {
+  background: var(--land-orange-deep);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(232, 102, 10, 0.3);
+}
+
+.hero-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform var(--transition-fast);
+}
+
+.hero-btn:hover svg {
+  transform: translateX(-4px);
+}
+
+/* Ghost CTA — cream/light styling to match hero background (no dark-on-cream) */
+.hero-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  color: var(--cream-text);
+  border: 1px solid rgba(45, 37, 34, 0.18);
+  padding: 15px 28px;
+  border-radius: 40px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition: all var(--transition-fast);
+  min-height: 52px;
+}
+
+.hero-ghost:hover {
+  background: rgba(232, 102, 10, 0.06);
+  border-color: var(--land-orange);
   color: var(--land-orange);
 }
 
-.price-currency {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--land-text-secondary);
+.ghost-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--land-orange-glow);
+  color: var(--land-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
 }
 
-.price-period {
-  font-size: 16px;
-  color: var(--land-text-dim);
+.hero-ghost:hover .ghost-icon {
+  background: var(--land-orange);
+  color: #fff;
 }
 
-.plan-savings {
-  display: inline-block;
-  padding: 5px 14px;
-  background: rgba(76, 175, 80, 0.12);
-  color: #4caf50;
-  border-radius: 100px;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 24px;
+/* ── Hero visual — price card ── */
+.hero-visual {
   position: relative;
-  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 110px 20px 80px;
 }
 
-.plan-features {
-  list-style: none;
-  margin: 28px 0;
+.price-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(45, 37, 34, 0.08);
+  border-radius: 28px;
+  padding: 36px 32px 32px;
+  box-shadow:
+    0 40px 80px -20px rgba(45, 37, 34, 0.18),
+    0 0 0 1px rgba(232, 102, 10, 0.08),
+    0 2px 0 rgba(232, 102, 10, 0.04) inset;
+  position: relative;
+  z-index: 2;
+}
+
+.price-card::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, rgba(232, 102, 10, 0.2), transparent 60%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.pc-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--cream-text);
+  letter-spacing: -0.2px;
+}
+
+.pc-price {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pc-amount {
+  font-size: clamp(72px, 9vw, 108px);
+  font-weight: 900;
+  line-height: 0.95;
+  color: var(--cream-text);
+  letter-spacing: -3px;
+  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-orange) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.pc-unit {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  position: relative;
-  z-index: 1;
+  gap: 2px;
+  padding-bottom: 14px;
 }
 
-.plan-features li {
+.pc-currency {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--cream-text);
+  line-height: 1;
+}
+
+.pc-period {
+  font-size: 0.95rem;
+  color: var(--cream-text-muted);
+}
+
+.pc-vat {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--cream-text-dim);
+  letter-spacing: 0.02em;
+}
+
+.pc-bullets {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 22px 0 0;
+  border-top: 1px solid rgba(45, 37, 34, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pc-bullets li {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
-  color: var(--land-text-secondary);
-  opacity: 0;
-  transform: translateY(10px);
+  font-size: 0.94rem;
+  color: var(--cream-text);
+  font-weight: 500;
 }
 
-.plan-card.visible .plan-features li {
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--fi) * 0.08s + 0.4s);
-}
-
-.check-icon {
+.pc-bullets svg {
   color: var(--land-orange);
   flex-shrink: 0;
 }
 
-.plan-btn {
-  display: block;
-  text-align: center;
-  padding: 15px;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 700;
-  border: 1px solid var(--land-border);
-  color: var(--land-text);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  z-index: 1;
-}
-
-.plan-btn:hover {
-  border-color: var(--land-orange);
-  color: var(--land-orange);
-  transform: translateY(-2px);
-}
-
-.plan-btn.primary {
-  background: var(--land-orange);
-  color: #0a0a0a;
-  border: none;
-}
-
-.plan-btn.primary:hover {
-  background: var(--land-orange-bright);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.3);
-}
-
-/* ── Animations ── */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulseGlow {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-@keyframes glowPulse {
-  0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% center; }
-  50% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-
 /* ── Responsive ── */
+@media (max-width: 1024px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .hero-content {
+    padding: 120px 0 20px;
+    max-width: 100%;
+    text-align: start;
+    margin-inline: auto;
+  }
+
+  .hero-visual {
+    min-height: auto;
+    padding: 0 0 100px;
+  }
+}
+
 @media (max-width: 768px) {
-  .nav-links {
-    display: none;
+  .nav-links { display: none; }
+  .mobile-menu-btn { display: block; }
+  .mobile-menu { display: flex; }
+
+  .chapter-hero {
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
-  .mobile-menu-btn {
-    display: block;
+  .price-card {
+    padding: 28px 24px 24px;
   }
 
-  .mobile-menu {
-    display: flex;
-  }
-
-  .pricing-hero {
-    padding: 140px 24px 60px;
-  }
-
-  .pricing-hero h1 {
-    font-size: 52px;
-  }
-
-  .plans {
-    display: flex;
+  .hero-btn {
+    padding: 14px 28px;
+    font-size: 0.98rem;
   }
 }
 
 @media (max-width: 480px) {
-  .pricing-hero h1 {
-    font-size: 42px;
+  .hero-cta-wrap {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .price-amount {
-    font-size: 48px;
+  .hero-btn,
+  .hero-ghost {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

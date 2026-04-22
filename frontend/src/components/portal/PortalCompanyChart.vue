@@ -46,7 +46,7 @@ const props = defineProps({
   breakdown: Array,
 })
 
-const colors = ['#F57C00', '#7F56D9', '#2E844A', '#E3066A', '#0EA5E9', '#E8720A', '#6366F1', '#14B8A6']
+const colors = ['#E8660A', '#F57C00', '#C85A00', '#A8703A', '#D68B4A', '#8C4A00', '#FFB74D', '#6B3A0A']
 
 const circumference = 2 * Math.PI * 80 // ~502.65
 

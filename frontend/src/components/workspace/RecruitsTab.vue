@@ -246,16 +246,6 @@
       </div>
 
       <template v-if="hasRecruits || recruitsStore.uploading">
-        <div class="list-toolbar">
-          <button class="btn-portal-links" @click="showPortalLinks = true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-            </svg>
-            קישורים ללקוחות
-            <span class="portal-badge" v-if="activePortalLinks > 0">{{ activePortalLinks }}</span>
-          </button>
-        </div>
         <RecruitForm />
       </template>
     </div>
@@ -438,9 +428,6 @@
     <Transition name="fade">
       <p class="error-msg" v-if="recruitsStore.error">{{ recruitsStore.error }}</p>
     </Transition>
-
-    <!-- Portal Links Modal -->
-    <PortalLinksManager :show="showPortalLinks" @close="showPortalLinks = false" />
   </div>
 </template>
 
@@ -448,15 +435,12 @@
 import { ref, computed, inject, watch, onMounted } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useRecruitsStore } from '../../stores/recruits.js'
-import { usePortalStore } from '../../stores/portal.js'
 import RecruitForm from './RecruitForm.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
-import PortalLinksManager from './PortalLinksManager.vue'
 import api from '../../api/client.js'
 
 const productionStore = useProductionStore()
 const recruitsStore = useRecruitsStore()
-const portalStore = usePortalStore()
 
 const fileInputRef = ref(null)
 const fileInputRef2 = ref(null)
@@ -469,10 +453,6 @@ const innerTab = ref('list')
 const commDragging = ref(false)
 const commUploading = ref(false)
 const commUploadedFiles = ref([])
-const showPortalLinks = ref(false)
-const activePortalLinks = computed(() =>
-  portalStore.links.filter(l => l.is_active && new Date(l.expires_at) > new Date()).length
-)
 const recruitStage = ref(0) // 0=idle, 1=uploading, 2=parsing, 3=saving
 
 const recruitStageLabel = computed(() => {

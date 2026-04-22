@@ -1,85 +1,217 @@
 <template>
-  <!-- Embedded mode: inline card (no modal overlay) -->
-  <div v-if="embedded && show" class="embedded-portal">
-    <div class="embedded-header">
-      <div class="header-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <div class="portal-tab-root">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-title">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
           <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
         </svg>
-        <span>פורטל לקוחות</span>
-        <span class="link-count" v-if="activeLinks.length">{{ activeLinks.length }} פעילים</span>
-      </div>
-    </div>
-    <div class="embedded-body">
-      <button class="btn-generate" @click="showGenerateModal = true">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        צור קישור חדש
-      </button>
-      <div v-if="portalStore.loading && !portalStore.links.length" class="loading-state">
-        <div class="mini-spinner"></div>
-        <span>טוען קישורים...</span>
-      </div>
-      <div v-else-if="portalStore.links.length" class="links-list">
-        <div
-          v-for="link in portalStore.links"
-          :key="link.id"
-          class="link-row"
-          :class="{ revoked: !link.is_active, expired: isExpired(link) }"
-        >
-          <div class="link-info">
-            <span class="link-name">{{ link.customer_name }}</span>
-            <span class="link-id ltr-number">{{ link.customer_id_number }}</span>
-          </div>
-          <div class="link-meta">
-            <span class="link-status" :class="linkStatusClass(link)">
-              {{ linkStatusLabel(link) }}
-            </span>
-            <span class="link-date">{{ formatDate(link.created_at) }}</span>
-            <span v-if="link.last_accessed_at" class="link-accessed">
-              נצפה: {{ formatDate(link.last_accessed_at) }}
-            </span>
-          </div>
-          <div class="link-actions" v-if="link.is_active && !isExpired(link)">
-            <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
-              <svg v-if="copiedToken !== link.token" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            </button>
-            <button
-              v-if="link.customer_email"
-              class="action-btn email"
-              @click="sendEmail(link)"
-              title="שלח באימייל"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-            </button>
-            <button class="action-btn revoke" @click="revokeLink(link)" title="בטל קישור">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
+        <div>
+          <h2>פורטל לקוחות</h2>
+          <p>נהל את הקישורים המשותפים לכל הלקוחות שלך</p>
         </div>
       </div>
-      <div v-else class="empty-state">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-        </svg>
-        <p>אין קישורים פעילים</p>
-        <span>צור קישור חדש כדי לשתף תיק ביטוח עם לקוח</span>
+
+      <div class="toolbar-actions">
+        <div class="search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            :value="portalStore.searchQuery"
+            @input="e => portalStore.setSearch(e.target.value)"
+            placeholder="חיפוש לפי שם, ת.ז. או אימייל..."
+          />
+          <button v-if="portalStore.searchQuery" class="search-clear" @click="portalStore.setSearch('')" title="נקה">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <button class="btn-generate" @click="showGenerateModal = true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          צור קישור חדש
+        </button>
+      </div>
+    </div>
+
+    <!-- Status filter pills -->
+    <div class="filter-pills">
+      <button
+        v-for="opt in filterOptions"
+        :key="opt.id"
+        class="pill"
+        :class="{ active: portalStore.statusFilter === opt.id }"
+        @click="portalStore.setStatusFilter(opt.id)"
+      >
+        {{ opt.label }}
+        <span class="pill-count ltr-number">{{ portalStore.statusCounts[opt.id] }}</span>
+      </button>
+    </div>
+
+    <!-- Table / States -->
+    <div class="table-wrap">
+      <!-- Skeleton loading -->
+      <div v-if="portalStore.loading && !portalStore.links.length" class="skeleton">
+        <div v-for="i in 5" :key="i" class="skeleton-row">
+          <div class="sk-cell sk-name"></div>
+          <div class="sk-cell sk-status"></div>
+          <div class="sk-cell sk-date"></div>
+          <div class="sk-cell sk-date"></div>
+          <div class="sk-cell sk-actions"></div>
+        </div>
+      </div>
+
+      <!-- Empty: no links at all -->
+      <div v-else-if="!portalStore.links.length" class="empty-state">
+        <div class="empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+          </svg>
+        </div>
+        <h3>עדיין לא יצרתם קישור פורטל</h3>
+        <p>קישור הפורטל מאפשר ללקוחות שלכם לראות את תיק הביטוח האישי שלהם — עם הגנה בסיסמה.</p>
+        <button class="btn-generate large" @click="showGenerateModal = true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          צרו את הקישור הראשון
+        </button>
+      </div>
+
+      <!-- Empty: filter/search no matches -->
+      <div v-else-if="!portalStore.sortedLinks.length" class="empty-state compact">
+        <div class="empty-icon small">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+        <h3 v-if="portalStore.searchQuery">לא נמצאו תוצאות עבור "{{ portalStore.searchQuery }}"</h3>
+        <h3 v-else>אין קישורים ב-{{ filterLabel(portalStore.statusFilter) }}</h3>
+        <p>נסו לשנות את החיפוש או את מסנן הסטטוס</p>
+        <button class="btn-text" @click="resetFilters">נקה חיפוש וסינון</button>
+      </div>
+
+      <!-- Table -->
+      <table v-else class="links-table">
+        <thead>
+          <tr>
+            <th class="sortable" @click="portalStore.setSort('customer_name')">
+              <span>לקוח</span>
+              <SortArrow :active="portalStore.sortBy === 'customer_name'" :dir="portalStore.sortDir" />
+            </th>
+            <th class="sortable" @click="portalStore.setSort('status')">
+              <span>סטטוס</span>
+              <SortArrow :active="portalStore.sortBy === 'status'" :dir="portalStore.sortDir" />
+            </th>
+            <th class="sortable" @click="portalStore.setSort('created_at')">
+              <span>נוצר</span>
+              <SortArrow :active="portalStore.sortBy === 'created_at'" :dir="portalStore.sortDir" />
+            </th>
+            <th class="sortable" @click="portalStore.setSort('last_accessed_at')">
+              <span>פעילות אחרונה</span>
+              <SortArrow :active="portalStore.sortBy === 'last_accessed_at'" :dir="portalStore.sortDir" />
+            </th>
+            <th class="actions-col">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="link in portalStore.paginatedLinks"
+            :key="link.id"
+            :class="{ inactive: link._status !== 'active' }"
+          >
+            <td class="customer-cell">
+              <div class="customer-name">{{ link.customer_name }}</div>
+              <div class="customer-meta">
+                <span class="ltr-number">ת.ז. {{ link.customer_id_number }}</span>
+                <span v-if="link.customer_email" class="ltr-number">· {{ link.customer_email }}</span>
+              </div>
+            </td>
+            <td>
+              <span class="status-badge" :class="link._status">
+                <span class="status-dot"></span>
+                {{ statusLabel(link._status) }}
+              </span>
+            </td>
+            <td class="muted">{{ formatDate(link.created_at) }}</td>
+            <td class="muted">
+              <span v-if="link.last_accessed_at">{{ relativeTime(link.last_accessed_at) }}</span>
+              <span v-else class="dim">טרם נצפה</span>
+            </td>
+            <td class="actions-cell">
+              <div class="row-actions" v-if="link._status === 'active'">
+                <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
+                  <svg v-if="copiedToken !== link.token" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </button>
+                <button
+                  v-if="link.customer_email"
+                  class="action-btn"
+                  @click="sendEmail(link)"
+                  title="שלח באימייל"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </button>
+                <button class="action-btn danger" @click="confirmRevoke(link)" title="בטל קישור">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <span v-else class="row-actions-empty">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div v-if="portalStore.sortedLinks.length && portalStore.totalPages > 1" class="pagination">
+        <div class="pg-info ltr-number">
+          מציג <strong>{{ pageStart }}</strong>–<strong>{{ pageEnd }}</strong> מתוך <strong>{{ portalStore.sortedLinks.length }}</strong>
+        </div>
+        <div class="pg-nav">
+          <button class="pg-btn" :disabled="portalStore.currentPage === 1" @click="portalStore.setPage(portalStore.currentPage - 1)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+          <button
+            v-for="n in visiblePageRange"
+            :key="n.key"
+            class="pg-btn"
+            :class="{ active: n.page === portalStore.currentPage, gap: n.gap }"
+            :disabled="n.gap"
+            @click="!n.gap && portalStore.setPage(n.page)"
+          >
+            {{ n.gap ? '…' : n.page }}
+          </button>
+          <button class="pg-btn" :disabled="portalStore.currentPage === portalStore.totalPages" @click="portalStore.setPage(portalStore.currentPage + 1)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -89,486 +221,683 @@
       @generated="onGenerated"
     />
   </div>
-
-  <!-- Modal mode (original) -->
-  <template v-else>
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-          <div class="modal-card">
-            <div class="modal-header">
-              <div class="header-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-                </svg>
-                <span>קישורים ללקוחות</span>
-                <span class="link-count" v-if="activeLinks.length">{{ activeLinks.length }}</span>
-              </div>
-              <button class="close-btn" @click="$emit('close')">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div class="modal-body">
-              <button class="btn-generate" @click="showGenerateModal = true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                צור קישור חדש
-              </button>
-              <div v-if="portalStore.loading && !portalStore.links.length" class="loading-state">
-                <div class="mini-spinner"></div>
-                <span>טוען קישורים...</span>
-              </div>
-              <div v-else-if="portalStore.links.length" class="links-list">
-                <div
-                  v-for="link in portalStore.links"
-                  :key="link.id"
-                  class="link-row"
-                  :class="{ revoked: !link.is_active, expired: isExpired(link) }"
-                >
-                  <div class="link-info">
-                    <span class="link-name">{{ link.customer_name }}</span>
-                    <span class="link-id ltr-number">{{ link.customer_id_number }}</span>
-                  </div>
-                  <div class="link-meta">
-                    <span class="link-status" :class="linkStatusClass(link)">
-                      {{ linkStatusLabel(link) }}
-                    </span>
-                    <span class="link-date">{{ formatDate(link.created_at) }}</span>
-                    <span v-if="link.last_accessed_at" class="link-accessed">
-                      נצפה: {{ formatDate(link.last_accessed_at) }}
-                    </span>
-                  </div>
-                  <div class="link-actions" v-if="link.is_active && !isExpired(link)">
-                    <button class="action-btn" @click="copyUrl(link)" :title="copiedToken === link.token ? 'הועתק!' : 'העתק קישור'">
-                      <svg v-if="copiedToken !== link.token" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                      </svg>
-                      <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    </button>
-                    <button
-                      v-if="link.customer_email"
-                      class="action-btn email"
-                      @click="sendEmail(link)"
-                      title="שלח באימייל"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                        <polyline points="22,6 12,13 2,6"/>
-                      </svg>
-                    </button>
-                    <button class="action-btn revoke" @click="revokeLink(link)" title="בטל קישור">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="empty-state">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-                  <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-                </svg>
-                <p>אין קישורים פעילים</p>
-                <span>צור קישור חדש כדי לשתף תיק ביטוח עם לקוח</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <PortalGenerateModal
-      :show="showGenerateModal"
-      @close="showGenerateModal = false"
-      @generated="onGenerated"
-    />
-  </template>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, h } from 'vue'
 import { usePortalStore } from '../../stores/portal.js'
 import PortalGenerateModal from './PortalGenerateModal.vue'
 
 defineProps({
-  show: Boolean,
-  embedded: { type: Boolean, default: false },
+  show: { type: Boolean, default: true },
+  embedded: { type: Boolean, default: true },
 })
-
 defineEmits(['close'])
 
 const portalStore = usePortalStore()
-
 const showGenerateModal = ref(false)
 const copiedToken = ref(null)
 
-const activeLinks = computed(() =>
-  portalStore.links.filter(l => l.is_active && !isExpired(l))
+const filterOptions = [
+  { id: 'all', label: 'הכל' },
+  { id: 'active', label: 'פעיל' },
+  { id: 'expired', label: 'פג תוקף' },
+  { id: 'revoked', label: 'מבוטל' },
+]
+
+// Sort arrow tiny component
+const SortArrow = {
+  props: { active: Boolean, dir: String },
+  setup(props) {
+    return () => h('span', { class: ['sort-arrow', { active: props.active, asc: props.dir === 'asc' }] }, [
+      h('svg', {
+        width: 10, height: 10, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      }, [
+        h('polyline', { points: '6 9 12 15 18 9' }),
+      ]),
+    ])
+  },
+}
+
+const pageStart = computed(() => (portalStore.currentPage - 1) * portalStore.pageSize + 1)
+const pageEnd = computed(() =>
+  Math.min(portalStore.currentPage * portalStore.pageSize, portalStore.sortedLinks.length)
 )
+
+const visiblePageRange = computed(() => {
+  const total = portalStore.totalPages
+  const cur = portalStore.currentPage
+  const out = []
+  const push = (page, gap = false) => out.push({ key: gap ? `gap-${page}` : `p-${page}`, page, gap })
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) push(i)
+    return out
+  }
+  push(1)
+  if (cur > 3) push(-1, true)
+  for (let i = Math.max(2, cur - 1); i <= Math.min(total - 1, cur + 1); i++) push(i)
+  if (cur < total - 2) push(-2, true)
+  push(total)
+  return out
+})
 
 onMounted(() => {
   portalStore.fetchLinks()
 })
 
-function isExpired(link) {
-  return new Date(link.expires_at) < new Date()
+function statusLabel(status) {
+  return status === 'active' ? 'פעיל' : status === 'expired' ? 'פג תוקף' : 'מבוטל'
 }
-
-function linkStatusClass(link) {
-  if (!link.is_active) return 'revoked'
-  if (isExpired(link)) return 'expired'
-  return 'active'
-}
-
-function linkStatusLabel(link) {
-  if (!link.is_active) return 'בוטל'
-  if (isExpired(link)) return 'פג תוקף'
-  return 'פעיל'
+function filterLabel(id) {
+  return filterOptions.find(o => o.id === id)?.label || id
 }
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function relativeTime(dateStr) {
+  if (!dateStr) return ''
   const d = new Date(dateStr)
-  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+  const now = new Date()
+  const diffMs = now - d
+  const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDay === 0) {
+    const diffHr = Math.floor(diffMs / (1000 * 60 * 60))
+    if (diffHr === 0) return 'לפני דקות'
+    return `לפני ${diffHr} שעות`
+  }
+  if (diffDay === 1) return 'אתמול'
+  if (diffDay < 7) return `לפני ${diffDay} ימים`
+  return formatDate(dateStr)
 }
 
 async function copyUrl(link) {
   const url = `${window.location.origin}/portal/${link.token}`
   try {
     await navigator.clipboard.writeText(url)
-  } catch {
-    const input = document.createElement('input')
-    input.value = url
-    document.body.appendChild(input)
-    input.select()
-    document.execCommand('copy')
-    document.body.removeChild(input)
-  }
-  copiedToken.value = link.token
-  setTimeout(() => { copiedToken.value = null }, 2000)
+    copiedToken.value = link.token
+    setTimeout(() => { copiedToken.value = null }, 2000)
+  } catch { /* ignore */ }
 }
 
 async function sendEmail(link) {
   try {
     await portalStore.sendEmail(link.token)
-  } catch {
-    // error in store
-  }
+  } catch { /* error stored in store */ }
 }
 
-async function revokeLink(link) {
+async function confirmRevoke(link) {
+  if (!confirm(`לבטל את הקישור של ${link.customer_name}?`)) return
   try {
     await portalStore.revokeLink(link.token)
-  } catch {
-    // error in store
-  }
+  } catch { /* error stored in store */ }
+}
+
+function resetFilters() {
+  portalStore.setSearch('')
+  portalStore.setStatusFilter('all')
 }
 
 function onGenerated() {
-  // Link already added to store by generateLink
+  // Link added by the modal's store call; nothing else needed
 }
 </script>
 
 <style scoped>
-/* Embedded mode */
-.embedded-portal {
-  background: var(--card-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+.portal-tab-root {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #DDDBDA);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  min-height: 480px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
 
-.embedded-header {
+/* ── Toolbar ── */
+.toolbar {
   display: flex;
-  align-items: center;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.embedded-body {
-  padding: 20px 24px;
-}
-
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1010;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.modal-card {
-  background: var(--card-bg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  width: 100%;
-  max-width: 600px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-subtle, #E5E5E5);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.header-title {
+.toolbar-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text);
+  gap: 14px;
+  color: var(--text, #181818);
 }
 
-.header-title svg { color: var(--primary); }
-
-.link-count {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--primary-light);
-  color: var(--primary);
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s;
+.toolbar-title > svg {
+  color: var(--primary, #F57C00);
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.close-btn:hover {
-  background: var(--bg);
-  color: var(--text);
+.toolbar-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 
-/* Body */
-.modal-body {
-  padding: 20px 24px;
-  overflow-y: auto;
+.toolbar-title p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted, #706E6B);
+  font-weight: 500;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-wrap > svg {
+  position: absolute;
+  right: 12px;
+  color: var(--text-muted, #706E6B);
+  pointer-events: none;
+}
+
+.search-wrap input {
+  width: 280px;
+  padding: 10px 36px 10px 36px;
+  border: 1px solid var(--border, #DDDBDA);
+  border-radius: 10px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 14px;
+  color: var(--text, #181818);
+  background: var(--bg-surface, #fff);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-wrap input:focus {
+  outline: none;
+  border-color: var(--primary, #F57C00);
+  box-shadow: 0 0 0 3px var(--primary-glow, rgba(245, 124, 0, 0.1));
+}
+
+.search-wrap input::placeholder {
+  color: var(--text-muted, #706E6B);
+}
+
+.search-clear {
+  position: absolute;
+  left: 10px;
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted, #706E6B);
+  cursor: pointer;
+  display: flex;
+}
+
+.search-clear:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text, #181818);
 }
 
 .btn-generate {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  background: var(--primary);
-  color: white;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--primary, #F57C00);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 14px;
   font-weight: 700;
-  font-family: inherit;
-  transition: all 0.2s var(--transition);
-  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
 
 .btn-generate:hover {
-  background: var(--primary-deep);
+  background: var(--primary-deep, #E65100);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.3);
 }
 
-.loading-state {
+.btn-generate.large {
+  padding: 14px 28px;
+  font-size: 15px;
+  border-radius: 12px;
+}
+
+/* ── Filter pills ── */
+.filter-pills {
   display: flex;
-  align-items: center;
   gap: 8px;
-  padding: 16px 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.mini-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border-subtle);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* Links list */
-.links-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.link-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  transition: all 0.2s var(--transition);
-}
-
-.link-row:hover { border-color: var(--border); }
-
-.link-row.revoked, .link-row.expired { opacity: 0.5; }
-
-.link-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 110px;
-}
-
-.link-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.link-id {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.ltr-number {
-  direction: ltr;
-  unicode-bidi: embed;
-  display: inline-block;
-}
-
-.link-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
-.link-status {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 8px;
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--bg, #F3F3F3);
+  border: 1px solid transparent;
+  border-radius: 100px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #706E6B);
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.link-status.active { background: var(--green-light); color: var(--green); }
-.link-status.revoked { background: var(--red-light); color: var(--red); }
-.link-status.expired { background: var(--amber-light); color: var(--amber); }
+.pill:hover {
+  background: var(--bg-surface, #fff);
+  border-color: var(--border, #DDDBDA);
+}
 
-.link-date, .link-accessed {
+.pill.active {
+  background: var(--primary, #F57C00);
+  border-color: var(--primary, #F57C00);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(245, 124, 0, 0.25);
+}
+
+.pill-count {
+  padding: 1px 8px;
+  border-radius: 100px;
   font-size: 11px;
-  color: var(--text-muted);
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-muted, #706E6B);
 }
 
-.link-actions {
+.pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* ── Table ── */
+.table-wrap {
+  overflow-x: auto;
+}
+
+.links-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: 'Heebo', sans-serif;
+}
+
+.links-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg, #F3F3F3);
+  padding: 11px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted, #706E6B);
+  text-align: start;
+  border-bottom: 1px solid var(--border, #DDDBDA);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.links-table th.sortable {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.links-table th.sortable:hover {
+  color: var(--text, #181818);
+}
+
+.links-table th .sort-arrow {
+  display: inline-flex;
+  margin-inline-start: 6px;
+  opacity: 0.3;
+  vertical-align: middle;
+  transition: all 0.2s;
+}
+
+.links-table th .sort-arrow.active {
+  opacity: 1;
+  color: var(--primary, #F57C00);
+}
+
+.links-table th .sort-arrow.active.asc svg {
+  transform: rotate(180deg);
+}
+
+.links-table th.actions-col {
+  width: 130px;
+  text-align: end;
+}
+
+.links-table tbody tr {
+  transition: background 0.15s;
+}
+
+.links-table tbody tr:hover {
+  background: var(--bg, #F3F3F3);
+}
+
+.links-table tbody tr.inactive {
+  opacity: 0.6;
+}
+
+.links-table td {
+  padding: 14px;
+  font-size: 14px;
+  color: var(--text, #181818);
+  border-bottom: 1px solid var(--border-subtle, #E5E5E5);
+  vertical-align: middle;
+}
+
+.customer-cell .customer-name {
+  font-weight: 700;
+  color: var(--text, #181818);
+  margin-bottom: 3px;
+}
+
+.customer-cell .customer-meta {
   display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #706E6B);
+  direction: ltr;
+  text-align: start;
+}
+
+.customer-cell .customer-meta > span {
+  direction: ltr;
+}
+
+td.muted {
+  font-size: 13px;
+  color: var(--text-muted, #706E6B);
+}
+
+.dim { color: var(--text-muted, #706E6B); opacity: 0.6; }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-badge .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-badge.active {
+  background: rgba(46, 132, 74, 0.12);
+  color: var(--green, #2E844A);
+}
+.status-badge.active .status-dot { background: var(--green, #2E844A); box-shadow: 0 0 0 3px rgba(46, 132, 74, 0.15); }
+
+.status-badge.expired {
+  background: rgba(232, 114, 10, 0.12);
+  color: var(--amber, #E8720A);
+}
+.status-badge.expired .status-dot { background: var(--amber, #E8720A); }
+
+.status-badge.revoked {
+  background: rgba(234, 0, 30, 0.08);
+  color: var(--red, #EA001E);
+}
+.status-badge.revoked .status-dot { background: var(--red, #EA001E); }
+
+/* Actions */
+.actions-cell { text-align: end; }
+
+.row-actions {
+  display: inline-flex;
   gap: 4px;
-  flex-shrink: 0;
+}
+
+.row-actions-empty {
+  color: var(--text-muted, #706E6B);
+  opacity: 0.4;
 }
 
 .action-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  display: flex;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-muted, #706E6B);
   cursor: pointer;
-  transition: all 0.2s var(--transition);
+  transition: all 0.2s;
 }
 
-.action-btn:hover { background: var(--border-subtle); color: var(--text-secondary); }
-.action-btn.email:hover { background: var(--green-light); color: var(--green); }
-.action-btn.revoke:hover { background: var(--red-light); color: var(--red); }
+.action-btn:hover {
+  background: var(--bg, #F3F3F3);
+  border-color: var(--border, #DDDBDA);
+  color: var(--primary, #F57C00);
+}
 
-/* Empty state */
+.action-btn.danger:hover {
+  background: rgba(234, 0, 30, 0.06);
+  border-color: rgba(234, 0, 30, 0.18);
+  color: var(--red, #EA001E);
+}
+
+/* ── Skeleton ── */
+.skeleton {
+  padding: 8px 0;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 130px;
+  gap: 16px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border-subtle, #E5E5E5);
+}
+
+.sk-cell {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg, #F3F3F3) 0%, #EEEEEE 50%, var(--bg, #F3F3F3) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.sk-name { height: 16px; width: 80%; }
+.sk-status { width: 70px; }
+.sk-date { width: 50%; }
+.sk-actions { width: 96px; margin-inline-start: auto; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Empty states ── */
 .empty-state {
   text-align: center;
-  padding: 32px 0 16px;
+  padding: 72px 24px;
+  max-width: 440px;
+  margin: 0 auto;
 }
 
-.empty-state svg {
-  color: var(--text-muted);
-  opacity: 0.25;
-  margin-bottom: 12px;
+.empty-state.compact {
+  padding: 56px 24px;
+}
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--primary-glow, rgba(245, 124, 0, 0.1));
+  color: var(--primary, #F57C00);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.empty-icon.small {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text, #181818);
+  letter-spacing: -0.2px;
 }
 
 .empty-state p {
+  margin: 0 0 20px;
   font-size: 14px;
+  color: var(--text-muted, #706E6B);
+  line-height: 1.6;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--primary, #F57C00);
+  font-family: 'Heebo', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.btn-text:hover {
+  background: var(--primary-glow, rgba(245, 124, 0, 0.1));
+}
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 4px 4px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pg-info {
+  font-size: 13px;
+  color: var(--text-muted, #706E6B);
+}
+
+.pg-info strong {
+  color: var(--text, #181818);
+  font-weight: 700;
+}
+
+.pg-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.pg-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border, #DDDBDA);
+  border-radius: 8px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 4px;
+  color: var(--text, #181818);
+  cursor: pointer;
+  transition: all 0.15s;
 }
 
-.empty-state span {
-  font-size: 12px;
-  color: var(--text-muted);
+.pg-btn:hover:not(:disabled):not(.active):not(.gap) {
+  border-color: var(--primary, #F57C00);
+  color: var(--primary, #F57C00);
 }
 
-/* Transitions */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.25s var(--transition);
+.pg-btn.active {
+  background: var(--primary, #F57C00);
+  border-color: var(--primary, #F57C00);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(245, 124, 0, 0.28);
 }
 
-.modal-enter-active .modal-card,
-.modal-leave-active .modal-card {
-  transition: transform 0.25s var(--transition);
+.pg-btn.gap {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #706E6B);
+  cursor: default;
+  padding: 0;
+  min-width: 20px;
 }
 
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
+.pg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.modal-enter-from .modal-card {
-  transform: translateY(20px) scale(0.97);
-}
-
-.modal-leave-to .modal-card {
-  transform: translateY(10px) scale(0.98);
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar-actions { justify-content: space-between; }
+  .search-wrap input { width: 100%; min-width: 200px; }
 }
 
 @media (max-width: 640px) {
-  .link-row {
-    flex-wrap: wrap;
+  .portal-tab-root { padding: 16px; }
+  .toolbar-title { flex-direction: column; gap: 8px; align-items: flex-start; }
+  .toolbar-actions { flex-direction: column; align-items: stretch; }
+  .btn-generate { justify-content: center; }
+  .links-table thead { display: none; }
+  .links-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    padding: 14px 0;
   }
-  .link-meta {
-    order: 3;
-    width: 100%;
-  }
+  .links-table td { border-bottom: none; padding: 2px 0; }
+  .customer-cell { grid-column: 1 / -1; padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle, #E5E5E5) !important; }
+  .actions-cell { grid-column: 2; grid-row: 2 / 4; align-self: center; }
+  td.muted { font-size: 12px; }
+  .pagination { flex-direction: column-reverse; align-items: center; }
 }
+
+.ltr-number { direction: ltr; unicode-bidi: embed; display: inline-block; }
 </style>

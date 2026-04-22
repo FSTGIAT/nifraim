@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -181,11 +181,16 @@ async def get_customer_info(
     if not prod_upload:
         return {"name": "", "email": ""}
 
+    id_stripped = str(id_number or "").lstrip("0") or "0"
     record_result = await db.execute(
         select(ClientRecord).where(
             ClientRecord.user_id == user.id,
             ClientRecord.upload_id == prod_upload.id,
-            ClientRecord.id_number == id_number,
+            or_(
+                ClientRecord.id_number == id_number,
+                ClientRecord.id_number == id_stripped,
+                func.ltrim(ClientRecord.id_number, "0") == id_stripped,
+            ),
         ).limit(1)
     )
     record = record_result.scalar_one_or_none()

@@ -26,7 +26,7 @@
     </div>
 
     <div class="kpi-card">
-      <div class="kpi-icon" style="background: rgba(127,86,217,0.1); color: var(--accent-violet);">
+      <div class="kpi-icon" style="background: rgba(168, 112, 58, 0.12); color: #A8703A;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
           <polyline points="17 6 23 6 23 12"/>

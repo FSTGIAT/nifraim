@@ -50,7 +50,7 @@ const chartOptions = computed(() => ({
       speed: 600,
     },
   },
-  colors: ['var(--primary, #f57c00)', '#22d3ee'],
+  colors: ['var(--primary, #E8660A)', '#A8703A'],
   fill: {
     type: 'gradient',
     gradient: {

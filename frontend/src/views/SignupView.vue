@@ -1,49 +1,14 @@
 <template>
-  <div class="signup-page">
-    <!-- Floating blur circles -->
-    <div class="float-circle fc-1"></div>
-    <div class="float-circle fc-2"></div>
-    <div class="float-circle fc-3"></div>
-    <div class="float-circle fc-4"></div>
-
-    <!-- Animated waves at bottom -->
-    <div class="wave-bg">
-      <div class="shimmer"></div>
-      <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="swg1" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-            <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
-          </linearGradient>
-        </defs>
-        <path fill="url(#swg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
-      </svg>
-      <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="swg2" x1="100%" y1="0%" x2="0%" y2="0%">
-            <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-            <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-            <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-            <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
-          </linearGradient>
-        </defs>
-        <path fill="url(#swg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
-      </svg>
-      <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="swg3" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
-          </linearGradient>
-        </defs>
-        <path fill="url(#swg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
-      </svg>
+  <div class="signup">
+    <!-- Orange orbs -->
+    <div class="hero-gradient" aria-hidden="true">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
     </div>
 
-    <nav class="auth-nav">
+    <!-- Nav -->
+    <nav class="land-nav nav--light">
       <div class="nav-content">
         <router-link to="/" class="nav-brand">
           <div class="nav-icon">
@@ -55,6 +20,10 @@
           </div>
           <span class="nav-name">Nifraim</span>
         </router-link>
+        <div class="nav-aside">
+          <router-link to="/pricing" class="nav-link-muted">תמחור</router-link>
+          <router-link to="/login" class="nav-link-muted">יש לי חשבון</router-link>
+        </div>
       </div>
     </nav>
 
@@ -67,12 +36,10 @@
         <div class="progress-step" v-for="(s, i) in stepLabels" :key="i" :class="{ active: currentStep >= i, done: currentStep > i }">
           <div class="step-dot-wrap">
             <div class="step-dot">
-              <Transition name="step-check" mode="out-in">
-                <svg v-if="currentStep > i" key="check" class="step-check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <span v-else :key="i" class="ltr-number">{{ i + 1 }}</span>
-              </Transition>
+              <svg v-if="currentStep > i" class="step-check-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span v-else class="ltr-number">{{ i + 1 }}</span>
             </div>
             <div v-if="currentStep >= i" class="step-dot-ring"></div>
           </div>
@@ -86,7 +53,7 @@
         <div v-if="currentStep === 0" key="step0" class="step-card">
           <div class="step-header">
             <div class="step-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
@@ -104,7 +71,7 @@
               </div>
             </div>
             <button type="submit" class="btn-next" :disabled="!isStep1Valid">
-              <span>המשך לבחירת מסלול</span>
+              <span>המשך לאישור המסלול</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
@@ -112,49 +79,48 @@
           </form>
         </div>
 
-        <!-- Step 2: Plan -->
+        <!-- Step 2: Plan confirmation (single tier) -->
         <div v-else-if="currentStep === 1" key="step1" class="step-card">
           <div class="step-header">
             <div class="step-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
             </div>
             <div>
-              <h2>בחירת מסלול</h2>
-              <p class="step-desc">מנוי חודשי עם הוראת קבע</p>
+              <h2>אישור מסלול</h2>
+              <p class="step-desc">מסלול אחד. גישה מלאה.</p>
             </div>
           </div>
-          <div class="plan-options">
-            <div class="plan-option" :class="{ selected: form.plan === 'monthly' }" @click="form.plan = 'monthly'" style="animation-delay: 0ms">
-              <div class="plan-option-radio">
-                <Transition name="radio-pop">
-                  <div class="radio-dot" v-if="form.plan === 'monthly'"></div>
-                </Transition>
-              </div>
-              <div class="plan-option-info">
-                <div class="plan-option-name">חודשי</div>
-                <div class="plan-option-price"><span class="ltr-number">&#8362;295</span> / חודש</div>
-                <div class="plan-option-recur">הוראת קבע — חיוב אוטומטי מדי חודש</div>
-              </div>
-            </div>
-            <div class="plan-option" :class="{ selected: form.plan === 'yearly' }" @click="form.plan = 'yearly'" style="animation-delay: 100ms">
-              <div class="plan-option-radio">
-                <Transition name="radio-pop">
-                  <div class="radio-dot" v-if="form.plan === 'yearly'"></div>
-                </Transition>
-              </div>
-              <div class="plan-option-info">
-                <div class="plan-option-name">
-                  שנתי
-                  <span class="plan-option-badge">חודש חינם!</span>
+
+          <div class="plan-summary">
+            <div class="plan-summary-head">
+              <div class="ps-name">Nifraim</div>
+              <div class="ps-price">
+                <span class="ps-amount ltr-number">{{ monthlyPrice }}</span>
+                <div class="ps-unit">
+                  <span class="ps-currency">₪</span>
+                  <span class="ps-period">לחודש</span>
                 </div>
-                <div class="plan-option-price"><span class="ltr-number">&#8362;3,245</span> / שנה</div>
-                <div class="plan-option-recur">הוראת קבע — חיוב אוטומטי מדי שנה</div>
               </div>
-              <div class="plan-popular">מומלץ</div>
+              <div class="ps-vat">כולל מע״מ · חיוב חודשי אוטומטי</div>
             </div>
+            <ul class="ps-bullets">
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                פורטל לקוחות ללא הגבלה
+              </li>
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                עוזר AI אישי
+              </li>
+              <li>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                תמיכה מלאה
+              </li>
+            </ul>
           </div>
+
           <div class="step-actions">
             <button class="btn-back" @click="goBack(0)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -162,7 +128,7 @@
               </svg>
               חזרה
             </button>
-            <button class="btn-next" @click="goToStep(2)">
+            <button class="btn-next btn-next--inline" @click="goToStep(2)">
               <span>המשך לתשלום</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 18 9 12 15 6"/>
@@ -175,7 +141,7 @@
         <div v-else-if="currentStep === 2" key="step2" class="step-card">
           <div class="step-header">
             <div class="step-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
                 <line x1="1" y1="10" x2="23" y2="10"/>
               </svg>
@@ -192,9 +158,9 @@
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
             <span>
-              חיוב אוטומטי {{ form.plan === 'monthly' ? 'חודשי' : 'שנתי' }} —
-              <strong class="ltr-number">&#8362;{{ form.plan === 'monthly' ? '295' : '3,245' }}</strong>
-              {{ form.plan === 'monthly' ? 'בחודש' : 'בשנה' }}
+              חיוב אוטומטי חודשי —
+              <strong class="ltr-number">₪{{ monthlyPrice }}</strong>
+              בחודש
             </span>
           </div>
 
@@ -231,7 +197,7 @@
         <div v-else-if="currentStep === 3" key="step3" class="step-card success-card">
           <div class="success-icon">
             <div class="success-circle">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
             </div>
@@ -243,11 +209,11 @@
           <div class="success-details">
             <div class="success-detail-row">
               <span class="detail-label">מסלול:</span>
-              <span class="detail-value">{{ form.plan === 'monthly' ? 'חודשי' : 'שנתי' }}</span>
+              <span class="detail-value ltr-number">Nifraim · ₪{{ monthlyPrice }} בחודש</span>
             </div>
             <div class="success-detail-row">
               <span class="detail-label">חיוב הבא:</span>
-              <span class="detail-value">{{ form.plan === 'monthly' ? 'בעוד 30 יום' : 'בעוד שנה' }}</span>
+              <span class="detail-value">בעוד 30 יום</span>
             </div>
             <div class="success-detail-row">
               <span class="detail-label">סוג מנוי:</span>
@@ -274,6 +240,7 @@ import api from '../api/client.js'
 
 const route = useRoute()
 
+const monthlyPrice = 220
 const stepLabels = ['פרטים', 'מסלול', 'תשלום', 'סיום']
 const currentStep = ref(0)
 const stepDirection = ref('step-forward')
@@ -294,7 +261,7 @@ const form = ref({
   email: '',
   phone: '',
   companyName: '',
-  plan: 'yearly',
+  plan: 'monthly',
 })
 
 const isStep1Valid = computed(() => {
@@ -302,11 +269,10 @@ const isStep1Valid = computed(() => {
 })
 
 onMounted(() => {
-  if (route.query.plan === 'monthly' || route.query.plan === 'yearly') {
-    form.value.plan = route.query.plan
-  }
   if (route.query.step === 'success') {
     currentStep.value = 3
+  } else if (typeof route.query.step === 'string' && /^[0-3]$/.test(route.query.step)) {
+    currentStep.value = Number(route.query.step)
   }
 })
 
@@ -330,7 +296,7 @@ async function processPayment() {
       full_name: form.value.fullName,
       phone: form.value.phone,
       company_name: form.value.companyName || null,
-      plan: form.value.plan,
+      plan: 'monthly',
     })
     paymentUrl.value = res.data.payment_url
     loading.value = false
@@ -342,182 +308,146 @@ async function processPayment() {
 </script>
 
 <style scoped>
-.signup-page {
+/* ── Theme tokens (mirrors LandingView / PricingView) ── */
+.signup {
+  --land-orange: #E8660A;
+  --land-orange-bright: #F57C00;
+  --land-orange-deep: #C85A00;
+  --land-orange-glow: rgba(232, 102, 10, 0.1);
+  --cream-bg: #F5F0EB;
+  --cream-surface: #EDE8E1;
+  --cream-surface-3: #F9F6F2;
+  --cream-text: #2D2522;
+  --cream-text-muted: rgba(45, 37, 34, 0.6);
+  --cream-text-dim: rgba(45, 37, 34, 0.35);
+  --dark-section: #2D2522;
+  --transition-fast: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
   min-height: 100vh;
-  background: linear-gradient(145deg, #3a3a3a 0%, #4a4a4a 40%, #525252 100%);
-  color: #F5F5F5;
+  background: var(--cream-bg);
+  color: var(--cream-text);
   font-family: 'Heebo', sans-serif;
+  direction: rtl;
   position: relative;
   overflow: hidden;
 }
 
-/* ─── Floating blur circles ─── */
-.float-circle {
+.signup a { color: inherit; text-decoration: none; }
+
+/* ── Orange orbs ── */
+.hero-gradient {
   position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-gradient .orb {
+  position: absolute;
   border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
+  filter: blur(120px);
+  animation: orbFloat 9s ease-in-out infinite;
 }
 
-.fc-1 {
-  width: 260px;
-  height: 260px;
-  top: 5%;
-  right: -80px;
-  background: rgba(245, 124, 0, 0.06);
-  border: 1px solid rgba(245, 124, 0, 0.08);
-  animation: floatBob 8s ease-in-out infinite;
+.hero-gradient .orb-1 {
+  width: 720px;
+  height: 720px;
+  background: rgba(232, 102, 10, 0.28);
+  top: -18%;
+  left: -10%;
 }
 
-.fc-2 {
-  width: 180px;
-  height: 180px;
-  bottom: 30%;
-  left: -50px;
-  background: rgba(245, 124, 0, 0.045);
-  border: 1px solid rgba(245, 124, 0, 0.06);
-  animation: floatBob 6.5s ease-in-out infinite reverse;
+.hero-gradient .orb-2 {
+  width: 520px;
+  height: 520px;
+  background: rgba(232, 102, 10, 0.22);
+  bottom: 2%;
+  right: -6%;
+  animation-duration: 11s;
 }
 
-.fc-3 {
-  width: 100px;
-  height: 100px;
-  top: 35%;
-  left: 10%;
-  background: rgba(245, 124, 0, 0.06);
-  animation: floatBob 10s ease-in-out infinite 2s;
+.hero-gradient .orb-3 {
+  width: 460px;
+  height: 460px;
+  background: rgba(245, 124, 0, 0.2);
+  top: 38%;
+  left: 42%;
+  animation-duration: 10s;
+  animation-delay: -2s;
 }
 
-.fc-4 {
-  width: 140px;
-  height: 140px;
-  top: 60%;
-  right: 8%;
-  background: rgba(245, 124, 0, 0.04);
-  border: 1px solid rgba(245, 124, 0, 0.05);
-  animation: floatBob 9s ease-in-out infinite 1s;
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(30px, -24px); }
 }
 
-@keyframes floatBob {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  33% { transform: translateY(-16px) rotate(2deg); }
-  66% { transform: translateY(8px) rotate(-1deg); }
-}
-
-/* ─── Waves fixed to bottom ─── */
-.wave-bg {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 200px;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.shimmer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 100%;
-  z-index: 1;
-  overflow: hidden;
-  mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 30%, rgba(0,0,0,0.3) 60%, transparent 100%);
-}
-
-.shimmer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -80%;
-  width: 50%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 200, 100, 0.08) 35%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 200, 100, 0.08) 65%,
-    transparent 100%
-  );
-  animation: shimmerSweep 7s ease-in-out infinite;
-}
-
-@keyframes shimmerSweep {
-  0%   { left: -80%; }
-  100% { left: 180%; }
-}
-
-.wave {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 200%;
-  height: 100%;
-}
-
-.wave-1 { animation: waveSlide 14s linear infinite; }
-.wave-2 { animation: waveSlide 18s linear infinite reverse; }
-.wave-3 { animation: waveSlide 22s linear infinite; }
-
-@keyframes waveSlide {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-/* Nav */
-.auth-nav {
+/* ── Nav (mirrors PricingView nav--light) ── */
+.land-nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(58, 58, 58, 0.7);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(245, 240, 235, 0.9);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(45, 37, 34, 0.06);
 }
 
 .nav-content {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  text-decoration: none;
+  gap: 12px;
 }
 
 .nav-icon {
-  width: 36px;
-  height: 36px;
-  background: #F57C00;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  background: var(--cream-text);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1a1a1a;
+  color: var(--cream-bg);
 }
 
 .nav-name {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
-  color: #F5F5F5;
+  color: var(--cream-text);
 }
 
-/* Content */
+.nav-aside {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.nav-link-muted {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cream-text-muted);
+  transition: color 0.2s;
+}
+
+.nav-link-muted:hover {
+  color: var(--land-orange);
+}
+
+/* ── Content container ── */
 .signup-content {
   max-width: 560px;
   margin: 0 auto;
-  padding: 100px 24px 60px;
+  padding: 120px 24px 80px;
   position: relative;
   z-index: 1;
 }
@@ -536,17 +466,17 @@ async function processPayment() {
   left: 40px;
   right: 40px;
   height: 3px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(45, 37, 34, 0.1);
   border-radius: 3px;
   z-index: 0;
 }
 
 .progress-line-fill {
   height: 100%;
-  background: linear-gradient(90deg, #F57C00, #FF9800);
+  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 0 12px rgba(245, 124, 0, 0.4);
+  box-shadow: 0 0 12px rgba(232, 102, 10, 0.35);
 }
 
 .progress-step {
@@ -569,94 +499,106 @@ async function processPayment() {
 }
 
 .step-dot {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid rgba(232, 102, 10, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.35);
+  font-size: 18px;
+  font-weight: 900;
+  color: rgba(232, 102, 10, 0.55);
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   z-index: 2;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.5px;
 }
 
 .step-dot-ring {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(245, 124, 0, 0.3);
+  border: 2px solid rgba(232, 102, 10, 0.35);
   animation: ringPulse 2s ease-in-out infinite;
   z-index: 1;
 }
 
 @keyframes ringPulse {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50% { transform: scale(1.15); opacity: 0; }
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50%      { transform: scale(1.15); opacity: 0; }
 }
 
 .progress-step.active .step-dot {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--land-orange);
   border-color: transparent;
-  color: #1a1a1a;
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.4);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  box-shadow: 0 4px 16px rgba(232, 102, 10, 0.4);
   transform: scale(1.05);
 }
 
 .progress-step.done .step-dot {
-  background: linear-gradient(135deg, #43A047, #66BB6A);
+  background: var(--land-orange);
   border-color: transparent;
-  color: white;
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(232, 102, 10, 0.3);
+}
+
+.progress-step.done .step-check-icon {
+  color: #fff;
+  stroke: #fff;
+  filter: drop-shadow(0 1px 1.5px rgba(69, 26, 0, 0.3));
 }
 
 .progress-step.done .step-dot-ring {
-  border-color: rgba(76, 175, 80, 0.3);
+  border-color: rgba(232, 102, 10, 0.25);
 }
 
-.progress-step span {
+.progress-step > span {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(45, 37, 34, 0.45);
   font-weight: 500;
   transition: all 0.4s;
 }
 
-.progress-step.active span {
-  color: #FF9800;
+.progress-step.active > span {
+  color: var(--land-orange);
   font-weight: 700;
 }
 
-.progress-step.done span {
-  color: #66BB6A;
+.progress-step.done > span {
+  color: var(--land-orange-deep);
   font-weight: 600;
 }
 
-/* Step check icon */
 .step-check-icon {
   display: block;
   flex-shrink: 0;
 }
 
-/* Step check transition */
 .step-check-enter-active { animation: checkPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .step-check-leave-active { animation: checkPop 0.2s reverse; }
 @keyframes checkPop {
   from { transform: scale(0) rotate(-45deg); opacity: 0; }
-  to { transform: scale(1) rotate(0); opacity: 1; }
+  to   { transform: scale(1) rotate(0); opacity: 1; }
 }
 
 /* ── Step Card ── */
 .step-card {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  border: 1px solid rgba(45, 37, 34, 0.08);
+  border-radius: 24px;
   padding: 40px 36px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 40px 80px -20px rgba(45, 37, 34, 0.15),
+    0 0 0 1px rgba(232, 102, 10, 0.05);
+  position: relative;
 }
 
 .step-header {
@@ -667,67 +609,42 @@ async function processPayment() {
 }
 
 .step-icon {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.15), rgba(255, 152, 0, 0.08));
-  border: 1px solid rgba(245, 124, 0, 0.2);
+  background: var(--land-orange);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #FF9800;
   flex-shrink: 0;
-  animation: iconBreathe 3s ease-in-out infinite;
-}
-
-@keyframes iconBreathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0); }
-  50% { box-shadow: 0 0 20px 4px rgba(245, 124, 0, 0.1); }
+  box-shadow: 0 8px 20px rgba(232, 102, 10, 0.25);
 }
 
 .step-card h2 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
-  margin-bottom: 4px;
-  color: #F5F5F5;
+  margin: 0 0 4px;
+  color: var(--cream-text);
+  letter-spacing: -0.3px;
 }
 
 .step-desc {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 15px;
-  margin-bottom: 0;
+  color: var(--cream-text-muted);
+  font-size: 14px;
+  margin: 0;
 }
 
-/* ── Step Transitions ── */
-.step-forward-enter-active {
-  animation: stepSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.step-forward-leave-active {
-  animation: stepSlideOut 0.3s cubic-bezier(0.7, 0, 0.84, 0);
-}
-.step-back-enter-active {
-  animation: stepSlideInBack 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.step-back-leave-active {
-  animation: stepSlideOutBack 0.3s cubic-bezier(0.7, 0, 0.84, 0);
-}
+/* ── Step transitions ── */
+.step-forward-enter-active { animation: stepSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+.step-forward-leave-active { animation: stepSlideOut 0.3s cubic-bezier(0.7, 0, 0.84, 0); }
+.step-back-enter-active    { animation: stepSlideInBack 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+.step-back-leave-active    { animation: stepSlideOutBack 0.3s cubic-bezier(0.7, 0, 0.84, 0); }
 
-@keyframes stepSlideIn {
-  from { opacity: 0; transform: translateX(-40px) scale(0.97); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
-}
-@keyframes stepSlideOut {
-  from { opacity: 1; transform: translateX(0) scale(1); }
-  to { opacity: 0; transform: translateX(40px) scale(0.97); }
-}
-@keyframes stepSlideInBack {
-  from { opacity: 0; transform: translateX(40px) scale(0.97); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
-}
-@keyframes stepSlideOutBack {
-  from { opacity: 1; transform: translateX(0) scale(1); }
-  to { opacity: 0; transform: translateX(-40px) scale(0.97); }
-}
+@keyframes stepSlideIn     { from { opacity: 0; transform: translateX(-30px) scale(0.97); } to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes stepSlideOut    { from { opacity: 1; transform: translateX(0) scale(1); }          to { opacity: 0; transform: translateX(30px) scale(0.97); } }
+@keyframes stepSlideInBack { from { opacity: 0; transform: translateX(30px) scale(0.97); }    to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes stepSlideOutBack{ from { opacity: 1; transform: translateX(0) scale(1); }          to { opacity: 0; transform: translateX(-30px) scale(0.97); } }
 
 /* ── Form ── */
 .signup-form {
@@ -744,14 +661,14 @@ async function processPayment() {
 }
 
 @keyframes fieldFadeIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .form-group label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--cream-text-muted);
 }
 
 .input-wrap {
@@ -761,24 +678,24 @@ async function processPayment() {
 .form-group input {
   width: 100%;
   padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(45, 37, 34, 0.12);
   border-radius: 12px;
   font-size: 15px;
   font-family: 'Heebo', sans-serif;
-  color: #F5F5F5;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--cream-text);
+  background: var(--cream-surface-3);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.form-group input:focus {
-  border-color: #F57C00;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.15), 0 4px 16px rgba(245, 124, 0, 0.1);
-  outline: none;
-  background: rgba(255, 255, 255, 0.08);
+.form-group input::placeholder {
+  color: rgba(45, 37, 34, 0.3);
 }
 
-.form-group input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+.form-group input:focus {
+  border-color: var(--land-orange);
+  box-shadow: 0 0 0 3px rgba(232, 102, 10, 0.15);
+  outline: none;
+  background: #fff;
 }
 
 /* ── Buttons ── */
@@ -788,9 +705,9 @@ async function processPayment() {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 15px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
-  color: #1a1a1a;
+  padding: 16px;
+  background: var(--land-orange);
+  color: #fff;
   border: none;
   border-radius: 14px;
   font-size: 16px;
@@ -800,26 +717,13 @@ async function processPayment() {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: center;
   text-decoration: none;
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-next::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
-  opacity: 0;
-  transition: opacity 0.3s;
+  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
 }
 
 .btn-next:hover:not(:disabled) {
+  background: var(--land-orange-deep);
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(245, 124, 0, 0.35);
-}
-
-.btn-next:hover:not(:disabled)::before {
-  opacity: 1;
+  box-shadow: 0 8px 28px rgba(232, 102, 10, 0.3);
 }
 
 .btn-next:active:not(:disabled) {
@@ -827,145 +731,144 @@ async function processPayment() {
 }
 
 .btn-next:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
+}
+
+.btn-next--inline {
+  width: auto;
+  padding: 14px 28px;
 }
 
 .btn-back {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 12px 22px;
+  border: 1px solid rgba(45, 37, 34, 0.15);
   border-radius: 12px;
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--cream-text-muted);
+  background: transparent;
   font-family: 'Heebo', sans-serif;
   cursor: pointer;
   transition: all 0.3s;
 }
 
 .btn-back:hover {
-  border-color: #F57C00;
-  color: #F57C00;
-  background: rgba(245, 124, 0, 0.06);
+  border-color: var(--land-orange);
+  color: var(--land-orange);
+  background: rgba(232, 102, 10, 0.06);
 }
 
 .step-actions {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   margin-top: 28px;
+  align-items: center;
 }
 
-/* ── Plans ── */
-.plan-options {
+/* ── Plan summary card ── */
+.plan-summary {
+  border: 1px solid rgba(232, 102, 10, 0.2);
+  border-radius: 18px;
+  padding: 28px;
+  background: linear-gradient(135deg, rgba(232, 102, 10, 0.06), rgba(255, 255, 255, 0.6));
+  position: relative;
+  overflow: hidden;
+}
+
+.plan-summary::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -30%;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, rgba(232, 102, 10, 0.18), transparent 60%);
+  pointer-events: none;
+}
+
+.plan-summary-head {
+  position: relative;
+}
+
+.ps-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--cream-text);
+  letter-spacing: -0.2px;
+}
+
+.ps-price {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.ps-amount {
+  font-size: clamp(60px, 8vw, 88px);
+  font-weight: 900;
+  line-height: 0.95;
+  color: var(--cream-text);
+  letter-spacing: -2px;
+  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-orange) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ps-unit {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 8px;
+  gap: 2px;
+  padding-bottom: 10px;
 }
 
-.plan-option {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 22px;
-  border: 2px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  animation: fieldFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.plan-option:hover {
-  border-color: rgba(245, 124, 0, 0.4);
-  background: rgba(245, 124, 0, 0.04);
-  transform: translateY(-1px);
-}
-
-.plan-option.selected {
-  border-color: #F57C00;
-  background: rgba(245, 124, 0, 0.08);
-  box-shadow: 0 4px 20px rgba(245, 124, 0, 0.15);
-}
-
-.plan-popular {
-  position: absolute;
-  top: -10px;
-  left: 16px;
-  padding: 2px 12px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
-  color: #1a1a1a;
-  font-size: 11px;
+.ps-currency {
+  font-size: 1.4rem;
   font-weight: 800;
-  border-radius: 100px;
-  letter-spacing: 0.5px;
+  color: var(--cream-text);
+  line-height: 1;
 }
 
-.plan-option-radio {
-  width: 24px;
-  height: 24px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
+.ps-period {
+  font-size: 0.9rem;
+  color: var(--cream-text-muted);
+}
+
+.ps-vat {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--cream-text-dim);
+}
+
+.ps-bullets {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px solid rgba(45, 37, 34, 0.08);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.3s;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
 }
 
-.plan-option.selected .plan-option-radio {
-  border-color: #F57C00;
-}
-
-.radio-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #F57C00;
-}
-
-.radio-pop-enter-active { animation: radioPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.radio-pop-leave-active { animation: radioPop 0.15s reverse; }
-@keyframes radioPop {
-  from { transform: scale(0); }
-  to { transform: scale(1); }
-}
-
-.plan-option-name {
-  font-weight: 700;
-  font-size: 17px;
+.ps-bullets li {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #F5F5F5;
+  font-size: 0.92rem;
+  color: var(--cream-text);
+  font-weight: 500;
 }
 
-.plan-option-badge {
-  padding: 3px 10px;
-  background: rgba(76, 175, 80, 0.15);
-  color: #66BB6A;
-  border-radius: 100px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.plan-option-price {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 2px;
-}
-
-.plan-option-recur {
-  font-size: 12px;
-  color: rgba(255, 152, 0, 0.7);
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.ps-bullets svg {
+  color: var(--land-orange);
+  flex-shrink: 0;
 }
 
 /* ── Recurring notice ── */
@@ -974,74 +877,32 @@ async function processPayment() {
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  background: rgba(245, 124, 0, 0.08);
-  border: 1px solid rgba(245, 124, 0, 0.15);
+  background: rgba(232, 102, 10, 0.06);
+  border: 1px solid rgba(232, 102, 10, 0.18);
   border-radius: 12px;
   margin-bottom: 20px;
-  color: #FFB74D;
-  font-size: 14px;
+  color: var(--land-orange-deep);
+  font-size: 13px;
+  font-weight: 500;
   animation: fieldFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .recurring-notice svg {
   flex-shrink: 0;
-  color: #FF9800;
+  color: var(--land-orange);
 }
 
-/* ── Payment ── */
-.payment-methods {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.payment-method {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  font-family: 'Heebo', sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: #F5F5F5;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  animation: fieldFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.payment-method:hover:not(.disabled):not(:disabled) {
-  border-color: #F57C00;
-  background: rgba(245, 124, 0, 0.06);
-  transform: translateY(-1px);
-}
-
-.payment-method.active {
-  border-color: #F57C00;
-  background: rgba(245, 124, 0, 0.08);
-}
-
-.payment-method.disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.coming-soon {
-  margin-right: auto;
-  margin-left: 0;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.35);
-  font-weight: 500;
+.recurring-notice strong {
+  font-weight: 800;
+  color: var(--cream-text);
 }
 
 /* ── Cardcom iframe ── */
 .cardcom-iframe-wrap {
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(45, 37, 34, 0.1);
+  background: #fff;
   margin-bottom: 16px;
 }
 
@@ -1060,27 +921,26 @@ async function processPayment() {
   margin-top: 20px;
   cursor: pointer;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--cream-text-muted);
   user-select: none;
 }
 
-.terms-checkbox input {
-  display: none;
-}
+.terms-checkbox input { display: none; }
 
 .checkmark {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(45, 37, 34, 0.2);
   border-radius: 6px;
   flex-shrink: 0;
   transition: all 0.3s;
   position: relative;
+  background: #fff;
 }
 
 .terms-checkbox input:checked + .checkmark {
-  background: #F57C00;
-  border-color: #F57C00;
+  background: var(--land-orange);
+  border-color: var(--land-orange);
 }
 
 .terms-checkbox input:checked + .checkmark::after {
@@ -1090,7 +950,7 @@ async function processPayment() {
   top: 2px;
   width: 5px;
   height: 10px;
-  border: solid #1a1a1a;
+  border: solid #fff;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -1098,8 +958,8 @@ async function processPayment() {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  border-top-color: #F57C00;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   margin-right: auto;
@@ -1107,12 +967,12 @@ async function processPayment() {
 }
 
 .error-msg {
-  color: #ef5350;
+  color: #c23934;
   font-size: 14px;
   margin-top: 12px;
   padding: 12px 16px;
-  background: rgba(239, 83, 80, 0.08);
-  border: 1px solid rgba(239, 83, 80, 0.2);
+  background: rgba(234, 0, 30, 0.06);
+  border: 1px solid rgba(234, 0, 30, 0.18);
   border-radius: 10px;
 }
 
@@ -1122,38 +982,43 @@ async function processPayment() {
 }
 
 .success-card .step-desc {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .success-icon {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .success-circle {
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
-  background: rgba(76, 175, 80, 0.1);
-  border: 2px solid rgba(76, 175, 80, 0.2);
+  background: linear-gradient(135deg, var(--land-orange), var(--land-orange-bright));
+  color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 12px 32px rgba(232, 102, 10, 0.3);
   animation: successPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @keyframes successPop {
-  0% { transform: scale(0) rotate(-45deg); opacity: 0; }
-  60% { transform: scale(1.1) rotate(5deg); }
+  0%   { transform: scale(0) rotate(-45deg); opacity: 0; }
+  60%  { transform: scale(1.1) rotate(5deg); }
   100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.success-card h2 {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
 }
 
 .success-details {
   margin: 24px auto 28px;
-  max-width: 320px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-width: 360px;
+  background: var(--cream-surface-3);
+  border: 1px solid rgba(45, 37, 34, 0.08);
   border-radius: 14px;
-  padding: 18px 22px;
+  padding: 16px 22px;
   text-align: right;
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
 }
@@ -1162,7 +1027,7 @@ async function processPayment() {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(45, 37, 34, 0.06);
 }
 
 .success-detail-row:last-child {
@@ -1171,17 +1036,13 @@ async function processPayment() {
 
 .detail-label {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--cream-text-muted);
 }
 
 .detail-value {
   font-size: 13px;
-  font-weight: 600;
-  color: #FFB74D;
-}
-
-.success-card h2 {
-  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+  font-weight: 700;
+  color: var(--cream-text);
 }
 
 .success-card .btn-next {
@@ -1190,13 +1051,11 @@ async function processPayment() {
 }
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .ltr-number {
   direction: ltr;
@@ -1205,15 +1064,19 @@ async function processPayment() {
 }
 
 /* ── Responsive ── */
+@media (max-width: 768px) {
+  .nav-aside { gap: 14px; }
+  .nav-link-muted { font-size: 13px; }
+  .signup-content { padding: 110px 20px 60px; }
+}
+
 @media (max-width: 480px) {
   .step-card {
-    padding: 28px 20px;
-    border-radius: 16px;
+    padding: 28px 22px;
+    border-radius: 18px;
   }
 
-  .step-card h2 {
-    font-size: 22px;
-  }
+  .step-card h2 { font-size: 21px; }
 
   .step-dot {
     width: 38px;
@@ -1227,8 +1090,9 @@ async function processPayment() {
   }
 
   .step-header {
-    flex-direction: column;
-    text-align: center;
+    flex-direction: row;
+    text-align: start;
+    gap: 12px;
   }
 
   .progress-bar {
@@ -1236,8 +1100,23 @@ async function processPayment() {
   }
 
   .recurring-notice {
-    font-size: 13px;
+    font-size: 12.5px;
     padding: 12px 14px;
+  }
+
+  .step-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .btn-next--inline,
+  .btn-back {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .plan-summary {
+    padding: 22px;
   }
 }
 </style>

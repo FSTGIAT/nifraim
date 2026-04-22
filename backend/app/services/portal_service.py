@@ -3,7 +3,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.portal_link import CustomerPortalLink
@@ -116,12 +116,18 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
     if not prod_upload:
         return None
 
-    # Get customer records
+    # Get customer records — match by exact OR by leading-zero-stripped ID.
+    # Production may store "58661554" while portal link has "058661554" (or vice versa).
+    id_stripped = str(id_number or "").lstrip("0") or "0"
     records_result = await db.execute(
         select(ClientRecord).where(
             ClientRecord.user_id == user_id,
             ClientRecord.upload_id == prod_upload.id,
-            ClientRecord.id_number == id_number,
+            or_(
+                ClientRecord.id_number == id_number,
+                ClientRecord.id_number == id_stripped,
+                func.ltrim(ClientRecord.id_number, "0") == id_stripped,
+            ),
         )
     )
     records = list(records_result.scalars().all())
