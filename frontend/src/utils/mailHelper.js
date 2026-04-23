@@ -2,13 +2,17 @@
  * Opens an email compose window using the user's preferred email provider.
  * Provider is stored in localStorage under 'emailProvider'.
  *
- * Returns 'clipboard' if body was too long and was copied to clipboard instead,
- * or 'ok' if opened normally.
+ * Return values:
+ *   - 'ok'        — compose opened with full body
+ *   - 'clipboard' — body was too long; compose opened without body and body
+ *                    was copied to the clipboard (default fallback)
+ *   - 'too_long'  — body was too long and skipIfTooLong=true was passed;
+ *                    caller should handle (e.g. show an in-app preview)
  *
- * @param {{ to?: string, subject?: string, body?: string }} options
- * @returns {Promise<'ok'|'clipboard'>}
+ * @param {{ to?: string, subject?: string, body?: string, skipIfTooLong?: boolean }} options
+ * @returns {Promise<'ok'|'clipboard'|'too_long'>}
  */
-export async function openMailCompose({ to = '', subject = '', body = '' }) {
+export async function openMailCompose({ to = '', subject = '', body = '', skipIfTooLong = false }) {
   const provider = localStorage.getItem('emailProvider') || 'mailto'
 
   let url
@@ -40,7 +44,12 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
   // ~2000-char OS limit.
   const maxLen = provider === 'mailto' ? 1800 : 1900
 
-  // If URL is too long, open compose without body and copy body to clipboard
+  // If URL is too long, bail out if caller wants to handle the long case itself.
+  if (url.length > maxLen && skipIfTooLong) {
+    return 'too_long'
+  }
+
+  // Otherwise open compose without body and copy body to clipboard.
   if (url.length > maxLen) {
     let shortUrl
     if (provider === 'gmail') {

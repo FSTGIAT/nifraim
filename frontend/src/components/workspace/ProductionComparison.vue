@@ -799,6 +799,38 @@
         <span>הדבק בגוף ההודעה עם Ctrl+V</span>
       </div>
     </Transition>
+
+    <!-- Mail preview modal: shown when body is too long for a compose URL -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="mailPreview.open" class="fm-overlay" @click.self="mailPreview.open = false">
+          <div class="fm-card mail-preview-card">
+            <div class="fm-header">
+              <div class="fm-header-info">
+                <span class="fm-title">{{ mailPreview.subject }}</span>
+                <span class="fm-count">אל: {{ mailPreview.to || '—' }}</span>
+              </div>
+              <button class="fm-close" @click="mailPreview.open = false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="mail-preview-info">
+              הרשימה ארוכה מדי מכדי לפתוח דואר ישירות. העתק את התוכן ופתח את הדואר — התוכן יישאר בלוח.
+            </div>
+            <textarea class="mail-preview-body" readonly :value="mailPreview.body" ref="mailPreviewBody"></textarea>
+            <div class="mail-preview-actions">
+              <button class="mp-btn mp-copy" @click="copyMailPreview">
+                <span v-if="mailPreview.copied">✓ הועתק</span>
+                <span v-else>העתק תוכן</span>
+              </button>
+              <button class="mp-btn mp-open" @click="openMailPreviewCompose">פתח דואר</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1450,11 +1482,42 @@ async function sendFilteredMail() {
   const subject = `${catLabel} (${clients.length}) — ${companyName}`
   const body = `שלום רב,\n\nלהלן רשימת לקוחות — ${catLabel}:\n\n${lines}\n\nבברכה`
 
-  const status = await openMailCompose({ to: companyEmail, subject, body })
-  if (status === 'clipboard') {
-    clipboardNotice.value = true
-    setTimeout(() => { clipboardNotice.value = false }, 8000)
+  // Try direct compose first. openMailCompose returns 'clipboard' if the URL
+  // would have been too long — in that case show an in-app preview so the user
+  // can see the body, copy it, and open compose themselves.
+  const status = await openMailCompose({ to: companyEmail, subject, body, skipIfTooLong: true })
+  if (status === 'too_long') {
+    mailPreview.to = companyEmail
+    mailPreview.subject = subject
+    mailPreview.body = body
+    mailPreview.copied = false
+    mailPreview.open = true
   }
+}
+
+const mailPreview = reactive({
+  open: false,
+  to: '',
+  subject: '',
+  body: '',
+  copied: false,
+})
+const mailPreviewBody = ref(null)
+
+async function copyMailPreview() {
+  try {
+    await navigator.clipboard.writeText(mailPreview.body)
+  } catch {
+    mailPreviewBody.value?.select()
+    document.execCommand('copy')
+  }
+  mailPreview.copied = true
+  setTimeout(() => { mailPreview.copied = false }, 2000)
+}
+
+async function openMailPreviewCompose() {
+  // Open compose without body (body is in the textarea/clipboard).
+  await openMailCompose({ to: mailPreview.to, subject: mailPreview.subject, body: '' })
 }
 
 function downloadFilteredExcel() {
@@ -2776,6 +2839,65 @@ function formatVal(val) {
 }
 .clipboard-toast strong { font-size: 15px; }
 .clipboard-toast span { font-size: 12px; color: #cbd5e1; }
+
+.mail-preview-card {
+  max-width: 720px;
+  width: 92vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+}
+.mail-preview-info {
+  padding: 12px 20px;
+  background: #fff7ed;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: #9a3412;
+  line-height: 1.6;
+}
+.mail-preview-body {
+  flex: 1;
+  margin: 16px 20px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: 'Heebo', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  direction: rtl;
+  resize: none;
+  background: #f8fafc;
+  color: var(--text);
+  min-height: 240px;
+}
+.mail-preview-actions {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+}
+.mp-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+.mp-copy {
+  background: var(--border-subtle);
+  color: var(--text);
+  border-color: var(--border);
+}
+.mp-copy:hover { background: var(--border); }
+.mp-open {
+  background: var(--primary);
+  color: #fff;
+}
+.mp-open:hover { background: var(--primary-deep); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
