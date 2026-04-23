@@ -99,7 +99,7 @@
     </div>
 
     <!-- Row 3: Top Clients (full width) -->
-    <div class="chart-card" v-if="topClientsData.length">
+    <div class="chart-card" v-if="hasTopClientsData">
       <div class="chart-header">
         <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
         <div class="chart-actions">
@@ -108,11 +108,15 @@
         </div>
       </div>
       <apexchart
+        v-if="topClientsData.length"
         type="bar"
         :height="320"
         :options="topClientsChartOptions"
         :series="topClientsChartSeries"
       />
+      <div v-else class="chart-empty">
+        אין נתוני {{ topMetric === 'premium' ? 'פרמיה' : 'צבירה' }} להצגה
+      </div>
     </div>
     <!-- KPI Drill-down Modal -->
     <Teleport to="body">
@@ -380,6 +384,13 @@ const topClientsData = computed(() =>
     : props.analytics.top_clients_accumulation.filter(c => c.accumulation > 0)
 )
 
+// Card stays visible if EITHER metric has data, so the toggle doesn't disappear
+// when the user switches to a metric the uploaded file lacks (e.g. pure-premium files).
+const hasTopClientsData = computed(() =>
+  props.analytics.top_clients_premium.some(c => c.premium > 0) ||
+  props.analytics.top_clients_accumulation.some(c => c.accumulation > 0)
+)
+
 const topClientsChartOptions = computed(() => ({
   chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
   plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '65%' } },
@@ -535,6 +546,15 @@ const topClientsChartSeries = computed(() => [{
 .toggle-btn.active {
   background: var(--primary-light);
   color: var(--primary);
+}
+
+.chart-empty {
+  height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
 }
 
 .ltr-number {

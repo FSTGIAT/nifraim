@@ -203,6 +203,7 @@ async def delete_current_production(
     """Remove current production file."""
     from app.models.portal_snapshot import PortalSnapshot
     from app.models.debt import Debt
+    from app.models.production_summary import ProductionSummary
 
     upload = await _get_production_upload(db, user.id)
     if not upload:
@@ -214,6 +215,9 @@ async def delete_current_production(
     from sqlalchemy import delete as sql_delete, update as sql_update
     await db.execute(
         sql_delete(PortalSnapshot).where(PortalSnapshot.upload_id == upload.id)
+    )
+    await db.execute(
+        sql_delete(ProductionSummary).where(ProductionSummary.upload_id == upload.id)
     )
     await db.execute(
         sql_delete(ClientRecord).where(ClientRecord.upload_id == upload.id)
