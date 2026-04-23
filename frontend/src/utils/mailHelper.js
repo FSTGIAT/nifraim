@@ -13,8 +13,12 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
 
   let url
   if (provider === 'gmail') {
+    // fs=1 + tf=cm force Gmail's full compose window; without them the body
+    // param is silently dropped on some accounts even for short URLs.
     const params = new URLSearchParams()
     params.set('view', 'cm')
+    params.set('fs', '1')
+    params.set('tf', 'cm')
     if (to) params.set('to', to)
     if (subject) params.set('su', subject)
     if (body) params.set('body', body)
@@ -42,6 +46,8 @@ export async function openMailCompose({ to = '', subject = '', body = '' }) {
     if (provider === 'gmail') {
       const params = new URLSearchParams()
       params.set('view', 'cm')
+      params.set('fs', '1')
+      params.set('tf', 'cm')
       if (to) params.set('to', to)
       if (subject) params.set('su', subject)
       shortUrl = `https://mail.google.com/mail/?${params.toString()}`

@@ -794,7 +794,10 @@
     </Teleport>
 
     <Transition name="fade">
-      <div v-if="clipboardNotice" class="clipboard-toast">תוכן המייל הועתק ללוח</div>
+      <div v-if="clipboardNotice" class="clipboard-toast">
+        <strong>תוכן המייל הועתק ללוח</strong>
+        <span>הדבק בגוף ההודעה עם Ctrl+V</span>
+      </div>
     </Transition>
   </div>
 </template>
@@ -1450,7 +1453,7 @@ async function sendFilteredMail() {
   const status = await openMailCompose({ to: companyEmail, subject, body })
   if (status === 'clipboard') {
     clipboardNotice.value = true
-    setTimeout(() => { clipboardNotice.value = false }, 4000)
+    setTimeout(() => { clipboardNotice.value = false }, 8000)
   }
 }
 
@@ -2765,10 +2768,14 @@ function formatVal(val) {
 .action-icon-btn:hover { background: var(--primary); color: #fff; }
 
 .clipboard-toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 8px;
-  font-size: 13px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: #fff; padding: 14px 24px; border-radius: 10px;
+  font-size: 14px; z-index: 9999; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 280px;
 }
+.clipboard-toast strong { font-size: 15px; }
+.clipboard-toast span { font-size: 12px; color: #cbd5e1; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
