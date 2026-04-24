@@ -1,61 +1,64 @@
 <template>
   <Teleport to="body">
     <Transition name="ai-viz">
-      <aside
+      <div
         v-if="open && viz"
-        class="ai-viz"
-        role="complementary"
+        class="ai-viz-overlay"
+        role="dialog"
+        aria-modal="true"
         :aria-label="viz.title || 'תצוגה חזותית'"
+        @click.self="close"
       >
-        <header class="ai-viz-head">
-          <div class="ai-viz-head-left">
-            <span class="ai-viz-badge" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-            </span>
-            <div class="ai-viz-titles">
-              <span class="ai-viz-title">{{ viz.title || 'תצוגה חזותית' }}</span>
-              <span class="ai-viz-sub">Remotion · מופעל חי</span>
+        <div class="ai-viz-card">
+          <header class="ai-viz-head">
+            <div class="ai-viz-head-left">
+              <span class="ai-viz-badge" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </span>
+              <div class="ai-viz-titles">
+                <span class="ai-viz-title">{{ viz.title || 'תצוגה חזותית' }}</span>
+              </div>
             </div>
-          </div>
-          <div class="ai-viz-actions">
-            <button
-              v-if="!loading"
-              class="ai-viz-icon-btn"
-              type="button"
-              title="הצג שוב"
-              @click="replay"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="1 4 1 10 7 10"/>
-                <path d="M3.51 15a9 9 0 105.64-11.95L1 10"/>
-              </svg>
-            </button>
-            <button class="ai-viz-icon-btn" type="button" title="סגור" @click="close">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-        </header>
+            <div class="ai-viz-actions">
+              <button
+                v-if="!loading"
+                class="ai-viz-icon-btn"
+                type="button"
+                title="הצג שוב"
+                @click="replay"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 105.64-11.95L1 10"/>
+                </svg>
+              </button>
+              <button class="ai-viz-icon-btn" type="button" title="סגור" @click="close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </header>
 
-        <div class="ai-viz-body">
-          <div v-if="loading" class="ai-viz-loading">
-            <div class="ai-viz-loader"></div>
-            <span>טוען תצוגה…</span>
+          <div class="ai-viz-body">
+            <div v-if="loading" class="ai-viz-loading">
+              <div class="ai-viz-loader"></div>
+              <span>טוען תצוגה…</span>
+            </div>
+            <div v-if="error" class="ai-viz-error">{{ error }}</div>
+            <div ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
           </div>
-          <div v-if="error" class="ai-viz-error">{{ error }}</div>
-          <div ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
         </div>
-      </aside>
+      </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup>
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -67,11 +70,14 @@ const mountEl = ref(null)
 const loading = ref(false)
 const error = ref(null)
 
-// These three live at module scope so they persist across Vue re-mounts
-// within the same SPA session (i.e. the 150 KB chunk is only fetched once).
-let reactStack = null // { createRoot, createElement, Player, componentForViz, sizeForViz, VIZ_DURATION_FRAMES, VIZ_FPS }
+// Module-scope caches so the React+Remotion chunk is fetched once per session
+let reactStack = null
+// reactRoot + currentMountEl track which DOM element the root was bound to so
+// we can detect and replace a stale root when the modal is reopened.
 let reactRoot = null
-let replayCounter = 0 // incremented to force re-mount of the Player
+let currentMountEl = null
+let replayCounter = 0
+let renderCounter = 0
 
 async function ensureReactStack() {
   if (reactStack) return reactStack
@@ -106,8 +112,18 @@ async function render() {
   error.value = null
   try {
     const stack = await ensureReactStack()
-    if (!mountEl.value) return // unmounted while awaiting
-    if (!reactRoot) reactRoot = stack.createRoot(mountEl.value)
+    if (!mountEl.value) return
+    // If the root exists but points to a detached (stale) DOM node — from a
+    // previous modal open/close cycle — drop it and create a fresh one bound
+    // to the current mount element.
+    if (reactRoot && currentMountEl !== mountEl.value) {
+      try { reactRoot.unmount() } catch { /* ignore */ }
+      reactRoot = null
+    }
+    if (!reactRoot) {
+      reactRoot = stack.createRoot(mountEl.value)
+      currentMountEl = mountEl.value
+    }
 
     const Comp = stack.componentForViz(props.viz)
     if (!Comp) {
@@ -120,12 +136,22 @@ async function render() {
       window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    // A new `key` forces the Player to fully remount on each replay.
+    // 3-second animation + ~60-minute still-frame tail. All interpolate()
+    // calls in the compositions clamp on both sides, so every frame after the
+    // intro renders the final state. No loop — the user sees the animation
+    // play once and then the final frame persists.
+    const restFrames = prefersReducedMotion ? 0 : 108000 // ~1h at 30fps
+    const totalFrames = (prefersReducedMotion ? 1 : stack.VIZ_DURATION_FRAMES) + restFrames
+
+    renderCounter += 1
     const element = stack.createElement(stack.Player, {
-      key: `${props.viz.type}-${replayCounter}`,
+      // Fresh key on every render forces the Player to fully remount, which
+      // ensures the new viz plays from frame 0 and releases any state held
+      // on the previous composition.
+      key: `${props.viz.type}-${renderCounter}-${replayCounter}`,
       component: Comp,
       inputProps: props.viz,
-      durationInFrames: prefersReducedMotion ? 1 : stack.VIZ_DURATION_FRAMES,
+      durationInFrames: totalFrames,
       fps: stack.VIZ_FPS,
       compositionWidth: size.width,
       compositionHeight: size.height,
@@ -134,12 +160,17 @@ async function render() {
       controls: false,
       clickToPlay: false,
       doubleClickToFullscreen: false,
+      showPosterWhenUnplayed: false,
+      showPosterWhenPaused: false,
+      showPosterWhenEnded: false,
+      showPosterWhenBuffering: false,
+      acknowledgeRemotionLicense: true,
       style: { width: '100%', borderRadius: 12, overflow: 'hidden' },
     })
     reactRoot.render(element)
   } catch (e) {
     console.error('[AiVizPanel] render failed', e)
-    error.value = error.value || 'שגיאה בהצגת התצוגה'
+    if (!error.value) error.value = 'שגיאה בהצגת התצוגה'
   }
 }
 
@@ -152,17 +183,32 @@ function close() {
   emit('update:open', false)
 }
 
-// Render whenever viz changes (new answer from AI)
+function onEscape(e) {
+  if (e.key === 'Escape' && props.open) close()
+}
+
 watch(() => props.viz, () => {
-  if (props.open) render()
+  if (props.open) nextTick(() => render())
 })
 
-// Render when the panel opens
 watch(() => props.open, (isOpen) => {
-  if (isOpen) render()
+  if (isOpen) {
+    window.addEventListener('keydown', onEscape)
+    nextTick(() => render())
+  } else {
+    window.removeEventListener('keydown', onEscape)
+    // Release the React root now — the <div ref="mountEl"> will be unmounted
+    // by Vue's v-if, leaving the root detached. Next open gets a fresh root.
+    if (reactRoot) {
+      try { reactRoot.unmount() } catch { /* ignore */ }
+      reactRoot = null
+      currentMountEl = null
+    }
+  }
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onEscape)
   if (reactRoot) {
     try { reactRoot.unmount() } catch { /* ignore */ }
     reactRoot = null
@@ -171,20 +217,30 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.ai-viz {
+.ai-viz-overlay {
   position: fixed;
-  top: 0;
-  bottom: 0;
-  inset-inline-start: 0;
-  width: 500px;
-  max-width: 92vw;
+  inset: 0;
+  z-index: 1010; /* above chat sheet (1005) and its overlay (1004) */
+  background: rgba(17, 12, 6, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  direction: rtl;
+  font-family: inherit;
+}
+
+.ai-viz-card {
+  width: 820px;
+  max-width: 95vw;
+  max-height: 92vh;
   background: #ffffff;
-  border-inline-end: 1px solid var(--border-subtle);
-  box-shadow: 18px 0 48px rgba(17, 12, 6, 0.12), 2px 0 6px rgba(17, 12, 6, 0.04);
-  z-index: 1003;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(17, 12, 6, 0.35), 0 4px 12px rgba(17, 12, 6, 0.08);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  font-family: inherit;
 }
 
 .ai-viz-head {
@@ -192,9 +248,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border-subtle);
   background: linear-gradient(180deg, rgba(245, 124, 0, 0.05) 0%, #ffffff 100%);
+  flex-shrink: 0;
 }
 .ai-viz-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ai-viz-badge {
@@ -210,7 +267,7 @@ onBeforeUnmount(() => {
 }
 .ai-viz-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ai-viz-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   color: var(--text);
   overflow: hidden;
@@ -221,8 +278,8 @@ onBeforeUnmount(() => {
 
 .ai-viz-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .ai-viz-icon-btn {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 8px;
@@ -240,7 +297,7 @@ onBeforeUnmount(() => {
 
 .ai-viz-body {
   flex: 1;
-  padding: 16px;
+  padding: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -263,6 +320,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   color: var(--text-muted);
   font-size: 13px;
+  padding: 40px;
 }
 .ai-viz-loader {
   width: 22px;
@@ -285,40 +343,32 @@ onBeforeUnmount(() => {
 }
 
 /* Transitions */
-.ai-viz-enter-active { transition: transform 0.32s var(--transition), opacity 0.32s var(--transition); }
-.ai-viz-leave-active { transition: transform 0.22s var(--transition), opacity 0.22s var(--transition); }
+.ai-viz-enter-active { transition: opacity 0.28s var(--transition); }
+.ai-viz-leave-active { transition: opacity 0.22s var(--transition); }
+.ai-viz-enter-active .ai-viz-card,
+.ai-viz-leave-active .ai-viz-card {
+  transition: transform 0.28s var(--transition), opacity 0.28s var(--transition);
+}
 .ai-viz-enter-from,
-.ai-viz-leave-to {
+.ai-viz-leave-to { opacity: 0; }
+.ai-viz-enter-from .ai-viz-card,
+.ai-viz-leave-to .ai-viz-card {
   opacity: 0;
-  transform: translateX(40px); /* RTL body: slides in from the visual left */
+  transform: scale(0.94) translateY(12px);
 }
 
-/* Responsive: below 860px, the panel becomes a bottom sheet instead */
 @media (max-width: 860px) {
-  .ai-viz {
-    top: auto;
-    inset-inline-start: 0;
-    inset-inline-end: 0;
-    left: 12px;
-    right: 12px;
-    width: auto;
-    max-width: none;
-    bottom: 0;
-    height: 72vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    border-inline-end: none;
-    border-top: 1px solid var(--border-subtle);
-    box-shadow: 0 -18px 44px rgba(17, 12, 6, 0.16);
-  }
-  .ai-viz-enter-from,
-  .ai-viz-leave-to { transform: translateY(30px); }
+  .ai-viz-overlay { padding: 12px; }
+  .ai-viz-body { padding: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ai-viz-enter-active,
-  .ai-viz-leave-active { transition-duration: 0.12s; }
-  .ai-viz-enter-from,
-  .ai-viz-leave-to { transform: none; }
+  .ai-viz-leave-active,
+  .ai-viz-enter-active .ai-viz-card,
+  .ai-viz-leave-active .ai-viz-card { transition-duration: 0.1s; }
+  .ai-viz-enter-from .ai-viz-card,
+  .ai-viz-leave-to .ai-viz-card { transform: none; }
   .ai-viz-loader { animation: none; }
 }
 </style>

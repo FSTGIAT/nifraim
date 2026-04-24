@@ -624,7 +624,7 @@
       @latest-viz="onLatestViz"
     />
 
-    <!-- AI Remotion viz panel (appears alongside the sheet when the AI emits a viz) -->
+    <!-- AI Remotion viz — centered modal overlay (teleported to body) -->
     <AiVizPanel
       v-model:open="aiVizOpen"
       :viz="activeViz"

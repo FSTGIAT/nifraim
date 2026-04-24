@@ -1013,7 +1013,13 @@ async def stream_chat(
                                 viz_buf = ""
                                 tail = after
                         else:
-                            hold = min(HOLD, len(combined))
+                            # Only hold chars back if the tail actually looks like
+                            # a partial "<<VIZ:" prefix — otherwise stream immediately.
+                            hold = 0
+                            for i in range(min(len(VIZ_OPEN), len(combined)), 0, -1):
+                                if combined.endswith(VIZ_OPEN[:i]):
+                                    hold = i
+                                    break
                             safe_end = len(combined) - hold
                             if safe_end > 0:
                                 yield f"data: {json.dumps({'text': combined[:safe_end]}, ensure_ascii=False)}\n\n"

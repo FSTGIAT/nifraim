@@ -56,14 +56,13 @@ export const useChatStore = defineStore('chat', () => {
           if (!line.startsWith('data: ')) continue
           try {
             const data = JSON.parse(line.slice(6))
-            if (data.done) break
             if (data.text) {
               messages.value[assistantIdx].content += data.text
             }
             if (data.viz) {
-              // Attach viz payload to the current assistant message
               messages.value[assistantIdx].viz = data.viz
             }
+            if (data.done) break
           } catch {
             // ignore parse errors
           }
