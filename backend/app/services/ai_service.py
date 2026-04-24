@@ -37,6 +37,19 @@ You have access ONLY to the user's data shown below. You MUST:
 - You may have access to multi-month production history. You can identify trends, growth/decline patterns, and notable changes over time.
 - The personal file (קובץ אישי) may include sign dates (תאריך חתימה) for each client. Use the "גיוסים לפי חודש" block to answer questions like "כמה גייסתי במרץ/אפריל" — count per month and by company. If a client in the personal file has a sign date after the active production file's month, they won't appear in production yet — that's expected, not an error.
 
+=== הנחיות קריטיות לנתוני עמלות (אל תפר!) ===
+1. **אסור לחשב סכומי עמלה** על ידי הכפלה של שיעור עמלה בפרמיה או בצבירה.
+   דוגמה אסורה: "מנורה: פרמיה 172,000 × 95% = עמלה 163,000" — זה שקר.
+2. **דווח רק על סכומי עמלה שבאים מקבצי נפרעים שהמשתמש העלה** בפועל.
+   אם בלוק "=== קבצי נפרעים שהועלו ===" לא מפרט חברה מסוימת — **אין לך נתוני עמלה לאותה חברה**.
+   אל תנחש. אל תמציא. ציין במפורש "אין קובץ נפרעים לחברה X — לכן אין נתוני עמלה בפועל".
+3. **שיעורי עמלה (table של אחוזים) ≠ עמלה בפועל**. שיעורים מופיעים ב"שיעורי עמלה" ומשמשים רק
+   להבהרת תנאי ההסכם, לא לחישוב סכומים.
+4. כששואלים "תראה לי את העמלות" / "כמה קיבלתי עמלה" — הצג **רק** סכומים מקבצי נפרעים שהועלו,
+   וציין מפורשות אילו חברות חסרות קובץ נפרעים.
+5. אם המשתמש מבקש אומדן/הערכה של עמלה חזויה, אתה יכול לציין את השיעור בלבד, לדוגמה: "שיעור העמלה
+   של מנורה לפי הטבלה הוא 95%. אין קובץ נפרעים מנורה — לכן אין סכום בפועל".
+
 === נתוני המשתמש ===
 {context}
 ==="""
@@ -517,15 +530,18 @@ async def _get_commission_rates_context(db: AsyncSession, user_id: uuid.UUID) ->
     if not rates and not vol_rates:
         return None
 
-    parts = ["\n--- שיעורי עמלה ---"]
+    parts = [
+        "\n=== שיעורי עמלה (אחוזים בלבד — לא סכומים!) ===",
+        "להבהרת תנאי ההסכם עם כל חברה. אסור להכפיל אחוזים אלה בפרמיה/צבירה כדי לדווח סכום עמלה.",
+    ]
     if rates:
-        parts.append("עמלות נפרעים:")
+        parts.append("שיעורי עמלת נפרעים:")
         for r in rates:
             freq = f", תדירות: {r.payment_frequency}" if r.payment_frequency else ""
             parts.append(f"  {r.company_name}: {float(r.rate) * 100:.2f}%{freq}")
 
     if vol_rates:
-        parts.append("עמלות היקפים:")
+        parts.append("שיעורי עמלת היקפים:")
         for r in vol_rates:
             nifraim = f"נפרעים: {float(r.nifraim_rate) * 100:.2f}%" if r.nifraim_rate else ""
             volume = f"היקפים: {float(r.volume_rate_per_million):,.0f}₪/מיליון" if r.volume_rate_per_million else ""
@@ -784,6 +800,47 @@ def _detect_question_topics(question: str) -> set[str]:
 MAX_CONTEXT_CHARS = 30000  # ~7.5K tokens — big enough for full recruits + comparison context
 
 
+async def _get_commission_boundaries(db: AsyncSession, user_id: uuid.UUID) -> str:
+    """Authoritative list of which companies have uploaded commission (נפרעים) files.
+
+    This block gives the AI a hard boundary — it must NEVER report commission
+    amounts for a company not in this list.
+    """
+    result = await db.execute(
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user_id,
+            FileUpload.file_category == "commission",
+        )
+        .order_by(desc(FileUpload.uploaded_at))
+    )
+    uploads = result.scalars().all()
+
+    header = "=== קבצי נפרעים שהועלו (גבול הנתונים) ==="
+    if not uploads:
+        return (
+            f"{header}\n"
+            "אין קבצי נפרעים במערכת. לא ניתן לדווח על סכומי עמלה בפועל לשום חברה.\n"
+            "במענה על שאלות על עמלות — ציין זאת במפורש."
+        )
+
+    # Group by company_source (fallback: filename)
+    by_company: dict[str, list[FileUpload]] = {}
+    for u in uploads:
+        key = u.company_source or u.filename or "חברה לא ידועה"
+        by_company.setdefault(key, []).append(u)
+
+    lines = [
+        header,
+        "רק לחברות ברשימה הזו יש סכומי עמלה בפועל בקבצים. "
+        "לכל חברה אחרת — אין נתוני עמלה, אל תמציא סכומים:"
+    ]
+    for co, files in by_company.items():
+        file_list = ", ".join(f"{f.filename} ({f.uploaded_at.strftime('%Y-%m-%d')})" for f in files)
+        lines.append(f"- {co}: {file_list}")
+    return "\n".join(lines)
+
+
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
     prod_context, prod_upload = await _get_production_context(db, user_id)
     if not prod_context:
@@ -791,7 +848,10 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
 
     topics = _detect_question_topics(question) if question else {"production", "comparison", "myfile", "rates", "history"}
 
-    context_parts = [prod_context]
+    # Always include the commission-files boundary block first — this tells the
+    # AI exactly which companies have commission data and prevents fabrication.
+    boundaries = await _get_commission_boundaries(db, user_id)
+    context_parts = [boundaries, prod_context]
 
     # Historical production trends
     if "history" in topics:
