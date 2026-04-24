@@ -98,6 +98,13 @@
       </div>
     </Transition>
 
+    <!-- Post-login welcome wipe -->
+    <WelcomeOverlay
+      v-if="welcomeOpen"
+      :user-name="auth.user?.full_name || ''"
+      @done="onWelcomeDone"
+    />
+
     <!-- Onboarding tour -->
     <OnboardingTour
       :is-active="tourActive"
@@ -159,6 +166,7 @@ import WorkspaceHeader from '../components/workspace/WorkspaceHeader.vue'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import NavArrowButton from '../components/workspace/NavArrowButton.vue'
 import OnboardingTour from '../components/workspace/OnboardingTour.vue'
+import WelcomeOverlay from '../components/workspace/WelcomeOverlay.vue'
 import ProductionTab from '../components/workspace/ProductionTab.vue'
 import ComparisonTab from '../components/workspace/ComparisonTab.vue'
 import RecruitsTab from '../components/workspace/RecruitsTab.vue'
@@ -263,6 +271,20 @@ const {
   cleanup: cleanupTour,
 } = useOnboardingTour({ activeTab, viewMode })
 
+// Post-login welcome overlay
+const welcomeOpen = ref(false)
+
+function scheduleOnboardingIfNeeded() {
+  if (shouldShowTour()) {
+    setTimeout(() => startTour(), 800)
+  }
+}
+
+function onWelcomeDone() {
+  welcomeOpen.value = false
+  scheduleOnboardingIfNeeded()
+}
+
 // Full-page drag & drop
 const isFullPageDrag = ref(false)
 const dragCounter = ref(0)
@@ -340,8 +362,12 @@ onMounted(async () => {
   document.addEventListener('dragover', onDragOver)
   document.addEventListener('drop', onDocDrop)
   document.addEventListener('keydown', onKeydown)
-  if (shouldShowTour()) {
-    setTimeout(() => startTour(), 800)
+
+  if (sessionStorage.getItem('justLoggedIn') === '1') {
+    sessionStorage.removeItem('justLoggedIn')
+    welcomeOpen.value = true
+  } else {
+    scheduleOnboardingIfNeeded()
   }
 })
 

@@ -225,7 +225,7 @@ Interactive 7-step guided tour that runs once on first login. No backend changes
 
 | # | ID | Type | Target | Title |
 |---|----|------|--------|-------|
-| 1 | welcome | center | — | !ברוכים הבאים ל-InsureFlow |
+| 1 | welcome | center | — | ברוכים הבאים ל-Nifraim |
 | 2 | production | spotlight | `[data-tour="production-uploader"]` | העלאת פרודוקציה |
 | 3 | comparison | spotlight | `[data-tour="tab-comparison"]` | השוואת נפרעים |
 | 4 | commission-rates | spotlight | `[data-tour="tab-commission-rates"]` | טבלת עמלות |

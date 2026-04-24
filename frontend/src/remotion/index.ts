@@ -4,6 +4,8 @@ import { DonutComposition } from './DonutComposition'
 import type { Viz } from './types'
 
 export { BarComposition, KpiComposition, DonutComposition }
+export { WelcomeComposition } from './WelcomeComposition'
+export type { WelcomeCompositionProps } from './WelcomeComposition'
 export type { Viz } from './types'
 export * from './types'
 

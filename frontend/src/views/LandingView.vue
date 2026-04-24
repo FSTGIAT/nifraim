@@ -97,7 +97,7 @@
         </div>
         <div class="hero-visual" ref="heroVisual">
           <div class="hero-dashboard">
-            <img src="/images/landing/success-man.jpg" alt="סוכן ביטוח מצליח עם Nifraim" width="768" height="1024">
+            <img src="/images/landing/success-man.jpg" alt="סוכן ביטוח מצליח עם Nifraim" width="768" height="1024" fetchpriority="high" decoding="async">
             <div class="hero-img-overlay"></div>
           </div>
           <!-- Floating stat cards -->
@@ -174,7 +174,7 @@
     <!-- ================================ -->
     <!-- CHAPTER 04: FEATURES HORIZ (dark)-->
     <!-- ================================ -->
-    <section class="chapter-features chapter--dark" id="features" ref="chapterFeatures">
+    <section class="chapter-features" id="features" ref="chapterFeatures">
       <div class="chapter-num" aria-hidden="true">04</div>
       <div class="features-header">
         <span class="features-label">יכולות המערכת</span>
@@ -183,7 +183,7 @@
       <div class="features-track" ref="featuresTrack">
         <div class="feature-card" v-for="(f, i) in featureCards" :key="i">
           <div class="feature-card-bg">
-            <img :src="f.image" :alt="f.title" loading="lazy">
+            <img :src="f.image" :alt="f.title" loading="lazy" decoding="async" width="2752" height="1536">
           </div>
           <div class="feature-card-content">
             <div class="feature-card-number ltr-number">{{ f.num }}</div>
@@ -215,7 +215,7 @@
             <p>מדדי KPI, גרפים וטבלאות — כל המידע במבט אחד. הלקוח רואה את התיק שלו בצורה ויזואלית ומסודרת.</p>
           </div>
           <div class="portal-card-img">
-            <img src="/images/landing/hero-dashboard.jpg" alt="Customer dashboard" loading="lazy">
+            <img src="/images/landing/hero-dashboard-v2.jpg" alt="דשבורד לקוח Nifraim" loading="lazy" decoding="async" width="2048" height="1152">
           </div>
         </div>
 
@@ -267,7 +267,7 @@
     <section class="chapter-cta chapter--dark" id="cta" ref="chapterCta">
       <div class="chapter-num" aria-hidden="true">06</div>
       <div class="cta-bg-visual">
-        <img src="/images/landing/ai-network.jpg" alt="" aria-hidden="true">
+        <img src="/images/landing/ai-network.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" width="2048" height="2048">
       </div>
       <div class="cta-overlay"></div>
       <div class="cta-content" ref="ctaContent">
@@ -298,7 +298,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import Lenis from 'lenis'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -335,15 +334,19 @@ const ctaContent = ref(null)
 // Mobile menu
 const mobileMenuOpen = ref(false)
 
-// Smooth scroll to anchor
+// Motion preference — used to gate video autoplay + ScrollTrigger effects
+const prefersReducedMotion = ref(
+  typeof window !== 'undefined' &&
+  window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+)
+
+// Smooth scroll to anchor (native — CSS `scroll-behavior: smooth` handles the easing)
 function scrollToSection(id) {
   const el = document.getElementById(id)
   if (!el) return
-  if (lenis) {
-    lenis.scrollTo(el, { offset: -72 })
-  } else {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  const y = el.getBoundingClientRect().top + window.scrollY - 72
+  window.scrollTo({ top: y, behavior: 'smooth' })
   mobileMenuOpen.value = false
 }
 
@@ -379,10 +382,22 @@ const featureCards = [
   { num: 'יכולת 04', title: 'ניתוח AI חכם', desc: 'בינה מלאכותית שמבינה את הנתונים שלכם. שאלו שאלות — קבלו תובנות מהתיק.', image: '/images/landing/portal.jpg' },
 ]
 
-// Lenis + GSAP setup
-let lenis = null
-let lenisTickerFn = null
-let rafId = null
+// Scroll progress: rAF-throttled writer for a single CSS variable on the progress bar element
+let scrollRafQueued = false
+let progressBarEl = null
+function updateProgressBar() {
+  scrollRafQueued = false
+  if (!progressBarEl) return
+  const h = document.documentElement
+  const max = h.scrollHeight - h.clientHeight
+  const ratio = max > 0 ? h.scrollTop / max : 0
+  progressBarEl.style.setProperty('--progress', ratio)
+}
+function onScrollThrottled() {
+  if (scrollRafQueued) return
+  scrollRafQueued = true
+  requestAnimationFrame(updateProgressBar)
+}
 
 function animateStatCounter(el, target, suffix) {
   const obj = { val: 0 }
@@ -397,29 +412,15 @@ function animateStatCounter(el, target, suffix) {
 }
 
 onMounted(() => {
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const prefersReduced = prefersReducedMotion.value
 
-  // Lenis smooth scroll
-  if (!prefersReduced) {
-    lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      orientation: 'vertical',
-      smoothWheel: true,
-    })
-    lenis.on('scroll', ScrollTrigger.update)
-    lenisTickerFn = (time) => { if (lenis) lenis.raf(time * 1000) }
-    gsap.ticker.add(lenisTickerFn)
-    gsap.ticker.lagSmoothing(0)
-  }
+  // Native smooth scroll — scoped to the landing page via a class on <html>
+  document.documentElement.classList.add('landing-smooth')
 
-  // Progress bar
-  const onScroll = () => {
-    if (!progressBar.value) return
-    const h = document.documentElement
-    progressBar.value.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100 + '%'
-  }
-  window.addEventListener('scroll', onScroll, { passive: true })
+  // Progress bar: single rAF-throttled listener, writes a CSS custom property
+  progressBarEl = progressBar.value
+  updateProgressBar()
+  window.addEventListener('scroll', onScrollThrottled, { passive: true })
 
   // Nav starts light (hero is cream)
   landNav.value?.classList.add('nav--light')
@@ -443,10 +444,16 @@ onMounted(() => {
       .to([floatCard1.value, floatCard2.value], { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.2, ease: 'back.out(1.5)' }, '-=0.5')
       .to(heroTrust.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' }, '-=0.3')
 
-    // Parallax on hero content when scrolling out
+    // Gentle fade-out as hero leaves the viewport — one-shot transition instead of scrub:1 parallax.
     gsap.to(heroContent.value, {
-      y: -60,
-      scrollTrigger: { trigger: heroSection.value, start: 'top top', end: 'bottom top', scrub: 1 }
+      opacity: 0.4,
+      y: -40,
+      scrollTrigger: {
+        trigger: heroSection.value,
+        start: 'bottom 70%',
+        end: 'bottom 20%',
+        toggleActions: 'play none none reverse',
+      },
     })
 
     // Orb gentle floating animation
@@ -471,16 +478,7 @@ onMounted(() => {
       onEnterBack: setNavDark,
     })
 
-    // Chapter 4 (dark) → dark nav
-    ScrollTrigger.create({
-      trigger: chapterFeatures.value,
-      start: 'top 50%',
-      end: 'bottom 50%',
-      onEnter: setNavDark,
-      onLeaveBack: setNavLight,
-      onLeave: setNavLight,
-      onEnterBack: setNavDark,
-    })
+    // Chapter 4 is now cream/brand — no nav-dark trigger (section matches the light nav).
 
     // Chapter 6 (dark) → dark nav
     ScrollTrigger.create({
@@ -648,15 +646,17 @@ onMounted(() => {
       }
     })
 
-    // CTA parallax
-    gsap.to('.cta-bg-visual img', {
-      y: -40,
+    // CTA background image: one-shot rise on entrance (scrub:1 parallax was re-querying + transforming every scroll frame).
+    gsap.from('.cta-bg-visual img', {
+      y: 40,
+      scale: 1.05,
+      duration: 1.2,
+      ease: 'power3.out',
       scrollTrigger: {
         trigger: chapterCta.value,
-        start: 'top bottom',
-        end: 'bottom top',
-        scrub: 1
-      }
+        start: 'top 80%',
+        once: true,
+      },
     })
 
   } else {
@@ -712,17 +712,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   ScrollTrigger.getAll().forEach(t => t.kill())
-  if (lenisTickerFn) {
-    gsap.ticker.remove(lenisTickerFn)
-    lenisTickerFn = null
-  }
-  if (lenis) {
-    lenis.destroy()
-    lenis = null
-  }
-  if (rafId) {
-    cancelAnimationFrame(rafId)
-  }
+  window.removeEventListener('scroll', onScrollThrottled)
+  document.documentElement.classList.remove('landing-smooth')
+  progressBarEl = null
 })
 </script>
 
@@ -797,15 +789,19 @@ onBeforeUnmount(() => {
 }
 
 /* ── Progress Bar ── */
+/* Composited: scales a 100%-wide element via transform rather than animating `width` per scroll frame. */
 .progress-bar {
+  --progress: 0;
   position: fixed;
   top: 0;
   right: 0;
+  left: 0;
   height: 2px;
   background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
   z-index: 1000;
-  width: 0;
-  will-change: width;
+  transform: scaleX(var(--progress));
+  transform-origin: right center;
+  will-change: transform;
 }
 
 /* ── Chapter Numbers ── */
@@ -829,21 +825,21 @@ onBeforeUnmount(() => {
 }
 
 /* ── Navigation ── */
+/* Solid-with-alpha instead of backdrop-filter: blur over scrolling content forced a per-frame compositor repaint. */
 .land-nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 100;
-  background: rgba(74, 74, 74, 0.85);
-  backdrop-filter: blur(16px);
+  background: rgba(74, 74, 74, 0.92);
   border-bottom: 1px solid var(--land-border);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 /* Nav light mode (after hero) */
 .land-nav.nav--light {
-  background: rgba(245, 240, 235, 0.9);
+  background: rgba(245, 240, 235, 0.95);
   border-bottom-color: rgba(45, 37, 34, 0.06);
 }
 
@@ -1029,7 +1025,9 @@ onBeforeUnmount(() => {
 .hero-gradient .orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
+  /* 60px blur is half the old cost; element scale 1.4x keeps the perceived softness the same. */
+  filter: blur(60px);
+  transform: translateZ(0) scale(1.4);
   will-change: transform;
 }
 
@@ -1277,11 +1275,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 40px rgba(45, 37, 34, 0.12);
 }
 
-.hero-dashboard img {
+.hero-dashboard img,
+.hero-dashboard .hero-dashboard-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  background: #FFF8F0;
 }
 
 .hero-img-overlay {
@@ -1292,11 +1292,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* Floating stat cards */
+/* Floating stat cards — dropped backdrop-filter (cards are animated; per-frame blur is wasted) */
 .float-card {
   position: absolute;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid rgba(45, 37, 34, 0.08);
   border-radius: 14px;
   padding: 16px 20px;
@@ -1376,12 +1375,15 @@ onBeforeUnmount(() => {
   height: 100%;
   background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
   border-radius: 2px;
+  transform-origin: right center; /* RTL — grow from the right edge */
   animation: barFill 2s ease-out 1.5s both;
+  will-change: transform;
 }
 
+/* scaleX on a fixed-width element is composited; the old `width: 0→85%` triggered layout every keyframe. */
 @keyframes barFill {
-  from { width: 0; }
-  to { width: 85%; }
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
 }
 
 /* Trust strip */
@@ -1448,14 +1450,19 @@ onBeforeUnmount(() => {
 .scroll-arrow::after {
   content: '';
   position: absolute;
-  top: -100%;
+  top: 0;
   width: 100%;
   height: 50%;
   background: var(--land-orange);
   animation: scrollPulse 2s ease-in-out infinite;
+  will-change: transform;
 }
 
-@keyframes scrollPulse { 0% { top: -50%; } 100% { top: 150%; } }
+/* Composited transform replaces the old `top: -50% → 150%` reflow-triggering keyframe. */
+@keyframes scrollPulse {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(300%); }
+}
 
 /* ══════════════════════════════════════ */
 /* CHAPTER 2: PINNED STATS (dark)        */
@@ -1651,8 +1658,33 @@ onBeforeUnmount(() => {
 .chapter-features {
   position: relative;
   min-height: 100vh;
-  background: var(--dark-section);
+  background: linear-gradient(180deg, var(--cream-bg) 0%, #FFF2E0 100%);
   overflow: hidden;
+}
+
+/* Soft brand orbs — echoes the hero's decoration to keep the section on-brand */
+.chapter-features::before,
+.chapter-features::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+}
+.chapter-features::before {
+  width: 520px;
+  height: 520px;
+  background: rgba(232, 102, 10, 0.10);
+  top: -120px;
+  right: -140px;
+}
+.chapter-features::after {
+  width: 380px;
+  height: 380px;
+  background: rgba(255, 183, 77, 0.14);
+  bottom: -100px;
+  left: -100px;
 }
 
 .features-header {
@@ -1678,7 +1710,7 @@ onBeforeUnmount(() => {
 .features-title {
   font-size: clamp(28px, 4vw, 48px);
   font-weight: 800;
-  color: var(--text-light);
+  color: var(--cream-text);
   letter-spacing: -1px;
 }
 
@@ -1699,7 +1731,7 @@ onBeforeUnmount(() => {
 .feature-card {
   min-width: clamp(340px, 55vw, 640px);
   height: clamp(380px, 50vh, 480px);
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 40px;
   display: flex;
   flex-direction: column;
@@ -1707,20 +1739,25 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid rgba(245, 240, 235, 0.08);
-  transition: border-color var(--transition-fast);
+  background: #ffffff;
+  border: 1px solid rgba(45, 37, 34, 0.06);
+  box-shadow: 0 20px 50px rgba(232, 102, 10, 0.10), 0 4px 12px rgba(45, 37, 34, 0.04);
+  transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   direction: rtl;
 }
 
 .feature-card:hover {
-  border-color: rgba(245, 240, 235, 0.15);
+  border-color: rgba(232, 102, 10, 0.25);
+  transform: translateY(-4px);
+  box-shadow: 0 28px 60px rgba(232, 102, 10, 0.14), 0 6px 16px rgba(45, 37, 34, 0.06);
 }
 
+/* Cream gradient overlay replaces the old dark 0.95 one — text sits cleanly while the photo stays visible */
 .feature-card::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(45, 37, 34, 0.95) 30%, rgba(45, 37, 34, 0.2));
+  background: linear-gradient(to top, rgba(255, 248, 240, 0.96) 28%, rgba(255, 248, 240, 0.55) 60%, rgba(255, 248, 240, 0.15) 100%);
   z-index: 1;
 }
 
@@ -1734,6 +1771,8 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Warm-tint the stock photos so they read as brand rather than generic AI imagery */
+  filter: saturate(0.85) brightness(1.05) sepia(0.15);
 }
 
 .feature-card-content {
@@ -1746,14 +1785,14 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: var(--land-orange);
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 12px;
 }
 
 .feature-card-name {
   font-size: clamp(1.5rem, 3vw, 2.2rem);
   font-weight: 800;
-  color: var(--text-light);
+  color: var(--cream-text);
   line-height: 1.1;
   margin-bottom: 12px;
   letter-spacing: -0.5px;
@@ -1761,7 +1800,7 @@ onBeforeUnmount(() => {
 
 .feature-card-desc {
   font-size: 0.92rem;
-  color: var(--text-light-muted);
+  color: var(--cream-text-dim);
   line-height: 1.7;
   max-width: 380px;
 }
@@ -2235,6 +2274,18 @@ onBeforeUnmount(() => {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+</style>
+
+<!-- Global styles — not scoped to .landing because they target <html> and have to survive Vue's attribute scoping. -->
+<style>
+html.landing-smooth {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.landing-smooth {
+    scroll-behavior: auto;
   }
 }
 </style>
