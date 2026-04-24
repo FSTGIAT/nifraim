@@ -174,11 +174,24 @@ async def get_knowledge(
     )
     sign_min, sign_max = recruit_date_q.one()
 
+    # Breakdown by category (financial / insurance) — each category is replaced
+    # on upload, so this makes the combined total understandable at a glance.
+    recruit_cat_q = await db.execute(
+        select(Recruit.category, func.count(Recruit.id))
+        .where(Recruit.user_id == user.id)
+        .group_by(Recruit.category)
+    )
+    by_category = [
+        {"category": cat or "financial", "count": int(cnt)}
+        for cat, cnt in recruit_cat_q.all()
+    ]
+
     myfile = {
         "count": recruit_count,
         "companies": recruit_companies,
         "sign_date_min": sign_min.isoformat() if sign_min else None,
         "sign_date_max": sign_max.isoformat() if sign_max else None,
+        "by_category": by_category,
     } if recruit_count else None
 
     # --- Commission rates (nifraim + volume) — both tables use `company_name` ---

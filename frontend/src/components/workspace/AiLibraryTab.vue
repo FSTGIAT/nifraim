@@ -307,10 +307,25 @@
         </button>
         <transition name="lib-collapse">
           <div v-show="sectionOpen.myfile" class="lib-section-body" id="lib-body-myfile">
+        <!-- Per-category split: each category (financial / insurance) is replaced
+             independently on file upload. Total = sum of both. -->
+        <div v-if="myfileCategoryBreakdown.length > 1" class="lib-cat-strip">
+          <div
+            v-for="c in myfileCategoryBreakdown"
+            :key="c.category"
+            class="lib-cat-chip"
+            :class="'lib-cat-chip--' + c.category"
+          >
+            <span class="lib-cat-chip-label">{{ c.label }}</span>
+            <span class="lib-cat-chip-value ltr-number">{{ c.count.toLocaleString() }}</span>
+          </div>
+          <span class="lib-cat-note">כל קטגוריה מוחלפת בנפרד בהעלאת קובץ חדש</span>
+        </div>
+
         <div class="lib-stats-row">
           <div class="lib-stat">
             <span class="lib-stat-value ltr-number">{{ data.myfile.count.toLocaleString() }}</span>
-            <span class="lib-stat-label">לקוחות</span>
+            <span class="lib-stat-label">סה"כ לקוחות</span>
           </div>
           <div class="lib-stat">
             <span class="lib-stat-value ltr-number">{{ data.myfile.companies }}</span>
@@ -493,6 +508,18 @@ async function load() {
 }
 
 onMounted(load)
+
+const CATEGORY_LABELS = { financial: 'פיננסי', insurance: 'ביטוח' }
+const myfileCategoryBreakdown = computed(() => {
+  const arr = data.value?.myfile?.by_category || []
+  return arr
+    .filter(c => c.count > 0)
+    .map(c => ({
+      category: c.category,
+      label: CATEGORY_LABELS[c.category] || c.category,
+      count: c.count,
+    }))
+})
 
 const productionTotal = computed(() => data.value?.production?.length || 0)
 const commissionTotal = computed(() =>
@@ -1095,6 +1122,42 @@ function buildScaleMock() {
 .lib-collapse-leave-from { opacity: 1; max-height: 800px; }
 
 /* Stats row */
+/* Per-category breakdown (myfile: financial / insurance) */
+.lib-cat-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: rgba(245, 124, 0, 0.04);
+  border: 1px solid rgba(245, 124, 0, 0.14);
+  border-radius: var(--radius-md);
+}
+.lib-cat-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+.lib-cat-chip-label { color: var(--text-secondary); }
+.lib-cat-chip-value { font-size: 14px; font-weight: 800; color: var(--text); }
+.lib-cat-chip--financial { border-color: rgba(99, 102, 241, 0.3); }
+.lib-cat-chip--financial .lib-cat-chip-value { color: #4f46e5; }
+.lib-cat-chip--insurance { border-color: rgba(46, 132, 74, 0.3); }
+.lib-cat-chip--insurance .lib-cat-chip-value { color: var(--accent-emerald); }
+.lib-cat-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-inline-start: auto;
+}
+
 .lib-stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
