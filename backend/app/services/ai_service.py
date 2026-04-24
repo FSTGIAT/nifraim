@@ -50,6 +50,33 @@ You have access ONLY to the user's data shown below. You MUST:
 5. אם המשתמש מבקש אומדן/הערכה של עמלה חזויה, אתה יכול לציין את השיעור בלבד, לדוגמה: "שיעור העמלה
    של מנורה לפי הטבלה הוא 95%. אין קובץ נפרעים מנורה — לכן אין סכום בפועל".
 
+=== תצוגה חזותית (viz) — אופציונלי ===
+כשהתשובה שלך כוללת פירוט מספרי שווה הצגה (למשל 5+ פריטים עם ערכים, או ערך-גיבור חד-משמעי,
+או אחוז מכריע), **בסוף התשובה בלבד** (אחרי הטקסט הרגיל) הוסף בלוק JSON בדיוק בפורמט הזה:
+
+<<VIZ:{"type":"...","title":"...",...}>>
+
+הבלוק יהפוך לאנימציה שמופיעה ליד הצ'אט — אל תזכיר אותו בטקסט הגלוי. אל תעטוף אותו ב-markdown.
+סוגים נתמכים:
+
+1) type=bar — רשימה של פריט→ערך (עד 10 שורות). השתמש כשיש ≥5 פריטים עם ערך מספרי משמעותי.
+   דוגמה:
+   <<VIZ:{"type":"bar","title":"הירידה לפי לקוח ב-מיטב","unit":"₪","direction":"down","data":[{"label":"יחזקאל קר","value":-3379182,"id":"50052083"},{"label":"דני לוי","value":-420000}],"highlight_label":"יחזקאל קר","insight":"לקוח אחד = 75% מהירידה"}>>
+
+2) type=kpi — מספר-גיבור יחיד עם תת-כותרת. השתמש כשהסיפור הוא "סכום אחד גדול" (סה\"כ / רווח).
+   דוגמה:
+   <<VIZ:{"type":"kpi","title":"סך העמלות שהתקבלו","value":204671,"unit":"₪","subtitle":"408 עלייה · 1 ירידה","direction":"up"}>>
+
+3) type=donut — התפלגות פרופורציונית (עד 8 פרוסות). השתמש כשהיחסים הם הסיפור.
+   דוגמה:
+   <<VIZ:{"type":"donut","title":"פרמיה לפי חברה","unit":"₪","data":[{"label":"הראל","value":83407},{"label":"מגדל","value":41200}],"highlight_label":"הראל"}>>
+
+הנחיות קשיחות:
+- **אל תפלוט viz** כאשר התשובה היא שאלת "כמה/מה/האם" פשוטה, אישור, סירוב, או טקסט קצר בלא פירוט מספרי.
+- **ערכים חייבים להגיע מהקשר בלבד** (מה שמופיע בבלוקים למעלה). אל תמציא מספרים.
+- השתמש ב-direction: "down" לירידות, "up" לעליות, אחרת השמט (ברירת המחדל: ניטרלי כתום).
+- שמור על 10 נקודות bar לכל היותר, 8 פרוסות donut.
+
 === נתוני המשתמש ===
 {context}
 ==="""
@@ -942,18 +969,73 @@ async def stream_chat(
     ]
     last_error = None
 
+    # Sentinel-aware streaming: the AI may append `<<VIZ:{...}>>` at the very
+    # end of its answer. Strip it from the visible text and emit a separate
+    # `{"viz": {...}}` SSE event so the frontend can render a Remotion viz.
+    VIZ_OPEN = "<<VIZ:"
+    VIZ_CLOSE = ">>"
+    HOLD = len(VIZ_OPEN) - 1  # = 5; hold back last 5 chars in case of partial marker
+
     for model, delay in attempts:
         if delay:
             await asyncio.sleep(delay)
         try:
+            viz_state = "text"
+            tail = ""      # chars held back in `text` state
+            viz_buf = ""   # contents accumulated in `buffering_viz` state
             async with client.messages.stream(
                 model=model,
                 max_tokens=2048,
                 system=system_prompt,
                 messages=messages,
             ) as stream:
-                async for text in stream.text_stream:
-                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n"
+                async for chunk in stream.text_stream:
+                    if viz_state == "text":
+                        combined = tail + chunk
+                        open_idx = combined.find(VIZ_OPEN)
+                        if open_idx != -1:
+                            before = combined[:open_idx]
+                            if before:
+                                yield f"data: {json.dumps({'text': before}, ensure_ascii=False)}\n\n"
+                            viz_buf = combined[open_idx + len(VIZ_OPEN):]
+                            tail = ""
+                            viz_state = "buffering_viz"
+                            close_idx = viz_buf.find(VIZ_CLOSE)
+                            if close_idx != -1:
+                                viz_raw = viz_buf[:close_idx]
+                                try:
+                                    viz = json.loads(viz_raw)
+                                    yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                                except json.JSONDecodeError:
+                                    logger.warning(f"Bad viz JSON: {viz_raw[:120]}")
+                                after = viz_buf[close_idx + len(VIZ_CLOSE):]
+                                viz_state = "text"
+                                viz_buf = ""
+                                tail = after
+                        else:
+                            hold = min(HOLD, len(combined))
+                            safe_end = len(combined) - hold
+                            if safe_end > 0:
+                                yield f"data: {json.dumps({'text': combined[:safe_end]}, ensure_ascii=False)}\n\n"
+                            tail = combined[safe_end:]
+                    else:  # buffering_viz
+                        viz_buf += chunk
+                        close_idx = viz_buf.find(VIZ_CLOSE)
+                        if close_idx != -1:
+                            viz_raw = viz_buf[:close_idx]
+                            try:
+                                viz = json.loads(viz_raw)
+                                yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                            except json.JSONDecodeError:
+                                logger.warning(f"Bad viz JSON: {viz_raw[:120]}")
+                            after = viz_buf[close_idx + len(VIZ_CLOSE):]
+                            viz_state = "text"
+                            viz_buf = ""
+                            tail = after
+            # Flush any remaining user-visible text held in the tail buffer
+            if viz_state == "text" and tail:
+                yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
+            # If we ended mid-viz (no closing >>) — drop silently; the visible text is already complete
             last_error = None
             break  # success
         except anthropic.AuthenticationError:

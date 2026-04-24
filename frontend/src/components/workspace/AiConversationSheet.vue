@@ -123,7 +123,7 @@ const props = defineProps({
   viewContext: { type: String, default: '' },
   initialQuestion: { type: String, default: '' },
 })
-const emit = defineEmits(['update:open'])
+const emit = defineEmits(['update:open', 'latest-viz'])
 
 const chatStore = useChatStore()
 const draft = ref('')
@@ -195,6 +195,17 @@ watch(
     })
   }
 )
+
+// Emit the latest viz payload (if any) so a sibling AiVizPanel can render it.
+// We forward a fresh reference each time so watchers on the parent always fire.
+const latestViz = computed(() => {
+  for (let i = chatStore.messages.length - 1; i >= 0; i--) {
+    const m = chatStore.messages[i]
+    if (m.role === 'assistant' && m.viz) return m.viz
+  }
+  return null
+})
+watch(latestViz, (v) => emit('latest-viz', v), { deep: false })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEscape)

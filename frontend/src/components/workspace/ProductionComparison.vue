@@ -621,6 +621,13 @@
       :view-title="aiViewContext?.viewTitle || ''"
       :view-context="aiViewContext?.viewContextString || ''"
       :initial-question="aiInitialQuestion"
+      @latest-viz="onLatestViz"
+    />
+
+    <!-- AI Remotion viz panel (appears alongside the sheet when the AI emits a viz) -->
+    <AiVizPanel
+      v-model:open="aiVizOpen"
+      :viz="activeViz"
     />
 
     <!-- Floating scroll hint ("more insights below") -->
@@ -1014,6 +1021,7 @@ import { openMailCompose } from '../../utils/mailHelper.js'
 import api from '../../api/client.js'
 import AiInsightCard from './AiInsightCard.vue'
 import AiConversationSheet from './AiConversationSheet.vue'
+import AiVizPanel from './AiVizPanel.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
 
 const props = defineProps({
@@ -1059,8 +1067,19 @@ function openAiSheet(question) {
   aiSheetOpen.value = true
 }
 watch(aiSheetOpen, (isOpen) => {
-  if (!isOpen) aiInitialQuestion.value = ''
+  if (!isOpen) {
+    aiInitialQuestion.value = ''
+    aiVizOpen.value = false // close the viz panel when chat closes
+  }
 })
+
+// Remotion viz panel — opens whenever the AI emits a viz payload
+const aiVizOpen = ref(false)
+const activeViz = ref(null)
+function onLatestViz(viz) {
+  activeViz.value = viz
+  if (viz) aiVizOpen.value = true
+}
 
 // Scroll hint ("יש עוד תובנות למטה")
 const changedSectionRef = ref(null)
