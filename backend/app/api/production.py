@@ -494,18 +494,25 @@ class CompareRequest(BaseModel):
 
 
 async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividing_date):
-    """Build current and previous {id_number: total_commission} split by dividing_date.
+    """Build current vs previous {id_number: total_commission} grouped BY COMPANY.
 
-    For each unique filename:
-    - current: latest upload overall
-    - previous: latest upload ON or BEFORE dividing_date; if none exists, falls back
-      to the current version (file unchanged → diff = 0)
+    Pairing strategy (dividing_date kept for API compat but not used — batch
+    upload timestamps made date-based splits unreliable):
+
+    For each distinct company_source (fallback: filename):
+      - current  = the latest upload
+      - previous = the most recent upload with a DIFFERENT filename
+                   (= a different period). If all uploads share the same filename
+                   (re-uploads/corrections of the same period), fall back to the
+                   second-latest of those.
 
     Returns:
         current_comm: {id_number: total}
         previous_comm: {id_number: total}
         has_data: bool
-        current_comm_detail: {id_number: [{company, commission}, ...]}  — per-company breakdown
+        has_previous: bool — at least one company has a prior-period pairing
+        current_comm_detail: {id_number: [{company, commission}, ...]}
+        covered_categories: set of product categories covered
     """
     all_result = await db.execute(
         select(FileUpload).where(
@@ -516,26 +523,45 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
     )
     all_uploads = all_result.scalars().all()
 
-    # For each filename find latest overall + latest before dividing_date
-    current_ids = {}   # filename → upload_id (latest overall)
-    previous_ids = {}  # filename → upload_id (latest before date)
-    upload_meta = {}   # upload_id → {company_source, filename}
+    # Pair commission files BY COMPANY (not filename, not upload date).
+    # For each company: current = latest upload; previous = the next-most-recent
+    # upload with a DIFFERENT filename (= different period). If all uploads share
+    # the same filename (re-uploads/corrections of the same period), previous
+    # falls back to the second-latest of those.
+    #
+    # Rationale: users upload one commission file per company per month, with
+    # period-specific filenames like "מור עמלות פברואר 26" vs "12_2025_נפרעים מור".
+    # Date-based splits don't work because batch-uploads share timestamps, and
+    # filename-based matching never triggers across periods.
+    from collections import defaultdict
+
+    upload_meta = {}  # upload_id → {company, filename}
+    by_company = defaultdict(list)  # company_source → [uploads desc by date]
     for u in all_uploads:
-        upload_meta[u.id] = {"company": u.company_source or u.filename, "filename": u.filename}
-        if u.filename not in current_ids:
-            current_ids[u.filename] = u.id
-        if dividing_date and u.uploaded_at <= dividing_date and u.filename not in previous_ids:
-            previous_ids[u.filename] = u.id
+        company_key = u.company_source or u.filename
+        upload_meta[u.id] = {"company": company_key, "filename": u.filename}
+        by_company[company_key].append(u)
 
-    # has_previous is only True if at least one file has a DIFFERENT upload
-    # for previous vs current (must exist in both, with different IDs)
-    has_previous = any(
-        fname in previous_ids and previous_ids[fname] != current_ids[fname]
-        for fname in current_ids
-    )
+    current_upload_ids = []
+    previous_upload_ids = []
+    for company, uploads in by_company.items():
+        if not uploads:
+            continue
+        current_upload_ids.append(uploads[0].id)
+        if len(uploads) < 2:
+            continue
+        # Prefer a different-filename upload (different period) as "previous"
+        chosen = None
+        for prev_u in uploads[1:]:
+            if prev_u.filename != uploads[0].filename:
+                chosen = prev_u
+                break
+        # All re-uploads of the same filename → use second-latest (correction diff)
+        if chosen is None:
+            chosen = uploads[1]
+        previous_upload_ids.append(chosen.id)
 
-    current_upload_ids = list(current_ids.values())
-    previous_upload_ids = list(previous_ids.values())
+    has_previous = len(previous_upload_ids) > 0
     all_needed_ids = list(set(current_upload_ids + previous_upload_ids))
 
     has_data = len(all_needed_ids) > 0

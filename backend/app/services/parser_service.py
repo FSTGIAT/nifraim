@@ -175,6 +175,14 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
     raw = file_bytes
     if password:
         raw = decrypt_xls(file_bytes, password)
+    else:
+        try:
+            if msoffcrypto.OfficeFile(io.BytesIO(file_bytes)).is_encrypted():
+                raise ValueError("הקובץ מוצפן — סמן את האפשרות 'קובץ מוצפן' והזן סיסמה")
+        except ValueError:
+            raise
+        except Exception:
+            pass
 
     ext = filename.rsplit(".", 1)[-1].lower()
     engine = "openpyxl" if ext == "xlsx" else "xlrd"

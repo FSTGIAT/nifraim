@@ -8,7 +8,7 @@ export const useChatStore = defineStore('chat', () => {
   const sources = ref([])
   const sourcesLoaded = ref(false)
 
-  async function sendMessage(text) {
+  async function sendMessage(text, viewContext = null) {
     error.value = null
     loading.value = true
 
@@ -25,13 +25,15 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const token = localStorage.getItem('token')
+      const body = { question: text, history }
+      if (viewContext) body.view_context = viewContext
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ question: text, history }),
+        body: JSON.stringify(body),
       })
 
       if (!res.ok) {

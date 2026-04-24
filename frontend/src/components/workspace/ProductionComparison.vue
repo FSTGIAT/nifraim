@@ -122,6 +122,13 @@
         </div>
       </div>
 
+      <!-- AI insight card (above KPI strip) -->
+      <AiInsightCard
+        v-if="aiViewContext"
+        :view-context="aiViewContext"
+        @open-sheet="openAiSheet"
+      />
+
       <!-- Summary KPI strip -->
       <div class="summary-strip">
         <div class="summary-badge badge-green" @click="openCategory('new')">
@@ -256,13 +263,13 @@
       </div>
 
       <!-- ===== Changed Insights Section ===== -->
-      <div v-if="changedInsights.totalClients > 0" class="changed-section">
+      <div v-if="changedInsights.totalClients > 0" ref="changedSectionRef" class="changed-section">
         <div class="changed-section-header">
           <span class="changed-section-title">שונו — תובנות</span>
           <span class="chart-badge badge-amber"><span class="ltr-number">{{ changedInsights.totalClients }}</span> לקוחות</span>
         </div>
 
-        <!-- KPI cards -->
+        <!-- KPI cards (clean layout — commission moved to dedicated panel below) -->
         <div class="changed-kpi-strip">
           <div class="changed-kpi" :class="changedInsights.totalPremiumDiff >= 0 ? 'kpi-green' : 'kpi-red'">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.totalPremiumDiff >= 0 ? '+' : '' }}{{ formatAmount(changedInsights.totalPremiumDiff) }}</span>
@@ -280,21 +287,6 @@
               <span class="kpi-split-down ltr-number" v-if="comparisonResult.summary.accum_negative">&#x25BC; {{ comparisonResult.summary.accum_negative }}</span>
             </span>
           </div>
-          <div class="changed-kpi kpi-pink" v-if="comparisonResult.summary.has_commission_data">
-            <span class="changed-kpi-value ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
-            <span class="changed-kpi-label">סה"כ עמלה (נפרעים)</span>
-            <span class="kpi-split">
-              <span class="kpi-split-up kpi-split-clickable ltr-number" @click="openCommissionFilter('has')">&#x25B2; {{ comparisonResult.summary.commission_positive_count }} עם עמלה</span>
-              <span class="kpi-split-down kpi-split-clickable ltr-number" v-if="comparisonResult.summary.commission_zero_count" @click="openCommissionFilter('zero')">&#x25BC; {{ comparisonResult.summary.commission_zero_count }} ללא עמלה</span>
-            </span>
-            <span v-if="comparisonResult.summary.commission_diff_positive || comparisonResult.summary.commission_diff_negative" class="kpi-split" style="margin-top:2px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.06)">
-              <span class="kpi-split-up kpi-split-clickable ltr-number" @click="openCommissionFilter('positive')">&#x25B2; {{ comparisonResult.summary.commission_diff_positive }} עלייה</span>
-              <span class="kpi-split-down kpi-split-clickable ltr-number" @click="openCommissionFilter('negative')">&#x25BC; {{ comparisonResult.summary.commission_diff_negative }} ירידה</span>
-            </span>
-            <span v-else-if="comparisonResult.summary.commission_positive_count" class="kpi-no-diff-note">
-              הועלה סט נפרעים אחד — העלה נפרעים חדשים להשוואה
-            </span>
-          </div>
           <div class="changed-kpi kpi-clickable" @click="openChangedByType('פרמיה')">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.premiumCount }}</span>
             <span class="changed-kpi-label">שינוי פרמיה</span>
@@ -306,6 +298,159 @@
           <div class="changed-kpi kpi-clickable" @click="openChangedByType('מוצרים')">
             <span class="changed-kpi-value ltr-number">{{ changedInsights.productCount }}</span>
             <span class="changed-kpi-label">שינוי מוצרים</span>
+          </div>
+        </div>
+
+        <!-- ===== Commission Insights Panel (dedicated, spacious) ===== -->
+        <div v-if="comparisonResult.summary.has_commission_data" class="comm-insights-panel">
+          <div class="comm-panel-orb"></div>
+
+          <div class="comm-panel-header">
+            <div class="comm-panel-title-wrap">
+              <span class="comm-panel-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="8" cy="8" r="6"/>
+                  <path d="M18.09 10.37A6 6 0 1 1 10.34 18"/>
+                  <path d="M7 6h1v4"/>
+                  <path d="M16.71 13.88l.71.71-2.83 2.83"/>
+                </svg>
+              </span>
+              <div class="comm-panel-text">
+                <span class="comm-panel-title">עמלות נפרעים</span>
+                <span class="comm-panel-subtitle">פילוח ותובנות על בסיס <span class="ltr-number">{{ comparisonResult.summary.commission_positive_count + (comparisonResult.summary.commission_zero_count || 0) }}</span> לקוחות</span>
+              </div>
+            </div>
+            <div class="comm-panel-total">
+              <span class="comm-total-label">סה"כ עמלה</span>
+              <span class="comm-total-value ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+            </div>
+          </div>
+
+          <div class="comm-insights-grid" :class="{ 'comm-single': !(comparisonResult.summary.commission_diff_positive || comparisonResult.summary.commission_diff_negative) && !comparisonResult.summary.commission_positive_count }">
+            <!-- Status breakdown -->
+            <div class="comm-insight-block">
+              <div class="comm-block-head">
+                <span class="comm-block-title">סטטוס עמלה</span>
+                <span class="comm-block-hint">לקוחות עם/בלי עמלה בפועל</span>
+              </div>
+              <div class="comm-stacked-bar" :title="commissionStatusPct.tooltip">
+                <div class="cmsb cmsb-primary" :style="{ flex: comparisonResult.summary.commission_positive_count || 0 }">
+                  <span v-if="commissionStatusPct.hasPct >= 14" class="cmsb-label ltr-number">{{ commissionStatusPct.hasPct }}%</span>
+                </div>
+                <div class="cmsb cmsb-muted" :style="{ flex: comparisonResult.summary.commission_zero_count || 0 }">
+                  <span v-if="commissionStatusPct.zeroPct >= 14" class="cmsb-label cmsb-label-dark ltr-number">{{ commissionStatusPct.zeroPct }}%</span>
+                </div>
+              </div>
+              <div class="comm-pills-row">
+                <button class="comm-pill comm-pill--primary" @click="openCommissionFilter('has')" type="button">
+                  <span class="comm-pill-stripe"></span>
+                  <span class="comm-pill-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                  <span class="comm-pill-text">
+                    <span class="comm-pill-count ltr-number">{{ comparisonResult.summary.commission_positive_count }}</span>
+                    <span class="comm-pill-label">עם עמלה</span>
+                  </span>
+                  <svg class="comm-pill-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <button class="comm-pill comm-pill--muted" :disabled="!comparisonResult.summary.commission_zero_count" @click="openCommissionFilter('zero')" type="button">
+                  <span class="comm-pill-stripe"></span>
+                  <span class="comm-pill-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                  </span>
+                  <span class="comm-pill-text">
+                    <span class="comm-pill-count ltr-number">{{ comparisonResult.summary.commission_zero_count || 0 }}</span>
+                    <span class="comm-pill-label">ללא עמלה</span>
+                  </span>
+                  <svg v-if="comparisonResult.summary.commission_zero_count" class="comm-pill-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Diff breakdown -->
+            <div class="comm-insight-block" v-if="comparisonResult.summary.commission_diff_positive || comparisonResult.summary.commission_diff_negative">
+              <div class="comm-block-head">
+                <span class="comm-block-title">שינוי מול תקופה קודמת</span>
+                <span class="comm-block-hint">עלייה/ירידה בעמלה ללקוח</span>
+              </div>
+              <div class="comm-stacked-bar" :title="commissionDiffPct.tooltip">
+                <div class="cmsb cmsb-up" :style="{ flex: comparisonResult.summary.commission_diff_positive || 0 }">
+                  <span v-if="commissionDiffPct.upPct >= 14" class="cmsb-label ltr-number">{{ commissionDiffPct.upPct }}%</span>
+                </div>
+                <div class="cmsb cmsb-down" :style="{ flex: comparisonResult.summary.commission_diff_negative || 0 }">
+                  <span v-if="commissionDiffPct.downPct >= 14" class="cmsb-label ltr-number">{{ commissionDiffPct.downPct }}%</span>
+                </div>
+              </div>
+              <div class="comm-pills-row">
+                <button class="comm-pill comm-pill--up" :disabled="!comparisonResult.summary.commission_diff_positive" @click="openCommissionFilter('positive')" type="button">
+                  <span class="comm-pill-stripe"></span>
+                  <span class="comm-pill-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  </span>
+                  <span class="comm-pill-text">
+                    <span class="comm-pill-count ltr-number">{{ comparisonResult.summary.commission_diff_positive || 0 }}</span>
+                    <span class="comm-pill-label">עלייה בעמלה</span>
+                  </span>
+                  <svg v-if="comparisonResult.summary.commission_diff_positive" class="comm-pill-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <button class="comm-pill comm-pill--down" :disabled="!comparisonResult.summary.commission_diff_negative" @click="openCommissionFilter('negative')" type="button">
+                  <span class="comm-pill-stripe"></span>
+                  <span class="comm-pill-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                  </span>
+                  <span class="comm-pill-text">
+                    <span class="comm-pill-count ltr-number">{{ comparisonResult.summary.commission_diff_negative || 0 }}</span>
+                    <span class="comm-pill-label">ירידה בעמלה</span>
+                  </span>
+                  <svg v-if="comparisonResult.summary.commission_diff_negative" class="comm-pill-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Locked / invite state: only one commission set uploaded -->
+            <div
+              class="comm-insight-block comm-insight-block--locked"
+              v-else-if="comparisonResult.summary.commission_positive_count"
+            >
+              <div class="comm-block-head">
+                <span class="comm-block-title">
+                  <svg class="comm-block-lock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0110 0v4"/>
+                  </svg>
+                  שינוי עמלה מתקופה קודמת
+                </span>
+                <span class="comm-block-hint">זמין אחרי העלאת סט נפרעים נוסף</span>
+              </div>
+              <div class="comm-locked-preview" aria-hidden="true">
+                <div class="comm-locked-pill comm-locked-pill--up">
+                  <span class="comm-locked-pill-icon">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  </span>
+                  <span>עלייה בעמלה</span>
+                </div>
+                <div class="comm-locked-pill comm-locked-pill--down">
+                  <span class="comm-locked-pill-icon">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                  </span>
+                  <span>ירידה בעמלה</span>
+                </div>
+              </div>
+              <button class="comm-locked-cta" type="button" @click="$emit('go-to-comparison')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span>עבור ללשונית השוואה והעלה סט נוסף</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+            </div>
+
+          </div>
+
+          <div class="comm-panel-footer">
+            <button class="comm-panel-cta" @click="openCommissionFilter('has')" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span>צפייה ברשימת לקוחות עם עמלה</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </button>
           </div>
         </div>
 
@@ -469,6 +614,34 @@
         </div>
       </div>
     </div>
+
+    <!-- AI conversation sheet (teleported to body) -->
+    <AiConversationSheet
+      v-model:open="aiSheetOpen"
+      :view-title="aiViewContext?.viewTitle || ''"
+      :view-context="aiViewContext?.viewContextString || ''"
+      :initial-question="aiInitialQuestion"
+    />
+
+    <!-- Floating scroll hint ("more insights below") -->
+    <Teleport to="body">
+      <Transition name="scroll-hint">
+        <button
+          v-if="showScrollHint"
+          class="scroll-hint"
+          @click="scrollToChangedSection"
+          type="button"
+        >
+          <span class="scroll-hint-dot"></span>
+          <span class="scroll-hint-text">יש עוד תובנות למטה</span>
+          <span class="scroll-hint-arrow" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </span>
+        </button>
+      </Transition>
+    </Teleport>
 
     <!-- Filter Modal -->
     <Teleport to="body">
@@ -835,10 +1008,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import api from '../../api/client.js'
+import AiInsightCard from './AiInsightCard.vue'
+import AiConversationSheet from './AiConversationSheet.vue'
+import { useAiViewContext } from '../../composables/useAiViewContext.js'
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
@@ -847,7 +1023,7 @@ const props = defineProps({
   currentFileId: { type: String, default: null },
 })
 
-const emit = defineEmits(['compare', 'reset'])
+const emit = defineEmits(['compare', 'reset', 'go-to-comparison'])
 
 const recentHistory = computed(() => props.history.slice(0, 5))
 const selectedFileId = ref(null)
@@ -871,11 +1047,80 @@ const selectedRemovedIds = ref(new Set())
 const clipboardNotice = ref(false)
 const companyContacts = ref([])
 
+// AI assistant — inline insight card + side conversation sheet
+const aiSheetOpen = ref(false)
+const aiInitialQuestion = ref('')
+const aiViewContext = useAiViewContext({
+  viewKey: 'production-comparison',
+  comparisonResult: computed(() => props.comparisonResult),
+})
+function openAiSheet(question) {
+  aiInitialQuestion.value = question || ''
+  aiSheetOpen.value = true
+}
+watch(aiSheetOpen, (isOpen) => {
+  if (!isOpen) aiInitialQuestion.value = ''
+})
+
+// Scroll hint ("יש עוד תובנות למטה")
+const changedSectionRef = ref(null)
+const showScrollHint = ref(false)
+let scrollHintObserver = null
+let scrollHintAutoHideTimer = null
+
+function scrollToChangedSection() {
+  showScrollHint.value = false
+  if (changedSectionRef.value) {
+    changedSectionRef.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+function setupScrollHint() {
+  if (scrollHintObserver) {
+    scrollHintObserver.disconnect()
+    scrollHintObserver = null
+  }
+  clearTimeout(scrollHintAutoHideTimer)
+  showScrollHint.value = false
+
+  if (!props.comparisonResult) return
+  if (!changedInsights.value.totalClients) return
+
+  // Reveal after a brief delay so the results settle first
+  scrollHintAutoHideTimer = setTimeout(() => {
+    showScrollHint.value = true
+    // Auto-dismiss after 12s so it never becomes noise
+    scrollHintAutoHideTimer = setTimeout(() => {
+      showScrollHint.value = false
+    }, 12000)
+  }, 900)
+
+  nextTick(() => {
+    if (!changedSectionRef.value || !('IntersectionObserver' in window)) return
+    scrollHintObserver = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        showScrollHint.value = false
+      }
+    }, { threshold: 0.12 })
+    scrollHintObserver.observe(changedSectionRef.value)
+  })
+}
+
+watch(() => props.comparisonResult, () => {
+  setupScrollHint()
+})
+
 onMounted(async () => {
+  setupScrollHint()
   try {
     const res = await api.get('/company-contacts')
     companyContacts.value = res.data
   } catch { /* ignore */ }
+})
+
+onBeforeUnmount(() => {
+  if (scrollHintObserver) scrollHintObserver.disconnect()
+  clearTimeout(scrollHintAutoHideTimer)
 })
 
 // Chart
@@ -1056,6 +1301,35 @@ const changedInsights = computed(() => {
     .slice(0, 10)
 
   return { totalClients: clients.length, totalPremiumDiff, totalAccumulationDiff, premiumCount, accumulationCount, productCount, topPremium, topAccumulation }
+})
+
+// Commission insights — percentages for the stacked breakdown bars
+const commissionStatusPct = computed(() => {
+  const s = props.comparisonResult?.summary || {}
+  const has = s.commission_positive_count || 0
+  const zero = s.commission_zero_count || 0
+  const total = has + zero
+  if (!total) return { hasPct: 0, zeroPct: 0, tooltip: '' }
+  const hasPct = Math.round((has / total) * 100)
+  return {
+    hasPct,
+    zeroPct: 100 - hasPct,
+    tooltip: `${hasPct}% עם עמלה · ${100 - hasPct}% ללא עמלה`
+  }
+})
+
+const commissionDiffPct = computed(() => {
+  const s = props.comparisonResult?.summary || {}
+  const up = s.commission_diff_positive || 0
+  const down = s.commission_diff_negative || 0
+  const total = up + down
+  if (!total) return { upPct: 0, downPct: 0, tooltip: '' }
+  const upPct = Math.round((up / total) * 100)
+  return {
+    upPct,
+    downPct: 100 - upPct,
+    tooltip: `${upPct}% עלייה · ${100 - upPct}% ירידה`
+  }
 })
 
 const changeTypeChartSeries = computed(() => {
@@ -2101,6 +2375,551 @@ function formatVal(val) {
 .kpi-split-down { color: var(--red); }
 .kpi-split-clickable { cursor: pointer; border-radius: 4px; padding: 1px 4px; transition: background 0.15s; }
 .kpi-split-clickable:hover { background: rgba(0,0,0,0.06); }
+
+/* ===== Commission Insights Panel ===== */
+.comm-insights-panel {
+  position: relative;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(145deg, rgba(245, 124, 0, 0.08) 0%, rgba(245, 124, 0, 0.02) 45%, #ffffff 100%),
+    #ffffff;
+  border: 1px solid rgba(245, 124, 0, 0.18);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgba(245, 124, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.comm-panel-orb {
+  position: absolute;
+  inset-inline-start: -60px;
+  top: -60px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(245, 124, 0, 0.22), transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(4px);
+}
+
+.comm-panel-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.comm-panel-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.comm-panel-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.32);
+  flex-shrink: 0;
+}
+
+.comm-panel-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comm-panel-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.comm-panel-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.comm-panel-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  border: 1px solid rgba(245, 124, 0, 0.22);
+  box-shadow: 0 2px 6px rgba(245, 124, 0, 0.08);
+}
+
+.comm-total-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.comm-total-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.comm-insights-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.comm-insights-grid.comm-single {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 860px) {
+  .comm-insights-grid { grid-template-columns: 1fr; }
+}
+
+.comm-insight-block {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  border: 1px solid rgba(245, 124, 0, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comm-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.comm-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.comm-block-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ----- Locked / invite state when only one commission set is uploaded ----- */
+.comm-insight-block--locked {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(245, 124, 0, 0.035) 0 12px,
+      transparent 12px 24px
+    ),
+    rgba(255, 255, 255, 0.85);
+  border: 1px dashed rgba(245, 124, 0, 0.32);
+  justify-content: space-between;
+}
+.comm-insight-block--locked .comm-block-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+.comm-block-lock { color: var(--primary); flex-shrink: 0; }
+.comm-insight-block--locked .comm-block-hint {
+  color: var(--primary-deep);
+  font-weight: 600;
+}
+.comm-locked-preview {
+  display: flex;
+  gap: 8px;
+  opacity: 0.75;
+  filter: saturate(0.6);
+}
+.comm-locked-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.comm-locked-pill-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+.comm-locked-pill--up .comm-locked-pill-icon {
+  background: rgba(46, 132, 74, 0.1);
+  color: var(--accent-emerald);
+}
+.comm-locked-pill--down .comm-locked-pill-icon {
+  background: rgba(194, 57, 52, 0.1);
+  color: var(--red-deep);
+}
+.comm-locked-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  border: 1px solid rgba(245, 124, 0, 0.32);
+  color: var(--primary-deep);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s var(--transition);
+  justify-content: center;
+}
+.comm-locked-cta:hover {
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #ffffff;
+  border-color: transparent;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(245, 124, 0, 0.28);
+}
+.comm-locked-cta svg { opacity: 0.7; transition: transform 0.18s, opacity 0.18s; }
+.comm-locked-cta:hover svg { opacity: 1; }
+.comm-locked-cta:hover svg:last-child { transform: translateX(-3px); }
+
+.comm-stacked-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.cmsb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: flex 0.4s ease;
+}
+
+.cmsb-primary { background: linear-gradient(90deg, #F57C00, #FF9800); }
+.cmsb-muted   { background: linear-gradient(90deg, #D8D4CF, #E8E4DF); }
+.cmsb-up      { background: linear-gradient(90deg, #2E844A, #3EA65F); }
+.cmsb-down    { background: linear-gradient(90deg, #B42318, #D64545); }
+
+.cmsb-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.cmsb-label-dark {
+  color: var(--text-secondary);
+}
+
+/* ----- Pills: neutral card + thin accent stripe + colored icon tile ----- */
+.comm-pills-row {
+  display: flex;
+  gap: 10px;
+}
+
+.comm-pill {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  padding-inline-start: 18px; /* room for the accent stripe */
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.18s var(--transition), box-shadow 0.18s var(--transition), border-color 0.18s;
+  text-align: start;
+  overflow: hidden;
+}
+
+.comm-pill:disabled {
+  cursor: default;
+  opacity: 0.5;
+  filter: grayscale(0.25);
+}
+
+.comm-pill:not(:disabled):hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 20px rgba(17, 12, 6, 0.06), 0 2px 6px rgba(17, 12, 6, 0.04);
+}
+
+/* Vertical accent stripe (RTL-aware) */
+.comm-pill-stripe {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  inset-inline-start: 6px;
+  width: 3px;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.85;
+  transition: top 0.18s, bottom 0.18s, opacity 0.18s;
+}
+
+.comm-pill:not(:disabled):hover .comm-pill-stripe {
+  top: 6px;
+  bottom: 6px;
+  opacity: 1;
+}
+
+.comm-pill-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: currentColor;
+  color: currentColor; /* overridden by icon svg stroke via inherit */
+}
+
+/* The icon tile uses the accent color as bg with a soft overlay,
+   and the SVG inside is solid accent color. Trick: fake a tint with background-blend. */
+.comm-pill-icon svg {
+  position: relative;
+  z-index: 1;
+}
+
+.comm-pill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.comm-pill-count {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.comm-pill-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.comm-pill-chev {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: transform 0.18s, opacity 0.18s;
+}
+
+.comm-pill:not(:disabled):hover .comm-pill-chev {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ---- Variants: color only drives the stripe + icon tile ---- */
+
+/* Primary (has commission) — brand orange */
+.comm-pill--primary { color: var(--primary); }
+.comm-pill--primary .comm-pill-icon {
+  background: linear-gradient(135deg, rgba(245, 124, 0, 0.12), rgba(245, 124, 0, 0.18));
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px rgba(245, 124, 0, 0.18);
+}
+.comm-pill--primary:not(:disabled):hover {
+  border-color: rgba(245, 124, 0, 0.3);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(245, 124, 0, 0.04) 100%);
+}
+
+/* Muted (no commission) — stone gray, not shouty */
+.comm-pill--muted { color: #8A827A; }
+.comm-pill--muted .comm-pill-icon {
+  background: linear-gradient(135deg, rgba(138, 130, 122, 0.12), rgba(138, 130, 122, 0.18));
+  color: #8A827A;
+  box-shadow: inset 0 0 0 1px rgba(138, 130, 122, 0.18);
+}
+.comm-pill--muted:not(:disabled):hover {
+  border-color: rgba(138, 130, 122, 0.3);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(138, 130, 122, 0.04) 100%);
+}
+
+/* Up (commission up) — brand emerald */
+.comm-pill--up { color: var(--accent-emerald); }
+.comm-pill--up .comm-pill-icon {
+  background: linear-gradient(135deg, rgba(46, 132, 74, 0.1), rgba(46, 132, 74, 0.16));
+  color: var(--accent-emerald);
+  box-shadow: inset 0 0 0 1px rgba(46, 132, 74, 0.18);
+}
+.comm-pill--up:not(:disabled):hover {
+  border-color: rgba(46, 132, 74, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(46, 132, 74, 0.04) 100%);
+}
+
+/* Down (commission down) — brand red-deep (actionable, worth attention) */
+.comm-pill--down { color: var(--red-deep); }
+.comm-pill--down .comm-pill-icon {
+  background: linear-gradient(135deg, rgba(194, 57, 52, 0.1), rgba(194, 57, 52, 0.16));
+  color: var(--red-deep);
+  box-shadow: inset 0 0 0 1px rgba(194, 57, 52, 0.18);
+}
+.comm-pill--down:not(:disabled):hover {
+  border-color: rgba(194, 57, 52, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(194, 57, 52, 0.04) 100%);
+}
+
+.comm-panel-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.comm-panel-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(245, 124, 0, 0.38);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.comm-panel-cta:hover {
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #ffffff;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(245, 124, 0, 0.32);
+}
+
+/* ===== Scroll hint pill ===== */
+.scroll-hint {
+  position: fixed;
+  bottom: 24px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text);
+  border: 1px solid rgba(245, 124, 0, 0.35);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 12px 30px rgba(245, 124, 0, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
+  direction: rtl;
+}
+
+.scroll-hint:hover {
+  transform: translateX(-50%) translateY(-3px);
+  box-shadow:
+    0 16px 36px rgba(245, 124, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.scroll-hint-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55);
+  animation: scrollHintPulse 1.6s ease-out infinite;
+}
+
+.scroll-hint-text {
+  line-height: 1;
+}
+
+.scroll-hint-arrow {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #F57C00, #FF9800);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.35);
+  animation: scrollHintBounce 1.4s ease-in-out infinite;
+}
+
+@keyframes scrollHintPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(245, 124, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0); }
+}
+
+@keyframes scrollHintBounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(3px); }
+}
+
+.scroll-hint-enter-active,
+.scroll-hint-leave-active {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.scroll-hint-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(24px);
+}
+
+.scroll-hint-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(24px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-hint-arrow,
+  .scroll-hint-dot { animation: none; }
+}
 
 .no-commission-note {
   display: flex;

@@ -121,6 +121,7 @@
             :currentFileId="productionStore.currentFile.id"
             @compare="handleCompare"
             @reset="productionStore.resetComparison()"
+            @go-to-comparison="$emit('go-to-comparison')"
           />
         </div>
 
@@ -166,6 +167,8 @@ import ProductionUploader from './ProductionUploader.vue'
 import ProductionDashboard from './ProductionDashboard.vue'
 import ProductionComparison from './ProductionComparison.vue'
 import VolumeComparison from './VolumeComparison.vue'
+
+defineEmits(['go-to-comparison'])
 
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()

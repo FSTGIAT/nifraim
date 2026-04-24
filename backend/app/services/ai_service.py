@@ -838,7 +838,11 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
 
 
 async def stream_chat(
-    db: AsyncSession, user_id, question: str, history: list[dict]
+    db: AsyncSession,
+    user_id,
+    question: str,
+    history: list[dict],
+    view_context: str | None = None,
 ) -> AsyncGenerator[str, None]:
     context = await build_user_context(db, user_id, question=question)
     if context is None:
@@ -847,6 +851,16 @@ async def stream_chat(
         return
 
     system_prompt = SYSTEM_PROMPT.format(context=context)
+    if view_context:
+        system_prompt += (
+            f"\n\n=== המסך הנוכחי של המשתמש ===\n"
+            f"{view_context}\n\n"
+            "הנחיה חשובה: הבלוק למעלה הוא מקור האמת ל\"מה שהמשתמש רואה עכשיו\". "
+            "אל תגיד שאין לך נתונים השוואתיים או היסטוריים — הבלוק הזה כולל בדיוק את ההשוואה בין שני קבצי הפרודוקציה שהמשתמש צופה בה, "
+            "לרבות לקוחות שהשתנו, חדשים, הוסרו, לקוחות שעברו חברה (אותו ת.ז מופיע גם בהוסרו וגם בחדשים עם חברה שונה), "
+            "ושינויי פרמיה/צבירה/עמלה לפי חברה. השתמש בנתונים האלו ישירות כדי לענות על כל שאלה הקשורה להשוואה, "
+            "למעברי חברה, לעליות/ירידות לפי חברה או לקוח — ואל תמציא שאין לך את הנתון."
+        )
 
     messages = []
     for msg in history[-10:]:

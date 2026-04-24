@@ -72,12 +72,13 @@
         <main class="workspace-main" :class="{ 'wide-content': activeTab === 'comparison' && !!comparisonStore.result }">
           <div class="tab-content">
             <Transition name="tab-switch" mode="out-in">
-              <ProductionTab v-if="activeTab === 'production'" key="production" />
+              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="activeTab = 'comparison'" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
+              <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
             </Transition>
           </div>
         </main>
@@ -164,6 +165,7 @@ import RecruitsTab from '../components/workspace/RecruitsTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
+import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 
 const router = useRouter()
