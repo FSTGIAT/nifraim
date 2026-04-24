@@ -1,13 +1,16 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, or_, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
+from app.models.debt import Debt
+from app.models.production_summary import ProductionSummary
+from app.models.portal_snapshot import PortalSnapshot
 from app.schemas.upload import UploadOut
 from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel
@@ -53,10 +56,20 @@ async def upload_file(
         file_category = "general"
 
     # True replace-on-upload: delete every old upload with the same filename
-    # for this user+category (plus its cascaded ClientRecords). Prevents the
-    # duplicates that accumulate otherwise.
-    # Commission-period pairing now works by company_source (not filename), so
-    # there's no longer any reason to keep an older copy of the same filename.
+    # for this user+category. Commission-period pairing works by company_source
+    # (not filename), so no reason to keep an older copy of the same filename.
+    #
+    # Four tables reference file_uploads.id WITHOUT ON DELETE CASCADE — we must
+    # clear them first or the delete raises a FK violation:
+    #   - client_records.upload_id        (ORM cascade handles this)
+    #   - debts.commission_upload_id      ← explicit
+    #   - debts.production_upload_id      ← explicit
+    #   - production_summaries.upload_id  ← explicit (unique constraint)
+    #   - portal_snapshots.upload_id      ← explicit (snapshot becomes stale)
+    #
+    # Dependents are derived data that will be regenerated next time the
+    # relevant query runs (debts on demand, summaries on production upload,
+    # snapshots when the portal is viewed).
     old_uploads_result = await db.execute(
         select(FileUpload).where(
             FileUpload.user_id == user.id,
@@ -65,9 +78,24 @@ async def upload_file(
         )
     )
     old_uploads = old_uploads_result.scalars().all()
-    for old in old_uploads:
-        await db.delete(old)
     if old_uploads:
+        old_ids = [u.id for u in old_uploads]
+        # Drop every dependent row referencing any of the old uploads
+        await db.execute(sql_delete(Debt).where(
+            or_(
+                Debt.commission_upload_id.in_(old_ids),
+                Debt.production_upload_id.in_(old_ids),
+            )
+        ))
+        await db.execute(sql_delete(ProductionSummary).where(
+            ProductionSummary.upload_id.in_(old_ids)
+        ))
+        await db.execute(sql_delete(PortalSnapshot).where(
+            PortalSnapshot.upload_id.in_(old_ids)
+        ))
+        # Now safe to delete the FileUpload rows (client_records cascade via ORM)
+        for old in old_uploads:
+            await db.delete(old)
         await db.flush()
 
     upload = FileUpload(
