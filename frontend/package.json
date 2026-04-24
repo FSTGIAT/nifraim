@@ -8,7 +8,9 @@
     "preview": "vite preview",
     "render:hero": "remotion render src/remotion/Root.tsx hero-product public/landing/hero-product.mp4",
     "render:hero-webm": "remotion render src/remotion/Root.tsx hero-product public/landing/hero-product.webm --codec vp9",
-    "render:hero-poster": "remotion still src/remotion/Root.tsx hero-product public/landing/hero-product.jpg --frame 0"
+    "render:hero-poster": "remotion still src/remotion/Root.tsx hero-product public/landing/hero-product.jpg --frame 0",
+    "render:brand-reel": "remotion render src/remotion/Root.tsx brand-reel public/landing/brand-reel.mp4",
+    "gen:brand-reel-clips": "python3 scripts/generate-brand-reel-clips.py"
   },
   "dependencies": {
     "@remotion/player": "^4.0.451",
