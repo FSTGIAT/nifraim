@@ -52,18 +52,20 @@ async def upload_file(
     else:
         file_category = "general"
 
-    # Keep only latest previous upload with same filename (for monthly comparison)
-    # Delete older duplicates but keep one for history
+    # True replace-on-upload: delete every old upload with the same filename
+    # for this user+category (plus its cascaded ClientRecords). Prevents the
+    # duplicates that accumulate otherwise.
+    # Commission-period pairing now works by company_source (not filename), so
+    # there's no longer any reason to keep an older copy of the same filename.
     old_uploads_result = await db.execute(
         select(FileUpload).where(
             FileUpload.user_id == user.id,
             FileUpload.filename == file.filename,
             FileUpload.file_category == file_category,
-        ).order_by(desc(FileUpload.uploaded_at))
+        )
     )
     old_uploads = old_uploads_result.scalars().all()
-    # Keep the first (latest) old upload, delete the rest
-    for old in old_uploads[1:]:
+    for old in old_uploads:
         await db.delete(old)
     if old_uploads:
         await db.flush()
