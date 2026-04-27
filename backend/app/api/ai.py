@@ -123,10 +123,13 @@ async def _knowledge_for_user(db: AsyncSession, user_id) -> dict:
     )
     hist_summaries = {s.upload_id: s for s in hist_q.scalars().all()}
 
-    production = []
-    for u in prod_uploads:
+    # Dedupe production by filename — keep the most recent upload per filename,
+    # but always preserve the active one. Re-uploading the same filename should
+    # show as ONE entry in the library, not as duplicates.
+    production_by_name: dict[str, dict] = {}
+    for u in prod_uploads:  # already DESC by uploaded_at
         summary = hist_summaries.get(u.id)
-        production.append({
+        entry = {
             "id": str(u.id),
             "filename": u.filename,
             "is_active": bool(u.is_production),
@@ -136,7 +139,13 @@ async def _knowledge_for_user(db: AsyncSession, user_id) -> dict:
             "total_premium": float(summary.total_premium) if summary else None,
             "total_accumulation": float(summary.total_accumulation) if summary else None,
             "period_label": summary.period_label if summary else None,
-        })
+        }
+        key = (u.filename or '').strip().lower()
+        # Always prefer the active upload; otherwise keep the first (most recent) seen.
+        existing = production_by_name.get(key)
+        if not existing or (entry["is_active"] and not existing["is_active"]):
+            production_by_name[key] = entry
+    production = sorted(production_by_name.values(), key=lambda r: r.get("uploaded_at") or "", reverse=True)
 
     # --- Commission files, grouped by company_source ---
     comm_q = await db.execute(
@@ -144,10 +153,18 @@ async def _knowledge_for_user(db: AsyncSession, user_id) -> dict:
         .where(FileUpload.user_id == user_id, FileUpload.file_category == "commission")
         .order_by(desc(FileUpload.uploaded_at))
     )
+    # Group by company, then dedupe within each group by filename — re-uploads
+    # of the same file (same filename) collapse to a single entry showing the
+    # latest upload. DB rows untouched (commission-diff pairing still has access
+    # to the historical re-uploads); we just don't surface duplicates in the UI.
     commission_groups: dict[str, dict] = {}
-    for u in comm_q.scalars().all():
-        key = u.company_source or u.filename or "חברה לא ידועה"
-        g = commission_groups.setdefault(key, {"company": key, "files": []})
+    for u in comm_q.scalars().all():  # already DESC by uploaded_at
+        company_key = u.company_source or u.filename or "חברה לא ידועה"
+        g = commission_groups.setdefault(company_key, {"company": company_key, "files": [], "_seen_names": set()})
+        name_key = (u.filename or '').strip().lower()
+        if name_key in g["_seen_names"]:
+            continue  # older same-name re-upload — skip
+        g["_seen_names"].add(name_key)
         g["files"].append({
             "id": str(u.id),
             "filename": u.filename,
@@ -155,6 +172,9 @@ async def _knowledge_for_user(db: AsyncSession, user_id) -> dict:
             "record_count": u.record_count or 0,
             "format_type": u.format_type,
         })
+    # Strip the internal _seen_names helper before returning
+    for g in commission_groups.values():
+        g.pop("_seen_names", None)
     commission = sorted(commission_groups.values(), key=lambda g: g["company"])
 
     # --- Recruits / personal file ---
