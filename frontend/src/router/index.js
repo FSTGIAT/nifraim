@@ -65,6 +65,23 @@ const routes = [
     component: () => import('../views/AdminView.vue'),
     meta: { requiresAuth: true, requiresAdmin: true },
   },
+  // /agency and /agency/library now redirect to /workspace — the super-user
+  // uses the same workspace as the regular agent, with one extra 'סוכנים' tab
+  // (and agent folders inside ספריית AI) as the only differentiators.
+  {
+    path: '/agency',
+    redirect: '/workspace',
+  },
+  {
+    path: '/agency/library',
+    redirect: '/workspace?tab=ai-library',
+  },
+  {
+    path: '/agency/join/:token',
+    name: 'AgencyJoin',
+    component: () => import('../views/AgencyJoinView.vue'),
+    meta: { requiresAuth: true },
+  },
   {
     path: '/portal/:token',
     name: 'CustomerPortal',
@@ -135,6 +152,26 @@ router.beforeEach(async (to, from, next) => {
       return
     }
   }
+
+  // Agency role required (חשב עמלות / agency_admin)
+  if (to.meta.requiresAgencyRole && token) {
+    try {
+      const { useAuthStore } = await import('../stores/auth.js')
+      const authStore = useAuthStore()
+      if (!authStore.user) await authStore.fetchUser()
+      const role = authStore.user?.role
+      if (role !== 'agency_admin' && role !== 'agency_accountant') {
+        next('/workspace')
+        return
+      }
+    } catch {
+      next('/workspace')
+      return
+    }
+  }
+
+  // (agencyUsersRedirect removed — super-users use /workspace too, with the
+  //  extra 'סוכנים' tab as the differentiator. No more redirect.)
 
   next()
 })

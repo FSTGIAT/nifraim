@@ -1,9 +1,12 @@
 import { BarComposition } from './BarComposition'
 import { KpiComposition } from './KpiComposition'
 import { DonutComposition } from './DonutComposition'
+import { ShelfReel } from './ShelfReel'
 import type { Viz } from './types'
+import type { ShelfReelType } from './ShelfReel'
 
-export { BarComposition, KpiComposition, DonutComposition }
+export { BarComposition, KpiComposition, DonutComposition, ShelfReel }
+export type { ShelfReelType } from './ShelfReel'
 export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
 export type { Viz } from './types'

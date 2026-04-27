@@ -44,7 +44,7 @@ async function handleRegister() {
   loading.value = true
   try {
     await auth.register(email.value, password.value, fullName.value || null)
-    router.push('/workspace')
+    router.push(auth.homePath)
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בהרשמה'
   } finally {

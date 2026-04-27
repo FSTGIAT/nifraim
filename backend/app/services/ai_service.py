@@ -21,6 +21,39 @@ from app.services.comparison_service import compute_comparison, _normalize_id
 logger = logging.getLogger(__name__)
 
 
+AGENCY_ACCOUNTANT_SYSTEM_PROMPT = """You are the AI assistant for a חשב עמלות (commission accountant / controller) inside an insurance agency house ("בית סוכן") that holds many independent insurance agents.
+
+המשתמש שמדבר איתך הוא חשב עמלות בסוכנות. הוא אינו סוכן בודד — הוא רואה את כל הסוכנים בסוכנות שלו ואחראי לסגירת תקופה (חודש/רבעון), פיוס עמלות מול חברות ביטוח, פיצולי עמלות, מקדמות, בונוסי תפוקה ודוחות לבעלי הסוכנות. השפה שלו היא של חשב, לא של איש מכירות.
+
+המשימות הקבועות שלו (ענה תמיד בהקשר אחת מהן):
+1. **פיוס עמלות** — מה כל חברה הייתה אמורה לשלם לסוכנות מול מה ששילמה בפועל, לפי סוכן ולפי פוליסה.
+2. **פיצולי עמלות** — סוכן ראשי מול סוכן משני, חלוקות עם שותפים. אם אין נתוני פיצול בהקשר — אמור זאת מפורש, אל תמציא.
+3. **מקדמות ומשיכות** — חוב של סוכן מול עמלות עתידיות. אם אין נתון בהקשר — אמור זאת מפורש.
+4. **בונוסי תפוקה (דוחות היקפים)** — חישוב לפי חברה ולפי שנה, סטטוס שולם/לא שולם.
+5. **עמלות לא שולמו ברמת הסוכנות** — עמלות שלא שולמו, חוסרים, חריגות שולם-לא-תואם, סכומים בודדים גדולים.
+6. **דיווח לבעלי הסוכנות** — סיכומים תקופתיים, השוואות בין סוכנים, מי הביא הכי הרבה, מי משאיר הכי הרבה כסף על השולחן.
+
+כשמשיבים על שאלת "איפה הכסף האבוד?" — תמיד הצג רשימה ממוינת לפי סכום: (חברה משלמת, ₪ אבוד, מספר סוכנים שנפגעו, סוכן הכי נפגע). השתמש במידע מבלוק "=== נתוני הסוכנות ===" בלבד.
+
+כללים נוקשים:
+- הגב **תמיד בעברית**, בקצרה, בטון של חשב לחשב.
+- השתמש במספרים אמיתיים מהקשר. ₪1,234 בפסיקים. **בולד** למספרי-מפתח.
+- **תמיד טבלאות markdown** לפירוט מספרי (| עמודות |). מקסימום 10 שורות, סכם את השאר.
+- אל תחשב סכומי עמלה על-ידי הכפלה של אחוז×פרמיה. דווח רק על סכומים מתוך קבצי הנפרעים שהסוכנים העלו בפועל. אם חסר קובץ נפרעים לחברה — ציין זאת מפורש: "אין קובץ נפרעים מ-X — לכן אין סכום בפועל".
+- אל תזכיר סוכן בשם אם הוא לא מופיע ב"=== נתוני הסוכנות ===" — לעולם אל תמציא סוכן.
+
+=== תצוגה חזותית (viz) — אופציונלי ===
+כשהתשובה כוללת פירוט מספרי שווה הצגה, **בסוף התשובה בלבד** (אחרי הטקסט הרגיל) הוסף בלוק JSON בדיוק בפורמט:
+<<VIZ:{{"type":"...","title":"...",...}}>>
+סוגים נתמכים: bar (≥5 פריטים), kpi (מספר-גיבור יחיד), donut (התפלגות עד 8 פרוסות).
+דוגמה: <<VIZ:{{"type":"bar","title":"עמלות לא שולמו לפי חברה","unit":"₪","direction":"down","data":[{{"label":"מנורה","value":-42000}},{{"label":"מגדל","value":-18000}}],"insight":"מנורה לבדה = 64% מהאובדן"}}>>
+ערכים חייבים להגיע מהקשר. אל תפלוט viz לתשובות קצרות/אישוריות.
+
+=== נתוני הסוכנות ===
+{context}
+==="""
+
+
 SYSTEM_PROMPT = """You are a specialized insurance reconciliation analyst assistant for the Nifraim platform.
 המשתמש שמדבר איתך הוא סוכן הביטוח בעל התיק. כל הנתונים למטה שייכים לו ולתיק הלקוחות שלו.
 כשהוא שואל "שלי" הוא מתכוון לנתונים שלו כסוכן — סה"כ הפרמיה, הלקוחות, העמלות וכו'.
@@ -924,20 +957,93 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
     return full_context
 
 
+async def build_agency_context(db: AsyncSession, agency_id: uuid.UUID) -> str:
+    """Compose the AGENCY_ACCOUNTANT_SYSTEM_PROMPT context block.
+
+    Calls into agency_service for cross-agent aggregations. Imported lazily to
+    avoid a circular import (agency_service may grow its own AI helpers later).
+    """
+    from app.services import agency_service  # local import — avoid cycle
+
+    overview = await agency_service.agency_overview(db, agency_id)
+    leaderboard = await agency_service.agent_leaderboard(db, agency_id)
+    reconciliation = await agency_service.unpaid_commission_by_company(db, agency_id)
+    bonus = await agency_service.bonus_status_by_agent(db, agency_id)
+
+    lines: list[str] = []
+    lines.append("=== סקירה כללית של הסוכנות ===")
+    lines.append(f"מספר סוכנים: {overview['agent_count']}  (מתוכם {overview['agents_with_data']} עם פרודוקציה פעילה)")
+    lines.append(f"סך פרמיה: ₪{overview['total_premium']:,.0f}  |  סך צבירה: ₪{overview['total_accumulation']:,.0f}")
+    lines.append(f"לקוחות ייחודיים: {overview['unique_clients']:,}")
+    lines.append(
+        f"עמלות לא שולמו (עמלות שלא שולמו במלואן): ₪{overview['lost_money_amount']:,.0f}"
+        f"  על-פני {overview['lost_money_policy_count']:,} פוליסות"
+    )
+    if overview["top_lost_company"]["name"]:
+        lines.append(
+            f"חברה משלמת בעיתית מובילה: {overview['top_lost_company']['name']}"
+            f"  (₪{overview['top_lost_company']['amount']:,.0f})"
+        )
+    lines.append(
+        f"בונוסי תפוקה השנה: {overview['bonus_paid_this_year']}/{overview['bonus_total_this_year']} שולמו"
+    )
+    if overview["last_upload_at"]:
+        lines.append(f"העלאה אחרונה בסוכנות: {overview['last_upload_at']}")
+
+    lines.append("\n=== עמלות לא שולמו לפי חברה משלמת ===")
+    for row in reconciliation["by_company"][:10]:
+        lines.append(f"- {row['company']}: ₪{row['amount']:,.0f}  ({row['policies']} פוליסות)")
+    if not reconciliation["by_company"]:
+        lines.append("(אין כרגע עמלות לא משולמות)")
+
+    lines.append("\n=== טופ-10 פוליסות בעלות הכסף-האבוד הגדול ביותר ===")
+    for p in reconciliation["top_policies"][:10]:
+        client = p.get("client_name") or p.get("client_id_number") or ""
+        lines.append(
+            f"- ₪{p['lost_amount']:,.0f}  |  סוכן: {p['agent_name']}  |  חברה: {p['company']}"
+            f"  |  לקוח: {client}  |  סטטוס: {p['status']}"
+        )
+
+    lines.append("\n=== ליידר-בורד סוכנים (ממוין לפי כסף-אבוד) ===")
+    for r in leaderboard[:15]:
+        lines.append(
+            f"- {r['full_name']}: כסף-אבוד ₪{r['lost_money_amount']:,.0f}  "
+            f"|  פרמיה ₪{r['total_premium']:,.0f}  |  לקוחות {r['unique_clients']}"
+        )
+    if not leaderboard:
+        lines.append("(אין סוכנים בסוכנות)")
+
+    lines.append(f"\n=== בונוסי תפוקה ({bonus['year']}) ===")
+    lines.append(f"סה\"כ {bonus['totals']['total']} בונוסים, מתוכם {bonus['totals']['paid']} שולמו.")
+    unpaid_bonus = [r for r in bonus["rows"] if not r["is_paid"]]
+    for r in unpaid_bonus[:10]:
+        lines.append(f"- ⏳ {r['agent_name']}  |  {r['company']}")
+
+    out = "\n".join(lines)
+    if len(out) > MAX_CONTEXT_CHARS:
+        out = out[:MAX_CONTEXT_CHARS] + "\n\n[... קוצץ ...]"
+    return out
+
+
 async def stream_chat(
     db: AsyncSession,
     user_id,
     question: str,
     history: list[dict],
     view_context: str | None = None,
+    prompt_persona: str | None = None,
+    agency_id: uuid.UUID | None = None,
 ) -> AsyncGenerator[str, None]:
-    context = await build_user_context(db, user_id, question=question)
-    if context is None:
-        yield f"data: {json.dumps({'text': 'אין נתונים במערכת. יש להעלות קבצים תחילה.'}, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
-        return
-
-    system_prompt = SYSTEM_PROMPT.format(context=context)
+    if prompt_persona == "agency_accountant" and agency_id:
+        context = await build_agency_context(db, agency_id)
+        system_prompt = AGENCY_ACCOUNTANT_SYSTEM_PROMPT.format(context=context)
+    else:
+        context = await build_user_context(db, user_id, question=question)
+        if context is None:
+            yield f"data: {json.dumps({'text': 'אין נתונים במערכת. יש להעלות קבצים תחילה.'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            return
+        system_prompt = SYSTEM_PROMPT.format(context=context)
     if view_context:
         system_prompt += (
             f"\n\n=== המסך הנוכחי של המשתמש ===\n"

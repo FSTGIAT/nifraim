@@ -53,6 +53,13 @@
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
               <path d="M13 7l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
             </svg>
+            <svg v-else-if="tab.id === 'agents'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+              <path d="M16 3.13a4 4 0 010 7.75"/>
+              <path d="M21 6l1.5 1.5L21 9"/>
+            </svg>
           </span>
           <span class="card-label">{{ tab.label }}</span>
           <span class="card-desc">{{ tab.description }}</span>
@@ -117,6 +124,12 @@
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
             <path d="M13 7l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
           </svg>
+          <svg v-else-if="tab.id === 'agents'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+            <path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
         </span>
         <span class="strip-label">{{ tab.label }}</span>
       </button>
@@ -137,13 +150,18 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useAuthStore } from '../../stores/auth.js'
+
 const props = defineProps({
   modelValue: { type: String, required: true },
   viewMode: { type: String, default: 'home' },
 })
 defineEmits(['update:modelValue', 'select-card', 'go-home'])
 
-const tabs = [
+const auth = useAuthStore()
+
+const allTabs = [
   {
     id: 'production',
     label: 'פרודוקציה',
@@ -193,7 +211,20 @@ const tabs = [
     accent: '#F57C00',
     accentGlow: 'rgba(245, 124, 0, 0.18)',
   },
+  // Super-only — visible only when auth.isAgencyUser. Shows the cross-agent
+  // command center (KPI strip + donut + per-company table + agents leaderboard).
+  {
+    id: 'agents',
+    label: 'סוכנים',
+    description: 'מבט-על על סוכני הסוכנות — דירוג, פערים וכניסה לתיק של כל סוכן',
+    accent: '#E8660A',
+    accentGlow: 'rgba(232, 102, 10, 0.18)',
+    superOnly: true,
+  },
 ]
+
+// Visible tabs filtered by role — agents tab only shows for agency super-users
+const tabs = computed(() => allTabs.filter(t => !t.superOnly || auth.isAgencyUser))
 </script>
 
 <style scoped>

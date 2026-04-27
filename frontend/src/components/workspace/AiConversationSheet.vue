@@ -122,6 +122,9 @@ const props = defineProps({
   viewTitle: { type: String, default: '' },
   viewContext: { type: String, default: '' },
   initialQuestion: { type: String, default: '' },
+  // When set (e.g. 'agency_accountant'), the chat uses the agency-flavored
+  // system prompt + agency-aggregated context.
+  promptPersona: { type: String, default: null },
 })
 const emit = defineEmits(['update:open', 'latest-viz'])
 
@@ -159,7 +162,7 @@ async function submit() {
   if (!text || chatStore.loading) return
   draft.value = ''
   nextTick(autoSize)
-  await chatStore.sendMessage(text, props.viewContext || null)
+  await chatStore.sendMessage(text, props.viewContext || null, props.promptPersona || null)
 }
 
 function onEscape(e) {
@@ -175,7 +178,7 @@ watch(() => props.open, async (isOpen) => {
     inputEl.value?.focus()
     if (props.initialQuestion && props.initialQuestion.trim()) {
       const q = props.initialQuestion.trim()
-      await chatStore.sendMessage(q, props.viewContext || null)
+      await chatStore.sendMessage(q, props.viewContext || null, props.promptPersona || null)
     }
   } else {
     window.removeEventListener('keydown', onEscape)

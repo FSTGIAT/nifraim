@@ -17,6 +17,14 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class AgencySummary(BaseModel):
+    id: str
+    name: str
+    slug: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserOut(BaseModel):
     id: str
     email: str
@@ -24,6 +32,9 @@ class UserOut(BaseModel):
     phone: str | None = None
     is_active: bool = False
     is_admin: bool = False
+    role: str = "agent"
+    agency: AgencySummary | None = None
+    impersonating: bool = False
 
     model_config = {"from_attributes": True}
 

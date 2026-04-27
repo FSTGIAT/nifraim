@@ -1,16 +1,21 @@
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister, UserLogin, Token, UserOut, ForgotPasswordRequest, ResetPasswordRequest
-from app.services.auth_service import hash_password, verify_password, create_access_token
+from app.models.agency import Agency
+from app.schemas.user import (
+    UserRegister, UserLogin, Token, UserOut, AgencySummary,
+    ForgotPasswordRequest, ResetPasswordRequest,
+)
+from app.services.auth_service import hash_password, verify_password, create_access_token, decode_token_full
 from app.services.email_service import send_reset_password_email
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, security
 
 router = APIRouter()
 
@@ -30,7 +35,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(user)
 
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), role=user.role, agency_id=str(user.agency_id) if user.agency_id else None)
     return Token(access_token=token)
 
 
@@ -41,7 +46,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), role=user.role, agency_id=str(user.agency_id) if user.agency_id else None)
     return Token(access_token=token)
 
 
@@ -89,7 +94,21 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
+async def me(
+    user: User = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+):
+    agency_summary: AgencySummary | None = None
+    if user.agency_id:
+        result = await db.execute(select(Agency).where(Agency.id == user.agency_id))
+        agency = result.scalar_one_or_none()
+        if agency:
+            agency_summary = AgencySummary(id=str(agency.id), name=agency.name, slug=agency.slug)
+
+    payload = decode_token_full(credentials.credentials) or {}
+    impersonating = bool(payload.get("impersonator"))
+
     return UserOut(
         id=str(user.id),
         email=user.email,
@@ -97,4 +116,7 @@ async def me(user: User = Depends(get_current_user)):
         phone=user.phone,
         is_active=user.is_active,
         is_admin=user.is_admin,
+        role=user.role,
+        agency=agency_summary,
+        impersonating=impersonating,
     )

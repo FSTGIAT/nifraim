@@ -17,7 +17,7 @@
       </div>
 
       <!-- Data source tags -->
-      <div v-if="chatStore.sources.length" class="chat-sources">
+      <div v-if="!hideSources && chatStore.sources.length" class="chat-sources">
         <span class="sources-label">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
@@ -112,11 +112,21 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
 
 const emit = defineEmits(['navigate-tab'])
+
+const props = defineProps({
+  // When set (e.g. 'agency_accountant') the chat uses the agency-flavored
+  // system prompt + agency-aggregated context. Default = regular agent persona.
+  promptPersona: { type: String, default: null },
+  // Override default suggestion chips (used by the agency dashboard).
+  customSuggestions: { type: Array, default: null },
+  // Hide the data-source tags row (super-user doesn't have personal sources).
+  hideSources: { type: Boolean, default: false },
+})
 
 const chatStore = useChatStore()
 const input = ref('')
@@ -139,22 +149,23 @@ function onSourceClick(src) {
 }
 
 onMounted(() => {
-  if (!chatStore.sourcesLoaded) {
+  if (!props.hideSources && !chatStore.sourcesLoaded) {
     chatStore.fetchSources()
   }
 })
 
-const suggestions = [
+const defaultSuggestions = [
   'מה סטטוס ההתאמות שלי?',
   'אילו חברות עם הכי הרבה רשומות?',
   'מה סך הפרמיות שלי?',
 ]
+const suggestions = computed(() => props.customSuggestions || defaultSuggestions)
 
 async function send(text) {
   const q = text?.trim()
   if (!q || chatStore.loading) return
   input.value = ''
-  await chatStore.sendMessage(q)
+  await chatStore.sendMessage(q, null, props.promptPersona)
 }
 
 watch(

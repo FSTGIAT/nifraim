@@ -8,7 +8,7 @@ export const useChatStore = defineStore('chat', () => {
   const sources = ref([])
   const sourcesLoaded = ref(false)
 
-  async function sendMessage(text, viewContext = null) {
+  async function sendMessage(text, viewContext = null, promptPersona = null) {
     error.value = null
     loading.value = true
 
@@ -27,6 +27,7 @@ export const useChatStore = defineStore('chat', () => {
       const token = localStorage.getItem('token')
       const body = { question: text, history }
       if (viewContext) body.view_context = viewContext
+      if (promptPersona) body.prompt_persona = promptPersona
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {

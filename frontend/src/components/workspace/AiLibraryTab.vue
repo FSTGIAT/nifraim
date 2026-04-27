@@ -448,6 +448,187 @@
         </transition>
       </section>
 
+      <!-- ─── תיקיות סוכנים — only for super-users (when scope=agency) ─── -->
+      <section
+        class="lib-section"
+        v-if="agencyAgents.length"
+        :class="{ 'is-collapsed': !sectionOpen.agents }"
+      >
+        <button
+          class="lib-section-head lib-section-head-btn"
+          type="button"
+          :aria-expanded="sectionOpen.agents"
+          aria-controls="lib-body-agents"
+          @click="toggleSection('agents')"
+        >
+          <div class="lib-section-icon lib-icon--agents" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <div class="lib-section-titles">
+            <h3 class="lib-section-title">תיקיות סוכנים</h3>
+            <span class="lib-section-desc">תיקייה לכל סוכן בסוכנות — קבצים שהעלה</span>
+          </div>
+          <span class="lib-section-badge ltr-number">
+            <template v-if="searchQuery">{{ filteredAgentFolders.length }} / </template>{{ agencyAgents.length }}
+          </span>
+          <svg
+            class="lib-section-chevron"
+            :class="{ 'is-closed': !sectionOpen.agents }"
+            width="14" height="14" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <transition name="lib-collapse">
+          <div v-show="sectionOpen.agents" class="lib-section-body" id="lib-body-agents">
+            <div v-if="!filteredAgentFolders.length" class="lib-empty">אין תוצאות חיפוש.</div>
+            <ul v-else class="lib-list lib-list--grouped">
+              <li
+                v-for="agent in filteredAgentFolders"
+                :key="agent.user_id"
+                class="lib-group"
+              >
+                <button
+                  class="lib-group-head"
+                  type="button"
+                  :aria-expanded="isAgentOpen(agent.user_id)"
+                  @click="toggleAgent(agent.user_id)"
+                >
+                  <svg
+                    class="lib-group-chevron"
+                    :class="{ 'is-open': isAgentOpen(agent.user_id) }"
+                    width="14" height="14" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                  <span class="lib-agent-avatar" aria-hidden="true">{{ agentInitials(agent.name) }}</span>
+                  <div class="lib-agent-info">
+                    <span class="lib-agent-name">{{ agent.name }}</span>
+                    <span class="lib-agent-email ltr-number">{{ agent.email }}</span>
+                  </div>
+                  <span class="lib-agent-tags">
+                    <span v-if="agent.production?.length" class="lib-agent-tag tag-prod">
+                      <span class="ltr-number">{{ agent.production.length }}</span> פרודוקציה
+                    </span>
+                    <span v-if="agent.commission?.length" class="lib-agent-tag tag-comm">
+                      <span class="ltr-number">{{ commissionFileCount(agent.commission) }}</span> נפרעים
+                    </span>
+                    <span v-if="agent.myfile?.count" class="lib-agent-tag tag-myfile">
+                      <span class="ltr-number">{{ agent.myfile.count.toLocaleString() }}</span> תיק
+                    </span>
+                    <span v-if="ratesCount(agent.rates)" class="lib-agent-tag tag-rates">
+                      <span class="ltr-number">{{ ratesCount(agent.rates) }}</span> עמלות
+                    </span>
+                    <span v-if="!agent.production?.length && !agent.commission?.length && !agent.myfile?.count && !ratesCount(agent.rates)" class="lib-agent-tag tag-empty">
+                      ללא קבצים
+                    </span>
+                  </span>
+                </button>
+
+                <transition name="lib-collapse">
+                  <div v-show="isAgentOpen(agent.user_id)" class="lib-agent-body">
+                    <!-- Production files -->
+                    <div v-if="agent.production?.length" class="lib-agent-block">
+                      <div class="lib-agent-block-h">קבצי פרודוקציה</div>
+                      <ul class="lib-list">
+                        <li
+                          v-for="f in agent.production"
+                          :key="'p-'+f.id"
+                          class="lib-item"
+                          :class="{ 'is-active': f.is_active }"
+                        >
+                          <div class="lib-item-mark" aria-hidden="true"></div>
+                          <div class="lib-item-main">
+                            <div class="lib-item-top">
+                              <span class="lib-item-title" :title="f.filename">{{ f.period_label || cleanFilename(f.filename) }}</span>
+                              <span v-if="f.is_active" class="lib-pill lib-pill--active">פעיל</span>
+                              <span v-else class="lib-pill lib-pill--historic">היסטורי</span>
+                            </div>
+                            <div class="lib-item-meta">
+                              <span v-if="f.uploaded_at">הועלה {{ formatDate(f.uploaded_at) }}</span>
+                              <span v-if="f.record_count">· <span class="ltr-number">{{ f.record_count.toLocaleString() }}</span> רשומות</span>
+                              <span v-if="f.unique_clients">· <span class="ltr-number">{{ f.unique_clients.toLocaleString() }}</span> לקוחות</span>
+                            </div>
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <!-- Commission files grouped by company -->
+                    <div v-if="agent.commission?.length" class="lib-agent-block">
+                      <div class="lib-agent-block-h">קבצי נפרעים (עמלות)</div>
+                      <ul class="lib-list">
+                        <li v-for="g in agent.commission" :key="'c-'+g.company" class="lib-item">
+                          <div class="lib-item-mark" aria-hidden="true"></div>
+                          <div class="lib-item-main">
+                            <div class="lib-item-top">
+                              <span class="lib-item-title">{{ g.company }}</span>
+                              <span class="lib-pill lib-pill--historic ltr-number">{{ g.files.length }}</span>
+                            </div>
+                            <div class="lib-item-meta">
+                              <span v-for="(f, idx) in g.files.slice(0, 3)" :key="f.id">
+                                <span v-if="idx > 0">· </span>
+                                {{ cleanFilename(f.filename) }}
+                              </span>
+                              <span v-if="g.files.length > 3">· +{{ g.files.length - 3 }} נוספים</span>
+                            </div>
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <!-- My file (recruits) -->
+                    <div v-if="agent.myfile?.count" class="lib-agent-block">
+                      <div class="lib-agent-block-h">תיק אישי</div>
+                      <div class="lib-stats-row">
+                        <div class="lib-stat">
+                          <span class="lib-stat-value ltr-number">{{ agent.myfile.count.toLocaleString() }}</span>
+                          <span class="lib-stat-label">לקוחות</span>
+                        </div>
+                        <div class="lib-stat" v-if="agent.myfile.companies">
+                          <span class="lib-stat-value ltr-number">{{ agent.myfile.companies }}</span>
+                          <span class="lib-stat-label">חברות</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Rates -->
+                    <div v-if="ratesCount(agent.rates)" class="lib-agent-block">
+                      <div class="lib-agent-block-h">טבלאות עמלות</div>
+                      <div class="lib-stats-row">
+                        <div class="lib-stat" v-if="agent.rates?.nifraim?.count">
+                          <span class="lib-stat-value ltr-number">{{ agent.rates.nifraim.count.toLocaleString() }}</span>
+                          <span class="lib-stat-label">נפרעים</span>
+                        </div>
+                        <div class="lib-stat" v-if="agent.rates?.volume?.count">
+                          <span class="lib-stat-value ltr-number">{{ agent.rates.volume.count.toLocaleString() }}</span>
+                          <span class="lib-stat-label">היקפים</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="!agent.production?.length && !agent.commission?.length && !agent.myfile?.count && !ratesCount(agent.rates)"
+                      class="lib-empty"
+                    >
+                      הסוכן עדיין לא העלה קבצים.
+                    </div>
+                  </div>
+                </transition>
+              </li>
+            </ul>
+          </div>
+        </transition>
+      </section>
+
       <!-- Complete empty state -->
       <div v-if="isCompletelyEmpty" class="lib-empty-all">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
@@ -462,6 +643,13 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '../../api/client.js'
+
+const props = defineProps({
+  // 'agent' (default) → /api/ai/knowledge          (user's own files)
+  // 'agency' (super-user only) → /api/ai/knowledge?scope=agency
+  //   adds an `agents:[]` array → renders a "תיקיות סוכנים" section
+  scope: { type: String, default: 'agent' },
+})
 
 const data = ref(null)
 const loading = ref(false)
@@ -487,6 +675,7 @@ const sectionOpen = reactive({
   commission: true,
   myfile: true,
   rates: true,
+  agents: true,
 })
 try {
   const stored = JSON.parse(localStorage.getItem(SECTION_STORAGE_KEY) || '{}')
@@ -543,7 +732,8 @@ async function load() {
   }
 
   try {
-    const res = await api.get('/ai/knowledge')
+    const url = props.scope === 'agency' ? '/ai/knowledge?scope=agency' : '/ai/knowledge'
+    const res = await api.get(url)
     data.value = res.data
     productionExpanded.value = false
   } catch (e) {
@@ -621,6 +811,44 @@ const filteredCommission = computed(() => {
 const filteredCommissionCount = computed(() =>
   filteredCommission.value.reduce((s, g) => s + g.files.length, 0)
 )
+
+// ── Agency-scope: per-agent folders ─────────────────────────────────────
+const agencyAgents = computed(() => data.value?.agents || [])
+const filteredAgentFolders = computed(() => {
+  const list = agencyAgents.value
+  const q = searchQuery.value
+  if (!q) return list
+  return list.filter((a) => {
+    if ((a.name || '').toLowerCase().includes(q)) return true
+    if ((a.email || '').toLowerCase().includes(q)) return true
+    if ((a.production || []).some(f => (f.filename || '').toLowerCase().includes(q))) return true
+    if ((a.commission || []).some(g =>
+      (g.company || '').toLowerCase().includes(q) ||
+      (g.files || []).some(f => (f.filename || '').toLowerCase().includes(q))
+    )) return true
+    return false
+  })
+})
+const openAgents = reactive(new Set())
+function isAgentOpen(uid) {
+  if (searchQuery.value) return true // expand all matching agents while searching
+  return openAgents.has(uid)
+}
+function toggleAgent(uid) {
+  if (openAgents.has(uid)) openAgents.delete(uid)
+  else openAgents.add(uid)
+}
+function agentInitials(name) {
+  if (!name) return '?'
+  return name.split(/\s+/).slice(0, 2).map(p => (p || '')[0] || '').join('').toUpperCase()
+}
+function commissionFileCount(groups) {
+  return (groups || []).reduce((s, g) => s + (g.files?.length || 0), 0)
+}
+function ratesCount(rates) {
+  if (!rates) return 0
+  return (rates.nifraim?.count || 0) + (rates.volume?.count || 0)
+}
 
 // Reset pagination whenever the search changes
 watch(searchQuery, () => { productionExpanded.value = false })
@@ -1059,6 +1287,7 @@ function buildScaleMock() {
 .lib-icon--comm   { background: rgba(245, 124, 0, 0.12); color: var(--primary-deep); }
 .lib-icon--myfile { background: rgba(167, 139, 250, 0.14); color: #7c3aed; }
 .lib-icon--rates  { background: rgba(34, 211, 238, 0.14); color: #0891b2; }
+.lib-icon--agents { background: rgba(232, 102, 10, 0.14); color: #C85A00; }
 
 .lib-section-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .lib-section-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
@@ -1500,5 +1729,58 @@ function buildScaleMock() {
   .lib-show-more:hover { transform: none; }
   .lib-collapse-enter-active,
   .lib-collapse-leave-active { transition: none; }
+}
+
+/* ─── Agent folders (super-only "תיקיות סוכנים" section) ─── */
+.lib-agent-avatar {
+  flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #FFD180 0%, #E8660A 100%);
+  color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 12px;
+  letter-spacing: -0.3px;
+  box-shadow: 0 4px 8px rgba(232, 102, 10, 0.32);
+}
+.lib-agent-info {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+}
+.lib-agent-name {
+  font-size: 13.5px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.lib-agent-email {
+  font-size: 11px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.lib-agent-tags {
+  display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.lib-agent-tag {
+  font-size: 10.5px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px;
+  white-space: nowrap;
+}
+.tag-prod    { background: rgba(99, 102, 241, 0.10); color: #4f46e5; }
+.tag-comm    { background: rgba(245, 124, 0, 0.12); color: var(--primary-deep); }
+.tag-myfile  { background: rgba(167, 139, 250, 0.12); color: #7c3aed; }
+.tag-rates   { background: rgba(34, 211, 238, 0.12); color: #0891b2; }
+.tag-empty   { background: rgba(45, 37, 34, 0.06); color: var(--text-muted); font-weight: 600; }
+
+.lib-agent-body {
+  padding: 12px 14px 14px;
+  background: rgba(245, 240, 235, 0.4);
+  border-radius: 0 0 10px 10px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.lib-agent-block {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lib-agent-block-h {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--text-muted);
+  padding-right: 4px;
 }
 </style>

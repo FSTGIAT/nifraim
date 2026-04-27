@@ -78,7 +78,16 @@
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
-              <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
+              <AiLibraryTab
+                v-else-if="activeTab === 'ai-library'"
+                key="ai-library"
+                :scope="auth.isAgencyUser ? 'agency' : 'agent'"
+              />
+              <AgentsTab
+                v-else-if="activeTab === 'agents' && auth.isAgencyUser"
+                key="agents"
+                @view-agent="openAgentDetail"
+              />
             </Transition>
           </div>
         </main>
@@ -97,6 +106,13 @@
         />
       </div>
     </Transition>
+
+    <!-- Agent drill-in modal — opened from the 'סוכנים' tab when chashav clicks an agent row -->
+    <AgencyAgentDetail
+      :open="!!agentDetailData"
+      :data="agentDetailData"
+      @close="agentDetailData = null"
+    />
 
     <!-- Post-login welcome wipe -->
     <WelcomeOverlay
@@ -175,6 +191,8 @@ import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
+import AgentsTab from '../components/workspace/AgentsTab.vue'
+import AgencyAgentDetail from '../components/agency/AgencyAgentDetail.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -182,6 +200,20 @@ const comparisonStore = useComparisonStore()
 const productionStore = useProductionStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
+
+// Agent drill-in modal data — populated when 'סוכנים' tab requests it
+const agentDetailData = ref(null)
+async function openAgentDetail(agentId) {
+  const id = typeof agentId === 'string' ? agentId : agentId?.user_id
+  if (!id) return
+  try {
+    const { useAgencyStore } = await import('../stores/agency.js')
+    const agencyStore = useAgencyStore()
+    agentDetailData.value = await agencyStore.fetchAgentDetail(id)
+  } catch {
+    alert('שגיאה בטעינת פירוט סוכן')
+  }
+}
 
 // Tab order for navigation
 const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal']
@@ -357,6 +389,17 @@ function onKeydown(e) {
 
 onMounted(async () => {
   await auth.fetchUser()
+
+  // Honor an incoming deep-link, e.g. /workspace?tab=production. Used by the
+  // agency super-user "upload for this agent" button which impersonates and
+  // jumps straight to the production tab in content mode.
+  const route = router.currentRoute.value
+  const requestedTab = route?.query?.tab
+  if (requestedTab && ['production', 'comparison', 'recruits', 'commission-rates', 'company-emails', 'portal', 'ai-library'].includes(requestedTab)) {
+    activeTab.value = requestedTab
+    viewMode.value = 'content'
+  }
+
   document.addEventListener('dragenter', onDragEnter)
   document.addEventListener('dragleave', onDragLeave)
   document.addEventListener('dragover', onDragOver)
