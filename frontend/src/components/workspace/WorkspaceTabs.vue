@@ -193,6 +193,13 @@ const tabs = [
     accent: '#F57C00',
     accentGlow: 'rgba(245, 124, 0, 0.18)',
   },
+  {
+    id: 'portal-automation',
+    label: 'אוטומציה',
+    description: 'התחברות אוטומטית לפורטלים והורדת דוחות',
+    accent: '#10b981',
+    accentGlow: 'rgba(16, 185, 129, 0.18)',
+  },
 ]
 </script>
 

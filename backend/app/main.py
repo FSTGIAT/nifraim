@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -44,6 +44,7 @@ app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(volume.router, prefix="/api/volume", tags=["volume"])
 app.include_router(volume_rates.router, prefix="/api/volume-rates", tags=["volume-rates"])
 app.include_router(debts.router, prefix="/api/debts", tags=["debts"])
+app.include_router(portal_automation.router, prefix="/api/portal-automation", tags=["portal-automation"])
 
 
 @app.get("/api/health")

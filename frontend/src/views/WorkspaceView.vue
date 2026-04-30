@@ -79,6 +79,7 @@
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
+              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" />
             </Transition>
           </div>
         </main>
@@ -174,6 +175,7 @@ import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
+import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 
 const router = useRouter()
@@ -184,7 +186,7 @@ const activeTab = ref('production')
 const viewMode = ref('home')
 
 // Tab order for navigation
-const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal']
+const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal', 'portal-automation']
 const tabLabels = {
   'production': 'פרודוקציה',
   'comparison': 'השוואת נפרעים',
@@ -192,6 +194,7 @@ const tabLabels = {
   'company-emails': 'אימיילים לחברות',
   'recruits': 'ניהול תיק אישי',
   'portal': 'פורטל לקוחות',
+  'portal-automation': 'אוטומציה',
 }
 
 const currentIndex = computed(() => tabOrder.indexOf(activeTab.value))

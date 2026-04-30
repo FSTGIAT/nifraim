@@ -12,5 +12,8 @@ from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.volume_bonus_payment import VolumeBonusPayment
 from app.models.production_summary import ProductionSummary
 from app.models.debt import Debt
+from app.models.portal_credential import PortalCredential
+from app.models.portal_run import PortalRun
+from app.models.otp_inbox import OtpInbox
 
-__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt"]
+__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "OtpInbox"]
