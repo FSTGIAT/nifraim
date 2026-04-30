@@ -91,9 +91,41 @@
           <p>בחר קטגוריה להשוואה</p>
         </div>
 
-        <!-- Category selected, no result → uploader + recent -->
-        <div v-else-if="!comparisonStore.result" :key="'upload-' + comparisonStore.activeCategory">
+        <!-- Category selected, no result → uploader at TOP + monitor below.
+             Once a comparison runs, the monitor collapses so the dashboard
+             takes over the screen — same pattern as `השוואת קבצים` under
+             Production. -->
+        <div v-else-if="!comparisonStore.result" :key="'upload-' + comparisonStore.activeCategory" class="upload-section">
+          <!-- Recent commission uploads → click to re-open the comparison
+               without uploading the same file again. -->
+          <div v-if="recentCommissionUploads.length > 0" class="recent-uploads">
+            <div class="recent-head">
+              <span class="recent-eyebrow">קבצים אחרונים</span>
+              <span class="recent-hint">לחץ כדי לפתוח השוואה ללא העלאה מחדש</span>
+            </div>
+            <div class="recent-strip">
+              <button
+                v-for="up in recentCommissionUploads"
+                :key="up.id"
+                class="recent-chip"
+                :class="{ 'is-loading': reopeningId === up.id }"
+                :disabled="!!reopeningId"
+                @click="reopenComparison(up)"
+              >
+                <span class="recent-chip-company">{{ up.company_source || 'חברה' }}</span>
+                <span class="recent-chip-file">{{ up.filename }}</span>
+                <span class="recent-chip-meta">
+                  <span class="recent-chip-date">{{ formatUploadDate(up.uploaded_at) }}</span>
+                  <span class="recent-chip-count ltr-number">{{ (up.record_count || 0).toLocaleString() }}</span>
+                </span>
+                <svg v-if="reopeningId !== up.id" class="recent-chip-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+                <svg v-else class="recent-chip-icon spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+              </button>
+            </div>
+          </div>
+
           <CommissionUploader />
+          <UnpaidTrackerMonitor :refresh-key="trackerKey" />
         </div>
 
         <!-- Has result → comparison dashboard -->
@@ -111,14 +143,63 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
+import { useUploadsStore } from '../../stores/uploads.js'
 import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
+import UnpaidTrackerMonitor from '../comparison/UnpaidTrackerMonitor.vue'
 
 const productionStore = useProductionStore()
 const comparisonStore = useComparisonStore()
+const uploadsStore = useUploadsStore()
+
+// Bump whenever a fresh comparison result arrives — tells the monitor to
+// re-fetch by-company / trend so the UI reflects the snapshot we just took.
+const trackerKey = ref(0)
+watch(() => comparisonStore.result, (r) => {
+  if (r) trackerKey.value += 1
+})
+
+// Recent commission uploads — top 5, deduped by filename so re-uploads of the
+// same file collapse to a single chip showing the latest version.
+const recentCommissionUploads = computed(() => {
+  const all = uploadsStore.uploads || []
+  const seen = new Set()
+  const out = []
+  for (const u of all) {
+    if (u.file_category !== 'commission') continue
+    const key = (u.filename || '').trim().toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(u)
+    if (out.length >= 5) break
+  }
+  return out
+})
+
+const reopeningId = ref(null)
+async function reopenComparison(upload) {
+  if (!productionStore.currentFile?.id || reopeningId.value) return
+  reopeningId.value = upload.id
+  try {
+    await comparisonStore.compareExisting(
+      productionStore.currentFile.id,
+      upload.id,
+    )
+  } catch (e) {
+    // store already populates `error.value` — nothing else to do here
+  } finally {
+    reopeningId.value = null
+  }
+}
+
+function formatUploadDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
 
 const categories = [
   {
@@ -239,6 +320,8 @@ onMounted(() => {
   if (!comparisonStore.activeCategory) {
     comparisonStore.selectCategory('gemel_hishtalmut')
   }
+  // Fetch uploads (for the recent-files chips). Cheap re-fetch if already loaded.
+  uploadsStore.fetchUploads().catch(() => {})
 })
 </script>
 
@@ -535,6 +618,130 @@ onMounted(() => {
 }
 
 .results-section {}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Recent commission uploads strip */
+.recent-uploads {
+  background: linear-gradient(180deg, #FFFFFF 0%, #FFFBF5 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 18px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.recent-uploads::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, #FFB74D, #F57C00 60%, #E65100);
+}
+.recent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.recent-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--primary-deep);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.recent-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.recent-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 4px;
+}
+.recent-strip::-webkit-scrollbar { height: 6px; }
+.recent-strip::-webkit-scrollbar-thumb { background: #E0E0E0; border-radius: 6px; }
+
+.recent-chip {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: right;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  position: relative;
+  transition: all 200ms var(--transition);
+}
+.recent-chip:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.12);
+}
+.recent-chip:disabled { cursor: wait; opacity: 0.7; }
+.recent-chip.is-loading { border-color: var(--primary); background: var(--primary-light); }
+
+.recent-chip-company {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+.recent-chip-file {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.recent-chip-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+}
+.recent-chip-date {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.recent-chip-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: #F7F7F7;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.recent-chip-icon {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  color: var(--primary);
+  opacity: 0.7;
+  transition: opacity 200ms, transform 200ms;
+}
+.recent-chip:hover:not(:disabled) .recent-chip-icon {
+  opacity: 1;
+  transform: translateX(-3px);
+}
+.recent-chip-icon.spin { animation: rec-spin 0.9s linear infinite; }
+@keyframes rec-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
 /* Tab switch transitions */
 .tab-switch-enter-active {

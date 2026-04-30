@@ -2,10 +2,12 @@ import { BarComposition } from './BarComposition'
 import { KpiComposition } from './KpiComposition'
 import { DonutComposition } from './DonutComposition'
 import { ShelfReel } from './ShelfReel'
+import { UnpaidTrendComposition } from './UnpaidTrendComposition'
 import type { Viz } from './types'
 import type { ShelfReelType } from './ShelfReel'
 
-export { BarComposition, KpiComposition, DonutComposition, ShelfReel }
+export { BarComposition, KpiComposition, DonutComposition, ShelfReel, UnpaidTrendComposition }
+export type { UnpaidTrendProps, UnpaidTrendSeries } from './UnpaidTrendComposition'
 export type { ShelfReelType } from './ShelfReel'
 export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'

@@ -21,6 +21,7 @@ from app.services.debt_service import sync_debts
 
 from app.services.parser_service import parse_excel
 from app.services.comparison_service import compute_comparison
+from app.services.unpaid_tracker_service import snapshot_unpaid_after_compare
 from app.schemas.comparison import ComparisonResponse, PaymentStatusUpdate
 from app.utils.sanitize import sanitize_record
 
@@ -172,6 +173,20 @@ async def compute_from_uploads(
 
     comparison = compute_comparison(prod_dicts, comm_dicts, paying_names, category_override=category)
     comparison["commission_company_source"] = comm_upload.company_source if comm_upload else None
+    if comm_upload and comm_upload.company_source:
+        comparison["commission_company_sources"] = [comm_upload.company_source]
+
+    # Refresh the per-company unpaid snapshot for this commission upload — the
+    # /compute path is what `קבצים אחרונים` chips trigger, so the monitor
+    # would otherwise stay stale after re-running an older upload.
+    if comm_upload:
+        try:
+            await snapshot_unpaid_after_compare(
+                db, user.id, comm_upload.id, comparison,
+            )
+        except Exception as e:
+            logger.warning(f"Unpaid snapshot failed (compute): {e}")
+
     return comparison
 
 
@@ -313,6 +328,17 @@ async def compare_with_production(
         )
     except Exception as e:
         logger.warning(f"Debt sync failed: {e}")
+
+    # Per-company unpaid snapshot for the monitor / MoM trend chart.
+    # Idempotent on re-upload (unique constraint on user/upload/company),
+    # and isolated so a snapshot failure can't break the comparison response.
+    if comm_upload:
+        try:
+            await snapshot_unpaid_after_compare(
+                db, user.id, comm_upload.id, comparison,
+            )
+        except Exception as e:
+            logger.warning(f"Unpaid snapshot failed: {e}")
 
     return comparison
 

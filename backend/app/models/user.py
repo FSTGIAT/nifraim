@@ -46,4 +46,6 @@ class User(Base):
     portal_links = relationship("CustomerPortalLink", back_populates="user", cascade="all, delete-orphan")
     volume_commission_rates = relationship("VolumeCommissionRate", back_populates="user", cascade="all, delete-orphan")
     volume_bonus_payments = relationship("VolumeBonusPayment", back_populates="user", cascade="all, delete-orphan")
+    unpaid_snapshots = relationship("UnpaidSnapshot", back_populates="user", cascade="all, delete-orphan")
+    unpaid_dismissals = relationship("UnpaidDismissal", back_populates="user", cascade="all, delete-orphan")
     agency = relationship("Agency", back_populates="members", foreign_keys=[agency_id])

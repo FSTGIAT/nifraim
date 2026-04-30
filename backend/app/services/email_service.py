@@ -3,6 +3,8 @@ import os
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 from app.config import settings
 
@@ -184,6 +186,122 @@ async def send_debt_email(
     msg["From"] = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    await _send_email(msg)
+    return True
+
+
+async def send_unpaid_company_email(
+    to_email: str,
+    agent_name: str,
+    company_name: str,
+    period_label: str,
+    customers: list[dict],
+    xlsx_bytes: bytes,
+) -> bool:
+    """Send a per-company unpaid-commission inquiry email with an XLSX attachment.
+
+    `customers` is the snapshot payload — each item has id_number, name, premium,
+    products[]. The email body lists the first ~25 inline; the full list (incl.
+    every product per customer) is in the XLSX attachment.
+    """
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        raise ValueError("SMTP not configured")
+
+    total_count = len(customers)
+    total_premium = sum(float(c.get("premium") or 0) for c in customers)
+
+    inline_rows = ""
+    for c in customers[:25]:
+        product_names = " · ".join(
+            p.get("product") or "" for p in (c.get("products") or [])[:3] if p.get("product")
+        )
+        inline_rows += f"""
+        <tr>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;">{c.get('name') or '—'}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;direction:ltr;">{c.get('id_number') or ''}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;font-size:12px;color:#555;">{product_names}</td>
+            <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:left;font-weight:600;color:#e65100;">&#8362;{float(c.get('premium') or 0):,.2f}</td>
+        </tr>"""
+
+    overflow_note = ""
+    if total_count > 25:
+        overflow_note = f"<p style='font-size:12px;color:#999;margin:8px 0;'>+ {total_count - 25} לקוחות נוספים בקובץ המצורף</p>"
+
+    html_body = f"""
+    <html dir="rtl">
+    <body style="font-family:Heebo,Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;">
+        <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+            <div style="background:linear-gradient(135deg,#F57C00,#FF9800);padding:24px 32px;">
+                <h1 style="color:#fff;margin:0;font-size:20px;">בקשת בירור — עמלות לא משולמות</h1>
+                <p style="color:#fff;opacity:0.9;margin:6px 0 0;font-size:13px;">{company_name} · {period_label}</p>
+            </div>
+            <div style="padding:28px 32px;">
+                <p style="font-size:15px;color:#333;line-height:1.7;">
+                    שלום רב,<br>
+                    מצורפת רשימת לקוחות שעבורם <strong>לא התקבלה עמלה</strong> בדוח עמלות {period_label} מ{company_name}.<br>
+                    אבקש את בדיקתכם והשלמת התשלום בהקדם.
+                </p>
+
+                <div style="background:#fff8e1;border-radius:8px;padding:14px 18px;margin:18px 0;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-size:11px;color:#999;font-weight:600;letter-spacing:0.5px;">סה״כ לקוחות</div>
+                        <div style="font-size:20px;font-weight:700;color:#e65100;">{total_count}</div>
+                    </div>
+                    <div style="text-align:left;">
+                        <div style="font-size:11px;color:#999;font-weight:600;letter-spacing:0.5px;">היקף פרמיה</div>
+                        <div style="font-size:20px;font-weight:700;color:#e65100;">&#8362;{total_premium:,.2f}</div>
+                    </div>
+                </div>
+
+                <table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f8f9fa;">
+                            <th style="padding:10px 12px;text-align:right;font-weight:700;color:#666;border-bottom:2px solid #eee;">שם לקוח</th>
+                            <th style="padding:10px 12px;text-align:right;font-weight:700;color:#666;border-bottom:2px solid #eee;">ת.ז</th>
+                            <th style="padding:10px 12px;text-align:right;font-weight:700;color:#666;border-bottom:2px solid #eee;">מוצרים</th>
+                            <th style="padding:10px 12px;text-align:left;font-weight:700;color:#666;border-bottom:2px solid #eee;">פרמיה</th>
+                        </tr>
+                    </thead>
+                    <tbody>{inline_rows}</tbody>
+                </table>
+                {overflow_note}
+
+                <p style="font-size:13px;color:#666;line-height:1.6;margin-top:18px;">
+                    הקובץ המצורף כולל את הרשימה המלאה עם פרטי המוצר וצבירה.<br>
+                    נשמח לקבל מענה במהלך השבוע הקרוב.
+                </p>
+
+                <p style="font-size:13px;color:#999;margin-top:26px;">
+                    בברכה,<br>
+                    {agent_name}<br>
+                    <span style="font-size:11px;color:#bbb;">נשלח דרך מערכת Nifraim</span>
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = f"בקשת בירור עמלות לא משולמות — {company_name} — {period_label}"
+    msg["From"] = settings.SMTP_FROM_EMAIL or settings.SMTP_USER
+    msg["To"] = to_email
+
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(alt)
+
+    safe_company = (company_name or "company").replace(" ", "_")
+    filename = f"לא_שולם_{safe_company}_{period_label}.xlsx"
+    part = MIMEBase(
+        "application",
+        "vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    part.set_payload(xlsx_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+    msg.attach(part)
 
     await _send_email(msg)
     return True

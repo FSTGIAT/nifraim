@@ -14,5 +14,7 @@ from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.volume_bonus_payment import VolumeBonusPayment
 from app.models.production_summary import ProductionSummary
 from app.models.debt import Debt
+from app.models.unpaid_snapshot import UnpaidSnapshot
+from app.models.unpaid_dismissal import UnpaidDismissal
 
-__all__ = ["Agency", "AgencyInvite", "User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt"]
+__all__ = ["Agency", "AgencyInvite", "User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "UnpaidSnapshot", "UnpaidDismissal"]
