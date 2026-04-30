@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
 
+    # Twilio (inbound SMS for portal automation OTP)
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""
+
+    # Symmetric encryption key for portal credentials (Fernet).
+    # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    PORTAL_CRED_FERNET_KEY: str = ""
+
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
 
