@@ -16,6 +16,34 @@
         </button>
       </div>
 
+      <!-- Attached AI documents (uploaded PDFs) -->
+      <div v-if="chatStore.documents.length" class="chat-doc-chips" aria-label="מסמכים שהועלו">
+        <span
+          v-for="doc in chatStore.documents"
+          :key="doc.id"
+          class="chat-doc-chip"
+          :class="{ 'chat-doc-chip-error': doc.status === 'error' }"
+          :title="doc.summary || doc.filename"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span class="chat-doc-chip-label">{{ doc.filename }}</span>
+          <button
+            type="button"
+            class="chat-doc-chip-x"
+            :aria-label="`הסר ${doc.filename}`"
+            @click="chatStore.removeDocument(doc.id)"
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+
       <!-- Data source tags -->
       <div v-if="chatStore.sources.length" class="chat-sources">
         <span class="sources-label">
@@ -86,9 +114,35 @@
         </svg>
         {{ chatStore.error }}
       </div>
+      <div v-if="chatStore.uploadError" class="chat-error">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        {{ chatStore.uploadError }}
+      </div>
 
       <!-- Input bar -->
       <div class="chat-input-bar">
+        <input
+          ref="fileInputEl"
+          type="file"
+          accept="application/pdf"
+          class="chat-file-input"
+          @change="onFileChosen"
+        />
+        <button
+          type="button"
+          class="chat-attach-btn"
+          :disabled="chatStore.uploadingDoc"
+          :aria-busy="chatStore.uploadingDoc"
+          :title="chatStore.uploadingDoc ? 'מעבד מסמך…' : 'צרף מסמך PDF'"
+          @click="openFilePicker"
+        >
+          <span v-if="chatStore.uploadingDoc" class="chat-attach-spinner" aria-hidden="true"></span>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
         <input
           v-model="input"
           class="chat-input"
@@ -121,6 +175,22 @@ const emit = defineEmits(['navigate-tab'])
 const chatStore = useChatStore()
 const input = ref('')
 const messagesEl = ref(null)
+const fileInputEl = ref(null)
+
+function openFilePicker() {
+  if (chatStore.uploadingDoc) return
+  fileInputEl.value?.click()
+}
+
+async function onFileChosen(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  await chatStore.uploadDocument(file)
+  nextTick(() => {
+    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
+}
 
 const sourceTabMap = {
   production: 'production',
@@ -141,6 +211,9 @@ function onSourceClick(src) {
 onMounted(() => {
   if (!chatStore.sourcesLoaded) {
     chatStore.fetchSources()
+  }
+  if (!chatStore.documentsLoaded) {
+    chatStore.loadDocuments()
   }
 })
 
@@ -572,6 +645,82 @@ watch(
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* Attached AI documents */
+.chat-doc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+.chat-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--primary-deep);
+  background: var(--primary-light);
+  border: 1px solid rgba(245, 124, 0, 0.24);
+  border-radius: 999px;
+  max-width: 100%;
+}
+.chat-doc-chip-error {
+  color: #8A1111;
+  background: rgba(234, 0, 30, 0.06);
+  border-color: rgba(234, 0, 30, 0.2);
+}
+.chat-doc-chip-label {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-doc-chip-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.chat-doc-chip-x:hover { background: rgba(255, 255, 255, 1); }
+
+/* Paperclip button inside the input bar */
+.chat-file-input { display: none; }
+.chat-attach-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.chat-attach-btn:hover:not(:disabled) {
+  background: var(--primary-light);
+  color: var(--primary-deep);
+  border-color: rgba(245, 124, 0, 0.32);
+}
+.chat-attach-btn:disabled { opacity: 0.55; cursor: default; }
+.chat-attach-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 124, 0, 0.25);
+  border-top-color: var(--primary-deep, #F57C00);
+  animation: chatAttachSpin 0.8s linear infinite;
+}
+@keyframes chatAttachSpin { to { transform: rotate(360deg); } }
 
 @media (max-width: 768px) {
   .ai-chat-widget {

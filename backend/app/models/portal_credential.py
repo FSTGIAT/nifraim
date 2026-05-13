@@ -21,6 +21,9 @@ class PortalCredential(Base):
     encrypted_password: Mapped[str] = mapped_column(Text, nullable=False)
 
     twilio_to_number: Mapped[str | None] = mapped_column(String(20))
+    # The Twilio number we've successfully written into THIS portal's "contact phone"
+    # field. NULL = portal still routes OTPs to the agent's personal phone.
+    contact_phone_synced_to: Mapped[str | None] = mapped_column(String(20))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     schedule_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     category_hint: Mapped[str | None] = mapped_column(String(64))

@@ -10,15 +10,31 @@
 
     <div v-if="store.error" class="error-banner">{{ store.error }}</div>
 
+    <!-- Twilio number card: provision / show / release -->
+    <div class="twilio-card">
+      <div class="twilio-info">
+        <strong>מספר Twilio לאוטומציה</strong>
+        <span v-if="store.twilioNumber" class="twilio-number ltr-number">{{ store.twilioNumber.phone_number }}</span>
+        <span v-else class="twilio-empty">לא הוקצה — חברות הפורטל ישלחו OTP לטלפון האישי שלך עד שתקצה מספר.</span>
+      </div>
+      <div class="twilio-actions">
+        <button v-if="!store.twilioNumber" class="btn-primary" :disabled="provisioning" @click="provisionNumber">
+          {{ provisioning ? '⏳ רוכש...' : 'רכוש מספר Twilio' }}
+        </button>
+        <button v-else class="btn-cancel" @click="releaseNumber">שחרר מספר</button>
+      </div>
+    </div>
+
     <div v-if="store.loading && !store.credentials.length" class="loading">
       <div class="spinner"></div>
     </div>
 
     <!-- Add form -->
     <div v-if="showAddForm" class="add-form">
+      <div v-if="formError" class="error-banner">{{ formError }}</div>
       <div class="form-row">
-        <label>פורטל</label>
-        <select v-model="addForm.portal_kind" class="edit-input">
+        <label>פורטל <span class="req">*</span></label>
+        <select v-model="addForm.portal_kind" class="edit-input" :class="{ invalid: formError && !addForm.portal_kind }">
           <option value="" disabled>בחר חברה</option>
           <option v-for="k in store.portalKinds" :key="k.id" :value="k.id">
             {{ k.label }}{{ k.implemented ? '' : ' (לא ממומש)' }}
@@ -26,12 +42,12 @@
         </select>
       </div>
       <div class="form-row">
-        <label>שם משתמש</label>
-        <input v-model="addForm.username" class="edit-input" />
+        <label>שם משתמש <span class="req">*</span></label>
+        <input v-model="addForm.username" class="edit-input" :class="{ invalid: formError && !addForm.username }" />
       </div>
       <div class="form-row">
-        <label>סיסמה</label>
-        <input v-model="addForm.password" type="password" class="edit-input" />
+        <label>סיסמה <span class="req">*</span></label>
+        <input v-model="addForm.password" type="password" class="edit-input" :class="{ invalid: formError && !addForm.password }" />
       </div>
       <div class="form-row">
         <label>מספר Twilio (אופציונלי)</label>
@@ -42,8 +58,10 @@
         <input v-model="addForm.schedule_enabled" type="checkbox" />
       </div>
       <div class="form-actions">
-        <button class="btn-save" @click="createCredential">שמור</button>
-        <button class="btn-cancel" @click="showAddForm = false">ביטול</button>
+        <button class="btn-save" :disabled="saving" @click="createCredential">
+          {{ saving ? '⏳ שומר...' : 'שמור' }}
+        </button>
+        <button class="btn-cancel" @click="cancelAddForm">ביטול</button>
       </div>
     </div>
 
@@ -52,13 +70,48 @@
       <p>לא הוגדרו פורטלים. לחץ "הוסף פורטל" כדי להתחיל.</p>
     </div>
 
+    <!-- Recent OTPs panel -->
+    <div class="otp-card">
+      <div class="otp-card-head">
+        <strong>OTPs אחרונים</strong>
+        <span class="otp-meta">SMS שהתקבלו בצינור Twilio (לאבחון בלבד)</span>
+        <button class="btn-refresh" @click="refreshOtps" :disabled="otpRefreshing">
+          {{ otpRefreshing ? '⏳' : '↻' }} רענן
+        </button>
+      </div>
+      <div v-if="!store.otpInbox.length" class="otp-empty">לא התקבלו SMS בינתיים.</div>
+      <table v-else class="otp-table">
+        <thead>
+          <tr>
+            <th>זמן</th>
+            <th>מאת</th>
+            <th>אל</th>
+            <th>קוד</th>
+            <th>סטטוס</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="otp in store.otpInbox" :key="otp.id">
+            <td class="otp-time">{{ formatOtpTime(otp.received_at) }}</td>
+            <td class="ltr-number">{{ otp.from_number }}</td>
+            <td class="ltr-number">{{ otp.to_number }}</td>
+            <td class="otp-code ltr-number">{{ otp.otp_code || '—' }}</td>
+            <td>
+              <span v-if="otp.consumed_at" class="status-pill status-success">נוצל</span>
+              <span v-else class="status-pill status-pending">חדש</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- Credentials table -->
     <table v-if="store.credentials.length > 0">
       <thead>
         <tr>
           <th>חברה</th>
           <th>משתמש</th>
-          <th>מספר Twilio</th>
+          <th>סנכרון טלפון</th>
           <th>תזמון</th>
           <th>סטטוס אחרון</th>
           <th>פעולה</th>
@@ -84,7 +137,19 @@
             <template v-else>
               <td><strong>{{ portalLabel(cred.portal_kind) }}</strong></td>
               <td>{{ cred.username }}</td>
-              <td class="ltr-number">{{ cred.twilio_to_number || '—' }}</td>
+              <td>
+                <span v-if="isSynced(cred)" class="status-pill status-success">✓ מסונכרן</span>
+                <button
+                  v-else-if="store.twilioNumber"
+                  class="btn-sync"
+                  :disabled="isRunning(cred.id)"
+                  @click="syncPhone(cred.id)"
+                  :title="`עדכן את הטלפון בפורטל ל-${store.twilioNumber.phone_number}`"
+                >
+                  סנכרן
+                </button>
+                <span v-else class="muted">דורש מספר Twilio</span>
+              </td>
               <td>{{ cred.schedule_enabled ? '✓ יומי' : '—' }}</td>
               <td>
                 <span class="status-pill" :class="`status-${cred.last_run_status || 'none'}`">
@@ -109,40 +174,10 @@
               </td>
             </template>
           </tr>
-          <!-- Active run progress card -->
-          <tr v-if="isRunning(cred.id) && store.activeRun" class="run-progress-row">
+          <!-- Active run progress (shared component) -->
+          <tr v-if="store.activeRun?.credential_id === cred.id" class="run-progress-row">
             <td colspan="7">
-              <div class="run-progress">
-                <div class="progress-stages">
-                  <span :class="['stage', stageClass(store.activeRun, 'login')]">🔐 כניסה</span>
-                  <span :class="['stage', stageClass(store.activeRun, 'otp')]">📲 קוד</span>
-                  <span :class="['stage', stageClass(store.activeRun, 'download')]">📥 הורדה</span>
-                  <span :class="['stage', stageClass(store.activeRun, 'parse')]">📊 עיבוד</span>
-                </div>
-                <div class="stage-label">{{ stageLabel(store.activeRun) }}</div>
-
-                <!-- Manual OTP fallback (after 60s of awaiting_otp) -->
-                <div v-if="showManualOtp" class="manual-otp">
-                  <input v-model="manualOtp" placeholder="הזן קוד מה-SMS" maxlength="8" class="edit-input otp-input" dir="ltr" />
-                  <button class="btn-save" @click="submitManualOtp">שלח קוד</button>
-                </div>
-              </div>
-            </td>
-          </tr>
-          <!-- Result line after a finished run -->
-          <tr v-if="cred.last_run_status === 'success' && !isRunning(cred.id) && store.activeRun?.credential_id === cred.id" class="result-row">
-            <td colspan="7">
-              <div class="success-banner">
-                ✅ הסתיים בהצלחה — הדוח נוסף להעלאות.
-                <button class="btn-link" @click="$emit('go-to-uploads')">פתח</button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="(cred.last_run_status === 'failed' || cred.last_run_status === 'timeout') && !isRunning(cred.id) && store.activeRun?.credential_id === cred.id" class="result-row">
-            <td colspan="7">
-              <div class="failure-banner">
-                ❌ הריצה נכשלה: {{ store.activeRun?.error_message || cred.last_error || 'שגיאה לא ידועה' }}
-              </div>
+              <PortalRunProgress :runId="store.activeRun.id" />
             </td>
           </tr>
         </template>
@@ -152,17 +187,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import PortalRunProgress from './PortalRunProgress.vue'
 
 const store = usePortalAutomationStore()
 
 const showAddForm = ref(false)
 const editingId = ref(null)
-const manualOtp = ref('')
-const otpWaitStartedAt = ref(null)
-const now = ref(Date.now())
-let nowTicker = null
+const otpRefreshing = ref(false)
+let otpAutoTimer = null
 
 const addForm = reactive({
   portal_kind: '',
@@ -190,12 +224,6 @@ const STATUS_LABELS = {
   parsing: 'מעבד',
   none: '—',
 }
-const STAGE_LABELS = {
-  login: '🔐 מתחבר לפורטל...',
-  otp: '📲 ממתין לקוד SMS...',
-  download: '📥 מוריד דוח...',
-  parse: '📊 מעבד את הקובץ...',
-}
 
 function portalLabel(kind) {
   return store.portalKinds.find((k) => k.id === kind)?.label || kind
@@ -205,52 +233,91 @@ function statusLabel(status) {
   return STATUS_LABELS[status || 'none']
 }
 
-function stageLabel(run) {
-  if (!run) return ''
-  if (run.status === 'success') return '✅ הסתיים'
-  if (run.status === 'failed') return `❌ נכשל: ${run.error_message || ''}`
-  if (run.status === 'timeout') return '⏱ פסק זמן'
-  return STAGE_LABELS[run.stage] || 'ממתין...'
-}
-
-function stageClass(run, name) {
-  if (!run || !run.stage) return ''
-  const order = ['login', 'otp', 'download', 'parse']
-  const cur = order.indexOf(run.stage)
-  const idx = order.indexOf(name)
-  if (idx < cur) return 'stage-done'
-  if (idx === cur) return 'stage-active'
-  return ''
-}
-
 function isRunning(credId) {
   return store.activeRunId && store.activeRun?.credential_id === credId
 }
 
-const showManualOtp = computed(() => {
-  if (!store.activeRun || store.activeRun.status !== 'awaiting_otp') return false
-  if (!otpWaitStartedAt.value) return false
-  return now.value - otpWaitStartedAt.value > 60000
-})
+function isSynced(cred) {
+  return store.twilioNumber && cred.contact_phone_synced_to === store.twilioNumber.phone_number
+}
 
-watch(() => store.activeRun?.status, (s) => {
-  if (s === 'awaiting_otp' && !otpWaitStartedAt.value) {
-    otpWaitStartedAt.value = Date.now()
-  } else if (s !== 'awaiting_otp') {
-    otpWaitStartedAt.value = null
+const provisioning = ref(false)
+
+async function provisionNumber() {
+  provisioning.value = true
+  try {
+    await store.provisionTwilio()
+  } finally {
+    provisioning.value = false
+  }
+}
+
+async function releaseNumber() {
+  if (!confirm('לשחרר את מספר ה-Twilio? כל הסנכרונים בפורטלים יפסיקו לעבוד.')) return
+  await store.releaseTwilio()
+}
+
+async function syncPhone(credId) {
+  await store.syncContactPhone(credId)
+}
+
+async function refreshOtps() {
+  otpRefreshing.value = true
+  try {
+    await store.fetchOtpInbox()
+  } finally {
+    otpRefreshing.value = false
+  }
+}
+
+function formatOtpTime(iso) {
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  if (sameDay) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+// Auto-refresh OTP inbox every 5s while a run is active
+watch(() => store.activeRunId, (newVal) => {
+  if (otpAutoTimer) {
+    clearInterval(otpAutoTimer)
+    otpAutoTimer = null
+  }
+  if (newVal) {
+    otpAutoTimer = setInterval(() => store.fetchOtpInbox(), 5000)
   }
 })
+
+const formError = ref('')
+const saving = ref(false)
 
 function openAddForm() {
   Object.assign(addForm, {
     portal_kind: '', username: '', password: '',
     twilio_to_number: '', schedule_enabled: false,
   })
+  formError.value = ''
   showAddForm.value = true
 }
 
+function cancelAddForm() {
+  showAddForm.value = false
+  formError.value = ''
+}
+
 async function createCredential() {
-  if (!addForm.portal_kind || !addForm.username || !addForm.password) return
+  formError.value = ''
+  const missing = []
+  if (!addForm.portal_kind) missing.push('פורטל')
+  if (!addForm.username) missing.push('שם משתמש')
+  if (!addForm.password) missing.push('סיסמה')
+  if (missing.length) {
+    formError.value = 'חסרים שדות חובה: ' + missing.join(', ')
+    return
+  }
+
+  saving.value = true
   try {
     await store.createCredential({
       portal_kind: addForm.portal_kind,
@@ -260,8 +327,10 @@ async function createCredential() {
       schedule_enabled: addForm.schedule_enabled,
     })
     showAddForm.value = false
-  } catch (_) {
-    // store.error already set
+  } catch (e) {
+    formError.value = store.error || e.response?.data?.detail || 'שגיאה בשמירה'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -293,24 +362,15 @@ async function runNow(id) {
   await store.runNow(id)
 }
 
-async function submitManualOtp() {
-  if (!store.activeRunId || !manualOtp.value) return
-  try {
-    await store.submitOtp(store.activeRunId, manualOtp.value)
-    manualOtp.value = ''
-  } catch (e) {
-    // ignore
-  }
-}
-
 onMounted(async () => {
   await store.fetchPortalKinds()
   await store.fetchCredentials()
-  nowTicker = setInterval(() => { now.value = Date.now() }, 1000)
+  await store.fetchTwilioNumber()
+  await store.fetchOtpInbox()
 })
 
 onUnmounted(() => {
-  if (nowTicker) clearInterval(nowTicker)
+  if (otpAutoTimer) clearInterval(otpAutoTimer)
   store.reset()
 })
 </script>
@@ -430,6 +490,21 @@ h3 {
   color: var(--text);
 }
 
+.edit-input.invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.req {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .form-actions {
   display: flex;
   gap: 8px;
@@ -493,16 +568,6 @@ td {
 .btn-edit:hover { color: var(--primary); }
 .btn-del:hover { color: #ef4444; }
 
-.btn-link {
-  background: none;
-  border: none;
-  color: var(--primary);
-  cursor: pointer;
-  font: inherit;
-  text-decoration: underline;
-  margin-right: 8px;
-}
-
 .status-pill {
   display: inline-block;
   padding: 2px 8px;
@@ -531,78 +596,159 @@ td {
   background: rgba(16, 185, 129, 0.05);
 }
 
-.run-progress {
-  padding: 10px 4px;
+.twilio-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  flex-wrap: wrap;
 }
 
-.progress-stages {
+.twilio-info {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.twilio-info strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.twilio-number {
+  font-size: 14px;
+  color: var(--accent-emerald, #047857);
+  font-weight: 700;
+}
+
+.twilio-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  background: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.btn-sync {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-sync:disabled {
+  background: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.otp-card {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.otp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 8px;
 }
 
-.stage {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--bg);
-  font-size: 12px;
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
-}
-
-.stage-done {
-  background: rgba(16, 185, 129, 0.15);
-  color: #047857;
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.stage-active {
-  background: rgba(59, 130, 246, 0.15);
-  color: #1d4ed8;
-  border-color: rgba(59, 130, 246, 0.3);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.stage-label {
+.otp-card-head strong {
   font-size: 13px;
   color: var(--text);
-  font-weight: 500;
 }
 
-.manual-otp {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  align-items: center;
+.otp-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
 }
 
-.otp-input {
-  max-width: 200px;
+.btn-refresh {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.btn-refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.otp-empty {
+  padding: 12px;
   text-align: center;
-  letter-spacing: 4px;
-  font-size: 16px;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.success-banner {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #047857;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
+.otp-table {
+  font-size: 12px;
+  width: 100%;
 }
 
-.failure-banner {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #b91c1c;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
+.otp-table th, .otp-table td {
+  padding: 5px 8px;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.otp-time {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.otp-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-emerald, #047857);
+}
+
+.status-pill.status-pending {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1d4ed8;
 }
 </style>

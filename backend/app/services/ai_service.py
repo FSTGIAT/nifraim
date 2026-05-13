@@ -1,6 +1,8 @@
 import asyncio
+import base64
 import json
 import logging
+import os
 import uuid
 from typing import AsyncGenerator
 
@@ -16,6 +18,7 @@ from app.models.recruit import Recruit
 from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.production_summary import ProductionSummary
+from app.models.ai_document import AiDocument
 from app.services.comparison_service import compute_comparison, _normalize_id
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,24 @@ You have access ONLY to the user's data shown below. You MUST:
    וציין מפורשות אילו חברות חסרות קובץ נפרעים.
 5. אם המשתמש מבקש אומדן/הערכה של עמלה חזויה, אתה יכול לציין את השיעור בלבד, לדוגמה: "שיעור העמלה
    של מנורה לפי הטבלה הוא 95%. אין קובץ נפרעים מנורה — לכן אין סכום בפועל".
+
+=== סוגי עמלות במסמכי ביטוח (חשוב — אל תערבב ביניהם!) ===
+מסמכי הסכמי עמלה בישראל מכילים בדרך כלל **שלושה–ארבעה סוגי שיעורי עמלה שונים** באותו מסמך,
+ובדרך כלל בטבלאות נפרדות:
+
+A. **עמלת היקף / היקפים** — תשלום חד־פעמי בעת הצטרפות לקוח חדש (אחוזים גבוהים: 30%–60% מהפרמיה השנתית, או סכום שקלי קבוע).
+B. **עמלת נפרעים / שימור / טיפול** — עמלה שוטפת על פרמיה שמגיעה בפועל (אחוזים נמוכים: 3%–9% בחיים/בריאות, 0.2%–0.6% בקופ"ג).
+C. **עמלת ספר / עמלת ספר מקסימלית** — שיעור שנקבע ע"י החברה כתקרה לפיה מחושבת עמלת הסוכן (לעיתים 15%).
+D. **החזרי עמלה / ניכויי ביטולים** — אחוז שיוחזר במקרה של ביטול מוקדם, מדורג לפי שנת ביטול.
+
+**חוקי שימוש:**
+- אם השאלה שואלת "אחוז **נפרעים** שאני מקבל בכל מוצר" → השב **רק** משורות עמלת הנפרעים (B).
+  אל תכלול שורות מטבלת עמלת ההיקף (A) או טבלת עמלת הספר (C).
+- אם השאלה שואלת "עמלת היקף" → השב מ-(A) בלבד.
+- אם השאלה שואלת "החזר על ביטול" → השב מ-(D) בלבד.
+- כשהמסמך מאוחד טבלאות של ביטוח כללי + חיים + בריאות + פנסיה — הקפד להתאים את המוצר לקטגוריה.
+  למשל "תרופות", "השתלות", "ניתוחים בחו"ל" שייכים לטבלת בריאות, לא לטבלת רכוש/כללי.
+- בכל תשובה על שיעורי עמלה ממסמך — **ציין במפורש מאיזה סוג עמלה השיעור** (נפרעים / היקף / ספר / החזר).
 
 === תצוגה חזותית (viz) — אופציונלי ===
 כשהתשובה שלך כוללת פירוט מספרי שווה הצגה (למשל 5+ פריטים עם ערכים, או ערך-גיבור חד-משמעי,
@@ -868,9 +889,190 @@ async def _get_commission_boundaries(db: AsyncSession, user_id: uuid.UUID) -> st
     return "\n".join(lines)
 
 
+_DOCS_BLOCK_BUDGET = 22000  # max chars contributed by uploaded documents
+
+# Hebrew triggers that signal a document-oriented question. When the user
+# asks anything like "summarize the document" / "what does the agreement say"
+# / "what commission rates do I get at <company>", we treat the question as
+# doc-oriented and expand to (or attach) the PDF.
+_DOC_QUESTION_MARKERS = (
+    "מסמך", "מהמסמך", "במסמך", "המסמך",
+    "נספח", "חוזה", "הסכם", "הסכמ", "חוזר",
+    "סכם", "סיכום", "תקציר",
+    "מה כתוב", "מפרט", "כתוב במסמך", "כתוב בהסכם",
+    "פרק", "סעיף", "טבלת",
+    # Commission-related terms — when paired with a known uploaded company,
+    # we want to attach that company's source PDF to the answer.
+    "עמלה", "עמלות", "נפרעים", "היקף", "היקפים", "עמלת ספר",
+    "החזר", "ביטול", "אחוז", "שיעור", "שיעורי",
+)
+
+
+def _company_aliases(company: str) -> list[str]:
+    """Return short matchable variants of a company name.
+
+    Example: "הראל חברה לביטוח בע״מ" → ["הראל חברה לביטוח בע״מ", "הראל"].
+    Lets us match a user typing just "הראל" against the stored full name.
+    """
+    c = (company or "").strip()
+    if not c:
+        return []
+    aliases = [c.lower()]
+    # First whitespace-separated word, if it's not a generic stop word.
+    head = c.split()[0] if c.split() else ""
+    if head and len(head) >= 3 and head.lower() not in {"חברה", "ביטוח", "בית"}:
+        aliases.append(head.lower())
+    return aliases
+
+
+def _doc_matches_question(doc: "AiDocument", question: str) -> bool:
+    if not question or not doc:
+        return False
+    q = question.lower()
+    if doc.filename and doc.filename in question:
+        return True
+    for c in (doc.companies_mentioned or []):
+        for alias in _company_aliases(c):
+            if alias and alias in q:
+                return True
+    return False
+
+
+def _question_is_document_oriented(q: str, doc: "AiDocument") -> bool:
+    if not q:
+        return False
+    if any(m in q for m in _DOC_QUESTION_MARKERS):
+        return True
+    return _doc_matches_question(doc, q)
+
+
+def _question_mentions_any_doc_marker(q: str) -> bool:
+    return bool(q) and any(m in q for m in _DOC_QUESTION_MARKERS)
+
+
+_MAX_PDF_ATTACHMENTS = 2
+_MAX_ATTACHED_BYTES = 25 * 1024 * 1024  # keep payload under Anthropic limits
+
+
+async def _find_attachments_for_question(
+    db: AsyncSession, user_id: uuid.UUID, question: str
+) -> list["AiDocument"]:
+    """Pick up to 2 AiDocuments to attach as `document` blocks in the chat
+    call. We match on filename or company name in the question; if the
+    question is doc-oriented but mentions no specific doc, we fall back to
+    the most recent uploaded doc so questions like "סכם את המסמך" still get
+    the source attached.
+    """
+    if not question:
+        return []
+    result = await db.execute(
+        select(AiDocument)
+        .where(AiDocument.user_id == user_id, AiDocument.status == "ready")
+        .order_by(desc(AiDocument.uploaded_at))
+        .limit(10)
+    )
+    docs = list(result.scalars().all())
+    if not docs:
+        return []
+
+    matches: list[AiDocument] = []
+    for d in docs:
+        if _doc_matches_question(d, question):
+            matches.append(d)
+
+    # Fallback: doc-oriented question that doesn't name a specific company
+    # (e.g. "סכם את המסמך") → attach the latest uploaded doc.
+    if not matches and _question_mentions_any_doc_marker(question):
+        matches.append(docs[0])
+
+    out: list[AiDocument] = []
+    total = 0
+    for d in matches[:_MAX_PDF_ATTACHMENTS]:
+        if not d.file_path or not os.path.exists(d.file_path):
+            continue
+        try:
+            size = os.path.getsize(d.file_path)
+        except OSError:
+            continue
+        if total + size > _MAX_ATTACHED_BYTES:
+            break
+        total += size
+        out.append(d)
+    return out
+
+
+async def _get_documents_context(db: AsyncSession, user_id: uuid.UUID, question: str = "") -> str | None:
+    """Inject summaries (or full content) of uploaded AI documents.
+
+    Two tiers of inclusion:
+    - Default: filename + companies + short summary (~250 chars/doc).
+    - Document-oriented question (matches _DOC_QUESTION_MARKERS, or
+      filename/company keyword): embed the full extracted text so the AI can
+      truly answer "summarize this PDF" or "what does section X say".
+
+    Capped at _DOCS_BLOCK_BUDGET chars total to keep the wider context block
+    under the model's input budget.
+    """
+    result = await db.execute(
+        select(AiDocument)
+        .where(
+            AiDocument.user_id == user_id,
+            AiDocument.status == "ready",
+        )
+        .order_by(desc(AiDocument.uploaded_at))
+        .limit(10)
+    )
+    docs = result.scalars().all()
+    if not docs:
+        return None
+
+    q = question or ""
+    lines = ["=== מסמכי AI שהועלו (ידע נצבר) ==="]
+    total = len(lines[0])
+    for d in docs:
+        companies = d.companies_mentioned or []
+        co_str = ", ".join(companies) if companies else "—"
+        head = f"\n\n• **{d.filename}** ({d.doc_type or 'document'}) — חברות: {co_str}"
+        body = f"\n  סיכום: {d.summary or '(אין סיכום)'}"
+        chunk = head + body
+
+        if _question_is_document_oriented(q, d):
+            full = ((d.structured_data or {}).get("full_content") or "").strip()
+            if full:
+                remaining = _DOCS_BLOCK_BUDGET - total - len(chunk) - 200
+                if remaining > 1000:
+                    if len(full) > remaining:
+                        full = full[:remaining] + "\n[… חלק מהמסמך קוצץ …]"
+                    chunk += f"\n  תוכן המסמך:\n{full}"
+            else:
+                # Older docs may not have full_content yet — fall back to the
+                # structured JSON so the AI still sees the rates.
+                try:
+                    payload = json.dumps(d.structured_data, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    payload = ""
+                if payload:
+                    if len(payload) > 3000:
+                        payload = payload[:3000] + "…"
+                    chunk += f"\n  נתונים מובנים: {payload}"
+
+        if total + len(chunk) > _DOCS_BLOCK_BUDGET:
+            lines.append("\n[… מסמכים נוספים קוצצו לחיסכון בהקשר …]")
+            break
+        lines.append(chunk)
+        total += len(chunk)
+
+    return "".join(lines)
+
+
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
     prod_context, prod_upload = await _get_production_context(db, user_id)
-    if not prod_context:
+
+    # Even without a production file we still want the AI to be helpful when
+    # the user has only uploaded reference documents (commission agreements).
+    docs_context = await _get_documents_context(db, user_id, question)
+
+    if not prod_context and not docs_context:
         return None
 
     topics = _detect_question_topics(question) if question else {"production", "comparison", "myfile", "rates", "history"}
@@ -878,7 +1080,9 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
     # Always include the commission-files boundary block first — this tells the
     # AI exactly which companies have commission data and prevents fabrication.
     boundaries = await _get_commission_boundaries(db, user_id)
-    context_parts = [boundaries, prod_context]
+    context_parts = [boundaries]
+    if prod_context:
+        context_parts.append(prod_context)
 
     # Historical production trends
     if "history" in topics:
@@ -914,6 +1118,11 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
         rates_context = await _get_commission_rates_context(db, user_id)
         if rates_context:
             context_parts.append(rates_context)
+
+    # Uploaded AI documents — already loaded above so we can route around
+    # "no production file" mode. Append at the end of the context block.
+    if docs_context:
+        context_parts.append(docs_context)
 
     full_context = "\n\n".join(context_parts)
 
@@ -952,7 +1161,70 @@ async def stream_chat(
     messages = []
     for msg in history[-10:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({"role": "user", "content": question})
+
+    # Attach the source PDF(s) when the question is about an uploaded doc —
+    # this gives Claude direct access to the agreement instead of only the
+    # pre-extracted summary, which is necessarily lossy. We attach BOTH the
+    # raw PDF (for tables/layout via vision) AND the pdfplumber text layer
+    # (deterministic text scan) — vision fallback handles scanned PDFs.
+    attachments = await _find_attachments_for_question(db, user_id, question)
+    if attachments:
+        user_blocks: list[dict] = []
+        for d in attachments:
+            try:
+                with open(d.file_path, "rb") as f:
+                    pdf_b64 = base64.standard_b64encode(f.read()).decode("ascii")
+            except OSError as e:
+                logger.warning(f"Could not read attached PDF {d.file_path}: {e}")
+                continue
+            user_blocks.append({
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": pdf_b64,
+                },
+                "title": d.filename,
+            })
+            text_layer = (d.extracted_text or "").strip()
+            if text_layer:
+                # Cap to keep input tokens reasonable; head of the doc
+                # typically contains the most-asked tables.
+                if len(text_layer) > 40000:
+                    text_layer = text_layer[:40000] + "\n\n[... text layer truncated ...]"
+                user_blocks.append({
+                    "type": "text",
+                    "text": (
+                        f"### שכבת טקסט מ-{d.filename} (מקור אמת לטקסט/מספרים):\n\n"
+                        f"{text_layer}"
+                    ),
+                })
+        user_blocks.append({
+            "type": "text",
+            "text": (
+                f"מצורפים {len(attachments)} מסמכים שהמשתמש העלה. ענה על השאלה תוך שימוש ישיר בתוכן המסמכים המצורפים.\n\n"
+                "**כללי קריאה של מסמכי הסכמי עמלות בישראל — חשוב מאוד:**\n\n"
+                "1. **שמות מוצרים**: צטט בדיוק כפי שהם מופיעים — אל תתרגם, אל תעגל מילים, אל תשנה.\n\n"
+                "2. **עמלת ספר + תוספת = סה״כ**: בהסכמי הראל (וחברות דומות) שיעור הנפרעים הסופי הוא סכום של שני רכיבים שמופיעים בטבלאות נפרדות:\n"
+                "   • **עמלת ספר** — שיעור בסיס לכל קטגוריה (למשל 11% לחיים/ריסק, 14% לבריאות). מופיעה לרוב ככותרת/הצהרה לפני הטבלה.\n"
+                "   • **תוספת נפרעים** — שיעור נוסף לכל מוצר ספציפי (למשל 5% להכנסה למשפחה).\n"
+                "   • **סה״כ נפרעים** = עמלת ספר + תוספת נפרעים. **חובה לחבר** ולהציג את כל שלושת המספרים.\n"
+                "   דוגמה: חיים — ספר 11%, מגן 1 תוספת 8.2% ⇒ סה״כ 19.2%.\n"
+                "   חפש בכל סעיף את עמלת הספר הרלוונטית **לפני** שאתה מציג רק את התוספת.\n\n"
+                "3. **קטגוריות**: שמור על ההפרדה במסמך (חיים/ריסק | בריאות | פנסיה־גמל־השתלמות | רכוש־כללי). אל תמזג מוצר מקטגוריה אחת לאחרת.\n\n"
+                "4. **טווחים אופייניים**: פנסיה/גמל/השתלמות — 0.2%–0.6%. חיים/בריאות — 4%–9% (לפני הוספת עמלת ספר). אם אתה מקבל מספר שיוצא מהטווח, ודא שזיהית את הקטגוריה הנכונה.\n\n"
+                "5. **תנאי ביטול / החזרי עמלה (Clawback)**: ב**כל** הסכם עמלה ביטוחי בישראל יש מנגנון החזר במקרה של ביטול מוקדם, גם אם הוא לא מופיע בעמוד הראשון. חובה לחפש אותו לפני שאתה אומר 'לא נמצא':\n"
+                "   • מילות חיפוש: 'ביטול', 'החזר', 'החזרי עמלה', 'ניכויי ביטולים', 'Clawback', 'פדיון', 'משיכה', 'ניוד', 'מחיקת תפוקה', 'הפסקת גבייה', 'ירידה בפרמיה'.\n"
+                "   • מבנה אופייני: טבלה של אחוז החזרה לפי משך הזמן מהמכירה — למשל '12 חודשים ראשונים = 100% החזר', '13–24 חודשים = 50%', 'מעבר ל-24 חודשים = 0%'.\n"
+                "   • בדרך כלל הסעיף מציין גם: ההחזר יחסי לחלק שבוטל, אפשרות קיזוז מעמלות עתידיות, וטריגרים נוספים (ביטול, פדיון, ניוד, ירידה מהותית בפרמיה).\n"
+                "   • כשאתה משיב — הצג את הטבלה המלאה + הטריגרים + מנגנון הקיזוז.\n\n"
+                "6. **שלמות**: אם הטבלה ארוכה, כלול את כל השורות — אל תקצר. לפני שאתה אומר 'אין במסמך' — חפש לעומק את הסעיף הרלוונטי וצטט מאיפה במסמך הסקת זאת.\n\n"
+                f"שאלת המשתמש: {question}"
+            ),
+        })
+        messages.append({"role": "user", "content": user_blocks})
+    else:
+        messages.append({"role": "user", "content": question})
 
     if not settings.ANTHROPIC_API_KEY:
         yield f"data: {json.dumps({'text': 'שגיאה: מפתח API של Anthropic לא הוגדר. יש להגדיר ANTHROPIC_API_KEY.'}, ensure_ascii=False)}\n\n"

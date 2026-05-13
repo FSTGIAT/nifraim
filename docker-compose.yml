@@ -12,6 +12,29 @@ services:
       POSTGRES_DB: insurance_dashboard
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insurance -d insurance_dashboard"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8080"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://insurance:insurance_secret@db:5432/insurance_dashboard
+      DATABASE_URL_SYNC: postgresql://insurance:insurance_secret@db:5432/insurance_dashboard
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - portal_data:/app/data
 
 volumes:
   pgdata:
+  portal_data:

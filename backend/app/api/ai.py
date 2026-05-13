@@ -10,6 +10,7 @@ from app.models.recruit import Recruit
 from app.models.production_summary import ProductionSummary
 from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
+from app.models.ai_document import AiDocument
 from app.api.deps import get_paid_user
 from app.schemas.ai import ChatRequest
 from app.services.ai_service import stream_chat
@@ -212,9 +213,29 @@ async def get_knowledge(
         "volume":  {"count": int(volume_total or 0),  "companies": int(volume_companies or 0)},
     } if (nifraim_total or volume_total) else None
 
+    # --- AI documents uploaded by the user (commission agreements, etc.) ---
+    docs_q = await db.execute(
+        select(AiDocument)
+        .where(AiDocument.user_id == user.id)
+        .order_by(desc(AiDocument.uploaded_at))
+    )
+    documents = [
+        {
+            "id": str(d.id),
+            "filename": d.filename,
+            "doc_type": d.doc_type,
+            "companies_mentioned": d.companies_mentioned or [],
+            "summary": d.summary,
+            "status": d.status,
+            "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+        }
+        for d in docs_q.scalars().all()
+    ]
+
     return {
         "production": production,
         "commission": commission,
         "myfile": myfile,
         "rates": rates,
+        "documents": documents,
     }

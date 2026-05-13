@@ -751,13 +751,6 @@
       </Transition>
     </Teleport>
 
-    <!-- Clipboard notification -->
-    <Transition name="clipboard-toast">
-      <div v-if="clipboardNotice" class="clipboard-toast">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-        תוכן המייל הועתק ללוח — הדבק בגוף ההודעה
-      </div>
-    </Transition>
   </div>
 </template>
 
@@ -781,7 +774,6 @@ const pageSize = 50
 const chartReady = ref(false)
 const detailItem = ref(null)
 const detailReturnTo = ref(null) // 'missing' | 'found' | null
-const clipboardNotice = ref(false)
 const customerStatuses = ref({})
 const customInputId = ref(null)
 const customInputVal = ref('')
@@ -1253,12 +1245,8 @@ async function sendSelectedMissingMails() {
     const subject = `בקשת בדיקה — לקוחות חסרים ${label} (${clients.length}) — ${companyName}`
     const body = `שלום רב,\n\nמצורף קובץ Excel עם פירוט הלקוחות.\n\n${lines}\n\nבברכה`
 
-    const status = await openMailCompose({ to: match.email, subject, body })
+    await openMailCompose({ to: match.email, subject, body })
     sentCount++
-    if (status === 'clipboard') {
-      clipboardNotice.value = true
-      setTimeout(() => { clipboardNotice.value = false }, 4000)
-    }
   }
 
   if (missingContacts.length) {
@@ -1326,11 +1314,7 @@ async function sendMissingMail() {
   const subject = `בקשת בדיקה — לקוחות חסרים ${label} (${clients.length}) — ${companyName}`
   const body = `שלום רב,\n\nמצורף קובץ Excel עם פירוט הלקוחות.\n\n${lines}\n\nבברכה`
 
-  const status = await openMailCompose({ to: companyEmail, subject, body })
-  if (status === 'clipboard') {
-    clipboardNotice.value = true
-    setTimeout(() => { clipboardNotice.value = false }, 4000)
-  }
+  await openMailCompose({ to: companyEmail, subject, body })
 }
 
 function persistStatus(recruitId, status) {
@@ -2220,33 +2204,6 @@ const chartOptions = computed(() => ({
   background: var(--primary-glow);
   color: var(--primary);
   border-color: rgba(1,118,211,0.2);
-}
-
-/* ── Clipboard toast ── */
-.clipboard-toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--text, #1a1a1a);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  white-space: nowrap;
-}
-.clipboard-toast svg { flex-shrink: 0; }
-.clipboard-toast-enter-active { animation: toastIn 0.3s ease-out; }
-.clipboard-toast-leave-active { animation: toastIn 0.2s ease reverse; }
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 @media (max-width: 700px) {

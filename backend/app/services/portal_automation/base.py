@@ -47,10 +47,50 @@ class BasePortalAutomation(ABC):
         Returns the list of saved file paths (under `download_dir`).
         """
 
+    # ------ Optional: contact-phone migration (one-time per agent at signup) ------
+
+    async def change_contact_phone(self, page: "Page", new_phone: str) -> None:
+        """After a successful login, navigate to account settings and submit
+        a contact phone change to `new_phone`. Should leave the page on a state
+        where the OLD phone OTP is awaited (the runner pulls from otp_inbox)."""
+        raise NotImplementedError(
+            f"change_contact_phone not implemented for '{self.portal_kind}'"
+        )
+
+    async def confirm_contact_phone_change(self, page: "Page", otp: str) -> None:
+        """Submit the OTP that came to the OLD phone, completing the change."""
+        raise NotImplementedError(
+            f"confirm_contact_phone_change not implemented for '{self.portal_kind}'"
+        )
+
     # ------ Shared helpers (subclasses may override or compose) ------
 
     async def _wait_visible(self, page: "Page", selector: str, timeout: int = 15000) -> None:
         await page.wait_for_selector(selector, state="visible", timeout=timeout)
+
+    async def _click_first_visible(
+        self, page: "Page", selectors: list[str], timeout: int = 20000
+    ) -> str | None:
+        """Try each selector in order; click the first that becomes visible.
+
+        Returns the matched selector, or None if none became visible within
+        ``timeout`` total. Avoids the default 30s timeout per selector that
+        Playwright would otherwise apply when given an `or` list of misses.
+        """
+        import asyncio
+        deadline = asyncio.get_event_loop().time() + (timeout / 1000)
+        for sel in selectors:
+            remaining_ms = max(500, int((deadline - asyncio.get_event_loop().time()) * 1000))
+            try:
+                await page.wait_for_selector(sel, state="visible", timeout=min(2500, remaining_ms))
+            except Exception:
+                continue
+            try:
+                await page.click(sel, timeout=5000)
+                return sel
+            except Exception:
+                continue
+        return None
 
     async def _safe_screenshot(self, page: "Page", path: Path) -> None:
         try:
@@ -58,6 +98,48 @@ class BasePortalAutomation(ABC):
             await page.screenshot(path=str(path), full_page=True)
         except Exception:
             # Never let screenshot failure mask the original error
+            pass
+
+    async def _dump_page_state(self, page: "Page", base_path: Path) -> None:
+        """Save the page HTML + a human-readable list of visible links/buttons
+        alongside the screenshot. Used to diagnose selector mismatches when
+        post-login navigation fails without re-running.
+
+        Writes two files at the same stem as ``base_path``:
+            <stem>.html — full DOM
+            <stem>.txt  — current URL, title, and visible interactive elements
+        """
+        try:
+            base_path.parent.mkdir(parents=True, exist_ok=True)
+            stem = base_path.with_suffix("")
+            html = await page.content()
+            stem.with_suffix(".html").write_text(html, encoding="utf-8")
+
+            url = page.url
+            try:
+                title = await page.title()
+            except Exception:
+                title = ""
+
+            interactive = await page.evaluate(
+                """() => {
+                    const out = [];
+                    for (const el of document.querySelectorAll('a, button, [role="link"], [role="button"]')) {
+                        const r = el.getBoundingClientRect();
+                        if (r.width === 0 || r.height === 0) continue;
+                        const txt = (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ');
+                        if (!txt) continue;
+                        out.push(`${el.tagName.toLowerCase()}: ${txt.slice(0, 120)}`);
+                    }
+                    return out;
+                }"""
+            )
+
+            lines = [f"URL: {url}", f"TITLE: {title}", "", "VISIBLE INTERACTIVE ELEMENTS:"]
+            lines.extend(interactive[:200])
+            stem.with_suffix(".txt").write_text("\n".join(lines), encoding="utf-8")
+        except Exception:
+            # Diagnostics must never raise — the original error is what matters
             pass
 
     async def _expect_download(self, page: "Page", trigger_coro, save_to: Path) -> Path:

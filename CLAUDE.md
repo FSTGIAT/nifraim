@@ -456,6 +456,8 @@ Company names are dynamic. New companies appear automatically in filters and cha
 | `clal_health_nifraim` | כלל בריאות (Clal Health) | xlsx | `{"זיהוי מבוטח", "תשלום עמלה בפועל - נפרעים"}` |
 | `migdal_nifraim` | מגדל (Migdal) | xlsx | `{"פרמיה משולמת", "ת.ז מבוטח"}` |
 | `ayalon_nifraim` | איילון (Ayalon) | xlsx | `{"פרמיה נפרעת", "סך עמלת סוכן"}` |
+| `harel_nifraim` | הראל חיים ובריאות (Harel life/health) | xlsx | `{"סכום תשלום", 'אופי חו"ז'}` |
+| `harel_savings_nifraim` | הראל גמל / מגוון (Harel savings/pension) | xlsx | `{"צבירה/צבירה פרט/דמי ניהול", "הסכם סוכן"}` |
 | `production` | Agent production | xlsx | `{"תאריך הצטרפות", "סטטוס מוצר"}` |
 | `volume_report` | דוח היקפים (multi-sheet) | xlsx | `{"תפוקה לאחר ביטולי שנה א", "רמת גורם"}` |
 

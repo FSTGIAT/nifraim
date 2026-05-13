@@ -973,13 +973,6 @@
       </Transition>
     </Teleport>
 
-    <Transition name="fade">
-      <div v-if="clipboardNotice" class="clipboard-toast">
-        <strong>תוכן המייל הועתק ללוח</strong>
-        <span>הדבק בגוף ההודעה עם Ctrl+V</span>
-      </div>
-    </Transition>
-
     <!-- Mail preview modal: shown when body is too long for a compose URL -->
     <Teleport to="body">
       <Transition name="modal">
@@ -1052,7 +1045,6 @@ const commissionCompanyFilter = ref(null) // null = all companies
 const categoryCompanyFilter = ref(null) // company filter for non-commission categories
 const commissionProductFilter = ref(null) // product filter for commission category
 const selectedRemovedIds = ref(new Set())
-const clipboardNotice = ref(false)
 const companyContacts = ref([])
 
 // AI assistant — inline insight card + side conversation sheet
@@ -3667,16 +3659,6 @@ function formatVal(val) {
   margin-right: 8px;
 }
 .action-icon-btn:hover { background: var(--primary); color: #fff; }
-
-.clipboard-toast {
-  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
-  background: #1e293b; color: #fff; padding: 14px 24px; border-radius: 10px;
-  font-size: 14px; z-index: 9999; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  min-width: 280px;
-}
-.clipboard-toast strong { font-size: 15px; }
-.clipboard-toast span { font-size: 12px; color: #cbd5e1; }
 
 .mail-preview-card {
   max-width: 720px;

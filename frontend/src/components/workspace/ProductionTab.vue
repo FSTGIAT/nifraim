@@ -9,8 +9,18 @@
     </div>
 
     <template v-else>
-      <!-- No file: show uploader -->
-      <ProductionUploader v-if="!productionStore.currentFile" />
+      <!-- No file: automation-first, manual upload as fallback -->
+      <div v-if="!productionStore.currentFile" class="empty-stack">
+        <PortalAutomationPanel
+          title="טען פרודוקציה אוטומטית"
+          @success="onAutomationSuccess"
+          @navigate-to-credentials="$emit('go-to-portal-automation')"
+        />
+        <details class="manual-fallback">
+          <summary>אין פורטל מוגדר? העלה ידנית</summary>
+          <ProductionUploader />
+        </details>
+      </div>
 
       <!-- File exists: inner tabs + dashboard -->
       <template v-else>
@@ -167,8 +177,9 @@ import ProductionUploader from './ProductionUploader.vue'
 import ProductionDashboard from './ProductionDashboard.vue'
 import ProductionComparison from './ProductionComparison.vue'
 import VolumeComparison from './VolumeComparison.vue'
+import PortalAutomationPanel from './PortalAutomationPanel.vue'
 
-defineEmits(['go-to-comparison'])
+defineEmits(['go-to-comparison', 'go-to-portal-automation'])
 
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()
@@ -247,6 +258,13 @@ async function handleCompare(currentId, previousId) {
     // error handled in store
   }
 }
+
+async function onAutomationSuccess() {
+  // The portal automation pipeline ingests the downloaded file as an upload.
+  // Refetch current production so a production-format download appears here;
+  // commission-format downloads land in /uploads and the user uses ComparisonTab.
+  await productionStore.fetchCurrent()
+}
 </script>
 
 <style scoped>
@@ -256,6 +274,31 @@ async function handleCompare(currentId, previousId) {
   flex-direction: column;
   gap: 20px;
 }
+
+.empty-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.manual-fallback {
+  background: var(--card-bg);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+}
+
+.manual-fallback summary {
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.manual-fallback summary:hover { color: var(--text); }
+
+.manual-fallback[open] summary { margin-bottom: 12px; }
 
 .loading-state {
   text-align: center;

@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_PHONE_NUMBER: str = ""
+    TWILIO_PUBLIC_WEBHOOK_BASE: str = "http://localhost:8000"  # ngrok/public URL for prod
+    TWILIO_PROVISION_COUNTRY: str = "IL"
 
     # Symmetric encryption key for portal credentials (Fernet).
     # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

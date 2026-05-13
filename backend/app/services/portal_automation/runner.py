@@ -40,6 +40,11 @@ OTP_POLL_INTERVAL_S = 1.0
 RUN_HARD_TIMEOUT_S = 180
 
 
+class OtpTimeout(TimeoutError):
+    """Raised when no OTP arrives within OTP_WAIT_TIMEOUT_S. Distinct from
+    asyncio's wait_for timeout so the caller can render a different error."""
+
+
 async def _set_status(db: AsyncSession, run: PortalRun, *, status: str | None = None,
                       stage: str | None = None, error: str | None = None,
                       finished: bool = False, screenshot_path: str | None = None) -> None:
@@ -82,7 +87,7 @@ async def _wait_for_otp(db: AsyncSession, run: PortalRun, user_id: uuid.UUID) ->
             await db.commit()
             return row.otp_code
         await asyncio.sleep(OTP_POLL_INTERVAL_S)
-    raise TimeoutError("OTP not received within 90s")
+    raise OtpTimeout("לא התקבל קוד OTP תוך 90 שניות. הזן קוד ידנית או הפעל מחדש.")
 
 
 async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
@@ -143,10 +148,104 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
             await _set_status(db, run, status="success", finished=True)
         except Exception:
             await plugin._safe_screenshot(page, screenshot_path)
+            await plugin._dump_page_state(page, screenshot_path)
             raise
         finally:
             await context.close()
             await browser.close()
+
+
+async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) -> None:
+    cred_result = await db.execute(
+        select(PortalCredential).where(PortalCredential.id == run.credential_id)
+    )
+    cred = cred_result.scalar_one()
+
+    plugin_cls = REGISTRY.get(cred.portal_kind)
+    if plugin_cls is None:
+        raise RuntimeError(f"Unknown portal_kind: {cred.portal_kind}")
+    plugin = plugin_cls()
+
+    password = decrypt(cred.encrypted_password)
+    screenshot_path = SCREENSHOT_ROOT / f"{run.id}.png"
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+        try:
+            # Step 1: standard login → OTP #1 (still routes to OLD phone since
+            # we haven't changed the contact yet).
+            await _set_status(db, run, status="running", stage="login")
+            await plugin.login(page, cred.username, password)
+
+            await _set_status(db, run, status="awaiting_otp", stage="otp")
+            otp1 = await _wait_for_otp(db, run, cred.user_id)
+            await plugin.submit_otp(page, otp1)
+
+            # Step 2: navigate to settings, submit new phone → OTP #2 to OLD phone.
+            await _set_status(db, run, status="downloading", stage="phone_update")
+            await plugin.change_contact_phone(page, new_phone)
+
+            # Step 3: wait for OTP #2 and confirm.
+            await _set_status(db, run, status="awaiting_otp", stage="phone_confirm")
+            otp2 = await _wait_for_otp(db, run, cred.user_id)
+            await plugin.confirm_contact_phone_change(page, otp2)
+
+            cred.contact_phone_synced_to = new_phone
+            await _set_status(db, run, status="success", finished=True)
+        except Exception:
+            await plugin._safe_screenshot(page, screenshot_path)
+            await plugin._dump_page_state(page, screenshot_path)
+            raise
+        finally:
+            await context.close()
+            await browser.close()
+
+
+async def run_phone_change(run_id: uuid.UUID, new_phone: str) -> None:
+    """Orchestrate a one-time contact-phone migration for a credential.
+
+    The PortalRun row should already exist with kind='phone_change' and
+    status='pending'. Mirrors run_automation's error-handling shape.
+    """
+    async with async_session() as db:
+        result = await db.execute(select(PortalRun).where(PortalRun.id == run_id))
+        run = result.scalar_one_or_none()
+        if run is None:
+            logger.error("PortalRun %s not found", run_id)
+            return
+
+        cred_result = await db.execute(
+            select(PortalCredential).where(PortalCredential.id == run.credential_id)
+        )
+        cred = cred_result.scalar_one()
+
+        try:
+            await asyncio.wait_for(_phone_change_inner(db, run, new_phone), timeout=RUN_HARD_TIMEOUT_S)
+            cred.last_run_status = "success"
+            cred.last_error = None
+        except asyncio.TimeoutError:
+            await _set_status(db, run, status="timeout",
+                              error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
+            cred.last_run_status = "timeout"
+            cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
+        except TimeoutError as e:
+            await _set_status(db, run, status="failed", error=str(e), finished=True)
+            cred.last_run_status = "failed"
+            cred.last_error = str(e)
+        except Exception as e:
+            logger.exception("Phone-change run %s failed", run_id)
+            await _set_status(db, run, status="failed", error=str(e),
+                              finished=True,
+                              screenshot_path=str(SCREENSHOT_ROOT / f"{run_id}.png"))
+            cred.last_run_status = "failed"
+            cred.last_error = str(e)
+        finally:
+            cred.last_run_at = datetime.utcnow()
+            await db.commit()
 
 
 async def run_automation(run_id: uuid.UUID) -> None:
@@ -167,15 +266,16 @@ async def run_automation(run_id: uuid.UUID) -> None:
             await asyncio.wait_for(_run_inner(db, run), timeout=RUN_HARD_TIMEOUT_S)
             cred.last_run_status = "success"
             cred.last_error = None
+        except OtpTimeout as e:
+            # OTP-specific timeout — distinct from the run-wide hard timeout.
+            await _set_status(db, run, status="failed", error=str(e), finished=True)
+            cred.last_run_status = "failed"
+            cred.last_error = str(e)
         except asyncio.TimeoutError:
             await _set_status(db, run, status="timeout",
                               error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
             cred.last_run_status = "timeout"
             cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
-        except TimeoutError as e:
-            await _set_status(db, run, status="failed", error=str(e), finished=True)
-            cred.last_run_status = "failed"
-            cred.last_error = str(e)
         except Exception as e:
             logger.exception(f"PortalRun {run_id} failed")
             await _set_status(db, run, status="failed", error=str(e),

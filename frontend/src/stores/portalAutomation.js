@@ -10,6 +10,8 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   const runs = ref([])
   const activeRunId = ref(null)
   const activeRun = ref(null)
+  const twilioNumber = ref(null)   // null when no Twilio number is provisioned
+  const otpInbox = ref([])
   const loading = ref(false)
   const error = ref(null)
 
@@ -129,6 +131,56 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     await api.post(`/portal-automation/runs/${runId}/submit-otp`, { otp })
   }
 
+  async function fetchTwilioNumber() {
+    const res = await api.get('/portal-automation/twilio-numbers/me')
+    twilioNumber.value = res.data || null
+    return twilioNumber.value
+  }
+
+  async function fetchOtpInbox(limit = 20) {
+    const res = await api.get('/portal-automation/otp-inbox', { params: { limit } })
+    otpInbox.value = res.data
+    return res.data
+  }
+
+  async function provisionTwilio() {
+    error.value = null
+    try {
+      const res = await api.post('/portal-automation/twilio-numbers/provision')
+      twilioNumber.value = res.data
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה ברכישת מספר Twilio'
+      throw e
+    }
+  }
+
+  async function releaseTwilio() {
+    error.value = null
+    await api.delete('/portal-automation/twilio-numbers/me')
+    twilioNumber.value = null
+  }
+
+  async function syncContactPhone(credentialId) {
+    error.value = null
+    try {
+      const res = await api.post(`/portal-automation/credentials/${credentialId}/sync-contact-phone`)
+      activeRunId.value = res.data.run_id
+      activeRun.value = {
+        id: res.data.run_id,
+        credential_id: credentialId,
+        kind: 'phone_change',
+        status: 'pending',
+        stage: null,
+      }
+      _startPolling(res.data.run_id)
+      return res.data.run_id
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בעדכון מספר טלפון בפורטל'
+      throw e
+    }
+  }
+
   function reset() {
     _stopPolling()
     activeRunId.value = null
@@ -141,6 +193,8 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     runs,
     activeRunId,
     activeRun,
+    twilioNumber,
+    otpInbox,
     loading,
     error,
     fetchPortalKinds,
@@ -152,6 +206,11 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     fetchRun,
     runNow,
     submitOtp,
+    fetchTwilioNumber,
+    fetchOtpInbox,
+    provisionTwilio,
+    releaseTwilio,
+    syncContactPhone,
     reset,
   }
 })

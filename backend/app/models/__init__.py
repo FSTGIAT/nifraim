@@ -15,5 +15,7 @@ from app.models.debt import Debt
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
 from app.models.otp_inbox import OtpInbox
+from app.models.agent_twilio_number import AgentTwilioNumber
+from app.models.ai_document import AiDocument
 
-__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "OtpInbox"]
+__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "OtpInbox", "AgentTwilioNumber", "AiDocument"]

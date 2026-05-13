@@ -2,10 +2,12 @@
   <div id="app-root">
     <div class="bg-mesh"></div>
     <router-view />
+    <MailPreviewModal />
   </div>
 </template>
 
 <script setup>
+import MailPreviewModal from './components/MailPreviewModal.vue'
 </script>
 
 <style>

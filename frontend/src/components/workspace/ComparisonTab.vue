@@ -91,9 +91,17 @@
           <p>בחר קטגוריה להשוואה</p>
         </div>
 
-        <!-- Category selected, no result → uploader + recent -->
-        <div v-else-if="!comparisonStore.result" :key="'upload-' + comparisonStore.activeCategory">
-          <CommissionUploader />
+        <!-- Category selected, no result → automation-first, manual upload as fallback -->
+        <div v-else-if="!comparisonStore.result" :key="'upload-' + comparisonStore.activeCategory" class="empty-stack">
+          <PortalAutomationPanel
+            title="טען נפרעים אוטומטית"
+            @success="onAutomationSuccess"
+            @navigate-to-credentials="$emit('go-to-portal-automation')"
+          />
+          <details class="manual-fallback">
+            <summary>אין פורטל מוגדר? העלה ידנית</summary>
+            <CommissionUploader />
+          </details>
         </div>
 
         <!-- Has result → comparison dashboard -->
@@ -116,6 +124,9 @@ import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
+import PortalAutomationPanel from './PortalAutomationPanel.vue'
+
+defineEmits(['go-to-portal-automation'])
 
 const productionStore = useProductionStore()
 const comparisonStore = useComparisonStore()
@@ -230,6 +241,15 @@ const relevantCustomers = computed(() => {
       return balB - balA
     })
 })
+
+async function onAutomationSuccess({ run }) {
+  // The portal automation pipeline ingests the commission file as an upload.
+  // Pair it with the current production via the existing compute endpoint.
+  if (!run?.upload_id || !productionStore.currentFile?.id) return
+  try {
+    await comparisonStore.compareExisting(productionStore.currentFile.id, run.upload_id)
+  } catch (_) { /* surfaced via store.error */ }
+}
 
 onMounted(() => {
   if (!productionStore.currentFile && !productionStore.loading) {
@@ -535,6 +555,31 @@ onMounted(() => {
 }
 
 .results-section {}
+
+.empty-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.manual-fallback {
+  background: var(--card-bg);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+}
+
+.manual-fallback summary {
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.manual-fallback summary:hover { color: var(--text); }
+
+.manual-fallback[open] summary { margin-bottom: 12px; }
 
 /* Tab switch transitions */
 .tab-switch-enter-active {

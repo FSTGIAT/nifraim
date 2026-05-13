@@ -15,6 +15,7 @@ from app.utils.hebrew_mappings import (
     ALTSHULER_COLUMNS,
     PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
     HAREL_NIFRAIM_COLUMNS,
+    HAREL_SAVINGS_NIFRAIM_COLUMNS,
     CLAL_LIFE_NIFRAIM_COLUMNS,
     CLAL_HEALTH_NIFRAIM_COLUMNS,
     MIGDAL_NIFRAIM_COLUMNS,
@@ -31,6 +32,7 @@ from app.utils.hebrew_mappings import (
     ALTSHULER_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_SIGNATURE,
     HAREL_NIFRAIM_SIGNATURE,
+    HAREL_SAVINGS_NIFRAIM_SIGNATURE,
     CLAL_LIFE_NIFRAIM_SIGNATURE,
     CLAL_HEALTH_NIFRAIM_SIGNATURE,
     MIGDAL_NIFRAIM_SIGNATURE,
@@ -68,6 +70,8 @@ def detect_format(columns: list[str]) -> str:
         return "menora"
     if col_set & ALTSHULER_SIGNATURE:
         return "altshuler"
+    if col_set & HAREL_SAVINGS_NIFRAIM_SIGNATURE:
+        return "harel_savings_nifraim"
     if col_set & HAREL_NIFRAIM_SIGNATURE:
         return "harel_nifraim"
     if col_set & CLAL_LIFE_NIFRAIM_SIGNATURE:
@@ -325,6 +329,8 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
         return _parse_altshuler(df)
     elif file_format == "harel_nifraim":
         return _parse_harel_nifraim(df)
+    elif file_format == "harel_savings_nifraim":
+        return _parse_harel_savings_nifraim(df)
     elif file_format == "phoenix_insurance_nifraim":
         return _parse_phoenix_insurance_nifraim(df)
     elif file_format == "clal_life_nifraim":
@@ -788,6 +794,75 @@ def _parse_harel_nifraim(df: pd.DataFrame) -> dict:
 
     return {
         "format": "harel_nifraim",
+        "company_source": "הראל",
+        "records": records,
+    }
+
+
+def _parse_harel_savings_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Harel savings/pension commission report (הראל גמל/מגוון).
+
+    Sheet רשימת נתונים לסוכן — savings accounts with balance + management fee,
+    distinct from harel_nifraim (life/health on sheet דוח נפרעים).
+    """
+    records = []
+
+    numeric_fields = {
+        "commission_paid",
+        "commission_before_fee",
+        "management_fee_amount",
+        "balance",
+    }
+    id_like_fields = (
+        "id_number",
+        "fund_policy_number",
+        "agent_number",
+        "employer_id",
+    )
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in HAREL_SAVINGS_NIFRAIM_COLUMNS.items():
+            if heb_col not in df.columns:
+                continue
+            val = row.get(heb_col)
+            if eng_field in numeric_fields:
+                record[eng_field] = parse_numeric(val)
+            elif eng_field == "sign_date":
+                record[eng_field] = parse_date(val)
+            else:
+                if val is None or (isinstance(val, float) and pd.isna(val)):
+                    record[eng_field] = None
+                else:
+                    record[eng_field] = str(val).strip()
+
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1].strip() if len(parts) > 1 else None
+
+        for field in id_like_fields:
+            val = record.get(field)
+            if val is None:
+                continue
+            s = str(val).strip()
+            if s.endswith(".0"):
+                s = s[:-2]
+            record[field] = s or None
+
+        if not record.get("product") or record["product"] in ("nan", "None", ""):
+            record["product"] = record.get("fund_type")
+
+        record["receiving_company"] = "הראל"
+        record["reconciliation_status"] = "no_data"
+
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", "", "0"):
+            records.append(record)
+
+    return {
+        "format": "harel_savings_nifraim",
         "company_source": "הראל",
         "records": records,
     }

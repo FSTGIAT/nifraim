@@ -12,6 +12,7 @@ from app.models.subscription import Subscription
 from app.services.auth_service import hash_password
 from app.services.sms_service import send_password_sms
 from app.services.payment_service import create_payment_page, charge_token
+from app.services import twilio_provisioning
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,14 @@ async def activate_subscription(
     if user.phone:
         await send_password_sms(user.phone, password)
 
+    # Auto-provision a Twilio +972 number for portal automation. Soft-fail —
+    # if Twilio isn't configured yet (e.g. regulatory bundle not approved), the
+    # subscription stays active and the agent can provision later from the UI.
+    try:
+        await twilio_provisioning.provision_for_user(db, user.id)
+    except Exception:
+        logger.exception("Twilio auto-provision failed for user %s — subscription is active anyway", user.id)
+
     return user
 
 
@@ -189,6 +198,11 @@ async def get_subscription_status(db: AsyncSession, user: User) -> dict:
         sub.status = "expired"
         user.is_active = False
         await db.commit()
+        # Release the Twilio number back to inventory — agent stops paying us, we stop paying Twilio.
+        try:
+            await twilio_provisioning.release_for_user(db, user.id)
+        except Exception:
+            logger.exception("Twilio release on expiry failed for user %s", user.id)
         return {
             "is_active": False,
             "plan": sub.plan,

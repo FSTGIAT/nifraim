@@ -8,6 +8,97 @@ export const useChatStore = defineStore('chat', () => {
   const sources = ref([])
   const sourcesLoaded = ref(false)
 
+  const documents = ref([])
+  const documentsLoaded = ref(false)
+  const uploadingDoc = ref(false)
+  const uploadError = ref(null)
+
+  function authHeaders() {
+    const token = localStorage.getItem('token')
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
+  async function loadDocuments() {
+    try {
+      const res = await fetch('/api/ai/documents', { headers: authHeaders() })
+      if (res.ok) {
+        documents.value = await res.json()
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      documentsLoaded.value = true
+    }
+  }
+
+  async function uploadDocument(file) {
+    if (!file) return null
+    uploadError.value = null
+    uploadingDoc.value = true
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/ai/documents/upload', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      })
+      if (!res.ok) {
+        let msg = 'העלאה נכשלה'
+        try {
+          const data = await res.json()
+          if (data.detail) msg = data.detail
+        } catch { /* ignore */ }
+        throw new Error(msg)
+      }
+      const doc = await res.json()
+
+      // Insert at the top of the list (dedupe if same id).
+      documents.value = [doc, ...documents.value.filter(d => d.id !== doc.id)]
+
+      // Surface the result inline in the conversation so the user sees
+      // exactly what Claude understood from their PDF.
+      const lines = [`**מסמך נוסף לידע ה-AI:** ${doc.filename}`]
+      if (doc.status === 'error') {
+        lines.push(`שגיאה בעיבוד: ${doc.error || 'לא ניתן לקרוא את המסמך'}`)
+      } else {
+        if (doc.summary) lines.push(doc.summary)
+        if (doc.companies_mentioned?.length) {
+          lines.push(`חברות: ${doc.companies_mentioned.join(', ')}`)
+        }
+        const rates = doc.structured_data?.rates || []
+        if (rates.length) {
+          lines.push(`חולצו **${rates.length}** שיעורי עמלה — נוספו לטבלת השיעורים.`)
+        }
+      }
+      messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
+      return doc
+    } catch (e) {
+      uploadError.value = e.message
+      messages.value.push({
+        role: 'assistant',
+        content: `**שגיאה בהעלאת המסמך:** ${e.message}`,
+      })
+      return null
+    } finally {
+      uploadingDoc.value = false
+    }
+  }
+
+  async function removeDocument(id) {
+    try {
+      const res = await fetch(`/api/ai/documents/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })
+      if (res.ok) {
+        documents.value = documents.value.filter(d => d.id !== id)
+      }
+    } catch {
+      // silently ignore
+    }
+  }
+
   async function sendMessage(text, viewContext = null) {
     error.value = null
     loading.value = true
@@ -101,5 +192,21 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  return { messages, loading, error, sources, sourcesLoaded, sendMessage, clearMessages, fetchSources }
+  return {
+    messages,
+    loading,
+    error,
+    sources,
+    sourcesLoaded,
+    documents,
+    documentsLoaded,
+    uploadingDoc,
+    uploadError,
+    sendMessage,
+    clearMessages,
+    fetchSources,
+    loadDocuments,
+    uploadDocument,
+    removeDocument,
+  }
 })

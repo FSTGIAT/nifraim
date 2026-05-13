@@ -44,6 +44,34 @@
         </header>
 
         <div v-if="chatStore.error" class="ai-sheet-error">{{ chatStore.error }}</div>
+        <div v-if="chatStore.uploadError" class="ai-sheet-error">{{ chatStore.uploadError }}</div>
+
+        <div v-if="chatStore.documents.length" class="ai-doc-chips" aria-label="מסמכים שהועלו">
+          <span
+            v-for="doc in chatStore.documents"
+            :key="doc.id"
+            class="ai-doc-chip"
+            :class="{ 'ai-doc-chip-error': doc.status === 'error' }"
+            :title="doc.summary || doc.filename"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="ai-doc-chip-label">{{ doc.filename }}</span>
+            <button
+              type="button"
+              class="ai-doc-chip-x"
+              :aria-label="`הסר ${doc.filename}`"
+              @click="chatStore.removeDocument(doc.id)"
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </span>
+        </div>
 
         <div class="ai-sheet-body" ref="bodyEl">
           <div v-if="!chatStore.messages.length" class="ai-sheet-empty">
@@ -84,6 +112,26 @@
         </div>
 
         <form class="ai-sheet-input-row" @submit.prevent="submit">
+          <input
+            ref="fileInputEl"
+            type="file"
+            accept="application/pdf"
+            class="ai-sheet-file-input"
+            @change="onFileChosen"
+          />
+          <button
+            type="button"
+            class="ai-sheet-attach"
+            :disabled="chatStore.uploadingDoc"
+            :aria-busy="chatStore.uploadingDoc"
+            :title="chatStore.uploadingDoc ? 'מעבד מסמך…' : 'צרף מסמך PDF'"
+            @click="openFilePicker"
+          >
+            <span v-if="chatStore.uploadingDoc" class="ai-sheet-attach-spinner" aria-hidden="true"></span>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
           <textarea
             ref="inputEl"
             v-model="draft"
@@ -129,7 +177,23 @@ const chatStore = useChatStore()
 const draft = ref('')
 const bodyEl = ref(null)
 const inputEl = ref(null)
+const fileInputEl = ref(null)
 let lastTrigger = null
+
+function openFilePicker() {
+  if (chatStore.uploadingDoc) return
+  fileInputEl.value?.click()
+}
+
+async function onFileChosen(e) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // allow re-uploading same file later
+  if (!file) return
+  await chatStore.uploadDocument(file)
+  nextTick(() => {
+    if (bodyEl.value) bodyEl.value.scrollTop = bodyEl.value.scrollHeight
+  })
+}
 
 const headerLabel = computed(() => `עוזר AI${props.viewTitle ? ' · ' + props.viewTitle : ''}`)
 const canSend = computed(() => !!draft.value.trim() && !chatStore.loading)
@@ -171,6 +235,9 @@ watch(() => props.open, async (isOpen) => {
   if (isOpen) {
     lastTrigger = document.activeElement
     window.addEventListener('keydown', onEscape)
+    if (!chatStore.documentsLoaded) {
+      chatStore.loadDocuments()
+    }
     await nextTick()
     inputEl.value?.focus()
     if (props.initialQuestion && props.initialQuestion.trim()) {
@@ -450,6 +517,82 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 16px rgba(245, 124, 0, 0.38);
 }
 .ai-sheet-send:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+
+.ai-sheet-file-input { display: none; }
+.ai-sheet-attach {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.ai-sheet-attach:hover:not(:disabled) {
+  background: var(--primary-light);
+  color: var(--primary-deep);
+  border-color: rgba(245, 124, 0, 0.32);
+}
+.ai-sheet-attach:disabled { opacity: 0.55; cursor: default; }
+.ai-sheet-attach-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 124, 0, 0.25);
+  border-top-color: var(--primary-deep, #F57C00);
+  animation: aiAttachSpin 0.8s linear infinite;
+}
+@keyframes aiAttachSpin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-doc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 0;
+}
+.ai-doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--primary-deep);
+  background: var(--primary-light);
+  border: 1px solid rgba(245, 124, 0, 0.24);
+  border-radius: 999px;
+  max-width: 100%;
+}
+.ai-doc-chip-error {
+  color: #8A1111;
+  background: rgba(234, 0, 30, 0.06);
+  border-color: rgba(234, 0, 30, 0.2);
+}
+.ai-doc-chip-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-doc-chip-x {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ai-doc-chip-x:hover { background: rgba(255, 255, 255, 1); }
 
 /* Transitions */
 .ai-sheet-overlay-enter-active,

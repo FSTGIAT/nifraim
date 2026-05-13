@@ -33,6 +33,7 @@ class PortalCredentialOut(BaseModel):
     portal_kind: str
     username: str
     twilio_to_number: str | None = None
+    contact_phone_synced_to: str | None = None
     is_active: bool
     schedule_enabled: bool
     category_hint: str | None = None
@@ -60,3 +61,22 @@ class OtpSubmitIn(BaseModel):
 
 class RunStartOut(BaseModel):
     run_id: str
+
+
+class TwilioNumberOut(BaseModel):
+    id: str
+    phone_number: str
+    twilio_sid: str
+    provisioned_at: datetime
+    released_at: datetime | None = None
+
+
+class OtpInboxOut(BaseModel):
+    id: str
+    from_number: str
+    to_number: str
+    body: str
+    otp_code: str | None = None
+    received_at: datetime
+    consumed_at: datetime | None = None
+    portal_run_id: str | None = None

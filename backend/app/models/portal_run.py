@@ -20,9 +20,12 @@ class PortalRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # download (default) | phone_change
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="download")
     # pending | running | awaiting_otp | downloading | parsing | success | failed | timeout
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    # login | otp | download | parse
+    # download flow: login | otp | download | parse
+    # phone_change flow: login | otp | phone_update | phone_confirm
     stage: Mapped[str | None] = mapped_column(String(20))
 
     error_message: Mapped[str | None] = mapped_column(Text)

@@ -17,5 +17,10 @@ class CommissionRate(Base):
     payment_frequency: Mapped[str | None] = mapped_column(String(20))
     paid_to: Mapped[str | None] = mapped_column(String(50))
     company_email: Mapped[str | None] = mapped_column(String(100))
+    source_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     user = relationship("User", back_populates="commission_rates")

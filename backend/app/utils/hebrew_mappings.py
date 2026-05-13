@@ -192,6 +192,25 @@ HAREL_NIFRAIM_COLUMNS = {
     "מספר מעסיק": "employer_id",
 }
 
+# Column mappings for Harel Savings/Pension Commission Report (הראל גמל/מגוון)
+# Sheet name: רשימת נתונים לסוכן — different layout from harel_nifraim (דוח נפרעים)
+HAREL_SAVINGS_NIFRAIM_COLUMNS = {
+    "ת.ז": "id_number",
+    "שם לקוח": "full_name",
+    "פוליסה": "fund_policy_number",
+    "סוג קופה": "fund_type",
+    "סוג תוכנית": "product",
+    "יתרת סגירה": "balance",
+    'סכום ד"נ': "management_fee_amount",
+    'עמלה לפני מע"מ': "commission_paid",
+    'עמלה כולל מע"מ': "commission_before_fee",
+    "חודש עיבוד": "processing_date",
+    "תאריך פתיחה": "sign_date",
+    "מספר סוכן": "agent_number",
+    "שם מעסיק ": "employer_name",
+    "זיהוי מעסיק חיצוני": "employer_id",
+}
+
 # Column mappings for Clal Life Commission Report (כלל חיים)
 CLAL_LIFE_NIFRAIM_COLUMNS = {
     "ת.ז/מזהה מבוטח ראשי": "id_number",
@@ -277,6 +296,7 @@ MENORA_SIGNATURE = {"מספר ת.ז מבוטח/עמית", "שם סוג עמלה"
 ALTSHULER_SIGNATURE = {'ד.נ סוכן סה"כ', "ערך קופה (₪)"}
 PHOENIX_INSURANCE_NIFRAIM_SIGNATURE = {"תז המבוטח", 'סה"כ לתשלום'}
 HAREL_NIFRAIM_SIGNATURE = {"סכום תשלום", 'אופי חו"ז'}
+HAREL_SAVINGS_NIFRAIM_SIGNATURE = {"צבירה/צבירה פרט/דמי ניהול", "הסכם סוכן"}
 CLAL_LIFE_NIFRAIM_SIGNATURE = {"ת.ז/מזהה מבוטח ראשי", "סך עמלה מפרמיה"}
 CLAL_HEALTH_NIFRAIM_SIGNATURE = {"זיהוי מבוטח", "תשלום עמלה בפועל - נפרעים"}
 MIGDAL_NIFRAIM_SIGNATURE = {"פרמיה משולמת", "ת.ז מבוטח"}

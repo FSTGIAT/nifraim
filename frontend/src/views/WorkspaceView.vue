@@ -72,8 +72,8 @@
         <main class="workspace-main" :class="{ 'wide-content': activeTab === 'comparison' && !!comparisonStore.result }">
           <div class="tab-content">
             <Transition name="tab-switch" mode="out-in">
-              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="activeTab = 'comparison'" />
-              <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" />
+              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="activeTab = 'comparison'" @go-to-portal-automation="activeTab = 'portal-automation'" />
+              <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />

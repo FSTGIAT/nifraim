@@ -29,20 +29,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.config import settings
 from app.database import get_db
+from app.models.agent_twilio_number import AgentTwilioNumber
 from app.models.otp_inbox import OtpInbox
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
 from app.models.user import User
 from app.schemas.portal_automation import (
+    OtpInboxOut,
     OtpSubmitIn,
     PortalCredentialIn,
     PortalCredentialOut,
     PortalCredentialUpdate,
     PortalRunOut,
     RunStartOut,
+    TwilioNumberOut,
 )
+from app.services import twilio_provisioning
 from app.services.portal_automation.companies import PORTAL_LABELS, REGISTRY
-from app.services.portal_automation.runner import run_automation
+from app.services.portal_automation.runner import run_automation, run_phone_change
 from app.utils.crypto import encrypt
 
 logger = logging.getLogger(__name__)
@@ -60,6 +64,7 @@ def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
         portal_kind=c.portal_kind,
         username=c.username,
         twilio_to_number=c.twilio_to_number,
+        contact_phone_synced_to=c.contact_phone_synced_to,
         is_active=c.is_active,
         schedule_enabled=c.schedule_enabled,
         category_hint=c.category_hint,
@@ -67,6 +72,16 @@ def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
         last_run_status=c.last_run_status,
         last_error=c.last_error,
         created_at=c.created_at,
+    )
+
+
+def _twilio_to_out(n: AgentTwilioNumber) -> TwilioNumberOut:
+    return TwilioNumberOut(
+        id=str(n.id),
+        phone_number=n.phone_number,
+        twilio_sid=n.twilio_sid,
+        provisioned_at=n.provisioned_at,
+        released_at=n.released_at,
     )
 
 
@@ -88,10 +103,13 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 # Portal kinds (public catalog for the UI dropdown)
 # ──────────────────────────────────────────────────────────────────────────
 
+IMPLEMENTED_PORTALS = {"phoenix", "migdal"}
+
+
 @router.get("/portal-kinds")
 async def list_portal_kinds(user: User = Depends(get_current_user)):
     return [
-        {"id": kind, "label": PORTAL_LABELS[kind], "implemented": kind == "phoenix"}
+        {"id": kind, "label": PORTAL_LABELS[kind], "implemented": kind in IMPLEMENTED_PORTALS}
         for kind in REGISTRY.keys()
     ]
 
@@ -131,11 +149,18 @@ async def create_credential(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Credential for this portal already exists")
 
+    try:
+        encrypted = encrypt(payload.password)
+    except RuntimeError as e:
+        # Almost always: PORTAL_CRED_FERNET_KEY missing from env. Surface clearly
+        # instead of returning a generic 500.
+        raise HTTPException(status_code=503, detail=f"Server crypto not configured: {e}")
+
     cred = PortalCredential(
         user_id=user.id,
         portal_kind=payload.portal_kind,
         username=payload.username,
-        encrypted_password=encrypt(payload.password),
+        encrypted_password=encrypted,
         twilio_to_number=payload.twilio_to_number,
         schedule_enabled=payload.schedule_enabled,
         category_hint=payload.category_hint,
@@ -313,6 +338,137 @@ async def submit_otp(
     ))
     await db.commit()
     return {"status": "submitted"}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Recent OTPs (debug + visibility)
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.get("/otp-inbox", response_model=list[OtpInboxOut])
+async def list_recent_otps(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List recent inbound SMS messages for the current user. Includes both
+    SMS scoped to this user (matched via Twilio `to` number) and broadcast
+    rows (user_id IS NULL). Sorted newest-first."""
+    stmt = (
+        select(OtpInbox)
+        .where((OtpInbox.user_id == user.id) | (OtpInbox.user_id.is_(None)))
+        .order_by(OtpInbox.received_at.desc())
+        .limit(min(limit, 100))
+    )
+    result = await db.execute(stmt)
+    return [
+        OtpInboxOut(
+            id=str(r.id),
+            from_number=r.from_number,
+            to_number=r.to_number,
+            body=r.body,
+            otp_code=r.otp_code,
+            received_at=r.received_at,
+            consumed_at=r.consumed_at,
+            portal_run_id=str(r.portal_run_id) if r.portal_run_id else None,
+        )
+        for r in result.scalars().all()
+    ]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Agent Twilio number provisioning
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.get("/twilio-numbers/me", response_model=TwilioNumberOut | None)
+async def get_my_twilio_number(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = await twilio_provisioning.get_active_for_user(db, user.id)
+    return _twilio_to_out(row) if row else None
+
+
+@router.post("/twilio-numbers/provision", response_model=TwilioNumberOut)
+async def provision_my_twilio_number(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Buy a Twilio +972 number under Nifraim's account and assign it to this
+    agent. Idempotent: if the agent already has one, returns the existing row."""
+    try:
+        row = await twilio_provisioning.provision_for_user(db, user.id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return _twilio_to_out(row)
+
+
+@router.delete("/twilio-numbers/me")
+async def release_my_twilio_number(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    released = await twilio_provisioning.release_for_user(db, user.id)
+    if not released:
+        raise HTTPException(status_code=404, detail="No active Twilio number")
+    return {"status": "released"}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Sync contact phone in a portal (one-time per agent + portal)
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.post("/credentials/{cred_id}/sync-contact-phone", response_model=RunStartOut)
+async def sync_contact_phone(
+    cred_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Trigger the one-time contact-phone migration: log into the portal as
+    the agent, navigate to settings, change the contact number to the agent's
+    Twilio number, and confirm via SMS to the OLD phone (manual OTP fallback).
+    """
+    cred_result = await db.execute(
+        select(PortalCredential).where(
+            PortalCredential.id == uuid.UUID(cred_id),
+            PortalCredential.user_id == user.id,
+        )
+    )
+    cred = cred_result.scalar_one_or_none()
+    if not cred:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    if not cred.is_active:
+        raise HTTPException(status_code=400, detail="Credential is not active")
+
+    twilio_row = await twilio_provisioning.get_active_for_user(db, user.id)
+    if not twilio_row:
+        raise HTTPException(
+            status_code=400,
+            detail="Provision a Twilio number first via /twilio-numbers/provision",
+        )
+
+    active_result = await db.execute(
+        select(PortalRun).where(
+            PortalRun.credential_id == cred.id,
+            PortalRun.status.in_(ACTIVE_RUN_STATUSES),
+        )
+    )
+    if active_result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="A run is already in progress for this credential")
+
+    run = PortalRun(
+        user_id=user.id,
+        credential_id=cred.id,
+        kind="phone_change",
+        status="pending",
+        started_at=datetime.utcnow(),
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    asyncio.create_task(run_phone_change(run.id, twilio_row.phone_number))
+
+    return RunStartOut(run_id=str(run.id))
 
 
 # ──────────────────────────────────────────────────────────────────────────
