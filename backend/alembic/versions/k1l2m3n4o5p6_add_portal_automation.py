@@ -10,7 +10,9 @@ import sqlalchemy as sa
 
 revision: str = 'k1l2m3n4o5p6'
 # Merge of two existing heads — debts branch + recruits-sign-date branch.
-down_revision: Union[str, Sequence[str], None] = ('a0586c3abe01', 'i9d0e1f2g3h4')
+# Routes through j0e1f2g3h4i5 (a no-op stub) so prod DBs that were stamped
+# at j0 by an older codebase version can still climb forward.
+down_revision: Union[str, Sequence[str], None] = ('a0586c3abe01', 'j0e1f2g3h4i5')
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
