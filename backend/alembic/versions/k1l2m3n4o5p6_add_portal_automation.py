@@ -9,10 +9,11 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = 'k1l2m3n4o5p6'
-# Merge of two existing heads — debts branch + recruits-sign-date branch.
-# Routes through j0e1f2g3h4i5 (a no-op stub) so prod DBs that were stamped
-# at j0 by an older codebase version can still climb forward.
-down_revision: Union[str, Sequence[str], None] = ('a0586c3abe01', 'j0e1f2g3h4i5')
+# Routes through j0e1f2g3h4i5, the merge stub that collapses both legacy
+# branches (debts via a0586c3abe01 + recruits-sign-date via i9). Prod DBs
+# stamped at j0 climb straight through here; local DBs walk the full
+# diamond backward without re-applying anything.
+down_revision: Union[str, Sequence[str], None] = 'j0e1f2g3h4i5'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
