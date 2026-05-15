@@ -1,8 +1,5 @@
 <template>
   <nav class="tab-nav">
-    <router-link to="/dashboard" class="tab-pill" :class="{ active: $route.path === '/dashboard' }">
-      רשומות
-    </router-link>
     <router-link to="/analytics" class="tab-pill" :class="{ active: $route.path === '/analytics' }">
       ניתוח
     </router-link>

@@ -1,9 +1,10 @@
 import { BarComposition } from './BarComposition'
 import { KpiComposition } from './KpiComposition'
 import { DonutComposition } from './DonutComposition'
+import { FundTrackComposition } from './FundTrackComposition'
 import type { Viz } from './types'
 
-export { BarComposition, KpiComposition, DonutComposition }
+export { BarComposition, KpiComposition, DonutComposition, FundTrackComposition }
 export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
 export type { Viz } from './types'
@@ -18,6 +19,8 @@ export function componentForViz(viz: Viz) {
       return KpiComposition
     case 'donut':
       return DonutComposition
+    case 'fund-track':
+      return FundTrackComposition
   }
 }
 
@@ -25,6 +28,7 @@ export function componentForViz(viz: Viz) {
 export function sizeForViz(viz: Viz): { width: number; height: number } {
   if (viz.type === 'kpi') return { width: 800, height: 400 }
   if (viz.type === 'donut') return { width: 720, height: 560 }
+  if (viz.type === 'fund-track') return { width: 820, height: 620 }
   // bar — taller to accommodate many rows
   return { width: 800, height: 560 }
 }

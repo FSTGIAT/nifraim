@@ -334,10 +334,14 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
   position: sticky;
-  top: 0;
+  top: 32px; /* leaves room for the 32px StockTicker above */
   z-index: 100;
   height: 56px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+@media (max-width: 720px) {
+  /* StockTicker hides under 720px, so header reclaims the top edge. */
+  .workspace-header { top: 0; }
 }
 
 .header-content {

@@ -48,12 +48,6 @@ const routes = [
     meta: { requiresAuth: true, requiresPaid: true },
   },
   {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: () => import('../views/DashboardView.vue'),
-    meta: { requiresAuth: true, requiresPaid: true },
-  },
-  {
     path: '/analytics',
     name: 'Analytics',
     component: () => import('../views/AnalyticsView.vue'),

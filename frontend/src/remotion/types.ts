@@ -44,7 +44,28 @@ export interface VizDonut {
   insight?: string
 }
 
-export type Viz = VizBar | VizKpi | VizDonut
+export interface VizFundTrackRow {
+  name: string
+  month: number | null
+  y1: number | null
+  y3: number | null
+  y5: number | null
+}
+
+export interface VizFundTrack {
+  type: 'fund-track'
+  title: string
+  period_label?: string | null
+  averages: {
+    month: number | null
+    y1: number | null
+    y3: number | null
+    y5: number | null
+  }
+  funds: VizFundTrackRow[]
+}
+
+export type Viz = VizBar | VizKpi | VizDonut | VizFundTrack
 
 /** Directional brand colors shared across compositions. */
 export const VIZ_COLORS = {

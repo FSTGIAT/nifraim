@@ -2,12 +2,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -46,6 +46,7 @@ app.include_router(volume.router, prefix="/api/volume", tags=["volume"])
 app.include_router(volume_rates.router, prefix="/api/volume-rates", tags=["volume-rates"])
 app.include_router(debts.router, prefix="/api/debts", tags=["debts"])
 app.include_router(portal_automation.router, prefix="/api/portal-automation", tags=["portal-automation"])
+app.include_router(funds.router, prefix="/api/funds", tags=["funds"])
 
 
 @app.get("/api/health")
@@ -60,6 +61,11 @@ if FRONTEND_DIR.is_dir():
 
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
+        # Never let the SPA swallow API paths — an unknown /api/* must 404 so
+        # axios callers see a real error instead of getting index.html back as
+        # "JSON" (which silently degrades to empty fields).
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
         file_path = FRONTEND_DIR / full_path
         if file_path.is_file():
             resp = FileResponse(file_path)

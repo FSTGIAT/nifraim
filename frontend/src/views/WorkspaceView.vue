@@ -1,6 +1,18 @@
 <template>
   <div class="workspace">
-    <WorkspaceHeader @logout="handleLogout" />
+    <StockTicker @track-click="openFundDetail" />
+
+    <!-- Top-right floating action menu (React island; replaces the legacy WorkspaceHeader). -->
+    <CircleMenuIsland :items="circleMenuItems" class="ws-floating-menu" @select="onMenuSelect" />
+
+    <!-- Client lookup — opens from the menu's Search item. -->
+    <ClientSearchModal v-model:open="searchOpen" />
+
+    <!-- Email-provider settings — opens from the menu's Settings item. -->
+    <EmailSettingsModal v-model:open="emailSettingsOpen" />
+
+    <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
+    <FundTrackVizPanel v-model:open="fundDetailOpen" :viz="fundDetailViz" />
 
     <Transition name="view-switch" mode="out-in">
       <!-- HOME MODE -->
@@ -163,7 +175,12 @@ import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
 import { useProductionStore } from '../stores/production.js'
 import { useOnboardingTour } from '../composables/useOnboardingTour.js'
-import WorkspaceHeader from '../components/workspace/WorkspaceHeader.vue'
+import StockTicker from '../components/workspace/StockTicker.vue'
+import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
+import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
+import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
+import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
+import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
 import NavArrowButton from '../components/workspace/NavArrowButton.vue'
 import OnboardingTour from '../components/workspace/OnboardingTour.vue'
@@ -387,6 +404,50 @@ function handleLogout() {
   auth.logout()
   router.push('/login')
 }
+
+// CircleMenu — React island. Item `icon` is a lucide-react export name.
+const circleMenuItems = [
+  { key: 'home',     label: 'בית',      icon: 'Home' },
+  { key: 'search',   label: 'חיפוש',    icon: 'Search' },
+  { key: 'settings', label: 'הגדרות',   icon: 'Settings' },
+  { key: 'help',     label: 'עזרה',     icon: 'HelpCircle' },
+  { key: 'logout',   label: 'התנתקות',  icon: 'LogOut' },
+]
+// Modals owned by WorkspaceView so they overlay everything (above ticker + menu).
+const searchOpen = ref(false)
+const emailSettingsOpen = ref(false)
+const fundDetailOpen = ref(false)
+const fundDetailViz = ref(null)
+const fundTickerStore = useFundTickerStore()
+
+function onMenuSelect(key) {
+  if (key === 'logout')   { handleLogout(); return }
+  if (key === 'home')     { goHome(); return }
+  if (key === 'search')   { searchOpen.value = true; return }
+  if (key === 'settings') { emailSettingsOpen.value = true; return }
+  // help — TODO. No-op for now so the menu still closes.
+}
+
+async function openFundDetail(trackId) {
+  if (!trackId) return
+  // Open immediately so the modal's loading spinner is visible while the fetch resolves.
+  fundDetailViz.value = null
+  fundDetailOpen.value = true
+  try {
+    const data = await fundTickerStore.fetchTrackDetail(trackId)
+    if (!data || !fundDetailOpen.value) return
+    fundDetailViz.value = {
+      type: 'fund-track',
+      title: data.label,
+      period_label: data.period_label,
+      averages: data.averages || { month: null, y1: null, y3: null, y5: null },
+      funds: Array.isArray(data.funds) ? data.funds : [],
+    }
+  } catch (e) {
+    console.error('[WorkspaceView] fund detail fetch failed', e)
+    fundDetailOpen.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -394,6 +455,23 @@ function handleLogout() {
   min-height: 100vh;
   position: relative;
   z-index: 1;
+}
+
+/* Floating CircleMenu island — top-LEFT corner with breathing room so the
+   orbital items don't clip when they sweep outward. z-index sits above the
+   StockTicker (101) so items can pass over the strip if needed; still below
+   modals (1000+) and onboarding (5000+). */
+.ws-floating-menu {
+  position: fixed;
+  top: 48px;
+  left: 32px;
+  z-index: 102;
+  direction: ltr;
+  pointer-events: none; /* let the inner React component own its own hitboxes */
+}
+.ws-floating-menu :deep(*) { pointer-events: auto; }
+@media (max-width: 720px) {
+  .ws-floating-menu { top: 12px; left: 12px; }
 }
 
 /* ─── Home view blur circles ─── */

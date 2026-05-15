@@ -11,6 +11,8 @@ from app.models.production_summary import ProductionSummary
 from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.ai_document import AiDocument
+from app.models.fund_track import FundTrack
+from app.models.fund_track_fund import FundTrackFund
 from app.api.deps import get_paid_user
 from app.schemas.ai import ChatRequest
 from app.services.ai_service import stream_chat
@@ -232,10 +234,53 @@ async def get_knowledge(
         for d in docs_q.scalars().all()
     ]
 
+    # --- Market context: mygemel.net fund returns (global, not user-scoped) ---
+    fund_rows = (
+        await db.execute(select(FundTrack).order_by(FundTrack.sort_order))
+    ).scalars().all()
+    fund_detail_rows = (
+        await db.execute(
+            select(FundTrackFund).order_by(FundTrackFund.track_id, FundTrackFund.rank)
+        )
+    ).scalars().all()
+    funds_by_track: dict[str, list[dict]] = {}
+    for f in fund_detail_rows:
+        funds_by_track.setdefault(f.track_id, []).append({
+            "name": f.fund_name,
+            "rank": f.rank,
+            "month": float(f.month_return) if f.month_return is not None else None,
+            "y1": float(f.y1_return) if f.y1_return is not None else None,
+            "y3": float(f.y3_return) if f.y3_return is not None else None,
+            "y5": float(f.y5_return) if f.y5_return is not None else None,
+        })
+
+    market_funds_updated = max((r.scraped_at for r in fund_rows if r.scraped_at), default=None)
+    market_funds = {
+        "source": "mygemel.net",
+        "updated_at": market_funds_updated.isoformat() if market_funds_updated else None,
+        "tracks": [
+            {
+                "id": r.id,
+                "label": r.label_he,
+                "category": r.category,
+                "maslul": r.maslul,
+                "month": float(r.month_return) if r.month_return is not None else None,
+                "ytd": float(r.ytd_return) if r.ytd_return is not None else None,
+                "y1": float(r.y1_return) if r.y1_return is not None else None,
+                "y3": float(r.y3_return) if r.y3_return is not None else None,
+                "y5": float(r.y5_return) if r.y5_return is not None else None,
+                "period_label": r.period_label,
+                "funds": funds_by_track.get(r.id, []),
+            }
+            for r in fund_rows
+        ],
+    }
+
     return {
         "production": production,
         "commission": commission,
         "myfile": myfile,
         "rates": rates,
         "documents": documents,
+        "market_funds": market_funds,
     }

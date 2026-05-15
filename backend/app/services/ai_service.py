@@ -19,6 +19,8 @@ from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.production_summary import ProductionSummary
 from app.models.ai_document import AiDocument
+from app.models.fund_track import FundTrack
+from app.models.fund_track_fund import FundTrackFund
 from app.services.comparison_service import compute_comparison, _normalize_id
 
 logger = logging.getLogger(__name__)
@@ -1133,6 +1135,60 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
     return full_context
 
 
+async def _get_market_funds_context(db: AsyncSession) -> str | None:
+    """Compact, global mygemel.net snapshot. Always injected — independent of
+    the user's own uploads — so the assistant can answer questions like
+    "מה התשואות החודש בקופות גמל?" even before any files are uploaded.
+    Returns None if the table is empty (e.g. first deploy before scrape).
+    """
+    rows = (
+        await db.execute(select(FundTrack).order_by(FundTrack.sort_order))
+    ).scalars().all()
+    rows = [r for r in rows if r.month_return is not None]
+    if not rows:
+        return None
+
+    # Top 3 individual funds per track (the source orders by month-% desc).
+    # Cap at 3 to keep the system prompt budget under control — full per-fund
+    # data is available via /api/ai/knowledge if the user opens the AI library.
+    detail_rows = (
+        await db.execute(
+            select(FundTrackFund)
+            .where(FundTrackFund.rank <= 3)
+            .order_by(FundTrackFund.track_id, FundTrackFund.rank)
+        )
+    ).scalars().all()
+    top_by_track: dict[str, list[FundTrackFund]] = {}
+    for f in detail_rows:
+        top_by_track.setdefault(f.track_id, []).append(f)
+
+    updated = max((r.scraped_at for r in rows if r.scraped_at), default=None)
+    updated_str = updated.strftime("%Y-%m-%d") if updated else "לא ידוע"
+    period = rows[0].period_label or ""
+
+    lines = [
+        "=== נתוני שוק — קופות גמל / השתלמות / חיסכון / גמ\"ל להשקעה ===",
+        f"מקור: mygemel.net | מעודכן: {updated_str} | תקופת התייחסות: {period}",
+        "ערכי התשואה (ממוצע מסלול + טופ 3 קופות) באחוזים, מסודרים מהטובה ביותר.",
+    ]
+    for r in rows:
+        nums = []
+        if r.month_return is not None: nums.append(f"חודשי {float(r.month_return):+.2f}%")
+        if r.y1_return    is not None: nums.append(f"שנה {float(r.y1_return):+.2f}%")
+        if r.y3_return    is not None: nums.append(f"3ש {float(r.y3_return):+.2f}%")
+        if r.y5_return    is not None: nums.append(f"5ש {float(r.y5_return):+.2f}%")
+        lines.append(f"- {r.label_he} (ממוצע): {' | '.join(nums)}")
+        for f in top_by_track.get(r.id, []):
+            if f.month_return is None:
+                continue
+            lines.append(
+                f"    {f.rank}. {f.fund_name}: חודשי {float(f.month_return):+.2f}%"
+                + (f" | שנה {float(f.y1_return):+.2f}%" if f.y1_return is not None else "")
+            )
+    lines.append("הנחיה: ציין את נתוני השוק האלה כשהמשתמש שואל על ביצועי קופות. אל תמציא מספרים — אם הקופה/המסלול אינם ברשימה אמור שאין לך נתון.")
+    return "\n".join(lines)
+
+
 async def stream_chat(
     db: AsyncSession,
     user_id,
@@ -1141,12 +1197,18 @@ async def stream_chat(
     view_context: str | None = None,
 ) -> AsyncGenerator[str, None]:
     context = await build_user_context(db, user_id, question=question)
-    if context is None:
+    market_context = await _get_market_funds_context(db)
+
+    if context is None and market_context is None:
         yield f"data: {json.dumps({'text': 'אין נתונים במערכת. יש להעלות קבצים תחילה.'}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'done': True})}\n\n"
         return
 
-    system_prompt = SYSTEM_PROMPT.format(context=context)
+    # `context` may be None when the user has no uploads but market data exists;
+    # `SYSTEM_PROMPT.format(context=...)` accepts an empty string fine.
+    system_prompt = SYSTEM_PROMPT.format(context=context or "(אין נתונים אישיים — ראה נתוני שוק להלן)")
+    if market_context:
+        system_prompt += "\n\n" + market_context
     if view_context:
         system_prompt += (
             f"\n\n=== המסך הנוכחי של המשתמש ===\n"

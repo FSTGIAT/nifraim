@@ -7,8 +7,10 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 
 from app.database import async_session
+from app.models.fund_track import FundTrack
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
+from app.services.fund_scraper import update_fund_tracks
 from app.services.subscription_service import process_renewals
 from app.services.portal_automation.runner import run_automation
 
@@ -95,12 +97,40 @@ async def tick_portal_schedules():
         logger.error(f"Scheduler tick outer failure: {e}")
 
 
+async def scrape_fund_tracks_job():
+    """Open a session, run the mygemel scraper, commit. Wrapper for the cron."""
+    try:
+        async with async_session() as db:
+            await update_fund_tracks(db)
+    except Exception as e:
+        logger.error(f"fund_tracks scrape job failed: {e}")
+
+
+async def _backfill_funds_if_empty():
+    """One-shot fire on app start when fund_tracks rows have never been
+    scraped. Without this, the ticker stays blank for up to a week after
+    a fresh deploy. Failures are non-fatal — logged and ignored.
+    """
+    try:
+        async with async_session() as db:
+            empty = await db.execute(select(FundTrack).where(FundTrack.scraped_at.is_(None)).limit(1))
+            if empty.scalar_one_or_none() is None:
+                return
+            logger.info("fund_tracks: empty on startup, running initial scrape")
+            await update_fund_tracks(db)
+    except Exception as e:
+        logger.error(f"fund_tracks startup backfill failed: {e}")
+
+
 def start_scheduler():
     """Start the background scheduler.
 
     - Renewals: 06:00 IST daily.
     - Portal automation tick: every hour at minute 7 (offset to avoid the
       top of the hour where many other systems run).
+    - Fund-track scrape: weekly Sun 06:30 IST (offset from renewals so we
+      don't double-schedule both at exactly 06:00). Pension data publishes
+      monthly so weekly is plenty.
     """
     scheduler.add_job(
         run_renewals,
@@ -114,8 +144,15 @@ def start_scheduler():
         id="tick_portal_schedules",
         replace_existing=True,
     )
+    scheduler.add_job(
+        scrape_fund_tracks_job,
+        CronTrigger(day_of_week="sun", hour=6, minute=30, timezone="Asia/Jerusalem"),
+        id="scrape_fund_tracks",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Scheduler started — renewals 06:00 IST, portal tick hourly :07")
+    asyncio.create_task(_backfill_funds_if_empty())
+    logger.info("Scheduler started — renewals 06:00 IST, portal tick hourly :07, fund scrape Sun 06:30 IST")
 
 
 def stop_scheduler():

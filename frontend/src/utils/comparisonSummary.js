@@ -273,3 +273,199 @@ export function buildProductionComparisonSummary(result) {
     viewContextString,
   }
 }
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// Commission comparison (השוואת נפרעים) — production × commission per customer
+// ────────────────────────────────────────────────────────────────────────────
+
+function sumCustomerCommissionPaid(c) {
+  let total = 0
+  for (const p of (c.product_matches?.matched || [])) total += (p.commission || 0)
+  return total
+}
+
+function customerHasOnlyZeroAccum(c) {
+  // For gemel: a customer with all-zero accumulation has no real exposure.
+  const products = c.production_products || c.product_matches?.unmatched_production || []
+  if (!products.length) return false
+  return products.every((p) => !(p.accumulation || p.balance || 0))
+}
+
+function customerExposure(c, isInsurance) {
+  // For insurance: total premium. For gemel: total accumulation across products.
+  if (isInsurance) return c.total_premium || 0
+  let accum = 0
+  for (const p of (c.product_matches?.matched || [])) accum += (p.balance || p.accumulation || 0)
+  for (const p of (c.product_matches?.unmatched_commission || [])) accum += (p.balance || 0)
+  for (const p of (c.product_matches?.unmatched_production || [])) accum += (p.accumulation || p.balance || 0)
+  for (const p of (c.production_products || [])) accum += (p.accumulation || p.balance || 0)
+  return accum
+}
+
+function topCompanyByUnpaid(unpaidCustomers) {
+  const by = new Map()
+  for (const c of unpaidCustomers) {
+    const co = c.company || '—'
+    by.set(co, (by.get(co) || 0) + 1)
+  }
+  let top = null
+  for (const [co, n] of by.entries()) {
+    if (!top || n > top.count) top = { company: co, count: n }
+  }
+  return top
+}
+
+/**
+ * Build inline insight + suggestion chips + rich view-context for the
+ * Production × Commission comparison view (השוואת נפרעים).
+ *
+ * @param {Array} customers   the array passed to ComparisonDashboard
+ * @param {string} categoryLabel  e.g. "ביטוח" or "גמל"
+ * @param {Array<string>} companySources commission company names included
+ */
+export function buildCommissionComparisonSummary(customers, categoryLabel, companySources) {
+  if (!Array.isArray(customers) || customers.length === 0) return null
+
+  const isInsurance = (categoryLabel || '').includes('ביטוח')
+
+  const matched = customers.filter((c) => c.match_status === 'matched')
+  const onlyComm = customers.filter((c) => c.match_status === 'only_commission')
+  const onlyProd = customers.filter((c) => c.match_status === 'only_production')
+  // For gemel, "effective unpaid" excludes zero-accumulation customers (no exposure → not really unpaid).
+  const effectiveUnpaid = isInsurance ? onlyProd : onlyProd.filter((c) => !customerHasOnlyZeroAccum(c))
+
+  const totalCommissionPaid = customers.reduce((s, c) => s + sumCustomerCommissionPaid(c), 0)
+
+  // ---------- Short prose (insight card) ----------
+  const sentences = []
+  const periodSrcs = (companySources && companySources.length ? companySources : []).slice(0, 3).join(' · ')
+  const headline = [`${customers.length} לקוחות${categoryLabel ? ' ב' + categoryLabel : ''}`]
+  if (periodSrcs) headline.push(`(${periodSrcs}${companySources.length > 3 ? ' ...' : ''})`)
+  sentences.push(headline.join(' '))
+
+  const parts = []
+  if (matched.length) parts.push(`${matched.length} בשניהם`)
+  if (effectiveUnpaid.length) parts.push(`${effectiveUnpaid.length} לא שולם`)
+  if (onlyComm.length) parts.push(`${onlyComm.length} רק בנפרעים`)
+  if (parts.length) sentences.push(parts.join(' · ') + '.')
+
+  if (totalCommissionPaid > 0) {
+    sentences.push(`סך עמלות ששולמו: ${formatAmount(totalCommissionPaid)}.`)
+  }
+
+  const topUnpaidCo = topCompanyByUnpaid(effectiveUnpaid)
+  if (topUnpaidCo && topUnpaidCo.count >= 2) {
+    sentences.push(`חברה עם הכי הרבה לא שולם — ${topUnpaidCo.company} (${topUnpaidCo.count}).`)
+  }
+
+  const summary = sentences.join(' ')
+
+  // ---------- Suggestions ----------
+  const suggestions = []
+  if (effectiveUnpaid.length) suggestions.push('מי הלקוחות הלא משולמים הגדולים ביותר?')
+  if (topUnpaidCo) suggestions.push(`למה ${topUnpaidCo.company} לא משלמת על חלק מהלקוחות?`)
+  if (onlyComm.length) suggestions.push('מי מופיע בנפרעים אך לא בפרודוקציה?')
+  if (matched.length && totalCommissionPaid > 0) suggestions.push('איזו חברה משלמת הכי הרבה?')
+  const generic = ['סכם את החברות הבולטות', 'אילו לקוחות צריכים תזכורת?', 'כמה לקוחות הם רק בנפרעים?']
+  for (const g of generic) {
+    if (suggestions.length >= 3) break
+    if (!suggestions.includes(g)) suggestions.push(g)
+  }
+  const uniqueSuggestions = Array.from(new Set(suggestions)).slice(0, 3)
+
+  // ---------- Rich view-context (backend) ----------
+  const L = []
+  L.push(`השוואת נפרעים — ${categoryLabel || 'קטגוריה לא ידועה'}`)
+  if (companySources && companySources.length) {
+    L.push(`חברות מקור עמלה: ${companySources.slice(0, 10).join(', ')}${companySources.length > 10 ? ' ...' : ''}`)
+  }
+  L.push('')
+
+  L.push('מונים:')
+  L.push(`- סה"כ לקוחות: ${customers.length}`)
+  L.push(`- בשניהם (שולם): ${matched.length}`)
+  L.push(`- רק בפרודוקציה (לא שולם): ${effectiveUnpaid.length}`)
+  if (!isInsurance && onlyProd.length !== effectiveUnpaid.length) {
+    L.push(`  (מתוכם ${onlyProd.length - effectiveUnpaid.length} ללא צבירה — לא נחשבים כחוב)`)
+  }
+  L.push(`- רק בנפרעים (חריג): ${onlyComm.length}`)
+  L.push('')
+
+  if (totalCommissionPaid > 0) {
+    L.push(`סך עמלות ששולמו: ${formatAmount(totalCommissionPaid)}`)
+    L.push('')
+  }
+
+  // Per-company unpaid breakdown
+  const byCoUnpaid = new Map()
+  for (const c of effectiveUnpaid) {
+    const co = c.company || '—'
+    const entry = byCoUnpaid.get(co) || { count: 0, exposure: 0 }
+    entry.count += 1
+    entry.exposure += customerExposure(c, isInsurance)
+    byCoUnpaid.set(co, entry)
+  }
+  if (byCoUnpaid.size) {
+    const sortedCo = [...byCoUnpaid.entries()].sort((a, b) => b[1].count - a[1].count)
+    L.push('לא משולם לפי חברה:')
+    for (const [co, info] of sortedCo.slice(0, 12)) {
+      const bits = [`${info.count} לקוחות`]
+      if (info.exposure) bits.push(`${isInsurance ? 'פרמיה' : 'צבירה'} ${formatAmount(info.exposure)}`)
+      L.push(`- ${co}: ${bits.join(' · ')}`)
+    }
+    L.push('')
+  }
+
+  // Per-company commission paid
+  const byCoPaid = new Map()
+  for (const c of matched) {
+    const co = c.company || '—'
+    const paid = sumCustomerCommissionPaid(c)
+    if (!paid) continue
+    const entry = byCoPaid.get(co) || { paid: 0, customers: 0 }
+    entry.paid += paid
+    entry.customers += 1
+    byCoPaid.set(co, entry)
+  }
+  if (byCoPaid.size) {
+    const sortedCo = [...byCoPaid.entries()].sort((a, b) => b[1].paid - a[1].paid)
+    L.push('עמלות לפי חברה:')
+    for (const [co, info] of sortedCo.slice(0, 12)) {
+      L.push(`- ${co}: ${formatAmount(info.paid)} · ${info.customers} לקוחות`)
+    }
+    L.push('')
+  }
+
+  // Top 10 unpaid customers by exposure (premium for insurance, accumulation for gemel)
+  const rankedUnpaid = [...effectiveUnpaid]
+    .map((c) => ({ c, exp: customerExposure(c, isInsurance) }))
+    .filter((x) => x.exp > 0)
+    .sort((a, b) => b.exp - a.exp)
+    .slice(0, 10)
+  if (rankedUnpaid.length) {
+    L.push(`10 הלא-משולמים הגדולים ביותר לפי ${isInsurance ? 'פרמיה' : 'צבירה'}:`)
+    for (const { c, exp } of rankedUnpaid) {
+      const co = c.company ? ` (${c.company})` : ''
+      L.push(`- ${c.id_number} ${c.name || ''}${co}: ${formatAmount(exp)}`)
+    }
+    L.push('')
+  }
+
+  // Customers only in commission file (anomalies — usually re-paid old policies)
+  if (onlyComm.length) {
+    L.push(`רק בנפרעים (עד 10 דוגמאות): ${onlyComm.length}`)
+    for (const c of onlyComm.slice(0, 10)) {
+      const co = c.company ? ` (${c.company})` : ''
+      L.push(`- ${c.id_number} ${c.name || ''}${co}`)
+    }
+    L.push('')
+  }
+
+  let viewContextString = L.join('\n')
+  if (viewContextString.length > 6500) {
+    viewContextString = viewContextString.slice(0, 6500) + '\n[... נתונים נוספים קוצצו ...]'
+  }
+
+  return { summary, suggestions: uniqueSuggestions, viewContextString }
+}

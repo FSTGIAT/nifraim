@@ -6,6 +6,13 @@
       <span v-if="props.categoryLabel" class="header-category">{{ props.categoryLabel }}</span>
     </div>
 
+    <!-- AI insight card (התמונה הכוללת) -->
+    <AiInsightCard
+      v-if="aiViewContext"
+      :view-context="aiViewContext"
+      @open-sheet="openAiSheet"
+    />
+
     <!-- HERO: Customer Status Distribution -->
     <div class="hero-card">
       <div class="hero-header">
@@ -322,17 +329,28 @@
       </Transition>
     </Teleport>
 
+    <!-- AI conversation sheet (teleported to body) -->
+    <AiConversationSheet
+      v-model:open="aiSheetOpen"
+      :view-title="aiViewContext?.viewTitle || ''"
+      :view-context="aiViewContext?.viewContextString || ''"
+      :initial-question="aiInitialQuestion"
+    />
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, toRef } from 'vue'
 import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
+import AiInsightCard from '../workspace/AiInsightCard.vue'
+import AiConversationSheet from '../workspace/AiConversationSheet.vue'
+import { useAiViewContext } from '../../composables/useAiViewContext.js'
 
 const props = defineProps({
   customers: { type: Array, required: true },
@@ -349,6 +367,23 @@ const detailCustomer = ref(null)
 const commissionRates = ref([])
 const showUnpaidStrip = ref(false)
 const companyFilter = ref(null)
+
+// AI assistant — inline insight card + side conversation sheet (mirrors ProductionComparison.vue)
+const aiSheetOpen = ref(false)
+const aiInitialQuestion = ref('')
+const aiViewContext = useAiViewContext({
+  viewKey: 'commission-comparison',
+  customers: toRef(props, 'customers'),
+  categoryLabel: toRef(props, 'categoryLabel'),
+  companySources: toRef(props, 'companySources'),
+})
+function openAiSheet(question) {
+  aiInitialQuestion.value = question || ''
+  aiSheetOpen.value = true
+}
+watch(aiSheetOpen, (isOpen) => {
+  if (!isOpen) aiInitialQuestion.value = ''
+})
 
 onMounted(async () => {
   try {

@@ -372,10 +372,14 @@ const tabs = [
   justify-content: center;
   padding: 10px 16px 6px;
   position: sticky;
-  top: 56px;
+  top: 32px; /* just under the StockTicker — the legacy WorkspaceHeader is no longer rendered */
   z-index: 90;
   background: var(--bg);
   animation: stripSlideDown 0.3s var(--transition) both;
+}
+@media (max-width: 720px) {
+  /* StockTicker hides under 720px → tabs stick to the top edge. */
+  .strip-container { top: 0; }
 }
 
 .strip {
