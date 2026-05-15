@@ -435,6 +435,19 @@ def _parse_company_report(df: pd.DataFrame) -> dict:
                 id_str = id_str[:-2]
             record["id_number"] = id_str
 
+        # Derive reported_commission_pct from commission/balance (gemel-style
+        # report — monthly figures). Annualize so the value compares directly
+        # against the agreement rate (which quotes annual %). Skip when
+        # balance is missing or zero.
+        # QA spec: "תחשב את הנפרע שאמור להתקבל לפי ההסכם ולהשוות אותה לעמלה
+        # שהתקבלה בפועל וכומבן להתריע אם התקבל פחות".
+        commission = record.get("commission_paid")
+        balance = record.get("balance")
+        if commission is not None and balance and balance > 0:
+            record["reported_commission_pct"] = round(
+                (commission / balance) * 12 * 100, 4
+            )
+
         record["reconciliation_status"] = determine_status(record)
 
         # Skip rows without id_number (metadata/totals rows)
@@ -559,6 +572,13 @@ def _parse_nifraim(df: pd.DataFrame) -> dict:
         record["balance"] = record.get("month_end_balance")
         record["product"] = record.get("fund_type")
 
+        # Mor's "אחוז עמלה שנתית נטו" is the rate the company actually paid
+        # at, recorded per-row. Mirror it into reported_commission_pct so the
+        # rate-deviation step can compare it against the agreement rate.
+        # QA scenario: agreement says 0.3%, Mor pays 0.225% → must flag.
+        if record.get("annual_commission_pct") is not None:
+            record["reported_commission_pct"] = record["annual_commission_pct"]
+
         record["receiving_company"] = "מור"
         record["reconciliation_status"] = "no_data"
         records.append(record)
@@ -630,14 +650,22 @@ def _parse_menora(df: pd.DataFrame) -> dict:
         for heb_col, eng_field in MENORA_COLUMNS.items():
             if heb_col in df.columns:
                 val = row.get(heb_col)
+                # Skip blank/NaN — preserves earlier mapping for the same target
+                # (multiple Hebrew aliases may write to the same eng_field, e.g.
+                # product). Without this guard, a later NaN would overwrite a
+                # valid earlier value.
+                is_blank = val is None or (isinstance(val, float) and pd.isna(val))
+                if is_blank and record.get(eng_field) is not None:
+                    continue
                 if eng_field in ("balance", "management_fee", "management_fee_amount",
                                  "commission_paid", "commission_before_fee",
-                                 "total_premium", "commission_expected"):
+                                 "total_premium", "commission_expected",
+                                 "reported_commission_pct"):
                     record[eng_field] = parse_numeric(val)
                 elif eng_field == "sign_date":
                     record[eng_field] = parse_date(val)
                 else:
-                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+                    record[eng_field] = str(val).strip() if not is_blank else None
 
         # Split full_name into first/last if present
         full_name = record.pop("full_name", None)
@@ -878,12 +906,22 @@ def _parse_phoenix_insurance_nifraim(df: pd.DataFrame) -> dict:
         for heb_col, eng_field in PHOENIX_INSURANCE_NIFRAIM_COLUMNS.items():
             if heb_col in df.columns:
                 val = row.get(heb_col)
-                if eng_field in ("balance", "total_premium", "commission_paid"):
+                if eng_field in ("balance", "total_premium", "commission_paid",
+                                 "commission_before_fee"):
                     record[eng_field] = parse_numeric(val)
                 elif eng_field == "sign_date":
                     record[eng_field] = parse_date(val)
                 else:
                     record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Derive reported_commission_pct from amount / premium. Phoenix L+H
+        # reports don't include the rate column directly — the QA spec says
+        # "תחשב את האחוז נפרע מתוך הסכום", and rate-deviation downstream
+        # compares this against the agreement's per-product rate.
+        gross = record.get("commission_before_fee")
+        premium = record.get("total_premium")
+        if gross is not None and premium and premium > 0:
+            record["reported_commission_pct"] = round((gross / premium) * 100, 4)
 
         # Split full_name into first/last if present
         full_name = record.pop("full_name", None)

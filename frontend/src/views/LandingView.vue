@@ -3,150 +3,53 @@
     <!-- Progress Bar -->
     <div class="progress-bar" ref="progressBar"></div>
 
+    <!-- Centered slide-tabs nav is rendered at the app shell (App.vue) -->
+
+
     <!-- Grain overlay via CSS pseudo-element on .landing -->
 
-    <!-- Nav -->
-    <nav class="land-nav" ref="landNav">
-      <div class="nav-content">
-        <div class="nav-brand">
-          <div class="nav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <span class="nav-name">Nifraim</span>
-        </div>
-        <div class="nav-links">
-          <a href="#how" @click.prevent="scrollToSection('how')">איך זה עובד</a>
-          <a href="#features" @click.prevent="scrollToSection('features')">יכולות</a>
-          <a href="#portal" @click.prevent="scrollToSection('portal')">פורטל לקוחות</a>
-          <router-link to="/pricing">תמחור</router-link>
-          <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
-          <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
-        </div>
-
-        <!-- Mobile menu button -->
-        <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="תפריט">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line v-if="!mobileMenuOpen" x1="3" y1="6" x2="21" y2="6"/>
-            <line v-if="!mobileMenuOpen" x1="3" y1="12" x2="21" y2="12"/>
-            <line v-if="!mobileMenuOpen" x1="3" y1="18" x2="21" y2="18"/>
-            <line v-if="mobileMenuOpen" x1="18" y1="6" x2="6" y2="18"/>
-            <line v-if="mobileMenuOpen" x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Mobile menu -->
-      <Transition name="mobile-menu">
-        <div v-if="mobileMenuOpen" class="mobile-menu">
-          <a href="#how" @click.prevent="scrollToSection('how')">איך זה עובד</a>
-          <a href="#features" @click.prevent="scrollToSection('features')">יכולות</a>
-          <a href="#portal" @click.prevent="scrollToSection('portal')">פורטל לקוחות</a>
-          <router-link to="/pricing" @click="mobileMenuOpen = false">תמחור</router-link>
-          <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
-          <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
-        </div>
-      </Transition>
-    </nav>
-
     <!-- ================================ -->
-    <!-- CHAPTER 01: HERO — BENTO         -->
+    <!-- CHAPTER 01: HERO — SHADER         -->
+    <!-- Live @paper-design/shaders-react WebGL mesh + Hebrew RTL overlay. -->
+    <!-- Bottom edge fades into Chapter 02 cream story stack. -->
     <!-- ================================ -->
-    <section class="chapter-hero" ref="heroSection">
-      <div class="chapter-num" aria-hidden="true">01</div>
-      <div class="hero-gradient">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-      </div>
-      <div class="hero-inner">
-        <div class="hero-content" ref="heroContent">
-          <span class="hero-eyebrow" ref="heroEyebrow">
-            <span class="eyebrow-dot"></span>
-            מערכת AI לסוכני ביטוח
-          </span>
-          <h1 class="hero-headline" ref="heroHeadline">בדיקת עמלות נפרעים והקפים מבוסס <span class="highlight">AI</span></h1>
-          <p class="hero-sub" ref="heroSub">העלו קבצים, השוו נתונים, גלו פערים - תוך שניות</p>
-          <div class="hero-cta-wrap" ref="heroCtaWrap">
-            <router-link to="/signup" class="hero-btn">
-              התחל
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            </router-link>
-            <a href="#how" class="hero-ghost" @click.prevent="scrollToSection('how')">
-              <span class="ghost-play">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              </span>
-              איך זה עובד
-            </a>
-          </div>
-          <div class="hero-stats-row" ref="heroStatsRow">
-            <div class="hero-stat">
-              <div class="hero-stat-num ltr-number">95%</div>
-              <div class="hero-stat-label">חיסכון בזמן</div>
-            </div>
-            <div class="hero-stat-divider"></div>
-            <div class="hero-stat">
-              <div class="hero-stat-num ltr-number">3.2s</div>
-              <div class="hero-stat-label">זמן עיבוד ממוצע</div>
-            </div>
-          </div>
-          <!-- Trust strip removed -->
-        </div>
-        <div class="hero-visual" ref="heroVisual">
-          <div class="hero-dashboard">
-            <img src="/images/landing/success-man.jpg" alt="סוכן ביטוח מצליח עם Nifraim" width="768" height="1024" fetchpriority="high" decoding="async">
-            <div class="hero-img-overlay"></div>
-          </div>
-          <!-- Floating stat cards -->
-          <div class="float-card float-card-1" ref="floatCard1">
-            <div class="fc-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </div>
-            <div class="fc-value ltr-number">₪54,300</div>
-            <div class="fc-label">עמלות שנמצאו</div>
-            <div class="fc-badge ltr-number">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14l5-5 5 5H7z"/></svg>
-              +12.5%
-            </div>
-          </div>
-          <div class="float-card float-card-2" ref="floatCard2">
-            <div class="fc-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div class="fc-value ltr-number">3.2s</div>
-            <div class="fc-label">זמן עיבוד ממוצע</div>
-            <div class="fc-bar">
-              <div class="fc-bar-fill"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <section class="chapter-hero chapter-hero--shader" ref="heroSection">
+      <div class="chapter-num chapter-num--on-shader" aria-hidden="true">01</div>
+      <ShaderHeroIsland />
     </section>
 
     <!-- ================================ -->
-    <!-- CHAPTER 02: PINNED STATS (dark)  -->
+    <!-- CHAPTER 02: STORY STACK          -->
+    <!-- Sticky cards rotate in from below. Each pins, the next slides over. -->
     <!-- ================================ -->
-    <section class="chapter-stats chapter--dark" ref="chapterStats">
-      <div class="chapter-num" aria-hidden="true">02</div>
-      <div class="stats-wrapper" ref="statsWrapper">
-        <div class="stat-slide" ref="stat1">
-          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
-          <p class="stat-label">קבצים עובדו במערכת</p>
-        </div>
-        <div class="stat-slide" ref="stat2">
-          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
-          <p class="stat-label">חברות ביטוח נתמכות</p>
-        </div>
-        <div class="stat-slide" ref="stat3">
-          <div class="stat-number"><span class="stat-accent ltr-number">0</span></div>
-          <p class="stat-label">חיסכון בזמן עבודה</p>
-        </div>
-        <div class="stats-conclusion" ref="statsConclusion">
-          <h3>הכל אוטומטי.</h3>
-          <span class="copper-line"></span>
+    <section class="chapter-stack" id="automation" ref="chapterStack" aria-label="הבטחות המערכת">
+      <div
+        v-for="(card, i) in storyCards"
+        :key="card.label"
+        class="story-card"
+        :class="['story-card--' + card.theme]"
+        :ref="(el) => { if (el) storyCardEls[i] = el }"
+        data-story-card
+      >
+        <div class="story-inner">
+          <div class="story-top">
+            <span class="story-num" aria-hidden="true">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="story-label">{{ card.label }}</span>
+          </div>
+          <hr class="story-divider" />
+          <h2 class="story-headline" v-html="card.headline"></h2>
+          <hr class="story-divider" />
+          <p class="story-body">{{ card.body }}</p>
+          <div v-if="card.cta" class="story-cta-row">
+            <router-link :to="card.cta.to" class="story-cta">
+              {{ card.cta.label }}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </router-link>
+          </div>
+          <div class="story-meta" v-else>
+            <span class="story-accent-dot"></span>
+            <span class="story-meta-text">{{ card.meta }}</span>
+          </div>
         </div>
       </div>
     </section>
@@ -183,7 +86,9 @@
       <div class="features-track" ref="featuresTrack">
         <div class="feature-card" v-for="(f, i) in featureCards" :key="i">
           <div class="feature-card-bg">
-            <img :src="f.image" :alt="f.title" loading="lazy" decoding="async" width="2752" height="1536">
+            <video :src="f.video" :poster="f.poster" :aria-label="f.title"
+                   autoplay muted loop playsinline preload="metadata"
+                   width="1376" height="768"></video>
           </div>
           <div class="feature-card-content">
             <div class="feature-card-number ltr-number">{{ f.num }}</div>
@@ -266,10 +171,8 @@
     <!-- ================================ -->
     <section class="chapter-cta chapter--dark" id="cta" ref="chapterCta">
       <div class="chapter-num" aria-hidden="true">06</div>
-      <div class="cta-bg-visual">
-        <img src="/images/landing/ai-network.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" width="2048" height="2048">
-      </div>
-      <div class="cta-overlay"></div>
+      <!-- Background = animated boxes grid (replaces the static AI-network image) -->
+      <FooterAnimatedBoxes class="cta-boxes" />
       <div class="cta-content" ref="ctaContent">
         <h2 class="cta-headline">מוכנים <span>להתחיל?</span></h2>
         <p class="cta-sub">הצטרפו לעשרות סוכני ביטוח שכבר חוסכים שעות עבודה כל שבוע</p>
@@ -298,30 +201,18 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useRoute } from 'vue-router'
+import ShaderHeroIsland from '../components/landing/ShaderHeroIsland.vue'
+import FooterAnimatedBoxes from '../components/landing/FooterAnimatedBoxes.vue'
 
 gsap.registerPlugin(ScrollTrigger)
 
 // Refs
 const landingRoot = ref(null)
-const landNav = ref(null)
 const progressBar = ref(null)
 const heroSection = ref(null)
-const heroContent = ref(null)
-const heroEyebrow = ref(null)
-const heroHeadline = ref(null)
-const heroSub = ref(null)
-const heroCtaWrap = ref(null)
-const heroStatsRow = ref(null)
-const heroVisual = ref(null)
-const floatCard1 = ref(null)
-const floatCard2 = ref(null)
-const heroTrust = ref(null)
-const chapterStats = ref(null)
-const statsWrapper = ref(null)
-const stat1 = ref(null)
-const stat2 = ref(null)
-const stat3 = ref(null)
-const statsConclusion = ref(null)
+const chapterStack = ref(null)
+const storyCardEls = ref([])
 const chapterHow = ref(null)
 const howHeader = ref(null)
 const howStepEls = ref([])
@@ -331,8 +222,10 @@ const chapterPortal = ref(null)
 const chapterCta = ref(null)
 const ctaContent = ref(null)
 
-// Mobile menu
-const mobileMenuOpen = ref(false)
+// SlideTabs and its navTabs config now live in App.vue so the nav persists
+// across the public marketing routes (landing/pricing/signup/login/...).
+
+const route = useRoute()
 
 // Motion preference — used to gate video autoplay + ScrollTrigger effects
 const prefersReducedMotion = ref(
@@ -341,50 +234,107 @@ const prefersReducedMotion = ref(
   window.matchMedia('(prefers-reduced-motion: reduce)').matches,
 )
 
-// Smooth scroll to anchor (native — CSS `scroll-behavior: smooth` handles the easing)
-function scrollToSection(id) {
-  const el = document.getElementById(id)
-  if (!el) return
-  const y = el.getBoundingClientRect().top + window.scrollY - 72
-  window.scrollTo({ top: y, behavior: 'smooth' })
-  mobileMenuOpen.value = false
-}
-
-// Data
-const statData = [
-  { target: 1000, suffix: '+' },
-  { target: 50, suffix: '+' },
-  { target: 95, suffix: '%' },
+// Data — Chapter 02 story stack: 5 sticky cards stacking with rotation
+const storyCards = [
+  {
+    label: 'אוטומציה',
+    theme: 'peach',
+    headline: 'לא להעלות.<br/>לא לגרור.<br/>לא לחפש.',
+    body: 'סוכני AI טוענים, סורקים ומשווים בעצמם. אתם פנויים לעבודה האמיתית.',
+    meta: 'ללא העלאות. ללא גרירה.',
+  },
+  {
+    label: 'דיוק',
+    theme: 'sage',
+    headline: 'כל שקל.<br/>נמצא.',
+    body: 'הסכמים, פוליסות ועמלות מתעדכנים אוטומטית לכל חברה ולכל מוצר.',
+    meta: 'כל מוצר. כל חברה. כל חודש.',
+  },
+  {
+    label: 'מהירות',
+    theme: 'slate',
+    headline: 'שניות.<br/>לא שעות.',
+    body: 'בדיקה רציפה של עמלות נפרעים. המערכת מאתרת פערים לפני שאתם שמים לב.',
+    meta: 'מבדיקות ידניות — להתראות אוטומטיות.',
+  },
+  {
+    label: 'תובנות',
+    theme: 'mauve',
+    headline: 'הסיפור<br/>המלא של<br/>התיק.',
+    body: 'חוסרים, שינויים חודשיים ומגמות. תמונה ברורה של מה השתנה ולמה.',
+    meta: 'דיאגרמות חיות. לא טבלאות מתות.',
+  },
+  {
+    label: 'שקט',
+    theme: 'amber',
+    headline: 'עבודה<br/>שמתבצעת<br/>בלעדיכם.',
+    body: 'הזמן להפסיק לרדוף אחרי קבצים. הסוכן עובד גם כשאתם לא.',
+    cta: { label: 'הצטרפו עכשיו', to: '/signup' },
+  },
 ]
 
 const howSteps = [
   {
-    title: 'העלו קבצים',
-    desc: 'גררו את הקבצים אל המערכת. זיהוי אוטומטי של הפורמט.',
+    title: 'המערכת טוענת לבד',
+    desc: 'סוכני AI מושכים קבצי פרודוקציה ונפרעים באופן אוטומטי — ללא העלאות, ללא גרירה.',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
   },
   {
-    title: 'השוו נתונים',
-    desc: 'המערכת מתאימה רשומות לפי ת.ז. ומספר פוליסה. התאמה אוטומטית בין פרודוקציה לנפרעים.',
+    title: 'AI קורא הסכמים ומשווה',
+    desc: 'המערכת קוראת הסכמים, מעדכנת טבלאות עמלות לכל חברה ומוצר, ומאתרת פערים.',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>'
   },
   {
-    title: 'קבלו תובנות',
-    desc: 'מי שולם, מי לא, היכן יש פערים — הכל במבט אחד. תוצאות מיידיות, ללא בדיקות ידניות.',
+    title: 'תובנות זורמות אליכם',
+    desc: 'חוסרים, שינויים חודשיים ומגמות — מוצגים בדיאגרמות AI חיות, בלי בדיקות ידניות.',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 118 2.83"/><path d="M22 12A10 10 0 0012 2v10z"/></svg>'
   },
 ]
 
 const featureCards = [
-  { num: 'יכולת 01', title: 'זיהוי אוטומטי', desc: 'המערכת מזהה פורמטים מחברות שונות באופן אוטומטי. ללא הגדרות מראש.', image: '/images/landing/ai-network.jpg' },
-  { num: 'יכולת 02', title: 'השוואה מדויקת', desc: 'התאמה אוטומטית בין פרודוקציה לנפרעים. זיהוי פערים, חסרים ואי-התאמות בשניות.', image: '/images/landing/data-flow.jpg' },
-  { num: 'יכולת 03', title: 'תוצאות מיידיות', desc: 'מה שלקח שעות — לוקח שניות. העלו קבצים וקבלו תשובות. ייצוא לאקסל בלחיצה.', image: '/images/landing/dashboard.jpg' },
-  { num: 'יכולת 04', title: 'ניתוח AI חכם', desc: 'בינה מלאכותית שמבינה את הנתונים שלכם. שאלו שאלות — קבלו תובנות מהתיק.', image: '/images/landing/portal.jpg' },
+  {
+    num: 'יכולת 01',
+    title: 'טעינה אוטומטית של קבצים',
+    desc: 'סוכני AI מושכים קבצי פרודוקציה ונפרעים בעצמם. בלי העלאות, בלי גרירה — הכל מתחיל לבד.',
+    video: '/landing/feature-01-autoload.webm',
+    poster: '/landing/feature-01-autoload.jpg',
+  },
+  {
+    num: 'יכולת 02',
+    title: 'הסכמים חיים',
+    desc: 'טוענים הסכם — טבלאות העמלות לנפרעים והיקפים מתעדכנות אוטומטית לכל חברה ולכל מוצר.',
+    video: '/landing/feature-02-agreements.webm',
+    poster: '/landing/feature-02-agreements.jpg',
+  },
+  {
+    num: 'יכולת 03',
+    title: 'בדיקת עמלות אוטומטית',
+    desc: 'סריקה רציפה של עמלות נפרעים. המערכת מאתרת אי-התאמות ופערים לפני שאתם שמים לב.',
+    video: '/landing/feature-03-audit.webm',
+    poster: '/landing/feature-03-audit.jpg',
+  },
+  {
+    num: 'יכולת 04',
+    title: 'תובנות חודשיות',
+    desc: 'חוסרים, שינויים מחודש לחודש ומגמות לאורך זמן — תמונה ברורה של מה השתנה ולמה.',
+    video: '/landing/feature-04-insights.webm',
+    poster: '/landing/feature-04-insights.jpg',
+  },
+  {
+    num: 'יכולת 05',
+    title: 'עוזר AI דיאגרמי',
+    desc: 'שואלים שאלה — מקבלים דיאגרמה חיה. עוזר אישי שמסביר את התיק שלכם בויזואל, לא בטקסט.',
+    video: '/landing/feature-05-ai.webm',
+    poster: '/landing/feature-05-ai.jpg',
+  },
 ]
 
 // Scroll progress: rAF-throttled writer for a single CSS variable on the progress bar element
 let scrollRafQueued = false
 let progressBarEl = null
+
+// IntersectionObserver for pausing feature card videos when offscreen
+let featureVideoObserver = null
 function updateProgressBar() {
   scrollRafQueued = false
   if (!progressBarEl) return
@@ -399,177 +349,81 @@ function onScrollThrottled() {
   requestAnimationFrame(updateProgressBar)
 }
 
-function animateStatCounter(el, target, suffix) {
-  const obj = { val: 0 }
-  gsap.to(obj, {
-    val: target,
-    duration: 1.5,
-    ease: 'power2.out',
-    onUpdate: () => {
-      el.textContent = (target >= 100 ? Math.round(obj.val).toLocaleString() : Math.round(obj.val)) + suffix
-    }
-  })
-}
-
 onMounted(() => {
   const prefersReduced = prefersReducedMotion.value
 
   // Native smooth scroll — scoped to the landing page via a class on <html>
   document.documentElement.classList.add('landing-smooth')
 
+  // Cross-route anchor support — if we arrived here via /#features (e.g. from
+  // the SlideTabs nav on /pricing), wait a frame for layout, then scroll.
+  // Uses the same 24px offset as SlideTabs.onAnchorClick.
+  if (route.hash) {
+    const id = route.hash.slice(1)
+    if (id === 'top' || id === '') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(id)
+        if (target) {
+          const y = target.getBoundingClientRect().top + window.scrollY - 24
+          window.scrollTo({ top: y, behavior: 'smooth' })
+        }
+      })
+    }
+  }
+
   // Progress bar: single rAF-throttled listener, writes a CSS custom property
   progressBarEl = progressBar.value
   updateProgressBar()
   window.addEventListener('scroll', onScrollThrottled, { passive: true })
 
-  // Nav starts light (hero is cream)
-  landNav.value?.classList.add('nav--light')
+  // SlideTabs uses mix-blend-difference internally — it adapts to whatever's
+  // beneath it without any per-section light/dark toggling. No GSAP nav triggers
+  // needed anymore.
 
   if (!prefersReduced) {
-    // ---- CHAPTER 1: Hero Animations ----
-    gsap.set([heroEyebrow.value, heroSub.value, heroCtaWrap.value, heroStatsRow.value], { opacity: 0, y: 20 })
-    gsap.set(heroHeadline.value, { opacity: 0, y: 30 })
-    gsap.set(heroVisual.value, { opacity: 0, clipPath: 'inset(0 100% 0 0)' })
-    gsap.set([floatCard1.value, floatCard2.value], { opacity: 0, y: 30, scale: 0.9 })
-    gsap.set(heroTrust.value, { opacity: 0, y: 15 })
+    // ---- CHAPTER 2: Story Stack (FlowArt) ----
+    // Verbatim mechanic from the FlowArt reference: stacking cards, each pinned at
+    // its own bottom while the next slides in with a 30°→0° rotation pivoting on
+    // bottom-left. Calls ScrollTrigger.refresh() at the end so pin positions are
+    // recalculated after the document height changes from setup.
+    const stackEls = storyCardEls.value
+    if (stackEls && stackEls.length > 0) {
+      stackEls.forEach((card, i) => {
+        if (!card) return
+        gsap.set(card, { zIndex: i + 1 })
+        const inner = card.querySelector('.story-inner')
+        if (!inner) return
 
-    const heroTL = gsap.timeline({ delay: 0.3 })
-    heroTL
-      .to(heroEyebrow.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' })
-      .to(heroHeadline.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, '-=0.3')
-      .to(heroSub.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.3')
-      .to(heroCtaWrap.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.2')
-      .to(heroStatsRow.value, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, '-=0.2')
-      .to(heroVisual.value, { opacity: 1, clipPath: 'inset(0 0% 0 0)', duration: 1.2, ease: 'power3.inOut' }, '-=0.8')
-      .to([floatCard1.value, floatCard2.value], { opacity: 1, y: 0, scale: 1, duration: 0.6, stagger: 0.2, ease: 'back.out(1.5)' }, '-=0.5')
-      .to(heroTrust.value, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' }, '-=0.3')
-
-    // Gentle fade-out as hero leaves the viewport — one-shot transition instead of scrub:1 parallax.
-    gsap.to(heroContent.value, {
-      opacity: 0.4,
-      y: -40,
-      scrollTrigger: {
-        trigger: heroSection.value,
-        start: 'bottom 70%',
-        end: 'bottom 20%',
-        toggleActions: 'play none none reverse',
-      },
-    })
-
-    // Orb gentle floating animation
-    gsap.to('.orb-1', { y: -40, x: 20, duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-    gsap.to('.orb-2', { y: 30, x: -15, duration: 10, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-    gsap.to('.orb-3', { y: -20, x: 25, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-
-    // Nav light/dark toggle per section
-    // Hero (cream) + chapters 3, 5 → nav stays light (default)
-    // Dark sections: chapters 2 (stats), 4 (features), 6 (cta) → nav--dark (remove nav--light)
-    const setNavLight = () => landNav.value?.classList.add('nav--light')
-    const setNavDark = () => landNav.value?.classList.remove('nav--light')
-
-    // Chapter 2 (dark) → dark nav
-    ScrollTrigger.create({
-      trigger: chapterStats.value,
-      start: 'top 50%',
-      end: 'bottom 50%',
-      onEnter: setNavDark,
-      onLeaveBack: setNavLight,
-      onLeave: setNavLight,
-      onEnterBack: setNavDark,
-    })
-
-    // Chapter 4 is now cream/brand — no nav-dark trigger (section matches the light nav).
-
-    // Chapter 6 (dark) → dark nav
-    ScrollTrigger.create({
-      trigger: chapterCta.value,
-      start: 'top 50%',
-      end: 'bottom 50%',
-      onEnter: setNavDark,
-      onLeaveBack: setNavLight,
-      onLeave: setNavLight,
-      onEnterBack: setNavDark,
-    })
-
-    // ---- CHAPTER 2: Pinned Stats ----
-    const statSlides = [stat1.value, stat2.value, stat3.value]
-    const conclusionEl = statsConclusion.value
-    let conclusionShown = false
-    const slideActive = [false, false, false]
-
-    // Show first stat immediately when entering the section
-    ScrollTrigger.create({
-      trigger: chapterStats.value,
-      start: 'top 80%',
-      once: true,
-      onEnter: () => {
-        if (stat1.value) {
-          slideActive[0] = true
-          gsap.fromTo(stat1.value,
-            { opacity: 0, y: 50, scale: 0.95 },
-            { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power3.out' }
-          )
-          const accentEl = stat1.value.querySelector('.stat-accent')
-          if (accentEl) animateStatCounter(accentEl, statData[0].target, statData[0].suffix)
+        if (i > 0) {
+          gsap.set(inner, { rotation: 30, transformOrigin: 'bottom left' })
+          gsap.to(inner, {
+            rotation: 0,
+            ease: 'none',
+            scrollTrigger: {
+              trigger: card,
+              start: 'top bottom',
+              end: 'top 25%',
+              scrub: true,
+            },
+          })
         }
-      }
-    })
 
-    ScrollTrigger.create({
-      trigger: chapterStats.value,
-      start: 'top top',
-      end: '+=100%',
-      pin: true,
-      pinSpacing: true,
-      onUpdate: (self) => {
-        const p = self.progress
-
-        // 3 slides: 0–0.28, 0.28–0.56, 0.56–0.80, conclusion 0.80+
-        statSlides.forEach((s, i) => {
-          if (!s) return
-          const start = i * 0.28
-          const end = start + 0.28
-          if (p >= start && p < end) {
-            if (!slideActive[i]) {
-              slideActive[i] = true
-              gsap.killTweensOf(s)
-              gsap.fromTo(s,
-                { opacity: 0, y: 40, scale: 0.95 },
-                { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'power3.out' }
-              )
-              const accentEl = s.querySelector('.stat-accent')
-              if (accentEl) {
-                animateStatCounter(accentEl, statData[i].target, statData[i].suffix)
-              }
-            }
-          } else {
-            if (slideActive[i]) {
-              slideActive[i] = false
-              gsap.killTweensOf(s)
-              gsap.to(s, { opacity: 0, y: p > end ? -30 : 30, scale: 0.95, duration: 0.25, ease: 'power2.in' })
-            }
-          }
-        })
-
-        // Conclusion
-        if (p >= 0.82) {
-          if (!conclusionShown) {
-            conclusionShown = true
-            gsap.killTweensOf(conclusionEl)
-            gsap.fromTo(conclusionEl,
-              { opacity: 0, scale: 0.9 },
-              { opacity: 1, scale: 1, duration: 0.5, ease: 'power3.out' }
-            )
-          }
-        } else {
-          if (conclusionShown) {
-            conclusionShown = false
-            gsap.killTweensOf(conclusionEl)
-            gsap.to(conclusionEl, { opacity: 0, scale: 0.9, duration: 0.25, ease: 'power2.in' })
-          }
+        if (i < stackEls.length - 1) {
+          ScrollTrigger.create({
+            trigger: card,
+            start: 'bottom bottom',
+            end: 'bottom top',
+            pin: true,
+            pinSpacing: false,
+          })
         }
-      }
-    })
+      })
+
+      // Force pin/scrub positions to recompute after layout settles.
+      ScrollTrigger.refresh()
+    }
 
     // ---- CHAPTER 3: How It Works ----
     gsap.set(howHeader.value, { opacity: 0, y: 30 })
@@ -646,34 +500,17 @@ onMounted(() => {
       }
     })
 
-    // CTA background image: one-shot rise on entrance (scrub:1 parallax was re-querying + transforming every scroll frame).
-    gsap.from('.cta-bg-visual img', {
-      y: 40,
-      scale: 1.05,
-      duration: 1.2,
-      ease: 'power3.out',
-      scrollTrigger: {
-        trigger: chapterCta.value,
-        start: 'top 80%',
-        once: true,
-      },
-    })
+    // (CTA background image animation removed — replaced by FooterAnimatedBoxes)
 
   } else {
     // ---- Reduced Motion Fallback ----
-    // Stats: show all inline
-    ;[stat1.value, stat2.value, stat3.value].forEach((s, i) => {
-      if (!s) return
-      s.style.position = 'relative'
-      s.style.opacity = '1'
-      s.style.marginBottom = '60px'
-      const accentEl = s.querySelector('.stat-accent')
-      if (accentEl) accentEl.textContent = statData[i].target + statData[i].suffix
+    // Story stack: cards display inline, no rotation
+    storyCardEls.value?.forEach((card) => {
+      if (!card) return
+      card.style.position = 'relative'
+      const inner = card.querySelector('.story-inner')
+      if (inner) inner.style.transform = 'none'
     })
-    if (statsConclusion.value) {
-      statsConclusion.value.style.opacity = '1'
-      statsConclusion.value.style.position = 'relative'
-    }
 
     // How steps
     if (howHeader.value) {
@@ -708,6 +545,32 @@ onMounted(() => {
       ctaContent.value.style.transform = 'none'
     }
   }
+
+  // ---- Pause feature-card videos when offscreen ----
+  // 5 videos all autoplaying simultaneously was a major perf hit. IntersectionObserver
+  // pauses each video when its card scrolls out of view and resumes on re-entry.
+  if (typeof IntersectionObserver !== 'undefined') {
+    featureVideoObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const video = entry.target
+          if (!(video instanceof HTMLVideoElement)) return
+          if (entry.isIntersecting) {
+            video.play().catch(() => { /* autoplay may be blocked — fine */ })
+          } else {
+            video.pause()
+          }
+        })
+      },
+      { rootMargin: '15% 0px 15% 0px', threshold: 0 },
+    )
+    // Defer until videos exist in DOM (after Vue paint)
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.feature-card-bg video').forEach((v) => {
+        featureVideoObserver?.observe(v)
+      })
+    })
+  }
 })
 
 onBeforeUnmount(() => {
@@ -715,6 +578,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScrollThrottled)
   document.documentElement.classList.remove('landing-smooth')
   progressBarEl = null
+  if (featureVideoObserver) {
+    featureVideoObserver.disconnect()
+    featureVideoObserver = null
+  }
 })
 </script>
 
@@ -824,599 +691,28 @@ onBeforeUnmount(() => {
   -webkit-text-stroke-color: rgba(245, 240, 235, 0.05);
 }
 
-/* ── Navigation ── */
-/* Solid-with-alpha instead of backdrop-filter: blur over scrolling content forced a per-frame compositor repaint. */
-.land-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: rgba(74, 74, 74, 0.92);
-  border-bottom: 1px solid var(--land-border);
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-/* Nav light mode (after hero) */
-.land-nav.nav--light {
-  background: rgba(245, 240, 235, 0.95);
-  border-bottom-color: rgba(45, 37, 34, 0.06);
-}
-
-.land-nav.nav--light .nav-name {
-  color: var(--cream-text);
-}
-
-.land-nav.nav--light .nav-icon {
-  background: var(--cream-text);
-  color: var(--cream-bg);
-}
-
-.land-nav.nav--light .nav-links a {
-  color: var(--cream-text-muted);
-}
-
-.land-nav.nav--light .nav-links a:hover {
-  color: var(--land-orange);
-}
-
-.land-nav.nav--light .nav-btn-ghost {
-  border-color: var(--cream-text) !important;
-  color: var(--cream-text) !important;
-}
-
-.land-nav.nav--light .nav-btn-ghost:hover {
-  background: rgba(45, 37, 34, 0.05) !important;
-}
-
-.land-nav.nav--light .nav-btn-solid {
-  background: var(--cream-text) !important;
-  color: var(--cream-bg) !important;
-}
-
-.land-nav.nav--light .nav-btn-solid:hover {
-  background: var(--dark-section) !important;
-}
-
-.land-nav.nav--light .mobile-menu-btn {
-  color: var(--cream-text);
-}
-
-.nav-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.nav-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--land-orange);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #0a0a0a;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.nav-name {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--land-text);
-  transition: color var(--transition-fast);
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.nav-links a {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-  transition: color 0.2s;
-}
-
-.nav-links a:hover {
-  color: var(--land-orange);
-}
-
-.nav-btn-ghost {
-  padding: 10px 24px;
-  border-radius: 10px;
-  border: 1px solid var(--land-orange) !important;
-  color: var(--land-orange) !important;
-  font-weight: 600 !important;
-  transition: all 0.2s;
-}
-
-.nav-btn-ghost:hover {
-  background: var(--land-orange-glow) !important;
-}
-
-.nav-btn-solid {
-  padding: 10px 24px;
-  border-radius: 10px;
-  background: var(--land-orange) !important;
-  color: #0a0a0a !important;
-  font-weight: 700 !important;
-  transition: all 0.2s;
-}
-
-.nav-btn-solid:hover {
-  background: var(--land-orange-bright) !important;
-}
-
-/* Mobile menu button */
-.mobile-menu-btn {
-  display: none;
-  background: none;
-  border: none;
-  color: var(--land-text);
-  cursor: pointer;
-  padding: 8px;
-  transition: color var(--transition-fast);
-}
-
-/* Mobile menu */
-.mobile-menu {
-  display: none;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-  border-top: 1px solid var(--land-border);
-  background: rgba(74, 74, 74, 0.95);
-}
-
-.land-nav.nav--light .mobile-menu {
-  background: rgba(245, 240, 235, 0.97);
-  border-top-color: rgba(45, 37, 34, 0.06);
-}
-
-.mobile-menu a {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-  padding: 8px 0;
-}
-
-.mobile-menu-enter-active,
-.mobile-menu-leave-active {
-  transition: all 0.3s ease;
-}
-
-.mobile-menu-enter-from,
-.mobile-menu-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
+/* ── Navigation lives in SlideTabs.vue (mix-blend-difference pill) ── */
 
 /* ══════════════════════════════════════ */
-/* CHAPTER 1: HERO — BENTO (cream)       */
+/* CHAPTER 1: HERO — SHADER (dark)       */
+/* Live @paper-design/shaders-react WebGL — section is just a positioning frame. */
 /* ══════════════════════════════════════ */
 .chapter-hero {
   position: relative;
   min-height: 100dvh;
-  display: flex;
-  align-items: center;
+  width: 100%;
   overflow: hidden;
-  background: var(--cream-bg);
+  background: #000;
 }
 
-.hero-gradient {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
+.chapter-hero--shader {
+  isolation: isolate;
 }
 
-.hero-gradient .orb {
-  position: absolute;
-  border-radius: 50%;
-  /* 60px blur is half the old cost; element scale 1.4x keeps the perceived softness the same. */
-  filter: blur(60px);
-  transform: translateZ(0) scale(1.4);
-  will-change: transform;
-}
-
-.hero-gradient .orb-1 {
-  width: 600px;
-  height: 600px;
-  background: rgba(232, 102, 10, 0.1);
-  top: -20%;
-  left: -10%;
-}
-
-.hero-gradient .orb-2 {
-  width: 400px;
-  height: 400px;
-  background: rgba(232, 102, 10, 0.07);
-  bottom: 10%;
-  right: -5%;
-}
-
-.hero-gradient .orb-3 {
-  width: 350px;
-  height: 350px;
-  background: rgba(180, 140, 100, 0.08);
-  top: 40%;
-  left: 50%;
-}
-
-.hero-inner {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  width: 100%;
-  min-height: 100dvh;
-}
-
-.hero-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 110px 48px 80px 32px;
-  max-width: 640px;
-  margin-inline-start: auto;
-  margin-top: -100px;
-}
-
-.hero-eyebrow {
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  color: var(--land-orange);
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(232, 102, 10, 0.08);
-  padding: 6px 16px 6px 12px;
-  border-radius: 40px;
-  border: 1px solid rgba(232, 102, 10, 0.15);
-  width: fit-content;
-  max-width: 100%;
-}
-
-.eyebrow-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--land-orange);
-  flex-shrink: 0;
-  animation: dotPulse 2s ease-in-out infinite;
-}
-
-@keyframes dotPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
-}
-
-.hero-headline {
-  font-size: clamp(36px, 5.5vw, 68px);
-  font-weight: 900;
-  line-height: 1.15;
-  letter-spacing: -1px;
-  color: var(--cream-text);
-}
-
-.hero-headline .highlight {
-  color: var(--land-orange);
-  position: relative;
-  display: inline-block;
-}
-
-.hero-headline .highlight::after {
-  content: '';
-  position: absolute;
-  bottom: 2px;
-  right: 0;
-  width: 100%;
-  height: 6px;
-  background: rgba(232, 102, 10, 0.15);
-  border-radius: 3px;
-}
-
-.hero-sub {
-  font-size: clamp(15px, 1.1vw, 18px);
-  color: var(--cream-text-muted);
-  line-height: 1.7;
-  max-width: 460px;
-}
-
-.hero-cta-wrap {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.hero-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--land-orange);
-  color: #fff;
-  padding: 16px 40px;
-  border-radius: 40px;
-  font-size: 1.05rem;
-  font-weight: 700;
-  transition: all var(--transition-fast);
-  min-height: 54px;
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
-}
-
-.hero-btn:hover {
-  background: var(--land-orange-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(232, 102, 10, 0.3);
-}
-
-.hero-btn svg {
-  width: 18px;
-  height: 18px;
-  transition: transform var(--transition-fast);
-}
-
-.hero-btn:hover svg {
-  transform: translateX(-4px);
-}
-
-.hero-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  border: none;
-  color: #fff;
-  background: #1a1a1a;
-  padding: 16px 28px;
-  border-radius: 40px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  transition: all var(--transition-fast);
-  min-height: 52px;
-}
-
-.ghost-play {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--land-orange);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-fast);
-}
-
-.ghost-play svg {
-  margin-right: -1px;
-}
-
-.hero-ghost:hover {
-  background: var(--land-orange);
-  color: #fff;
-}
-
-.hero-ghost:hover .ghost-play {
-  background: #fff;
-  color: var(--land-orange);
-}
-
-.hero-stats-row {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  margin-top: 16px;
-  padding: 16px 24px;
-  background: rgba(45, 37, 34, 0.03);
-  border-radius: 14px;
-  border: 1px solid rgba(45, 37, 34, 0.05);
-  width: fit-content;
-}
-
-.hero-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: center;
-}
-
-.hero-stat-divider {
-  width: 1px;
-  height: 32px;
-  background: rgba(45, 37, 34, 0.1);
-}
-
-.hero-stat-num {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--land-orange);
-  letter-spacing: -0.5px;
-}
-
-.hero-stat-label {
-  font-size: 0.72rem;
-  color: var(--cream-text-dim);
-  letter-spacing: 0.02em;
-}
-
-/* Hero Visual — Edge bleed to left */
-.hero-visual {
-  position: relative;
-  height: 100%;
-  min-height: 100dvh;
-  padding: 24px;
-}
-
-.hero-dashboard {
-  position: absolute;
-  top: 96px;
-  bottom: 24px;
-  left: 24px;
-  right: 24px;
-  overflow: hidden;
-  border-radius: 32px;
-  box-shadow: 0 8px 40px rgba(45, 37, 34, 0.12);
-}
-
-.hero-dashboard img,
-.hero-dashboard .hero-dashboard-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  background: #FFF8F0;
-}
-
-.hero-img-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to right, rgba(245, 240, 235, 0.3) 0%, transparent 30%),
-              linear-gradient(to top, rgba(45, 37, 34, 0.2) 0%, transparent 30%);
-  pointer-events: none;
-}
-
-/* Floating stat cards — dropped backdrop-filter (cards are animated; per-frame blur is wasted) */
-.float-card {
-  position: absolute;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid rgba(45, 37, 34, 0.08);
-  border-radius: 14px;
-  padding: 16px 20px;
-  z-index: 3;
-  box-shadow: 0 16px 40px rgba(45, 37, 34, 0.1);
-}
-
-.float-card-1 {
-  top: 18%;
-  right: 8%;
-  animation: float1 6s ease-in-out infinite;
-}
-
-.float-card-2 {
-  bottom: 15%;
-  left: 8%;
-  animation: float2 7s ease-in-out infinite;
-}
-
-@keyframes float1 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
-@keyframes float2 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(10px); } }
-
-.float-card .fc-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: var(--land-orange-glow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-
-.float-card .fc-icon svg {
-  width: 18px;
-  height: 18px;
-  color: var(--land-orange);
-}
-
-.float-card .fc-value {
-  font-size: 1.3rem;
-  font-weight: 800;
-  color: var(--cream-text);
-  letter-spacing: -0.5px;
-}
-
-.float-card .fc-label {
-  font-size: 0.72rem;
-  color: var(--cream-text-dim);
-  margin-top: 2px;
-}
-
-.float-card .fc-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(76, 175, 80, 0.1);
-  color: #2E7D32;
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  margin-top: 6px;
-}
-
-.float-card .fc-bar {
-  width: 100%;
-  height: 4px;
-  background: rgba(45, 37, 34, 0.06);
-  border-radius: 2px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-
-.float-card .fc-bar-fill {
-  width: 85%;
-  height: 100%;
-  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
-  border-radius: 2px;
-  transform-origin: right center; /* RTL — grow from the right edge */
-  animation: barFill 2s ease-out 1.5s both;
-  will-change: transform;
-}
-
-/* scaleX on a fixed-width element is composited; the old `width: 0→85%` triggered layout every keyframe. */
-@keyframes barFill {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
-}
-
-/* Trust strip */
-.hero-trust {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.trust-label {
-  font-size: 0.72rem;
-  color: var(--cream-text-dim);
-  letter-spacing: 0.03em;
-}
-
-.trust-logos {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.trust-logos span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: rgba(45, 37, 34, 0.22);
-  letter-spacing: 0.01em;
-  transition: color 0.3s;
-}
-
-.trust-logos span:hover {
-  color: var(--land-orange);
+/* The chapter "01" outline number sits on top of the shader in white at low opacity */
+.chapter-num--on-shader {
+  -webkit-text-stroke-color: rgba(255, 255, 255, 0.06) !important;
+  z-index: 4;
 }
 
 /* Scroll indicator */
@@ -1465,84 +761,193 @@ onBeforeUnmount(() => {
 }
 
 /* ══════════════════════════════════════ */
-/* CHAPTER 2: PINNED STATS (dark)        */
+/* CHAPTER 2: STORY STACK (cream)        */
+/* Sticky cards that pin and stack, the next slides in rotated 30°→0° */
 /* ══════════════════════════════════════ */
-.chapter-stats {
-  position: relative;
-  min-height: 100vh;
-  background: var(--dark-section);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.stats-wrapper {
+.chapter-stack {
   position: relative;
   width: 100%;
+  overflow-x: hidden;
+  background: var(--cream-bg);
+}
+
+.story-card {
+  position: relative;
   min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  /* z-index set dynamically in GSAP onMounted so later cards sit above earlier ones */
 }
 
-.stat-slide {
-  position: absolute;
-  inset: 0;
+.story-inner {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  opacity: 0;
-  padding: 0 24px;
-  pointer-events: none;
+  justify-content: space-between;
+  gap: 1.5vw;
+  padding: clamp(2.5rem, 8vw, 6rem) clamp(2rem, 4vw, 5rem) 4vw;
+  /* transform-origin set by GSAP for cards 1..N — first card never rotates. */
+  will-change: transform;
 }
 
-.stat-number {
-  font-size: clamp(64px, 15vw, 160px);
+.story-top {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+}
+
+.story-num {
+  font-size: clamp(56px, 9vw, 140px);
   font-weight: 900;
-  color: var(--text-light);
+  line-height: 0.85;
   letter-spacing: -3px;
-  line-height: 1;
-  margin-bottom: 16px;
+  color: transparent;
+  -webkit-text-stroke: 1.5px currentColor;
+  opacity: 0.35;
 }
 
-.stat-accent {
-  color: var(--land-orange);
+.story-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.7;
 }
 
-.stat-label {
-  font-size: clamp(1rem, 2vw, 1.5rem);
-  color: var(--text-light-muted);
-  max-width: 500px;
-  line-height: 1.6;
+.story-divider {
+  border: none;
+  border-top: 1px solid currentColor;
+  opacity: 0.18;
+  margin: 0;
 }
 
-.stats-conclusion {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
+.story-headline {
+  font-size: clamp(3.2rem, 11vw, 12rem);
+  font-weight: 900;
+  line-height: 0.88;
+  letter-spacing: -2px;
+  margin: 0;
+}
+
+.story-body {
+  max-width: 52ch;
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  font-weight: 400;
+  line-height: 1.55;
+  opacity: 0.78;
+}
+
+.story-meta {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  opacity: 0;
-  z-index: 5;
-  pointer-events: none;
+  gap: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-top: auto;
+  align-self: flex-start;
+  padding-top: 0.5vw;
 }
 
-.stats-conclusion h3 {
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  font-weight: 800;
-  color: var(--text-light);
-  letter-spacing: -1px;
+.story-accent-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.copper-line {
-  display: block;
-  width: 60px;
-  height: 3px;
-  background: var(--land-orange);
-  margin-top: 20px;
-  border-radius: 2px;
+.story-cta-row {
+  margin-top: auto;
+  padding-top: 0.5vw;
 }
+
+.story-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--story-accent, var(--land-orange));
+  color: #fff !important;
+  padding: 18px 36px;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  box-shadow: 0 8px 28px rgba(45, 37, 34, 0.12);
+}
+
+.story-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(45, 37, 34, 0.18);
+}
+
+.story-cta svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Card themes (high-contrast alternating values) ──
+   The background goes on the INNER (which is what GSAP rotates) so the entire
+   surface tilts in together — exactly the FlowArt mechanic. The outer .story-card
+   is just a clipping frame.
+
+   Sequence: orange → noir → cream → forest → obsidian. Adjacent cards always
+   invert in value, so each 30°→0° rotation reveals a dramatically different
+   surface descending from the right side of the viewport.
+*/
+.story-card--peach .story-inner {
+  background: linear-gradient(135deg, #E8660A 0%, #C85A00 100%);
+  color: #FFFFFF;
+  --story-accent: #1A1614;
+}
+.story-card--sage .story-inner {
+  background: linear-gradient(135deg, #1F1A16 0%, #0F0C09 100%);
+  color: #F5F0E8;
+  --story-accent: #E8660A;
+}
+.story-card--slate .story-inner {
+  background: linear-gradient(135deg, #F5F0E8 0%, #ECE5D8 100%);
+  color: #1A1614;
+  --story-accent: #E8660A;
+}
+.story-card--mauve .story-inner {
+  background: linear-gradient(135deg, #2D332E 0%, #1B201D 100%);
+  color: #F5F0E8;
+  --story-accent: #D4B26A;
+}
+.story-card--amber .story-inner {
+  background: linear-gradient(135deg, #0F0C09 0%, #1F1A16 100%);
+  color: #F5F0E8;
+  --story-accent: #E8660A;
+}
+
+/* Per-theme: tint label / chapter num / meta with each card's accent.
+   On the orange card, accent text shifts to soft white instead of orange
+   (orange-on-orange is illegible). */
+.story-card--peach .story-label,
+.story-card--peach .story-meta,
+.story-card--peach .story-num { color: rgba(255, 255, 255, 0.85); }
+.story-card--sage .story-label,
+.story-card--sage .story-meta,
+.story-card--sage .story-num { color: #E8660A; }
+.story-card--slate .story-label,
+.story-card--slate .story-meta,
+.story-card--slate .story-num { color: #E8660A; }
+.story-card--mauve .story-label,
+.story-card--mauve .story-meta,
+.story-card--mauve .story-num { color: #D4B26A; }
+.story-card--amber .story-label,
+.story-card--amber .story-meta,
+.story-card--amber .story-num { color: #E8660A; }
+
+/* Divider opacity tweaks — light dividers need higher opacity on dark cards,
+   darker dividers need lower opacity on cream/orange cards. */
+.story-card--peach .story-divider { border-top-color: rgba(0, 0, 0, 0.22); opacity: 1; }
+.story-card--slate .story-divider { border-top-color: rgba(26, 22, 20, 0.18); opacity: 1; }
+.story-card--sage .story-divider,
+.story-card--mauve .story-divider,
+.story-card--amber .story-divider { border-top-color: rgba(245, 240, 232, 0.16); opacity: 1; }
 
 /* ══════════════════════════════════════ */
 /* CHAPTER 3: HOW IT WORKS (cream)       */
@@ -1767,11 +1172,15 @@ onBeforeUnmount(() => {
   z-index: 0;
 }
 
-.feature-card-bg img {
+.feature-card-bg img,
+.feature-card-bg video {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Warm-tint the stock photos so they read as brand rather than generic AI imagery */
+}
+
+/* Warm-tint legacy stock photos only — Remotion clips ship pre-toned */
+.feature-card-bg img {
   filter: saturate(0.85) brightness(1.05) sepia(0.15);
 }
 
@@ -1950,7 +1359,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: var(--dark-section);
+  /* Reference uses slate-900 — a cool dark that lets the slate-700 cell
+     borders read clearly. */
+  background: rgb(15 23 42);
 }
 
 .cta-bg-visual {
@@ -1969,10 +1380,9 @@ onBeforeUnmount(() => {
 }
 
 .chapter-cta .cta-overlay {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(45, 37, 34, 0.6), rgba(45, 37, 34, 0.95));
-  z-index: 1;
+  /* Legacy warm-dark overlay — superseded by .cta-boxes-mask above the
+     boxes grid. Hidden so the new mask is the single source of truth. */
+  display: none;
 }
 
 .cta-content {
@@ -2045,6 +1455,19 @@ onBeforeUnmount(() => {
   gap: 24px;
 }
 
+/* CTA chapter — boxes grid covers the whole section (z=0). The headline
+   + button sit above at z=3; pointer events on .cta-content are disabled
+   so hovers reach the boxes underneath, except the actual button. */
+.chapter-cta .cta-boxes {
+  z-index: 0;
+}
+.chapter-cta .cta-content {
+  pointer-events: none;
+}
+.chapter-cta .cta-content .cta-btn {
+  pointer-events: auto;
+}
+
 .footer-brand {
   display: flex;
   flex-direction: column;
@@ -2091,17 +1514,6 @@ onBeforeUnmount(() => {
 /* RESPONSIVE                            */
 /* ══════════════════════════════════════ */
 @media (max-width: 1024px) {
-  .hero-inner {
-    grid-template-columns: 1fr;
-    gap: 40px;
-    padding-top: 120px;
-  }
-
-  .hero-visual {
-    max-width: 320px;
-    margin: 0 auto;
-  }
-
   .portal-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -2113,18 +1525,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
-  .nav-links {
-    display: none;
-  }
-
-  .mobile-menu-btn {
-    display: block;
-  }
-
-  .mobile-menu {
-    display: flex;
-  }
-
   .how-steps {
     grid-template-columns: 1fr;
     max-width: 500px;
@@ -2171,47 +1571,6 @@ onBeforeUnmount(() => {
     grid-row: span 1;
   }
 
-  .hero-inner {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-content {
-    padding: 120px 24px 40px;
-    max-width: 100%;
-    margin: 0;
-  }
-
-  .hero-visual {
-    position: relative;
-    height: 400px;
-    min-height: auto;
-  }
-
-  .hero-dashboard {
-    border-radius: 0;
-  }
-
-  .hero-headline {
-    font-size: clamp(28px, 7vw, 42px);
-  }
-
-  .hero-stats-row {
-    gap: 16px;
-    padding: 14px 18px;
-  }
-
-  .trust-logos {
-    gap: 12px;
-  }
-
-  .trust-logos span {
-    font-size: 0.72rem;
-  }
-
-  .float-card {
-    display: none;
-  }
-
   .chapter-num {
     font-size: clamp(60px, 16vw, 120px);
   }
@@ -2227,31 +1586,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 480px) {
-  .hero-cta-wrap {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .hero-btn,
-  .hero-ghost {
-    justify-content: center;
-  }
-
-  .hero-stats-row {
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
-  }
-
-  .hero-stat-divider {
-    width: 40px;
-    height: 1px;
-  }
-
-  .hero-trust .trust-logos {
-    gap: 8px;
-  }
-
   .scroll-indicator {
     display: none;
   }

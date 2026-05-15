@@ -39,6 +39,7 @@ from app.schemas.portal_automation import (
     OtpSubmitIn,
     PortalCredentialIn,
     PortalCredentialOut,
+    PortalCredentialScheduleIn,
     PortalCredentialUpdate,
     PortalRunOut,
     RunStartOut,
@@ -66,7 +67,7 @@ def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
         twilio_to_number=c.twilio_to_number,
         contact_phone_synced_to=c.contact_phone_synced_to,
         is_active=c.is_active,
-        schedule_enabled=c.schedule_enabled,
+        schedule_kind=c.schedule_kind,
         category_hint=c.category_hint,
         last_run_at=c.last_run_at,
         last_run_status=c.last_run_status,
@@ -162,7 +163,7 @@ async def create_credential(
         username=payload.username,
         encrypted_password=encrypted,
         twilio_to_number=payload.twilio_to_number,
-        schedule_enabled=payload.schedule_enabled,
+        schedule_kind=payload.schedule_kind,
         category_hint=payload.category_hint,
     )
     db.add(cred)
@@ -197,6 +198,29 @@ async def update_credential(
     for key, value in data.items():
         setattr(cred, key, value)
 
+    await db.commit()
+    await db.refresh(cred)
+    return _cred_to_out(cred)
+
+
+@router.patch("/credentials/{cred_id}/schedule", response_model=PortalCredentialOut)
+async def update_credential_schedule(
+    cred_id: str,
+    payload: PortalCredentialScheduleIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Set the recurring-run cadence for a credential without touching anything else."""
+    result = await db.execute(
+        select(PortalCredential).where(
+            PortalCredential.id == uuid.UUID(cred_id),
+            PortalCredential.user_id == user.id,
+        )
+    )
+    cred = result.scalar_one_or_none()
+    if not cred:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    cred.schedule_kind = payload.schedule_kind
     await db.commit()
     await db.refresh(cred)
     return _cred_to_out(cred)
@@ -338,6 +362,35 @@ async def submit_otp(
     ))
     await db.commit()
     return {"status": "submitted"}
+
+
+@router.post("/runs/{run_id}/cancel")
+async def cancel_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark an in-flight run as failed (cancelled by the user). The runner
+    coroutine itself can't be aborted from here, but flipping the status
+    means the UI no longer waits and the next run won't be blocked by a
+    409 stale-run check."""
+    run_result = await db.execute(
+        select(PortalRun).where(
+            PortalRun.id == uuid.UUID(run_id),
+            PortalRun.user_id == user.id,
+        )
+    )
+    run = run_result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status not in ACTIVE_RUN_STATUSES:
+        return {"status": run.status, "noop": True}
+    run.status = "failed"
+    run.stage = None
+    run.error_message = "בוטל ע\"י המשתמש"
+    run.finished_at = datetime.utcnow()
+    await db.commit()
+    return {"status": "failed", "cancelled": True}
 
 
 # ──────────────────────────────────────────────────────────────────────────

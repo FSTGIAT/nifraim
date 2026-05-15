@@ -27,10 +27,13 @@ async def list_rates(
         CommissionRateOut(
             id=str(r.id),
             company_name=r.company_name,
+            product=r.product,
             rate=float(r.rate),
             payment_frequency=r.payment_frequency,
             paid_to=r.paid_to,
             company_email=r.company_email,
+            effective_from=r.effective_from,
+            effective_to=r.effective_to,
         )
         for r in rates
     ]
@@ -70,10 +73,13 @@ async def seed_defaults(
         CommissionRateOut(
             id=str(r.id),
             company_name=r.company_name,
+            product=r.product,
             rate=float(r.rate),
             payment_frequency=r.payment_frequency,
             paid_to=r.paid_to,
             company_email=r.company_email,
+            effective_from=r.effective_from,
+            effective_to=r.effective_to,
         )
         for r in rates
     ]
@@ -88,10 +94,13 @@ async def create_rate(
     rate = CommissionRate(
         user_id=user.id,
         company_name=data.company_name,
+        product=data.product,
         rate=data.rate,
         payment_frequency=data.payment_frequency,
         paid_to=data.paid_to,
         company_email=data.company_email,
+        effective_from=data.effective_from,
+        effective_to=data.effective_to,
     )
     db.add(rate)
     await db.commit()
@@ -99,10 +108,13 @@ async def create_rate(
     return CommissionRateOut(
         id=str(rate.id),
         company_name=rate.company_name,
+        product=rate.product,
         rate=float(rate.rate),
         payment_frequency=rate.payment_frequency,
         paid_to=rate.paid_to,
         company_email=rate.company_email,
+        effective_from=rate.effective_from,
+        effective_to=rate.effective_to,
     )
 
 
@@ -124,20 +136,26 @@ async def update_rate(
         raise HTTPException(status_code=404, detail="Rate not found")
 
     rate.company_name = data.company_name
+    rate.product = data.product
     rate.rate = data.rate
     rate.payment_frequency = data.payment_frequency
     rate.paid_to = data.paid_to
     rate.company_email = data.company_email
+    rate.effective_from = data.effective_from
+    rate.effective_to = data.effective_to
     await db.commit()
     await db.refresh(rate)
 
     return CommissionRateOut(
         id=str(rate.id),
         company_name=rate.company_name,
+        product=rate.product,
         rate=float(rate.rate),
         payment_frequency=rate.payment_frequency,
         paid_to=rate.paid_to,
         company_email=rate.company_email,
+        effective_from=rate.effective_from,
+        effective_to=rate.effective_to,
     )
 
 

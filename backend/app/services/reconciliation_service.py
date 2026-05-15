@@ -419,8 +419,14 @@ async def cross_reference_uploads(db: AsyncSession, user_id: uuid.UUID):
 
 async def apply_commission_rates(db: AsyncSession, user_id: uuid.UUID, upload_id: uuid.UUID):
     """Apply commission rates from the rate table to company report records."""
-    # Get all commission rates for this user
-    rates_q = select(CommissionRate).where(CommissionRate.user_id == user_id)
+    # Get all commission rates for this user — collapse to company-level by
+    # keeping the row without a `product` (the legacy "default" rate). This
+    # function predates per-product rates and is only used by older formats;
+    # the new percent-vs-percent path is `apply_rate_deviation`.
+    rates_q = select(CommissionRate).where(
+        CommissionRate.user_id == user_id,
+        CommissionRate.product.is_(None),
+    )
     rates_result = await db.execute(rates_q)
     rates = {r.company_name: float(r.rate) for r in rates_result.scalars().all()}
 
@@ -457,5 +463,212 @@ async def apply_commission_rates(db: AsyncSession, user_id: uuid.UUID, upload_id
                     record.reconciliation_status = "paid_match"
                 else:
                     record.reconciliation_status = "paid_mismatch"
+
+    await db.flush()
+
+
+# Tolerance for percent-to-percent comparison (in absolute percentage points).
+# Real agreements quote rates to one decimal place (e.g. 19.2%, 0.32%). For
+# high rates (life/health/risk: 15–30%) anything under 0.1pp is rounding
+# noise. For low rates (gemel/financial: 0.2–0.5%) 0.1pp is huge — 31% in
+# relative terms — so we tighten to 0.05pp. Otherwise a 0.32% → 0.24%
+# underpayment (8/100 of a point, but a 25% cut in real money) would slip
+# past as a "match".
+_RATE_TOLERANCE_PP_HIGH = 0.1
+_RATE_TOLERANCE_PP_LOW = 0.05
+_LOW_RATE_THRESHOLD_PCT = 2.0
+
+
+def _tolerance_for(rate_pct: float) -> float:
+    return _RATE_TOLERANCE_PP_LOW if rate_pct < _LOW_RATE_THRESHOLD_PCT else _RATE_TOLERANCE_PP_HIGH
+
+
+def _norm(s: str | None) -> str:
+    """Lowercase + strip leading definite article + strip whitespace —
+    used so 'הכשרה' matches 'הכשרה ביטוח' and lookups don't fail on casing
+    or company-name suffix differences between agreement and report."""
+    if not s:
+        return ""
+    return s.strip().lstrip("ה").lower()
+
+
+def _significant_tokens(s: str) -> set[str]:
+    """Tokenize a product name into significant words (length >= 3),
+    stripping punctuation and quote marks. Used for fuzzy matching between
+    agreement-side product names ('מוצרי ריסק') and report-side ones
+    ('ריסק פרט'): the common token 'ריסק' makes the pair a match."""
+    if not s:
+        return set()
+    cleaned = (
+        s.replace('"', " ").replace("'", " ").replace("-", " ")
+         .replace("/", " ").replace("(", " ").replace(")", " ")
+    )
+    return {t for t in cleaned.split() if len(t) >= 3}
+
+
+def _product_match(report_prod: str, agreement_prod: str) -> bool:
+    """Decide whether a report product name refers to the same product as
+    an agreement product name. Loose by design — agreement and report use
+    different vocabularies for the same product."""
+    if not report_prod or not agreement_prod:
+        return False
+    if report_prod == agreement_prod:
+        return True
+    if report_prod in agreement_prod or agreement_prod in report_prod:
+        return True
+    return bool(_significant_tokens(report_prod) & _significant_tokens(agreement_prod))
+
+
+def _candidate_covers(cand: dict, policy_date) -> bool:
+    """Does this rate's validity window contain the policy's sign date?
+    A NULL bound is treated as open-ended on that side, so a rate with only
+    effective_from set still covers everything from that date onward."""
+    if policy_date is None:
+        return False
+    ef = cand.get("from")
+    et = cand.get("to")
+    if ef is not None and policy_date < ef:
+        return False
+    if et is not None and policy_date > et:
+        return False
+    return True
+
+
+def _pick_best(candidates: list[dict], reported_pct: float, policy_date) -> float | None:
+    """Year-aware candidate picker.
+
+    1. Prefer candidates whose validity window contains the policy sign
+       date — that's the rate the agent actually agreed to for THAT policy.
+    2. Among those, prefer the one with the most recent effective_from
+       (newer revision wins ties).
+    3. If no window matches (e.g. policy older than any uploaded agreement,
+       or the policy has no sign_date), fall back to the candidate closest
+       to the reported pct — old behaviour, preserves prior test results.
+    """
+    if not candidates:
+        return None
+    if policy_date is not None:
+        in_window = [c for c in candidates if _candidate_covers(c, policy_date)]
+        if in_window:
+            # Latest effective_from wins; NULL from sorts first (least specific).
+            in_window.sort(key=lambda c: (c.get("from") or _ZERO_DATE), reverse=True)
+            return in_window[0]["pct"]
+    # No year context (or no covering rate) — fall back to nearest match.
+    return min(candidates, key=lambda c: abs(c["pct"] - reported_pct))["pct"]
+
+
+_ZERO_DATE = __import__("datetime").date.min
+
+
+async def apply_rate_deviation(db: AsyncSession, user_id: uuid.UUID, upload_id: uuid.UUID):
+    """Compare each record's reported_commission_pct (from the company's
+    נפרעים report) against the agreement's per-product rate, and tag the
+    record's reconciliation_status accordingly.
+
+    Driven by the QA spec: "צריך להתאים את אחוזי הנפרעים בהסכם לעמודה
+    שנקראת אחוז עמלה בדוח נפרעים — המערכת תזהה סטייה בעמלה."
+
+    Status outcomes for a record with reported_commission_pct set:
+    - paid_match    — agreement found and |reported - agreement| < tolerance
+    - paid_mismatch — agreement found and delta >= tolerance (real deviation
+                      OR an old-year policy still paid at last year's rate)
+    - no_data       — no agreement on file for (company, product)
+
+    Year-aware: when the agreement carries validity dates and the policy has
+    a sign_date, we prefer the rate whose window contains that date. Without
+    this, a 2018 policy paid at the 2018 rate would silently match the 2025
+    agreement (wrong) or look like a deviation against the wrong year.
+    """
+    # by_company: {co_key -> {prod_key -> [candidate, ...]}}
+    # company_default: {co_key -> [candidate, ...]}   (rows with product=NULL)
+    # Each candidate is {"pct": float, "from": date|None, "to": date|None}.
+    rates_q = select(CommissionRate).where(CommissionRate.user_id == user_id)
+    rates_all = (await db.execute(rates_q)).scalars().all()
+
+    by_company: dict[str, dict[str, list[dict]]] = {}
+    company_default: dict[str, list[dict]] = {}
+    for r in rates_all:
+        co_key = _norm(r.company_name)
+        cand = {
+            "pct": float(r.rate) * 100.0,
+            "from": r.effective_from,
+            "to": r.effective_to,
+        }
+        if r.product:
+            by_company.setdefault(co_key, {}).setdefault(_norm(r.product), []).append(cand)
+        else:
+            company_default.setdefault(co_key, []).append(cand)
+
+    records_q = (
+        select(ClientRecord)
+        .where(
+            and_(
+                ClientRecord.upload_id == upload_id,
+                ClientRecord.reported_commission_pct.isnot(None),
+            )
+        )
+    )
+    records = (await db.execute(records_q)).scalars().all()
+
+    for record in records:
+        co = _norm(record.receiving_company)
+        prod = _norm(record.product)
+        policy_date = record.sign_date
+        if not co:
+            continue
+
+        reported = float(record.reported_commission_pct)
+        agreement_pct: float | None = None
+
+        # Tier 1: matching company + product (exact or token-fuzzy).
+        if prod:
+            candidates: list[dict] = []
+            for r_co_key, products in by_company.items():
+                if not (co in r_co_key or r_co_key in co):
+                    continue
+                if prod in products:
+                    candidates.extend(products[prod])
+                for r_prod_key, r_cands in products.items():
+                    if r_prod_key and r_prod_key != prod and _product_match(prod, r_prod_key):
+                        candidates.extend(r_cands)
+            if candidates:
+                agreement_pct = _pick_best(candidates, reported, policy_date)
+
+        # Tier 2: company-level default rate (product IS NULL).
+        if agreement_pct is None:
+            for r_co_key, defaults in company_default.items():
+                if co in r_co_key or r_co_key in co:
+                    agreement_pct = _pick_best(defaults, reported, policy_date)
+                    if agreement_pct is not None:
+                        break
+
+        # Tier 3: any rate the company has on file. Bias toward HIGHEST so
+        # underpayments surface, per QA spec "alert if paid less".
+        if agreement_pct is None:
+            company_rates: list[dict] = []
+            for r_co_key, products in by_company.items():
+                if co in r_co_key or r_co_key in co:
+                    for cs in products.values():
+                        company_rates.extend(cs)
+            for r_co_key, defaults in company_default.items():
+                if co in r_co_key or r_co_key in co:
+                    company_rates.extend(defaults)
+            if company_rates:
+                # Window match first, then fall back to max rate.
+                in_window = [c for c in company_rates if _candidate_covers(c, policy_date)]
+                pool = in_window or company_rates
+                agreement_pct = max(c["pct"] for c in pool)
+
+        if agreement_pct is None:
+            record.reconciliation_status = "no_data"
+            continue
+
+        # Tolerance scales by the AGREEMENT rate (the expected value), not the
+        # reported one — otherwise a near-zero reported value would always
+        # match under the tighter low-rate tolerance.
+        if abs(reported - agreement_pct) < _tolerance_for(agreement_pct):
+            record.reconciliation_status = "paid_match"
+        else:
+            record.reconciliation_status = "paid_mismatch"
 
     await db.flush()

@@ -1,6 +1,8 @@
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +15,18 @@ from app.services.reconciliation_service import cross_reference_uploads
 from app.services.upload_ingest import ingest_file_bytes
 
 router = APIRouter()
+
+
+def _has_file(u: FileUpload) -> bool:
+    return bool(u.file_path) and os.path.exists(u.file_path)
+
+
+_MIME_BY_EXT = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+}
 
 
 @router.post("", response_model=UploadOut)
@@ -46,6 +60,9 @@ async def upload_file(
         file_type=upload.file_type,
         company_source=upload.company_source,
         record_count=upload.record_count,
+        format_type=upload.format_type,
+        file_category=upload.file_category,
+        has_file=_has_file(upload),
         uploaded_at=upload.uploaded_at,
     )
 
@@ -70,10 +87,37 @@ async def list_uploads(
             record_count=u.record_count,
             format_type=u.format_type,
             file_category=u.file_category,
+            has_file=_has_file(u),
             uploaded_at=u.uploaded_at,
         )
         for u in uploads
     ]
+
+
+@router.get("/{upload_id}/file")
+async def download_upload_file(
+    upload_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream the original uploaded/downloaded file back to the user.
+
+    404 if the upload row is missing OR the on-disk file is gone (e.g. an
+    older upload from before file_path was tracked, or a wiped volume).
+    """
+    result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.id == uuid.UUID(upload_id),
+            FileUpload.user_id == user.id,
+        )
+    )
+    upload = result.scalar_one_or_none()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if not upload.file_path or not os.path.exists(upload.file_path):
+        raise HTTPException(status_code=404, detail="הקובץ המקורי לא זמין")
+    media_type = _MIME_BY_EXT.get((upload.file_type or "").lower(), "application/octet-stream")
+    return FileResponse(upload.file_path, media_type=media_type, filename=upload.filename)
 
 
 @router.delete("/{upload_id}")

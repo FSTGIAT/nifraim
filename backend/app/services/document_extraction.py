@@ -80,6 +80,14 @@ EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות בי�
 - companies: שמות חברות עיקריות.
 - summary: 2–3 משפטים בעברית.
 - אם נושא לא קיים במסמך — דלג עליו. אבל אם הוא כן קיים — חובה לכלול.
+
+**תקופת תוקף ההסכם — חשוב מאוד:**
+חפש בהקדמה / סעיפי "תוקף" / "מועדי תוקף" את התאריכים שמגדירים מתי ההסכם בתוקף
+(לדוגמה: "תוקף הנספח: 01/01/2025 עד 31/12/2026"). חלץ אותם פעם אחת ושים אותם
+ב-**כל** רשומת rate שאתה מחזיר, ב-effective_from / effective_to (בפורמט YYYY-MM-DD).
+אם המסמך לא מציין תאריכים — השאר את השדות ריקים. הקפדה על השדות האלה חיונית
+כדי שהמערכת תדע איזה הסכם להחיל על איזו פוליסה (פוליסה משנת 2018 צריכה להישפט
+לפי הסכם 2018, לא לפי הסכם 2025).
 """
 
 
@@ -114,6 +122,14 @@ EXTRACT_TOOL = {
                         "rate_percent": {"type": "number"},
                         "frequency": {"type": ["string", "null"]},
                         "notes": {"type": ["string", "null"]},
+                        "effective_from": {
+                            "type": ["string", "null"],
+                            "description": "Agreement validity start, YYYY-MM-DD. Same value across all rates from one agreement.",
+                        },
+                        "effective_to": {
+                            "type": ["string", "null"],
+                            "description": "Agreement validity end, YYYY-MM-DD.",
+                        },
                     },
                 },
             },

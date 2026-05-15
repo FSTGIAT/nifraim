@@ -25,7 +25,8 @@ class PortalCredential(Base):
     # field. NULL = portal still routes OTPs to the agent's personal phone.
     contact_phone_synced_to: Mapped[str | None] = mapped_column(String(20))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    schedule_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 'manual' (no auto-run), 'daily', 'weekly', 'monthly'
+    schedule_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     category_hint: Mapped[str | None] = mapped_column(String(64))
 
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -37,5 +38,5 @@ class PortalCredential(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "portal_kind", name="uq_portal_credentials_user_kind"),
-        Index("ix_portal_credentials_schedule", "schedule_enabled", "is_active"),
+        Index("ix_portal_credentials_schedule", "schedule_kind", "is_active"),
     )

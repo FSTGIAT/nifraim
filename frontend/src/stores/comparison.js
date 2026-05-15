@@ -126,6 +126,30 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
+  // Per-category timestamp of when the persisted comparison was computed
+  const lastComputedAt = reactive({ gemel_hishtalmut: null, insurance: null })
+  const fetchingLatest = ref(false)
+
+  async function fetchLatest(category) {
+    if (!category) return null
+    fetchingLatest.value = true
+    try {
+      const res = await api.get('/comparison/latest', { params: { category } })
+      const payload = res.data?.result || null
+      if (payload) {
+        results[category] = payload
+        lastComputedAt[category] = res.data?.computed_at || null
+      }
+      return payload
+    } catch (e) {
+      // Don't surface — empty state is fine. Quietly log to error for debug.
+      console.warn('fetchLatest failed', e)
+      return null
+    } finally {
+      fetchingLatest.value = false
+    }
+  }
+
   function reset() {
     activeCategory.value = null
     results.gemel_hishtalmut = null
@@ -138,7 +162,9 @@ export const useComparisonStore = defineStore('comparison', () => {
   return {
     activeCategory, results, result,
     uploading, error, filterStatus, searchQuery,
+    lastComputedAt, fetchingLatest,
     selectCategory, clearCategory, hasResultFor, resetCategory,
-    uploadAndCompare, compareExisting, compareWithProduction, autoCompare, reset,
+    uploadAndCompare, compareExisting, compareWithProduction, autoCompare,
+    fetchLatest, reset,
   }
 })

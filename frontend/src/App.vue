@@ -1,13 +1,45 @@
 <template>
   <div id="app-root">
     <div class="bg-mesh"></div>
-    <router-view />
+    <SlideTabs v-if="showNav" :tabs="navTabs" :initial-index="0" />
+    <router-view v-slot="{ Component, route }">
+      <transition name="page" mode="out-in">
+        <component :is="Component" :key="route.path" />
+      </transition>
+    </router-view>
     <MailPreviewModal />
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import MailPreviewModal from './components/MailPreviewModal.vue'
+import SlideTabs from './components/landing/SlideTabs.vue'
+
+const route = useRoute()
+
+// Public marketing surface — the nav rides above these. Hidden on the
+// authenticated app (workspace/dashboard/admin) and on customer portals.
+const MARKETING_ROUTE_NAMES = new Set([
+  'Landing',
+  'Pricing',
+  'Signup',
+  'Login',
+  'Register',
+  'ForgotPassword',
+  'ResetPassword',
+])
+const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
+
+// Tab list lifted out of LandingView so it's defined once at the shell layer.
+const navTabs = [
+  { label: 'בית', href: '#top', styleClass: 'tab-style--light' },
+  { label: 'יכולות', href: '#features', styleClass: 'tab-style--serif-italic' },
+  { label: 'פורטל', href: '#portal', styleClass: 'tab-style--small-caps' },
+  { label: 'תמחור', to: '/pricing', styleClass: 'tab-style--regular' },
+  { label: 'התחל עכשיו', to: '/signup', styleClass: 'tab-style--display' },
+]
 </script>
 
 <style>
@@ -204,5 +236,22 @@ a {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
+}
+
+/* Page transition — crossfade + subtle Y settle.
+   Keyed on $route.path so query/hash changes don't trigger.
+   mode=out-in keeps stacking simple (no overlap flash). */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 320ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

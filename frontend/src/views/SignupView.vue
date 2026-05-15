@@ -7,25 +7,7 @@
       <div class="orb orb-3"></div>
     </div>
 
-    <!-- Nav -->
-    <nav class="land-nav nav--light">
-      <div class="nav-content">
-        <router-link to="/" class="nav-brand">
-          <div class="nav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <span class="nav-name">Nifraim</span>
-        </router-link>
-        <div class="nav-aside">
-          <router-link to="/pricing" class="nav-link-muted">תמחור</router-link>
-          <router-link to="/login" class="nav-link-muted">יש לי חשבון</router-link>
-        </div>
-      </div>
-    </nav>
+    <!-- Nav lives in App.vue (shared SlideTabs across marketing routes) -->
 
     <div class="signup-content">
       <!-- Progress -->
@@ -381,67 +363,7 @@ async function processPayment() {
   50%      { transform: translate(30px, -24px); }
 }
 
-/* ── Nav (mirrors PricingView nav--light) ── */
-.land-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: rgba(245, 240, 235, 0.9);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(45, 37, 34, 0.06);
-}
-
-.nav-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.nav-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--cream-text);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--cream-bg);
-}
-
-.nav-name {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--cream-text);
-}
-
-.nav-aside {
-  display: flex;
-  gap: 24px;
-  align-items: center;
-}
-
-.nav-link-muted {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--cream-text-muted);
-  transition: color 0.2s;
-}
-
-.nav-link-muted:hover {
-  color: var(--land-orange);
-}
+/* Navigation lives in App.vue (shared SlideTabs pill). */
 
 /* ── Content container ── */
 .signup-content {
@@ -1065,8 +987,6 @@ async function processPayment() {
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .nav-aside { gap: 14px; }
-  .nav-link-muted { font-size: 13px; }
   .signup-content { padding: 110px 20px 60px; }
 }
 

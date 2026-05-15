@@ -20,6 +20,9 @@ class FileUpload(Base):
     format_type: Mapped[str | None] = mapped_column(String(30))
     is_production: Mapped[bool] = mapped_column(Boolean, default=False)
     file_category: Mapped[str | None] = mapped_column(String(20), default="general")
+    # Path on disk (inside the portal_data volume) where the original file
+    # is preserved, so the UI can offer a download/preview affordance later.
+    file_path: Mapped[str | None] = mapped_column(String(500))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="uploads")

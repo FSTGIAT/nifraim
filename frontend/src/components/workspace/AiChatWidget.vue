@@ -121,6 +121,16 @@
         {{ chatStore.uploadError }}
       </div>
 
+      <div v-if="chatStore.uploadingDoc && chatStore.uploadFileName" class="chat-upload-row">
+        <UploadProgressCard
+          :file-name="chatStore.uploadFileName"
+          :file-size="chatStore.uploadFileSize"
+          :progress="chatStore.uploadProgress"
+          :stage="chatStore.uploadStage"
+          @cancel="chatStore.cancelUpload()"
+        />
+      </div>
+
       <!-- Input bar -->
       <div class="chat-input-bar">
         <input
@@ -169,6 +179,7 @@
 import { ref, nextTick, watch, onMounted } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
+import UploadProgressCard from './UploadProgressCard.vue'
 
 const emit = defineEmits(['navigate-tab'])
 
@@ -590,6 +601,12 @@ watch(
 }
 
 /* Input */
+.chat-upload-row {
+  display: flex;
+  justify-content: center;
+  padding: 10px 14px 0;
+  background: var(--glass);
+}
 .chat-input-bar {
   display: flex;
   gap: 8px;

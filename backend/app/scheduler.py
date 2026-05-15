@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -18,6 +18,15 @@ scheduler = AsyncIOScheduler()
 
 PORTAL_RUN_TIMEOUT_S = 300  # per credential
 
+# A credential is "due" when its last run was at least this many hours ago.
+# Slightly under the natural cadence so a daily job at 09:00 still fires the
+# next day even if the previous run took 30 minutes.
+_DUE_THRESHOLDS_HOURS = {
+    "daily": 23,
+    "weekly": 24 * 7 - 1,
+    "monthly": 24 * 30 - 1,
+}
+
 
 async def run_renewals():
     """Wrapper to create DB session and run renewal processing."""
@@ -29,36 +38,50 @@ async def run_renewals():
         logger.error(f"Scheduled renewal failed: {e}")
 
 
-async def run_scheduled_portal_automations():
-    """Daily portal automation job — sequential per credential to keep RAM low.
+def _is_due(cred: PortalCredential, now: datetime) -> bool:
+    threshold_hours = _DUE_THRESHOLDS_HOURS.get(cred.schedule_kind)
+    if threshold_hours is None:
+        return False
+    if cred.last_run_at is None:
+        return True
+    return (now - cred.last_run_at) >= timedelta(hours=threshold_hours)
 
-    Iterates active credentials with schedule_enabled=True, creates a PortalRun
-    for each, and awaits the runner. A per-credential timeout caps each run.
+
+async def tick_portal_schedules():
+    """Hourly scan: for every active credential whose cadence is due, create a
+    PortalRun and fire the runner. Manual ('manual' schedule_kind) credentials
+    are ignored.
     """
     try:
+        now = datetime.utcnow()
         async with async_session() as db:
             cred_result = await db.execute(
                 select(PortalCredential).where(
-                    PortalCredential.schedule_enabled.is_(True),
                     PortalCredential.is_active.is_(True),
+                    PortalCredential.schedule_kind != "manual",
                 )
             )
             creds = cred_result.scalars().all()
+            due_creds = [c for c in creds if _is_due(c, now)]
 
             run_ids: list = []
-            for cred in creds:
+            for cred in due_creds:
                 run = PortalRun(
                     user_id=cred.user_id,
                     credential_id=cred.id,
                     status="pending",
-                    started_at=datetime.utcnow(),
+                    started_at=now,
                 )
                 db.add(run)
                 await db.flush()
                 run_ids.append(run.id)
-            await db.commit()
+            if run_ids:
+                await db.commit()
 
-        logger.info(f"Scheduled portal automation: {len(run_ids)} runs queued")
+        if not run_ids:
+            logger.debug("Scheduler tick: no due credentials")
+            return
+        logger.info(f"Scheduler tick: {len(run_ids)} portal run(s) queued")
 
         for run_id in run_ids:
             try:
@@ -69,11 +92,16 @@ async def run_scheduled_portal_automations():
                 logger.error(f"Scheduled portal run {run_id} failed: {e}")
 
     except Exception as e:
-        logger.error(f"Scheduled portal automation outer failure: {e}")
+        logger.error(f"Scheduler tick outer failure: {e}")
 
 
 def start_scheduler():
-    """Start the background scheduler. Renewals 06:00 IST, portals 03:00 IST."""
+    """Start the background scheduler.
+
+    - Renewals: 06:00 IST daily.
+    - Portal automation tick: every hour at minute 7 (offset to avoid the
+      top of the hour where many other systems run).
+    """
     scheduler.add_job(
         run_renewals,
         CronTrigger(hour=6, minute=0, timezone="Asia/Jerusalem"),
@@ -81,13 +109,13 @@ def start_scheduler():
         replace_existing=True,
     )
     scheduler.add_job(
-        run_scheduled_portal_automations,
-        CronTrigger(hour=3, minute=0, timezone="Asia/Jerusalem"),
-        id="run_scheduled_portal_automations",
+        tick_portal_schedules,
+        CronTrigger(minute=7, timezone="Asia/Jerusalem"),
+        id="tick_portal_schedules",
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("Scheduler started — renewals 06:00 IST, portal automations 03:00 IST")
+    logger.info("Scheduler started — renewals 06:00 IST, portal tick hourly :07")
 
 
 def stop_scheduler():

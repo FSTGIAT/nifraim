@@ -10,6 +10,7 @@ class UploadOut(BaseModel):
     record_count: int
     format_type: str | None = None
     file_category: str | None = None
+    has_file: bool = False  # original bytes available via /uploads/{id}/file
     uploaded_at: datetime
 
     model_config = {"from_attributes": True}

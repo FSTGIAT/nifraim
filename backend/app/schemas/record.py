@@ -27,6 +27,7 @@ class RecordOut(BaseModel):
     general_notes: str | None
     management_fee_amount: float | None = None
     processing_date: str | None = None
+    reported_commission_pct: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -56,19 +57,25 @@ class StatusSummary(BaseModel):
 
 class CommissionRateIn(BaseModel):
     company_name: str
+    product: str | None = None
     rate: float
     payment_frequency: str | None = None
     paid_to: str | None = None
     company_email: str | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
 
 
 class CommissionRateOut(BaseModel):
     id: str
     company_name: str
+    product: str | None = None
     rate: float
     payment_frequency: str | None
     paid_to: str | None
     company_email: str | None = None
+    effective_from: date | None = None
+    effective_to: date | None = None
 
     model_config = {"from_attributes": True}
 

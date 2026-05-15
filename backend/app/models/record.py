@@ -49,6 +49,9 @@ class ClientRecord(Base):
     month_end_balance: Mapped[float | None] = mapped_column(Numeric(15, 2))
     annual_commission_pct: Mapped[float | None] = mapped_column(Numeric(10, 6))
     monthly_commission_pct: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    # Commission % reported by the company in the נפרעים report (e.g. Menora
+    # "אחוז עמלה"). Used to detect deviation vs the agreement's per-product rate.
+    reported_commission_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
     commission_before_fee: Mapped[float | None] = mapped_column(Numeric(15, 2))
 
     # Amounts — agent tracking

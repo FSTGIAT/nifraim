@@ -31,5 +31,11 @@ class _StubPortal(BasePortalAutomation):
     async def submit_otp(self, page: "Page", otp: str) -> None:
         raise NotImplementedError
 
-    async def download_reports(self, page: "Page", download_dir: Path) -> list[Path]:
+    async def download_reports(
+        self,
+        page: "Page",
+        download_dir: Path,
+        *,
+        username: str | None = None,
+    ) -> list[Path]:
         raise NotImplementedError

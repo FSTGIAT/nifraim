@@ -8,12 +8,21 @@
     "preview": "vite preview",
     "render:hero": "remotion render src/remotion/Root.tsx hero-product public/landing/hero-product.mp4",
     "render:hero-webm": "remotion render src/remotion/Root.tsx hero-product public/landing/hero-product.webm --codec vp9",
-    "render:hero-poster": "remotion still src/remotion/Root.tsx hero-product public/landing/hero-product.jpg --frame 0"
+    "render:hero-poster": "remotion still src/remotion/Root.tsx hero-product public/landing/hero-product.jpg --frame 0",
+    "render:hero-mesh": "remotion render src/remotion/Root.tsx hero-mesh public/landing/hero-mesh.mp4 && remotion render src/remotion/Root.tsx hero-mesh public/landing/hero-mesh.webm --codec vp9 && remotion still src/remotion/Root.tsx hero-mesh public/landing/hero-mesh.jpg --frame 90",
+    "render:feature-01": "remotion render src/remotion/Root.tsx feature-01-autoload public/landing/feature-01-autoload.mp4 && remotion render src/remotion/Root.tsx feature-01-autoload public/landing/feature-01-autoload.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-01-autoload public/landing/feature-01-autoload.jpg --frame 75",
+    "render:feature-02": "remotion render src/remotion/Root.tsx feature-02-agreements public/landing/feature-02-agreements.mp4 && remotion render src/remotion/Root.tsx feature-02-agreements public/landing/feature-02-agreements.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-02-agreements public/landing/feature-02-agreements.jpg --frame 75",
+    "render:feature-03": "remotion render src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.mp4 && remotion render src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.jpg --frame 75",
+    "render:feature-04": "remotion render src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.mp4 && remotion render src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.jpg --frame 75",
+    "render:feature-05": "remotion render src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.mp4 && remotion render src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.jpg --frame 75",
+    "render:features-all": "npm run render:feature-01 && npm run render:feature-02 && npm run render:feature-03 && npm run render:feature-04 && npm run render:feature-05"
   },
   "dependencies": {
+    "@paper-design/shaders-react": "^0.0.76",
     "@remotion/player": "^4.0.451",
     "apexcharts": "^5.3.6",
     "axios": "^1.13.5",
+    "framer-motion": "^12.38.0",
     "gsap": "^3.14.2",
     "motion-v": "^2.2.1",
     "pinia": "^3.0.4",

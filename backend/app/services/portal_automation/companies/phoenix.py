@@ -44,7 +44,13 @@ class PhoenixPortal(BasePortalAutomation):
         # Wait for the dashboard to settle
         await page.wait_for_load_state("networkidle", timeout=20000)
 
-    async def download_reports(self, page: "Page", download_dir: Path) -> list[Path]:
+    async def download_reports(
+        self,
+        page: "Page",
+        download_dir: Path,
+        *,
+        username: str | None = None,
+    ) -> list[Path]:
         # Phoenix's report password is the user's ID number; for MVP we hardcode
         # a placeholder — operators must override per-credential via category_hint
         # or extend the schema. Setting None lets parse_excel try without first.

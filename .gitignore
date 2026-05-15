@@ -30,3 +30,6 @@ Thumbs.db
 
 # Claude internal
 .claude/
+
+# Runtime data (portal automation screenshots, uploads, etc.)
+data/

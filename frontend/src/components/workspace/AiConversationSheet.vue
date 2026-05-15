@@ -111,6 +111,16 @@
           </div>
         </div>
 
+        <div v-if="chatStore.uploadingDoc && chatStore.uploadFileName" class="ai-sheet-upload-row">
+          <UploadProgressCard
+            :file-name="chatStore.uploadFileName"
+            :file-size="chatStore.uploadFileSize"
+            :progress="chatStore.uploadProgress"
+            :stage="chatStore.uploadStage"
+            @cancel="chatStore.cancelUpload()"
+          />
+        </div>
+
         <form class="ai-sheet-input-row" @submit.prevent="submit">
           <input
             ref="fileInputEl"
@@ -164,6 +174,7 @@
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
+import UploadProgressCard from './UploadProgressCard.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -469,6 +480,12 @@ onBeforeUnmount(() => {
   30% { opacity: 1; transform: translateY(-2px); }
 }
 
+.ai-sheet-upload-row {
+  display: flex;
+  justify-content: center;
+  padding: 10px 16px 0;
+  background: #ffffff;
+}
 .ai-sheet-input-row {
   display: flex;
   align-items: flex-end;

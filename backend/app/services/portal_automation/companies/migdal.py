@@ -1,12 +1,13 @@
 """Migdal (מגדל) agent portal — login, OTP, download commission report.
 
-NOTE: Selectors below are first-pass placeholders. Migdal's agents area
-ships behind a multi-step login that we have not yet recorded. Re-record
-with `playwright codegen --target python-async <portal-url>` against the
-live portal once we have agent credentials, and update the selectors here.
-On every run a screenshot is saved to
-`backend/data/portal_screenshots/<run_id>.png` so a failed step is
-diagnosable without re-running.
+The Migdal Safes System uses a Google-style email-first login (email page
+→ password page → SMS OTP page) and an SPA dashboard whose left-nav often
+hides the reports section behind a hamburger toggle.
+
+When a run fails, the runner saves three artifacts under
+`data/portal_screenshots/<run_id>.{png,html,txt}`. The `.txt` lists every
+visible link/button — use it to extend the candidate-selector lists below
+without re-running the live portal.
 """
 
 from __future__ import annotations
@@ -62,7 +63,13 @@ class MigdalPortal(BasePortalAutomation):
             pass
         await page.wait_for_load_state("networkidle", timeout=10000)
 
-    async def download_reports(self, page: "Page", download_dir: Path) -> list[Path]:
+    async def download_reports(
+        self,
+        page: "Page",
+        download_dir: Path,
+        *,
+        username: str | None = None,
+    ) -> list[Path]:
         # Migdal commission reports are typically not password-protected; leave None
         # so msoffcrypto isn't tried unnecessarily.
         self.report_password = None
@@ -77,40 +84,66 @@ class MigdalPortal(BasePortalAutomation):
         await self._safe_screenshot(page, debug_base)
         await self._dump_page_state(page, debug_base)
 
-        nav_target = await self._click_first_visible(
-            page,
-            [
-                # Hebrew labels — common Migdal navigation
-                "a:has-text('דוחות נפרעים')",
-                "a:has-text('דוחות עמלות')",
-                "a:has-text('עמלות ונפרעים')",
-                "a:has-text('דוחות')",
-                "a:has-text('עמלות')",
-                "a:has-text('נפרעים')",
-                # Buttons / styled menu items
-                "button:has-text('דוחות')",
-                "button:has-text('עמלות')",
-                "[role='link']:has-text('דוחות')",
-                "[role='button']:has-text('דוחות')",
-                # English fallbacks
-                "a:has-text('Reports')",
-                "a:has-text('Commissions')",
-            ],
-            timeout=20000,
-        )
-        if not nav_target:
+        # The "Migdal Safes System" landing page is a file-vault — files for
+        # the agent are listed by name like `{USERNAME}_FROMMIGDAL_<index>`.
+        # Build the precise file selector when we know the username; fall back
+        # to a generic _FROMMIGDAL match otherwise.
+        user_upper = (username or "").strip().upper()
+        file_candidates: list[str] = []
+        if user_upper:
+            file_candidates.extend([
+                f"a:has-text('{user_upper}_FROMMIGDAL')",
+                f"button:has-text('{user_upper}_FROMMIGDAL')",
+                f"[role='link']:has-text('{user_upper}_FROMMIGDAL')",
+            ])
+        file_candidates.extend([
+            "a:has-text('_FROMMIGDAL')",
+            "button:has-text('_FROMMIGDAL')",
+            "[role='link']:has-text('_FROMMIGDAL')",
+            "a:has-text('FROMMIGDAL')",
+        ])
+
+        # Click the file row to open / select it.
+        clicked_file = await self._click_first_visible(page, file_candidates, timeout=15000)
+        if not clicked_file:
             raise RuntimeError(
-                f"לא נמצא תפריט דוחות/עמלות בעמוד {page.url}. "
+                f"לא נמצא קובץ של הסוכן בפורטל {page.url}. "
                 f"בדוק את debug HTML ב-{debug_base.with_suffix('.html').name}"
             )
-        await page.wait_for_load_state("networkidle", timeout=15000)
+        await page.wait_for_load_state("networkidle", timeout=10000)
 
         download_dir.mkdir(parents=True, exist_ok=True)
         target = download_dir / "migdal_commission.xlsx"
 
-        async with page.expect_download() as dl_info:
-            await page.click("button:has-text('הורד'), a:has-text('Excel'), a:has-text('יצוא')")
-        download = await dl_info.value
+        # Trigger download via a resilient click. Migdal's Safes UI shows a
+        # toolbar after selection; on some accounts the file row click itself
+        # already triggers the download (in which case `expect_download` will
+        # already have fired before we click anything).
+        download_candidates = [
+            "button:has-text('Download')",
+            "button:has-text('הורד')",
+            "button:has-text('הורדה')",
+            "a:has-text('Download')",
+            "a:has-text('הורד')",
+            "[aria-label='Download']",
+            "[aria-label='הורדה']",
+            "button:has-text('יצוא')",
+            "a:has-text('Excel')",
+            "a:has-text('XLSX')",
+            "[role='button']:has-text('Download')",
+        ]
+
+        try:
+            async with page.expect_download(timeout=45000) as dl_info:
+                # Try the toolbar; if download already fired from the row
+                # click, this no-op is harmless.
+                await self._click_first_visible(page, download_candidates, timeout=8000)
+            download = await dl_info.value
+        except Exception as e:
+            raise RuntimeError(
+                f"לא הצלחנו להוריד קובץ מ-{page.url}. "
+                f"בדוק את debug HTML ב-{debug_base.with_suffix('.html').name}: {e}"
+            )
         await download.save_as(str(target))
         return [target]
 

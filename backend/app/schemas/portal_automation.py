@@ -9,13 +9,19 @@ PortalKind = Literal[
     "hachshara", "excellence", "mor", "ayalon", "clal_health",
 ]
 
+ScheduleKind = Literal["manual", "daily", "weekly", "monthly"]
+
+
+class PortalCredentialScheduleIn(BaseModel):
+    schedule_kind: ScheduleKind
+
 
 class PortalCredentialIn(BaseModel):
     portal_kind: PortalKind
     username: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=255)
     twilio_to_number: str | None = Field(default=None, max_length=20)
-    schedule_enabled: bool = False
+    schedule_kind: ScheduleKind = "manual"
     category_hint: str | None = Field(default=None, max_length=64)
 
 
@@ -24,7 +30,7 @@ class PortalCredentialUpdate(BaseModel):
     password: str | None = Field(default=None, max_length=255)
     twilio_to_number: str | None = Field(default=None, max_length=20)
     is_active: bool | None = None
-    schedule_enabled: bool | None = None
+    schedule_kind: ScheduleKind | None = None
     category_hint: str | None = Field(default=None, max_length=64)
 
 
@@ -35,7 +41,7 @@ class PortalCredentialOut(BaseModel):
     twilio_to_number: str | None = None
     contact_phone_synced_to: str | None = None
     is_active: bool
-    schedule_enabled: bool
+    schedule_kind: ScheduleKind
     category_hint: str | None = None
     last_run_at: datetime | None = None
     last_run_status: str | None = None

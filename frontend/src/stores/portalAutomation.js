@@ -65,12 +65,51 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     credentials.value = credentials.value.filter((c) => c.id !== id)
   }
 
+  async function updateSchedule(id, scheduleKind) {
+    error.value = null
+    // Optimistic update so the drag feels instantaneous.
+    const before = credentials.value.find((c) => c.id === id)?.schedule_kind
+    const idx = credentials.value.findIndex((c) => c.id === id)
+    if (idx >= 0) credentials.value[idx] = { ...credentials.value[idx], schedule_kind: scheduleKind }
+    try {
+      const res = await api.patch(`/portal-automation/credentials/${id}/schedule`, { schedule_kind: scheduleKind })
+      if (idx >= 0) credentials.value[idx] = res.data
+      return res.data
+    } catch (e) {
+      // Roll back on failure
+      if (idx >= 0 && before !== undefined) {
+        credentials.value[idx] = { ...credentials.value[idx], schedule_kind: before }
+      }
+      error.value = e.response?.data?.detail || 'שגיאה בעדכון התזמון'
+      throw e
+    }
+  }
+
   async function listRuns(credentialId, limit = 10) {
     const params = { limit }
     if (credentialId) params.credential_id = credentialId
     const res = await api.get('/portal-automation/runs', { params })
     runs.value = res.data
     return res.data
+  }
+
+  /** If a run is still in-flight on the server (pending/running/awaiting_otp/
+   *  downloading/parsing), hydrate it into the store + start polling so the
+   *  UI reflects the live state on page reload. */
+  const ACTIVE = new Set(['pending', 'running', 'awaiting_otp', 'downloading', 'parsing'])
+  async function hydrateActiveRun() {
+    try {
+      const recent = await listRuns(null, 5)
+      const live = recent.find((r) => ACTIVE.has(r.status))
+      if (live && !activeRunId.value) {
+        activeRunId.value = live.id
+        activeRun.value = live
+        _startPolling(live.id)
+      }
+      return live || null
+    } catch {
+      return null
+    }
   }
 
   function _stopPolling() {
@@ -129,6 +168,19 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
 
   async function submitOtp(runId, otp) {
     await api.post(`/portal-automation/runs/${runId}/submit-otp`, { otp })
+  }
+
+  async function cancelRun(runId) {
+    if (!runId) return
+    try {
+      await api.post(`/portal-automation/runs/${runId}/cancel`)
+    } catch (e) {
+      console.warn('cancelRun failed', e)
+    } finally {
+      _stopPolling()
+      activeRunId.value = null
+      activeRun.value = null
+    }
   }
 
   async function fetchTwilioNumber() {
@@ -202,10 +254,13 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     createCredential,
     updateCredential,
     deleteCredential,
+    updateSchedule,
     listRuns,
+    hydrateActiveRun,
     fetchRun,
     runNow,
     submitOtp,
+    cancelRun,
     fetchTwilioNumber,
     fetchOtpInbox,
     provisionTwilio,

@@ -128,9 +128,14 @@ MENORA_COLUMNS = {
     "מספר פוליסה": "fund_policy_number",
     "מספר תיק": "fund_number",
     "שם מוצר": "product",
+    "תיאור מוצר": "product",
+    "תאור מוצר/תעריף": "product",
     "מספר סוכן": "agent_number",
     "חודש עיבוד": "processing_date",
     "תאריך הסכם": "sign_date",
+    # Per-row paid commission percent — compared against the agreement rate
+    # to detect deviations (QA: "המערכת תזהה סטייה בעמלה").
+    "אחוז עמלה": "reported_commission_pct",
     # Financial variant (מנורה פיננסי)
     "צבירה": "balance",
     "אחוז דמי ניהול מצבירה בפועל": "management_fee",
@@ -142,6 +147,8 @@ MENORA_COLUMNS = {
     # Health variant (מנורה בריאות)
     "פרמיה ששולמה": "total_premium",
     "פרמיה לעמלה": "commission_expected",
+    # 2026 layout (used by "דו'ח נפרעים לסוכן")
+    "סכום עמלה": "commission_paid",
 }
 
 # Column mappings for Altshuler Commission Report (אלטשולר שחם)
@@ -168,6 +175,10 @@ PHOENIX_INSURANCE_NIFRAIM_COLUMNS = {
     "סוג פוליסה": "product",
     "צבירה": "balance",
     "פרמיה": "total_premium",
+    # `עמלה` is the gross commission for the policy; `סה"כ לתשלום` includes
+    # collection-fee adjustments. Rate-deviation is computed against the gross
+    # value (which matches the agreement's stated %).
+    "עמלה": "commission_before_fee",
     'סה"כ לתשלום': "commission_paid",
     "תאריך התחלה": "sign_date",
     "חודש עיבוד": "processing_date",

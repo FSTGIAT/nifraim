@@ -41,8 +41,18 @@ class BasePortalAutomation(ABC):
         """
 
     @abstractmethod
-    async def download_reports(self, page: "Page", download_dir: Path) -> list[Path]:
+    async def download_reports(
+        self,
+        page: "Page",
+        download_dir: Path,
+        *,
+        username: str | None = None,
+    ) -> list[Path]:
         """Navigate to the reports section and download every relevant file.
+
+        ``username`` is forwarded so plugins can build precise selectors when a
+        portal labels files by agent (e.g. Migdal Safes System uses
+        ``{USERNAME}_FROMMIGDAL_*`` filenames). Plugins are free to ignore it.
 
         Returns the list of saved file paths (under `download_dir`).
         """

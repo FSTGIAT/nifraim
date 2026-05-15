@@ -3,10 +3,16 @@
 Used by both the HTTP route (`POST /api/uploads`) and the portal automation
 runner. Single source of truth for: detect format → call parse_excel → derive
 file_category → replace-on-upload → bulk-insert ClientRecord rows → apply
-commission rates → cross-reference uploads.
+commission rates → cross-reference uploads. Also keeps the original file on
+disk under `/app/data/uploads/<user_id>/<upload_id>__<filename>` so the UI
+can offer a download/preview affordance later.
 """
 
+import logging
+import os
+import re
 import uuid
+from pathlib import Path
 
 from sqlalchemy import select, or_, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +23,42 @@ from app.models.debt import Debt
 from app.models.production_summary import ProductionSummary
 from app.models.portal_snapshot import PortalSnapshot
 from app.services.parser_service import parse_excel
-from app.services.reconciliation_service import apply_commission_rates, cross_reference_uploads
+from app.services.reconciliation_service import (
+    apply_commission_rates,
+    apply_rate_deviation,
+    cross_reference_uploads,
+)
 from app.utils.sanitize import sanitize_record
+
+
+logger = logging.getLogger(__name__)
+
+UPLOADS_ROOT = Path(os.environ.get("UPLOADS_STORAGE_DIR", "/app/data/uploads"))
+_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._\-֐-׿\(\) ]+")
+
+
+def _sanitize_filename(name: str) -> str:
+    cleaned = _FILENAME_SAFE.sub("_", (name or "").strip()) or "file"
+    # Keep it short — the upload_id prefix already disambiguates
+    return cleaned[:140]
+
+
+def _save_upload_to_disk(user_id: uuid.UUID, upload_id: uuid.UUID, filename: str, content: bytes) -> str | None:
+    """Write the raw file into the persistent uploads volume.
+
+    Best-effort: returns the absolute path on success, None on failure (we
+    log + continue — the parsed rows are the source of truth).
+    """
+    try:
+        user_dir = UPLOADS_ROOT / str(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = _sanitize_filename(filename)
+        target = user_dir / f"{upload_id}__{safe_name}"
+        target.write_bytes(content)
+        return str(target)
+    except OSError as e:
+        logger.warning(f"Could not persist upload {upload_id}: {e}")
+        return None
 
 
 _COMMISSION_FORMATS = {
@@ -101,6 +141,12 @@ async def ingest_file_bytes(
     db.add(upload)
     await db.flush()
 
+    # Preserve the original bytes on disk so the UI can offer download/preview.
+    # Best-effort — never blocks the ingest.
+    saved_path = _save_upload_to_disk(user_id, upload.id, filename, content)
+    if saved_path:
+        upload.file_path = saved_path
+
     for rec_data in result["records"]:
         clean = sanitize_record(rec_data)
         record = ClientRecord(
@@ -113,6 +159,11 @@ async def ingest_file_bytes(
 
     if fmt == "company_report":
         await apply_commission_rates(db, user_id, upload.id)
+
+    # Percent-vs-percent deviation: works whenever the parser populates
+    # reported_commission_pct (currently Menora; trivially extends as we
+    # add the same "אחוז עמלה" mapping to other נפרעים parsers).
+    await apply_rate_deviation(db, user_id, upload.id)
 
     await cross_reference_uploads(db, user_id)
 

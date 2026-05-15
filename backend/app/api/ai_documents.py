@@ -10,13 +10,14 @@ re-parsing, no re-uploading.
 import hashlib
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select, desc, and_
+from sqlalchemy import select, desc, and_, delete as sql_delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -48,18 +49,33 @@ router = APIRouter()
 MAX_PDF_BYTES = 25 * 1024 * 1024  # 25 MB Anthropic limit for documents
 
 
+def _parse_iso_date(value) -> date | None:
+    """Parse a YYYY-MM-DD string from Claude. Lenient — silently returns None
+    on garbage so a malformed date doesn't blow up the whole upsert."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except (ValueError, TypeError):
+        return None
+
+
 def _upsert_rates_from_doc(
     db: AsyncSession,
     user_id: UUID,
     doc_id: UUID,
     rates: list[dict],
-    existing_rates_by_company: dict[str, CommissionRate],
+    existing_rates_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None], CommissionRate],
 ) -> int:
     """Insert/update commission_rates rows for the extracted entries.
 
-    Upsert key: (user_id, company_name). When a rate already exists for the
-    company we update its `rate` and tag `source_document_id`; otherwise we
-    insert a new row.
+    Upsert key matches the DB-level uniqueness index `uq_commission_rates_keys`:
+    (user_id, company_name, product, frequency, rate, effective_from).
+
+    `effective_from` is part of the key so a 2025 agreement and a 2018
+    agreement for the same product coexist intentionally rather than
+    overwriting each other. The reconciliation step picks among them by
+    matching the policy sign_date against each rate's validity window.
 
     Returns the count of rows touched.
     """
@@ -68,10 +84,15 @@ def _upsert_rates_from_doc(
     # by 100. Values outside (0, 100]% are likely fund fees / caps, not
     # commission rates — skip them rather than overflow the column.
     touched = 0
+    seen_keys: set[tuple[str, str | None, str | None, Decimal, date | None]] = set()
     for r in rates:
         company = (r.get("company") or "").strip()
         if not company:
             continue
+        product_raw = r.get("product")
+        product = (str(product_raw).strip()[:200] or None) if product_raw else None
+        frequency_raw = r.get("frequency")
+        frequency = (str(frequency_raw).strip()[:20] or None) if frequency_raw else None
         try:
             percent = Decimal(str(r.get("rate_percent")))
         except (InvalidOperation, TypeError):
@@ -79,19 +100,31 @@ def _upsert_rates_from_doc(
         if percent <= 0 or percent > 100:
             continue
         rate_val = (percent / Decimal(100)).quantize(Decimal("0.0001"))
+        eff_from = _parse_iso_date(r.get("effective_from"))
+        eff_to = _parse_iso_date(r.get("effective_to"))
 
-        existing = existing_rates_by_company.get(company)
+        key = (company[:100], product, frequency, rate_val, eff_from)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        existing = existing_rates_by_key.get(key)
         if existing is not None:
-            existing.rate = rate_val
+            # Same key already in DB — retag with the new doc + refresh the
+            # end-date (in case the agreement was reuploaded with a longer
+            # validity window).
             existing.source_document_id = doc_id
-            if r.get("frequency"):
-                existing.payment_frequency = str(r["frequency"])[:20]
+            if eff_to is not None:
+                existing.effective_to = eff_to
         else:
             new_row = CommissionRate(
                 user_id=user_id,
                 company_name=company[:100],
+                product=product,
                 rate=rate_val,
-                payment_frequency=(r.get("frequency") or None) and str(r["frequency"])[:20],
+                payment_frequency=frequency,
+                effective_from=eff_from,
+                effective_to=eff_to,
                 source_document_id=doc_id,
             )
             db.add(new_row)
@@ -143,7 +176,15 @@ async def upload_document(
         # before that change are missing those answers.
         looks_complete = any(k in cached_full for k in ("ביטול", "החזר", "Clawback", "פדיון"))
         has_text_layer = bool(existing.extracted_text)
-        if existing.status == "ready" and cached_full and has_file and looks_complete and has_text_layer:
+        # Validity-dates were added to the extraction schema later. If the
+        # cached rates don't carry effective_from/to we need a fresh run.
+        cached_rates = (existing.structured_data or {}).get("rates") or []
+        rates_have_dates = (
+            not cached_rates
+            or any(r.get("effective_from") or r.get("effective_to") for r in cached_rates)
+        )
+        if (existing.status == "ready" and cached_full and has_file
+                and looks_complete and has_text_layer and rates_have_dates):
             return existing
         try:
             extracted = await extract_pdf(file_bytes, file.filename)
@@ -160,6 +201,21 @@ async def upload_document(
                     existing.file_path = _save_pdf_to_disk(user.id, existing.id, file_bytes)
                 except OSError as e:
                     logger.warning(f"Could not persist PDF for {existing.id}: {e}")
+
+            # Also refresh the commission_rates rows tied to this doc — the
+            # reason we re-extracted in the first place is that the cached
+            # rates were missing data (typically the new validity dates).
+            # We first drop the doc's existing rate rows so old dateless
+            # versions don't linger alongside the freshly-dated ones (the
+            # upsert key includes effective_from, so a NULL-date row and a
+            # dated row look like different keys).
+            if extracted.get("rates"):
+                await db.execute(sql_delete(CommissionRate).where(
+                    CommissionRate.user_id == user.id,
+                    CommissionRate.source_document_id == existing.id,
+                ))
+                await db.flush()
+                _upsert_rates_from_doc(db, user.id, existing.id, extracted["rates"], {})
             await db.commit()
             await db.refresh(existing)
         except Exception as e:
@@ -217,10 +273,51 @@ async def upload_document(
                     CommissionRate.company_name.in_(companies_in_doc),
                 )
             )
-            existing_by_co = {r.company_name: r for r in existing_rates_q.scalars().all()}
-            _upsert_rates_from_doc(db, user.id, doc.id, extracted["rates"], existing_by_co)
+            existing_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None], CommissionRate] = {
+                (r.company_name, r.product, r.payment_frequency, r.rate, r.effective_from): r
+                for r in existing_rates_q.scalars().all()
+            }
+            _upsert_rates_from_doc(db, user.id, doc.id, extracted["rates"], existing_by_key)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        msg = str(e.orig)
+        # Race condition: another concurrent upload of the same PDF (same
+        # user + sha) committed between our dedupe SELECT and this commit.
+        # Roll back, fetch the row that won, and return it.
+        if "uq_ai_documents_user_sha" in msg:
+            await db.rollback()
+            winner_q = await db.execute(
+                select(AiDocument).where(
+                    AiDocument.user_id == user.id,
+                    AiDocument.sha256 == sha,
+                )
+            )
+            winner = winner_q.scalar_one_or_none()
+            if winner is None:
+                raise
+            return winner
+        # Duplicate commission_rate slipped through the in-memory dedupe
+        # (e.g. two extractions inserting identical (user, company, product,
+        # freq, rate) at the same time). Re-run the upsert with the DB's
+        # post-conflict view: read the now-existing rows back and let the
+        # second try see them as "existing" so nothing new is inserted.
+        if "uq_commission_rates_keys" in msg:
+            await db.rollback()
+            # Re-fetch the doc row in this fresh transaction, plus the
+            # winning commission_rate rows. The AiDocument was created in the
+            # rolled-back transaction, so we have to start fresh.
+            existing_doc_q = await db.execute(
+                select(AiDocument).where(
+                    AiDocument.user_id == user.id,
+                    AiDocument.sha256 == sha,
+                )
+            )
+            cached_doc = existing_doc_q.scalar_one_or_none()
+            if cached_doc is not None:
+                return cached_doc
+        raise
     await db.refresh(doc)
     return doc
 

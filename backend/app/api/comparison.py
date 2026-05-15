@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select, desc, update
+from sqlalchemy import select, desc, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -15,6 +15,7 @@ from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.models.debt import Debt
+from app.models.commission_comparison import CommissionComparison
 from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
 from app.services.debt_service import sync_debts
@@ -25,6 +26,42 @@ from app.schemas.comparison import ComparisonResponse, PaymentStatusUpdate
 from app.utils.sanitize import sanitize_record
 
 router = APIRouter()
+
+
+async def _persist_comparison(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    comparison: dict,
+    *,
+    production_upload_id: uuid.UUID | None,
+) -> None:
+    """Save the result of a `compute_comparison` call so the Comparison tab
+    can rehydrate it on next load. Best-effort — never raises.
+    """
+    try:
+        category = comparison.get("commission_category") or "unknown"
+        summary = comparison.get("summary") or {}
+        sources = comparison.get("commission_company_sources") or (
+            [comparison.get("commission_company_source")]
+            if comparison.get("commission_company_source")
+            else []
+        )
+        row = CommissionComparison(
+            user_id=user_id,
+            category=category,
+            production_upload_id=production_upload_id,
+            summary_json=summary,
+            result_json=comparison,
+            commission_company_sources=sources,
+        )
+        db.add(row)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to persist commission comparison: {e}")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
 
 @router.post("/dual-upload", response_model=ComparisonResponse)
@@ -116,6 +153,7 @@ async def dual_upload(
     # Compute comparison on the fly
     comparison = compute_comparison(prod_result["records"], comm_result["records"], paying_names)
     comparison["commission_company_source"] = comm_result.get("company_source")
+    await _persist_comparison(db, user.id, comparison, production_upload_id=prod_upload.id)
     return comparison
 
 
@@ -172,6 +210,7 @@ async def compute_from_uploads(
 
     comparison = compute_comparison(prod_dicts, comm_dicts, paying_names, category_override=category)
     comparison["commission_company_source"] = comm_upload.company_source if comm_upload else None
+    await _persist_comparison(db, user.id, comparison, production_upload_id=uuid.UUID(production_upload_id))
     return comparison
 
 
@@ -314,7 +353,190 @@ async def compare_with_production(
     except Exception as e:
         logger.warning(f"Debt sync failed: {e}")
 
+    await _persist_comparison(db, user.id, comparison, production_upload_id=prod_upload.id)
     return comparison
+
+
+@router.get("/insights")
+async def comparison_insights(
+    category: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Always-on insights for the Comparison tab.
+
+    Combines:
+        current — live aggregates from the `debts` table for this category
+        previous — same shape from the row before the latest commission_comparisons,
+                   so the dashboard can show MoM deltas the moment a 2nd
+                   comparison runs
+        trend — up to 6 most-recent comparison summaries for this category,
+                feeding the per-card sparklines
+    """
+    if category not in {"gemel_hishtalmut", "insurance"}:
+        raise HTTPException(400, "category חייב להיות gemel_hishtalmut או insurance")
+
+    # Live debts summary scoped to the category
+    debts_q = await db.execute(
+        select(
+            Debt.status,
+            func.count().label("count"),
+            func.coalesce(func.sum(Debt.expected_amount), 0).label("total"),
+            func.count(func.distinct(Debt.customer_id_number)).label("customers"),
+            func.count(func.distinct(Debt.company_name)).label("companies"),
+        )
+        .where(Debt.user_id == user.id, Debt.category == category)
+        .group_by(Debt.status)
+    )
+    by_status: dict[str, dict] = {}
+    for r in debts_q.all():
+        by_status[r.status] = {
+            "count": int(r.count or 0),
+            "amount": float(r.total or 0),
+            "customers": int(r.customers or 0),
+            "companies": int(r.companies or 0),
+        }
+    open_ = by_status.get("open", {"count": 0, "amount": 0, "customers": 0, "companies": 0})
+    paid_ = by_status.get("paid", {"count": 0, "amount": 0, "customers": 0, "companies": 0})
+
+    distinct_q = await db.execute(
+        select(
+            func.count(func.distinct(Debt.customer_id_number)).label("debt_customers"),
+            func.count(func.distinct(Debt.company_name)).label("debt_companies"),
+        )
+        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+    )
+    distincts = distinct_q.one()
+
+    current = {
+        "open_count":     open_["count"],
+        "open_amount":    open_["amount"],
+        "paid_count":     paid_["count"],
+        "paid_amount":    paid_["amount"],
+        "debt_customers": int(distincts.debt_customers or 0),
+        "debt_companies": int(distincts.debt_companies or 0),
+    }
+
+    # Per-company breakdown for the chart (top 8 by amount)
+    companies_q = await db.execute(
+        select(
+            Debt.company_name,
+            func.count().label("count"),
+            func.coalesce(func.sum(Debt.expected_amount), 0).label("amount"),
+            func.count(func.distinct(Debt.customer_id_number)).label("customers"),
+        )
+        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+        .group_by(Debt.company_name)
+        .order_by(func.coalesce(func.sum(Debt.expected_amount), 0).desc())
+        .limit(8)
+    )
+    companies = [
+        {
+            "company": r.company_name,
+            "count": int(r.count or 0),
+            "amount": float(r.amount or 0),
+            "customers": int(r.customers or 0),
+        }
+        for r in companies_q.all()
+    ]
+    current["companies"] = companies
+
+    # Per-customer breakdown for the 2nd chart (top 8 by amount)
+    customers_q = await db.execute(
+        select(
+            Debt.customer_id_number,
+            Debt.customer_name,
+            func.count().label("count"),
+            func.coalesce(func.sum(Debt.expected_amount), 0).label("amount"),
+            func.count(func.distinct(Debt.company_name)).label("companies"),
+        )
+        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+        .group_by(Debt.customer_id_number, Debt.customer_name)
+        .order_by(func.coalesce(func.sum(Debt.expected_amount), 0).desc())
+        .limit(8)
+    )
+    customers = [
+        {
+            "id_number": r.customer_id_number,
+            "name": r.customer_name or r.customer_id_number,
+            "count": int(r.count or 0),
+            "amount": float(r.amount or 0),
+            "companies": int(r.companies or 0),
+        }
+        for r in customers_q.all()
+    ]
+    current["top_customers"] = customers
+
+    # Trend + previous from persisted comparisons
+    history_q = await db.execute(
+        select(CommissionComparison)
+        .where(
+            CommissionComparison.user_id == user.id,
+            CommissionComparison.category == category,
+        )
+        .order_by(desc(CommissionComparison.computed_at))
+        .limit(6)
+    )
+    rows = list(history_q.scalars().all())
+    trend = []
+    for row in reversed(rows):
+        s = row.summary_json or {}
+        trend.append({
+            "computed_at":     row.computed_at.isoformat() if row.computed_at else None,
+            "open_count":      int(s.get("only_in_production") or 0),
+            "open_amount":     float(s.get("total_premium") or 0),
+            "matched":         int(s.get("matched") or 0),
+            "total_customers": int(s.get("total_customers") or 0),
+        })
+
+    previous = None
+    if len(rows) >= 2:
+        s2 = rows[1].summary_json or {}
+        previous = {
+            "open_count":     int(s2.get("only_in_production") or 0),
+            "open_amount":    float(s2.get("total_premium") or 0),
+            "matched":        int(s2.get("matched") or 0),
+            "total_customers": int(s2.get("total_customers") or 0),
+        }
+
+    return {
+        "category": category,
+        "current": current,
+        "previous": previous,
+        "trend": trend,
+        "has_any_history": len(rows) > 0,
+    }
+
+
+@router.get("/latest")
+async def latest_comparison(
+    category: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the most-recent persisted comparison for (user, category), or null.
+
+    Lets the Comparison tab rehydrate its dashboard on page reload (and pick
+    up results from scheduled portal automation runs the user wasn't watching).
+    """
+    if category not in {"gemel_hishtalmut", "insurance"}:
+        raise HTTPException(400, "category חייב להיות gemel_hishtalmut או insurance")
+    result = await db.execute(
+        select(CommissionComparison)
+        .where(
+            CommissionComparison.user_id == user.id,
+            CommissionComparison.category == category,
+        )
+        .order_by(desc(CommissionComparison.computed_at))
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        return {"result": None, "computed_at": None}
+    return {
+        "result": row.result_json,
+        "computed_at": row.computed_at.isoformat() if row.computed_at else None,
+    }
 
 
 @router.patch("/mark-paid")

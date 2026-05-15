@@ -12,6 +12,15 @@ export const useChatStore = defineStore('chat', () => {
   const documentsLoaded = ref(false)
   const uploadingDoc = ref(false)
   const uploadError = ref(null)
+  // Progress UI state — surfaced via UploadProgressCard.
+  const uploadFileName = ref('')
+  const uploadFileSize = ref(0)
+  const uploadProgress = ref(0)
+  // 'uploading' (real bytes-over-wire) | 'extracting' (server-side, simulated)
+  // | 'complete' | 'error'
+  const uploadStage = ref('uploading')
+  let activeXhr = null
+  let extractionTimer = null
 
   function authHeaders() {
     const token = localStorage.getItem('token')
@@ -31,58 +40,142 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function uploadDocument(file) {
-    if (!file) return null
+  function _stopExtractionTimer() {
+    if (extractionTimer) {
+      clearInterval(extractionTimer)
+      extractionTimer = null
+    }
+  }
+
+  // Server-side extraction takes ~20-40s and emits no progress events. We
+  // time the bar based on elapsed seconds, not iteration count, so it feels
+  // steady regardless of jitter in `setInterval`:
+  //   • 0-25s after bytes-done  → 10% → 90% (linear ≈ 3.2 pp/s — visibly moving)
+  //   • 25-55s                  → 90% → 95% (slow trickle, ~0.17 pp/s)
+  //   • response arrives        → snap to 100%
+  // The previous version decayed the increment asymptotically; that looked
+  // like the bar was stuck around 93%, which it kind of was — math, not bug.
+  const EXTRACT_FAST_MS = 25_000   // reach 90% in ~25 seconds
+  const EXTRACT_SLOW_MS = 30_000   // 90 → 95 over the next 30 seconds
+  function _startExtractionRamp() {
+    uploadStage.value = 'extracting'
+    uploadProgress.value = Math.max(uploadProgress.value, 10)
+    _stopExtractionTimer()
+    const startAt = performance.now()
+    const startFrom = uploadProgress.value
+    extractionTimer = setInterval(() => {
+      const elapsed = performance.now() - startAt
+      let target
+      if (elapsed < EXTRACT_FAST_MS) {
+        const t = elapsed / EXTRACT_FAST_MS
+        target = startFrom + (90 - startFrom) * t
+      } else {
+        const t = Math.min(1, (elapsed - EXTRACT_FAST_MS) / EXTRACT_SLOW_MS)
+        target = 90 + 5 * t
+      }
+      uploadProgress.value = Math.min(95, target)
+    }, 250)
+  }
+
+  function cancelUpload() {
+    if (activeXhr) {
+      try { activeXhr.abort() } catch { /* ignore */ }
+      activeXhr = null
+    }
+    _stopExtractionTimer()
+    uploadingDoc.value = false
+    uploadStage.value = 'uploading'
+    uploadProgress.value = 0
+  }
+
+  function uploadDocument(file) {
+    if (!file) return Promise.resolve(null)
     uploadError.value = null
     uploadingDoc.value = true
-    try {
+    uploadFileName.value = file.name
+    uploadFileSize.value = file.size
+    uploadProgress.value = 0
+    uploadStage.value = 'uploading'
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest()
+      activeXhr = xhr
+      xhr.open('POST', '/api/ai/documents/upload', true)
+      const headers = authHeaders()
+      if (headers.Authorization) xhr.setRequestHeader('Authorization', headers.Authorization)
+
+      // Phase 1: real upload progress. Cap at 10% so the bar doesn't claim
+      // "done" while the server is still extracting.
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable || uploadStage.value !== 'uploading') return
+        const networkPct = (e.loaded / e.total) * 100
+        uploadProgress.value = Math.min(10, networkPct * 0.1)
+      }
+      // Bytes done → server starts extraction. Switch to the simulated ramp.
+      xhr.upload.onload = () => _startExtractionRamp()
+
+      const finish = (ok, data) => {
+        activeXhr = null
+        _stopExtractionTimer()
+        if (ok) {
+          uploadProgress.value = 100
+          uploadStage.value = 'complete'
+        } else {
+          uploadStage.value = 'error'
+        }
+        // Hold the completed/errored card on screen briefly so the user
+        // registers the state change before the spinner ref clears.
+        setTimeout(() => {
+          uploadingDoc.value = false
+          uploadFileName.value = ''
+          uploadFileSize.value = 0
+          uploadProgress.value = 0
+          uploadStage.value = 'uploading'
+        }, ok ? 900 : 1400)
+        resolve(data)
+      }
+
+      xhr.onload = () => {
+        let data = null
+        try { data = JSON.parse(xhr.responseText) } catch { /* ignore */ }
+        if (xhr.status >= 200 && xhr.status < 300 && data) {
+          documents.value = [data, ...documents.value.filter(d => d.id !== data.id)]
+          const lines = [`**מסמך נוסף לידע ה-AI:** ${data.filename}`]
+          if (data.status === 'error') {
+            lines.push(`שגיאה בעיבוד: ${data.error || 'לא ניתן לקרוא את המסמך'}`)
+          } else {
+            if (data.summary) lines.push(data.summary)
+            if (data.companies_mentioned?.length) {
+              lines.push(`חברות: ${data.companies_mentioned.join(', ')}`)
+            }
+            const rates = data.structured_data?.rates || []
+            if (rates.length) {
+              lines.push(`חולצו **${rates.length}** שיעורי עמלה — נוספו לטבלת השיעורים.`)
+            }
+          }
+          messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
+          finish(true, data)
+        } else {
+          const msg = (data && data.detail) || 'העלאה נכשלה'
+          uploadError.value = msg
+          messages.value.push({ role: 'assistant', content: `**שגיאה בהעלאת המסמך:** ${msg}` })
+          finish(false, null)
+        }
+      }
+      xhr.onerror = () => {
+        uploadError.value = 'תקלת רשת'
+        messages.value.push({ role: 'assistant', content: '**שגיאה בהעלאת המסמך:** תקלת רשת' })
+        finish(false, null)
+      }
+      xhr.onabort = () => {
+        // No assistant message — user cancelled intentionally.
+        finish(false, null)
+      }
+
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/ai/documents/upload', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: form,
-      })
-      if (!res.ok) {
-        let msg = 'העלאה נכשלה'
-        try {
-          const data = await res.json()
-          if (data.detail) msg = data.detail
-        } catch { /* ignore */ }
-        throw new Error(msg)
-      }
-      const doc = await res.json()
-
-      // Insert at the top of the list (dedupe if same id).
-      documents.value = [doc, ...documents.value.filter(d => d.id !== doc.id)]
-
-      // Surface the result inline in the conversation so the user sees
-      // exactly what Claude understood from their PDF.
-      const lines = [`**מסמך נוסף לידע ה-AI:** ${doc.filename}`]
-      if (doc.status === 'error') {
-        lines.push(`שגיאה בעיבוד: ${doc.error || 'לא ניתן לקרוא את המסמך'}`)
-      } else {
-        if (doc.summary) lines.push(doc.summary)
-        if (doc.companies_mentioned?.length) {
-          lines.push(`חברות: ${doc.companies_mentioned.join(', ')}`)
-        }
-        const rates = doc.structured_data?.rates || []
-        if (rates.length) {
-          lines.push(`חולצו **${rates.length}** שיעורי עמלה — נוספו לטבלת השיעורים.`)
-        }
-      }
-      messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
-      return doc
-    } catch (e) {
-      uploadError.value = e.message
-      messages.value.push({
-        role: 'assistant',
-        content: `**שגיאה בהעלאת המסמך:** ${e.message}`,
-      })
-      return null
-    } finally {
-      uploadingDoc.value = false
-    }
+      xhr.send(form)
+    })
   }
 
   async function removeDocument(id) {
@@ -202,11 +295,16 @@ export const useChatStore = defineStore('chat', () => {
     documentsLoaded,
     uploadingDoc,
     uploadError,
+    uploadFileName,
+    uploadFileSize,
+    uploadProgress,
+    uploadStage,
     sendMessage,
     clearMessages,
     fetchSources,
     loadDocuments,
     uploadDocument,
+    cancelUpload,
     removeDocument,
   }
 })

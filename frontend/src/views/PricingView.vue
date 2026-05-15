@@ -1,45 +1,6 @@
 <template>
   <div class="pricing" ref="pricingRoot">
-    <!-- Nav -->
-    <nav class="land-nav" ref="landNav">
-      <div class="nav-content">
-        <router-link to="/" class="nav-brand">
-          <div class="nav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <span class="nav-name">Nifraim</span>
-        </router-link>
-        <div class="nav-links">
-          <router-link to="/">דף הבית</router-link>
-          <router-link to="/pricing" class="active">תמחור</router-link>
-          <router-link to="/login" class="nav-btn-ghost">התחברות</router-link>
-          <router-link to="/signup" class="nav-btn-solid">התחל עכשיו</router-link>
-        </div>
-
-        <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="תפריט">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line v-if="!mobileMenuOpen" x1="3" y1="6" x2="21" y2="6"/>
-            <line v-if="!mobileMenuOpen" x1="3" y1="12" x2="21" y2="12"/>
-            <line v-if="!mobileMenuOpen" x1="3" y1="18" x2="21" y2="18"/>
-            <line v-if="mobileMenuOpen" x1="18" y1="6" x2="6" y2="18"/>
-            <line v-if="mobileMenuOpen" x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-
-      <Transition name="mobile-menu">
-        <div v-if="mobileMenuOpen" class="mobile-menu">
-          <router-link to="/" @click="mobileMenuOpen = false">דף הבית</router-link>
-          <router-link to="/pricing" class="active" @click="mobileMenuOpen = false">תמחור</router-link>
-          <router-link to="/login" class="nav-btn-ghost" @click="mobileMenuOpen = false">התחברות</router-link>
-          <router-link to="/signup" class="nav-btn-solid" @click="mobileMenuOpen = false">התחל עכשיו</router-link>
-        </div>
-      </Transition>
-    </nav>
+    <!-- Nav lives in App.vue (shared SlideTabs across marketing routes) -->
 
     <!-- HERO -->
     <section class="chapter-hero" ref="heroSection">
@@ -113,7 +74,6 @@ import { gsap } from 'gsap'
 const contactEmail = 'nifraim@nifraim.com'
 
 const pricingRoot = ref(null)
-const landNav = ref(null)
 const heroSection = ref(null)
 const heroContent = ref(null)
 const heroEyebrow = ref(null)
@@ -123,8 +83,6 @@ const heroCtaWrap = ref(null)
 const heroVisual = ref(null)
 const priceCard = ref(null)
 const priceNumber = ref(null)
-
-const mobileMenuOpen = ref(false)
 
 function animateNumber(el, target, duration = 1.4) {
   const obj = { val: 0 }
@@ -140,9 +98,6 @@ function animateNumber(el, target, duration = 1.4) {
 
 onMounted(() => {
   const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-  // Nav always light (hero is cream)
-  landNav.value?.classList.add('nav--light')
 
   if (prefersReduced) {
     if (priceNumber.value) priceNumber.value.textContent = '220'
@@ -209,153 +164,7 @@ onBeforeUnmount(() => {
   text-decoration: none;
 }
 
-/* ── Navigation ── */
-.land-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: rgba(74, 74, 74, 0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--land-border);
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.land-nav.nav--light {
-  background: rgba(245, 240, 235, 0.9);
-  border-bottom-color: rgba(45, 37, 34, 0.06);
-}
-
-.land-nav.nav--light .nav-name { color: var(--cream-text); }
-.land-nav.nav--light .nav-icon { background: var(--cream-text); color: var(--cream-bg); }
-.land-nav.nav--light .nav-links a { color: var(--cream-text-muted); }
-.land-nav.nav--light .nav-links a:hover,
-.land-nav.nav--light .nav-links a.active { color: var(--land-orange); }
-.land-nav.nav--light .nav-btn-ghost {
-  border-color: var(--cream-text) !important;
-  color: var(--cream-text) !important;
-}
-.land-nav.nav--light .nav-btn-ghost:hover { background: rgba(45, 37, 34, 0.05) !important; }
-.land-nav.nav--light .nav-btn-solid {
-  background: var(--cream-text) !important;
-  color: var(--cream-bg) !important;
-}
-.land-nav.nav--light .nav-btn-solid:hover { background: var(--dark-section) !important; }
-.land-nav.nav--light .mobile-menu-btn { color: var(--cream-text); }
-
-.nav-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.nav-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--land-orange);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #0a0a0a;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.nav-name {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--land-text);
-  transition: color var(--transition-fast);
-}
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.nav-links a {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-  transition: color 0.2s;
-}
-
-.nav-links a:hover,
-.nav-links a.active { color: var(--land-orange); }
-
-.nav-btn-ghost {
-  padding: 10px 24px;
-  border-radius: 10px;
-  border: 1px solid var(--land-orange) !important;
-  color: var(--land-orange) !important;
-  font-weight: 600 !important;
-  transition: all 0.2s;
-}
-
-.nav-btn-ghost:hover { background: var(--land-orange-glow) !important; }
-
-.nav-btn-solid {
-  padding: 10px 24px;
-  border-radius: 10px;
-  background: var(--land-orange) !important;
-  color: #0a0a0a !important;
-  font-weight: 700 !important;
-  transition: all 0.2s;
-}
-
-.nav-btn-solid:hover { background: var(--land-orange-bright) !important; }
-
-.mobile-menu-btn {
-  display: none;
-  background: none;
-  border: none;
-  color: var(--land-text);
-  cursor: pointer;
-  padding: 8px;
-  transition: color var(--transition-fast);
-}
-
-.mobile-menu {
-  display: none;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-  border-top: 1px solid var(--land-border);
-  background: rgba(74, 74, 74, 0.95);
-}
-
-.land-nav.nav--light .mobile-menu {
-  background: rgba(245, 240, 235, 0.97);
-  border-top-color: rgba(45, 37, 34, 0.06);
-}
-
-.mobile-menu a {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--land-text-secondary);
-  padding: 8px 0;
-}
-
-.mobile-menu-enter-active,
-.mobile-menu-leave-active { transition: all 0.3s ease; }
-
-.mobile-menu-enter-from,
-.mobile-menu-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
+/* Navigation lives in App.vue (shared SlideTabs pill). */
 
 /* ── HERO (cream) ── */
 .chapter-hero {
@@ -700,10 +509,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
-  .nav-links { display: none; }
-  .mobile-menu-btn { display: block; }
-  .mobile-menu { display: flex; }
-
   .chapter-hero {
     padding-left: 20px;
     padding-right: 20px;

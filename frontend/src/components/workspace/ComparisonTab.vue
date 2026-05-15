@@ -84,6 +84,10 @@
         </div>
       </div>
 
+      <!-- Recent commission files — sits under the production toolbar.
+           Clicking a card opens its comparison instead of just downloading. -->
+      <RecentCommissionFiles @select="onCommissionFileSelect" />
+
       <!-- Content area -->
       <Transition name="tab-switch" mode="out-in">
         <!-- No category selected → prompt -->
@@ -91,17 +95,14 @@
           <p>בחר קטגוריה להשוואה</p>
         </div>
 
-        <!-- Category selected, no result → automation-first, manual upload as fallback -->
-        <div v-else-if="!comparisonStore.result" :key="'upload-' + comparisonStore.activeCategory" class="empty-stack">
-          <PortalAutomationPanel
-            title="טען נפרעים אוטומטית"
-            @success="onAutomationSuccess"
+        <!-- Category selected, no result → always-on insights dashboard
+             (the dashboard hosts a slim "load fresh data" strip with the
+              automation panel + manual upload behind a disclosure). -->
+        <div v-else-if="!comparisonStore.result" :key="'insights-' + comparisonStore.activeCategory" class="insights-stack">
+          <ComparisonInsightsDashboard
+            @automation-success="onAutomationSuccess"
             @navigate-to-credentials="$emit('go-to-portal-automation')"
           />
-          <details class="manual-fallback">
-            <summary>אין פורטל מוגדר? העלה ידנית</summary>
-            <CommissionUploader />
-          </details>
         </div>
 
         <!-- Has result → comparison dashboard -->
@@ -119,17 +120,21 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
+import { useUploadsStore } from '../../stores/uploads.js'
 import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
+import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
+import RecentCommissionFiles from '../comparison/RecentCommissionFiles.vue'
 import PortalAutomationPanel from './PortalAutomationPanel.vue'
 
 defineEmits(['go-to-portal-automation'])
 
 const productionStore = useProductionStore()
 const comparisonStore = useComparisonStore()
+const uploadsStore = useUploadsStore()
 
 const categories = [
   {
@@ -144,12 +149,18 @@ const categories = [
   },
 ]
 
-function onSelectCategory(cat) {
+async function onSelectCategory(cat) {
   if (comparisonStore.activeCategory === cat && comparisonStore.result) {
-    // Clicking the active category that has results → reset to uploader
+    // Clicking the active category that has results → reset to insights view
     comparisonStore.resetCategory(cat)
-  } else {
-    comparisonStore.selectCategory(cat)
+    return
+  }
+  comparisonStore.selectCategory(cat)
+  // Hydrate the latest persisted comparison for this category — if one
+  // exists (manual run, scheduled portal run, etc.), the dashboard renders
+  // immediately without any additional click.
+  if (!comparisonStore.hasResultFor(cat)) {
+    await comparisonStore.fetchLatest(cat)
   }
 }
 
@@ -242,22 +253,76 @@ const relevantCustomers = computed(() => {
     })
 })
 
+async function onCommissionFileSelect(file) {
+  if (!file || !productionStore.currentFile?.id) return
+  // Ingest already detected the category; sync the toggle if it differs so
+  // the resulting dashboard renders against the right slice.
+  const inferredCategory = inferCategoryFromFile(file)
+  if (inferredCategory && comparisonStore.activeCategory !== inferredCategory) {
+    comparisonStore.selectCategory(inferredCategory)
+  }
+  try {
+    await comparisonStore.compareExisting(productionStore.currentFile.id, file.id)
+  } catch (_) { /* surfaced via store.error */ }
+}
+
+// Best-effort: derive (gemel|insurance) from format_type. The runner already
+// classifies, but format_type is a robust short label we can match locally.
+const _GEMEL_FORMATS = new Set([
+  'nifraim', 'hachshara_nifraim', 'menora', 'altshuler',
+  'clal_life_nifraim', 'migdal_nifraim', 'harel_nifraim',
+])
+const _INSURANCE_FORMATS = new Set([
+  'agent_tracking', 'company_report', 'clal_health_nifraim',
+  'ayalon_nifraim', 'phoenix_insurance_nifraim',
+])
+function inferCategoryFromFile(file) {
+  const f = (file?.format_type || '').toLowerCase()
+  if (_GEMEL_FORMATS.has(f)) return 'gemel_hishtalmut'
+  if (_INSURANCE_FORMATS.has(f)) return 'insurance'
+  return null
+}
+
 async function onAutomationSuccess({ run }) {
   // The portal automation pipeline ingests the commission file as an upload.
   // Pair it with the current production via the existing compute endpoint.
   if (!run?.upload_id || !productionStore.currentFile?.id) return
+
+  // Refresh the recent-files strip so the freshly downloaded card appears
+  // (also confirms the upload is in our store before we need its category).
+  try { await uploadsStore.fetchUploads() } catch { /* non-blocking */ }
+
+  // If the file lands in a different category than the toggle is currently
+  // showing, switch — otherwise the dashboard would render the WRONG one.
+  const newUpload = (uploadsStore.uploads || []).find((u) => u.id === run.upload_id)
+  if (newUpload?.file_category === 'commission' && comparisonStore.activeCategory) {
+    // The runner already wrote a commission_comparisons row; pick that up
+    // for the active category. fetchLatest is a no-op if there's nothing.
+    try { await comparisonStore.fetchLatest(comparisonStore.activeCategory) } catch {}
+  }
+
   try {
     await comparisonStore.compareExisting(productionStore.currentFile.id, run.upload_id)
   } catch (_) { /* surfaced via store.error */ }
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!productionStore.currentFile && !productionStore.loading) {
-    productionStore.fetchCurrent()
+    await productionStore.fetchCurrent()
   }
   // Auto-select first category so toggle always has an active segment
   if (!comparisonStore.activeCategory) {
     comparisonStore.selectCategory('gemel_hishtalmut')
+  }
+  // Hydrate persisted result for the active category on first mount
+  const cat = comparisonStore.activeCategory
+  if (cat && !comparisonStore.hasResultFor(cat)) {
+    await comparisonStore.fetchLatest(cat)
+  }
+  // Populate the recent-files strip with whatever's already on the server.
+  // Cheap call (single SELECT) and uploads list is a small payload.
+  if (!uploadsStore.uploads.length) {
+    try { await uploadsStore.fetchUploads() } catch { /* non-blocking */ }
   }
 })
 </script>
