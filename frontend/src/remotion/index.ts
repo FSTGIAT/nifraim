@@ -28,7 +28,7 @@ export function componentForViz(viz: Viz) {
 export function sizeForViz(viz: Viz): { width: number; height: number } {
   if (viz.type === 'kpi') return { width: 800, height: 400 }
   if (viz.type === 'donut') return { width: 720, height: 560 }
-  if (viz.type === 'fund-track') return { width: 820, height: 620 }
+  if (viz.type === 'fund-track') return { width: 820, height: 760 }
   // bar — taller to accommodate many rows
   return { width: 800, height: 560 }
 }
