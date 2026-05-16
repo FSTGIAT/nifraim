@@ -853,7 +853,7 @@ def _detect_question_topics(question: str) -> set[str]:
     return topics
 
 
-MAX_CONTEXT_CHARS = 30000  # ~7.5K tokens — big enough for full recruits + comparison context
+MAX_CONTEXT_CHARS = 120000  # ~30K tokens — must fit one comparison block per commission company; truncation here silently hid later companies from the AI
 
 
 async def _get_commission_boundaries(db: AsyncSession, user_id: uuid.UUID) -> str:
