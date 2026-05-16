@@ -1514,6 +1514,7 @@ async def stream_chat(
                 system=system_prompt,
                 messages=messages,
             ) as stream:
+                viz_emitted_in_this_attempt = False
                 async for chunk in stream.text_stream:
                     if viz_state == "text":
                         combined = tail + chunk
@@ -1531,6 +1532,8 @@ async def stream_chat(
                                 try:
                                     viz = json.loads(viz_raw)
                                     yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                                    viz_emitted_in_this_attempt = True
+                                    logger.info(f"VIZ emitted: type={viz.get('type')} title={viz.get('title', '')[:50]}")
                                 except json.JSONDecodeError:
                                     logger.warning(f"Bad viz JSON: {viz_raw[:120]}")
                                 after = viz_buf[close_idx + len(VIZ_CLOSE):]
@@ -1557,6 +1560,8 @@ async def stream_chat(
                             try:
                                 viz = json.loads(viz_raw)
                                 yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                                viz_emitted_in_this_attempt = True
+                                logger.info(f"VIZ emitted: type={viz.get('type')} title={viz.get('title', '')[:50]}")
                             except json.JSONDecodeError:
                                 logger.warning(f"Bad viz JSON: {viz_raw[:120]}")
                             after = viz_buf[close_idx + len(VIZ_CLOSE):]
@@ -1567,6 +1572,9 @@ async def stream_chat(
             if viz_state == "text" and tail:
                 yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
             # If we ended mid-viz (no closing >>) — drop silently; the visible text is already complete
+            # Diagnostic so we can tell apart "AI didn't emit viz" vs "parser ate it" in prod logs.
+            if not viz_emitted_in_this_attempt:
+                logger.info(f"NO VIZ emitted for question[:80]={question[:80]!r}")
             last_error = None
             break  # success
         except anthropic.AuthenticationError:
