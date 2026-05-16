@@ -247,14 +247,20 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     if not all_comm_uploads:
         return None
 
-    # Deduplicate: keep only latest upload per filename
-    seen_filenames = set()
+    # Deduplicate so each commission *company* appears once, using its latest
+    # upload. Falling back to filename when company_source is blank preserves
+    # behavior for older rows. No hard count cap — MAX_CONTEXT_CHARS in
+    # build_user_context() is the real safety net, and the previous cap of 5
+    # silently dropped most companies from the AI's numeric context (visible
+    # in the AI Library but invisible to chat answers).
+    seen_keys = set()
     comm_uploads = []
     for u in all_comm_uploads:
-        if u.filename not in seen_filenames:
-            seen_filenames.add(u.filename)
-            comm_uploads.append(u)
-    comm_uploads = comm_uploads[:5]  # max 5 unique files
+        key = (u.company_source or u.filename or "").strip().lower()
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        comm_uploads.append(u)
 
     # Load production records
     prod_result = await db.execute(
