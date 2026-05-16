@@ -1,5 +1,7 @@
 import logging
 import uuid
+from datetime import date, datetime
+from decimal import Decimal
 
 from typing import List
 
@@ -28,6 +30,29 @@ from app.utils.sanitize import sanitize_record
 router = APIRouter()
 
 
+def _jsonable(obj):
+    """Recursively coerce a comparison-result tree into JSON-safe primitives.
+
+    asyncpg's JSONB encoder doesn't know how to serialise Decimal / date /
+    datetime / UUID, so a comparison result coming straight out of the
+    SQLAlchemy column values blows up with "Object of type Decimal is not
+    JSON serializable" at INSERT time. Walk the dict/list tree once and
+    convert the offending types to JSON primitives. Floats lose precision
+    vs Decimal but the comparison table is for display, not accounting.
+    """
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    return obj
+
+
 async def _persist_comparison(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -50,9 +75,9 @@ async def _persist_comparison(
             user_id=user_id,
             category=category,
             production_upload_id=production_upload_id,
-            summary_json=summary,
-            result_json=comparison,
-            commission_company_sources=sources,
+            summary_json=_jsonable(summary),
+            result_json=_jsonable(comparison),
+            commission_company_sources=_jsonable(sources),
         )
         db.add(row)
         await db.commit()
