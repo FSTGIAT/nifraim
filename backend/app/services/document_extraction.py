@@ -184,9 +184,14 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
         })
     user_blocks.append({"type": "text", "text": instruction_text})
 
+    # Sonnet 4.6 reads complex Hebrew RTL agreements (scrambled pdfplumber text +
+    # PDF images) far more reliably than 4.0, which silently returned `rates=[]`
+    # on the Menora 2025 insurance agreement even though it set summary/doc_type.
+    # max_tokens bumped to 16384 because the tool call has to fit
+    # full_content (~2500 words ≈ 6K tokens) AND a potentially long rates array.
     attempts = [
-        ("claude-sonnet-4-20250514", 0),
-        ("claude-sonnet-4-20250514", 2),
+        ("claude-sonnet-4-6", 0),
+        ("claude-sonnet-4-6", 2),
         ("claude-haiku-4-5-20251001", 1),
     ]
     last_error: Exception | None = None
@@ -197,7 +202,7 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
         try:
             resp = await client.messages.create(
                 model=model,
-                max_tokens=8192,
+                max_tokens=16384,
                 system=EXTRACTION_SYSTEM_PROMPT,
                 tools=[EXTRACT_TOOL],
                 tool_choice={"type": "tool", "name": "save_extracted_document"},
