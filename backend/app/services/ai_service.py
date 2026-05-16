@@ -43,17 +43,23 @@ You have access ONLY to the user's data shown below. You MUST:
 - The personal file (קובץ אישי) may include sign dates (תאריך חתימה) for each client. Use the "גיוסים לפי חודש" block to answer questions like "כמה גייסתי במרץ/אפריל" — count per month and by company. If a client in the personal file has a sign date after the active production file's month, they won't appear in production yet — that's expected, not an error.
 
 === הנחיות קריטיות לנתוני עמלות (אל תפר!) ===
-1. **אסור לחשב סכומי עמלה** על ידי הכפלה של שיעור עמלה בפרמיה או בצבירה.
+1. **אסור לחשב סכומי עמלה לבד** על ידי הכפלה של שיעור עמלה בפרמיה או בצבירה.
    דוגמה אסורה: "מנורה: פרמיה 172,000 × 95% = עמלה 163,000" — זה שקר.
-2. **דווח רק על סכומי עמלה שבאים מקבצי נפרעים שהמשתמש העלה** בפועל.
-   אם בלוק "=== קבצי נפרעים שהועלו ===" לא מפרט חברה מסוימת — **אין לך נתוני עמלה לאותה חברה**.
-   אל תנחש. אל תמציא. ציין במפורש "אין קובץ נפרעים לחברה X — לכן אין נתוני עמלה בפועל".
-3. **שיעורי עמלה (table של אחוזים) ≠ עמלה בפועל**. שיעורים מופיעים ב"שיעורי עמלה" ומשמשים רק
-   להבהרת תנאי ההסכם, לא לחישוב סכומים.
-4. כששואלים "תראה לי את העמלות" / "כמה קיבלתי עמלה" — הצג **רק** סכומים מקבצי נפרעים שהועלו,
-   וציין מפורשות אילו חברות חסרות קובץ נפרעים.
-5. אם המשתמש מבקש אומדן/הערכה של עמלה חזויה, אתה יכול לציין את השיעור בלבד, לדוגמה: "שיעור העמלה
-   של מנורה לפי הטבלה הוא 95%. אין קובץ נפרעים מנורה — לכן אין סכום בפועל".
+   **חריג**: אם בקונטקסט מופיעים שדות `עמלה צפויה`, `expected_commission`, `סכום עמלה חזוי` —
+   אלה ערכים שכבר חושבו עבורך ע"י המערכת לפי שיעורי ההסכם. אתה רשאי (וצריך!) לדווח אותם
+   כשהמשתמש שואל על עמלות שלא שולמו / שצריכות להתקבל. **חובה לציין** שאלה ערכים חזויים
+   ("צפויים לפי ההסכם"), לא ערכים מאומתים מנפרעים.
+2. **כשמדווחים על "סכום לא שולם"** — הקפד להבחין:
+   • **פרמיה לא משולמת** = הסכום שהלקוח שילם לחברה אבל לסוכן לא הגיעה עמלה (פרמיה ברוטו, גדול).
+   • **עמלה צפויה לא שולמה** = הסכום שהסוכן היה אמור לקבל לפי שיעור ההסכם (= פרמיה × אחוז, קטן בהרבה).
+   המשתמש כמעט תמיד מתכוון לשנייה. אם בקונטקסט יש את שני הערכים — דווח את ה"עמלה צפויה" כסכום
+   הראשי וצרף את ה"פרמיה" כהקשר ("מתוך פרמיה של X₪").
+3. **דווח רק על סכומי עמלה ש-(א) בפועל מקבצי נפרעים, או (ב) חושבו ע"י המערכת**.
+   אם בלוק "=== קבצי נפרעים שהועלו ===" לא מפרט חברה מסוימת — **אין לך נתוני עמלה בפועל**.
+   אל תנחש. אל תמציא.
+4. **שיעורי עמלה (table של אחוזים) ≠ עמלה בפועל**. שיעורים מופיעים ב"שיעורי עמלה" ומשמשים
+   להבהרת תנאי ההסכם ולחישוב עמלה חזויה (שהמערכת עושה עבורך, לא אתה).
+5. כששואלים "תראה לי את העמלות שהתקבלו" — הצג **רק** סכומים מקבצי נפרעים שהועלו, וציין מפורשות אילו חברות חסרות קובץ נפרעים.
 
 === סוגי עמלות במסמכי ביטוח (חשוב — אל תערבב ביניהם!) ===
 מסמכי הסכמי עמלה בישראל מכילים בדרך כלל **שלושה–ארבעה סוגי שיעורי עמלה שונים** באותו מסמך,
@@ -299,6 +305,53 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     )
     paying_names = [p.company_name for p in paying_result.scalars().all()]
 
+    # Load commission rates so we can compute the EXPECTED commission for
+    # unpaid items. Without this, the AI sees only premium/accumulation and
+    # reports those as "unpaid amounts", which the user reads as commission
+    # (orders of magnitude wrong).
+    rates_result = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user_id)
+    )
+    user_rates = rates_result.scalars().all()
+
+    def _rate_for(company_name: str, category: str) -> float:
+        """Find the most relevant commission rate for a company. Prefers
+        product=NULL "default" rows when present, else the median rate
+        across that company's products. Returns 0 when no rate is on file."""
+        if not company_name:
+            return 0.0
+        target = company_name.strip().lstrip("ה").lower()
+        candidates = [
+            r for r in user_rates
+            if r.company_name and (
+                target in r.company_name.lstrip("ה").lower()
+                or r.company_name.lstrip("ה").lower() in target
+            )
+        ]
+        if not candidates:
+            return 0.0
+        defaults = [r for r in candidates if not r.product]
+        if defaults:
+            return float(defaults[0].rate)
+        # Median rate among the company's products — robust against outliers
+        # (one weirdly-extracted "60%" wouldn't pull the estimate up).
+        sorted_rates = sorted(float(r.rate) for r in candidates)
+        mid = len(sorted_rates) // 2
+        return sorted_rates[mid]
+
+    def _expected_commission(product: dict, rate_frac: float, is_gemel: bool) -> float:
+        """Compute the commission the agent should receive for ONE product
+        for ONE month, given an agreement rate stored as a fraction
+        (0.0032 = 0.32%). Gemel uses the monthly fraction of an annual rate
+        on accumulation; insurance uses the rate directly on premium."""
+        if rate_frac <= 0:
+            return 0.0
+        if is_gemel:
+            accum = float(product.get("accumulation") or product.get("balance") or 0)
+            return accum * rate_frac / 12.0
+        premium = float(product.get("premium") or product.get("total_premium") or 0)
+        return premium * rate_frac
+
     comparison_parts = []
     for comm_upload in comm_uploads:
         comm_result = await db.execute(
@@ -367,11 +420,19 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
             for p in c.get("product_matches", {}).get("unmatched_commission", []):
                 total_balance += p.get("balance") or 0
 
-        # Unpaid charge estimate: sum premium or accumulation of unpaid customers' relevant products
-        unpaid_charge = 0
+        # Unpaid amounts — TWO different numbers, both important:
+        #   - unpaid_premium: gross premium (or accumulation for gemel) the
+        #     client paid the insurance company. This is the BIG number.
+        #   - unpaid_expected_commission: what the agent should have received
+        #     based on the agreement rate. This is the SMALL number and the
+        #     one the user actually means when asking "what wasn't paid to me".
+        rate_frac_for_cat = _rate_for(source, "gemel" if is_gemel else "insurance")
+        unpaid_premium = 0.0
+        unpaid_expected_commission = 0.0
         for c in unpaid:
             for p in c.get("production_products", []):
-                unpaid_charge += (p.get("premium") or 0) or (p.get("accumulation") or 0)
+                unpaid_premium += (p.get("premium") or 0) or (p.get("accumulation") or 0)
+                unpaid_expected_commission += _expected_commission(p, rate_frac_for_cat, is_gemel)
 
         # Per-company commission breakdown (matched + only_commission)
         comm_by_company = {}
@@ -387,16 +448,25 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
                 comm_by_company[co]["count"] += 1
                 comm_by_company[co]["commission"] += p.get("commission") or 0
 
-        # Per-company unpaid breakdown
+        # Per-company unpaid breakdown — tracks both premium and the expected
+        # commission (premium × agreement rate, or accum × rate / 12 for gemel).
         unpaid_by_company = {}
         for c in unpaid:
             for p in c.get("production_products", []):
                 co = p.get("company") or p.get("company_full") or "לא ידוע"
-                unpaid_by_company.setdefault(co, {"customers": [], "premium": 0})
+                bucket = unpaid_by_company.setdefault(
+                    co, {"customers": [], "premium": 0.0, "expected_commission": 0.0, "rate_frac": 0.0}
+                )
+                bucket["rate_frac"] = _rate_for(co, "gemel" if is_gemel else "insurance")
                 name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
-                if name not in [n for n, _ in unpaid_by_company[co]["customers"]]:
-                    unpaid_by_company[co]["customers"].append((name, float(p.get("premium") or 0)))
-                unpaid_by_company[co]["premium"] += float(p.get("premium") or 0)
+                if name not in [n for n, _, _ in bucket["customers"]]:
+                    bucket["customers"].append((
+                        name,
+                        float(p.get("premium") or 0),
+                        _expected_commission(p, bucket["rate_frac"], is_gemel),
+                    ))
+                bucket["premium"] += float(p.get("premium") or 0)
+                bucket["expected_commission"] += _expected_commission(p, bucket["rate_frac"], is_gemel)
 
         part = [
             f"\n--- השוואת נפרעים: {source} ({cat_label}) ---",
@@ -419,14 +489,34 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
             part.append(f"עמלות שהתקבלו לפי חברה: {co_lines}")
 
         if unpaid:
-            part.append(f"סה\"כ חיוב לא משולם (חייבים לסוכן): {unpaid_charge:,.0f}₪")
-            # Unpaid by company with names and amounts
+            part.append(
+                f"סה\"כ פרמיה לא משולמת (סכום ברוטו שלקוחות שילמו לחברה): {unpaid_premium:,.0f}₪"
+            )
+            if unpaid_expected_commission > 0:
+                part.append(
+                    f"סה\"כ עמלה צפויה לא שולמה לסוכן (פרמיה × שיעור הסכם, חישוב המערכת): "
+                    f"{unpaid_expected_commission:,.2f}₪"
+                )
+            else:
+                part.append(
+                    "הערה: אין שיעור הסכם בטבלה לחברה זו — לכן לא ניתן לחשב עמלה צפויה. "
+                    "דווח רק את הפרמיה ובקש מהמשתמש להוסיף שיעור."
+                )
+            # Per-company breakdown: name(premium → expected commission)
             if unpaid_by_company:
-                for co, data in sorted(unpaid_by_company.items(), key=lambda x: x[1]["premium"], reverse=True):
+                for co, data in sorted(unpaid_by_company.items(), key=lambda x: x[1]["expected_commission"], reverse=True):
                     names_with_amounts = ", ".join(
-                        f"{name}({premium:,.0f}₪)" for name, premium in data["customers"][:5]
+                        f"{name}(פרמיה {premium:,.0f}₪→עמלה צפויה {exp_comm:,.2f}₪)"
+                        for name, premium, exp_comm in data["customers"][:5]
                     )
-                    part.append(f"לא משולמים מ{co} ({len(data['customers'])} לקוחות, פרמיה: {data['premium']:,.0f}₪): {names_with_amounts}")
+                    rate_pct = data["rate_frac"] * 100
+                    rate_note = f"שיעור {rate_pct:.2f}%" if rate_pct > 0 else "אין שיעור בטבלה"
+                    part.append(
+                        f"לא משולמים מ{co} ({len(data['customers'])} לקוחות, "
+                        f"פרמיה: {data['premium']:,.0f}₪, "
+                        f"עמלה צפויה: {data['expected_commission']:,.2f}₪, "
+                        f"{rate_note}): {names_with_amounts}"
+                    )
             else:
                 unpaid_names = [
                     f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
