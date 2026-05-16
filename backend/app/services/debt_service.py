@@ -12,13 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 def _calc_expected_commission(product: dict, rate: float, category: str) -> float:
-    """Calculate expected commission for a product given its rate and category."""
+    """Calculate expected commission for a product given its rate and category.
+
+    Rate is stored as a fraction (e.g. 0.192 for 19.2%).
+    - Insurance: monthly premium * rate
+    - Gemel/hishtalmut: accumulation * rate / 12
+    """
     if category == "insurance":
         premium = float(product.get("premium") or product.get("total_premium") or 0)
         if premium > 0:
-            return premium * rate * 100
+            return premium * rate
     else:
-        # Gemel/hishtalmut: accumulation * rate / 12
         accum = float(product.get("accumulation") or product.get("balance") or 0)
         if accum > 0:
             return accum * rate / 12

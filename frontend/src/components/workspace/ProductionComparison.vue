@@ -688,42 +688,87 @@
               </div>
 
               <!-- Company filter pills (commission modal) -->
-              <div v-if="filterModal.category === 'commission' && comparisonResult?.summary?.commission_by_company?.length > 0" class="fm-company-filter">
-                <button
-                  class="company-pill"
-                  :class="{ active: !commissionCompanyFilter }"
-                  @click="commissionCompanyFilter = null"
-                >
-                  הכל
-                  <span class="pill-amount ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+              <div v-if="filterModal.category === 'commission' && comparisonResult?.summary?.commission_by_company?.length > 0" class="fm-filter-collapse">
+                <button class="fm-filter-trigger" :class="{ 'is-active': commissionCompanyFilter }" @click="commissionCompanyOpen = !commissionCompanyOpen">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                  </svg>
+                  <span>{{ commissionCompanyFilter || 'סנן לפי חברה' }}</span>
+                  <span class="fm-filter-count">{{ comparisonResult.summary.commission_by_company.length }}</span>
+                  <button v-if="commissionCompanyFilter" class="fm-filter-clear" @click.stop="commissionCompanyFilter = null" title="נקה סינון">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <svg class="fm-filter-chevron" :class="{ open: commissionCompanyOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </button>
-                <button
-                  v-for="co in comparisonResult.summary.commission_by_company"
-                  :key="co.company"
-                  class="company-pill"
-                  :class="{ active: commissionCompanyFilter === co.company }"
-                  @click="commissionCompanyFilter = co.company"
-                >
-                  {{ co.company }}
-                  <span class="pill-amount ltr-number">{{ formatAmount(co.total) }}</span>
-                  <span class="pill-count ltr-number">({{ co.clients_count }})</span>
-                </button>
+                <div v-if="commissionCompanyOpen" class="fm-company-filter">
+                  <button
+                    class="company-pill"
+                    :class="{ active: !commissionCompanyFilter }"
+                    @click="commissionCompanyFilter = null; commissionCompanyOpen = false"
+                  >
+                    הכל
+                    <span class="pill-amount ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+                  </button>
+                  <button
+                    v-for="co in comparisonResult.summary.commission_by_company"
+                    :key="co.company"
+                    class="company-pill"
+                    :class="{ active: commissionCompanyFilter === co.company }"
+                    @click="commissionCompanyFilter = co.company; commissionCompanyOpen = false"
+                  >
+                    {{ co.company }}
+                    <span class="pill-amount ltr-number">{{ formatAmount(co.total) }}</span>
+                    <span class="pill-count ltr-number">({{ co.clients_count }})</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Product filter pills (commission modal - Bug 8) -->
-              <div v-if="filterModal.category === 'commission' && commissionProducts.length > 1" class="fm-company-filter">
-                <button class="company-pill" :class="{ active: !commissionProductFilter }" @click="commissionProductFilter = null">כל המוצרים</button>
-                <button v-for="p in commissionProducts" :key="p" class="company-pill" :class="{ active: commissionProductFilter === p }" @click="commissionProductFilter = p">{{ p }}</button>
+              <div v-if="filterModal.category === 'commission' && commissionProducts.length > 1" class="fm-filter-collapse">
+                <button class="fm-filter-trigger" :class="{ 'is-active': commissionProductFilter }" @click="commissionProductOpen = !commissionProductOpen">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                  </svg>
+                  <span>{{ commissionProductFilter || 'סנן לפי מוצר' }}</span>
+                  <span class="fm-filter-count">{{ commissionProducts.length }}</span>
+                  <button v-if="commissionProductFilter" class="fm-filter-clear" @click.stop="commissionProductFilter = null" title="נקה סינון">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <svg class="fm-filter-chevron" :class="{ open: commissionProductOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                <div v-if="commissionProductOpen" class="fm-company-filter">
+                  <button class="company-pill" :class="{ active: !commissionProductFilter }" @click="commissionProductFilter = null; commissionProductOpen = false">כל המוצרים</button>
+                  <button v-for="p in commissionProducts" :key="p" class="company-pill" :class="{ active: commissionProductFilter === p }" @click="commissionProductFilter = p; commissionProductOpen = false">{{ p }}</button>
+                </div>
               </div>
 
               <!-- Company filter pills (non-commission categories - Bug 4) -->
-              <div v-if="['removed','new','changed'].includes(filterModal.category) && modalCompanyBreakdown.length > 1" class="fm-company-filter">
-                <button class="company-pill" :class="{ active: !categoryCompanyFilter }" @click="categoryCompanyFilter = null">
-                  הכל <span class="pill-count ltr-number">({{ filterModal.customers.length }})</span>
+              <div v-if="['removed','new','changed'].includes(filterModal.category) && modalCompanyBreakdown.length > 1" class="fm-filter-collapse">
+                <button class="fm-filter-trigger" :class="{ 'is-active': categoryCompanyFilter }" @click="categoryCompanyOpen = !categoryCompanyOpen">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                  </svg>
+                  <span>{{ categoryCompanyFilter || 'סנן לפי חברה' }}</span>
+                  <span class="fm-filter-count">{{ modalCompanyBreakdown.length }}</span>
+                  <button v-if="categoryCompanyFilter" class="fm-filter-clear" @click.stop="categoryCompanyFilter = null" title="נקה סינון">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <svg class="fm-filter-chevron" :class="{ open: categoryCompanyOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </button>
-                <button v-for="co in modalCompanyBreakdown" :key="co.company" class="company-pill" :class="{ active: categoryCompanyFilter === co.company }" @click="categoryCompanyFilter = co.company">
-                  {{ co.company }} <span class="pill-count ltr-number">({{ co.count }})</span>
-                </button>
+                <div v-if="categoryCompanyOpen" class="fm-company-filter">
+                  <button class="company-pill" :class="{ active: !categoryCompanyFilter }" @click="categoryCompanyFilter = null; categoryCompanyOpen = false">
+                    הכל <span class="pill-count ltr-number">({{ filterModal.customers.length }})</span>
+                  </button>
+                  <button v-for="co in modalCompanyBreakdown" :key="co.company" class="company-pill" :class="{ active: categoryCompanyFilter === co.company }" @click="categoryCompanyFilter = co.company; categoryCompanyOpen = false">
+                    {{ co.company }} <span class="pill-count ltr-number">({{ co.count }})</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Filtered total -->
@@ -1044,6 +1089,9 @@ const filterModal = reactive({
 const commissionCompanyFilter = ref(null) // null = all companies
 const categoryCompanyFilter = ref(null) // company filter for non-commission categories
 const commissionProductFilter = ref(null) // product filter for commission category
+const commissionCompanyOpen = ref(false)
+const commissionProductOpen = ref(false)
+const categoryCompanyOpen = ref(false)
 const selectedRemovedIds = ref(new Set())
 const companyContacts = ref([])
 
@@ -1533,6 +1581,8 @@ function openCommissionFilter(type) {
   detailCustomer.value = null
   commissionCompanyFilter.value = null
   commissionProductFilter.value = null
+  commissionCompanyOpen.value = false
+  commissionProductOpen.value = false
 }
 
 function openChangedByType(field) {
@@ -1586,6 +1636,7 @@ function onCompanyChartClick(category, labels, config) {
   detailCustomer.value = null
   selectedRemovedIds.value = new Set()
   categoryCompanyFilter.value = null
+  categoryCompanyOpen.value = false
 }
 
 // Company breakdown for non-commission categories (Bug 4)
@@ -1693,6 +1744,7 @@ function openCategory(key) {
   detailCustomer.value = null
   selectedRemovedIds.value = new Set()
   categoryCompanyFilter.value = null
+  categoryCompanyOpen.value = false
 }
 
 function openDetail(customer) {
@@ -3055,13 +3107,75 @@ function formatVal(val) {
 
 .fm-back-btn:hover { opacity: 0.7; }
 
+/* Collapsible filter trigger (keeps modal compact when many pills) */
+.fm-filter-collapse {
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.fm-filter-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 22px;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.fm-filter-trigger:hover { background: var(--bg-alt, #f8f8f8); }
+.fm-filter-trigger.is-active { color: #ec4899; font-weight: 600; }
+.fm-filter-trigger > span:not(.fm-filter-count) {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-filter-count {
+  background: var(--bg-alt, #f0f0f0);
+  color: var(--text-secondary, #64748b);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.fm-filter-trigger.is-active .fm-filter-count {
+  background: #ec4899;
+  color: #fff;
+}
+.fm-filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.fm-filter-clear:hover { background: var(--border-subtle); color: var(--text); }
+.fm-filter-chevron {
+  transition: transform 0.18s;
+  color: var(--text-secondary, #64748b);
+}
+.fm-filter-chevron.open { transform: rotate(180deg); }
+
 /* Search */
 .fm-company-filter {
   display: flex;
   gap: 6px;
-  padding: 12px 22px 0;
+  padding: 4px 22px 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .company-pill {

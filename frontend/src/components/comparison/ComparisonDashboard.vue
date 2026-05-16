@@ -291,9 +291,24 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-            <div v-if="modalProducts.length > 1" class="fm-product-filter">
-              <button class="company-pill" :class="{ active: !productFilter }" @click="productFilter = null">הכל</button>
-              <button v-for="p in modalProducts" :key="p" class="company-pill" :class="{ active: productFilter === p }" @click="productFilter = p">{{ p }}</button>
+            <div v-if="modalProducts.length > 1" class="fm-filter-collapse">
+              <button class="fm-filter-trigger" :class="{ 'is-active': productFilter }" @click="productFilterOpen = !productFilterOpen">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                </svg>
+                <span>{{ productFilter || 'סנן לפי מוצר' }}</span>
+                <span class="fm-filter-count">{{ modalProducts.length }}</span>
+                <button v-if="productFilter" class="fm-filter-clear" @click.stop="productFilter = null" title="נקה סינון">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <svg class="fm-filter-chevron" :class="{ open: productFilterOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              <div v-if="productFilterOpen" class="fm-product-filter">
+                <button class="company-pill" :class="{ active: !productFilter }" @click="productFilter = null; productFilterOpen = false">הכל</button>
+                <button v-for="p in modalProducts" :key="p" class="company-pill" :class="{ active: productFilter === p }" @click="productFilter = p; productFilterOpen = false">{{ p }}</button>
+              </div>
             </div>
             <div class="fm-search-wrap">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -785,6 +800,7 @@ const productTreemapOptions = computed(() => ({
 const filterModal = ref({ open: false, title: '', customers: [] })
 const filterSearchQuery = ref('')
 const productFilter = ref(null)
+const productFilterOpen = ref(false)
 
 const modalProducts = computed(() => {
   const products = new Set()
@@ -828,12 +844,14 @@ const filteredModalCustomers = computed(() => {
 function openFilterModal(title, customers) {
   filterModal.value = { open: true, title, customers }
   productFilter.value = null
+  productFilterOpen.value = false
 }
 
 function closeFilterModal() {
   filterModal.value = { open: false, title: '', customers: [] }
   filterSearchQuery.value = ''
   productFilter.value = null
+  productFilterOpen.value = false
 }
 
 function customerName(c) {
@@ -1529,13 +1547,72 @@ function formatCompact(val) {
 }
 .fm-close:hover { background: var(--border-subtle); color: var(--text); }
 
+.fm-filter-collapse {
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.fm-filter-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 22px;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.fm-filter-trigger:hover { background: var(--bg-alt, #f8f8f8); }
+.fm-filter-trigger.is-active { color: var(--brand); font-weight: 600; }
+.fm-filter-trigger > span:not(.fm-filter-count) {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fm-filter-count {
+  background: var(--bg-alt, #f0f0f0);
+  color: var(--text-muted);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.fm-filter-trigger.is-active .fm-filter-count {
+  background: var(--brand);
+  color: #fff;
+}
+.fm-filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.fm-filter-clear:hover { background: var(--border-subtle); color: var(--text); }
+.fm-filter-chevron {
+  transition: transform 0.18s;
+  color: var(--text-muted);
+}
+.fm-filter-chevron.open { transform: rotate(180deg); }
+
 .fm-product-filter {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 22px;
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
+  padding: 4px 22px 12px;
+  max-height: 140px;
+  overflow-y: auto;
 }
 .fm-product-filter .company-pill,
 .fm-company-filter .company-pill {

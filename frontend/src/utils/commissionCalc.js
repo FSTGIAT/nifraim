@@ -3,13 +3,13 @@
  * Used by ComparisonDetail, CustomerDetailModal, and ComparisonDashboard.
  *
  * Gemel/Hishtalmut: accumulation × rate ÷ 12
- * Insurance:        premium × rate × 100
+ * Insurance:        monthly premium × rate (rate is stored as a fraction, e.g. 0.192 for 19.2%)
  */
 
 /**
  * Calculate expected commission for a product given a rate.
  * @param {Object} product - Must have accumulation, balance, premium fields
- * @param {number} rate - Decimal rate (e.g. 0.003)
+ * @param {number} rate - Decimal rate (e.g. 0.003 for 0.3%, 0.192 for 19.2%)
  * @returns {number|null}
  */
 export function calcExpectedCommission(product, rate) {
@@ -23,9 +23,9 @@ export function calcExpectedCommission(product, rate) {
   if (product.balance != null && product.balance !== 0) {
     return product.balance * rate / 12
   }
-  // Insurance: premium * rate * 100 (no /12)
+  // Insurance: monthly premium * rate (rate is already a fraction)
   if (product.premium != null && product.premium !== 0) {
-    return product.premium * rate * 100
+    return product.premium * rate
   }
   return null
 }
