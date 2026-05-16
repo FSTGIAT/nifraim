@@ -431,7 +431,12 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         unpaid_expected_commission = 0.0
         for c in unpaid:
             for p in c.get("production_products", []):
-                unpaid_premium += (p.get("premium") or 0) or (p.get("accumulation") or 0)
+                # Cast through float() — production_products values may be
+                # Decimal (from SQLAlchemy Numeric columns), and Decimal+float
+                # raises TypeError. Old code used int 0 init which silently
+                # promoted; we use float 0.0 so we must coerce explicitly.
+                premium_or_accum = float(p.get("premium") or 0) or float(p.get("accumulation") or 0)
+                unpaid_premium += premium_or_accum
                 unpaid_expected_commission += _expected_commission(p, rate_frac_for_cat, is_gemel)
 
         # Per-company commission breakdown (matched + only_commission)
@@ -459,14 +464,12 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
                 )
                 bucket["rate_frac"] = _rate_for(co, "gemel" if is_gemel else "insurance")
                 name = f"{c.get('first_name', '')} {c.get('last_name', '')}".strip() or c.get('id_number', '')
+                premium_val = float(p.get("premium") or 0)
+                exp_comm = _expected_commission(p, bucket["rate_frac"], is_gemel)
                 if name not in [n for n, _, _ in bucket["customers"]]:
-                    bucket["customers"].append((
-                        name,
-                        float(p.get("premium") or 0),
-                        _expected_commission(p, bucket["rate_frac"], is_gemel),
-                    ))
-                bucket["premium"] += float(p.get("premium") or 0)
-                bucket["expected_commission"] += _expected_commission(p, bucket["rate_frac"], is_gemel)
+                    bucket["customers"].append((name, premium_val, exp_comm))
+                bucket["premium"] += premium_val
+                bucket["expected_commission"] += exp_comm
 
         part = [
             f"\n--- השוואת נפרעים: {source} ({cat_label}) ---",
