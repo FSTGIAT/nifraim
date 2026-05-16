@@ -59,6 +59,7 @@
 
 <script setup>
 import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
+import api from '../../api/client.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -69,6 +70,10 @@ const emit = defineEmits(['update:open'])
 const mountEl = ref(null)
 const loading = ref(false)
 const error = ref(null)
+// fund-track payloads from the AI carry only { type, title, track_id } —
+// the panel hydrates the rest from /api/funds/{track_id} so the AI doesn't
+// have to spell out 40 numbers in the SSE marker.
+const hydratedFundTracks = new Map() // track_id → full payload
 
 // Module-scope caches so the React+Remotion chunk is fetched once per session
 let reactStack = null
@@ -107,11 +112,43 @@ async function ensureReactStack() {
   }
 }
 
+async function hydrateViz(rawViz) {
+  if (rawViz?.type !== 'fund-track') return rawViz
+  if (Array.isArray(rawViz.funds) && rawViz.funds.length > 0) return rawViz
+  const trackId = rawViz.track_id
+  if (!trackId) return rawViz
+  if (hydratedFundTracks.has(trackId)) {
+    return { ...hydratedFundTracks.get(trackId), ...rawViz }
+  }
+  try {
+    loading.value = true
+    const { data } = await api.get(`/funds/${encodeURIComponent(trackId)}`)
+    const merged = {
+      type: 'fund-track',
+      title: rawViz.title || data.label,
+      track_id: trackId,
+      period_label: data.period_label,
+      averages: data.averages || { month: null, y1: null, y3: null, y5: null },
+      funds: Array.isArray(data.funds) ? data.funds : [],
+      insight: rawViz.insight,
+    }
+    hydratedFundTracks.set(trackId, merged)
+    return merged
+  } catch (e) {
+    console.warn('[AiVizPanel] fund-track hydration failed', e)
+    return rawViz
+  } finally {
+    loading.value = false
+  }
+}
+
 async function render() {
   if (!props.viz || !mountEl.value) return
   error.value = null
   try {
     const stack = await ensureReactStack()
+    if (!mountEl.value) return
+    const vizPayload = await hydrateViz(props.viz)
     if (!mountEl.value) return
     // If the root exists but points to a detached (stale) DOM node — from a
     // previous modal open/close cycle — drop it and create a fresh one bound
@@ -125,12 +162,12 @@ async function render() {
       currentMountEl = mountEl.value
     }
 
-    const Comp = stack.componentForViz(props.viz)
+    const Comp = stack.componentForViz(vizPayload)
     if (!Comp) {
       error.value = 'סוג תצוגה לא נתמך'
       return
     }
-    const size = stack.sizeForViz(props.viz)
+    const size = stack.sizeForViz(vizPayload)
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia &&
@@ -148,9 +185,9 @@ async function render() {
       // Fresh key on every render forces the Player to fully remount, which
       // ensures the new viz plays from frame 0 and releases any state held
       // on the previous composition.
-      key: `${props.viz.type}-${renderCounter}-${replayCounter}`,
+      key: `${vizPayload.type}-${renderCounter}-${replayCounter}`,
       component: Comp,
-      inputProps: props.viz,
+      inputProps: vizPayload,
       durationInFrames: totalFrames,
       fps: stack.VIZ_FPS,
       compositionWidth: size.width,

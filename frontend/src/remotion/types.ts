@@ -55,14 +55,19 @@ export interface VizFundTrackRow {
 export interface VizFundTrack {
   type: 'fund-track'
   title: string
+  /** When emitted by the AI, only track_id is sent — AiVizPanel hydrates the
+   * other fields from GET /api/funds/{track_id} before mounting the player. */
+  track_id?: string
   period_label?: string | null
-  averages: {
+  averages?: {
     month: number | null
     y1: number | null
     y3: number | null
     y5: number | null
   }
-  funds: VizFundTrackRow[]
+  funds?: VizFundTrackRow[]
+  /** Optional one-line insight rendered at the bottom of the composition. */
+  insight?: string
 }
 
 export type Viz = VizBar | VizKpi | VizDonut | VizFundTrack
