@@ -353,6 +353,14 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         return premium * rate_frac
 
     comparison_parts = []
+    # Cross-company aggregation — the per-company blocks below are organized
+    # per commission file, but users frequently ask "across all companies,
+    # who's the biggest unpaid". Without a pre-aggregated block the AI either
+    # mentally merges (sometimes correctly) or refuses with a "no global
+    # view" answer. We compute the merge here once.
+    global_unpaid_by_company: dict[str, dict] = {}
+    global_unpaid_clients: list[dict] = []  # flat list with co + expected_comm
+
     for comm_upload in comm_uploads:
         comm_result = await db.execute(
             select(ClientRecord).where(
@@ -471,6 +479,20 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
                 bucket["premium"] += premium_val
                 bucket["expected_commission"] += exp_comm
 
+                # Also accumulate into the cross-company view.
+                gbucket = global_unpaid_by_company.setdefault(
+                    co, {"customers_count": 0, "premium": 0.0, "expected_commission": 0.0}
+                )
+                gbucket["premium"] += premium_val
+                gbucket["expected_commission"] += exp_comm
+                global_unpaid_clients.append({
+                    "name": name,
+                    "company": co,
+                    "premium": premium_val,
+                    "expected_commission": exp_comm,
+                    "id_number": c.get("id_number"),
+                })
+
         part = [
             f"\n--- השוואת נפרעים: {source} ({cat_label}) ---",
             f"קובץ נפרעים: {comm_upload.filename}",
@@ -531,6 +553,49 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
 
     if not comparison_parts:
         return None
+
+    # Cross-company unpaid summary — emitted as the FIRST block so it's the
+    # easiest thing the AI reaches for when the question spans companies.
+    if global_unpaid_clients:
+        # Dedupe by (id_number, company) — same client may have appeared
+        # multiple times if they have multiple products in the same company.
+        # Already accumulated into the dict above via .setdefault; the flat
+        # list keeps every product-row so we can rank by individual amount.
+        agg = {}
+        for row in global_unpaid_clients:
+            key = (row["id_number"] or row["name"], row["company"])
+            a = agg.setdefault(key, {
+                "name": row["name"], "company": row["company"],
+                "premium": 0.0, "expected_commission": 0.0,
+            })
+            a["premium"] += row["premium"]
+            a["expected_commission"] += row["expected_commission"]
+        # Sort by expected commission (the number the user cares about) desc.
+        top_clients = sorted(agg.values(), key=lambda x: x["expected_commission"], reverse=True)[:15]
+        total_premium = sum(b["premium"] for b in global_unpaid_by_company.values())
+        total_expected = sum(b["expected_commission"] for b in global_unpaid_by_company.values())
+
+        cross_block = [
+            "\n--- סיכום כללי לכלל החברות: לא משולמים ---",
+            f"סה\"כ פרמיה לא משולמת מכלל החברות (ברוטו): {total_premium:,.0f}₪",
+            f"סה\"כ עמלה צפויה לא שולמה לסוכן מכלל החברות: {total_expected:,.2f}₪",
+            "פירוט לפי חברה (ממוין לפי עמלה צפויה):",
+        ]
+        for co, data in sorted(global_unpaid_by_company.items(), key=lambda x: x[1]["expected_commission"], reverse=True):
+            cross_block.append(
+                f"  {co}: פרמיה {data['premium']:,.0f}₪ → עמלה צפויה {data['expected_commission']:,.2f}₪"
+            )
+        cross_block.append("הלקוחות הלא משולמים הגדולים ביותר (top 15, מכלל החברות, ממוין לפי עמלה צפויה):")
+        for client in top_clients:
+            cross_block.append(
+                f"  {client['name']} ({client['company']}): "
+                f"פרמיה {client['premium']:,.0f}₪ → עמלה צפויה {client['expected_commission']:,.2f}₪"
+            )
+        cross_block.append(
+            "הערה ל-AI: השתמש בבלוק הזה כשמשתמש שואל 'מי הכי לא משולם / הלקוחות הגדולים ביותר / "
+            "מהן ההפסדים שלי מכלל החברות'. הנתונים כבר חושבו, אין צורך לאגד מחדש."
+        )
+        comparison_parts.insert(0, "\n".join(cross_block))
 
     return "\n".join(comparison_parts)
 
