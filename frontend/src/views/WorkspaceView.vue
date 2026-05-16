@@ -2,8 +2,17 @@
   <div class="workspace">
     <StockTicker @track-click="openFundDetail" />
 
-    <!-- Top-right floating action menu (React island; replaces the legacy WorkspaceHeader). -->
-    <CircleMenuIsland :items="circleMenuItems" class="ws-floating-menu" @select="onMenuSelect" />
+    <!-- Floating action menu (React island). Visible only in home view,
+         where there's no tabs strip to dock it inside. Items fan DOWN from
+         the trigger here — fanning left/across would push items off the
+         viewport's left edge since the trigger sits at left:32px. -->
+    <CircleMenuIsland
+      v-if="viewMode === 'home'"
+      :items="circleMenuItems"
+      layout="down"
+      class="ws-floating-menu"
+      @select="onMenuSelect"
+    />
 
     <!-- Client lookup — opens from the menu's Search item. -->
     <ClientSearchModal v-model:open="searchOpen" />
@@ -69,8 +78,8 @@
             :view-mode="viewMode"
             @select-card="onCardSelect"
           />
-          <AiChatWidget @navigate-tab="onCardSelect" @latest-viz="onLatestViz" />
-          <AiVizPanel v-model:open="aiVizOpen" :viz="activeViz" />
+          <AiChatWidget @navigate-tab="onCardSelect" @latest-vizs="onLatestVizs" />
+          <AiVizPanel v-model:open="aiVizOpen" :vizs="activeVizs" />
         </div>
       </div>
 
@@ -80,7 +89,16 @@
           v-model="activeTab"
           :view-mode="viewMode"
           @go-home="goHome"
-        />
+        >
+          <template #strip-end>
+            <CircleMenuIsland
+              :items="circleMenuItems"
+              layout="across"
+              class="strip-circle-menu"
+              @select="onMenuSelect"
+            />
+          </template>
+        </WorkspaceTabs>
 
         <main class="workspace-main" :class="{ 'wide-content': activeTab === 'comparison' && !!comparisonStore.result }">
           <div class="tab-content">
@@ -204,14 +222,14 @@ const productionStore = useProductionStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
 
-// AI viz modal — opens whenever the top-level AiChatWidget surfaces a viz
-// payload (bar / donut / kpi / fund-track). Mirrors the wiring used inside
-// ProductionComparison so the diagram works from the home-page chat too.
+// AI viz modal — opens whenever the top-level AiChatWidget surfaces viz
+// payload(s) (bar / donut / kpi / fund-track). Multi-viz: synthesis answers
+// can ship 2-3 blocks which AiVizPanel renders as a carousel.
 const aiVizOpen = ref(false)
-const activeViz = ref(null)
-function onLatestViz(viz) {
-  activeViz.value = viz
-  if (viz) aiVizOpen.value = true
+const activeVizs = ref(null)
+function onLatestVizs(vizs) {
+  activeVizs.value = vizs
+  if (Array.isArray(vizs) && vizs.length) aiVizOpen.value = true
 }
 
 // Tab order for navigation
@@ -484,6 +502,18 @@ async function openFundDetail(trackId) {
 .ws-floating-menu :deep(*) { pointer-events: auto; }
 @media (max-width: 720px) {
   .ws-floating-menu { top: 12px; left: 12px; }
+}
+
+/* In-strip CircleMenu — sits inside <WorkspaceTabs> at the strip-end slot,
+   beside the home-pill (4-rect icon). `direction: ltr` keeps the orbital
+   items' transform math (negative-x = left) predictable inside an RTL page.
+   `position: relative` + high z-index so items can fan out LEFT, over any
+   sibling chrome that happens to live next to the strip. */
+.strip-circle-menu {
+  position: relative;
+  z-index: 95;
+  margin-inline-start: 6px;
+  direction: ltr;
 }
 
 /* ─── Home view blur circles ─── */

@@ -2,11 +2,11 @@
   <Teleport to="body">
     <Transition name="ai-viz">
       <div
-        v-if="open && viz"
+        v-if="open && activeViz"
         class="ai-viz-overlay"
         role="dialog"
         aria-modal="true"
-        :aria-label="viz.title || 'תצוגה חזותית'"
+        :aria-label="activeViz.title || 'תצוגה חזותית'"
         @click.self="close"
       >
         <div class="ai-viz-card">
@@ -18,7 +18,10 @@
                 </svg>
               </span>
               <div class="ai-viz-titles">
-                <span class="ai-viz-title">{{ viz.title || 'תצוגה חזותית' }}</span>
+                <span class="ai-viz-title">{{ activeViz.title || 'תצוגה חזותית' }}</span>
+                <span v-if="vizList.length > 1" class="ai-viz-sub ltr-number">
+                  {{ activeIdx + 1 }} / {{ vizList.length }}
+                </span>
               </div>
             </div>
             <div class="ai-viz-actions">
@@ -51,6 +54,47 @@
             <div v-if="error" class="ai-viz-error">{{ error }}</div>
             <div ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
           </div>
+
+          <!-- Carousel nav (only when 2+ viz blocks). RTL-aware: in Hebrew,
+               "next" visually points LEFT and "previous" points RIGHT, so the
+               arrow directions are inverted vs LTR. -->
+          <nav v-if="vizList.length > 1" class="ai-viz-nav" aria-label="ניווט בין תצוגות">
+            <button
+              class="ai-viz-nav-btn"
+              type="button"
+              :disabled="activeIdx === 0"
+              :title="`הקודם (${activeIdx}/${vizList.length})`"
+              @click="goPrev"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+            <div class="ai-viz-dots" role="tablist">
+              <button
+                v-for="(_, i) in vizList"
+                :key="i"
+                type="button"
+                class="ai-viz-dot"
+                :class="{ 'ai-viz-dot--active': i === activeIdx }"
+                role="tab"
+                :aria-selected="i === activeIdx"
+                :aria-label="`עבור לתצוגה ${i + 1}`"
+                @click="goTo(i)"
+              ></button>
+            </div>
+            <button
+              class="ai-viz-nav-btn"
+              type="button"
+              :disabled="activeIdx === vizList.length - 1"
+              :title="`הבא (${activeIdx + 2}/${vizList.length})`"
+              @click="goNext"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+          </nav>
         </div>
       </div>
     </Transition>
@@ -58,14 +102,35 @@
 </template>
 
 <script setup>
-import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import api from '../../api/client.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  // Back-compat: callers may pass a single viz object OR an array of vizzes.
+  // Synthesis answers (≥2 vizzes) flow through `vizs`; legacy single-viz
+  // callers still work via `viz`.
   viz: { type: Object, default: null },
+  vizs: { type: Array, default: null },
 })
 const emit = defineEmits(['update:open'])
+
+// Resolve to a flat list so the rest of the component treats single and
+// multi cases the same way. Null/empty array → empty list → nothing renders.
+const vizList = computed(() => {
+  if (Array.isArray(props.vizs) && props.vizs.length) return props.vizs
+  if (props.viz) return [props.viz]
+  return []
+})
+const activeIdx = ref(0)
+const activeViz = computed(() => vizList.value[activeIdx.value] || null)
+
+function goTo(i) {
+  if (i < 0 || i >= vizList.value.length || i === activeIdx.value) return
+  activeIdx.value = i
+}
+function goPrev() { goTo(activeIdx.value - 1) }
+function goNext() { goTo(activeIdx.value + 1) }
 
 const mountEl = ref(null)
 const loading = ref(false)
@@ -143,12 +208,12 @@ async function hydrateViz(rawViz) {
 }
 
 async function render() {
-  if (!props.viz || !mountEl.value) return
+  if (!activeViz.value || !mountEl.value) return
   error.value = null
   try {
     const stack = await ensureReactStack()
     if (!mountEl.value) return
-    const vizPayload = await hydrateViz(props.viz)
+    const vizPayload = await hydrateViz(activeViz.value)
     if (!mountEl.value) return
     // If the root exists but points to a detached (stale) DOM node — from a
     // previous modal open/close cycle — drop it and create a fresh one bound
@@ -224,9 +289,18 @@ function onEscape(e) {
   if (e.key === 'Escape' && props.open) close()
 }
 
-watch(() => props.viz, () => {
+// Re-render when the active viz changes (either because the parent set a
+// new payload OR because the user clicked a carousel arrow/dot).
+watch(activeViz, () => {
   if (props.open) nextTick(() => render())
 })
+
+// When the source list changes (new question → new array of vizzes), reset
+// the carousel to the first slide so the user sees the AI's primary viz.
+watch(() => vizList.value, (list) => {
+  if (activeIdx.value >= list.length) activeIdx.value = 0
+  if (list.length && activeIdx.value !== 0) activeIdx.value = 0
+}, { deep: false })
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
@@ -378,6 +452,70 @@ onBeforeUnmount(() => {
   font-size: 13px;
   text-align: center;
 }
+
+/* Carousel nav — only present when 2+ viz blocks arrived for this answer. */
+.ai-viz-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: linear-gradient(0deg, rgba(245, 124, 0, 0.04) 0%, transparent 100%);
+  flex-shrink: 0;
+}
+.ai-viz-nav-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--primary-deep);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.18s var(--transition);
+}
+.ai-viz-nav-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.16);
+}
+.ai-viz-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ai-viz-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-viz-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  transition: all 0.18s var(--transition);
+}
+.ai-viz-dot:hover {
+  background: var(--primary-light);
+  transform: scale(1.25);
+}
+.ai-viz-dot--active {
+  background: var(--primary);
+  width: 22px;
+  border-radius: 4px;
+}
+.ai-viz-dot--active:hover {
+  background: var(--primary-deep);
+  transform: none;
+}
+
+.ltr-number { direction: ltr; unicode-bidi: isolate; }
 
 /* Transitions */
 .ai-viz-enter-active { transition: opacity 0.28s var(--transition); }

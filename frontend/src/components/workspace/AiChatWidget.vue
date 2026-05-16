@@ -181,7 +181,7 @@ import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
 import UploadProgressCard from './UploadProgressCard.vue'
 
-const emit = defineEmits(['navigate-tab', 'latest-viz'])
+const emit = defineEmits(['navigate-tab', 'latest-viz', 'latest-vizs'])
 
 const chatStore = useChatStore()
 const input = ref('')
@@ -228,18 +228,24 @@ onMounted(() => {
   }
 })
 
-// Mirror AiConversationSheet: surface the most recent viz payload (if any)
-// so the parent view can mount an AiVizPanel as a sibling. Without this
+// Mirror AiConversationSheet: surface the most recent viz payload(s) so
+// the parent view can mount an AiVizPanel as a sibling. Without this
 // emit, the SSE-delivered viz lives only on the assistant message and
-// has no path to actually render anywhere.
-const latestViz = computed(() => {
+// has no path to actually render anywhere. Synthesis answers may carry
+// multiple vizzes; we emit the full array (and the latest single one for
+// any older consumers that still listen to `latest-viz`).
+const latestVizs = computed(() => {
   for (let i = chatStore.messages.length - 1; i >= 0; i--) {
     const m = chatStore.messages[i]
-    if (m.role === 'assistant' && m.viz) return m.viz
+    if (m.role === 'assistant' && Array.isArray(m.vizs) && m.vizs.length) return m.vizs
+    if (m.role === 'assistant' && m.viz) return [m.viz]
   }
   return null
 })
-watch(latestViz, (v) => emit('latest-viz', v), { deep: false })
+watch(latestVizs, (v) => {
+  emit('latest-vizs', v)
+  emit('latest-viz', v ? v[v.length - 1] : null)
+}, { deep: false })
 
 const suggestions = [
   'מה סטטוס ההתאמות שלי?',

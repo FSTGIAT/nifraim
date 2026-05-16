@@ -182,7 +182,7 @@ const props = defineProps({
   viewContext: { type: String, default: '' },
   initialQuestion: { type: String, default: '' },
 })
-const emit = defineEmits(['update:open', 'latest-viz'])
+const emit = defineEmits(['update:open', 'latest-viz', 'latest-vizs'])
 
 const chatStore = useChatStore()
 const draft = ref('')
@@ -274,16 +274,22 @@ watch(
   }
 )
 
-// Emit the latest viz payload (if any) so a sibling AiVizPanel can render it.
+// Emit the latest viz payload(s) so a sibling AiVizPanel can render them.
 // We forward a fresh reference each time so watchers on the parent always fire.
-const latestViz = computed(() => {
+// Synthesis answers may carry multiple vizzes — we emit both the full array
+// (`latest-vizs`) and the latest single viz (`latest-viz`) for back-compat.
+const latestVizs = computed(() => {
   for (let i = chatStore.messages.length - 1; i >= 0; i--) {
     const m = chatStore.messages[i]
-    if (m.role === 'assistant' && m.viz) return m.viz
+    if (m.role === 'assistant' && Array.isArray(m.vizs) && m.vizs.length) return m.vizs
+    if (m.role === 'assistant' && m.viz) return [m.viz]
   }
   return null
 })
-watch(latestViz, (v) => emit('latest-viz', v), { deep: false })
+watch(latestVizs, (v) => {
+  emit('latest-vizs', v)
+  emit('latest-viz', v ? v[v.length - 1] : null)
+}, { deep: false })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEscape)

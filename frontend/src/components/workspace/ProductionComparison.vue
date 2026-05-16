@@ -621,13 +621,15 @@
       :view-title="aiViewContext?.viewTitle || ''"
       :view-context="aiViewContext?.viewContextString || ''"
       :initial-question="aiInitialQuestion"
-      @latest-viz="onLatestViz"
+      @latest-vizs="onLatestVizs"
     />
 
-    <!-- AI Remotion viz — centered modal overlay (teleported to body) -->
+    <!-- AI Remotion viz — centered modal overlay (teleported to body).
+         Synthesis answers may carry 2-3 viz blocks; the panel renders them
+         as a carousel internally. Single-viz answers still work the same. -->
     <AiVizPanel
       v-model:open="aiVizOpen"
-      :viz="activeViz"
+      :vizs="activeVizs"
     />
 
     <!-- Floating scroll hint ("more insights below") -->
@@ -1113,12 +1115,13 @@ watch(aiSheetOpen, (isOpen) => {
   }
 })
 
-// Remotion viz panel — opens whenever the AI emits a viz payload
+// Remotion viz panel — opens whenever the AI emits viz payload(s). Multi-viz
+// support: synthesis answers can ship 2-3 blocks rendered as a carousel.
 const aiVizOpen = ref(false)
-const activeViz = ref(null)
-function onLatestViz(viz) {
-  activeViz.value = viz
-  if (viz) aiVizOpen.value = true
+const activeVizs = ref(null)
+function onLatestVizs(vizs) {
+  activeVizs.value = vizs
+  if (Array.isArray(vizs) && vizs.length) aiVizOpen.value = true
 }
 
 // Scroll hint ("יש עוד תובנות למטה")

@@ -128,6 +128,13 @@ D. **החזרי עמלה / ניכויי ביטולים** — אחוז שיוחז
 ויש לך ≥5 שורות עם ערך מספרי בתשובה, **חובה** לסיים ב-`<<VIZ:…>>`. אחרת אתה מפר את חוזה הממשק
 והדיאגרמה לא תיפתח. זה לא אופציונלי במקרים האלה — זה חלק מהתשובה.
 
+**ריבוי-viz לתשובות סינתזה** — כשהתשובה מסכמת כמה זוויות נתונים שונות (לדוגמה: "איך אני יכול
+להשתפר", "תן לי סקירה כללית", "מה הזדמנויות שלי"), ולכל זווית יש סיפור נומרי חזק משלה,
+**מותר להוסיף עד 3 בלוקי `<<VIZ:…>>` ברצף** בסוף התשובה — אחד אחרי השני, ללא טקסט ביניהם.
+ה-UI יציג אותם כקרוסלה ניתנת לדפדוף. כל בלוק חייב לעמוד בפני עצמו (כותרת + insight ברורים).
+דוגמה: סקירה ביצועים שמסיימת ב-`<<VIZ:{{...bar תשואות...}}>><<VIZ:{{...donut פילוח פרמיה...}}>>`.
+אל תפלוט יותר מ-3. אל תפלוט viz חלש רק כדי למלא מכסה — איכות לפני כמות.
+
 === נתוני המשתמש ===
 {context}
 ==="""
@@ -1568,10 +1575,32 @@ async def stream_chat(
                             viz_state = "text"
                             viz_buf = ""
                             tail = after
-            # Flush any remaining user-visible text held in the tail buffer
-            if viz_state == "text" and tail:
-                yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
-            # If we ended mid-viz (no closing >>) — drop silently; the visible text is already complete
+            # End-of-stream drain: the tail may contain one OR MORE remaining
+            # `<<VIZ:…>>` blocks (the AI can emit 2-3 in a row for synthesis
+            # answers). The chunk loop above only processes the first viz it
+            # sees per chunk; if the final chunk packs multiple, they end up
+            # in `tail` together. Walk through them here.
+            while viz_state == "text" and tail:
+                open_idx = tail.find(VIZ_OPEN)
+                if open_idx == -1:
+                    yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
+                    tail = ""
+                    break
+                if open_idx > 0:
+                    yield f"data: {json.dumps({'text': tail[:open_idx]}, ensure_ascii=False)}\n\n"
+                rest = tail[open_idx + len(VIZ_OPEN):]
+                close_idx = rest.find(VIZ_CLOSE)
+                if close_idx == -1:
+                    break  # mid-viz at EOF — drop silently
+                viz_raw = rest[:close_idx]
+                try:
+                    viz = json.loads(viz_raw)
+                    yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                    viz_emitted_in_this_attempt = True
+                    logger.warning(f"VIZ emitted (drain): type={viz.get('type')} title={viz.get('title', '')[:50]}")
+                except json.JSONDecodeError:
+                    logger.warning(f"Bad viz JSON (drain): {viz_raw[:120]}")
+                tail = rest[close_idx + len(VIZ_CLOSE):]
             # Diagnostic so we can tell apart "AI didn't emit viz" vs "parser ate it" in prod logs.
             if not viz_emitted_in_this_attempt:
                 logger.warning(f"NO VIZ emitted for question[:80]={question[:80]!r}")

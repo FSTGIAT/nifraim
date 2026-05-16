@@ -244,7 +244,14 @@ export const useChatStore = defineStore('chat', () => {
               messages.value[assistantIdx].content += data.text
             }
             if (data.viz) {
-              messages.value[assistantIdx].viz = data.viz
+              // Backend may emit 2-3 viz blocks per synthesis answer. Push
+              // each into an array so the panel can render them as a
+              // carousel. Keep `viz` set to the most recent one so any
+              // older consumers still get a value.
+              const msg = messages.value[assistantIdx]
+              if (!Array.isArray(msg.vizs)) msg.vizs = []
+              msg.vizs.push(data.viz)
+              msg.viz = data.viz
             }
             if (data.done) break
           } catch {
