@@ -176,12 +176,12 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
 import UploadProgressCard from './UploadProgressCard.vue'
 
-const emit = defineEmits(['navigate-tab'])
+const emit = defineEmits(['navigate-tab', 'latest-viz'])
 
 const chatStore = useChatStore()
 const input = ref('')
@@ -227,6 +227,19 @@ onMounted(() => {
     chatStore.loadDocuments()
   }
 })
+
+// Mirror AiConversationSheet: surface the most recent viz payload (if any)
+// so the parent view can mount an AiVizPanel as a sibling. Without this
+// emit, the SSE-delivered viz lives only on the assistant message and
+// has no path to actually render anywhere.
+const latestViz = computed(() => {
+  for (let i = chatStore.messages.length - 1; i >= 0; i--) {
+    const m = chatStore.messages[i]
+    if (m.role === 'assistant' && m.viz) return m.viz
+  }
+  return null
+})
+watch(latestViz, (v) => emit('latest-viz', v), { deep: false })
 
 const suggestions = [
   'מה סטטוס ההתאמות שלי?',

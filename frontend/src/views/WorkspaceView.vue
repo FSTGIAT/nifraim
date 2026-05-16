@@ -69,7 +69,8 @@
             :view-mode="viewMode"
             @select-card="onCardSelect"
           />
-          <AiChatWidget @navigate-tab="onCardSelect" />
+          <AiChatWidget @navigate-tab="onCardSelect" @latest-viz="onLatestViz" />
+          <AiVizPanel v-model:open="aiVizOpen" :viz="activeViz" />
         </div>
       </div>
 
@@ -194,6 +195,7 @@ import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
+import AiVizPanel from '../components/workspace/AiVizPanel.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -201,6 +203,16 @@ const comparisonStore = useComparisonStore()
 const productionStore = useProductionStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
+
+// AI viz modal — opens whenever the top-level AiChatWidget surfaces a viz
+// payload (bar / donut / kpi / fund-track). Mirrors the wiring used inside
+// ProductionComparison so the diagram works from the home-page chat too.
+const aiVizOpen = ref(false)
+const activeViz = ref(null)
+function onLatestViz(viz) {
+  activeViz.value = viz
+  if (viz) aiVizOpen.value = true
+}
 
 // Tab order for navigation
 const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal', 'portal-automation']
