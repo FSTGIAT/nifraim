@@ -930,7 +930,17 @@ async def compare_productions(
     )
     user_rates = list(rates_q.scalars().all())
 
-    def _pick_rate(company_name: str) -> float:
+    def _pick_rate(company_name: str, product_name: str | None = None) -> float:
+        """Find the most-specific rate for (company, product). The user
+        explicitly asked: insurance commissions must use the PER-PRODUCT
+        rate from the agreement (השתלות 7.2%, חיים 11%, etc.), not one
+        generic company-level rate.
+
+        Priority:
+          1. Same company AND product overlaps in either direction
+          2. Same company, product=NULL (company-level default)
+          3. Same company, any product (last resort)
+        """
         if not company_name or not user_rates:
             return 0.0
         target = company_name.strip().lstrip("ה").lower()
@@ -943,13 +953,43 @@ async def compare_productions(
         ]
         if not candidates:
             return 0.0
-        # Prefer rate_kind in (total, single) — single number per company
-        prio = [r for r in candidates if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+
+        # Step 1: product match — substring either way (production may use
+        # short names, commission_rates may have long product names)
+        prod_lc = (product_name or "").strip().lower()
+        if prod_lc:
+            product_matches = [
+                r for r in candidates
+                if r.product and (
+                    prod_lc in r.product.lower() or r.product.lower() in prod_lc
+                )
+            ]
+            if product_matches:
+                # Prefer total/single kind among the product matches
+                prio = [r for r in product_matches
+                        if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+                chosen = prio[0] if prio else product_matches[0]
+                return float(chosen.rate)
+
+        # Step 2: company-level default (product is NULL)
+        defaults = [r for r in candidates if not r.product]
+        if defaults:
+            prio = [r for r in defaults
+                    if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+            chosen = prio[0] if prio else defaults[0]
+            return float(chosen.rate)
+
+        # Step 3: any company rate (least specific — only when nothing else)
+        prio = [r for r in candidates
+                if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
         chosen = prio[0] if prio else candidates[0]
         return float(chosen.rate)
 
     # Walk current production records to compute expected commission per
-    # product (then aggregate by company).
+    # product (then aggregate by company). For insurance the user
+    # explicitly wants product-specific rates (השתלות 7.2%, חיים 11%, etc.)
+    # — so we pull both product and product_type, and feed the more
+    # specific name to _pick_rate first.
     expected_by_company: dict[str, dict] = {}
     expected_total = 0.0
     cur_prod_q = await db.execute(
@@ -957,18 +997,20 @@ async def compare_productions(
             ClientRecord.id_number,
             ClientRecord.receiving_company,
             ClientRecord.product_type,
+            ClientRecord.product,
             ClientRecord.total_premium,
             ClientRecord.accumulation,
         ).where(ClientRecord.upload_id == current_id, ClientRecord.user_id == user.id)
     )
-    for id_number, company, product_type, premium, accum in cur_prod_q.all():
+    for id_number, company, product_type, product_name, premium, accum in cur_prod_q.all():
         if not company:
-            continue
-        rate = _pick_rate(company)
-        if rate <= 0:
             continue
         cat = _classify_product_type(product_type) or ""
         is_gemel = cat == "gemel_hishtalmut"
+        # Use the specific product name first, fall back to product_type.
+        rate = _pick_rate(company, product_name) or _pick_rate(company, product_type)
+        if rate <= 0:
+            continue
         if is_gemel:
             base = float(accum or 0)
             if base <= 0:
