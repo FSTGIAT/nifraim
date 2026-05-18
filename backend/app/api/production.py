@@ -617,6 +617,37 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
     for company, uploads in by_company.items():
         if not uploads:
             continue
+
+        # ── Period-aware selection (new) ─────────────────────────────
+        # When the caller supplied production periods, pick the upload
+        # whose period_month MATCHES that period (not just "latest").
+        # Otherwise an APR production paired with a Mor MAR commission
+        # file would mistakenly pull Mor MAR into "current" because it's
+        # the latest Mor upload — see the ₪34,402 QA bug.
+        if current_period_month is not None:
+            cur_match = next(
+                (u for u in uploads if u.period_month == current_period_month), None
+            )
+            if cur_match is not None:
+                current_upload_ids.append(cur_match.id)
+            if previous_period_month is not None:
+                prev_match = next(
+                    (u for u in uploads
+                     if u.period_month == previous_period_month
+                     and u.id != (cur_match.id if cur_match else None)),
+                    None,
+                )
+                if prev_match is not None:
+                    previous_upload_ids.append(prev_match.id)
+            # NULL period_month uploads fall through to the legacy logic
+            # below if and only if the period match produced nothing AND
+            # the file has no period at all (Harel non-month-named files).
+            if cur_match is not None or any(u.period_month is not None for u in uploads):
+                continue
+            # else: no period-matching upload exists for this company AND
+            # all of its uploads have period=NULL → use legacy pairing.
+
+        # ── Legacy pairing (fallback when no production period) ──────
         current_upload_ids.append(uploads[0].id)
         if len(uploads) < 2:
             continue
