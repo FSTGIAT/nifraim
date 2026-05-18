@@ -855,10 +855,15 @@ async def compare_productions(
     accum_positive = sum(1 for c in changed_clients if c["accumulation_diff"] > 0.01)
     accum_negative = sum(1 for c in changed_clients if c["accumulation_diff"] < -0.01)
 
-    # Commission totals — scoped to production clients only (not all commission file clients)
-    commission_total = round(sum(current_comm.get(cid, 0) for cid in current_ids), 2)
+    # Commission totals — sum across EVERY commission record, not only IDs
+    # in the current production file. Clients can earn commissions even if
+    # they're no longer in the active production export (residual payments
+    # on policies the agent placed years ago). The previous "scoped to
+    # production clients only" semantics under-reported the real total by
+    # ~4× (₪37K vs ₪158K).
+    commission_total = round(sum(current_comm.values()), 2)
     if has_previous_commission:
-        commission_prev_total = round(sum(previous_comm.get(cid, 0) for cid in previous_ids), 2)
+        commission_prev_total = round(sum(previous_comm.values()), 2)
         commission_diff_total = round(commission_total - commission_prev_total, 2)
     else:
         commission_prev_total = None
@@ -883,10 +888,13 @@ async def compare_productions(
                 # Unknown category but we have some commission data — count conservatively
                 commission_zero_count += 1
 
-    # Commission breakdown by company (scoped to production clients)
+    # Commission breakdown by company — aggregate EVERY commission record,
+    # not only those for current-production IDs. Matches the total above
+    # and gives the true per-company picture (Phoenix ₪97K leader, not the
+    # ₪1.4K that scoping-to-production showed).
     company_totals = {}  # company → {total, clients}
-    for cid in current_ids:
-        for entry in current_comm_detail.get(cid, []):
+    for cid, entries in current_comm_detail.items():
+        for entry in entries:
             co = entry["company"]
             if co not in company_totals:
                 company_totals[co] = {"total": 0.0, "clients": set()}
