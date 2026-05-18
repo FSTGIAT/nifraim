@@ -955,7 +955,10 @@ async def compare_productions(
             return 0.0
 
         # Step 1: product match — substring either way (production may use
-        # short names, commission_rates may have long product names)
+        # short names, commission_rates may have long product names).
+        # CRITICAL — per commission_rate_summing.md memory: when a product
+        # has BOTH `book` and `reward` components, the final נפרעים rate is
+        # their SUM (Phoenix/Harel agreements). Don't pick just one.
         prod_lc = (product_name or "").strip().lower()
         if prod_lc:
             product_matches = [
@@ -965,11 +968,28 @@ async def compare_productions(
                 )
             ]
             if product_matches:
-                # Prefer total/single kind among the product matches
-                prio = [r for r in product_matches
-                        if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-                chosen = prio[0] if prio else product_matches[0]
-                return float(chosen.rate)
+                # If a `total` row exists (literally printed in the doc), use it.
+                totals = [r for r in product_matches
+                          if (getattr(r, "rate_kind", None) or "").lower() == "total"]
+                if totals:
+                    return float(totals[0].rate)
+                # Else: sum book + reward when both exist for this product.
+                book = next((r for r in product_matches
+                             if (getattr(r, "rate_kind", None) or "").lower() == "book"), None)
+                reward = next((r for r in product_matches
+                               if (getattr(r, "rate_kind", None) or "").lower() == "reward"), None)
+                if book and reward:
+                    return float(book.rate) + float(reward.rate)
+                if book:
+                    return float(book.rate)
+                if reward:
+                    return float(reward.rate)
+                # Fall through: single/other kind
+                singles = [r for r in product_matches
+                           if (getattr(r, "rate_kind", None) or "single").lower() == "single"]
+                if singles:
+                    return float(singles[0].rate)
+                return float(product_matches[0].rate)
 
         # Step 2: company-level default (product is NULL)
         defaults = [r for r in candidates if not r.product]
