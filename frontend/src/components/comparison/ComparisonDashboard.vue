@@ -1,9 +1,13 @@
 <template>
   <div class="bi-dashboard">
-    <!-- Category + Company Header -->
-    <div v-if="props.categoryLabel || props.companySource" class="comparison-header-bar">
+    <!-- Category + Company + Period Header -->
+    <div v-if="props.categoryLabel || props.companySource || periodLabel" class="comparison-header-bar">
       <span v-if="props.companySource" class="header-company">{{ props.companySource }}</span>
       <span v-if="props.categoryLabel" class="header-category">{{ props.categoryLabel }}</span>
+      <span v-if="periodLabel" class="header-period" :title="`קבצי נפרעים תואמי תקופה: ${props.periodFilesCount}`">
+        תקופה: {{ periodLabel }}
+        <span v-if="props.periodFilesExcluded" class="header-period-warn">⚠ {{ props.periodFilesExcluded }} מחוץ לתקופה</span>
+      </span>
     </div>
 
     <!-- AI insight card (התמונה הכוללת) -->
@@ -164,7 +168,7 @@
         </div>
         <div class="kpi-data">
           <div class="kpi-value ltr-number">{{ formatAmount(totalCommission) }}</div>
-          <div class="kpi-label">סה"כ עמלה</div>
+          <div class="kpi-label">עמלות שהתקבלו{{ periodLabel ? ` · ${periodLabel}` : '' }}</div>
         </div>
       </div>
       <div class="kpi-card kpi-cyan">
@@ -372,6 +376,25 @@ const props = defineProps({
   categoryLabel: { type: String, default: '' },
   companySource: { type: String, default: '' },
   companySources: { type: Array, default: () => [] },
+  // Period of the production file driving this comparison ("2026-04-01").
+  // When set, the period chip displays it next to category, and the
+  // "עמלות שהתקבלו" KPI labels itself with the period — so the user can
+  // see at a glance "this is April's commissions, not lifetime totals".
+  periodMonth: { type: String, default: '' },
+  periodFilesCount: { type: Number, default: 0 },
+  periodFilesExcluded: { type: Number, default: 0 },
+})
+
+// "2026-04-01" → "אפריל 2026" — Hebrew month label used in the period chip
+// and the "עמלות שהתקבלו" KPI subtitle.
+const _HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+const periodLabel = computed(() => {
+  if (!props.periodMonth) return ''
+  const m = /^(\d{4})-(\d{2})/.exec(props.periodMonth)
+  if (!m) return ''
+  const monthIdx = parseInt(m[2], 10) - 1
+  if (monthIdx < 0 || monthIdx > 11) return ''
+  return `${_HE_MONTHS[monthIdx]} ${m[1]}`
 })
 
 const emit = defineEmits(['drill-customer'])
@@ -1248,6 +1271,26 @@ function formatCompact(val) {
   background: rgba(99, 102, 241, 0.08);
   padding: 3px 10px;
   border-radius: 12px;
+}
+
+.header-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #057a55;
+  background: rgba(5, 122, 85, 0.08);
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+.header-period-warn {
+  font-size: 11px;
+  font-weight: 500;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.18);
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 
 /* ── Hero Card ── */

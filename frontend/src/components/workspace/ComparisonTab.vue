@@ -112,6 +112,9 @@
             :categoryLabel="comparisonStore.result?.commission_category_label || ''"
             :companySource="comparisonStore.result?.commission_company_source || ''"
             :companySources="comparisonStore.result?.commission_company_sources || []"
+            :periodMonth="comparisonStore.result?.period_month || productionStore.currentFile?.period_month || ''"
+            :periodFilesCount="comparisonStore.result?.period_files_count || 0"
+            :periodFilesExcluded="comparisonStore.result?.period_files_excluded || 0"
           />
         </div>
       </Transition>

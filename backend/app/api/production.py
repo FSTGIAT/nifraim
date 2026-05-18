@@ -173,6 +173,7 @@ async def upload_production(
         company_source=upload.company_source,
         record_count=upload.record_count,
         uploaded_at=upload.uploaded_at,
+        period_month=upload.period_month,
         companies=companies,
     )
 
@@ -196,6 +197,7 @@ async def get_current_production(
         company_source=upload.company_source,
         record_count=upload.record_count,
         uploaded_at=upload.uploaded_at,
+        period_month=upload.period_month,
         companies=companies,
     )
 
@@ -541,11 +543,19 @@ class CompareRequest(BaseModel):
     previous_upload_id: str
 
 
-async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividing_date):
+async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividing_date, current_period_month=None, previous_period_month=None):
     """Build current vs previous {id_number: total_commission} grouped BY COMPANY.
 
-    Pairing strategy (dividing_date kept for API compat but not used — batch
-    upload timestamps made date-based splits unreliable):
+    Period-aware pairing (added 2026-05):
+      - current_period_month / previous_period_month: when supplied, ONLY
+        commission uploads whose period_month matches are considered as
+        current/previous candidates. This is the period filter the user
+        explicitly asked for ("if production is APR, commission files
+        should also be APR").
+      - Uploads with NULL period_month are excluded from period-strict
+        selection (they fall back into the legacy filename-based pairing).
+
+    Pairing strategy when period is unknown:
 
     For each distinct company_source (fallback: filename):
       - current  = the latest upload
@@ -570,6 +580,18 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
         ).order_by(desc(FileUpload.uploaded_at))
     )
     all_uploads = all_result.scalars().all()
+
+    # When the caller supplied production periods, restrict candidate pools
+    # so "current" can only come from current_period_month and "previous"
+    # only from previous_period_month. Files with NULL period_month always
+    # remain candidates (legacy uploads pre-period-detection).
+    if current_period_month is not None:
+        all_uploads = [
+            u for u in all_uploads
+            if u.period_month is None
+            or u.period_month == current_period_month
+            or (previous_period_month and u.period_month == previous_period_month)
+        ]
 
     # Pair commission files BY COMPANY (not filename, not upload date).
     # For each company: current = latest upload; previous = the next-most-recent
@@ -740,8 +762,12 @@ async def compare_productions(
     # For each filename: current = latest overall, previous = latest before prev date
     # Files not re-uploaded → same data both sides → diff = 0 (honest)
     prev_date = previous_file.uploaded_at if previous_file else None
+    cur_period = getattr(current_file, "period_month", None)
+    prev_period = getattr(previous_file, "period_month", None) if previous_file else None
     current_comm, previous_comm, has_commission_data, has_previous_commission, current_comm_detail, covered_categories = await _build_commission_lookups(
-        db, user.id, prev_date
+        db, user.id, prev_date,
+        current_period_month=cur_period,
+        previous_period_month=prev_period,
     )
 
     current_ids = set(current.keys())

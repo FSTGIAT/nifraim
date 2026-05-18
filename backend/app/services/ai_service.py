@@ -281,7 +281,12 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     - "רק בנפרעים" = only_commission customers
     - Total shown = matched + unpaid + only_commission (excludes only_prod with no accumulation)
     """
-    # Find commission uploads, deduplicate by filename (keep latest)
+    # Find commission uploads, deduplicate by filename (keep latest).
+    # CRITICAL: filter to production's period_month — agents care about
+    # "this month's commissions vs production", not the cumulative total
+    # across every commission file ever uploaded. Files whose period_month
+    # doesn't match (or is NULL — undetectable) are excluded; their count
+    # is surfaced separately so the AI can mention it.
     comm_uploads_result = await db.execute(
         select(FileUpload)
         .where(
@@ -293,6 +298,20 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     all_comm_uploads = comm_uploads_result.scalars().all()
     if not all_comm_uploads:
         return None
+
+    prod_period = getattr(prod_upload, "period_month", None)
+    excluded_no_period: list[str] = []
+    excluded_wrong_period: list[tuple[str, str]] = []
+    if prod_period is not None:
+        period_matched: list = []
+        for u in all_comm_uploads:
+            if u.period_month is None:
+                excluded_no_period.append(u.filename)
+            elif u.period_month == prod_period:
+                period_matched.append(u)
+            else:
+                excluded_wrong_period.append((u.filename, u.period_month.isoformat()))
+        all_comm_uploads = period_matched
 
     # Deduplicate so each commission *company* appears once, using its latest
     # upload. Falling back to filename when company_source is blank preserves
@@ -415,6 +434,26 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         return premium * rate_frac
 
     comparison_parts = []
+    # Period header — tells the AI exactly which month it's reporting on
+    # (and surfaces excluded files so it can prompt the user to re-upload).
+    if prod_period is not None:
+        comparison_parts.append(
+            f"=== תקופת השוואה: {prod_period.isoformat()} (חודש הקובץ הנוכחי של הפרודוקציה) ==="
+        )
+        comparison_parts.append(
+            f"קבצי נפרעים תואמי תקופה: {len(comm_uploads)}"
+        )
+        if excluded_wrong_period:
+            sample = ", ".join(f"{fn} ({p})" for fn, p in excluded_wrong_period[:4])
+            comparison_parts.append(
+                f"קבצי נפרעים מתקופות אחרות שנמצאו במערכת ולא נכללו: {len(excluded_wrong_period)} ({sample}…)"
+            )
+        if excluded_no_period:
+            sample = ", ".join(excluded_no_period[:4])
+            comparison_parts.append(
+                f"קבצי נפרעים ללא תקופה מזוהה שלא נכללו: {len(excluded_no_period)} ({sample}…). הצע למשתמש להעלות אותם שוב."
+            )
+        comparison_parts.append("")
     # Cross-company aggregation — the per-company blocks below are organized
     # per commission file, but users frequently ask "across all companies,
     # who's the biggest unpaid". Without a pre-aggregated block the AI either

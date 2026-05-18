@@ -143,18 +143,35 @@ def _first_set(*values):
 def _get_commission(record: dict):
     """Get the commission amount from a record, handling different company formats.
 
-    Priority: commission_before_fee → commission_paid → commission_expected → actual_amount
-    - commission_before_fee: Mor (pre-fee), Hachshara (ex-VAT)
-    - commission_paid: Phoenix, Menora Financial/Insurance, Altshuler, Hachshara (with VAT)
-    - commission_expected: Menora Health (premium for commission)
-    - actual_amount: Excellence agent_tracking (actual transfer)
+    Priority: commission_paid → commission_before_fee → actual_amount
+    - commission_paid: Phoenix, Menora, Altshuler, Hachshara (with VAT) — the
+      net amount that actually hit the agent's account.
+    - commission_before_fee: Mor (pre-fee), Hachshara (ex-VAT), Harel
+      (gross — fee deducted afterwards). Used when paid is missing.
+    - actual_amount: Excellence agent_tracking (actual transfer).
+
+    NEVER falls back to commission_expected. That column held nonsense in
+    Menora ("פרמיה לעמלה" was misclassified as commission, sum=₪163,447) and
+    is a computed estimate elsewhere — never an actual paid figure. Callers
+    that explicitly want expected/estimated commission must read the
+    column directly.
     """
     return _first_set(
-        record.get("commission_before_fee"),
         record.get("commission_paid"),
-        record.get("commission_expected"),
+        record.get("commission_before_fee"),
         record.get("actual_amount"),
     )
+
+
+def agent_net_commission(record: dict) -> float:
+    """The amount that actually hit the agent's bank account this period.
+    Always a float (0 when no data). Used by every aggregator that reports
+    'paid commission' to the user."""
+    v = _get_commission(record)
+    try:
+        return float(v) if v is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _get_balance(record: dict):

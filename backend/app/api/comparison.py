@@ -380,6 +380,12 @@ async def compare_with_production(
     print(f"COMPARISON RESULT: {comparison['summary']}", flush=True)
     comparison["commission_company_source"] = company_sources[0] if len(company_sources) == 1 else None
     comparison["commission_company_sources"] = sorted(set(company_sources))
+    # Period metadata so the dashboard's KPI header can label the
+    # "עמלות שהתקבלו" amount with the production month. The frontend
+    # falls back to productionStore.currentFile.period_month if missing.
+    if prod_upload.period_month is not None:
+        comparison["period_month"] = prod_upload.period_month.isoformat()
+        comparison["period_files_count"] = len(commission_files)
 
     # Sync debts from comparison results
     detected_category = comparison.get("commission_category", "gemel_hishtalmut")

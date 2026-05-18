@@ -146,7 +146,11 @@ MENORA_COLUMNS = {
     "סוכן-סכום עמלה": "commission_paid",
     # Health variant (מנורה בריאות)
     "פרמיה ששולמה": "total_premium",
-    "פרמיה לעמלה": "commission_expected",
+    # "פרמיה לעמלה" was previously mapped to commission_expected — that's WRONG.
+    # It's a PREMIUM column (sum=₪163,447 for 815 rows in admin's file) that
+    # was masquerading as expected commission and polluting every downstream
+    # aggregator. Menora's real commission is "סכום עמלה" → commission_paid
+    # (mapped below). Dropping this mapping; the column is informational only.
     # 2026 layout (used by "דו'ח נפרעים לסוכן")
     "סכום עמלה": "commission_paid",
 }

@@ -81,16 +81,42 @@ _RE_NUM_MONTH = _re_month_helper.compile(
 def detect_period_month(filename: str | None, records: list[dict] | None = None):
     """Best-effort guess of which month this file describes.
 
-    Priority:
-      1. Hebrew month name in filename ("פרודוקציה אפריל 26").
-      2. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
-      3. Max sign_date / data_date across the records, rolled back one month
-         (production for April is usually data from late March).
-      4. None — caller can fall back to uploaded_at.
+    Priority (data-dates-first — chosen by user 2026-05):
+      1. Records' actual data dates (max of sign_date / processing_date /
+         data_date / payment_date / transfer_date), rolled to month start.
+         This is the most semantically correct — if a file's data is from
+         April, it's an April file regardless of what the filename says.
+      2. Hebrew month name in filename ("פרודוקציה אפריל 26").
+      3. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
+      4. None — caller falls back to uploaded_at (least reliable; a file
+         uploaded in May could describe March data).
 
     Returns a `date` object (first of the month) or None.
     """
     from datetime import date as _date
+    if records:
+        # Date columns on ClientRecord (per models/record.py):
+        #   - sign_date, transfer_date, rights_assignment_date — Date
+        #   - processing_date — String (parse if it looks like a date)
+        dates: list[_date] = []
+        for r in records:
+            for k in ("sign_date", "transfer_date", "rights_assignment_date"):
+                v = r.get(k)
+                if hasattr(v, "year") and hasattr(v, "month"):
+                    dates.append(_date(v.year, v.month, 1))
+            # processing_date is stored as a string — try common formats.
+            pd_raw = r.get("processing_date")
+            if isinstance(pd_raw, str) and pd_raw:
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+                    try:
+                        from datetime import datetime as _dt
+                        d = _dt.strptime(pd_raw[:10], fmt).date()
+                        dates.append(_date(d.year, d.month, 1))
+                        break
+                    except ValueError:
+                        continue
+        if dates:
+            return max(dates)
     if filename:
         m = _RE_MONTH_YEAR.search(filename)
         if m:
@@ -112,15 +138,6 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None)
                 return _date(year, month, 1)
             except ValueError:
                 pass
-    if records:
-        dates: list[_date] = []
-        for r in records:
-            for k in ("sign_date", "data_date", "processing_date"):
-                v = r.get(k)
-                if hasattr(v, "year") and hasattr(v, "month"):
-                    dates.append(_date(v.year, v.month, 1))
-        if dates:
-            return max(dates)
     return None
 
 

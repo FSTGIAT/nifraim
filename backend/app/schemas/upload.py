@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 
 
@@ -12,6 +12,10 @@ class UploadOut(BaseModel):
     file_category: str | None = None
     has_file: bool = False  # original bytes available via /uploads/{id}/file
     uploaded_at: datetime
+    # First-of-month for the period this upload describes (detected from
+    # data dates → filename → upload_at). Drives commission-file period
+    # matching in the comparison endpoints.
+    period_month: date | None = None
 
     model_config = {"from_attributes": True}
 
@@ -24,6 +28,7 @@ class ProductionFileInfo(BaseModel):
     record_count: int
     uploaded_at: datetime
     companies: list[str] = []
+    period_month: date | None = None
 
     model_config = {"from_attributes": True}
 
