@@ -602,31 +602,48 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
     from collections import defaultdict
 
     upload_meta = {}  # upload_id → {company, filename}
-    # Group by FILENAME, not company. Real-world data shows companies like
-    # Phoenix have multiple commission files per period covering different
-    # product lines ("הפניקס גמל", "הפניקס בריאות", "הפניקס ביטוח",
-    # "הפניקס עמלות"). Grouping by company picked one and dropped the rest
-    # — admin's Phoenix total appeared as ₪14K when actual was ₪97K (the
-    # 4-file gap). Each filename = its own data stream.
-    by_filename = defaultdict(list)  # filename → [uploads desc by date]
+    # Step 1: dedupe to LATEST upload per (company, filename) — handles
+    # re-uploads of the same period (corrections). Each filename is a
+    # separate data stream (Phoenix has 4 files for גמל/בריאות/ביטוח/עמלות,
+    # we keep all 4).
+    by_filename_latest = {}  # filename → latest upload
     for u in all_uploads:
+        if u.filename not in by_filename_latest:
+            by_filename_latest[u.filename] = u
+            company_key = u.company_source or u.filename
+            upload_meta[u.id] = {"company": company_key, "filename": u.filename}
+
+    # Step 2: PER COMPANY, pick only files from the LATEST period for that
+    # company. This is the right semantic for "this month's commission" —
+    # mixing Sep 2025 + Jan 2026 + Mar 2026 files all together gave a
+    # lifetime ₪158K total when the user expected ~₪65K (latest cycle).
+    # Each company's "latest period" is the max(period_month) among its
+    # uploads. Files with NULL period_month are kept as legacy fallback.
+    by_company_period: dict[str, list] = defaultdict(list)
+    for u in by_filename_latest.values():
         company_key = u.company_source or u.filename
-        upload_meta[u.id] = {"company": company_key, "filename": u.filename}
-        by_filename[u.filename].append(u)
+        by_company_period[company_key].append(u)
 
     current_upload_ids = []
     previous_upload_ids = []
-    for filename, uploads in by_filename.items():
+    for company, uploads in by_company_period.items():
         if not uploads:
             continue
-
-        # Latest upload of THIS FILENAME as "current". Older uploads of
-        # the same filename are re-uploads/corrections — second-latest
-        # becomes "previous" for diff purposes.
-        current_upload_ids.append(uploads[0].id)
-        if len(uploads) < 2:
-            continue
-        previous_upload_ids.append(uploads[1].id)
+        # Find the latest period_month for this company. Uploads with
+        # period_month=None sort last so a dated upload always wins.
+        with_period = [u for u in uploads if u.period_month is not None]
+        if with_period:
+            latest_period = max(u.period_month for u in with_period)
+            current_uploads = [u for u in uploads if u.period_month == latest_period]
+            # Previous = files from the next-most-recent period for this company
+            prior_periods = sorted({u.period_month for u in with_period if u.period_month < latest_period}, reverse=True)
+            if prior_periods:
+                prev_period = prior_periods[0]
+                previous_upload_ids.extend(u.id for u in uploads if u.period_month == prev_period)
+        else:
+            # No dated uploads → fall back to latest upload (legacy path)
+            current_uploads = [uploads[0]]
+        current_upload_ids.extend(u.id for u in current_uploads)
 
     has_previous = len(previous_upload_ids) > 0
     all_needed_ids = list(set(current_upload_ids + previous_upload_ids))
