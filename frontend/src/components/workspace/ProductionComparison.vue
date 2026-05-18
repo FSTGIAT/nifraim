@@ -321,8 +321,23 @@
               </div>
             </div>
             <div class="comm-panel-total">
-              <span class="comm-total-label">סה"כ עמלה</span>
+              <span class="comm-total-label">עמלות שהתקבלו (מקבצי נפרעים)</span>
               <span class="comm-total-value ltr-number">{{ formatAmount(comparisonResult.summary.commission_total) }}</span>
+              <!-- Expected commission per uploaded agreement rates (independent
+                   of נפרעים files). Shows the agent what they SHOULD earn this
+                   month based on production accumulation/premium × agreement
+                   rates. Gap with actual = potentially unpaid/late. -->
+              <template v-if="comparisonResult.summary.expected_commission_total > 0">
+                <span class="comm-expected-label">עמלות צפויות לפי ההסכמים (פרודוקציה × שיעורים)</span>
+                <span class="comm-expected-value ltr-number">{{ formatAmount(comparisonResult.summary.expected_commission_total) }}</span>
+                <span
+                  v-if="comparisonResult.summary.commission_total > 0"
+                  class="comm-gap-label"
+                  :class="{ 'comm-gap-neg': (comparisonResult.summary.expected_commission_total - comparisonResult.summary.commission_total) > 0 }"
+                >
+                  פער: {{ formatAmount(comparisonResult.summary.expected_commission_total - comparisonResult.summary.commission_total) }}
+                </span>
+              </template>
             </div>
           </div>
 
@@ -2540,6 +2555,29 @@ function formatVal(val) {
   font-weight: 800;
   color: var(--primary);
   line-height: 1;
+}
+.comm-expected-label {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(245, 124, 0, 0.22);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.comm-expected-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f766e;
+  line-height: 1;
+}
+.comm-gap-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.comm-gap-label.comm-gap-neg {
+  color: #b45309;
 }
 
 .comm-insights-grid {

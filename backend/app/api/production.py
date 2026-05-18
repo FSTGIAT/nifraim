@@ -918,6 +918,81 @@ async def compare_productions(
         if data["total"] != 0
     ], key=lambda x: -abs(x["total"]))
 
+    # ── EXPECTED COMMISSION (from production × agreement rates) ──────────
+    # For gemel/savings: monthly expected = accumulation × annual_rate / 12
+    # For insurance:     monthly expected = premium × rate
+    # Independent of whether נפרעים files exist — answers "how much SHOULD
+    # I earn this month per my agreements?". User asked: "for גמל,
+    # מתוך הצבירה הוא צריך לחשב את הנפרעים הצפויים לפי טבלת העמלות".
+    from app.models.commission_rate import CommissionRate
+    rates_q = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )
+    user_rates = list(rates_q.scalars().all())
+
+    def _pick_rate(company_name: str) -> float:
+        if not company_name or not user_rates:
+            return 0.0
+        target = company_name.strip().lstrip("ה").lower()
+        candidates = [
+            r for r in user_rates
+            if r.company_name and (
+                target in r.company_name.lstrip("ה").lower()
+                or r.company_name.lstrip("ה").lower() in target
+            )
+        ]
+        if not candidates:
+            return 0.0
+        # Prefer rate_kind in (total, single) — single number per company
+        prio = [r for r in candidates if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+        chosen = prio[0] if prio else candidates[0]
+        return float(chosen.rate)
+
+    # Walk current production records to compute expected commission per
+    # product (then aggregate by company).
+    expected_by_company: dict[str, dict] = {}
+    expected_total = 0.0
+    cur_prod_q = await db.execute(
+        select(
+            ClientRecord.id_number,
+            ClientRecord.receiving_company,
+            ClientRecord.product_type,
+            ClientRecord.total_premium,
+            ClientRecord.accumulation,
+        ).where(ClientRecord.upload_id == current_id, ClientRecord.user_id == user.id)
+    )
+    for id_number, company, product_type, premium, accum in cur_prod_q.all():
+        if not company:
+            continue
+        rate = _pick_rate(company)
+        if rate <= 0:
+            continue
+        cat = _classify_product_type(product_type) or ""
+        is_gemel = cat == "gemel_hishtalmut"
+        if is_gemel:
+            base = float(accum or 0)
+            if base <= 0:
+                continue
+            exp = base * rate / 12.0
+        else:
+            base = float(premium or 0)
+            if base <= 0:
+                continue
+            exp = base * rate
+        if exp <= 0:
+            continue
+        bucket = expected_by_company.setdefault(company, {"total": 0.0, "clients": set()})
+        bucket["total"] += exp
+        bucket["clients"].add(id_number)
+        expected_total += exp
+
+    expected_commission_by_company = sorted([
+        {"company": co, "total": round(d["total"], 2), "clients_count": len(d["clients"])}
+        for co, d in expected_by_company.items()
+        if d["total"] > 0
+    ], key=lambda x: -x["total"])
+    expected_commission_total = round(expected_total, 2)
+
     summary = {
         "new_count": len(new_clients),
         "removed_count": len(removed_clients),
@@ -935,6 +1010,11 @@ async def compare_productions(
         "commission_positive_count": commission_positive_count,
         "commission_zero_count": commission_zero_count,
         "commission_by_company": commission_by_company,
+        # Expected commission per agreement rates (independent of נפרעים files).
+        # Lets the agent see "how much I SHOULD earn this month" before
+        # commissions actually arrive. Gap = expected - actual = unpaid/late.
+        "expected_commission_total": expected_commission_total,
+        "expected_commission_by_company": expected_commission_by_company,
         "premium_positive": premium_positive,
         "premium_negative": premium_negative,
         "accum_positive": accum_positive,
