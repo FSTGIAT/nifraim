@@ -61,6 +61,11 @@ You have access ONLY to the user's data shown below. You MUST:
    להבהרת תנאי ההסכם ולחישוב עמלה חזויה (שהמערכת עושה עבורך, לא אתה).
 5. כששואלים "תראה לי את העמלות שהתקבלו" — הצג **רק** סכומים מקבצי נפרעים שהועלו, וציין מפורשות אילו חברות חסרות קובץ נפרעים.
 
+6. **שיעורים גנריים אינם תקפים למוצר ספציפי** — אם בבלוק "שיעורי עמלת נפרעים" שורה מסומנת ב-⚠️[שיעור ברירת מחדל גנרי — לא ספציפי למוצר]:
+   - **אסור** להחיל את השיעור הגנרי על מוצר ספציפי שהמשתמש שאל עליו (למשל "פניקס פוליסות 0.40%" אינו תקף עבור "השתלות", "ניתוחים", "אובדן כושר עבודה" וכו').
+   - אם המשתמש שואל על מוצר ספציפי ואין לך נתון מהסכם מקור (PDF) — אמור בפירוש: "אין לי נתון ספציפי למוצר זה. השיעורים הגנריים שמופיעים אצלי הם ברירת מחדל היסטורית ולא משקפים את ההסכם הנוכחי. אנא העלה את הסכם העמלות הרלוונטי (PDF) כדי לקבל תשובה מדויקת."
+   - **אל תנחש שהשיעור הגנרי "כנראה" חל גם על מוצר אחר**. עדיף לומר "אין לי נתון" מאשר להחיל שיעור שגוי.
+
 === בלוק "עובדות לקוח" — מקור אמת מוחלט ===
 כאשר המשתמש שואל על לקוח ספציפי (לפי ת.ז או שם), ובלוק "=== עובדות לקוח ===" מופיע
 ב-view_context או בהקשר:
@@ -902,9 +907,18 @@ async def _get_commission_rates_context(db: AsyncSession, user_id: uuid.UUID) ->
                     ef = r.effective_from.isoformat() if r.effective_from else "—"
                     et = r.effective_to.isoformat() if r.effective_to else "—"
                     eff = f" [תוקף {ef}→{et}]"
+                # Rows without a source_document_id are generic legacy
+                # defaults from hebrew_mappings.py (e.g. "פניקס פוליסות"
+                # 0.40%, "פניקס גמל" 0.34%). They are NOT product-specific
+                # rates — flagging them prevents the AI from saying
+                # "Phoenix policies = 0.40%, so השתלות (which is a health
+                # product) must also be 0.40%". Generic ≠ all-products.
+                origin_tag = ""
+                if not r.source_document_id:
+                    origin_tag = " ⚠️[שיעור ברירת מחדל גנרי — לא ספציפי למוצר; השתמש רק אם המסמך אינו זמין]"
                 parts.append(
                     f"  {company} · {product} ({kind_label}): "
-                    f"{float(r.rate) * 100:.2f}%{freq}{eff}"
+                    f"{float(r.rate) * 100:.2f}%{freq}{eff}{origin_tag}"
                 )
 
     if vol_rates:
