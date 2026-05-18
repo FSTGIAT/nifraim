@@ -506,6 +506,42 @@ async def production_landing(
     }
 
 
+@router.get("/trend")
+async def get_production_trend(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Month-over-month production totals for the trend chart in Production → תובנות.
+
+    Returns one point per period_label (deduped — keeps the latest re-upload for the
+    same month), sorted oldest→newest so the chart reads left→right chronologically.
+    """
+    result = await db.execute(
+        select(ProductionSummary)
+        .where(ProductionSummary.user_id == user.id)
+        .order_by(ProductionSummary.upload_date.asc())
+    )
+    summaries = result.scalars().all()
+
+    by_period: dict[str, ProductionSummary] = {}
+    for s in summaries:
+        existing = by_period.get(s.period_label)
+        if existing is None or s.upload_date > existing.upload_date:
+            by_period[s.period_label] = s
+
+    points = sorted(by_period.values(), key=lambda s: s.upload_date)
+    return [
+        {
+            "period_label": s.period_label,
+            "upload_date": s.upload_date.isoformat(),
+            "total_premium": float(s.total_premium or 0),
+            "total_accumulation": float(s.total_accumulation or 0),
+            "unique_clients": s.unique_clients,
+        }
+        for s in points
+    ]
+
+
 @router.get("/history", response_model=list[ProductionFileInfo])
 async def get_production_history(
     db: AsyncSession = Depends(get_db),
@@ -930,11 +966,18 @@ async def compare_productions(
     )
     user_rates = list(rates_q.scalars().all())
 
+    from app.utils.company_norm import normalize_company
+
     def _pick_rate(company_name: str, product_name: str | None = None) -> float:
         """Find the most-specific rate for (company, product). The user
         explicitly asked: insurance commissions must use the PER-PRODUCT
         rate from the agreement (השתלות 7.2%, חיים 11%, etc.), not one
         generic company-level rate.
+
+        Company matching uses the canonical normalizer (same as elsewhere
+        in this app) so "הפניקס אקסלנס פנסיה וגמל בע\"מ" (production) and
+        "פניקס גמל והשתלמות" (legacy default) both reduce to "הפניקס" and
+        match — substring matching alone fails for these.
 
         Priority:
           1. Same company AND product overlaps in either direction
@@ -943,14 +986,24 @@ async def compare_productions(
         """
         if not company_name or not user_rates:
             return 0.0
-        target = company_name.strip().lstrip("ה").lower()
+        target_canon = normalize_company(company_name)
+        if not target_canon:
+            return 0.0
         candidates = [
             r for r in user_rates
-            if r.company_name and (
-                target in r.company_name.lstrip("ה").lower()
-                or r.company_name.lstrip("ה").lower() in target
-            )
+            if r.company_name and normalize_company(r.company_name) == target_canon
         ]
+        # Substring fallback when normalizer can't match (e.g. obscure
+        # company names not in the alias map).
+        if not candidates:
+            target_lc = company_name.strip().lstrip("ה").lower()
+            candidates = [
+                r for r in user_rates
+                if r.company_name and (
+                    target_lc in r.company_name.lstrip("ה").lower()
+                    or r.company_name.lstrip("ה").lower() in target_lc
+                )
+            ]
         if not candidates:
             return 0.0
 
