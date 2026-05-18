@@ -1,5 +1,5 @@
 <template>
-  <div ref="mountEl" class="cm-island"></div>
+  <div ref="mountEl" class="cm-island" :class="`cm-island--${layout}`"></div>
 </template>
 
 <script setup>
@@ -14,6 +14,8 @@ import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
 const props = defineProps({
   items: { type: Array, required: true },
+  layout: { type: String, default: 'circle' }, // 'circle' | 'across'
+  itemGap: { type: Number, default: 10 },
 })
 const emit = defineEmits(['select'])
 
@@ -38,6 +40,8 @@ function renderTree() {
   reactRoot.render(
     reactDeps.React.createElement(reactDeps.CircleMenu, {
       items: reactItems,
+      layout: props.layout,
+      itemGap: props.itemGap,
       onItemClick: (key) => emit('select', key),
     }),
   )
@@ -66,8 +70,12 @@ onMounted(async () => {
   }
 })
 
-// Re-render the React tree if the Vue items prop changes (rare, but keeps it correct).
-watch(() => props.items, () => { renderTree() }, { deep: true })
+// Re-render the React tree if any incoming prop changes.
+watch(
+  () => [props.items, props.layout, props.itemGap],
+  () => { renderTree() },
+  { deep: true },
+)
 
 onBeforeUnmount(() => {
   if (reactRoot) {
@@ -79,17 +87,30 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* The mount point reserves the React component's natural 250×250 footprint.
-   We visually shrink to ~72% via transform-scale so the menu fits nicely in
-   the workspace's top-LEFT corner without clipping — and we anchor the
-   scale to `top left` so the visible content stays at the corner we set. */
+/* ── Mount footprints per layout ──────────────────────────────────────
+   - `circle`: the React component's natural 250×250 box; we scale to ~72%
+     so it fits the top-left corner without orbit items clipping at edges.
+   - `across`: trigger only (48×48); items extend outside the box via
+     absolute positioning, so the strip flex layout stays unaffected. */
+
 .cm-island {
-  width: 250px;
-  height: 250px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Items extend outside the mount footprint; never clip them. */
+  overflow: visible;
+}
+
+.cm-island--circle {
+  width: 250px;
+  height: 250px;
   transform: scale(0.72);
   transform-origin: top left;
+}
+
+.cm-island--across,
+.cm-island--down {
+  width: 48px;
+  height: 48px;
 }
 </style>

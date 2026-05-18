@@ -8,13 +8,14 @@ disk under `/app/data/uploads/<user_id>/<upload_id>__<filename>` so the UI
 can offer a download/preview affordance later.
 """
 
+import asyncio
 import logging
 import os
 import re
 import uuid
 from pathlib import Path
 
-from sqlalchemy import select, or_, delete as sql_delete
+from sqlalchemy import select, or_, update, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.upload import FileUpload
@@ -77,6 +78,29 @@ def _file_category_for_format(fmt: str) -> str:
     return "general"
 
 
+def _parse_zip_bundle(content: bytes, filename: str) -> dict:
+    """Front-door for .zip uploads. Currently only the Migdal Mimshak format
+    (DAT + MBT bundle) is recognised — produces production-format records.
+
+    Returns a dict shaped like parser_service.parse_excel() output:
+        { "format": str, "company_source": str, "records": list[dict] }
+
+    For Mimshak: the parser builds a production-format xlsx in memory using
+    the POC's xlsx_writer, then runs it through the existing parse_excel so
+    full field decoding (status labels, summed coverage premiums, insurer
+    normalisation, etc.) carries over from the manual-upload path.
+    """
+    from app.services.mimshak import is_mimshak_zip, parse_mimshak_zip
+
+    if is_mimshak_zip(content):
+        return parse_mimshak_zip(content)
+
+    raise ValueError(
+        "Unsupported ZIP bundle. Expected a Migdal Mimshak bundle "
+        "(DAT + MBT files). Filename: " + filename
+    )
+
+
 async def ingest_file_bytes(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -84,18 +108,21 @@ async def ingest_file_bytes(
     filename: str,
     password: str | None = None,
     commit: bool = True,
-) -> FileUpload:
-    """Parse the Excel bytes and persist to the database.
+) -> tuple[FileUpload, str]:
+    """Parse the bytes (xlsx/xls/zip) and persist to the database.
 
-    Returns the inserted FileUpload row. Caller may set commit=False to compose
-    the ingest into a larger transaction (the runner does this so the FileUpload
-    insert and the PortalRun.upload_id update commit atomically).
+    Returns (FileUpload, fmt). Callers pass `fmt` to `schedule_post_ingest()`
+    to trigger the right downstream hooks (snapshot/summary for production,
+    auto-compare for commission). `commit=False` lets the caller compose the
+    ingest into a larger transaction.
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in ("xlsx", "xls"):
-        raise ValueError(f"Only xlsx/xls files supported (got '{ext}')")
-
-    result = parse_excel(content, filename, password)
+    if ext == "zip":
+        result = _parse_zip_bundle(content, filename)
+    elif ext in ("xlsx", "xls"):
+        result = parse_excel(content, filename, password)
+    else:
+        raise ValueError(f"Unsupported file extension '{ext}' (expected xlsx/xls/zip)")
     fmt = result["format"]
     file_category = _file_category_for_format(fmt)
 
@@ -167,8 +194,168 @@ async def ingest_file_bytes(
 
     await cross_reference_uploads(db, user_id)
 
+    # Production uploads replace the prior active production — same semantics
+    # as the legacy /api/production/upload route, so any ingest path (manual
+    # ZIP/XLSX drop, runner-downloaded ZIP) yields exactly one active production
+    # per user at a time.
+    if fmt == "production":
+        await db.execute(
+            update(FileUpload)
+            .where(
+                FileUpload.user_id == user_id,
+                FileUpload.is_production.is_(True),
+                FileUpload.id != upload.id,
+            )
+            .values(is_production=False)
+        )
+        upload.is_production = True
+
     if commit:
         await db.commit()
         await db.refresh(upload)
 
-    return upload
+    return upload, fmt
+
+
+# ── Post-ingest dispatcher ───────────────────────────────────────────────
+# Shared by both the manual upload route and the portal-automation runner so
+# every newly-ingested file gets the same downstream chain regardless of how
+# it arrived.
+
+async def _create_snapshots_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
+    from app.database import async_session
+    from app.services.portal_service import create_snapshots_for_upload
+    try:
+        async with async_session() as db:
+            await create_snapshots_for_upload(db, user_id, upload_id)
+    except Exception as e:
+        logger.warning("snapshot bg task failed (upload %s): %s", upload_id, e)
+
+
+async def _compute_summary_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
+    from app.database import async_session
+    from app.services.summary_service import compute_production_summary
+    try:
+        async with async_session() as db:
+            await compute_production_summary(db, user_id, upload_id)
+    except Exception as e:
+        logger.warning("summary bg task failed (upload %s): %s", upload_id, e)
+
+
+async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_upload_id: uuid.UUID) -> None:
+    """Best-effort comparison after a commission file lands. Mirrors what
+    /api/comparison/compare-with-production does, but DB→memory only (no
+    re-parse). Failure is logged + swallowed; the upload itself is fine."""
+    from app.database import async_session
+    from app.models.paying_company import PayingCompany
+    from app.models.commission_comparison import CommissionComparison
+    from app.services.comparison_service import compute_comparison
+
+    try:
+        async with async_session() as db:
+            prod_q = await db.execute(
+                select(FileUpload).where(
+                    FileUpload.user_id == user_id,
+                    FileUpload.is_production.is_(True),
+                )
+            )
+            prod_upload = prod_q.scalar_one_or_none()
+            if not prod_upload:
+                return
+
+            new_comm_q = await db.execute(
+                select(FileUpload).where(FileUpload.id == commission_upload_id)
+            )
+            new_comm = new_comm_q.scalar_one_or_none()
+            if not new_comm:
+                return
+
+            new_recs_q = await db.execute(
+                select(ClientRecord).where(
+                    ClientRecord.upload_id == new_comm.id,
+                    ClientRecord.user_id == user_id,
+                )
+            )
+            new_records = list(new_recs_q.scalars().all())
+            if not new_records:
+                return
+
+            def _to_dict(r):
+                return {
+                    c.key: getattr(r, c.key)
+                    for c in r.__table__.columns
+                    if c.key not in ("id", "user_id", "upload_id")
+                }
+
+            new_dicts = [_to_dict(r) for r in new_records]
+
+            all_comm_q = await db.execute(
+                select(ClientRecord).where(
+                    ClientRecord.user_id == user_id,
+                    ClientRecord.upload_id != prod_upload.id,
+                )
+            )
+            all_comm_records = [_to_dict(r) for r in all_comm_q.scalars().all()]
+            if not all_comm_records:
+                all_comm_records = new_dicts
+
+            prod_q2 = await db.execute(
+                select(ClientRecord).where(
+                    ClientRecord.upload_id == prod_upload.id,
+                    ClientRecord.user_id == user_id,
+                )
+            )
+            prod_dicts = [_to_dict(r) for r in prod_q2.scalars().all()]
+            if not prod_dicts:
+                return
+
+            paying_q = await db.execute(
+                select(PayingCompany).where(PayingCompany.user_id == user_id)
+            )
+            paying_names = [p.company_name for p in paying_q.scalars().all()]
+
+            comparison = compute_comparison(prod_dicts, all_comm_records, paying_names)
+
+            comm_uploads_q = await db.execute(
+                select(FileUpload).where(
+                    FileUpload.user_id == user_id,
+                    FileUpload.file_category == "commission",
+                )
+            )
+            sources = sorted({
+                u.company_source for u in comm_uploads_q.scalars().all() if u.company_source
+            })
+            comparison["commission_company_sources"] = sources
+            comparison["commission_company_source"] = new_comm.company_source
+
+            row = CommissionComparison(
+                user_id=user_id,
+                category=comparison.get("commission_category") or "unknown",
+                production_upload_id=prod_upload.id,
+                summary_json=comparison.get("summary") or {},
+                result_json=comparison,
+                commission_company_sources=sources,
+            )
+            db.add(row)
+            await db.commit()
+    except Exception as e:
+        logger.warning("auto-compare bg task failed (upload %s): %s", commission_upload_id, e)
+
+
+def schedule_post_ingest(
+    user_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    file_category: str,
+) -> None:
+    """Fire-and-forget downstream tasks based on file_category.
+
+    Always async-task based (not BackgroundTasks) so it works identically from
+    the manual upload route AND from the portal-automation runner (which has
+    no request-scoped BackgroundTasks instance). The tasks each open their own
+    DB session.
+    """
+    if file_category == "production":
+        asyncio.create_task(_create_snapshots_bg(user_id, upload_id))
+        asyncio.create_task(_compute_summary_bg(user_id, upload_id))
+    elif file_category == "commission":
+        asyncio.create_task(_auto_compare_after_commission_bg(user_id, upload_id))

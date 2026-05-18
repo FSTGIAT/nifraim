@@ -442,13 +442,15 @@ async def comparison_insights(
         "debt_companies": int(distincts.debt_companies or 0),
     }
 
-    # Per-company breakdown for the chart (top 8 by amount)
+    # Per-company breakdown for the chart (top 8 by amount).
+    # `since` = earliest debt creation per company → drives "מאז" pill + age in UI.
     companies_q = await db.execute(
         select(
             Debt.company_name,
             func.count().label("count"),
             func.coalesce(func.sum(Debt.expected_amount), 0).label("amount"),
             func.count(func.distinct(Debt.customer_id_number)).label("customers"),
+            func.min(Debt.created_at).label("since"),
         )
         .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
         .group_by(Debt.company_name)
@@ -461,6 +463,7 @@ async def comparison_insights(
             "count": int(r.count or 0),
             "amount": float(r.amount or 0),
             "customers": int(r.customers or 0),
+            "since": r.since.isoformat() if r.since else None,
         }
         for r in companies_q.all()
     ]
@@ -474,6 +477,7 @@ async def comparison_insights(
             func.count().label("count"),
             func.coalesce(func.sum(Debt.expected_amount), 0).label("amount"),
             func.count(func.distinct(Debt.company_name)).label("companies"),
+            func.min(Debt.created_at).label("since"),
         )
         .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
         .group_by(Debt.customer_id_number, Debt.customer_name)
@@ -487,6 +491,7 @@ async def comparison_insights(
             "count": int(r.count or 0),
             "amount": float(r.amount or 0),
             "companies": int(r.companies or 0),
+            "since": r.since.isoformat() if r.since else None,
         }
         for r in customers_q.all()
     ]

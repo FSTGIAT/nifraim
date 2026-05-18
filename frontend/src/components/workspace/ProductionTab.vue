@@ -9,17 +9,14 @@
     </div>
 
     <template v-else>
-      <!-- No file: automation-first, manual upload as fallback -->
+      <!-- No file: sage hero — manual upload triggered via the hero's icon button -->
       <div v-if="!productionStore.currentFile" class="empty-stack">
-        <PortalAutomationPanel
-          title="טען פרודוקציה אוטומטית"
-          @success="onAutomationSuccess"
-          @navigate-to-credentials="$emit('go-to-portal-automation')"
+        <ProductionHeroPanel
+          :landing="productionStore.landing"
+          :loading="productionStore.landingLoading"
+          @request-manual-upload="openFilePicker"
         />
-        <details class="manual-fallback">
-          <summary>אין פורטל מוגדר? העלה ידנית</summary>
-          <ProductionUploader />
-        </details>
+        <AiCapabilitiesGridIsland />
       </div>
 
       <!-- File exists: inner tabs + dashboard -->
@@ -63,6 +60,18 @@
               השוואה מול היקפים
               <span class="tab-dot" v-if="volumeStore.comparisonResult"></span>
             </button>
+            <button
+              class="inner-tab"
+              :class="{ active: innerTab === 'history' }"
+              @click="switchToHistory"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              היסטוריה
+              <span class="tab-dot" v-if="productionStore.history.length"></span>
+            </button>
           </div>
 
           <!-- File pill -->
@@ -90,13 +99,6 @@
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </button>
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".xlsx,.xls"
-            @change="onFileSelected"
-            style="display: none"
-          />
         </div>
 
         <!-- Uploading indicator -->
@@ -139,8 +141,90 @@
         <div v-if="innerTab === 'volume'">
           <VolumeComparison />
         </div>
+
+        <!-- Tab content: History (production files by month) -->
+        <div v-if="innerTab === 'history'" class="history-panel">
+          <div v-if="!productionStore.history.length" class="history-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <p>אין עדיין קבצי פרודוקציה היסטוריים.</p>
+            <small>קבצים שתחליף יעברו לכאן ויקובצו לפי חודש.</small>
+          </div>
+
+          <section
+            v-for="grp in historyByMonth"
+            :key="grp.key"
+            class="month-group"
+          >
+            <header
+              class="month-head"
+              @click="toggleMonth(grp.key)"
+              :class="{ 'is-collapsed': !openMonths[grp.key] }"
+            >
+              <svg class="month-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span class="month-label">{{ grp.label }}</span>
+              <span class="month-count">{{ grp.files.length }} {{ grp.files.length === 1 ? 'קובץ' : 'קבצים' }}</span>
+              <span class="month-records ltr-number">{{ grp.totalRecords.toLocaleString() }} רשומות</span>
+            </header>
+
+            <ul v-if="openMonths[grp.key]" class="month-files">
+              <li
+                v-for="f in grp.files"
+                :key="f.id"
+                class="hist-file"
+              >
+                <div class="hf-main">
+                  <div class="hf-icon" :title="(f.format_type || '').includes('production') ? 'פרודוקציה' : f.format_type">
+                    <svg v-if="(f.filename || '').toLowerCase().endsWith('.zip')" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </div>
+                  <div class="hf-text">
+                    <div class="hf-name" :title="f.filename">{{ f.filename }}</div>
+                    <div class="hf-meta">
+                      <span v-if="f.company_source">{{ f.company_source }}</span>
+                      <span class="ltr-number">{{ (f.record_count || 0).toLocaleString() }} רשומות</span>
+                      <span class="hf-time">{{ relativeHebrew(f.uploaded_at) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <a
+                  v-if="f.has_file"
+                  class="hf-download"
+                  :href="`/api/uploads/${f.id}/file`"
+                  :download="f.filename"
+                  title="הורד קובץ מקור"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                </a>
+              </li>
+            </ul>
+          </section>
+        </div>
       </template>
     </template>
+
+    <!-- Hidden file input shared by all upload buttons (hero icon + replace button) -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".xlsx,.xls,.zip"
+      @change="onFileSelected"
+      style="display: none"
+    />
 
     <!-- Compare suggestion modal -->
     <Teleport to="body">
@@ -170,14 +254,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useVolumeStore } from '../../stores/volume.js'
-import ProductionUploader from './ProductionUploader.vue'
 import ProductionDashboard from './ProductionDashboard.vue'
 import ProductionComparison from './ProductionComparison.vue'
 import VolumeComparison from './VolumeComparison.vue'
-import PortalAutomationPanel from './PortalAutomationPanel.vue'
+import ProductionHeroPanel from './ProductionHeroPanel.vue'
+import AiCapabilitiesGridIsland from './AiCapabilitiesGridIsland.vue'
+import { relativeHebrew } from '../../utils/relativeTime.js'
 
 defineEmits(['go-to-comparison', 'go-to-portal-automation'])
 
@@ -191,10 +276,13 @@ onMounted(() => {
   productionStore.fetchCurrent()
 })
 
-// When file loads, fetch analytics
+// When file loads, fetch analytics. When it's absent, fetch the landing data
+// so the sage hero hydrates immediately on first paint.
 watch(() => productionStore.currentFile, (newVal) => {
   if (newVal) {
     productionStore.fetchAnalytics()
+  } else {
+    productionStore.fetchLanding()
   }
 }, { immediate: true })
 
@@ -217,6 +305,63 @@ function switchToComparison() {
   }
 }
 
+// ── History panel: month-grouped, collapsible ──────────────────────────
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+const openMonths = reactive({})
+
+function monthKey(iso) {
+  if (!iso) return 'unknown'
+  const d = new Date(iso)
+  if (isNaN(d)) return 'unknown'
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+function monthLabel(key) {
+  if (key === 'unknown') return 'לא ידוע'
+  const [y, m] = key.split('-')
+  return `${HE_MONTHS[parseInt(m, 10) - 1]} ${y}`
+}
+
+// Group all production files (current + history) by month, newest month first.
+const historyByMonth = computed(() => {
+  const all = [...productionStore.history]
+  if (productionStore.currentFile) {
+    // Show the active file in its month bucket too — it's still part of history.
+    all.unshift(productionStore.currentFile)
+  }
+  const groups = new Map()
+  for (const f of all) {
+    const k = monthKey(f.uploaded_at)
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(f)
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (b > a ? 1 : -1))
+    .map(([key, files]) => ({
+      key,
+      label: monthLabel(key),
+      files: files.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)),
+      totalRecords: files.reduce((s, f) => s + (f.record_count || 0), 0),
+    }))
+})
+
+function toggleMonth(key) {
+  openMonths[key] = !openMonths[key]
+}
+
+function switchToHistory() {
+  innerTab.value = 'history'
+  if (!productionStore.history.length) {
+    productionStore.fetchHistory().then(() => {
+      // Auto-open the most recent month so the user sees something immediately
+      const newest = historyByMonth.value[0]
+      if (newest) openMonths[newest.key] = true
+    })
+  } else {
+    const newest = historyByMonth.value[0]
+    if (newest && openMonths[newest.key] === undefined) openMonths[newest.key] = true
+  }
+}
+
 function openFilePicker() {
   fileInputRef.value?.click()
 }
@@ -228,6 +373,10 @@ function onFileSelected(e) {
     const ext = file.name.split('.').pop().toLowerCase()
     if (ext === 'xlsx' || ext === 'xls') {
       productionStore.uploadProduction(file)
+    } else if (ext === 'zip') {
+      // ZIP path goes through the generic /api/uploads endpoint so the
+      // server-side Mimshak detection + production classification fires.
+      productionStore.uploadProductionZip(file)
     }
   }
   e.target.value = ''
@@ -258,13 +407,6 @@ async function handleCompare(currentId, previousId) {
     // error handled in store
   }
 }
-
-async function onAutomationSuccess() {
-  // The portal automation pipeline ingests the downloaded file as an upload.
-  // Refetch current production so a production-format download appears here;
-  // commission-format downloads land in /uploads and the user uses ComparisonTab.
-  await productionStore.fetchCurrent()
-}
 </script>
 
 <style scoped>
@@ -281,24 +423,129 @@ async function onAutomationSuccess() {
   gap: 16px;
 }
 
-.manual-fallback {
-  background: var(--card-bg);
-  border: 1px dashed var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 8px 14px;
+/* ── History panel (production by month) ───────────────────────────── */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0 24px;
 }
-
-.manual-fallback summary {
-  font-size: 13px;
+.history-empty {
+  text-align: center;
+  padding: 48px 16px;
   color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.history-empty p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.history-empty small { font-size: 12px; line-height: 1.6; }
+
+.month-group {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.month-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
   cursor: pointer;
-  padding: 6px 0;
   user-select: none;
+  background: linear-gradient(180deg, rgba(245, 124, 0, 0.04), rgba(245, 124, 0, 0.01));
+  transition: background 0.15s;
+}
+.month-head:hover { background: rgba(245, 124, 0, 0.07); }
+.month-chevron {
+  color: var(--primary, #F57C00);
+  transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+  flex-shrink: 0;
+}
+.month-head.is-collapsed .month-chevron { transform: rotate(-90deg); }
+.month-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.month-count {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--primary-deep, #c2410c);
+  background: rgba(245, 124, 0, 0.10);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.month-records {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.manual-fallback summary:hover { color: var(--text); }
-
-.manual-fallback[open] summary { margin-bottom: 12px; }
+.month-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.hist-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px dashed var(--border-subtle);
+  transition: background 0.15s;
+}
+.hist-file:last-child { border-bottom: none; }
+.hist-file:hover { background: rgba(245, 124, 0, 0.03); }
+.hf-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.hf-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(245, 124, 0, 0.12), rgba(255, 152, 0, 0.06));
+  color: var(--primary-deep, #c2410c);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.hf-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.hf-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hf-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  align-items: center;
+}
+.hf-meta > span { white-space: nowrap; }
+.hf-time { color: var(--primary-deep, #c2410c); font-weight: 600; }
+.hf-download {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: rgba(45, 37, 34, 0.05);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.hf-download:hover {
+  background: rgba(245, 124, 0, 0.12);
+  color: var(--primary-deep, #c2410c);
+}
 
 .loading-state {
   text-align: center;

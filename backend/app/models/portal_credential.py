@@ -24,6 +24,9 @@ class PortalCredential(Base):
     # The Twilio number we've successfully written into THIS portal's "contact phone"
     # field. NULL = portal still routes OTPs to the agent's personal phone.
     contact_phone_synced_to: Mapped[str | None] = mapped_column(String(20))
+    # 'twilio' (default — Twilio webhook delivers OTP) | 'phone_forward' (user's own
+    # phone forwards SMS to /phone-forward/{token}) | 'manual' (user types into modal)
+    otp_method: Mapped[str] = mapped_column(String(20), nullable=False, server_default="twilio")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # 'manual' (no auto-run), 'daily', 'weekly', 'monthly'
     schedule_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")

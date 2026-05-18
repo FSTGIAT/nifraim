@@ -131,6 +131,15 @@
                 <option value="outlook">Outlook</option>
               </select>
 
+              <!-- Phone forward setup (OTP automation) -->
+              <button class="settings-link-btn" @click="openPhoneForward">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                  <line x1="12" y1="18" x2="12.01" y2="18"/>
+                </svg>
+                העברת SMS אוטומטית
+              </button>
+
               <!-- Subscription info -->
               <div v-if="subStore.status" class="settings-sub-section">
                 <label class="settings-label">מנוי</label>
@@ -154,6 +163,8 @@
               </div>
             </div>
           </Transition>
+
+          <PhoneForwardModal :open="phoneForwardOpen" @close="phoneForwardOpen = false" />
 
           <!-- Cancel subscription confirmation -->
           <Teleport to="body">
@@ -191,6 +202,7 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
+import PhoneForwardModal from './PhoneForwardModal.vue'
 import api from '../../api/client.js'
 
 const auth = useAuthStore()
@@ -273,6 +285,12 @@ function onClickOutsideSearch(e) {
 // ─── Email provider settings ───
 const settingsOpen = ref(false)
 const settingsRef = ref(null)
+const phoneForwardOpen = ref(false)
+
+function openPhoneForward() {
+  phoneForwardOpen.value = true
+  settingsOpen.value = false
+}
 const emailProvider = ref(localStorage.getItem('emailProvider') || 'mailto')
 
 function onProviderChange(e) {
@@ -447,7 +465,30 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   padding: 12px 14px;
   z-index: 200;
-  min-width: 180px;
+  min-width: 220px;
+}
+
+.settings-link-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.settings-link-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(245, 124, 0, 0.04);
 }
 
 .settings-label {

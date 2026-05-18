@@ -25,7 +25,7 @@ from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
 from app.models.otp_inbox import OtpInbox
 from app.services.portal_automation.companies import REGISTRY
-from app.services.upload_ingest import ingest_file_bytes
+from app.services.upload_ingest import ingest_file_bytes, schedule_post_ingest
 from app.utils.crypto import decrypt
 
 logger = logging.getLogger(__name__)
@@ -129,33 +129,46 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
             await _set_status(db, run, status="parsing", stage="parse")
             first_filename: str | None = None
             first_upload_id: uuid.UUID | None = None
+            ingested: list[tuple[uuid.UUID, str]] = []  # (upload_id, file_category)
             for path in files:
                 content = path.read_bytes()
-                upload = await ingest_file_bytes(
-                    db,
-                    user_id=cred.user_id,
-                    content=content,
-                    filename=path.name,
-                    password=plugin.report_password,
-                    commit=False,  # commit happens once at the end
-                )
+                try:
+                    upload, _fmt = await ingest_file_bytes(
+                        db,
+                        user_id=cred.user_id,
+                        content=content,
+                        filename=path.name,
+                        password=plugin.report_password,
+                        commit=False,  # commit happens once at the end
+                    )
+                except Exception as ingest_err:
+                    # Don't let a single bad file kill the whole run — log and
+                    # carry on with the remaining files. The other downloads
+                    # still produced value.
+                    logger.warning(
+                        "Ingest failed for %s (run %s): %s", path.name, run.id, ingest_err
+                    )
+                    continue
                 if first_upload_id is None:
                     first_upload_id = upload.id
                     first_filename = path.name
+                ingested.append((upload.id, upload.file_category))
 
             run.downloaded_filename = first_filename
             run.upload_id = first_upload_id
             await _set_status(db, run, status="success", finished=True)
 
-            # Best-effort: kick off a comparison so the Comparison tab shows
-            # a fresh dashboard next time the agent opens the app, even if no
-            # one was watching the run. Failures are swallowed — the download
-            # itself already succeeded and the run stays "success".
-            if first_upload_id is not None:
+            # Fire downstream hooks per file:
+            #   production → portal snapshots + production summary
+            #   commission → auto-comparison against the active production
+            # Shared with the manual upload route — single dispatcher.
+            for upload_id, file_category in ingested:
                 try:
-                    await _auto_compare_after_run(db, cred.user_id, first_upload_id)
+                    schedule_post_ingest(cred.user_id, upload_id, file_category)
                 except Exception as e:
-                    logger.warning(f"Auto-compare after portal run failed: {e}")
+                    logger.warning(
+                        "Post-ingest dispatch failed for upload %s: %s", upload_id, e
+                    )
         except Exception:
             await plugin._safe_screenshot(page, screenshot_path)
             await plugin._dump_page_state(page, screenshot_path)
@@ -163,112 +176,6 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
         finally:
             await context.close()
             await browser.close()
-
-
-async def _auto_compare_after_run(
-    db: AsyncSession, user_id: uuid.UUID, commission_upload_id: uuid.UUID
-) -> None:
-    """Compute + persist a comparison against the user's active production
-    file, using ALL recent commission uploads for the matching category.
-
-    Mirrors what `/api/comparison/compare-with-production` does, but doesn't
-    re-parse anything — purely DB → in-memory matcher → persistence row.
-    """
-    from app.models.upload import FileUpload
-    from app.models.record import ClientRecord
-    from app.models.paying_company import PayingCompany
-    from app.models.commission_comparison import CommissionComparison
-    from app.services.comparison_service import compute_comparison
-
-    # 1. Active production
-    prod_q = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.is_production.is_(True),
-        )
-    )
-    prod_upload = prod_q.scalar_one_or_none()
-    if not prod_upload:
-        return
-
-    # 2. The just-ingested commission upload — gives us the category
-    new_comm_q = await db.execute(
-        select(FileUpload).where(FileUpload.id == commission_upload_id)
-    )
-    new_comm = new_comm_q.scalar_one_or_none()
-    if not new_comm:
-        return
-
-    # 3. Probe the new commission file's records to detect category
-    new_recs_q = await db.execute(
-        select(ClientRecord).where(
-            ClientRecord.upload_id == new_comm.id,
-            ClientRecord.user_id == user_id,
-        )
-    )
-    new_records = list(new_recs_q.scalars().all())
-    if not new_records:
-        return
-
-    def _record_to_dict(r):
-        return {c.key: getattr(r, c.key) for c in r.__table__.columns if c.key not in ("id", "user_id", "upload_id")}
-
-    new_dicts = [_record_to_dict(r) for r in new_records]
-
-    # Compute against ALL commission uploads of the user (matches what the
-    # `compare-with-production` route does — gives the dashboard the full
-    # picture, not just the one company that was just downloaded).
-    all_comm_q = await db.execute(
-        select(ClientRecord).where(
-            ClientRecord.user_id == user_id,
-            ClientRecord.upload_id != prod_upload.id,
-        )
-    )
-    all_comm_records = [_record_to_dict(r) for r in all_comm_q.scalars().all()]
-    if not all_comm_records:
-        all_comm_records = new_dicts
-
-    # 4. Production records
-    prod_q2 = await db.execute(
-        select(ClientRecord).where(
-            ClientRecord.upload_id == prod_upload.id,
-            ClientRecord.user_id == user_id,
-        )
-    )
-    prod_dicts = [_record_to_dict(r) for r in prod_q2.scalars().all()]
-    if not prod_dicts:
-        return
-
-    # 5. Paying companies
-    paying_q = await db.execute(
-        select(PayingCompany).where(PayingCompany.user_id == user_id)
-    )
-    paying_names = [p.company_name for p in paying_q.scalars().all()]
-
-    comparison = compute_comparison(prod_dicts, all_comm_records, paying_names)
-
-    # Pull all unique commission company sources for the comparison
-    comm_uploads_q = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.file_category == "commission",
-        )
-    )
-    sources = sorted({u.company_source for u in comm_uploads_q.scalars().all() if u.company_source})
-    comparison["commission_company_sources"] = sources
-    comparison["commission_company_source"] = new_comm.company_source
-
-    # Persist
-    row = CommissionComparison(
-        user_id=user_id,
-        category=comparison.get("commission_category") or "unknown",
-        production_upload_id=prod_upload.id,
-        summary_json=comparison.get("summary") or {},
-        result_json=comparison,
-        commission_company_sources=sources,
-    )
-    db.add(row)
-    await db.commit()
 
 
 async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) -> None:

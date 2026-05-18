@@ -48,6 +48,12 @@
             </div>
 
             <div v-if="error" class="otp-error">{{ error }}</div>
+
+            <p v-if="showForwardHint" class="otp-forward-hint">
+              רוצה שזה יקרה לבד? הגדר
+              <a href="#" @click.prevent="$emit('open-phone-forward')">העברת SMS אוטומטית</a>
+              והטלפון שלך יזין את הקוד עבורך.
+            </p>
           </div>
 
           <footer class="otp-foot">
@@ -74,8 +80,11 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   run: { type: Object, default: null },
   companyName: { type: String, default: '' },
+  credentialOtpMethod: { type: String, default: 'twilio' },
 })
-const emit = defineEmits(['submit', 'close'])
+const emit = defineEmits(['submit', 'close', 'open-phone-forward'])
+
+const showForwardHint = computed(() => props.credentialOtpMethod !== 'phone_forward')
 
 const digits = ref(Array(6).fill(''))
 const boxRefs = ref([])
@@ -293,6 +302,20 @@ function onBackdrop() {
   border: 1px solid rgba(239, 68, 68, 0.24);
   border-radius: 8px;
 }
+
+.otp-forward-hint {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.otp-forward-hint a {
+  color: #f57c00;
+  font-weight: 600;
+  text-decoration: none;
+}
+.otp-forward-hint a:hover { text-decoration: underline; }
 
 .otp-foot {
   display: flex;

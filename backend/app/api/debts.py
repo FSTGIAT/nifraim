@@ -75,6 +75,7 @@ async def list_debts(
     status: str | None = Query(default=None),
     company: str | None = Query(default=None),
     category: str | None = Query(default=None),
+    customer_id_number: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -85,6 +86,8 @@ async def list_debts(
         q = q.where(Debt.company_name == company)
     if category:
         q = q.where(Debt.category == category)
+    if customer_id_number:
+        q = q.where(Debt.customer_id_number == customer_id_number)
     q = q.order_by(desc(Debt.expected_amount))
 
     result = await db.execute(q)

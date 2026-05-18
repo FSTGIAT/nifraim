@@ -67,18 +67,36 @@
               />
             </label>
 
-            <label class="row">
-              <span class="row-label">
-                מספר Twilio בפורטל
-                <small class="row-sub"> (אם נקבע — OTP יגיע למספר הזה)</small>
-              </span>
-              <input
-                v-model="form.twilio_to_number"
-                class="ctrl"
-                placeholder="+972..."
-                dir="ltr"
-              />
-            </label>
+            <fieldset class="otp-method-fieldset">
+              <legend class="row-label">איך OTP יגיע למערכת?</legend>
+              <label
+                class="otp-method-opt"
+                :class="{ 'otp-method-opt--disabled': !phoneForwardConfigured }"
+              >
+                <input
+                  type="radio"
+                  v-model="form.otp_method"
+                  value="phone_forward"
+                  :disabled="!phoneForwardConfigured"
+                />
+                <span>
+                  <strong>הטלפון האישי שלי</strong>
+                  <small v-if="phoneForwardConfigured">
+                    OTP מגיע לטלפון שלך → הטלפון שולח למערכת אוטומטית
+                  </small>
+                  <small v-else>
+                    הגדר תחילה ב"העברת SMS אוטומטית" בהגדרות
+                  </small>
+                </span>
+              </label>
+              <label class="otp-method-opt">
+                <input type="radio" v-model="form.otp_method" value="manual" />
+                <span>
+                  <strong>הזנה ידנית</strong>
+                  <small>תזין את הקוד במודאל כשמתבקש</small>
+                </span>
+              </label>
+            </fieldset>
           </div>
 
           <footer class="cred-footer">
@@ -94,7 +112,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 
 const props = defineProps({
@@ -111,12 +129,14 @@ const form = reactive({
   portal_kind: '',
   username: '',
   password: '',
-  twilio_to_number: '',
+  otp_method: 'phone_forward',
 })
 const formError = ref('')
 const saving = ref(false)
 
 const title = ref('')
+
+const phoneForwardConfigured = computed(() => !!store.phoneForward?.token)
 
 watch(
   () => [props.open, props.mode, props.credential],
@@ -129,15 +149,18 @@ watch(
       form.portal_kind = cred.portal_kind
       form.username = cred.username
       form.password = ''
-      form.twilio_to_number = cred.twilio_to_number || ''
+      // Edit: keep whatever was set, but normalise the now-removed 'twilio' option.
+      form.otp_method = cred.otp_method === 'twilio' ? 'phone_forward' : (cred.otp_method || 'phone_forward')
     } else {
       const pre = props.defaultPortalKind || ''
       title.value = pre ? `הוספת ${portalLabel(pre)}` : 'הוספת פורטל חדש'
       form.portal_kind = pre
       form.username = ''
       form.password = ''
-      form.twilio_to_number = ''
+      form.otp_method = phoneForwardConfigured.value ? 'phone_forward' : 'manual'
     }
+    // Pre-load phone-forward status so the option enables/disables correctly.
+    store.fetchPhoneForward().catch(() => {})
   },
   { immediate: true },
 )
@@ -169,13 +192,13 @@ async function save() {
         portal_kind: form.portal_kind,
         username: form.username,
         password: form.password,
-        twilio_to_number: form.twilio_to_number || null,
+        otp_method: form.otp_method,
       })
       emit('saved', created)
     } else {
       const payload = {
         username: form.username,
-        twilio_to_number: form.twilio_to_number || null,
+        otp_method: form.otp_method,
       }
       if (form.password) payload.password = form.password
       const updated = await store.updateCredential(props.credential.id, payload)
@@ -302,6 +325,47 @@ async function save() {
 .ctrl.invalid { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12); }
 .ctrl[disabled] { opacity: 0.6; cursor: not-allowed; }
 select.ctrl { appearance: auto; }
+
+.otp-method-fieldset {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+  padding: 8px 12px 10px;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.otp-method-fieldset legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.otp-method-opt {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.otp-method-opt:hover { background: rgba(245, 124, 0, 0.04); }
+.otp-method-opt input[type="radio"] {
+  margin-top: 4px;
+  accent-color: #f57c00;
+}
+.otp-method-opt span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.otp-method-opt span strong { font-weight: 600; color: var(--text); }
+.otp-method-opt span small { font-size: 11.5px; color: var(--text-muted); font-weight: 400; }
+.otp-method-opt--disabled { opacity: 0.55; cursor: not-allowed; }
+.otp-method-opt--disabled:hover { background: transparent; }
 
 .cred-footer {
   display: flex;

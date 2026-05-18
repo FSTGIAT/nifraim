@@ -32,6 +32,23 @@ const pointOnCircle = (i: number, n: number, r: number, cx = 0, cy = 0) => {
   return { x, y }
 }
 
+// Linear "across" layout — items spread LEFT of the trigger in a horizontal row.
+// Item 0 is closest to the trigger, item N is farthest. Negative x = leftward.
+const pointInRow = (i: number, itemSize: number, gap: number) => ({
+  x: -((i + 1) * (itemSize + gap)),
+  y: 0,
+})
+
+// Vertical "down" layout — items stack DOWNWARD from the trigger.
+// Useful when the trigger is anchored to a corner where horizontal expansion
+// would clip off-screen (e.g. top-left corner of the home view).
+const pointInColumn = (i: number, itemSize: number, gap: number) => ({
+  x: 0,
+  y: (i + 1) * (itemSize + gap),
+})
+
+type LayoutMode = 'circle' | 'across' | 'down'
+
 export interface CircleMenuItem {
   key: string
   label: string
@@ -45,10 +62,18 @@ interface MenuItemProps {
   totalItems: number
   isOpen: boolean
   onItemClick?: (key: string) => void
+  layout?: LayoutMode
+  itemGap?: number
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ item, index, totalItems, isOpen, onItemClick }) => {
-  const { x, y } = pointOnCircle(index, totalItems, CONSTANTS.containerSize / 2)
+const MenuItem: React.FC<MenuItemProps> = ({
+  item, index, totalItems, isOpen, onItemClick,
+  layout = 'circle', itemGap = 10,
+}) => {
+  const { x, y } =
+    layout === 'across' ? pointInRow(index, CONSTANTS.itemSize, itemGap)
+    : layout === 'down' ? pointInColumn(index, CONSTANTS.itemSize, itemGap)
+    : pointOnCircle(index, totalItems, CONSTANTS.containerSize / 2)
   const [hovering, setHovering] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
@@ -206,6 +231,8 @@ interface CircleMenuProps {
   openIcon?: React.ReactNode
   closeIcon?: React.ReactNode
   onItemClick?: (key: string) => void
+  layout?: LayoutMode      // 'circle' (default — prompt) | 'across' (linear row to the left)
+  itemGap?: number         // gap between items in 'across' mode
 }
 
 export const CircleMenu: React.FC<CircleMenuProps> = ({
@@ -213,6 +240,8 @@ export const CircleMenu: React.FC<CircleMenuProps> = ({
   openIcon = <Menu size={18} color="#fff" />,
   closeIcon = <X size={18} color="#fff" />,
   onItemClick,
+  layout = 'circle',
+  itemGap = 10,
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const animate = useAnimationControls()
@@ -242,9 +271,13 @@ export const CircleMenu: React.FC<CircleMenuProps> = ({
       }
     : undefined
 
+  // Linear layouts ('across' / 'down') only need to host the trigger; items
+  // extend outside via absolute positioning, so the mount-point footprint
+  // stays small enough to dock inside a flex strip beside other buttons.
+  const rootSize = layout === 'circle' ? CONSTANTS.containerSize : CONSTANTS.itemSize
   return (
     <div
-      style={{ width: CONSTANTS.containerSize, height: CONSTANTS.containerSize }}
+      style={{ width: rootSize, height: rootSize }}
       className="cm-root"
     >
       <MenuTrigger
@@ -264,6 +297,8 @@ export const CircleMenu: React.FC<CircleMenuProps> = ({
             totalItems={items.length}
             isOpen={isOpen}
             onItemClick={handleItem}
+            layout={layout}
+            itemGap={itemGap}
           />
         ))}
       </motion.div>

@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
+from app.models.production_summary import ProductionSummary
 from app.schemas.upload import ProductionFileInfo, ProductionAnalytics, ProductionCompareResponse
 from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel
@@ -453,6 +454,49 @@ async def get_client_detail(
         "products": products,
         "total_premium": sum(p["premium"] for p in products),
         "total_accumulation": sum(p["accumulation"] for p in products),
+    }
+
+
+@router.get("/landing")
+async def production_landing(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Pre-upload Production tab hero data.
+
+    Returns a lifetime count of production uploads + the most recent
+    ProductionSummary so the agent always sees their last-known state, even
+    when no file is currently active.
+    """
+    files_q = await db.execute(
+        select(func.count())
+        .select_from(FileUpload)
+        .where(FileUpload.user_id == user.id, FileUpload.file_category == "production")
+    )
+    files_loaded = int(files_q.scalar_one() or 0)
+
+    last_q = await db.execute(
+        select(ProductionSummary)
+        .where(ProductionSummary.user_id == user.id)
+        .order_by(desc(ProductionSummary.upload_date))
+        .limit(1)
+    )
+    last = last_q.scalar_one_or_none()
+    if last is None:
+        return {"files_loaded": files_loaded, "latest": None}
+
+    return {
+        "files_loaded": files_loaded,
+        "latest": {
+            "upload_date":        last.upload_date.isoformat(),
+            "period_label":       last.period_label,
+            "total_records":      last.total_records,
+            "unique_clients":     last.unique_clients,
+            "total_premium":      float(last.total_premium),
+            "total_accumulation": float(last.total_accumulation),
+            "companies_count":    len(last.companies_json or []),
+            "top_clients":        (last.top_clients_json or [])[:5],
+        },
     }
 
 

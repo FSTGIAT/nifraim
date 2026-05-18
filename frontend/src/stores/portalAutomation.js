@@ -11,6 +11,7 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   const activeRunId = ref(null)
   const activeRun = ref(null)
   const twilioNumber = ref(null)   // null when no Twilio number is provisioned
+  const phoneForward = ref({ token: null, url: null })
   const otpInbox = ref([])
   const loading = ref(false)
   const error = ref(null)
@@ -213,6 +214,29 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     twilioNumber.value = null
   }
 
+  async function fetchPhoneForward() {
+    const res = await api.get('/portal-automation/phone-forward/me')
+    phoneForward.value = res.data || { token: null, url: null }
+    return phoneForward.value
+  }
+
+  async function regeneratePhoneForwardToken() {
+    error.value = null
+    try {
+      const res = await api.post('/portal-automation/phone-forward/token/regenerate')
+      phoneForward.value = res.data
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה ביצירת מפתח'
+      throw e
+    }
+  }
+
+  async function testPhoneForward(message) {
+    const res = await api.post('/portal-automation/phone-forward/test', { message })
+    return res.data
+  }
+
   async function syncContactPhone(credentialId) {
     error.value = null
     try {
@@ -246,6 +270,7 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     activeRunId,
     activeRun,
     twilioNumber,
+    phoneForward,
     otpInbox,
     loading,
     error,
@@ -265,6 +290,9 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     fetchOtpInbox,
     provisionTwilio,
     releaseTwilio,
+    fetchPhoneForward,
+    regeneratePhoneForwardToken,
+    testPhoneForward,
     syncContactPhone,
     reset,
   }

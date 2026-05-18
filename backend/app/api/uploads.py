@@ -12,7 +12,7 @@ from app.models.upload import FileUpload
 from app.schemas.upload import UploadOut
 from app.api.deps import get_paid_user as get_current_user
 from app.services.reconciliation_service import cross_reference_uploads
-from app.services.upload_ingest import ingest_file_bytes
+from app.services.upload_ingest import ingest_file_bytes, schedule_post_ingest
 
 router = APIRouter()
 
@@ -42,7 +42,7 @@ async def upload_file(
     content = await file.read()
 
     try:
-        upload = await ingest_file_bytes(
+        upload, _fmt = await ingest_file_bytes(
             db,
             user_id=user.id,
             content=content,
@@ -53,6 +53,12 @@ async def upload_file(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
+
+    # Fire downstream hooks. Production → snapshot + summary; commission →
+    # auto-comparison against the active production. Manual commission uploads
+    # used to skip this — agents had to navigate to the Comparison tab to see
+    # results; this brings parity with the portal-automation runner.
+    schedule_post_ingest(user.id, upload.id, upload.file_category)
 
     return UploadOut(
         id=str(upload.id),

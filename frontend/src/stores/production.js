@@ -18,6 +18,11 @@ export const useProductionStore = defineStore('production', () => {
   const comparisonResult = ref(null)
   const comparing = ref(false)
 
+  // Pre-upload landing — { files_loaded, latest } from /production/landing.
+  // Persists across deletes so the hero always has the last-known state.
+  const landing = ref(null)
+  const landingLoading = ref(false)
+
   async function fetchCurrent() {
     loading.value = true
     error.value = null
@@ -48,6 +53,31 @@ export const useProductionStore = defineStore('production', () => {
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בהעלאת קובץ פרודוקציה'
+      throw e
+    } finally {
+      uploading.value = false
+    }
+  }
+
+  // ZIP path (Migdal Mimshak bundle). Goes through the generic /api/uploads
+  // route so the server-side Mimshak detection + production classification
+  // fires. The response shape is UploadOut; we refetch /production/current
+  // to get the full ProductionFileOut payload the UI expects.
+  async function uploadProductionZip(file, onProgress) {
+    uploading.value = true
+    error.value = null
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      await api.post('/uploads', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: onProgress,
+      })
+      await fetchCurrent()
+      await fetchHistory()
+      justUploaded.value = true
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בהעלאת קובץ מבנה אחיד (ZIP)'
       throw e
     } finally {
       uploading.value = false
@@ -99,6 +129,18 @@ export const useProductionStore = defineStore('production', () => {
       history.value = res.data
     } catch (e) {
       // silent
+    }
+  }
+
+  async function fetchLanding() {
+    landingLoading.value = true
+    try {
+      const res = await api.get('/production/landing')
+      landing.value = res.data
+    } catch (e) {
+      landing.value = null
+    } finally {
+      landingLoading.value = false
     }
   }
 
@@ -163,7 +205,9 @@ export const useProductionStore = defineStore('production', () => {
     currentFile, loading, uploading, justUploaded, error,
     analytics, analyticsLoading,
     history, comparisonResult, comparing,
-    fetchCurrent, uploadProduction, removeCurrent,
-    fetchAnalytics, fetchHistory, compareProductions, resetComparison,
+    landing, landingLoading,
+    fetchCurrent, uploadProduction, uploadProductionZip, removeCurrent,
+    fetchAnalytics, fetchHistory, fetchLanding,
+    compareProductions, resetComparison,
   }
 })

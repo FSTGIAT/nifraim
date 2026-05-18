@@ -10,6 +10,7 @@ PortalKind = Literal[
 ]
 
 ScheduleKind = Literal["manual", "daily", "weekly", "monthly"]
+OtpMethod = Literal["twilio", "phone_forward", "manual"]
 
 
 class PortalCredentialScheduleIn(BaseModel):
@@ -23,6 +24,7 @@ class PortalCredentialIn(BaseModel):
     twilio_to_number: str | None = Field(default=None, max_length=20)
     schedule_kind: ScheduleKind = "manual"
     category_hint: str | None = Field(default=None, max_length=64)
+    otp_method: OtpMethod = "twilio"
 
 
 class PortalCredentialUpdate(BaseModel):
@@ -32,6 +34,7 @@ class PortalCredentialUpdate(BaseModel):
     is_active: bool | None = None
     schedule_kind: ScheduleKind | None = None
     category_hint: str | None = Field(default=None, max_length=64)
+    otp_method: OtpMethod | None = None
 
 
 class PortalCredentialOut(BaseModel):
@@ -43,6 +46,7 @@ class PortalCredentialOut(BaseModel):
     is_active: bool
     schedule_kind: ScheduleKind
     category_hint: str | None = None
+    otp_method: OtpMethod = "twilio"
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     last_error: str | None = None

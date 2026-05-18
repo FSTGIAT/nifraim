@@ -20,6 +20,11 @@
     <!-- Email-provider settings — opens from the menu's Settings item. -->
     <EmailSettingsModal v-model:open="emailSettingsOpen" />
 
+    <!-- Portal-automation run progress — floats above everything while
+         a run is in flight or just finished. Auto-dismisses on success
+         after 5s; user can dismiss failures manually. -->
+    <PortalRunProgressFloat />
+
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
     <FundTrackVizPanel v-model:open="fundDetailOpen" :viz="fundDetailViz" />
 
@@ -198,6 +203,7 @@ import StockTicker from '../components/workspace/StockTicker.vue'
 import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
 import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
+import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'

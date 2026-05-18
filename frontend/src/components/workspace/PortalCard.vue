@@ -58,29 +58,6 @@
       <span>{{ cred.last_error.slice(0, 80) }}</span>
     </div>
 
-    <!-- Twilio sync status -->
-    <div class="cc-meta">
-      <span v-if="isSynced" class="meta-pill meta-pill--ok">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        טלפון מסונכרן
-      </span>
-      <button
-        v-else-if="twilioNumber"
-        class="meta-pill meta-pill--cta"
-        :disabled="isRunning"
-        @click="$emit('sync')"
-        :title="`עדכן את הטלפון בפורטל ל-${twilioNumber.phone_number}`"
-      >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>
-        </svg>
-        סנכרן טלפון
-      </button>
-      <span v-else class="meta-pill meta-pill--muted">דורש מספר Twilio</span>
-    </div>
-
     <!-- Live progress -->
     <div v-if="activeRun?.credential_id === cred.id" class="cc-progress">
       <PortalRunProgress :runId="activeRun.id" />
@@ -126,12 +103,10 @@ const props = defineProps({
   portalLabel: { type: String, required: true },
   isImplemented: { type: Boolean, default: true },
   isRunning: { type: Boolean, default: false },
-  isSynced: { type: Boolean, default: false },
-  twilioNumber: { type: Object, default: null },
   activeRun: { type: Object, default: null },
   draggable: { type: Boolean, default: false },
 })
-defineEmits(['run', 'edit', 'delete', 'sync', 'dragstart'])
+defineEmits(['run', 'edit', 'delete', 'dragstart'])
 
 const SCHEDULE_LABELS = { daily: 'יומי', weekly: 'שבועי', monthly: 'חודשי' }
 const STATUS_LABELS = {

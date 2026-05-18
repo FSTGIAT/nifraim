@@ -8,22 +8,6 @@
         <p class="page-sub">חבר חברה אחת, גרור לתזמון, והדוח יוריד את עצמו.</p>
       </div>
       <div class="page-actions">
-        <span
-          v-if="store.twilioNumber"
-          class="twilio-badge"
-          :title="'מספר Twilio פעיל'"
-        >
-          <span class="ltr-number tp-num">{{ store.twilioNumber.phone_number }}</span>
-          <button class="tp-release" @click="releaseNumber" title="שחרר את המספר">שחרר</button>
-        </span>
-        <button
-          v-else
-          class="btn-add btn-add--secondary"
-          :disabled="provisioning"
-          @click="provisionNumber"
-        >
-          {{ provisioning ? 'רוכש…' : 'הקצה מספר Twilio' }}
-        </button>
         <button class="btn-add" @click="openAdd">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12h14"/><path d="M12 5v14"/>
@@ -71,8 +55,6 @@
           :key="cred.id"
           :cred="cred"
           :is-running="isRunning(cred.id)"
-          :is-synced="isSynced(cred)"
-          :twilio-number="store.twilioNumber"
           :portal-label="portalLabel(cred.portal_kind)"
           :is-implemented="isImplemented(cred.portal_kind)"
           :active-run="store.activeRun"
@@ -80,7 +62,6 @@
           @run="runNow(cred.id)"
           @edit="openEdit(cred)"
           @delete="deleteCred(cred.id)"
-          @sync="syncPhone(cred.id)"
           @dragstart="onCardDragStart($event, cred.id)"
         />
       </div>
@@ -100,8 +81,6 @@
           :key="cred.id"
           :cred="cred"
           :is-running="isRunning(cred.id)"
-          :is-synced="isSynced(cred)"
-          :twilio-number="store.twilioNumber"
           :portal-label="portalLabel(cred.portal_kind)"
           :is-implemented="isImplemented(cred.portal_kind)"
           :active-run="store.activeRun"
@@ -109,7 +88,6 @@
           @run="runNow(cred.id)"
           @edit="openEdit(cred)"
           @delete="deleteCred(cred.id)"
-          @sync="syncPhone(cred.id)"
           @dragstart="onCardDragStart($event, cred.id)"
         />
       </div>
@@ -126,7 +104,7 @@
       <div class="otp-card">
         <div class="otp-card-head">
           <strong>OTPs אחרונים</strong>
-          <span class="otp-meta">SMS שהתקבלו בצינור Twilio (לאבחון בלבד)</span>
+          <span class="otp-meta">SMS שהתקבלו (Twilio + העברת SMS)</span>
           <button class="btn-refresh" @click="refreshOtps" :disabled="otpRefreshing">
             {{ otpRefreshing ? '⏳' : '↻' }} רענן
           </button>
@@ -184,7 +162,6 @@ import PortalOtpModal from './PortalOtpModal.vue'
 
 const store = usePortalAutomationStore()
 
-const provisioning = ref(false)
 const otpRefreshing = ref(false)
 let otpAutoTimer = null
 
@@ -220,22 +197,8 @@ function isImplemented(kind) {
 function isRunning(credId) {
   return store.activeRunId && store.activeRun?.credential_id === credId
 }
-function isSynced(cred) {
-  return store.twilioNumber && cred.contact_phone_synced_to === store.twilioNumber.phone_number
-}
-
-// ─── Twilio actions ───────────────────────────────────────
-async function provisionNumber() {
-  provisioning.value = true
-  try { await store.provisionTwilio() } finally { provisioning.value = false }
-}
-async function releaseNumber() {
-  if (!confirm('לשחרר את מספר ה-Twilio? כל הסנכרונים בפורטלים יפסיקו לעבוד.')) return
-  await store.releaseTwilio()
-}
 
 // ─── Per-credential actions ───────────────────────────────
-async function syncPhone(id)   { await store.syncContactPhone(id) }
 async function runNow(id)      { await store.runNow(id) }
 async function deleteCred(id)  {
   if (!confirm('למחוק את ההגדרה?')) return
@@ -299,7 +262,6 @@ watch(() => store.activeRunId, (newVal) => {
 onMounted(async () => {
   await store.fetchPortalKinds()
   await store.fetchCredentials()
-  await store.fetchTwilioNumber()
   await store.fetchOtpInbox()
 })
 onUnmounted(() => {
@@ -361,55 +323,6 @@ onUnmounted(() => {
   box-shadow: 0 10px 22px rgba(245, 124, 0, 0.4);
 }
 .btn-add:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
-
-/* Secondary primary — same dimensions, lighter visual weight */
-.btn-add--secondary {
-  background: var(--card-bg, #fff);
-  color: var(--primary-deep, #c2410c);
-  border: 1px solid rgba(245, 124, 0, 0.35);
-  box-shadow: none;
-}
-.btn-add--secondary:hover:not(:disabled) {
-  background: rgba(245, 124, 0, 0.06);
-  border-color: var(--primary, #F57C00);
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.16);
-}
-
-/* Twilio number badge (only shown when assigned) */
-.twilio-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 6px 0 12px;
-  background: var(--card-bg);
-  border: 1px solid rgba(16, 185, 129, 0.32);
-  border-radius: 9px;
-  box-sizing: border-box;
-}
-.tp-num {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12.5px;
-  letter-spacing: 0.4px;
-  color: #047857;
-  font-weight: 700;
-}
-.tp-release {
-  background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 11.5px;
-  border: none;
-  border-radius: 5px;
-  padding: 4px 8px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.tp-release:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #b91c1c;
-}
 
 .error-banner {
   background: rgba(239, 68, 68, 0.08);

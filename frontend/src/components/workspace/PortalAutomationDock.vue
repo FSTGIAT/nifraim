@@ -1,9 +1,5 @@
 <template>
   <section class="dock-section">
-    <header class="dock-head" v-if="store.credentials.length">
-      <h4 class="dh-title">טען נפרעים אוטומטית</h4>
-    </header>
-
     <div v-if="store.error" class="dock-error">{{ store.error }}</div>
 
     <Motion
@@ -44,9 +40,13 @@
       :open="otpModalOpen"
       :run="store.activeRun"
       :company-name="activeCompanyLabel"
+      :credential-otp-method="activeCredential?.otp_method || 'twilio'"
       @submit="onSubmitOtp"
       @close="closeOtpModal"
+      @open-phone-forward="phoneForwardOpen = true"
     />
+
+    <PhoneForwardModal :open="phoneForwardOpen" @close="phoneForwardOpen = false" />
   </section>
 </template>
 
@@ -58,6 +58,7 @@ import { brandFor } from '../../utils/companyBrand.js'
 import PortalAutomationDockItem from './PortalAutomationDockItem.vue'
 import PortalCredentialModal from './PortalCredentialModal.vue'
 import PortalOtpModal from './PortalOtpModal.vue'
+import PhoneForwardModal from './PhoneForwardModal.vue'
 
 const emit = defineEmits(['success', 'failure', 'navigate-to-credentials'])
 const store = usePortalAutomationStore()
@@ -138,6 +139,7 @@ async function runNow(credId) {
 
 // ───── OTP modal ─────
 const otpModalOpen = ref(false)
+const phoneForwardOpen = ref(false)
 const activeCredential = computed(() => {
   const cid = store.activeRun?.credential_id
   return store.credentials.find((c) => c.id === cid) || null
@@ -182,26 +184,11 @@ onMounted(async () => {
   font-family: 'Heebo', sans-serif;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;   /* RTL: pins the dock + title to the right edge */
+  align-items: stretch;      /* dock spans the full section width */
   gap: 56px;                 /* leave clear room for icons that lift above the dock */
   padding: 12px 0 36px;
+  width: 100%;
   overflow: visible;
-}
-
-.dock-head {
-  text-align: start;         /* RTL: text reads from the right */
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  position: relative;
-  z-index: 2;                /* sit above the lifting icons (defensive) */
-}
-.dh-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.1px;
 }
 
 .dock-error {
@@ -215,26 +202,20 @@ onMounted(async () => {
   max-width: 540px;
 }
 
-/* ───── Dock chrome — exactly per the React reference ─────
-   margin auto, height 64, items align to bottom, gap 16,
-   rounded-2xl, very subtle bg + orange-tinted border, soft shadow.
+/* ───── Dock — unchromed ─────
+   No background / border / shadow / radius. Items float free against
+   the page so the magnify behaviour reads as the focal interaction.
    IMPORTANT: overflow MUST stay visible — dock items grow from 40 → 80px
-   on hover and need to "lift" upward outside the dock chrome. */
+   on hover and need to "lift" upward outside the dock bounds. */
 .dock {
   margin: 0;                  /* anchored to the parent's flex-start (right in RTL) */
   display: flex;
   align-items: flex-end;
+  justify-content: space-between; /* distribute items across the available width */
   gap: 16px;
   height: 64px;
-  border-radius: 16px;
-  background: rgba(245, 124, 0, 0.04);
-  border: 1px solid rgba(245, 124, 0, 0.10);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 6px 16px rgba(17, 12, 6, 0.06),
-    0 18px 38px rgba(17, 12, 6, 0.05);
-  padding: 0 20px 12px;
-  width: fit-content;
+  padding: 0 8px 12px;
+  width: 100%;                /* span the page */
   max-width: 100%;
   overflow: visible;          /* let lifted icons show above the dock */
 }

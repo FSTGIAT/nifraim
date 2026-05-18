@@ -13,9 +13,39 @@ from app.scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Any portal_runs left in an "active" state at startup belong to a previous
+    # process — the runner that owned them is gone, so they will never advance.
+    # Mark them failed so the credential isn't permanently blocked by a stuck
+    # run. Common trigger: uvicorn --reload mid-run, or a Railway redeploy.
+    await _fail_orphaned_runs()
     start_scheduler()
     yield
     stop_scheduler()
+
+
+async def _fail_orphaned_runs() -> None:
+    from datetime import datetime
+    from sqlalchemy import update
+    from app.database import async_session
+    from app.models.portal_run import PortalRun
+
+    ACTIVE = ("pending", "running", "awaiting_otp", "downloading", "parsing")
+    try:
+        async with async_session() as db:
+            await db.execute(
+                update(PortalRun)
+                .where(PortalRun.status.in_(ACTIVE))
+                .values(
+                    status="failed",
+                    error_message="Run interrupted by server restart",
+                    finished_at=datetime.utcnow(),
+                )
+            )
+            await db.commit()
+    except Exception:
+        # Don't block startup if the cleanup query fails — runs being stuck is
+        # less bad than the server failing to boot.
+        pass
 
 
 app = FastAPI(title="Nifraim - Insurance Reconciliation Dashboard", version="1.0.0", lifespan=lifespan)

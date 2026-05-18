@@ -19,10 +19,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import secrets
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +71,7 @@ def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
         is_active=c.is_active,
         schedule_kind=c.schedule_kind,
         category_hint=c.category_hint,
+        otp_method=getattr(c, "otp_method", "twilio") or "twilio",
         last_run_at=c.last_run_at,
         last_run_status=c.last_run_status,
         last_error=c.last_error,
@@ -165,6 +168,7 @@ async def create_credential(
         twilio_to_number=payload.twilio_to_number,
         schedule_kind=payload.schedule_kind,
         category_hint=payload.category_hint,
+        otp_method=payload.otp_method,
     )
     db.add(cred)
     await db.commit()
@@ -573,3 +577,182 @@ async def twilio_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     return Response(content="<Response/>", media_type="application/xml")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phone-forward webhook (PUBLIC, token-auth) — see
+# memory/portal_migdal_xhr_fallback.md for the architecture this enables.
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class PhoneForwardIn(BaseModel):
+    message: str = Field(..., max_length=2000)
+
+
+def _build_phone_forward_url(token: str | None, request: Request | None = None) -> str | None:
+    if not token:
+        return None
+    base = (settings.TWILIO_PUBLIC_WEBHOOK_BASE or "").rstrip("/")
+    # Fall back to the inbound request's base URL when the env var hasn't been
+    # configured to a public hostname (defaults to http://localhost:8000).
+    if (not base or "localhost" in base) and request is not None:
+        forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if forwarded_host:
+            base = f"{forwarded_proto}://{forwarded_host}".rstrip("/")
+    return f"{base}/api/portal-automation/phone-forward/{token}"
+
+
+# IMPORTANT: literal routes MUST be registered before the {token} catch-all,
+# otherwise FastAPI matches /phone-forward/test (etc.) as token="test" and
+# returns the public-webhook's generic 200-OK instead of running the right handler.
+
+
+@router.get("/phone-forward/me")
+async def get_my_phone_forward(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    return {
+        "token": user.phone_forward_token,
+        "url": _build_phone_forward_url(user.phone_forward_token, request),
+    }
+
+
+@router.post("/phone-forward/token/regenerate")
+async def regenerate_phone_forward_token(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    user.phone_forward_token = secrets.token_urlsafe(32)
+    await db.commit()
+    return {
+        "token": user.phone_forward_token,
+        "url": _build_phone_forward_url(user.phone_forward_token, request),
+    }
+
+
+@router.post("/phone-forward/test")
+async def test_phone_forward(
+    payload: PhoneForwardIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Simulate an SMS arriving on the user's phone, without involving the
+    phone. Inserts into otp_inbox identically to the public webhook so a
+    pending run picks it up the same way."""
+    body = (payload.message or "").strip()
+    otp_match = OTP_REGEX.search(body)
+    otp_code = otp_match.group(1) if otp_match else None
+
+    db.add(OtpInbox(
+        user_id=user.id,
+        from_number="phone-forward-test",
+        to_number="test",
+        body=body[:500],
+        otp_code=otp_code,
+    ))
+    await db.commit()
+    return {"extracted_otp": otp_code}
+
+
+@router.post("/phone-forward/{token}")
+async def phone_forward_webhook(
+    token: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Inbound SMS forwarded by the user's own phone (Android SMS Forwarder /
+    iOS Shortcuts). PUBLIC — the token in the URL IS the auth credential.
+
+    Accepts the SMS body in any reasonable shape so iOS Shortcuts / Android
+    forwarder apps can be configured loosely:
+        - JSON `{"message": "..."}` (recommended)
+        - JSON with any of: message | body | text | content | sms
+        - Plain text body (whole request body becomes the SMS body)
+        - Form-encoded with same keys as JSON
+
+    Unknown tokens get a 200 OK so an attacker can't enumerate by response code.
+    """
+    raw = await request.body()
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    body_text = ""
+    extracted_from = "raw"
+
+    # 1. JSON
+    if "application/json" in content_type or (raw and raw.lstrip().startswith(b"{")):
+        try:
+            import json as _json
+            data = _json.loads(raw.decode("utf-8", "replace"))
+            for key in ("message", "body", "text", "content", "sms"):
+                if isinstance(data, dict) and key in data and data[key]:
+                    body_text = str(data[key])
+                    extracted_from = f"json.{key}"
+                    break
+            if not body_text and isinstance(data, dict) and data:
+                # Fall back to concatenated values (unknown key shape)
+                body_text = " ".join(str(v) for v in data.values() if v)
+                extracted_from = "json.unknown_keys"
+            elif not body_text and isinstance(data, str):
+                body_text = data
+                extracted_from = "json.string"
+        except Exception as e:
+            logger.warning("phone-forward: JSON parse failed: %s", e)
+
+    # 2. Form-encoded
+    if not body_text and "application/x-www-form-urlencoded" in content_type:
+        try:
+            form = await request.form()
+            for key in ("message", "body", "text", "content", "sms", "Body"):
+                if key in form and form[key]:
+                    body_text = str(form[key])
+                    extracted_from = f"form.{key}"
+                    break
+        except Exception as e:
+            logger.warning("phone-forward: form parse failed: %s", e)
+
+    # 3. Plain text — whole body is the SMS
+    if not body_text and raw:
+        body_text = raw.decode("utf-8", "replace").strip()
+        extracted_from = "text/plain"
+
+    body_text = body_text.strip()
+    logger.info(
+        "phone-forward: ct=%s len=%s extracted_from=%s preview=%r",
+        content_type, len(raw), extracted_from, body_text[:80],
+    )
+
+    user_result = await db.execute(
+        select(User).where(User.phone_forward_token == token).limit(1)
+    )
+    user = user_result.scalar_one_or_none()
+    if not user:
+        logger.warning("phone-forward: unknown token %s...", token[:8])
+        return {"status": "ok"}
+
+    if not body_text:
+        # Save anyway so the operator sees that the phone reached us — just no body parsed.
+        db.add(OtpInbox(
+            user_id=user.id,
+            from_number="phone-forward",
+            to_number=(user.phone or "personal")[:20],
+            body=f"[empty body — content-type={content_type}, raw_len={len(raw)}]"[:500],
+            otp_code=None,
+        ))
+        await db.commit()
+        return {"status": "ok", "extracted": False, "reason": "empty body"}
+
+    otp_match = OTP_REGEX.search(body_text)
+    otp_code = otp_match.group(1) if otp_match else None
+
+    db.add(OtpInbox(
+        user_id=user.id,
+        from_number="phone-forward",
+        to_number=(user.phone or "personal")[:20],
+        body=body_text[:500],
+        otp_code=otp_code,
+    ))
+    await db.commit()
+    return {"status": "ok", "extracted": bool(otp_code)}

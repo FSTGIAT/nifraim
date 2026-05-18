@@ -65,6 +65,27 @@
               </div>
             </section>
 
+            <!-- ── Phone-forward OTP automation ── -->
+            <section class="es-section">
+              <header class="es-section-head">
+                <span class="es-section-label">העברת SMS אוטומטית</span>
+              </header>
+              <p class="es-help">
+                כשפורטל ביטוח שולח קוד אימות לטלפון שלך — הטלפון מעביר אותו למערכת אוטומטית
+                והאוטומציה ממשיכה בלי שתצטרך להזין כלום.
+              </p>
+              <button class="es-pf-btn" @click="phoneForwardOpen = true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                  <line x1="12" y1="18" x2="12.01" y2="18"/>
+                </svg>
+                <span>הגדרת העברת SMS</span>
+                <svg class="es-pf-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+            </section>
+
             <!-- ── Email provider ── -->
             <section class="es-section">
               <header class="es-section-head">
@@ -122,6 +143,8 @@
             </div>
           </div>
         </Transition>
+
+        <PhoneForwardModal :open="phoneForwardOpen" @close="phoneForwardOpen = false" />
       </div>
     </Transition>
   </Teleport>
@@ -131,6 +154,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
+import PhoneForwardModal from './PhoneForwardModal.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -207,6 +231,7 @@ function formatDate(iso) {
 }
 const showCancelConfirm = ref(false)
 const cancelLoading = ref(false)
+const phoneForwardOpen = ref(false)
 async function handleCancelSub() {
   cancelLoading.value = true
   try {
@@ -458,6 +483,31 @@ watch(() => props.open, (now) => {
   transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .es-option.selected .es-option-dot { transform: scale(1); }
+
+.es-pf-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: linear-gradient(160deg, #FBF4ED 0%, #FFFFFF 100%);
+  border: 1px solid rgba(232, 102, 10, 0.18);
+  border-radius: 10px;
+  color: #2D2522;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.es-pf-btn:hover {
+  border-color: #E8660A;
+  background: linear-gradient(160deg, #FFF1E5 0%, #FFFFFF 100%);
+  box-shadow: 0 4px 12px rgba(232, 102, 10, 0.10);
+}
+.es-pf-btn svg:first-of-type { color: #E8660A; flex-shrink: 0; }
+.es-pf-btn span { flex: 1; text-align: right; }
+.es-pf-arrow { color: rgba(45, 37, 34, 0.4); flex-shrink: 0; transform: scaleX(-1); }
 
 .es-option-text { display: flex; flex-direction: column; gap: 2px; }
 .es-option-label { font-size: 14px; font-weight: 700; color: #2D2522; }

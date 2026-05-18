@@ -1,36 +1,24 @@
 <template>
   <section class="insights">
-    <!-- Animated dock — primary entry point for automation -->
+    <!-- Hero status panel (dark gradient) — each KPI tile drills into a focused modal -->
+    <HeroStatusPanel
+      :open-count="current.open_count || 0"
+      :open-amount="current.open_amount || 0"
+      :paid-count="current.paid_count || 0"
+      :debt-customers="current.debt_customers || 0"
+      :debt-companies="current.debt_companies || 0"
+      :last-computed-at="lastComputedAt"
+      :insight-lines="insightLines"
+      :loading="loading"
+      @tile-click="onHeroTile"
+    />
+
+    <!-- Animated dock — primary entry point for automation, full width -->
     <div class="reload-strip">
       <PortalAutomationDock
         @success="$emit('automation-success', $event)"
         @navigate-to-credentials="$emit('navigate-to-credentials')"
       />
-      <details class="manual-fallback">
-        <summary>אין פורטל מוגדר? העלה ידנית</summary>
-        <CommissionUploader />
-      </details>
-    </div>
-
-    <!-- Header strip -->
-    <header class="head-strip">
-      <div>
-        <h3 class="hs-title">סטטוס נפרעים</h3>
-        <p class="hs-sub">{{ subTitle }}</p>
-      </div>
-      <span v-if="lastComputedAt" class="hs-period">עודכן {{ relativeHebrew(lastComputedAt) }}</span>
-    </header>
-
-    <!-- AI insight banner -->
-    <div v-if="insightLines.length" class="ai-banner" role="note">
-      <span class="ai-badge" aria-hidden="true">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z"/>
-        </svg>
-      </span>
-      <ul class="ai-text">
-        <li v-for="(line, i) in insightLines" :key="i">{{ line }}</li>
-      </ul>
     </div>
 
     <!-- Two-card grid -->
@@ -53,13 +41,29 @@
       />
     </div>
 
+    <details class="manual-fallback">
+      <summary>אין פורטל מוגדר? העלה ידנית</summary>
+      <CommissionUploader />
+    </details>
+
     <InsightDrillModal
       :open="modalOpen"
       :title="modalTitle"
       :subtitle="modalSubtitle"
       :label-header="modalLabelHeader"
       :items="modalItems"
+      :kind="modalKind"
+      :category="activeCategory"
       @close="modalOpen = false"
+      @drill-customer="onDrillCustomer"
+    />
+
+    <CustomerDetailModal
+      :customer="detailCustomer"
+      :commission-rates="commissionRates"
+      :category="categoryLabel"
+      :user-name="authStore.user?.full_name || ''"
+      @close="onCustomerDetailClose"
     />
   </section>
 </template>
@@ -68,12 +72,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
 import { shortShekel } from '../../utils/monthDeltas.js'
-import { relativeHebrew } from '../../utils/relativeTime.js'
 import PortalAutomationDock from '../workspace/PortalAutomationDock.vue'
 import CommissionUploader from '../workspace/CommissionUploader.vue'
+import HeroStatusPanel from './HeroStatusPanel.vue'
 import InsightBarCard from './InsightBarCard.vue'
 import InsightDrillModal from './InsightDrillModal.vue'
+import CustomerDetailModal from './CustomerDetailModal.vue'
 import { useComparisonStore } from '../../stores/comparison.js'
+import { useAuthStore } from '../../stores/auth.js'
 
 const props = defineProps({
   category: { type: String, default: null },
@@ -81,11 +87,26 @@ const props = defineProps({
 defineEmits(['automation-success', 'navigate-to-credentials'])
 
 const comparisonStore = useComparisonStore()
+const authStore = useAuthStore()
 const insights = ref(null)
 const loading = ref(true)
 
 const activeCategory = computed(() => props.category || comparisonStore.activeCategory)
+const categoryLabel = computed(() =>
+  activeCategory.value === 'insurance' ? 'ביטוח' :
+  activeCategory.value === 'gemel_hishtalmut' ? 'גמל והשתלמות' : '',
+)
 const lastComputedAt = computed(() => insights.value?.trend?.[insights.value.trend.length - 1]?.computed_at || null)
+
+// Commission rates — loaded once for the customer drill modal so the expected-
+// commission column renders meaningfully (mirrors ComparisonDashboard pattern).
+const commissionRates = ref([])
+async function fetchCommissionRates() {
+  try {
+    const res = await api.get('/commission-rates')
+    commissionRates.value = Array.isArray(res.data) ? res.data : []
+  } catch { /* non-blocking */ }
+}
 
 async function fetchInsights(cat) {
   if (!cat) return
@@ -101,17 +122,13 @@ async function fetchInsights(cat) {
   }
 }
 
-onMounted(() => fetchInsights(activeCategory.value))
+onMounted(() => {
+  fetchInsights(activeCategory.value)
+  fetchCommissionRates()
+})
 watch(activeCategory, (cat) => fetchInsights(cat))
 
 const current = computed(() => insights.value?.current || {})
-const subTitle = computed(() => {
-  if (loading.value) return 'טוען נתונים…'
-  if (!current.value || (!current.value.open_count && !current.value.paid_count && !insights.value?.has_any_history)) {
-    return 'אין נתוני נפרעים — הפעל אוטומציה למעלה או העלה דוח'
-  }
-  return 'מצב נוכחי על פי קבצי הנפרעים שעובדו'
-})
 
 const totalOpenLabel = computed(() => `סה״כ ${shortShekel(current.value?.open_amount ?? 0)}`)
 const topCustomerLabel = computed(() => {
@@ -129,13 +146,14 @@ const customerSubtitle = computed(() => {
   return `מציג את ${n} הלקוחות עם החוב הגדול ביותר`
 })
 
-// Items for the two cards — shape: { label, amount, count, meta }
+// Items for the two cards — shape: { label, amount, count, meta, since, raw }
 const companyItems = computed(() =>
   (current.value?.companies || []).map((c) => ({
     label: c.company,
     amount: c.amount,
     count: c.count,
     meta: c.customers ? `${c.customers} לקוחות · ${c.count} חיובים` : `${c.count} חיובים`,
+    since: c.since || null,
     raw: c,
   })),
 )
@@ -145,8 +163,15 @@ const customerItems = computed(() =>
     amount: c.amount,
     count: c.count,
     meta: c.companies > 1 ? `${c.companies} חברות · ${c.count} חיובים` : `${c.count} חיובים`,
+    since: c.since || null,
     raw: c,
   })),
+)
+// Same source as companyItems but sorted by chargeable count instead of amount.
+// Used by the "חברות פעילות" tile so it surfaces a different lead than the
+// amount-sorted "סך חיוב פתוח" tile.
+const companyItemsByCount = computed(
+  () => [...companyItems.value].sort((a, b) => (b.count || 0) - (a.count || 0)),
 )
 
 // ───── AI-style insight banner (deterministic v1, derived from data) ─────
@@ -184,12 +209,18 @@ const modalTitle = ref('')
 const modalSubtitle = ref('')
 const modalLabelHeader = ref('שם')
 const modalItems = ref([])
+// modalKind drives the row-expansion fetch in InsightDrillModal:
+//   'company'  → expand fetches GET /debts?company=<row.label>&status=open
+//   'customer' → expand fetches GET /debts?customer_id_number=<row.raw.id_number>&status=open
+//   null       → rows are not expandable
+const modalKind = ref(null)
 
 function openCompany(item) {
   modalTitle.value = item.label
   modalSubtitle.value = `סך חיוב פתוח · ${shortShekel(item.amount)}`
   modalLabelHeader.value = 'חברה'
   modalItems.value = [item]
+  modalKind.value = 'company'
   modalOpen.value = true
 }
 function openCustomer(item) {
@@ -197,6 +228,7 @@ function openCustomer(item) {
   modalSubtitle.value = `סך חוב · ${shortShekel(item.amount)}`
   modalLabelHeader.value = 'לקוח'
   modalItems.value = [item]
+  modalKind.value = 'customer'
   modalOpen.value = true
 }
 function openAllCompanies() {
@@ -204,6 +236,7 @@ function openAllCompanies() {
   modalSubtitle.value = `${companyItems.value.length} חברות`
   modalLabelHeader.value = 'חברה'
   modalItems.value = companyItems.value
+  modalKind.value = 'company'
   modalOpen.value = true
 }
 function openAllCustomers() {
@@ -211,7 +244,111 @@ function openAllCustomers() {
   modalSubtitle.value = `${customerItems.value.length} לקוחות`
   modalLabelHeader.value = 'לקוח'
   modalItems.value = customerItems.value
+  modalKind.value = 'customer'
   modalOpen.value = true
+}
+
+// ───── Hero KPI tile drill ─────
+// Each tile in the dark hero panel is a button. Routed here so the parent
+// owns the modal config (titles, subtitles, item shape).
+function onHeroTile(id) {
+  const c = current.value || {}
+  if (id === 'open-amount') {
+    modalTitle.value = 'סך החיוב הפתוח — לפי חברה'
+    modalSubtitle.value = `סה״כ ${shortShekel(c.open_amount || 0)} פתוח ב-${companyItems.value.length} חברות`
+    modalLabelHeader.value = 'חברה'
+    modalItems.value = companyItems.value
+    modalKind.value = 'company'
+    modalOpen.value = true
+    return
+  }
+  if (id === 'debt-customers') {
+    modalTitle.value = 'כל הלקוחות עם חוב פתוח'
+    modalSubtitle.value = `${(c.debt_customers || 0).toLocaleString('he-IL')} לקוחות · סה״כ ${shortShekel(c.open_amount || 0)}`
+    modalLabelHeader.value = 'לקוח'
+    modalItems.value = customerItems.value
+    modalKind.value = 'customer'
+    modalOpen.value = true
+    return
+  }
+  if (id === 'debt-companies') {
+    modalTitle.value = 'חברות פעילות — לפי מספר חיובים'
+    modalSubtitle.value = `${(c.debt_companies || 0).toLocaleString('he-IL')} חברות · ${(c.open_count || 0).toLocaleString('he-IL')} חיובים פתוחים`
+    modalLabelHeader.value = 'חברה'
+    modalItems.value = companyItemsByCount.value
+    modalKind.value = 'company'
+    modalOpen.value = true
+  }
+}
+
+// ───── Customer drill (InsightDrillModal → CustomerDetailModal) ─────
+// Builds the customer shape expected by the existing CustomerDetailModal
+// out of the open-debt rows for this customer. Contact fields stay null
+// (the modal's v-if hides them); products are the open debts.
+const detailCustomer = ref(null)
+// Remember whether the drill list was open before we drilled into a customer.
+// When the customer modal closes we restore it so the user lands back in the
+// list, not on an empty page (CustomerDetailModal's z-index is lower than the
+// drill modal's, so we hide the drill while the detail is up).
+const drillWasOpen = ref(false)
+
+function onCustomerDetailClose() {
+  detailCustomer.value = null
+  if (drillWasOpen.value) {
+    modalOpen.value = true
+    drillWasOpen.value = false
+  }
+}
+
+async function onDrillCustomer({ idNumber, item }) {
+  if (!idNumber) return
+  // Hide the drill list while the customer modal is up (it has a lower
+  // z-index and would otherwise sit behind). We restore it on close.
+  drillWasOpen.value = modalOpen.value
+  modalOpen.value = false
+  // Optimistic skeleton so the modal opens immediately while debts load.
+  detailCustomer.value = {
+    id_number: idNumber,
+    name: item?.label || idNumber,
+    paid_count: 0,
+    unpaid_count: item?.count || 0,
+    commission_count: 0,
+    total_commission: 0,
+    paid_commission: 0,
+    client_phone: null,
+    client_email: null,
+    employer_name: null,
+    employer_id: null,
+    products: [],
+  }
+  try {
+    const params = { status: 'open', customer_id_number: idNumber }
+    if (activeCategory.value) params.category = activeCategory.value
+    const res = await api.get('/debts', { params })
+    const rows = Array.isArray(res.data) ? res.data : []
+    detailCustomer.value = {
+      ...detailCustomer.value,
+      unpaid_count: rows.length,
+      products: rows.map((d) => ({
+        product: d.product || 'חיוב פתוח',
+        company: d.company_name || '',
+        company_full: d.company_name || '',
+        accumulation: d.accumulation || 0,
+        premium: d.premium || 0,
+        balance: 0,
+        commission: 0,
+        policy_number: d.policy_number || '',
+        fund_type: null,
+        management_fee: null,
+        management_fee_amount: null,
+        paid: false,
+        source: null,
+        sign_date: d.created_at || null,
+      })),
+    }
+  } catch {
+    // Leave the skeleton; user can close. (Errors are rare; debts is already-cached.)
+  }
 }
 </script>
 
@@ -225,66 +362,17 @@ function openAllCustomers() {
 }
 
 .reload-strip { display: flex; flex-direction: column; gap: 8px; overflow: visible; }
-.manual-fallback { font-size: 13px; color: var(--text-muted); }
-.manual-fallback summary { cursor: pointer; padding: 6px 4px; font-weight: 600; }
+.manual-fallback {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+}
+.manual-fallback summary { cursor: pointer; padding: 6px 4px; font-weight: 600; user-select: none; }
 .manual-fallback summary:hover { color: var(--text); }
 .manual-fallback[open] summary { color: var(--text); margin-bottom: 8px; }
-
-.head-strip {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px dashed var(--border-subtle);
-}
-.hs-title { margin: 0; font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.2px; }
-.hs-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--text-muted); }
-.hs-period {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11.5px;
-  letter-spacing: 0.3px;
-  color: var(--primary-deep, #c2410c);
-  background: rgba(245, 124, 0, 0.08);
-  border: 1px solid rgba(245, 124, 0, 0.22);
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-weight: 700;
-}
-
-/* AI insight banner */
-.ai-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.06), transparent 70%);
-  border: 1px solid rgba(245, 124, 0, 0.18);
-}
-.ai-badge {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
-  color: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.32);
-}
-.ai-text {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 13px;
-  color: var(--text);
-  font-weight: 600;
-}
-.ai-text li::before { content: '· '; color: var(--primary, #F57C00); font-weight: 800; }
 
 /* Two-card grid */
 .card-grid {
