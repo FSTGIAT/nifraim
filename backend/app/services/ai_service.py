@@ -7,7 +7,7 @@ import uuid
 from typing import AsyncGenerator
 
 import anthropic
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -1408,6 +1408,79 @@ async def _get_documents_context(db: AsyncSession, user_id: uuid.UUID, question:
     return "".join(lines)
 
 
+async def _get_commission_periods_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """Per-month commission breakdown across ALL uploaded commission files.
+
+    Answers questions like "כמה עמלות קיבלתי בחודש מרץ" / "השווה
+    מרץ לפברואר". Without this block the AI only sees the per-company
+    latest-period totals (good for "what's the bottom line now") but
+    can't answer historical month questions.
+
+    Query: latest file per (user, filename), grouped by period_month,
+    summed by company. Returns a deterministic text block.
+    """
+    rows = await db.execute(
+        text(
+            """
+            WITH latest_per_filename AS (
+              SELECT DISTINCT ON (fu.user_id, fu.filename)
+                     fu.id, fu.filename, fu.company_source, fu.period_month
+              FROM file_uploads fu
+              WHERE fu.user_id = :uid AND fu.file_category = 'commission'
+              ORDER BY fu.user_id, fu.filename, fu.uploaded_at DESC
+            )
+            SELECT lp.period_month, lp.company_source, lp.filename,
+                   COALESCE(SUM(cr.commission_paid), 0)::numeric(14,2) AS paid
+            FROM latest_per_filename lp
+            LEFT JOIN client_records cr ON cr.upload_id = lp.id
+            GROUP BY lp.period_month, lp.company_source, lp.filename
+            ORDER BY lp.period_month DESC NULLS LAST, paid DESC
+            """
+        ),
+        {"uid": str(user_id)},
+    )
+    data = rows.all()
+    if not data:
+        return None
+
+    from collections import defaultdict
+    by_period: dict = defaultdict(lambda: {"files": [], "total": 0.0, "by_company": defaultdict(float)})
+    for period, company, filename, paid in data:
+        key = period.isoformat() if period else "תקופה לא ידועה"
+        bucket = by_period[key]
+        bucket["files"].append(filename)
+        bucket["total"] += float(paid or 0)
+        co = company or "(ללא חברה)"
+        bucket["by_company"][co] += float(paid or 0)
+
+    HE_MONTH = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+
+    def _label(p: str) -> str:
+        if p == "תקופה לא ידועה":
+            return p
+        try:
+            y, m, _ = p.split("-")
+            return f"{HE_MONTH[int(m)-1]} {y} ({p})"
+        except Exception:
+            return p
+
+    parts = [
+        "=== עמלות לפי חודש (מצרף את כל קבצי הנפרעים שהועלו) ===",
+        "מקור: client_records.commission_paid עבור הקובץ האחרון לכל (חברה, שם קובץ) — מקובץ לפי period_month.",
+        "השתמש בבלוק זה כדי לענות על שאלות כמו 'כמה עמלות במרץ?' או 'השווה מרץ לפברואר'.",
+        "",
+    ]
+    for period_key in sorted(by_period.keys(), reverse=True):
+        b = by_period[period_key]
+        parts.append(f"### {_label(period_key)} — סה\"כ ₪{b['total']:,.2f} ({len(b['files'])} קבצים)")
+        for co, amt in sorted(b["by_company"].items(), key=lambda x: -x[1]):
+            if amt > 0:
+                parts.append(f"   - {co}: ₪{amt:,.2f}")
+        parts.append("")
+
+    return "\n".join(parts)
+
+
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
     prod_context, prod_upload = await _get_production_context(db, user_id)
 
@@ -1461,6 +1534,15 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
         rates_context = await _get_commission_rates_context(db, user_id)
         if rates_context:
             context_parts.append(rates_context)
+
+    # Per-period commission breakdown (independent of production upload).
+    # Answers "how much commission in March / February / etc.". Included
+    # when the question hints at a historical period or any of:
+    # comparison/history/myfile topics.
+    if topics & {"comparison", "history", "myfile"}:
+        periods_ctx = await _get_commission_periods_context(db, user_id)
+        if periods_ctx:
+            context_parts.append(periods_ctx)
 
     # Uploaded AI documents — already loaded above so we can route around
     # "no production file" mode. Append at the end of the context block.
