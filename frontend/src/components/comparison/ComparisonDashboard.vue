@@ -4,9 +4,8 @@
     <div v-if="props.categoryLabel || props.companySource || periodLabel" class="comparison-header-bar">
       <span v-if="props.companySource" class="header-company">{{ props.companySource }}</span>
       <span v-if="props.categoryLabel" class="header-category">{{ props.categoryLabel }}</span>
-      <span v-if="periodLabel" class="header-period" :title="`קבצי נפרעים תואמי תקופה: ${props.periodFilesCount}`">
-        תקופה: {{ periodLabel }}
-        <span v-if="props.periodFilesExcluded" class="header-period-warn">⚠ {{ props.periodFilesExcluded }} מחוץ לתקופה</span>
+      <span v-if="periodLabel" class="header-period" :title="`חודש הפרודוקציה הפעילה`">
+        פרודוקציה: {{ periodLabel }}
       </span>
     </div>
 
@@ -168,7 +167,7 @@
         </div>
         <div class="kpi-data">
           <div class="kpi-value ltr-number">{{ formatAmount(totalCommission) }}</div>
-          <div class="kpi-label">עמלות שהתקבלו{{ periodLabel ? ` · ${periodLabel}` : '' }}</div>
+          <div class="kpi-label">עמלות שהתקבלו (לפי דיווח אחרון מכל חברה)</div>
         </div>
       </div>
       <div class="kpi-card kpi-cyan">

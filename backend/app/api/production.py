@@ -581,17 +581,13 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
     )
     all_uploads = all_result.scalars().all()
 
-    # When the caller supplied production periods, restrict candidate pools
-    # so "current" can only come from current_period_month and "previous"
-    # only from previous_period_month. Files with NULL period_month always
-    # remain candidates (legacy uploads pre-period-detection).
-    if current_period_month is not None:
-        all_uploads = [
-            u for u in all_uploads
-            if u.period_month is None
-            or u.period_month == current_period_month
-            or (previous_period_month and u.period_month == previous_period_month)
-        ]
+    # NOTE: period filtering was removed here (2026-05-18). Israeli insurance
+    # commission reports lag production by ~1 month — APR production pairs
+    # naturally with MAR commission reports. Restricting to literal period
+    # match made the dashboard total drop to ₪1,731 (Hachshara APR alone)
+    # while the agent's real reported commissions across all companies'
+    # latest reports was ₪158K. We now show the LATEST file per company
+    # regardless of labelled period; period_month is informational only.
 
     # Pair commission files BY COMPANY (not filename, not upload date).
     # For each company: current = latest upload; previous = the next-most-recent
@@ -618,36 +614,12 @@ async def _build_commission_lookups(db: AsyncSession, user_id: uuid.UUID, dividi
         if not uploads:
             continue
 
-        # ── Period-aware selection (new) ─────────────────────────────
-        # When the caller supplied production periods, pick the upload
-        # whose period_month MATCHES that period (not just "latest").
-        # Otherwise an APR production paired with a Mor MAR commission
-        # file would mistakenly pull Mor MAR into "current" because it's
-        # the latest Mor upload — see the ₪34,402 QA bug.
-        if current_period_month is not None:
-            cur_match = next(
-                (u for u in uploads if u.period_month == current_period_month), None
-            )
-            if cur_match is not None:
-                current_upload_ids.append(cur_match.id)
-            if previous_period_month is not None:
-                prev_match = next(
-                    (u for u in uploads
-                     if u.period_month == previous_period_month
-                     and u.id != (cur_match.id if cur_match else None)),
-                    None,
-                )
-                if prev_match is not None:
-                    previous_upload_ids.append(prev_match.id)
-            # NULL period_month uploads fall through to the legacy logic
-            # below if and only if the period match produced nothing AND
-            # the file has no period at all (Harel non-month-named files).
-            if cur_match is not None or any(u.period_month is not None for u in uploads):
-                continue
-            # else: no period-matching upload exists for this company AND
-            # all of its uploads have period=NULL → use legacy pairing.
-
-        # ── Legacy pairing (fallback when no production period) ──────
+        # Always pick the LATEST upload per company as "current". The
+        # previous period selection still uses the "different filename"
+        # heuristic below — that captures Mor's MAR file as previous when
+        # current is Mor's APR file, etc. Period-aware comparison is
+        # surfaced separately in the AI context, not by hiding files
+        # from the dashboard total.
         current_upload_ids.append(uploads[0].id)
         if len(uploads) < 2:
             continue

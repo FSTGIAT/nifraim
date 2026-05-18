@@ -307,18 +307,14 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         return None
 
     prod_period = getattr(prod_upload, "period_month", None)
+    # NOTE: do NOT period-filter here. Israeli commission reports lag
+    # production by ~1 month, so APR production naturally pairs with MAR
+    # commission files. Filtering to literal period match made the AI
+    # report ₪1,731 when the agent's real total across all latest reports
+    # was ₪158K. Instead, surface each file's period_month so the AI can
+    # mention it ("מור report covers March 2026") without hiding data.
     excluded_no_period: list[str] = []
     excluded_wrong_period: list[tuple[str, str]] = []
-    if prod_period is not None:
-        period_matched: list = []
-        for u in all_comm_uploads:
-            if u.period_month is None:
-                excluded_no_period.append(u.filename)
-            elif u.period_month == prod_period:
-                period_matched.append(u)
-            else:
-                excluded_wrong_period.append((u.filename, u.period_month.isoformat()))
-        all_comm_uploads = period_matched
 
     # Deduplicate so each commission *company* appears once, using its latest
     # upload. Falling back to filename when company_source is blank preserves
@@ -441,25 +437,24 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         return premium * rate_frac
 
     comparison_parts = []
-    # Period header — tells the AI exactly which month it's reporting on
-    # (and surfaces excluded files so it can prompt the user to re-upload).
+    # Period header — informational. We DO NOT exclude commission files by
+    # period (Israeli reports lag production by ~1 month). Instead the
+    # header tells the AI the production period and lists each commission
+    # file's period so the AI can mention "מור: דיווח אחרון מרץ 2026".
     if prod_period is not None:
         comparison_parts.append(
-            f"=== תקופת השוואה: {prod_period.isoformat()} (חודש הקובץ הנוכחי של הפרודוקציה) ==="
+            f"=== תקופת הפרודוקציה הנוכחית: {prod_period.isoformat()} ==="
         )
         comparison_parts.append(
-            f"קבצי נפרעים תואמי תקופה: {len(comm_uploads)}"
+            "סך העמלות מצרף את הדיווח האחרון של כל חברה (לרוב חודש אחרון בפיגור של חודש מהפרודוקציה)."
         )
-        if excluded_wrong_period:
-            sample = ", ".join(f"{fn} ({p})" for fn, p in excluded_wrong_period[:4])
-            comparison_parts.append(
-                f"קבצי נפרעים מתקופות אחרות שנמצאו במערכת ולא נכללו: {len(excluded_wrong_period)} ({sample}…)"
-            )
-        if excluded_no_period:
-            sample = ", ".join(excluded_no_period[:4])
-            comparison_parts.append(
-                f"קבצי נפרעים ללא תקופה מזוהה שלא נכללו: {len(excluded_no_period)} ({sample}…). הצע למשתמש להעלות אותם שוב."
-            )
+        periods_seen: dict[str, int] = {}
+        for u in comm_uploads:
+            p = u.period_month.isoformat() if u.period_month else "—"
+            periods_seen[p] = periods_seen.get(p, 0) + 1
+        if periods_seen:
+            summary_bits = ", ".join(f"{p}: {n}" for p, n in sorted(periods_seen.items(), reverse=True))
+            comparison_parts.append(f"תקופות הקבצים שנכללו: {summary_bits}")
         comparison_parts.append("")
     # Cross-company aggregation — the per-company blocks below are organized
     # per commission file, but users frequently ask "across all companies,
