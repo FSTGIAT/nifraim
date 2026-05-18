@@ -133,18 +133,37 @@ export function buildProductionComparisonSummary(result) {
   if (s.removed_count) parts.push(`${s.removed_count} הוסרו`)
   if (parts.length) sentences.push(`בין ${curLabel} ל-${prevLabel}: ${parts.join(' · ')}.`)
 
+  // BIGGEST MOVER — explicitly label as a SINGLE customer's delta so the
+  // text doesn't mislead readers into thinking it's the company aggregate.
+  // The old phrasing "עלייה של ₪X בצבירה ב-Mor" caused QA bug #N where the
+  // reader and the AI both interpreted "מור" as "Mor company aggregate"
+  // when it was actually one customer (אורי פלד) at Mor.
   const mover = pickBiggestMover(result.changed_clients)
   if (mover && mover.value) {
     const direction = mover.value > 0 ? 'עלייה' : 'ירידה'
-    const company = mover.client.company ? ` ב-${mover.client.company}` : ''
-    sentences.push(`השינוי הבולט — ${direction} של ${formatAmount(Math.abs(mover.value))} ב${mover.field}${company}.`)
+    const who = mover.client.name || mover.client.id_number || 'לקוח'
+    const company = mover.client.company ? ` (${mover.client.company})` : ''
+    sentences.push(`הלקוח עם השינוי הגדול ביותר — ${who}${company}: ${direction} של ${formatAmount(Math.abs(mover.value))} ב${mover.field}.`)
+  }
+
+  // Per-company aggregated top — sums across all clients in each company.
+  // This is the TRUE "which company moved the most" answer.
+  const companyDeltasAll = perCompanyDeltas(result.changed_clients)
+  const topCompanyByAccum = companyDeltasAll
+    .map(d => ({ company: d.company, delta: d.accumulation_diff }))
+    .filter(x => x.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0]
+  if (topCompanyByAccum) {
+    const dir = topCompanyByAccum.delta > 0 ? 'עלתה' : 'ירדה'
+    sentences.push(`החברה שזזה הכי הרבה בצבירה: ${topCompanyByAccum.company} — ${dir} ב-${formatAmount(Math.abs(topCompanyByAccum.delta))}.`)
   }
 
   if (s.has_commission_data && s.commission_total) {
+    const periodNote = s.period_month ? ` (חודש ${s.period_month})` : ''
     const top = topCompanyByCommission(s.commission_by_company)
     sentences.push(top
-      ? `סך העמלות לתקופה: ${formatAmount(s.commission_total)} — החברה המובילה היא ${top.company}.`
-      : `סך העמלות לתקופה: ${formatAmount(s.commission_total)}.`)
+      ? `סך העמלות${periodNote}: ${formatAmount(s.commission_total)} — החברה המובילה היא ${top.company}.`
+      : `סך העמלות${periodNote}: ${formatAmount(s.commission_total)}.`)
   }
 
   const summary = sentences.join(' ')

@@ -75,7 +75,7 @@ async def backfill(force: bool, dry_run: bool) -> None:
                 for r in recs_q.all()
             ]
 
-            detected = detect_period_month(u.filename, records)
+            detected = detect_period_month(u.filename, records, uploaded_at=u.uploaded_at)
 
             if detected is None:
                 results["no_period_detected"] += 1

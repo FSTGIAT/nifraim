@@ -156,7 +156,8 @@ async def ingest_file_bytes(
         await db.flush()
 
     from app.services.parser_service import detect_period_month
-    period = detect_period_month(filename, result.get("records"))
+    from datetime import datetime as _dt
+    period = detect_period_month(filename, result.get("records"), uploaded_at=_dt.utcnow())
 
     upload = FileUpload(
         user_id=user_id,

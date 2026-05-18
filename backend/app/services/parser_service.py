@@ -70,53 +70,42 @@ _HE_MONTH_TO_INT = {
 }
 
 import re as _re_month_helper  # avoid shadowing module-level imports elsewhere
+# With year: "אפריל 26" / "מרץ 2026"
 _RE_MONTH_YEAR = _re_month_helper.compile(
     r"(?P<month>" + "|".join(_HE_MONTH_TO_INT.keys()) + r")[\s'`׳]*(?P<year>20\d{2}|\d{2})"
+)
+# Month-only (no year): "אפריל.xlsx" — caller infers year from uploaded_at
+# (production file labelled April uploaded in May → year = 2026).
+_RE_MONTH_ONLY = _re_month_helper.compile(
+    r"(?<![א-ת])(?P<month>" + "|".join(_HE_MONTH_TO_INT.keys()) + r")(?![א-ת])"
 )
 _RE_NUM_MONTH = _re_month_helper.compile(
     r"(?:^|[^\d])(?P<month>0?[1-9]|1[0-2])[/\-_.](?P<year>20\d{2}|\d{2})(?=$|[^\d])"
 )
 
 
-def detect_period_month(filename: str | None, records: list[dict] | None = None):
+def detect_period_month(filename: str | None, records: list[dict] | None = None, uploaded_at=None):
     """Best-effort guess of which month this file describes.
 
-    Priority (data-dates-first — chosen by user 2026-05):
-      1. Records' actual data dates (max of sign_date / processing_date /
-         data_date / payment_date / transfer_date), rolled to month start.
-         This is the most semantically correct — if a file's data is from
-         April, it's an April file regardless of what the filename says.
-      2. Hebrew month name in filename ("פרודוקציה אפריל 26").
-      3. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
-      4. None — caller falls back to uploaded_at (least reliable; a file
-         uploaded in May could describe March data).
+    Priority (filename-first — flipped 2026-05-18 after data-dates picked
+    processing artefacts: APR production rolled to May because some
+    processing_date values were in early May):
+
+      1. Hebrew month name + year in filename ("פרודוקציה אפריל 26").
+      2. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
+      3. Hebrew month only in filename ("אפריל.xlsx") — year inferred
+         from uploaded_at when supplied (best guess), else current year.
+      4. Records' data dates: PREFER sign_date (the period the client was
+         in the portfolio for) → transfer_date → rights_assignment_date.
+         processing_date is intentionally LAST because it's the
+         report-generation date, not the period-described date — a March
+         report processed in early May would mislabel the file as May.
+      5. uploaded_at (least reliable).
+      6. None.
 
     Returns a `date` object (first of the month) or None.
     """
     from datetime import date as _date
-    if records:
-        # Date columns on ClientRecord (per models/record.py):
-        #   - sign_date, transfer_date, rights_assignment_date — Date
-        #   - processing_date — String (parse if it looks like a date)
-        dates: list[_date] = []
-        for r in records:
-            for k in ("sign_date", "transfer_date", "rights_assignment_date"):
-                v = r.get(k)
-                if hasattr(v, "year") and hasattr(v, "month"):
-                    dates.append(_date(v.year, v.month, 1))
-            # processing_date is stored as a string — try common formats.
-            pd_raw = r.get("processing_date")
-            if isinstance(pd_raw, str) and pd_raw:
-                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
-                    try:
-                        from datetime import datetime as _dt
-                        d = _dt.strptime(pd_raw[:10], fmt).date()
-                        dates.append(_date(d.year, d.month, 1))
-                        break
-                    except ValueError:
-                        continue
-        if dates:
-            return max(dates)
     if filename:
         m = _RE_MONTH_YEAR.search(filename)
         if m:
@@ -138,6 +127,54 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None)
                 return _date(year, month, 1)
             except ValueError:
                 pass
+        # Month name only — no year. Infer from uploaded_at when available.
+        m = _RE_MONTH_ONLY.search(filename)
+        if m:
+            month = _HE_MONTH_TO_INT[m.group("month")]
+            if uploaded_at and hasattr(uploaded_at, "year"):
+                # File for "April" uploaded in May 2026 → 2026-04.
+                # But "December" uploaded in January 2026 → 2025-12 (assume
+                # files are reported within ~3 months; period_month must be ≤ uploaded_at).
+                year = uploaded_at.year
+                candidate = _date(year, month, 1)
+                if candidate > _date(uploaded_at.year, uploaded_at.month, 1):
+                    year -= 1
+                    candidate = _date(year, month, 1)
+                return candidate
+            from datetime import date as _today
+            year = _today.today().year
+            try:
+                return _date(year, month, 1)
+            except ValueError:
+                pass
+    if records:
+        # Prefer real per-client dates over processing artefacts.
+        # sign_date / transfer_date / rights_assignment_date reflect when
+        # the client was in the portfolio. processing_date is when the
+        # report was generated and can drift into the next month.
+        dates: list[_date] = []
+        proc_dates: list[_date] = []
+        for r in records:
+            for k in ("sign_date", "transfer_date", "rights_assignment_date"):
+                v = r.get(k)
+                if hasattr(v, "year") and hasattr(v, "month"):
+                    dates.append(_date(v.year, v.month, 1))
+            pd_raw = r.get("processing_date")
+            if isinstance(pd_raw, str) and pd_raw:
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+                    try:
+                        from datetime import datetime as _dt
+                        d = _dt.strptime(pd_raw[:10], fmt).date()
+                        proc_dates.append(_date(d.year, d.month, 1))
+                        break
+                    except ValueError:
+                        continue
+        if dates:
+            return max(dates)
+        if proc_dates:
+            return max(proc_dates)
+    if uploaded_at and hasattr(uploaded_at, "year"):
+        return _date(uploaded_at.year, uploaded_at.month, 1)
     return None
 
 
