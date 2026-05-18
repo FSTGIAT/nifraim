@@ -222,6 +222,25 @@ export function buildProductionComparisonSummary(result) {
     FACTS.push('')
   }
 
+  // ===== Per-COMPANY aggregated deltas (the canonical "Mor's increase") =====
+  // CRITICAL: this block must come BEFORE the per-customer truth block, and
+  // BEFORE any individual-mover list. The QA bug "₪2,658,447 increase at
+  // Mor" came from the AI quoting אורי פלד's personal delta as if it were
+  // Mor's company aggregate. By putting the real company aggregates at the
+  // top of FACTS — labeled explicitly as "company aggregate" — the AI has a
+  // clear, deterministic answer to "how much did Mor go up by?".
+  const companyDeltasFacts = perCompanyDeltas(result.changed_clients)
+  if (companyDeltasFacts.length) {
+    FACTS.push('=== שינויים מצטברים לפי חברה (סכום של כל הלקוחות באותה חברה — לא לבלבל עם דלתא של לקוח בודד!) ===')
+    for (const d of companyDeltasFacts.slice(0, 20)) {
+      const bits = [`${d.count} לקוחות`]
+      if (d.premium_diff) bits.push(`Δפרמיה ${d.premium_diff > 0 ? '+' : ''}${formatAmount(d.premium_diff)}`)
+      if (d.accumulation_diff) bits.push(`Δצבירה ${d.accumulation_diff > 0 ? '+' : ''}${formatAmount(d.accumulation_diff)}`)
+      FACTS.push(`- ${d.company}: ${bits.join(' · ')}`)
+    }
+    FACTS.push('')
+  }
+
   // ===== Per-customer truth block (top 30 by absolute change/exposure) =====
   // This is the AI's defense against bucket-confusion bugs like the
   // אבלין פיפרברג case. For each top customer, we state explicitly which
@@ -282,18 +301,10 @@ export function buildProductionComparisonSummary(result) {
   }
   L.push('')
 
-  // Per-company deltas among CHANGED clients — crucial for "why did accumulation drop at X"
-  const companyDeltas = perCompanyDeltas(result.changed_clients)
-  if (companyDeltas.length) {
-    L.push('שינויים לפי חברה (בתוך הלקוחות ששונו):')
-    for (const d of companyDeltas.slice(0, 12)) {
-      const bits = [`${d.count} לקוחות`]
-      if (d.premium_diff) bits.push(`פרמיה ${d.premium_diff > 0 ? '+' : ''}${formatAmount(d.premium_diff)}`)
-      if (d.accumulation_diff) bits.push(`צבירה ${d.accumulation_diff > 0 ? '+' : ''}${formatAmount(d.accumulation_diff)}`)
-      L.push(`- ${d.company}: ${bits.join(' · ')}`)
-    }
-    L.push('')
-  }
+  // (Per-company aggregated deltas now emitted at the TOP of FACTS, before
+  // the per-customer truth block — see the "שינויים מצטברים לפי חברה"
+  // section above. Not duplicated here to avoid the AI conflating
+  // per-customer with per-company numbers.)
 
   // New clients breakdown
   const newByCompany = groupByCompany(result.new_clients)
@@ -324,10 +335,12 @@ export function buildProductionComparisonSummary(result) {
     L.push('')
   }
 
-  // Top 10 movers with full detail
+  // Top 10 movers with full detail — INDIVIDUAL customer deltas only.
+  // Label is explicit so the AI doesn't confuse one customer's delta
+  // with the company aggregate (the Mor ₪2,658,447 bug).
   const movers = topMovers(result.changed_clients, 10)
   if (movers.length) {
-    L.push('10 הלקוחות עם השינוי הגדול ביותר:')
+    L.push('10 לקוחות בודדים עם השינוי הגדול ביותר (הערכים הם ללקוח אחד בלבד — אסור לדווח אותם כדלתא של חברה!):')
     for (const m of movers) {
       const bits = []
       if (m.premium_diff) bits.push(`פרמיה ${m.premium_diff > 0 ? '+' : ''}${formatAmount(m.premium_diff)}`)
