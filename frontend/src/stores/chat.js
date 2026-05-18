@@ -253,6 +253,12 @@ export const useChatStore = defineStore('chat', () => {
               msg.vizs.push(data.viz)
               msg.viz = data.viz
             }
+            if (Array.isArray(data.warnings) && data.warnings.length) {
+              // Post-answer numeric validator flagged amounts that aren't
+              // backed by source data. Render as a yellow chip on the
+              // assistant message so the user knows which numbers to verify.
+              messages.value[assistantIdx].warnings = data.warnings
+            }
             if (data.done) break
           } catch {
             // ignore parse errors

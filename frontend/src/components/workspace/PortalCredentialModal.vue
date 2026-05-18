@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="cred-modal-overlay" @click.self="close">
+      <div v-if="open" class="cred-modal-overlay">
         <div class="cred-modal" role="dialog" aria-modal="true" :aria-label="title">
           <header class="cred-head">
             <div class="cred-head-titles">
@@ -157,7 +157,11 @@ watch(
       form.portal_kind = pre
       form.username = ''
       form.password = ''
-      form.otp_method = phoneForwardConfigured.value ? 'phone_forward' : 'manual'
+      // Always default to phone-forward — it's the recommended path. If the
+      // user hasn't configured it yet, the radio shows as selected-but-disabled
+      // with the "set up first in settings" hint, nudging them toward setup
+      // rather than the manual fallback.
+      form.otp_method = 'phone_forward'
     }
     // Pre-load phone-forward status so the option enables/disables correctly.
     store.fetchPhoneForward().catch(() => {})

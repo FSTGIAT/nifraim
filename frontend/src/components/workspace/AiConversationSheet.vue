@@ -107,6 +107,22 @@
               >
                 <span class="dot"></span><span class="dot"></span><span class="dot"></span>
               </span>
+              <!-- Numeric-validator warnings: amounts in the AI's answer that
+                   aren't backed by the source data we showed it. Yellow chips
+                   make the user pause before trusting the figure. -->
+              <div
+                v-if="msg.role === 'assistant' && Array.isArray(msg.warnings) && msg.warnings.length"
+                class="ai-msg-warnings"
+                role="alert"
+              >
+                <div class="ai-msg-warnings-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  אזהרה: מספרים שלא אומתו במקור
+                </div>
+                <ul>
+                  <li v-for="(w, wi) in msg.warnings" :key="wi">{{ w }}</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -470,6 +486,31 @@ onBeforeUnmount(() => {
 .ai-msg-content :deep(.chat-table td) { padding: 6px 8px; text-align: start; border-bottom: 1px solid var(--border-subtle); }
 .ai-msg-content :deep(.chat-table th) { background: var(--bg); font-weight: 700; }
 .ai-msg-content :deep(.ltr-number) { direction: ltr; display: inline-block; unicode-bidi: isolate; }
+
+/* Numeric-validator warning chip — drawn below the assistant message body.
+   Soft amber so it reads as caution, not error. */
+.ai-msg-warnings {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff8e6;
+  border: 1px solid #f0c869;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: #6b5418;
+}
+.ai-msg-warnings-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #875b00;
+}
+.ai-msg-warnings ul {
+  margin: 0;
+  padding-inline-start: 16px;
+}
+.ai-msg-warnings li { margin: 2px 0; }
 
 .ai-typing { display: inline-flex; gap: 3px; align-items: center; padding: 2px 0; }
 .ai-typing .dot {

@@ -66,20 +66,37 @@ EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות בי�
 
 **מה חייב להיכלל ב-full_content (אם קיים במסמך):**
 1. פרטי הצדדים (חברות, סוכן, תאריכים, מועדי תוקף).
-2. **טבלאות שיעורי עמלה** — לפי קטגוריות (חיים/ריסק, בריאות, פנסיה/גמל, רכוש/כללי). כלול ספר + תוספת + סה״כ אם המסמך מבחין ביניהם.
+2. **טבלאות שיעורי עמלה** — לפי קטגוריות (חיים/ריסק, בריאות, פנסיה/גמל, רכוש/כללי). כלול ספר + תוספת + סה״כ **רק כאשר המסמך מציג אותם בפועל**.
 3. **עמלות היקף** — שיעורים חד-פעמיים על גיוס חדש.
 4. **תנאי החזר עמלה / Clawback / ניכויי ביטולים** — חובה! כמעט בכל הסכם עמלה בישראל יש סעיף כזה. חפש לפי: 'ביטול', 'החזר', 'ניכוי', 'פדיון', 'משיכה', 'ניוד', 'מחיקת תפוקה', 'הפסקת גבייה', 'Clawback'. כלול את כל טבלת אחוזי ההחזר לפי משך זמן, ואת כל הטריגרים.
 5. **תנאים מיוחדים** — בלעדיות, מינימום תפוקה, יעדים, סנקציות.
 6. **חידוש / הארכה / סיום** — תקופת הסכם וכללי חידוש/ביטול.
 7. **חתימות ותאריכים**.
 
-חוקים:
-- full_content: Markdown — ## כותרות סעיף, טבלאות, רשימות.
-- rates: רק שיעורי עמלה ממשיים מהמסמך. אל תמציא.
-- rate_percent חייב להיות מספר. אם יש טווח, החזר את הממוצע.
-- companies: שמות חברות עיקריות.
-- summary: 2–3 משפטים בעברית.
-- אם נושא לא קיים במסמך — דלג עליו. אבל אם הוא כן קיים — חובה לכלול.
+==========================================================================
+חוקים קריטיים לחילוץ rates (אל תפר — שגיאות כאן מוזרמות ישירות לטבלת ה-DB):
+==========================================================================
+
+1. **אסור להמציא עמודות**. אם המסמך מציג בטבלה רק עמודה אחת (לדוגמה: רק "עמלת ספר"), החזר רכיב אחד מסוג `single` או `book`. אל תוסיף "תוספת" שאינה כתובה במפורש, ואל תכפיל שורות.
+
+2. **אסור לחבר ידנית סה״כ**. אם המסמך לא מציג עמודת "סה״כ" שכבר חושבה, השאר את `total_rate_percent` כ-null. אסור להחזיר rate_percent שהוא תוצאה של חיבור שני מספרים מהמסמך אלא אם הסה״כ עצמו מודפס שם.
+
+3. **כל מספר באובייקט components חייב להופיע מילולית במסמך**. אם אתה לא בטוח שמספר מסוים נמצא בטקסט — דלג עליו. עדיף שורה אחת נכונה מאשר שלוש שורות מומצאות.
+
+4. **לכל רכיב חייב להיות `kind`** מתוך הסט הסגור הבא:
+   - `book` — עמלת ספר (שיעור בסיס לקטגוריה)
+   - `reward` — שיעור תגמול / תוספת נפרעים מודפסת בנפרד
+   - `addition` — שורת תוספת נפרדת (לא תיכנס ל-DB כשורה עצמאית — היא נשמרת רק לתיעוד)
+   - `total` — סה״כ המודפס במסמך (לא חישוב שלך)
+   - `single` — כשהמסמך מציג רק מספר אחד לכל מוצר ולא מבדיל בין רכיבים
+
+5. **דוגמה נכונה לפלט**: אם המסמך מראה לטור "השתלות וטיפולים מיוחדים" את הערכים `15%`, `15%`, `5%` תחת "עמלת ספר" עם שלוש עמודות שנים (1-5 / 6-15 / 16+), והערכים `7.2%`, `7.2%` תחת "שיעור תגמול" לעמודות 6-15 / 16+ — החזר אך ורק את 5 הערכים האלה, כל אחד כרשומה נפרדת ב-`components`, עם `kind=book` / `kind=reward` ו-`product="השתלות וטיפולים מיוחדים"`. אסור להמציא עמודת "תוספת 10.4%" או "סה״כ 25.4%" — אלה לא קיימים במסמך.
+
+6. אם יש טווח (לדוגמה "0.4%–0.6%"), החזר את שני קצוות הטווח כשתי רשומות עם הערה ב-`notes`.
+
+7. `companies`: שמות חברות עיקריות בלבד.
+8. `summary`: 2–3 משפטים בעברית.
+9. אם נושא לא קיים במסמך — דלג עליו. אבל אם הוא כן קיים — חובה לכלול.
 
 **תקופת תוקף ההסכם — חשוב מאוד:**
 חפש בהקדמה / סעיפי "תוקף" / "מועדי תוקף" את התאריכים שמגדירים מתי ההסכם בתוקף
@@ -115,11 +132,50 @@ EXTRACT_TOOL = {
                 "type": "array",
                 "items": {
                     "type": "object",
-                    "required": ["company", "rate_percent"],
+                    "required": ["company", "components"],
                     "properties": {
                         "company": {"type": "string"},
                         "product": {"type": ["string", "null"]},
-                        "rate_percent": {"type": "number"},
+                        "components": {
+                            "type": "array",
+                            "description": (
+                                "ONE row PER rate cell PRINTED in the document. "
+                                "Each component is a single number (kind+rate_percent) "
+                                "that appears literally in the doc. NEVER add "
+                                "fabricated rows."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "required": ["kind", "rate_percent"],
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": ["book", "reward", "addition", "total", "single"],
+                                    },
+                                    "rate_percent": {"type": "number"},
+                                    "scope": {
+                                        "type": ["string", "null"],
+                                        "description": "Optional context, e.g. 'years 1-5' / 'years 16+'.",
+                                    },
+                                },
+                            },
+                        },
+                        "total_rate_percent": {
+                            "type": ["number", "null"],
+                            "description": (
+                                "ONLY when the document LITERALLY PRINTS a "
+                                "סה״כ value. Never the result of arithmetic you "
+                                "performed yourself. Leave null when not printed."
+                            ),
+                        },
+                        "rate_percent": {
+                            "type": ["number", "null"],
+                            "description": (
+                                "DEPRECATED — kept for legacy callers. Prefer "
+                                "components[]. If you have only one number for "
+                                "the row, also expose it via components[0]."
+                            ),
+                        },
                         "frequency": {"type": ["string", "null"]},
                         "notes": {"type": ["string", "null"]},
                         "effective_from": {
@@ -136,6 +192,130 @@ EXTRACT_TOOL = {
         },
     },
 }
+
+
+def _value_appears_in_text(value: float, text: str) -> bool:
+    """Return True when `value` appears literally in `text` as a percentage or
+    plain number. Used to detect fabricated rate components (the test1-3 bug:
+    AI invented `תוספת 10.4%` which never appears in the Phoenix PDF)."""
+    if not text:
+        return True  # No text layer — skip the check
+    # Format both "10.4" and "10.40" and "10" variants
+    candidates: set[str] = set()
+    # 1-decimal
+    candidates.add(f"{value:.1f}")
+    # 2-decimal
+    candidates.add(f"{value:.2f}")
+    # Integer form when exact
+    if abs(value - int(value)) < 1e-9:
+        candidates.add(str(int(value)))
+    # Hebrew/Israeli decimal sometimes uses comma
+    candidates.update({c.replace(".", ",") for c in list(candidates)})
+    for c in candidates:
+        if c in text:
+            return True
+    return False
+
+
+def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[dict]:
+    """Normalise the model output and drop fabricated rate components.
+
+    Rules:
+    - Legacy `rate_percent` (no components) is rewritten as a single
+      `components=[{kind:"single", rate_percent: X}]` for downstream code.
+    - Each component whose rate_percent does NOT appear literally in the
+      text layer is dropped + logged (`viz_extraction.fabricated_rate`).
+      Skipped when no text_layer (scanned PDF — we can't check).
+    - `total_rate_percent` is nullified when it doesn't appear literally
+      (prevents the AI from "summing" two components into a fake total).
+    """
+    normalized: list[dict] = []
+    for r in rates:
+        if not isinstance(r, dict):
+            continue
+        components_raw = r.get("components")
+        components: list[dict] = []
+        if isinstance(components_raw, list):
+            for c in components_raw:
+                if not isinstance(c, dict):
+                    continue
+                kind = (c.get("kind") or "single").strip().lower()
+                if kind not in {"book", "reward", "addition", "total", "single"}:
+                    kind = "single"
+                try:
+                    rp = float(c.get("rate_percent"))
+                except (TypeError, ValueError):
+                    continue
+                if rp <= 0 or rp > 100:
+                    continue
+                if not _value_appears_in_text(rp, text_layer):
+                    logger.warning(
+                        "viz_extraction.fabricated_rate company=%s product=%s kind=%s value=%s "
+                        "(not found literally in pdf text layer — dropped)",
+                        r.get("company"), r.get("product"), kind, rp,
+                    )
+                    continue
+                comp = {"kind": kind, "rate_percent": rp}
+                scope = c.get("scope")
+                if scope:
+                    comp["scope"] = str(scope).strip()
+                components.append(comp)
+        # Legacy fallback — model returned just rate_percent (older clients)
+        if not components and r.get("rate_percent") is not None:
+            try:
+                rp = float(r.get("rate_percent"))
+                if 0 < rp <= 100 and _value_appears_in_text(rp, text_layer):
+                    components.append({"kind": "single", "rate_percent": rp})
+            except (TypeError, ValueError):
+                pass
+
+        if not components:
+            # Whole row was fabricated or unparseable — drop it.
+            logger.warning(
+                "viz_extraction.empty_rate_row dropped company=%s product=%s",
+                r.get("company"), r.get("product"),
+            )
+            continue
+
+        # total_rate_percent: keep only if literally in text
+        total = r.get("total_rate_percent")
+        if total is not None:
+            try:
+                total_f = float(total)
+                if not (0 < total_f <= 100 and _value_appears_in_text(total_f, text_layer)):
+                    logger.warning(
+                        "viz_extraction.fabricated_total company=%s product=%s value=%s "
+                        "(not found literally — nullified)",
+                        r.get("company"), r.get("product"), total_f,
+                    )
+                    total = None
+                else:
+                    total = total_f
+            except (TypeError, ValueError):
+                total = None
+
+        # Choose a representative rate_percent for legacy DB inserts:
+        # prefer total → single → book → reward (in that order).
+        rep = total
+        if rep is None:
+            by_kind = {c["kind"]: c["rate_percent"] for c in components}
+            for k in ("single", "total", "book", "reward"):
+                if k in by_kind:
+                    rep = by_kind[k]
+                    break
+
+        normalized.append({
+            "company": r.get("company"),
+            "product": r.get("product"),
+            "components": components,
+            "total_rate_percent": total,
+            "rate_percent": rep,  # legacy field, for back-compat
+            "frequency": r.get("frequency"),
+            "notes": r.get("notes"),
+            "effective_from": r.get("effective_from"),
+            "effective_to": r.get("effective_to"),
+        })
+    return normalized
 
 
 async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
@@ -226,12 +406,14 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
             if not isinstance(rates, list):
                 rates = []
 
+            normalized = _normalize_and_validate_rates(rates, text_layer if has_text_layer else "")
+
             return {
                 "doc_type": tool_input.get("doc_type") or "other",
                 "companies": [str(c).strip() for c in companies if c],
                 "summary": (tool_input.get("summary") or "").strip() or None,
                 "full_content": (tool_input.get("full_content") or "").strip() or None,
-                "rates": rates,
+                "rates": normalized,
                 "text_layer": text_layer or None,
             }
         except (ValueError, anthropic.APIError, anthropic.APIStatusError) as e:

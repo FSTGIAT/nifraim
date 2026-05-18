@@ -54,13 +54,104 @@ def decrypt_xls(file_bytes: bytes, password: str) -> bytes:
     return outfile.read()
 
 
-def detect_format(columns: list[str]) -> str:
-    """Detect file format based on column headers."""
+# Filename keyword vetoes — used by detect_format() to prevent a commission/נפרעים
+# file from being silently classified as production just because one column overlaps
+# the production signature. See "Smoking gun" entry in the plan: file
+# "עמלות נפרעים 26 כולל הראל.xlsx" was getting format=production.
+_COMMISSION_FILENAME_KEYWORDS = ("נפרעים", "עמלות", "commission")
+_PRODUCTION_FILENAME_KEYWORDS = ("פרודוקציה", "production", "תיק לקוחות", "קובץ אישי")
+_RECRUIT_FILENAME_KEYWORDS = ("גיוסים", "גיוס", "recruit")
+
+
+# Hebrew month names → month index (1..12). Used by detect_period_month().
+_HE_MONTH_TO_INT = {
+    "ינואר": 1, "פברואר": 2, "מרץ": 3, "אפריל": 4, "מאי": 5, "יוני": 6,
+    "יולי": 7, "אוגוסט": 8, "ספטמבר": 9, "אוקטובר": 10, "נובמבר": 11, "דצמבר": 12,
+}
+
+import re as _re_month_helper  # avoid shadowing module-level imports elsewhere
+_RE_MONTH_YEAR = _re_month_helper.compile(
+    r"(?P<month>" + "|".join(_HE_MONTH_TO_INT.keys()) + r")[\s'`׳]*(?P<year>20\d{2}|\d{2})"
+)
+_RE_NUM_MONTH = _re_month_helper.compile(
+    r"(?:^|[^\d])(?P<month>0?[1-9]|1[0-2])[/\-_.](?P<year>20\d{2}|\d{2})(?=$|[^\d])"
+)
+
+
+def detect_period_month(filename: str | None, records: list[dict] | None = None):
+    """Best-effort guess of which month this file describes.
+
+    Priority:
+      1. Hebrew month name in filename ("פרודוקציה אפריל 26").
+      2. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
+      3. Max sign_date / data_date across the records, rolled back one month
+         (production for April is usually data from late March).
+      4. None — caller can fall back to uploaded_at.
+
+    Returns a `date` object (first of the month) or None.
+    """
+    from datetime import date as _date
+    if filename:
+        m = _RE_MONTH_YEAR.search(filename)
+        if m:
+            month = _HE_MONTH_TO_INT[m.group("month")]
+            year = int(m.group("year"))
+            if year < 100:
+                year += 2000
+            try:
+                return _date(year, month, 1)
+            except ValueError:
+                pass
+        m = _RE_NUM_MONTH.search(filename)
+        if m:
+            month = int(m.group("month"))
+            year = int(m.group("year"))
+            if year < 100:
+                year += 2000
+            try:
+                return _date(year, month, 1)
+            except ValueError:
+                pass
+    if records:
+        dates: list[_date] = []
+        for r in records:
+            for k in ("sign_date", "data_date", "processing_date"):
+                v = r.get(k)
+                if hasattr(v, "year") and hasattr(v, "month"):
+                    dates.append(_date(v.year, v.month, 1))
+        if dates:
+            return max(dates)
+    return None
+
+
+def _filename_looks_like_commission(filename: str | None) -> bool:
+    """Return True if the filename strongly suggests a נפרעים/commission file
+    (and does NOT also look like a production file)."""
+    fl = (filename or "").lower()
+    looks_commission = any(k in fl for k in _COMMISSION_FILENAME_KEYWORDS)
+    looks_production = any(k in fl for k in _PRODUCTION_FILENAME_KEYWORDS)
+    return looks_commission and not looks_production
+
+
+def detect_format(columns: list[str], filename: str | None = None) -> str:
+    """Detect file format based on column headers.
+
+    Production signature requires ALL three signature columns (subset match) —
+    the old `&` (intersection) check let a commission file with just one
+    overlapping column ("יצרן" or "סטטוס מוצר") get classified as production,
+    silently breaking every downstream reconciliation.
+
+    Filename also vetoes the production format when it clearly says "נפרעים"
+    or "עמלות" — defence-in-depth for ambiguous column overlaps.
+    """
     col_set = set(columns)
-    # Check new formats first (more specific signatures)
+    forbid_production = _filename_looks_like_commission(filename)
+
+    # Check more specific formats first
     if col_set & VOLUME_REPORT_SIGNATURE:
         return "volume_report"
-    if col_set & PRODUCTION_FILE_SIGNATURE:
+    # PRODUCTION: require ALL three sig columns AND filename doesn't veto.
+    if PRODUCTION_FILE_SIGNATURE <= col_set and not forbid_production:
         return "production"
     if col_set & NIFRAIM_REPORT_SIGNATURE:
         return "nifraim"
@@ -91,6 +182,62 @@ def detect_format(columns: list[str]) -> str:
     if col_set & COMPANY_REPORT_SIGNATURE:
         return "company_report"
     return "unknown"
+
+
+# Format → broad category, used by API layer to enforce that an upload reached the
+# right tab (production vs commission vs recruits vs volume).
+_PRODUCTION_FORMATS = {"production"}
+_COMMISSION_FORMATS = {
+    "nifraim", "hachshara_nifraim", "menora", "altshuler",
+    "harel_savings_nifraim", "harel_nifraim",
+    "clal_life_nifraim", "clal_health_nifraim",
+    "ayalon_nifraim", "migdal_nifraim",
+    "phoenix_insurance_nifraim", "company_report",
+}
+_RECRUIT_FORMATS = {"agent_tracking"}
+_VOLUME_FORMATS = {"volume_report"}
+
+
+def category_for_format(fmt: str) -> str:
+    if fmt in _PRODUCTION_FORMATS:
+        return "production"
+    if fmt in _COMMISSION_FORMATS:
+        return "commission"
+    if fmt in _RECRUIT_FORMATS:
+        return "recruits"
+    if fmt in _VOLUME_FORMATS:
+        return "volume"
+    return "unknown"
+
+
+class CategoryMismatchError(ValueError):
+    """Raised when a file's detected format does not match the category the
+    caller (API route) expected. Carries the detected format and a Hebrew
+    message suitable for surfacing to the user."""
+    def __init__(self, expected: str, detected_format: str, filename: str):
+        self.expected = expected
+        self.detected_format = detected_format
+        self.detected_category = category_for_format(detected_format)
+        self.filename = filename
+        super().__init__(
+            f"קובץ '{filename}' זוהה כ-{self.detected_category or 'לא ידוע'} "
+            f"({detected_format}), אבל הועלה לטאב {expected}. "
+            f"אנא ודא שאתה מעלה לטאב הנכון."
+        )
+
+
+def _enforce_expected_category(expected: str | None, detected_format: str, filename: str) -> None:
+    """Raise CategoryMismatchError when the API caller expected a category but
+    the parser found something incompatible. No-op when expected is None
+    (legacy callsites)."""
+    if not expected:
+        return
+    detected_cat = category_for_format(detected_format)
+    if detected_cat == "unknown":
+        # Let downstream logic decide; logging already emitted above.
+        return
+    if detected_cat != expected:
+        raise CategoryMismatchError(expected, detected_format, filename)
 
 
 def parse_numeric(value) -> float | None:
@@ -171,10 +318,21 @@ def determine_status(record: dict) -> str:
     return "no_data"
 
 
-def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -> dict:
+def parse_excel(
+    file_bytes: bytes,
+    filename: str,
+    password: str | None = None,
+    expected_category: str | None = None,
+) -> dict:
     """
     Parse an Excel file and return structured records.
     Returns: {"format": str, "company_source": str, "records": list[dict]}
+
+    If `expected_category` is supplied (one of "production"/"commission"/
+    "recruits"/"volume"), the function raises `CategoryMismatchError` when the
+    detected format belongs to a different category. This is the guardrail
+    that prevents a "עמלות נפרעים" file uploaded to the production tab from
+    silently becoming the production source-of-truth.
     """
     raw = file_bytes
     if password:
@@ -269,7 +427,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
 
     # If format still unknown, scan first 15 rows for buried headers
     # (some files have title/metadata rows before the actual column headers)
-    file_format = detect_format(df.columns.tolist())
+    file_format = detect_format(df.columns.tolist(), filename=filename)
     if file_format == "unknown":
         for row_idx in range(min(15, len(df))):
             row_vals = [str(v).strip() if pd.notna(v) else "" for v in df.iloc[row_idx]]
@@ -278,10 +436,25 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                 # Found the real header row — reassign columns and trim
                 df.columns = [v if v else f"col_{i}" for i, v in enumerate(row_vals)]
                 df = df.iloc[row_idx + 1:].reset_index(drop=True)
-                file_format = detect_format(df.columns.tolist())
+                file_format = detect_format(df.columns.tolist(), filename=filename)
                 break
 
+    # Surface known-company-but-unknown-format as an ERROR. Today this gets
+    # silently treated as 0 records (the כלל regression in QA logs). Logging
+    # loud with the column list lets us see the problem on Railway immediately.
+    if file_format == "unknown":
+        fname_lower = (filename or "").lower()
+        company_hints = ("כלל", "מנורה", "הראל", "הפניקס", "אקסלנס", "מגדל",
+                          "איילון", "אלטשולר", "הכשרה", "מור", "ילין")
+        if any(h in fname_lower for h in company_hints):
+            import logging
+            logging.error(
+                "parser.unknown_format_known_company file=%s columns=%s",
+                filename, list(df.columns),
+            )
+
     if file_format == "volume_report":
+        _enforce_expected_category(expected_category, file_format, filename)
         return _parse_volume_report(df, file_bytes=raw, engine=engine)
 
     # If sheet 0 didn't match volume_report, check other sheets (multi-sheet volume files)
@@ -295,7 +468,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                         sdf = pd.read_excel(xls, sheet_name=sname)
                         sdf = sdf.dropna(how="all").reset_index(drop=True)
                         sdf.columns = [str(c).strip() for c in sdf.columns]
-                        fmt = detect_format(sdf.columns.tolist())
+                        fmt = detect_format(sdf.columns.tolist(), filename=filename)
                         if fmt == "unknown":
                             for ri in range(min(10, len(sdf))):
                                 rv = [str(v).strip() if pd.notna(v) else "" for v in sdf.iloc[ri]]
@@ -303,7 +476,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                                 if rs & HEADER_SCAN_KEYWORDS:
                                     sdf.columns = [v if v else f"col_{i}" for i, v in enumerate(rv)]
                                     sdf = sdf.iloc[ri + 1:].reset_index(drop=True)
-                                    fmt = detect_format(sdf.columns.tolist())
+                                    fmt = detect_format(sdf.columns.tolist(), filename=filename)
                                     break
                         if fmt == "volume_report":
                             return _parse_volume_report(sdf, file_bytes=raw, engine=engine,
@@ -312,6 +485,12 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
                         continue
         except Exception:
             pass
+
+    # Enforce upload-tab category before dispatching to the per-format parser.
+    # If the API caller said "this is a production upload" but format is a
+    # commission/nifraim format, raise CategoryMismatchError now rather than
+    # consuming the file and polluting the wrong table.
+    _enforce_expected_category(expected_category, file_format, filename)
 
     if file_format == "agent_tracking":
         return _parse_agent_tracking(df)
@@ -343,7 +522,7 @@ def parse_excel(file_bytes: bytes, filename: str, password: str | None = None) -
         return _parse_ayalon_nifraim(df)
     else:
         # Try to parse as generic — map whatever columns we can
-        return _parse_generic(df)
+        return _parse_generic(df, filename=filename)
 
 
 def _parse_agent_tracking(df: pd.DataFrame) -> dict:
@@ -1499,9 +1678,31 @@ def parse_volume_rates(file_bytes: bytes, filename: str, password: str | None = 
     return rates
 
 
-def _parse_generic(df: pd.DataFrame) -> dict:
-    """Fallback parser — try to map whatever columns match."""
-    all_mappings = {**AGENT_TRACKING_COLUMNS, **COMPANY_REPORT_COLUMNS}
+def _parse_generic(df: pd.DataFrame, filename: str | None = None) -> dict:
+    """Fallback parser — try to map whatever columns match.
+
+    Previously only AGENT_TRACKING + COMPANY_REPORT mappings were tried, which
+    meant a כלל/מנורה/הראל file with a new column layout produced 0 rows with
+    no id_number (the failure mode we saw in the Railway log:
+    `כלל עמלות מרץ 26.xlsx … records_with_id=0`). Now every known commission
+    mapping is tried, so at the very least an id_number is extracted from a
+    recognizable column even when no signature matches.
+    """
+    all_mappings = {
+        **AGENT_TRACKING_COLUMNS,
+        **COMPANY_REPORT_COLUMNS,
+        **NIFRAIM_REPORT_COLUMNS,
+        **HACHSHARA_NIFRAIM_COLUMNS,
+        **MENORA_COLUMNS,
+        **ALTSHULER_COLUMNS,
+        **PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
+        **HAREL_NIFRAIM_COLUMNS,
+        **HAREL_SAVINGS_NIFRAIM_COLUMNS,
+        **CLAL_LIFE_NIFRAIM_COLUMNS,
+        **CLAL_HEALTH_NIFRAIM_COLUMNS,
+        **MIGDAL_NIFRAIM_COLUMNS,
+        **AYALON_NIFRAIM_COLUMNS,
+    }
     records = []
 
     for _, row in df.iterrows():
@@ -1509,12 +1710,29 @@ def _parse_generic(df: pd.DataFrame) -> dict:
         for heb_col, eng_field in all_mappings.items():
             if heb_col in df.columns:
                 val = row.get(heb_col)
-                record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+                if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                    # Last mapping wins, but identity columns are usually
+                    # consistent enough that this is fine.
+                    record[eng_field] = str(val).strip()
         record["reconciliation_status"] = "no_data"
         records.append(record)
 
+    # Best-effort company_source from filename — lets the dispatcher group
+    # records under the right bucket even when format is unknown.
+    company_source = None
+    fl = (filename or "").lower()
+    for kw, label in [
+        ("כלל", "כלל"), ("מנורה", "מנורה"), ("הראל", "הראל"),
+        ("הפניקס", "הפניקס"), ("אקסלנס", "אקסלנס"), ("מגדל", "מגדל"),
+        ("איילון", "איילון"), ("אלטשולר", "אלטשולר"), ("הכשרה", "הכשרה"),
+        ("מור", "מור"), ("ילין", "ילין"),
+    ]:
+        if kw in fl:
+            company_source = label
+            break
+
     return {
         "format": "unknown",
-        "company_source": None,
+        "company_source": company_source,
         "records": records,
     }

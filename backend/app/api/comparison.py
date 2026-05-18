@@ -22,7 +22,7 @@ from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
 from app.services.debt_service import sync_debts
 
-from app.services.parser_service import parse_excel
+from app.services.parser_service import parse_excel, CategoryMismatchError
 from app.services.comparison_service import compute_comparison
 from app.schemas.comparison import ComparisonResponse, PaymentStatusUpdate
 from app.utils.sanitize import sanitize_record
@@ -113,12 +113,22 @@ async def dual_upload(
 
     # Parse both files
     try:
-        prod_result = parse_excel(prod_content, production_file.filename, production_password)
+        prod_result = parse_excel(
+            prod_content, production_file.filename, production_password,
+            expected_category="production",
+        )
+    except CategoryMismatchError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"שגיאה בפענוח קובץ פרודוקציה: {str(e)}")
 
     try:
-        comm_result = parse_excel(comm_content, commission_file.filename, commission_password)
+        comm_result = parse_excel(
+            comm_content, commission_file.filename, commission_password,
+            expected_category="commission",
+        )
+    except CategoryMismatchError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"שגיאה בפענוח דוח נפרעים: {str(e)}")
 
@@ -273,7 +283,12 @@ async def compare_with_production(
         # Parse commission file
         comm_content = await commission_file.read()
         try:
-            comm_result = parse_excel(comm_content, commission_file.filename, commission_password)
+            comm_result = parse_excel(
+                comm_content, commission_file.filename, commission_password,
+                expected_category="commission",
+            )
+        except CategoryMismatchError as e:
+            raise HTTPException(400, str(e))
         except Exception as e:
             raise HTTPException(400, f"שגיאה בפענוח {commission_file.filename}: {str(e)}")
 

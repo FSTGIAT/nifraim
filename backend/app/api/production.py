@@ -13,7 +13,7 @@ from app.models.record import ClientRecord
 from app.models.production_summary import ProductionSummary
 from app.schemas.upload import ProductionFileInfo, ProductionAnalytics, ProductionCompareResponse
 from app.api.deps import get_paid_user as get_current_user
-from app.services.parser_service import parse_excel
+from app.services.parser_service import parse_excel, CategoryMismatchError
 from app.services.portal_service import create_snapshots_for_upload
 from app.services.comparison_service import _classify_product_type, _GEMEL_KEYWORDS, _INSURANCE_KEYWORDS
 from app.utils.sanitize import sanitize_record
@@ -92,7 +92,11 @@ async def upload_production(
     content = await file.read()
 
     try:
-        result = parse_excel(content, file.filename, password)
+        result = parse_excel(content, file.filename, password, expected_category="production")
+    except CategoryMismatchError as e:
+        # Surface the parser's Hebrew message verbatim — it tells the user
+        # which tab the file actually belongs in.
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"שגיאה בפענוח הקובץ: {str(e)}")
 

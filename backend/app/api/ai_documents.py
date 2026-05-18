@@ -69,22 +69,60 @@ def _upsert_rates_from_doc(
 ) -> int:
     """Insert/update commission_rates rows for the extracted entries.
 
+    Each extracted `rate` row now carries a `components[]` array (book /
+    reward / addition / total / single). We unfold each row into one
+    DB row PER component, tagged with `rate_kind`, plus an optional `total`
+    row when the document literally printed a סה״כ value. `addition`
+    components are intentionally NOT inserted as standalone DB rows — they
+    only make sense alongside a `book`.
+
     Upsert key matches the DB-level uniqueness index `uq_commission_rates_keys`:
     (user_id, company_name, product, frequency, rate, effective_from).
-
-    `effective_from` is part of the key so a 2025 agreement and a 2018
-    agreement for the same product coexist intentionally rather than
-    overwriting each other. The reconciliation step picks among them by
-    matching the policy sign_date against each rate's validity window.
-
-    Returns the count of rows touched.
+    `rate_kind` is NOT part of the key so re-extracting the same rate as a
+    different kind is treated as the same row (the new label wins).
     """
-    # commission_rates.rate is Numeric(6,4) storing FRACTIONS (0.005 = 0.5%),
-    # not percent. Claude returns rate_percent (e.g. 4.5 → 4.5%), so divide
-    # by 100. Values outside (0, 100]% are likely fund fees / caps, not
-    # commission rates — skip them rather than overflow the column.
     touched = 0
     seen_keys: set[tuple[str, str | None, str | None, Decimal, date | None]] = set()
+
+    def _flat_components(r: dict) -> list[tuple[str, Decimal]]:
+        """Yield (kind, rate_decimal) pairs from the extracted row.
+        Falls back to the legacy rate_percent when components[] is empty."""
+        out: list[tuple[str, Decimal]] = []
+        comps = r.get("components")
+        if isinstance(comps, list) and comps:
+            for c in comps:
+                if not isinstance(c, dict):
+                    continue
+                kind = (c.get("kind") or "single").strip().lower()
+                # addition rows are deltas, not standalone — skip insert
+                if kind == "addition":
+                    continue
+                try:
+                    p = Decimal(str(c.get("rate_percent")))
+                except (InvalidOperation, TypeError):
+                    continue
+                if p <= 0 or p > 100:
+                    continue
+                out.append((kind, p))
+        # `total` is its own row if literally printed in the doc
+        total = r.get("total_rate_percent")
+        if total is not None:
+            try:
+                t = Decimal(str(total))
+                if 0 < t <= 100:
+                    out.append(("total", t))
+            except (InvalidOperation, TypeError):
+                pass
+        # Legacy single-number fallback
+        if not out and r.get("rate_percent") is not None:
+            try:
+                p = Decimal(str(r.get("rate_percent")))
+                if 0 < p <= 100:
+                    out.append(("single", p))
+            except (InvalidOperation, TypeError):
+                pass
+        return out
+
     for r in rates:
         company = (r.get("company") or "").strip()
         if not company:
@@ -93,42 +131,39 @@ def _upsert_rates_from_doc(
         product = (str(product_raw).strip()[:200] or None) if product_raw else None
         frequency_raw = r.get("frequency")
         frequency = (str(frequency_raw).strip()[:20] or None) if frequency_raw else None
-        try:
-            percent = Decimal(str(r.get("rate_percent")))
-        except (InvalidOperation, TypeError):
-            continue
-        if percent <= 0 or percent > 100:
-            continue
-        rate_val = (percent / Decimal(100)).quantize(Decimal("0.0001"))
         eff_from = _parse_iso_date(r.get("effective_from"))
         eff_to = _parse_iso_date(r.get("effective_to"))
 
-        key = (company[:100], product, frequency, rate_val, eff_from)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
+        for kind, percent in _flat_components(r):
+            rate_val = (percent / Decimal(100)).quantize(Decimal("0.0001"))
+            key = (company[:100], product, frequency, rate_val, eff_from)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
 
-        existing = existing_rates_by_key.get(key)
-        if existing is not None:
-            # Same key already in DB — retag with the new doc + refresh the
-            # end-date (in case the agreement was reuploaded with a longer
-            # validity window).
-            existing.source_document_id = doc_id
-            if eff_to is not None:
-                existing.effective_to = eff_to
-        else:
-            new_row = CommissionRate(
-                user_id=user_id,
-                company_name=company[:100],
-                product=product,
-                rate=rate_val,
-                payment_frequency=frequency,
-                effective_from=eff_from,
-                effective_to=eff_to,
-                source_document_id=doc_id,
-            )
-            db.add(new_row)
-        touched += 1
+            existing = existing_rates_by_key.get(key)
+            if existing is not None:
+                # Same key already in DB — retag with the new doc + refresh the
+                # end-date (in case the agreement was reuploaded with a longer
+                # validity window). Also update rate_kind if we now know better.
+                existing.source_document_id = doc_id
+                existing.rate_kind = kind
+                if eff_to is not None:
+                    existing.effective_to = eff_to
+            else:
+                new_row = CommissionRate(
+                    user_id=user_id,
+                    company_name=company[:100],
+                    product=product,
+                    rate=rate_val,
+                    rate_kind=kind,
+                    payment_frequency=frequency,
+                    effective_from=eff_from,
+                    effective_to=eff_to,
+                    source_document_id=doc_id,
+                )
+                db.add(new_row)
+            touched += 1
     return touched
 
 

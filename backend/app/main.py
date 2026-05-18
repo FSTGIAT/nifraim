@@ -81,7 +81,20 @@ app.include_router(funds.router, prefix="/api/funds", tags=["funds"])
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    # Surface the async pool state so we can spot connection leaks early on
+    # Railway (see "garbage collector is trying to clean up non-checked-in
+    # connection" warnings) without needing to attach a debugger.
+    from app.database import engine
+    pool = engine.pool
+    pool_info = {}
+    for attr in ("size", "checkedin", "checkedout", "overflow"):
+        method = getattr(pool, attr, None)
+        if callable(method):
+            try:
+                pool_info[attr] = method()
+            except Exception:
+                pool_info[attr] = None
+    return {"status": "ok", "pool": pool_info}
 
 
 # Serve Vue frontend static files in production

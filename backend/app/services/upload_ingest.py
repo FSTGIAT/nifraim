@@ -62,19 +62,18 @@ def _save_upload_to_disk(user_id: uuid.UUID, upload_id: uuid.UUID, filename: str
         return None
 
 
-_COMMISSION_FORMATS = {
-    "agent_tracking", "company_report", "nifraim",
-    "hachshara_nifraim", "menora", "altshuler",
-    "clal_life_nifraim", "clal_health_nifraim", "migdal_nifraim",
-    "ayalon_nifraim", "harel_nifraim", "phoenix_insurance_nifraim",
-}
-
-
+# Source-of-truth for format → category lives in parser_service. Importing it
+# here keeps the two layers in sync (previous duplicate set in this file was
+# missing `harel_savings_nifraim` — those uploads silently fell into "general"
+# and never triggered the auto-comparison).
 def _file_category_for_format(fmt: str) -> str:
-    if fmt == "production":
-        return "production"
-    if fmt in _COMMISSION_FORMATS:
-        return "commission"
+    from app.services.parser_service import category_for_format
+    cat = category_for_format(fmt)
+    # The agent-facing buckets in this app are: production / commission /
+    # recruits / general. Recruits + volume + unknown all surface as "general"
+    # in FileUpload.file_category for now (the recruits UI uses its own model).
+    if cat in ("production", "commission"):
+        return cat
     return "general"
 
 
@@ -156,6 +155,9 @@ async def ingest_file_bytes(
             await db.delete(old)
         await db.flush()
 
+    from app.services.parser_service import detect_period_month
+    period = detect_period_month(filename, result.get("records"))
+
     upload = FileUpload(
         user_id=user_id,
         filename=filename,
@@ -164,6 +166,7 @@ async def ingest_file_bytes(
         record_count=len(result["records"]),
         format_type=fmt,
         file_category=file_category,
+        period_month=period,
     )
     db.add(upload)
     await db.flush()

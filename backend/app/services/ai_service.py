@@ -61,6 +61,18 @@ You have access ONLY to the user's data shown below. You MUST:
    להבהרת תנאי ההסכם ולחישוב עמלה חזויה (שהמערכת עושה עבורך, לא אתה).
 5. כששואלים "תראה לי את העמלות שהתקבלו" — הצג **רק** סכומים מקבצי נפרעים שהועלו, וציין מפורשות אילו חברות חסרות קובץ נפרעים.
 
+=== בלוק "עובדות לקוח" — מקור אמת מוחלט ===
+כאשר המשתמש שואל על לקוח ספציפי (לפי ת.ז או שם), ובלוק "=== עובדות לקוח ===" מופיע
+ב-view_context או בהקשר:
+- **חובה לצטט מהבלוק הזה ישירות**. אסור לסתור אותו.
+- אם הבלוק אומר "פרודוקציה=כן · נפרעים=כן" — הלקוח מופיע בשני הקבצים. אל תגיד "רק בנפרעים".
+- אם הבלוק אומר "השתנו · Δפרמיה +1,000" — הלקוח שינה את הפרמיה ב-+1,000₪. דווח את הערך בדיוק.
+- אם הלקוח אינו ברשימה (לא בטופ 30), השתמש בנתונים האחרים, אבל אל תמציא ערכים על לקוחות שלא ברשימה.
+
+=== בלוק "מונים" — בדיקת סכימה ===
+כשמופיעה שורת "בדיקת סכימה: A+B+C=N ✓" — A+B+C **חייבים** להסתכם ל-N. אל תדווח חלוקה
+שאינה תואמת. אם המשתמש שואל "כמה לקוחות בשניהם" — צטט בדיוק את הערך מהשורה הזו, ולא חישוב משלך.
+
 === סוגי עמלות במסמכי ביטוח (חשוב — אל תערבב ביניהם!) ===
 מסמכי הסכמי עמלה בישראל מכילים בדרך כלל **שלושה–ארבעה סוגי שיעורי עמלה שונים** באותו מסמך,
 ובדרך כלל בטבלאות נפרדות:
@@ -325,10 +337,22 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     )
     user_rates = rates_result.scalars().all()
 
+    from datetime import date as _date_today
+    _TODAY = _date_today.today()
+
     def _rate_for(company_name: str, category: str) -> float:
-        """Find the most relevant commission rate for a company. Prefers
-        product=NULL "default" rows when present, else the median rate
-        across that company's products. Returns 0 when no rate is on file."""
+        """Find the most relevant commission rate for a company.
+
+        Selection priority (after company match):
+          1. Rate whose validity window covers today, kind=total or single.
+          2. Same as (1), kind=book.
+          3. Any matching rate, kind=total/single, then book.
+          4. Median of remaining matches.
+
+        `reward` and `addition` kinds are NEVER returned alone — they are
+        partial components, summing them with `book` is the consumer's job
+        (or just don't, since we already insert `total` separately).
+        Returns 0 when no rate is on file."""
         if not company_name:
             return 0.0
         target = company_name.strip().lstrip("ה").lower()
@@ -341,14 +365,41 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         ]
         if not candidates:
             return 0.0
-        defaults = [r for r in candidates if not r.product]
-        if defaults:
-            return float(defaults[0].rate)
-        # Median rate among the company's products — robust against outliers
-        # (one weirdly-extracted "60%" wouldn't pull the estimate up).
-        sorted_rates = sorted(float(r.rate) for r in candidates)
-        mid = len(sorted_rates) // 2
-        return sorted_rates[mid]
+
+        def _kind(r) -> str:
+            return (getattr(r, "rate_kind", None) or "single").lower()
+
+        def _covers_today(r) -> bool:
+            ef, et = getattr(r, "effective_from", None), getattr(r, "effective_to", None)
+            if ef and ef > _TODAY:
+                return False
+            if et and et < _TODAY:
+                return False
+            return True
+
+        # Pass 1 — current validity, total/single
+        for r in candidates:
+            if _covers_today(r) and _kind(r) in ("total", "single"):
+                return float(r.rate)
+        # Pass 2 — current validity, book
+        for r in candidates:
+            if _covers_today(r) and _kind(r) == "book":
+                return float(r.rate)
+        # Pass 3 — any validity, total/single, prefer product=NULL default
+        prio = [r for r in candidates if _kind(r) in ("total", "single")]
+        if prio:
+            defaults = [r for r in prio if not r.product]
+            return float((defaults[0] if defaults else prio[0]).rate)
+        # Pass 4 — book
+        books = [r for r in candidates if _kind(r) == "book"]
+        if books:
+            return float(books[0].rate)
+        # Fallback — median, BUT exclude reward/addition (they're partial)
+        usable = [float(r.rate) for r in candidates if _kind(r) not in ("reward", "addition")]
+        if not usable:
+            return 0.0
+        usable.sort()
+        return usable[len(usable) // 2]
 
     def _expected_commission(product: dict, rate_frac: float, is_gemel: bool) -> float:
         """Compute the commission the agent should receive for ONE product
@@ -395,9 +446,13 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         comm_company = comm_upload.company_source or ""
 
         def _matches_commission_company(product_company):
-            if not product_company or not comm_company:
-                return False
-            return comm_company.lower() in product_company.lower() or product_company.lower() in comm_company.lower()
+            # Use the deterministic normalizer instead of a substring fuzzy
+            # match — `"הראל גמל"` and `"הראל חברה לביטוח בע״מ"` both reduce
+            # to "הראל", so the customer's products attribute correctly to
+            # the commission file. Fixes the silent-drop classification bug
+            # that misclassified אבלין פיפרברג.
+            from app.utils.company_norm import same_company
+            return same_company(comm_company, product_company)
 
         # Classify customers exactly like the dashboard
         matched = [c for c in comparison["customers"] if c["match_status"] == "matched"]
@@ -783,10 +838,33 @@ async def _get_commission_rates_context(db: AsyncSession, user_id: uuid.UUID) ->
         "להבהרת תנאי ההסכם עם כל חברה. אסור להכפיל אחוזים אלה בפרמיה/צבירה כדי לדווח סכום עמלה.",
     ]
     if rates:
-        parts.append("שיעורי עמלת נפרעים:")
+        parts.append("שיעורי עמלת נפרעים (לפי חברה · מוצר · סוג):")
+        # Group by (company, product) so the AI can see e.g.
+        #   הפניקס · השתלות וטיפולים מיוחדים (book): 15.00%
+        #   הפניקס · השתלות וטיפולים מיוחדים (reward): 7.20%
+        # without conflating components into a single fake number.
+        _KIND_LABEL = {
+            "book": "ספר", "reward": "תגמול",
+            "total": "סה״כ", "single": "single", "addition": "תוספת",
+        }
+        from collections import defaultdict
+        grouped: dict[tuple[str, str], list] = defaultdict(list)
         for r in rates:
-            freq = f", תדירות: {r.payment_frequency}" if r.payment_frequency else ""
-            parts.append(f"  {r.company_name}: {float(r.rate) * 100:.2f}%{freq}")
+            grouped[(r.company_name or "", r.product or "(default)")].append(r)
+        for (company, product), rows in grouped.items():
+            for r in rows:
+                kind = (getattr(r, "rate_kind", None) or "single").lower()
+                kind_label = _KIND_LABEL.get(kind, kind)
+                freq = f", תדירות: {r.payment_frequency}" if r.payment_frequency else ""
+                eff = ""
+                if r.effective_from or r.effective_to:
+                    ef = r.effective_from.isoformat() if r.effective_from else "—"
+                    et = r.effective_to.isoformat() if r.effective_to else "—"
+                    eff = f" [תוקף {ef}→{et}]"
+                parts.append(
+                    f"  {company} · {product} ({kind_label}): "
+                    f"{float(r.rate) * 100:.2f}%{freq}{eff}"
+                )
 
     if vol_rates:
         parts.append("שיעורי עמלת היקפים:")
@@ -1388,14 +1466,27 @@ async def _get_market_funds_context(db: AsyncSession) -> str | None:
 
 
 async def stream_chat(
-    db: AsyncSession,
     user_id,
     question: str,
     history: list[dict],
     view_context: str | None = None,
 ) -> AsyncGenerator[str, None]:
-    context = await build_user_context(db, user_id, question=question)
-    market_context = await _get_market_funds_context(db)
+    """Stream the AI answer over SSE. Opens its own DB session and releases it
+    BEFORE the Claude stream begins — keeping pool connections short-lived.
+
+    Previously the session was injected via `Depends(get_db)` and held for the
+    entire stream (5–30s of Claude generation), which (combined with client
+    disconnects mid-stream) leaked connections — see Railway log warnings:
+    "garbage collector is trying to clean up non-checked-in connection ...".
+    """
+    from app.database import async_session
+
+    # All DB work happens up-front inside one short-lived session. The Claude
+    # streaming loop below runs with NO open DB session.
+    async with async_session() as db:
+        context = await build_user_context(db, user_id, question=question)
+        market_context = await _get_market_funds_context(db)
+        attachments = await _find_attachments_for_question(db, user_id, question)
 
     if context is None and market_context is None:
         yield f"data: {json.dumps({'text': 'אין נתונים במערכת. יש להעלות קבצים תחילה.'}, ensure_ascii=False)}\n\n"
@@ -1427,7 +1518,7 @@ async def stream_chat(
     # pre-extracted summary, which is necessarily lossy. We attach BOTH the
     # raw PDF (for tables/layout via vision) AND the pdfplumber text layer
     # (deterministic text scan) — vision fallback handles scanned PDFs.
-    attachments = await _find_attachments_for_question(db, user_id, question)
+    # (Loaded above inside the short-lived DB session.)
     if attachments:
         user_blocks: list[dict] = []
         for d in attachments:
@@ -1508,6 +1599,11 @@ async def stream_chat(
     VIZ_CLOSE = ">>"
     HOLD = len(VIZ_OPEN) - 1  # = 5; hold back last 5 chars in case of partial marker
 
+    # Accumulator for the numeric validator — collects ONLY the user-visible
+    # text (viz JSON excluded). Fed into validate_answer() just before the
+    # `done` event so warnings surface on the same message.
+    visible_text_chunks: list[str] = []
+
     for model, delay in attempts:
         if delay:
             await asyncio.sleep(delay)
@@ -1529,6 +1625,7 @@ async def stream_chat(
                         if open_idx != -1:
                             before = combined[:open_idx]
                             if before:
+                                visible_text_chunks.append(before)
                                 yield f"data: {json.dumps({'text': before}, ensure_ascii=False)}\n\n"
                             viz_buf = combined[open_idx + len(VIZ_OPEN):]
                             tail = ""
@@ -1557,6 +1654,7 @@ async def stream_chat(
                                     break
                             safe_end = len(combined) - hold
                             if safe_end > 0:
+                                visible_text_chunks.append(combined[:safe_end])
                                 yield f"data: {json.dumps({'text': combined[:safe_end]}, ensure_ascii=False)}\n\n"
                             tail = combined[safe_end:]
                     else:  # buffering_viz
@@ -1583,10 +1681,12 @@ async def stream_chat(
             while viz_state == "text" and tail:
                 open_idx = tail.find(VIZ_OPEN)
                 if open_idx == -1:
+                    visible_text_chunks.append(tail)
                     yield f"data: {json.dumps({'text': tail}, ensure_ascii=False)}\n\n"
                     tail = ""
                     break
                 if open_idx > 0:
+                    visible_text_chunks.append(tail[:open_idx])
                     yield f"data: {json.dumps({'text': tail[:open_idx]}, ensure_ascii=False)}\n\n"
                 rest = tail[open_idx + len(VIZ_OPEN):]
                 close_idx = rest.find(VIZ_CLOSE)
@@ -1622,5 +1722,25 @@ async def stream_chat(
     if last_error:
         logger.error(f"AI chat all attempts failed: {type(last_error).__name__}: {last_error}")
         yield f"data: {json.dumps({'text': 'שגיאה: לא ניתן לעבד את הבקשה כרגע. נסה שוב בעוד רגע.'}, ensure_ascii=False)}\n\n"
+
+    # Numeric validator — flag currency amounts in the answer that don't
+    # appear in the source context. Advisory: surfaces as a yellow chip on
+    # the user's message. Skip on error responses (no point validating an
+    # error message).
+    if not last_error and visible_text_chunks:
+        try:
+            from app.services.ai_answer_validator import validate_answer
+            answer_text = "".join(visible_text_chunks)
+            # The source context the AI saw = view_context + the dynamic
+            # context block. system_prompt holds both after the format().
+            check_result = validate_answer(answer_text, system_prompt)
+            if check_result.has_warnings():
+                yield (
+                    "data: "
+                    + json.dumps({"warnings": check_result.warnings}, ensure_ascii=False)
+                    + "\n\n"
+                )
+        except Exception as e:
+            logger.warning("ai_answer_validator failed: %s", e)
 
     yield f"data: {json.dumps({'done': True})}\n\n"

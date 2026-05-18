@@ -23,12 +23,14 @@ router = APIRouter()
 @router.post("/chat")
 async def chat(
     req: ChatRequest,
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_paid_user),
 ):
+    # NOTE: no `Depends(get_db)` here. stream_chat opens & releases its own
+    # short-lived DB session, so the connection isn't held open for the
+    # 5–30s Claude generation window. Fixes the "garbage collector is trying
+    # to clean up non-checked-in connection" warnings on Railway.
     return StreamingResponse(
         stream_chat(
-            db,
             user.id,
             req.question,
             [m.model_dump() for m in req.history],

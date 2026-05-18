@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
+from datetime import date
+from sqlalchemy import String, Integer, Boolean, DateTime, Date, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +25,11 @@ class FileUpload(Base):
     # is preserved, so the UI can offer a download/preview affordance later.
     file_path: Mapped[str | None] = mapped_column(String(500))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # First-of-month for the period this upload describes. Detected from
+    # filename ("פרודוקציה אפריל 26.xlsx" → 2026-04-01) at ingest time, with
+    # data-date and upload-date fallbacks. Used by the comparison pairer to
+    # match APR-production to APR-commission instead of guessing by filename.
+    period_month: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     user = relationship("User", back_populates="uploads")
     records = relationship("ClientRecord", back_populates="upload", cascade="all, delete-orphan")

@@ -16,6 +16,10 @@ class CommissionRate(Base):
     company_name: Mapped[str] = mapped_column(String(100), nullable=False)
     product: Mapped[str | None] = mapped_column(String(200))
     rate: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    # 'single' | 'book' | 'reward' | 'total' (also 'addition' though we
+    # don't insert those — they're informational only in ai_documents).
+    # Drives _rate_for() priority — total/single first, then book.
+    rate_kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="single")
     payment_frequency: Mapped[str | None] = mapped_column(String(20))
     paid_to: Mapped[str | None] = mapped_column(String(50))
     company_email: Mapped[str | None] = mapped_column(String(100))

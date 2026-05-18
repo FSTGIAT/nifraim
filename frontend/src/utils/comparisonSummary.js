@@ -1,3 +1,5 @@
+import { normalizeCompany, sameCompany } from './companyNorm.js'
+
 function formatAmount(val) {
   if (!val) return '₪0'
   const num = Math.round(val)
@@ -54,7 +56,10 @@ function groupByCompany(clients) {
 }
 
 // Detect customers who switched insurers: same id_number appears in removed AND new
-// under a DIFFERENT company
+// under a DIFFERENT NORMALIZED company. Using the canonical key (via
+// normalizeCompany) means "הראל" vs "הראל חברה לביטוח בע״מ" is NOT a switch,
+// while "הראל" vs "מנורה" IS — fixes spurious switcher rows from corporate-
+// suffix noise.
 function detectSwitchers(newClients = [], removedClients = []) {
   const removedById = new Map()
   for (const r of removedClients) {
@@ -64,7 +69,7 @@ function detectSwitchers(newClients = [], removedClients = []) {
   for (const n of newClients) {
     if (!n.id_number) continue
     const prior = removedById.get(String(n.id_number))
-    if (prior && (prior.company || '') !== (n.company || '')) {
+    if (prior && !sameCompany(prior.company, n.company)) {
       switchers.push({
         id_number: n.id_number,
         name: n.name || prior.name || '',
@@ -166,18 +171,98 @@ export function buildProductionComparisonSummary(result) {
   const uniqueSuggestions = Array.from(new Set(suggestions)).slice(0, 3)
 
   // ---------- Rich view-context payload (backend) ----------
-  const L = []
-  L.push(`השוואת קבצי פרודוקציה — ${curLabel} מול ${prevLabel}`)
-  if (s.current_date) L.push(`קובץ נוכחי: ${curLabel} (${formatDate(s.current_date)})`)
-  if (s.previous_date) L.push(`קובץ קודם: ${prevLabel} (${formatDate(s.previous_date)})`)
-  L.push('')
+  // STRUCTURE (intentional order — FACTS first, narrative tail last, so
+  // truncation drops storytelling not numbers):
+  //   1. Header (file labels + dates)
+  //   2. FACTS — counts, sums, per-company commissions, switchers,
+  //      per-customer truth blocks for top 30 customers (immune to truncation)
+  //   3. Narrative tail — top movers, breakdowns, sample lists
+  //
+  // The "עובדות לקוח" block exists specifically so the AI can NEVER claim a
+  // customer is only-in-one-file when they're actually in both (the
+  // אבלין פיפרברג QA bug). Each line is computed deterministically from the
+  // raw comparison result.
+  const FACTS = []
+  const NARR = []
+  FACTS.push(`השוואת קבצי פרודוקציה — ${curLabel} מול ${prevLabel}`)
+  if (s.current_date) FACTS.push(`קובץ נוכחי: ${curLabel} (${formatDate(s.current_date)})`)
+  if (s.previous_date) FACTS.push(`קובץ קודם: ${prevLabel} (${formatDate(s.previous_date)})`)
+  FACTS.push('')
 
-  L.push('מונים:')
-  L.push(`- חדשים: ${s.new_count || 0}`)
-  L.push(`- השתנו: ${s.changed_count || 0}`)
-  L.push(`- הוסרו: ${s.removed_count || 0}`)
-  L.push(`- ללא שינוי: ${s.unchanged_count || 0}`)
-  L.push('')
+  FACTS.push('מונים:')
+  FACTS.push(`- חדשים: ${s.new_count || 0}`)
+  FACTS.push(`- השתנו: ${s.changed_count || 0}`)
+  FACTS.push(`- הוסרו: ${s.removed_count || 0}`)
+  FACTS.push(`- ללא שינוי: ${s.unchanged_count || 0}`)
+  FACTS.push('')
+
+  // Keep `L` alias so the rest of the function (narrative) keeps reading idiomatically.
+  const L = NARR
+
+  // Commission totals at the TOP of FACTS (was last, got truncated under load)
+  if (Array.isArray(s.commission_by_company) && s.commission_by_company.length) {
+    const sortedComm = [...s.commission_by_company].sort((a, b) => (b.total || 0) - (a.total || 0))
+    FACTS.push('עמלות לפי חברה (עובדה — לא לחשב מחדש):')
+    let commSum = 0
+    for (const c of sortedComm.slice(0, 15)) {
+      FACTS.push(`- ${c.company}: ${formatAmount(c.total || 0)} (${c.clients_count || 0} לקוחות)`)
+      commSum += (c.total || 0)
+    }
+    FACTS.push(`סה"כ עמלות מסוכמות: ${formatAmount(commSum)}`)
+    FACTS.push('')
+  }
+
+  // Switchers — direct, deterministic answer to "מי עבר חברה?"
+  if (switchers.length) {
+    FACTS.push(`לקוחות שעברו חברה (סך ${switchers.length}):`)
+    for (const sw of switchers.slice(0, 30)) {
+      FACTS.push(`- ${sw.id_number} ${sw.name}: ${sw.from_company} → ${sw.to_company}`)
+    }
+    if (switchers.length > 30) FACTS.push(`  (... ועוד ${switchers.length - 30})`)
+    FACTS.push('')
+  }
+
+  // ===== Per-customer truth block (top 30 by absolute change/exposure) =====
+  // This is the AI's defense against bucket-confusion bugs like the
+  // אבלין פיפרברג case. For each top customer, we state explicitly which
+  // bucket they're in — the AI MUST NOT contradict this.
+  const truthCandidates = []
+  for (const c of (result.changed_clients || [])) {
+    truthCandidates.push({
+      id: c.id_number, name: c.name, company: c.company,
+      bucket: 'השתנו',
+      premium_diff: c.premium_diff || 0,
+      accumulation_diff: c.accumulation_diff || 0,
+      mag: Math.max(Math.abs(c.premium_diff || 0), Math.abs(c.accumulation_diff || 0)),
+    })
+  }
+  for (const c of (result.new_clients || [])) {
+    truthCandidates.push({
+      id: c.id_number, name: c.name, company: c.company,
+      bucket: 'חדש בקובץ הנוכחי בלבד',
+      mag: Math.abs(c.premium || c.accumulation || 0),
+    })
+  }
+  for (const c of (result.removed_clients || [])) {
+    truthCandidates.push({
+      id: c.id_number, name: c.name, company: c.company,
+      bucket: 'היה בקובץ הקודם בלבד',
+      mag: Math.abs(c.premium || c.accumulation || 0),
+    })
+  }
+  truthCandidates.sort((a, b) => (b.mag || 0) - (a.mag || 0))
+  const truthTop = truthCandidates.slice(0, 30)
+  if (truthTop.length) {
+    FACTS.push('=== עובדות לקוח (לא להמציא — מקור: דיף הפרודוקציה) ===')
+    for (const t of truthTop) {
+      const bits = [t.bucket]
+      if (t.premium_diff) bits.push(`Δפרמיה ${t.premium_diff > 0 ? '+' : ''}${formatAmount(t.premium_diff)}`)
+      if (t.accumulation_diff) bits.push(`Δצבירה ${t.accumulation_diff > 0 ? '+' : ''}${formatAmount(t.accumulation_diff)}`)
+      const co = t.company ? ` [${t.company}]` : ''
+      FACTS.push(`- ${t.id || '—'} ${t.name || ''}${co}: ${bits.join(' · ')}`)
+    }
+    FACTS.push('')
+  }
 
   L.push('סך שינויים:')
   if (s.premium_positive || s.premium_negative) {
@@ -253,24 +338,31 @@ export function buildProductionComparisonSummary(result) {
     L.push('')
   }
 
-  // Commission by company
-  if (Array.isArray(s.commission_by_company) && s.commission_by_company.length) {
-    L.push('עמלות לפי חברה:')
-    for (const c of s.commission_by_company.slice(0, 10)) {
-      L.push(`- ${c.company}: ${formatAmount(c.total || 0)} (${c.clients_count || 0} לקוחות)`)
-    }
-  }
+  // (Commission breakdown already emitted at the top of FACTS — not duplicated here.)
 
-  // Hard cap at 6500 chars (leaves headroom under backend's 8000 limit)
-  let viewContextString = L.join('\n')
-  if (viewContextString.length > 6500) {
-    viewContextString = viewContextString.slice(0, 6500) + '\n[... נתונים נוספים קוצצו ...]'
+  // Truncation policy: FACTS NEVER truncated. NARR truncated to fit the
+  // remaining budget. Total budget bumped 6500→12000 (memory backend cap
+  // raised in parallel) so per-customer truth block + facts always fit.
+  const TOTAL_CAP = 12000
+  const factsString = FACTS.join('\n')
+  const narrString = NARR.join('\n')
+  let viewContextString = factsString
+  let truncated = false
+  const remainingBudget = TOTAL_CAP - factsString.length - 64  // slack for header
+  if (narrString.length <= remainingBudget) {
+    viewContextString += '\n' + narrString
+  } else if (remainingBudget > 200) {
+    viewContextString += '\n' + narrString.slice(0, remainingBudget) + '\n[... נתונים נוספים קוצצו — נא דייקי לחברה/חודש מסוים ...]'
+    truncated = true
+  } else {
+    truncated = true
   }
 
   return {
     summary,
     suggestions: uniqueSuggestions,
     viewContextString,
+    viewContextTruncated: truncated,
   }
 }
 
@@ -375,27 +467,61 @@ export function buildCommissionComparisonSummary(customers, categoryLabel, compa
   const uniqueSuggestions = Array.from(new Set(suggestions)).slice(0, 3)
 
   // ---------- Rich view-context (backend) ----------
-  const L = []
-  L.push(`השוואת נפרעים — ${categoryLabel || 'קטגוריה לא ידועה'}`)
+  // FACTS = counts, commission totals, per-customer truth (top 30).
+  // NARR  = ranked lists, narrative breakdowns.
+  // Truncation drops NARR only — FACTS are immune.
+  const FACTS = []
+  const NARR = []
+  FACTS.push(`השוואת נפרעים — ${categoryLabel || 'קטגוריה לא ידועה'}`)
   if (companySources && companySources.length) {
-    L.push(`חברות מקור עמלה: ${companySources.slice(0, 10).join(', ')}${companySources.length > 10 ? ' ...' : ''}`)
+    FACTS.push(`חברות מקור עמלה: ${companySources.slice(0, 10).join(', ')}${companySources.length > 10 ? ' ...' : ''}`)
   }
-  L.push('')
+  FACTS.push('')
 
-  L.push('מונים:')
-  L.push(`- סה"כ לקוחות: ${customers.length}`)
-  L.push(`- בשניהם (שולם): ${matched.length}`)
-  L.push(`- רק בפרודוקציה (לא שולם): ${effectiveUnpaid.length}`)
+  // Mutual-exclusivity assertion the AI can quote verbatim — closes the
+  // 673/396/277 sanity-check gap (memory note: arithmetic must add up).
+  const sumCheck = matched.length + effectiveUnpaid.length + onlyComm.length
+  FACTS.push('מונים (חייבים להסתכם — אסור להמציא בקטגוריזציה):')
+  FACTS.push(`- סה"כ לקוחות: ${customers.length}`)
+  FACTS.push(`- בשניהם (שולם): ${matched.length}`)
+  FACTS.push(`- רק בפרודוקציה (לא שולם): ${effectiveUnpaid.length}`)
   if (!isInsurance && onlyProd.length !== effectiveUnpaid.length) {
-    L.push(`  (מתוכם ${onlyProd.length - effectiveUnpaid.length} ללא צבירה — לא נחשבים כחוב)`)
+    FACTS.push(`  (מתוכם ${onlyProd.length - effectiveUnpaid.length} ללא צבירה — לא נחשבים כחוב)`)
   }
-  L.push(`- רק בנפרעים (חריג): ${onlyComm.length}`)
-  L.push('')
+  FACTS.push(`- רק בנפרעים (חריג): ${onlyComm.length}`)
+  FACTS.push(`  בדיקת סכימה: ${matched.length}+${effectiveUnpaid.length}+${onlyComm.length}=${sumCheck} ${sumCheck === customers.length ? '✓' : '⚠️ ' + customers.length}`)
+  FACTS.push('')
 
   if (totalCommissionPaid > 0) {
-    L.push(`סך עמלות ששולמו: ${formatAmount(totalCommissionPaid)}`)
-    L.push('')
+    FACTS.push(`סך עמלות ששולמו: ${formatAmount(totalCommissionPaid)} (עובדה — לא לחשב מחדש)`)
+    FACTS.push('')
   }
+
+  // ===== Per-customer truth block (top 30) =====
+  // Direct fix for "אבלין פיפרברג ת.ז 12255162 רק בנפרעים" QA bug — the AI
+  // had no per-customer ground truth, so it inferred from aggregates and
+  // got the classification wrong. Now every top-30 customer's bucket is
+  // stated explicitly in the context.
+  const truthCandidates = customers
+    .map((c) => ({ c, exp: customerExposure(c, isInsurance), paid: sumCustomerCommissionPaid(c) }))
+    .sort((a, b) => Math.max(b.exp, b.paid) - Math.max(a.exp, a.paid))
+    .slice(0, 30)
+  if (truthCandidates.length) {
+    FACTS.push('=== עובדות לקוח (לא להמציא — מקור: דיף נפרעים) ===')
+    for (const { c, exp, paid } of truthCandidates) {
+      const inProd = (c.match_status === 'matched' || c.match_status === 'only_production') ? 'כן' : 'לא'
+      const inComm = (c.match_status === 'matched' || c.match_status === 'only_commission') ? 'כן' : 'לא'
+      const co = c.company ? ` [${c.company}]` : ''
+      const bits = [`פרודוקציה=${inProd}`, `נפרעים=${inComm}`]
+      if (exp) bits.push(`${isInsurance ? 'פרמיה' : 'צבירה'} ${formatAmount(exp)}`)
+      if (paid) bits.push(`עמלה ${formatAmount(paid)}`)
+      FACTS.push(`- ${c.id_number || '—'} ${c.name || ''}${co}: ${bits.join(' · ')}`)
+    }
+    FACTS.push('')
+  }
+
+  // Alias L → NARR so the rest of this function keeps reading idiomatically.
+  const L = NARR
 
   // Per-company unpaid breakdown
   const byCoUnpaid = new Map()
@@ -462,10 +588,20 @@ export function buildCommissionComparisonSummary(customers, categoryLabel, compa
     L.push('')
   }
 
-  let viewContextString = L.join('\n')
-  if (viewContextString.length > 6500) {
-    viewContextString = viewContextString.slice(0, 6500) + '\n[... נתונים נוספים קוצצו ...]'
+  const TOTAL_CAP = 12000
+  const factsString = FACTS.join('\n')
+  const narrString = NARR.join('\n')
+  let viewContextString = factsString
+  let truncated = false
+  const remainingBudget = TOTAL_CAP - factsString.length - 64
+  if (narrString.length <= remainingBudget) {
+    viewContextString += '\n' + narrString
+  } else if (remainingBudget > 200) {
+    viewContextString += '\n' + narrString.slice(0, remainingBudget) + '\n[... נתונים נוספים קוצצו — נא דייקי לחברה/חודש מסוים ...]'
+    truncated = true
+  } else {
+    truncated = true
   }
 
-  return { summary, suggestions: uniqueSuggestions, viewContextString }
+  return { summary, suggestions: uniqueSuggestions, viewContextString, viewContextTruncated: truncated }
 }
