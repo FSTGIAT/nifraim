@@ -13,6 +13,7 @@ from app.models.volume_commission_rate import VolumeCommissionRate
 from app.models.ai_document import AiDocument
 from app.models.fund_track import FundTrack
 from app.models.fund_track_fund import FundTrackFund
+from app.models.yield_recommendation import YieldRecommendation
 from app.api.deps import get_paid_user
 from app.schemas.ai import ChatRequest
 from app.services.ai_service import stream_chat
@@ -278,6 +279,34 @@ async def get_knowledge(
         ],
     }
 
+    # --- Yield recommendations (production × mygemel.net tracks) ---
+    # Surfaced here so AI chat can answer "כמה המלצות ניוד יש לי?" without
+    # the radial-orbital modal being open. Pulls the persisted set from the
+    # yield_recommender_service.
+    yr_q = await db.execute(
+        select(YieldRecommendation)
+        .where(YieldRecommendation.user_id == user.id)
+        .order_by(desc(YieldRecommendation.potential_annual_gain))
+    )
+    yr_rows = list(yr_q.scalars().all())
+    yield_recommendations = {
+        "count": len(yr_rows),
+        "total_potential_annual_gain": round(
+            sum(float(r.potential_annual_gain) for r in yr_rows), 2
+        ),
+        "generated_at": yr_rows[0].generated_at.isoformat() if yr_rows else None,
+        "top": [
+            {
+                "client_name": r.client_name,
+                "current_track": r.current_track,
+                "recommended_track_name": r.recommended_track_name,
+                "potential_annual_gain": float(r.potential_annual_gain),
+                "confidence": r.confidence,
+            }
+            for r in yr_rows[:5]
+        ],
+    } if yr_rows else None
+
     return {
         "production": production,
         "commission": commission,
@@ -285,4 +314,5 @@ async def get_knowledge(
         "rates": rates,
         "documents": documents,
         "market_funds": market_funds,
+        "yield_recommendations": yield_recommendations,
     }

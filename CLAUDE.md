@@ -463,6 +463,44 @@ Company names are dynamic. New companies appear automatically in filters and cha
 
 ---
 
+## Period Detection (`period_month` on every upload)
+
+Every `FileUpload` row carries a nullable `period_month` (first-of-month `date`)
+representing **which reporting month the file is FOR** — not when it was uploaded.
+Israeli insurers report commission ~30 days late, so a file uploaded in May
+usually contains April data. The dashboard, AI service, and trend chart all
+depend on this being right.
+
+Resolution order (`detect_period_month` in `backend/app/services/parser_service.py:87`):
+
+| # | Source | Example | Notes |
+|---|--------|---------|-------|
+| 1 | Hebrew month name + year in filename | `הפניקס גמל מרץ 26.xlsx` → 2026-03 | Most files match here |
+| 2 | Numeric MM/YY or MM/YYYY in filename | `03-26.xlsx`, `12_2025` | |
+| 3 | Hebrew month only in filename | `הכשרה נפרעים אפריל.xlsx` uploaded May 2026 → 2026-04 | Year inferred from `uploaded_at`, capped at upload month (Dec uploaded in Jan → previous year) |
+| 4 | Record data dates: `sign_date` → `transfer_date` → `rights_assignment_date` → `processing_date` | | `processing_date` LAST — it's the report-generation date and drifts into the next month |
+| 5 | `uploaded_at` | | Least reliable fallback |
+| 6 | `None` | | No period — excluded from period-aware aggregations |
+
+**Filename-first rationale (flipped 2026-05-18):** data-date inference was
+demoting April production files to May because some `processing_date` values
+landed in early May.
+
+**Symptoms when this goes wrong:**
+- A trend column appears for a month the agent never uploaded → a file without
+  a month in its filename fell to step 4 or 5. Likely culprits: files named with
+  opaque numeric codes (`הראל נפרעים מגוון 9345.xlsx`, `עמלות כלל חיים.xlsx`).
+- Dashboard "עמלות שהתקבלו" undercounts → period_month=NULL files are excluded
+  from the per-company-latest-period sum.
+
+**Fixes:**
+- Add the missing month to the filename (`... מרץ 26.xlsx`) and re-upload — the
+  upload pipeline replaces on `(user, filename, category)`.
+- Extend `detect_period_month` for new naming patterns rather than touching
+  callers — every commission/production endpoint depends on this one function.
+
+---
+
 ## Volume Report (דוח היקפים) — Multi-Sheet Parsing
 
 Volume reports are **multi-sheet Excel files**. Each sheet is a different company with a different column layout. The parser reads ALL sheets.

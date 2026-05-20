@@ -71,6 +71,9 @@
       </div>
     </div>
 
+    <!-- Hero chart: commission trend (most important — sits directly under KPIs) -->
+    <ProductionTrendChart @go-to-automation="$emit('go-to-automation')" />
+
     <!-- Row 1: Company + Product Type side by side -->
     <div class="charts-row">
       <div class="chart-card" v-if="analytics.company_breakdown.length">
@@ -205,10 +208,13 @@
 <script setup>
 import { computed, ref } from 'vue'
 import api from '../../api/client.js'
+import ProductionTrendChart from './ProductionTrendChart.vue'
 
 const props = defineProps({
   analytics: { type: Object, required: true },
 })
+
+defineEmits(['go-to-automation'])
 
 const topMetric = ref('premium')
 const drilldown = ref(null)

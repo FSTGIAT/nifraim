@@ -7,91 +7,29 @@
         <h2 class="page-title">פורטלי חברות הביטוח</h2>
         <p class="page-sub">חבר חברה אחת, גרור לתזמון, והדוח יוריד את עצמו.</p>
       </div>
-      <div class="page-actions">
-        <button class="btn-add" @click="openAdd">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14"/><path d="M12 5v14"/>
-          </svg>
-          <span>הוסף פורטל</span>
-        </button>
-      </div>
     </header>
 
     <div v-if="store.error" class="error-banner">{{ store.error }}</div>
 
-    <!-- ─── Schedule zones (drop targets) ───────────────────── -->
-    <PortalScheduleZones
+    <div v-if="store.loading && !store.credentials.length" class="loading-strip">
+      <span class="spinner" aria-hidden="true"></span>
+      <span>טוען פורטלים…</span>
+    </div>
+
+    <!-- ─── Main canvas: vertical schedule rail + cards pane ─── -->
+    <PortalAutomationCanvas
+      v-else
       :credentials="store.credentials"
       :portal-label="portalLabel"
-      @drop="onZoneDrop"
-      @remove="onZoneRemove"
+      :active-run="store.activeRun"
+      :active-run-id="store.activeRunId"
+      @run="runNow"
+      @edit="openEdit"
+      @delete="deleteCred"
+      @schedule="onSchedule"
+      @unschedule="onUnschedule"
+      @add="openAdd"
     />
-
-    <!-- ─── Manual section: cards not assigned to any schedule ─ -->
-    <section class="manual-section">
-      <div class="ms-head">
-        <span class="ms-title">פורטלים — ידני</span>
-        <span class="ms-meta">{{ manualCreds.length }} פורטל{{ manualCreds.length === 1 ? '' : 'ים' }}</span>
-      </div>
-
-      <div v-if="store.loading && !store.credentials.length" class="loading-strip">
-        <span class="spinner" aria-hidden="true"></span>
-        <span>טוען פורטלים…</span>
-      </div>
-
-      <div v-else-if="!store.credentials.length" class="empty-state">
-        <p>עדיין לא הוגדרו פורטלים.</p>
-        <button class="btn-add" @click="openAdd">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14"/><path d="M12 5v14"/>
-          </svg>
-          <span>הוסיף פורטל ראשון</span>
-        </button>
-      </div>
-
-      <div v-else class="cards-grid">
-        <PortalCard
-          v-for="cred in manualCreds"
-          :key="cred.id"
-          :cred="cred"
-          :is-running="isRunning(cred.id)"
-          :portal-label="portalLabel(cred.portal_kind)"
-          :is-implemented="isImplemented(cred.portal_kind)"
-          :active-run="store.activeRun"
-          :draggable="true"
-          @run="runNow(cred.id)"
-          @edit="openEdit(cred)"
-          @delete="deleteCred(cred.id)"
-          @dragstart="onCardDragStart($event, cred.id)"
-        />
-      </div>
-
-    </section>
-
-    <!-- Cards in scheduled zones still need run/edit/delete affordances. We
-         render a "scheduled" section listing those cards in detail below. -->
-    <section v-if="scheduledCreds.length" class="scheduled-section">
-      <div class="ms-head">
-        <span class="ms-title">פורטלים מתוזמנים</span>
-        <span class="ms-meta">פעולות ידניות זמינות גם להם</span>
-      </div>
-      <div class="cards-grid">
-        <PortalCard
-          v-for="cred in scheduledCreds"
-          :key="cred.id"
-          :cred="cred"
-          :is-running="isRunning(cred.id)"
-          :portal-label="portalLabel(cred.portal_kind)"
-          :is-implemented="isImplemented(cred.portal_kind)"
-          :active-run="store.activeRun"
-          :draggable="true"
-          @run="runNow(cred.id)"
-          @edit="openEdit(cred)"
-          @delete="deleteCred(cred.id)"
-          @dragstart="onCardDragStart($event, cred.id)"
-        />
-      </div>
-    </section>
 
     <!-- ─── Debug disclosure ────────────────────────────────── -->
     <details class="debug-block">
@@ -140,8 +78,7 @@
       @saved="onModalSaved"
     />
 
-    <!-- OTP modal — shared for any card's active run.
-         Close = cancel (mirrors the dock behavior on the comparison tab). -->
+    <!-- OTP modal — shared for any card's active run. -->
     <PortalOtpModal
       :open="otpModalOpen"
       :run="store.activeRun"
@@ -156,8 +93,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import PortalCredentialModal from './PortalCredentialModal.vue'
-import PortalScheduleZones from './PortalScheduleZones.vue'
-import PortalCard from './PortalCard.vue'
+import PortalAutomationCanvas from './PortalAutomationCanvas.vue'
 import PortalOtpModal from './PortalOtpModal.vue'
 
 const store = usePortalAutomationStore()
@@ -180,40 +116,26 @@ function openEdit(cred) {
   modalCred.value = cred
   modalOpen.value = true
 }
-function onModalSaved(cred) {
+function onModalSaved() {
   // store.create/update already updates credentials[]; nothing else needed
 }
-
-// ─── Derived lists ────────────────────────────────────────
-const manualCreds   = computed(() => store.credentials.filter((c) => !c.schedule_kind || c.schedule_kind === 'manual'))
-const scheduledCreds = computed(() => store.credentials.filter((c) => c.schedule_kind && c.schedule_kind !== 'manual'))
 
 function portalLabel(kind) {
   return store.portalKinds.find((k) => k.id === kind)?.label || kind
 }
-function isImplemented(kind) {
-  return !!store.portalKinds.find((k) => k.id === kind)?.implemented
-}
-function isRunning(credId) {
-  return store.activeRunId && store.activeRun?.credential_id === credId
-}
 
 // ─── Per-credential actions ───────────────────────────────
-async function runNow(id)      { await store.runNow(id) }
-async function deleteCred(id)  {
+async function runNow(id) { await store.runNow(id) }
+async function deleteCred(id) {
   if (!confirm('למחוק את ההגדרה?')) return
   await store.deleteCredential(id)
 }
 
-// ─── Drag and drop wiring ─────────────────────────────────
-function onCardDragStart(event, credId) {
-  event.dataTransfer.setData('text/plain', credId)
-  event.dataTransfer.effectAllowed = 'move'
-}
-async function onZoneDrop({ id, schedule_kind }) {
+// ─── Schedule drag results ────────────────────────────────
+async function onSchedule({ id, schedule_kind }) {
   await store.updateSchedule(id, schedule_kind)
 }
-async function onZoneRemove(id) {
+async function onUnschedule(id) {
   await store.updateSchedule(id, 'manual')
 }
 
@@ -272,7 +194,7 @@ onUnmounted(() => {
 
 <style scoped>
 .auto-page {
-  max-width: 1180px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px 20px 40px;
   display: flex;
@@ -295,34 +217,10 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 600;
+  letter-spacing: 0.4px;
 }
 .page-title { margin: 0; font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
 .page-sub { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
-.page-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-
-.btn-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
-  color: #fff;
-  border: none;
-  border-radius: 9px;
-  padding: 9px 16px;
-  height: 36px;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.2px;
-  cursor: pointer;
-  box-shadow: 0 6px 14px rgba(245, 124, 0, 0.32);
-  transition: transform 0.18s, box-shadow 0.18s, opacity 0.18s;
-}
-.btn-add:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(245, 124, 0, 0.4);
-}
-.btn-add:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 
 .error-banner {
   background: rgba(239, 68, 68, 0.08);
@@ -332,22 +230,6 @@ onUnmounted(() => {
   border-radius: var(--radius-sm, 8px);
   font-size: 13px;
 }
-
-/* Manual / scheduled sections */
-.manual-section, .scheduled-section { display: flex; flex-direction: column; gap: 12px; }
-.ms-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding-bottom: 6px;
-  border-bottom: 1px dashed var(--border-subtle);
-}
-.ms-title {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--text);
-}
-.ms-meta { font-size: 12px; color: var(--text-muted); }
 
 .loading-strip {
   display: flex;
@@ -365,25 +247,6 @@ onUnmounted(() => {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 28px 16px;
-  border: 1px dashed var(--border-subtle);
-  border-radius: var(--radius-lg, 16px);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: 13.5px;
-}
-
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-}
 
 /* Debug disclosure */
 .debug-block {

@@ -7,6 +7,14 @@ import type { Viz } from './types'
 export { BarComposition, KpiComposition, DonutComposition, FundTrackComposition }
 export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
+export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
+export { NotificationsEmpty, NOTIFICATIONS_EMPTY_DURATION } from './NotificationsEmpty'
+export {
+  MonthlyCommissionComposition,
+  MONTHLY_COMMISSION_DURATION_FRAMES,
+  MONTHLY_COMMISSION_FPS,
+} from './MonthlyCommission'
+export type { MonthlyCommissionProps, MonthlyCommissionMonth } from './MonthlyCommission'
 export type { Viz } from './types'
 export * from './types'
 

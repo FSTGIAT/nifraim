@@ -95,6 +95,7 @@ async def list_uploads(
             file_category=u.file_category,
             has_file=_has_file(u),
             uploaded_at=u.uploaded_at,
+            period_month=u.period_month,
         )
         for u in uploads
     ]
@@ -141,6 +142,30 @@ async def delete_upload(
     upload = result.scalar_one_or_none()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
+
+    # Clear FK references that don't have ondelete=CASCADE on the model,
+    # mirroring delete_current_production. Without this, deleting a production
+    # upload that has a ProductionSummary/Debt/PortalSnapshot row fails on
+    # the FK constraint. ClientRecord cascades via its own ondelete="CASCADE".
+    from app.models.portal_snapshot import PortalSnapshot
+    from app.models.debt import Debt
+    from app.models.production_summary import ProductionSummary
+    from sqlalchemy import delete as sql_delete, update as sql_update
+
+    await db.execute(
+        sql_delete(PortalSnapshot).where(PortalSnapshot.upload_id == upload.id)
+    )
+    await db.execute(
+        sql_delete(ProductionSummary).where(ProductionSummary.upload_id == upload.id)
+    )
+    await db.execute(
+        sql_delete(Debt).where(Debt.production_upload_id == upload.id)
+    )
+    await db.execute(
+        sql_update(Debt)
+        .where(Debt.commission_upload_id == upload.id)
+        .values(commission_upload_id=None)
+    )
 
     await db.delete(upload)
     await db.flush()

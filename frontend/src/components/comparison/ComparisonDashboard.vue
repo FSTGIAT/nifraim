@@ -353,6 +353,14 @@
       :view-title="aiViewContext?.viewTitle || ''"
       :view-context="aiViewContext?.viewContextString || ''"
       :initial-question="aiInitialQuestion"
+      @latest-vizs="onLatestVizs"
+    />
+
+    <!-- AI Remotion viz — centered modal overlay. Mirrors ProductionComparison.vue
+         so vizs emitted from the chat sheet actually render here too. -->
+    <AiVizPanel
+      v-model:open="aiVizOpen"
+      :vizs="activeVizs"
     />
 
   </div>
@@ -368,6 +376,7 @@ import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
 import AiInsightCard from '../workspace/AiInsightCard.vue'
 import AiConversationSheet from '../workspace/AiConversationSheet.vue'
+import AiVizPanel from '../workspace/AiVizPanel.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
 
 const props = defineProps({
@@ -419,8 +428,18 @@ function openAiSheet(question) {
   aiSheetOpen.value = true
 }
 watch(aiSheetOpen, (isOpen) => {
-  if (!isOpen) aiInitialQuestion.value = ''
+  if (!isOpen) {
+    aiInitialQuestion.value = ''
+    aiVizOpen.value = false
+  }
 })
+
+const aiVizOpen = ref(false)
+const activeVizs = ref(null)
+function onLatestVizs(vizs) {
+  activeVizs.value = vizs
+  if (Array.isArray(vizs) && vizs.length) aiVizOpen.value = true
+}
 
 onMounted(async () => {
   try {

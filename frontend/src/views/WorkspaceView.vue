@@ -25,6 +25,26 @@
          after 5s; user can dismiss failures manually. -->
     <PortalRunProgressFloat />
 
+    <!-- Notifications bell — always-visible top-right alert center. -->
+    <div class="ws-bell-anchor">
+      <NotificationBell />
+    </div>
+
+    <!-- Insights hub: floating radial-orbital launcher in the BOTTOM-LEFT.
+         Two nodes: 3-month commission comparison + yield/track recommendations.
+         HOME view only — inside the tab content it would overlap the working
+         area on every tab, so it's gated like the floating CircleMenu. -->
+    <RadialOrbitalIsland
+      v-if="viewMode === 'home'"
+      :items="radialItems"
+      :size="280"
+      :orbit-radius="92"
+      class="ws-insights-launcher"
+      @select="onRadialSelect"
+    />
+    <MonthlyCommissionModal v-model:open="monthlyOpen" />
+    <YieldRecommendationsModal v-model:open="yieldOpen" />
+
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
     <FundTrackVizPanel v-model:open="fundDetailOpen" :viz="fundDetailViz" />
 
@@ -201,9 +221,13 @@ import { useProductionStore } from '../stores/production.js'
 import { useOnboardingTour } from '../composables/useOnboardingTour.js'
 import StockTicker from '../components/workspace/StockTicker.vue'
 import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
+import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
+import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionModal.vue'
+import YieldRecommendationsModal from '../components/workspace/YieldRecommendationsModal.vue'
 import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
+import NotificationBell from '../components/workspace/NotificationBell.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
@@ -464,6 +488,22 @@ function onMenuSelect(key) {
   // help — TODO. No-op for now so the menu still closes.
 }
 
+// ── Insights hub (radial-orbital, bottom-left) ─────────────────────────
+// IDs are stable integers so the radial composition can render dependable
+// keys; the React component cares about `id` rather than the Vue-style `key`.
+const RADIAL_MONTHLY = 1
+const RADIAL_YIELD = 2
+const radialItems = [
+  { id: RADIAL_MONTHLY, title: 'עמלות 3 חודשים', iconName: 'BarChart3', energy: 90 },
+  { id: RADIAL_YIELD,   title: 'תשואות וניוד',    iconName: 'TrendingUp', energy: 80 },
+]
+const monthlyOpen = ref(false)
+const yieldOpen = ref(false)
+function onRadialSelect(id) {
+  if (id === RADIAL_MONTHLY) monthlyOpen.value = true
+  else if (id === RADIAL_YIELD) yieldOpen.value = true
+}
+
 async function openFundDetail(trackId) {
   if (!trackId) return
   // Open immediately so the modal's loading spinner is visible while the fetch resolves.
@@ -493,6 +533,25 @@ async function openFundDetail(trackId) {
   z-index: 1;
 }
 
+/* Notifications bell — always-visible top-right alert center.
+ * Sits BELOW the StockTicker (32px sticky, z-index 101) so they don't overlap.
+ * Above modals (1000+) is still allowed for the dropdown panel (which is
+ * teleported to body with its own z-index 1500). */
+.ws-bell-anchor {
+  position: fixed;
+  top: 44px;
+  inset-inline-start: 18px;  /* RTL: visual-RIGHT */
+  z-index: 200;
+}
+@media (max-width: 720px) {
+  .ws-bell-anchor { top: 40px; inset-inline-start: 10px; }
+}
+/* When the StockTicker is hidden (≤640px in StockTicker.vue), tuck the
+ * bell up against the very top of the viewport. */
+@media (max-width: 640px) {
+  .ws-bell-anchor { top: 8px; }
+}
+
 /* Floating CircleMenu island — top-LEFT corner with breathing room so the
    orbital items don't clip when they sweep outward. z-index sits above the
    StockTicker (101) so items can pass over the strip if needed; still below
@@ -520,6 +579,26 @@ async function openFundDetail(trackId) {
   z-index: 95;
   margin-inline-start: 6px;
   direction: ltr;
+}
+
+/* Insights hub launcher — bottom-LEFT in viewport pixels (not RTL-flipped).
+   Above the waves (z:0) and the StockTicker (101), below modals (1010+),
+   onboarding (5000+), and the dropzone overlay (9999). Hidden in print so
+   it doesn't show up on the dashboard PDF the agent prints for customers. */
+.ws-insights-launcher {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 102;
+  pointer-events: none;
+}
+.ws-insights-launcher :deep(*) { pointer-events: auto; }
+@media (max-width: 720px) {
+  .ws-insights-launcher { bottom: 14px; left: 14px; }
+  .ws-insights-launcher :deep(.radial-orbital-island) { transform: scale(0.85); transform-origin: bottom left; }
+}
+@media print {
+  .ws-insights-launcher { display: none; }
 }
 
 /* ─── Home view blur circles ─── */

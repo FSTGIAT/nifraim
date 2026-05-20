@@ -16,6 +16,10 @@
           :loading="productionStore.landingLoading"
           @request-manual-upload="openFilePicker"
         />
+        <ProductionTrendChart
+          :key="'trend-empty-' + (productionStore.history?.length || 0)"
+          @go-to-automation="$emit('go-to-portal-automation')"
+        />
         <AiCapabilitiesGridIsland />
       </div>
 
@@ -121,6 +125,7 @@
           <ProductionDashboard
             v-else-if="productionStore.analytics"
             :analytics="productionStore.analytics"
+            @go-to-automation="$emit('go-to-portal-automation')"
           />
         </div>
 
@@ -262,6 +267,7 @@ import ProductionComparison from './ProductionComparison.vue'
 import VolumeComparison from './VolumeComparison.vue'
 import ProductionHeroPanel from './ProductionHeroPanel.vue'
 import AiCapabilitiesGridIsland from './AiCapabilitiesGridIsland.vue'
+import ProductionTrendChart from './ProductionTrendChart.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 
 defineEmits(['go-to-comparison', 'go-to-portal-automation'])

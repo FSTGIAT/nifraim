@@ -134,6 +134,10 @@ async def upload_production(
         old_prod.is_production = False
 
     # Create new production upload
+    from app.services.parser_service import detect_period_month
+    from datetime import datetime as _dt
+    detected_period = detect_period_month(file.filename, result.get("records"), uploaded_at=_dt.utcnow())
+
     upload = FileUpload(
         user_id=user.id,
         filename=file.filename,
@@ -143,6 +147,7 @@ async def upload_production(
         format_type=result["format"],
         is_production=True,
         file_category="production",
+        period_month=detected_period,
     )
     db.add(upload)
     await db.flush()
@@ -507,39 +512,152 @@ async def production_landing(
 
 
 @router.get("/trend")
-async def get_production_trend(
+async def get_commission_trend(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Month-over-month production totals for the trend chart in Production → תובנות.
+    """Month-over-month ACTUAL commission, using the same per-company-latest-period
+    logic as the dashboard's "עמלות שהתקבלו" KPI.
 
-    Returns one point per period_label (deduped — keeps the latest re-upload for the
-    same month), sorted oldest→newest so the chart reads left→right chronologically.
+    For each period M (every period_month we have any commission file for):
+      total_M = Σ over companies of (commission_paid sum of that company's
+                latest upload whose period_month ≤ M)
+
+    This means:
+      - April reflects ₪66K-ish (Hachshara's April + Phoenix's latest = March +
+        Mor's latest = March + …) — matches the dashboard.
+      - March reflects "what we knew as of end-of-March" per company.
+      - The series can grow OR shrink month-to-month (a company reporting a
+        lower number in a later period replaces its previous contribution).
+
+    Re-uploads of the same filename are deduped to the latest. Uploads with
+    NULL period_month are excluded.
     """
+    from collections import defaultdict
+
     result = await db.execute(
-        select(ProductionSummary)
-        .where(ProductionSummary.user_id == user.id)
-        .order_by(ProductionSummary.upload_date.asc())
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "commission",
+            FileUpload.is_production == False,
+        )
+        .order_by(desc(FileUpload.uploaded_at))
     )
-    summaries = result.scalars().all()
+    uploads = result.scalars().all()
 
-    by_period: dict[str, ProductionSummary] = {}
-    for s in summaries:
-        existing = by_period.get(s.period_label)
-        if existing is None or s.upload_date > existing.upload_date:
-            by_period[s.period_label] = s
+    # Dedupe: latest upload per filename (handles re-uploads of same period)
+    by_filename: dict[str, FileUpload] = {}
+    for u in uploads:
+        if u.filename not in by_filename:
+            by_filename[u.filename] = u
 
-    points = sorted(by_period.values(), key=lambda s: s.upload_date)
-    return [
-        {
-            "period_label": s.period_label,
-            "upload_date": s.upload_date.isoformat(),
-            "total_premium": float(s.total_premium or 0),
-            "total_accumulation": float(s.total_accumulation or 0),
-            "unique_clients": s.unique_clients,
-        }
-        for s in points
-    ]
+    surviving = [u for u in by_filename.values() if u.period_month is not None]
+    if not surviving:
+        return []
+
+    # Sum commission_paid + count distinct clients per upload (one SQL round-trip).
+    upload_ids = [u.id for u in surviving]
+    sum_result = await db.execute(
+        select(
+            ClientRecord.upload_id,
+            func.coalesce(func.sum(ClientRecord.commission_paid), 0).label("total"),
+            func.count(func.distinct(ClientRecord.id_number)).label("clients"),
+        )
+        .where(
+            ClientRecord.upload_id.in_(upload_ids),
+            ClientRecord.user_id == user.id,
+        )
+        .group_by(ClientRecord.upload_id)
+    )
+    upload_totals: dict = {}
+    for upload_id, total, clients in sum_result.all():
+        upload_totals[upload_id] = (float(total or 0), int(clients or 0))
+
+    # Group surviving uploads by company. Some companies (Phoenix) emit
+    # multiple FILES per period — sum those together inside the same period.
+    # {company: {period_month: total_in_that_period}}
+    by_company_period: dict = defaultdict(lambda: defaultdict(float))
+    by_company_period_clients: dict = defaultdict(lambda: defaultdict(set))
+    # Need raw client IDs to dedupe across files of same company+period
+    if upload_ids:
+        client_q = await db.execute(
+            select(ClientRecord.upload_id, ClientRecord.id_number)
+            .where(
+                ClientRecord.upload_id.in_(upload_ids),
+                ClientRecord.user_id == user.id,
+                ClientRecord.id_number.isnot(None),
+            )
+        )
+        client_rows = client_q.all()
+    else:
+        client_rows = []
+    upload_clients: dict = defaultdict(set)
+    for uid, idn in client_rows:
+        if idn:
+            upload_clients[uid].add(idn.strip())
+
+    for u in surviving:
+        company_key = u.company_source or u.filename
+        total, _ = upload_totals.get(u.id, (0.0, 0))
+        by_company_period[company_key][u.period_month] += total
+        by_company_period_clients[company_key][u.period_month] |= upload_clients.get(u.id, set())
+
+    # All distinct period months — BUT exclude "ghost" periods that have
+    # essentially no real reported activity for that exact month (e.g. a
+    # single file mis-tagged 2026-05 with ₪0 commission would otherwise
+    # produce a duplicate May column showing the same total as April,
+    # because per-company-latest-up-to-M just inherits April's snapshot).
+    #
+    # Threshold: a period must have ≥ ₪500 in strict-period commission_paid
+    # to appear on the chart. Below that, the period is almost certainly
+    # a tagging artefact (see CLAUDE.md → Period Detection).
+    GHOST_PERIOD_THRESHOLD = 500.0
+    strict_totals: dict = defaultdict(float)
+    for company_period_totals in by_company_period.values():
+        for period, val in company_period_totals.items():
+            strict_totals[period] += val
+
+    # The chart's purpose is to show the commission TREND. Previously the
+    # x-axis was filtered to only periods where a production file also
+    # existed, which made the chart collapse to empty when the user had only
+    # one tagged production month. Trend chart now plots every commission
+    # period (above the ghost threshold) — production is context, not a
+    # gate.
+    all_periods = sorted(
+        p for p in {u.period_month for u in surviving}
+        if strict_totals[p] >= GHOST_PERIOD_THRESHOLD
+    )
+
+    # For each period M, sum each company's latest period ≤ M (and record the
+    # per-company contribution so the chart can draw one line per company and
+    # the insight engine can attribute drops to specific companies).
+    points = []
+    for M in all_periods:
+        total = 0.0
+        clients = set()
+        by_company_for_period: dict = {}
+        for company, period_totals in by_company_period.items():
+            relevant = [pm for pm in period_totals.keys() if pm <= M]
+            if not relevant:
+                continue
+            latest_pm = max(relevant)
+            contribution = period_totals[latest_pm]
+            total += contribution
+            # Skip companies whose latest report is ₪0 — they pollute the
+            # legend and aren't useful for trend attribution.
+            if contribution > 0:
+                by_company_for_period[company] = round(contribution, 2)
+            clients |= by_company_period_clients[company][latest_pm]
+        points.append({
+            "period_month": M.isoformat(),
+            "period_label": M.strftime("%Y-%m"),
+            "total_commission": round(total, 2),
+            "unique_clients": len(clients),
+            "by_company": by_company_for_period,
+        })
+
+    return points
 
 
 @router.get("/history", response_model=list[ProductionFileInfo])
@@ -571,6 +689,174 @@ async def get_production_history(
             uploaded_at=u.uploaded_at,
             companies=companies,
         ))
+    return out
+
+
+@router.get("/expected-trend")
+async def get_expected_commission_trend(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Per-period EXPECTED commission (production × agreement rates).
+
+    Unlike `/trend` (which sums commission_paid from נפרעים files), this
+    endpoint computes what the agent SHOULD earn for each production period
+    based on the production records × their per-product/company rates.
+    Drives the "עמלות צפויות לפי חודש" chart — the value updates the moment
+    a new production file is uploaded, without waiting for the matching
+    נפרעים report to arrive.
+
+    For each production upload with non-NULL period_month:
+      total_M = Σ over records of:
+                  gemel/savings: accumulation × rate / 12
+                  insurance:     premium × rate
+    Re-uploads of the same period dedupe to the latest by uploaded_at.
+    """
+    from collections import defaultdict
+    from app.models.commission_rate import CommissionRate
+    from app.utils.company_norm import normalize_company
+
+    # Pull every production upload that's period-tagged. We dedupe per
+    # period_month down to the latest upload — re-uploads of the same month
+    # would otherwise double-count.
+    prod_q = await db.execute(
+        select(FileUpload)
+        .where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "production",
+            FileUpload.period_month.isnot(None),
+        )
+        .order_by(desc(FileUpload.uploaded_at))
+    )
+    prods = prod_q.scalars().all()
+    latest_by_period: dict = {}
+    for u in prods:
+        if u.period_month not in latest_by_period:
+            latest_by_period[u.period_month] = u
+    if not latest_by_period:
+        return []
+
+    # User's agreement rates — same _pick_rate logic as /compare.
+    rates_q = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )
+    user_rates = list(rates_q.scalars().all())
+
+    def _pick_rate(company_name: str, product_name: str | None = None) -> float:
+        if not company_name or not user_rates:
+            return 0.0
+        target_canon = normalize_company(company_name)
+        candidates: list[CommissionRate] = []
+        if target_canon:
+            candidates = [
+                r for r in user_rates
+                if r.company_name and normalize_company(r.company_name) == target_canon
+            ]
+        if not candidates:
+            target_lc = company_name.strip().lstrip("ה").lower()
+            candidates = [
+                r for r in user_rates
+                if r.company_name and (
+                    target_lc in r.company_name.lstrip("ה").lower()
+                    or r.company_name.lstrip("ה").lower() in target_lc
+                )
+            ]
+        if not candidates:
+            return 0.0
+        prod_lc = (product_name or "").strip().lower()
+        if prod_lc:
+            product_matches = [
+                r for r in candidates
+                if r.product and (prod_lc in r.product.lower() or r.product.lower() in prod_lc)
+            ]
+            if product_matches:
+                totals = [r for r in product_matches
+                          if (getattr(r, "rate_kind", None) or "").lower() == "total"]
+                if totals:
+                    return float(totals[0].rate)
+                book = next((r for r in product_matches
+                             if (getattr(r, "rate_kind", None) or "").lower() == "book"), None)
+                reward = next((r for r in product_matches
+                               if (getattr(r, "rate_kind", None) or "").lower() == "reward"), None)
+                if book and reward:
+                    return float(book.rate) + float(reward.rate)
+                if book:
+                    return float(book.rate)
+                if reward:
+                    return float(reward.rate)
+                singles = [r for r in product_matches
+                           if (getattr(r, "rate_kind", None) or "single").lower() == "single"]
+                if singles:
+                    return float(singles[0].rate)
+                return float(product_matches[0].rate)
+        defaults = [r for r in candidates if not r.product]
+        if defaults:
+            prio = [r for r in defaults
+                    if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+            chosen = prio[0] if prio else defaults[0]
+            return float(chosen.rate)
+        prio = [r for r in candidates
+                if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
+        chosen = prio[0] if prio else candidates[0]
+        return float(chosen.rate)
+
+    # Pull production records for all relevant uploads in one query.
+    upload_ids = [u.id for u in latest_by_period.values()]
+    records_q = await db.execute(
+        select(
+            ClientRecord.upload_id,
+            ClientRecord.id_number,
+            ClientRecord.receiving_company,
+            ClientRecord.product_type,
+            ClientRecord.product,
+            ClientRecord.total_premium,
+            ClientRecord.accumulation,
+        ).where(
+            ClientRecord.upload_id.in_(upload_ids),
+            ClientRecord.user_id == user.id,
+        )
+    )
+
+    # period_month → company → expected_total
+    per_period: dict = defaultdict(lambda: defaultdict(float))
+    per_period_clients: dict = defaultdict(set)
+    upload_to_period = {u.id: u.period_month for u in latest_by_period.values()}
+
+    for upload_id, id_number, company, product_type, product_name, premium, accum in records_q.all():
+        if not company:
+            continue
+        cat = _classify_product_type(product_type) or ""
+        rate = _pick_rate(company, product_name) or _pick_rate(company, product_type)
+        if rate <= 0:
+            continue
+        if cat == "gemel_hishtalmut":
+            base = float(accum or 0)
+            if base <= 0:
+                continue
+            exp = base * rate / 12.0
+        else:
+            base = float(premium or 0)
+            if base <= 0:
+                continue
+            exp = base * rate
+        if exp <= 0:
+            continue
+        period = upload_to_period[upload_id]
+        per_period[period][company] += exp
+        if id_number:
+            per_period_clients[period].add(id_number)
+
+    out = []
+    for period in sorted(per_period.keys()):
+        by_company = {c: round(v, 2) for c, v in per_period[period].items() if v > 0}
+        total = round(sum(by_company.values()), 2)
+        out.append({
+            "period_month": period.isoformat(),
+            "period_label": period.strftime("%Y-%m"),
+            "total_expected": total,
+            "unique_clients": len(per_period_clients[period]),
+            "by_company": by_company,
+        })
     return out
 
 
@@ -1156,6 +1442,145 @@ COMMISSION_FORMATS = {
     "clal_life_nifraim", "clal_health_nifraim", "migdal_nifraim",
     "ayalon_nifraim", "harel_nifraim", "phoenix_insurance_nifraim",
 }
+
+
+@router.post("/backfill-periods")
+async def backfill_period_months(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One-time backfill: set period_month on PRODUCTION uploads whose value is NULL.
+
+    Production uploads via /api/production/upload historically didn't run
+    detect_period_month, so their period_month is NULL even though the filename
+    contains a clear month name. Without period_month, the trend chart can't
+    anchor commission periods to production periods. This re-runs detection
+    using filename + uploaded_at.
+
+    NOTE: Commission files are intentionally excluded. Their period_month should
+    only be set when the filename or data dates make it unambiguous — falling
+    back to upload_at for a commission file mis-tags duplicate/summary files
+    (e.g. Phoenix's "עמלות" file overlaps גמל/בריאות/ביטוח of the same period
+    and would double-count the company total when forcibly anchored).
+    """
+    from app.services.parser_service import detect_period_month
+
+    q = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.period_month.is_(None),
+            FileUpload.file_category == "production",
+        )
+    )
+    uploads = q.scalars().all()
+    updated = 0
+    for u in uploads:
+        pm = detect_period_month(u.filename, None, uploaded_at=u.uploaded_at)
+        if pm is not None:
+            u.period_month = pm
+            updated += 1
+    await db.commit()
+    return {"updated": updated, "total_null_production": len(uploads)}
+
+
+@router.post("/redetect-commission-periods")
+async def redetect_commission_periods(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Re-run detect_period_month on every commission upload using its FULL records
+    (sign_date / transfer_date / rights_assignment_date / processing_date) so
+    period_month is rebuilt from real data dates, not the upload_at fallback.
+
+    Use after `reset-commission-periods` over-cleared period_months.
+    Files with no filename hint AND no usable record dates stay NULL — that's
+    the correct outcome for Phoenix's "עמלות … כולל הראל" summary files which
+    overlap other files of the same period.
+    """
+    from app.services.parser_service import detect_period_month
+
+    q = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "commission",
+        )
+    )
+    uploads = q.scalars().all()
+
+    set_count = 0
+    cleared_count = 0
+    for u in uploads:
+        # Fetch records for this upload (date columns only)
+        rec_q = await db.execute(
+            select(
+                ClientRecord.sign_date,
+                ClientRecord.transfer_date,
+                ClientRecord.rights_assignment_date,
+                ClientRecord.processing_date,
+            ).where(ClientRecord.upload_id == u.id)
+        )
+        recs = [
+            {
+                "sign_date": r[0],
+                "transfer_date": r[1],
+                "rights_assignment_date": r[2],
+                "processing_date": r[3],
+            }
+            for r in rec_q.all()
+        ]
+        # Pass uploaded_at=None — we DO NOT want the upload-date fallback for
+        # commission files. Only filename + data dates count.
+        pm = detect_period_month(u.filename, recs, uploaded_at=None)
+        if pm != u.period_month:
+            u.period_month = pm
+            if pm is None:
+                cleared_count += 1
+            else:
+                set_count += 1
+    await db.commit()
+    return {"set": set_count, "cleared": cleared_count, "total_checked": len(uploads)}
+
+
+@router.post("/reset-commission-periods")
+async def reset_commission_periods(
+    only_filename_substring: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Reset period_month back to NULL on commission uploads that were tagged
+    via upload_at fallback (filename has no month indicator). Default scope:
+    every commission file whose filename has no Hebrew month name AND no
+    numeric MM/YY token — these are the files most likely to be mis-tagged.
+
+    Pass `only_filename_substring=...` to limit to one file (e.g. "כולל הראל").
+    """
+    import re
+    from app.services.parser_service import _HE_MONTH_TO_INT, _RE_NUM_MONTH
+
+    HE_MONTHS = set(_HE_MONTH_TO_INT.keys())
+
+    q = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.file_category == "commission",
+            FileUpload.period_month.isnot(None),
+        )
+    )
+    uploads = q.scalars().all()
+    cleared = 0
+    affected = []
+    for u in uploads:
+        fname = u.filename or ""
+        if only_filename_substring and only_filename_substring not in fname:
+            continue
+        has_he_month = any(m in fname for m in HE_MONTHS)
+        has_num_month = bool(_RE_NUM_MONTH.search(fname))
+        if not has_he_month and not has_num_month:
+            affected.append({"filename": fname, "was": u.period_month.isoformat()})
+            u.period_month = None
+            cleared += 1
+    await db.commit()
+    return {"cleared": cleared, "affected": affected}
 
 
 @router.post("/backfill-categories")

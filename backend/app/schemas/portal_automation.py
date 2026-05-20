@@ -50,6 +50,7 @@ class PortalCredentialOut(BaseModel):
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     last_error: str | None = None
+    recent_run_statuses: list[str] = []
     created_at: datetime
 
 

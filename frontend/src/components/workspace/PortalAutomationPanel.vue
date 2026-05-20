@@ -21,16 +21,14 @@
         v-for="cred in store.credentials"
         :key="cred.id"
         class="cred-card"
-        :class="{ disabled: !isImplemented(cred.portal_kind) }"
       >
         <div class="cred-head">
           <strong>{{ portalLabel(cred.portal_kind) }}</strong>
-          <span v-if="!isImplemented(cred.portal_kind)" class="coming-soon">בקרוב</span>
         </div>
         <div class="cred-user">{{ cred.username }}</div>
         <button
           class="btn-run"
-          :disabled="!isImplemented(cred.portal_kind) || isRunning(cred.id) || anyRunning"
+          :disabled="isRunning(cred.id) || anyRunning"
           @click="runNow(cred.id)"
         >
           {{ isRunning(cred.id) ? '⏳ רץ...' : '▶ הרץ אוטומציה' }}
@@ -63,10 +61,6 @@ const anyRunning = computed(() => !!store.activeRunId)
 
 function portalLabel(kind) {
   return store.portalKinds.find((k) => k.id === kind)?.label || kind
-}
-
-function isImplemented(kind) {
-  return !!store.portalKinds.find((k) => k.id === kind)?.implemented
 }
 
 function isRunning(credId) {
@@ -167,10 +161,6 @@ h3 {
   gap: 8px;
 }
 
-.cred-card.disabled {
-  opacity: 0.6;
-}
-
 .cred-head {
   display: flex;
   align-items: center;
@@ -178,15 +168,6 @@ h3 {
   gap: 8px;
   font-size: 14px;
   color: var(--text);
-}
-
-.coming-soon {
-  font-size: 10px;
-  font-weight: 600;
-  background: var(--text-muted);
-  color: #fff;
-  padding: 2px 8px;
-  border-radius: 999px;
 }
 
 .cred-user {

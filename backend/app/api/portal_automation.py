@@ -25,7 +25,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -61,7 +61,7 @@ ACTIVE_RUN_STATUSES = {"pending", "running", "awaiting_otp", "downloading", "par
 TERMINAL_RUN_STATUSES = {"success", "failed", "timeout"}
 
 
-def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
+def _cred_to_out(c: PortalCredential, recent: list[str] | None = None) -> PortalCredentialOut:
     return PortalCredentialOut(
         id=str(c.id),
         portal_kind=c.portal_kind,
@@ -75,6 +75,7 @@ def _cred_to_out(c: PortalCredential) -> PortalCredentialOut:
         last_run_at=c.last_run_at,
         last_run_status=c.last_run_status,
         last_error=c.last_error,
+        recent_run_statuses=recent or [],
         created_at=c.created_at,
     )
 
@@ -132,7 +133,28 @@ async def list_credentials(
         .where(PortalCredential.user_id == user.id)
         .order_by(PortalCredential.portal_kind)
     )
-    return [_cred_to_out(c) for c in result.scalars().all()]
+    creds = result.scalars().all()
+
+    # Window-function fetch of the last 7 statuses per credential. Index
+    # ix_portal_runs_credential(credential_id, started_at) covers the partition.
+    rn = func.row_number().over(
+        partition_by=PortalRun.credential_id,
+        order_by=PortalRun.started_at.desc(),
+    ).label("rn")
+    sub = (
+        select(PortalRun.credential_id, PortalRun.status, rn)
+        .where(PortalRun.user_id == user.id)
+        .subquery()
+    )
+    recent_q = await db.execute(
+        select(sub.c.credential_id, sub.c.status)
+        .where(sub.c.rn <= 7)
+    )
+    recent_by_cred: dict[uuid.UUID, list[str]] = {}
+    for cid, status in recent_q.all():
+        recent_by_cred.setdefault(cid, []).append(status)
+
+    return [_cred_to_out(c, recent_by_cred.get(c.id)) for c in creds]
 
 
 @router.post("/credentials", response_model=PortalCredentialOut)
