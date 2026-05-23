@@ -32,6 +32,7 @@ from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.models.user import User
 from app.services.comparison_service import _classify_product_type
+from app.services.rate_select import accumulation_based, expected_rate, make_pick_rate
 from app.utils.company_norm import normalize_company
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,17 @@ _HEBREW_MONTHS = {
 
 def _month_label(period: date) -> str:
     return f"{_HEBREW_MONTHS.get(period.month, period.month)} {period.year}"
+
+
+def _ring_key(name: str | None) -> str:
+    """Company identity for the missing-files RING only. Kept separate from the
+    global normalize_company (which drives rate matching) so ring grouping never
+    shifts the verified commission totals. Merges Menora production
+    ("מנורה מבטחים") with its commission name ("מנורה")."""
+    c = normalize_company(name)
+    if c.startswith("מנורה"):
+        return "מנורה"
+    return c
 
 
 def _calendar_window(months: int, anchor: date | None = None) -> list[date]:
@@ -79,75 +91,11 @@ def _calendar_window(months: int, anchor: date | None = None) -> list[date]:
 
 
 def _build_rate_picker(user_rates: list[CommissionRate]):
-    """Mirror of production.py _pick_rate — kept inline so insights doesn't
-    import a private helper. Uses normalize_company + product substring match
-    + book+reward sum (per commission_rate_summing.md memory).
-    """
-
-    def pick(company_name: str, product_name: str | None = None) -> float:
-        if not company_name or not user_rates:
-            return 0.0
-        target_canon = normalize_company(company_name)
-        candidates: list[CommissionRate] = []
-        if target_canon:
-            candidates = [
-                r for r in user_rates
-                if r.company_name and normalize_company(r.company_name) == target_canon
-            ]
-        if not candidates:
-            target_lc = company_name.strip().lstrip("ה").lower()
-            candidates = [
-                r for r in user_rates
-                if r.company_name and (
-                    target_lc in r.company_name.lstrip("ה").lower()
-                    or r.company_name.lstrip("ה").lower() in target_lc
-                )
-            ]
-        if not candidates:
-            return 0.0
-
-        prod_lc = (product_name or "").strip().lower()
-        if prod_lc:
-            product_matches = [
-                r for r in candidates
-                if r.product and (
-                    prod_lc in r.product.lower() or r.product.lower() in prod_lc
-                )
-            ]
-            if product_matches:
-                totals = [r for r in product_matches
-                          if (getattr(r, "rate_kind", None) or "").lower() == "total"]
-                if totals:
-                    return float(totals[0].rate)
-                book = next((r for r in product_matches
-                             if (getattr(r, "rate_kind", None) or "").lower() == "book"), None)
-                reward = next((r for r in product_matches
-                               if (getattr(r, "rate_kind", None) or "").lower() == "reward"), None)
-                if book and reward:
-                    return float(book.rate) + float(reward.rate)
-                if book:
-                    return float(book.rate)
-                if reward:
-                    return float(reward.rate)
-                singles = [r for r in product_matches
-                           if (getattr(r, "rate_kind", None) or "single").lower() == "single"]
-                if singles:
-                    return float(singles[0].rate)
-                return float(product_matches[0].rate)
-
-        defaults = [r for r in candidates if not r.product]
-        if defaults:
-            prio = [r for r in defaults
-                    if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-            chosen = prio[0] if prio else defaults[0]
-            return float(chosen.rate)
-
-        prio = [r for r in candidates
-                if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-        chosen = prio[0] if prio else candidates[0]
-        return float(chosen.rate)
-
-    return pick
+    """Canonical product-rate matcher (normalize_company + product substring
+    match + book+reward sum, per commission_rate_summing.md). Delegates to the
+    single shared implementation so insights, the production dashboard, and the
+    AI chat never drift apart."""
+    return make_pick_rate(user_rates)
 
 
 @router.get("/monthly-commission")
@@ -200,8 +148,12 @@ async def monthly_commission(
     user_rates = list(rates_q.scalars().all())
     pick_rate = _build_rate_picker(user_rates)
 
-    # For each period, find the latest production upload for that period_month
-    # (handles re-uploads — keep the latest by uploaded_at).
+    # For each period, pick ONE production upload. Prefer the active file
+    # (is_production) so this matches the dashboard/AI exactly — they key off
+    # the active upload — then fall back to latest by uploaded_at for past
+    # periods. Without the is_production tiebreak, a stale duplicate upload of
+    # the same month could be chosen here but not by the dashboard, making the
+    # 3-month modal disagree with the KPI.
     prod_uploads_q = await db.execute(
         select(FileUpload)
         .where(
@@ -209,7 +161,7 @@ async def monthly_commission(
             FileUpload.file_category == "production",
             FileUpload.period_month.in_(periods),
         )
-        .order_by(desc(FileUpload.uploaded_at))
+        .order_by(desc(FileUpload.is_production), desc(FileUpload.uploaded_at))
     )
     latest_prod_by_period: dict[date, FileUpload] = {}
     for u in prod_uploads_q.scalars().all():
@@ -245,6 +197,11 @@ async def monthly_commission(
             })
 
     # Commission uploads grouped by period_month (each period: list of uploads).
+    # Dedupe by (period, filename) keeping the LATEST upload — mirrors the
+    # dashboard's _build_commission_lookups. The DB can hold duplicate uploads
+    # of the same file (the same filename appears more than once); without this
+    # dedup the actual commission is double-counted, which is what produced the
+    # "בפועל > צפוי" (actual exceeds expected) bug.
     comm_q = await db.execute(
         select(FileUpload)
         .where(
@@ -252,11 +209,58 @@ async def monthly_commission(
             FileUpload.file_category == "commission",
             FileUpload.period_month.in_(periods),
         )
+        .order_by(desc(FileUpload.uploaded_at))
     )
     comm_uploads_by_period: dict[date, list[FileUpload]] = {p: [] for p in periods}
+    seen_comm_keys: set = set()
     for u in comm_q.scalars().all():
-        if u.period_month in comm_uploads_by_period:
-            comm_uploads_by_period[u.period_month].append(u)
+        if u.period_month not in comm_uploads_by_period:
+            continue
+        key = (u.period_month, (u.filename or "").strip().lower())
+        if key in seen_comm_keys:
+            continue
+        seen_comm_keys.add(key)
+        comm_uploads_by_period[u.period_month].append(u)
+
+    # Recurring נפרעים relationships for the "missing files" ring. A company is
+    # "expected" if it filed a נפרעים file in ANY month of the window — so a
+    # company that normally reports but skipped a given month shows as missing.
+    # This is commission-relationship based (NOT production): we only count
+    # files with a real company_source, which excludes NULL-source junk/empty
+    # uploads. Keyed on the normalized company name (short, ring-friendly).
+    recurring_companies: dict[str, str] = {}        # canon → label
+    filed_by_period: dict[date, set] = {p: set() for p in periods}
+    for p in periods:
+        for u in comm_uploads_by_period.get(p, []):
+            if not u.company_source:
+                continue
+            canon = _ring_key(u.company_source)
+            if not canon:
+                continue
+            recurring_companies.setdefault(canon, canon)
+            filed_by_period[p].add(canon)
+
+    # Also expect a נפרעים file from MATERIAL production companies that have
+    # never sent one — a company with a real book of business (≥ N clients)
+    # but no נפרעים at all is still "missing" (e.g. כלל: production but no file).
+    # The client-count floor keeps out 1–9 client niche names (אנליסט, ילין,
+    # מגדל מקפת) that previously made the count noisy.
+    MATERIAL_MIN_CLIENTS = 10
+    material_clients: dict[str, set] = {}
+    for recs in prod_records_by_upload.values():
+        for rec in recs:
+            co = rec.get("company")
+            idn = rec.get("id_number")
+            if not co or not idn:
+                continue
+            canon = _ring_key(co)
+            if canon:
+                material_clients.setdefault(canon, set()).add(idn)
+    # Combined "expected to send נפרעים" set = recurring filers ∪ material book.
+    expected_companies: dict[str, str] = dict(recurring_companies)
+    for canon, ids in material_clients.items():
+        if len(ids) >= MATERIAL_MIN_CLIENTS:
+            expected_companies.setdefault(canon, canon)
 
     # Sum commission_paid per (period, company) in one SQL group-by.
     all_comm_ids = [u.id for ulist in comm_uploads_by_period.values() for u in ulist]
@@ -291,20 +295,25 @@ async def monthly_commission(
                 company = rec["company"]
                 if not company:
                     continue
-                cat = _classify_product_type(rec["product_type"]) or ""
-                rate = pick_rate(company, rec["product"]) or pick_rate(company, rec["product_type"])
+                # Classify by the DATA, not the product_type label: any product
+                # carrying accumulation (gemel, השתלמות, פוליסת חיסכון, פנסיה,
+                # מנהלים) earns commission on accumulation. The product_type dict
+                # only tagged קופת גמל/השתלמות as gemel, so savings/pension/
+                # managers were treated as premium-based → premium=0 → skipped,
+                # which zeroed huge chunks of expected (the actual>expected bug).
+                accum = rec["accumulation"]
+                premium = rec["premium"]
+                is_accum = accumulation_based(rec["product_type"], accum)
+                rate = expected_rate(user_rates, pick_rate, company,
+                                     rec["product"], rec["product_type"], is_accum)
                 if rate <= 0:
                     continue
-                if cat == "gemel_hishtalmut":
-                    base = rec["accumulation"]
-                    if base <= 0:
-                        continue
-                    exp = base * rate / 12.0
+                if is_accum:
+                    exp = accum * rate / 12.0
                 else:
-                    base = rec["premium"]
-                    if base <= 0:
+                    if premium <= 0:
                         continue
-                    exp = base * rate
+                    exp = premium * rate
                 if exp <= 0:
                     continue
                 expected_by_company[company] = expected_by_company.get(company, 0.0) + exp
@@ -363,6 +372,20 @@ async def monthly_commission(
         if production_uploaded and commission_uploaded:
             gap_out = round(expected_total - actual_total, 2)
 
+        # "Missing files" ring: which recurring נפרעים companies didn't file
+        # THIS month. Based on the commission relationships above, not
+        # production — a company that normally reports but skipped this month is
+        # what the agent chases (e.g. מור filed March, missing April).
+        filed = filed_by_period.get(period, set())
+        company_status = sorted(
+            (
+                {"company": label, "uploaded": canon in filed}
+                for canon, label in expected_companies.items()
+            ),
+            key=lambda c: (c["uploaded"], c["company"]),  # missing first
+        )
+        missing_count = sum(1 for c in company_status if not c["uploaded"])
+
         out_months.append({
             "period_month": period.isoformat(),
             "label": _month_label(period),
@@ -372,6 +395,8 @@ async def monthly_commission(
             "actual_total": actual_out,
             "gap_total": gap_out,
             "by_company": by_company,
+            "company_status": company_status,
+            "missing_count": missing_count,
         })
 
     # Newest first.

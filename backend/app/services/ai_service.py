@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from typing import AsyncGenerator
 
@@ -17,11 +18,11 @@ from app.models.paying_company import PayingCompany
 from app.models.recruit import Recruit
 from app.models.commission_rate import CommissionRate
 from app.models.volume_commission_rate import VolumeCommissionRate
-from app.models.production_summary import ProductionSummary
 from app.models.ai_document import AiDocument
 from app.models.fund_track import FundTrack
 from app.models.fund_track_fund import FundTrackFund
 from app.services.comparison_service import compute_comparison, _normalize_id
+from app.services.rate_select import compute_expected_commission
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ You have access ONLY to the user's data shown below. You MUST:
 - Use **bold** for important numbers and key insights.
 - Keep tables concise — max 10 rows, summarize the rest.
 - You may have access to multi-month production history. You can identify trends, growth/decline patterns, and notable changes over time.
+- **חשוב — חודשים מרובים**: בלוק "=== קובץ פרודוקציה ===" מציג חודש **אחד בלבד** (הקובץ הפעיל). הנתונים על כל שאר החודשים נמצאים בבלוקים "=== היסטוריית פרודוקציה לפי חודש ===" (פרודוקציה) ו-"=== עמלות לפי חודש ===" (נפרעים). כששואלים על חודש מסוים (למשל "הראה לי את מרץ", "השווה מרץ לאפריל") — **חובה** לקרוא מהבלוקים האלה. **אל תאמר "אין לי נתונים על חודש X"** אם החודש מופיע באחד מהבלוקים האלה — הוא שם, מצא אותו. רק אם החודש המבוקש באמת לא מופיע באף בלוק — אמור שאין לך אותו.
 - The personal file (קובץ אישי) may include sign dates (תאריך חתימה) for each client. Use the "גיוסים לפי חודש" block to answer questions like "כמה גייסתי במרץ/אפריל" — count per month and by company. If a client in the personal file has a sign date after the active production file's month, they won't appear in production yet — that's expected, not an error.
 
 === הנחיות קריטיות לנתוני עמלות (אל תפר!) ===
@@ -60,6 +62,13 @@ You have access ONLY to the user's data shown below. You MUST:
 4. **שיעורי עמלה (table של אחוזים) ≠ עמלה בפועל**. שיעורים מופיעים ב"שיעורי עמלה" ומשמשים
    להבהרת תנאי ההסכם ולחישוב עמלה חזויה (שהמערכת עושה עבורך, לא אתה).
 5. כששואלים "תראה לי את העמלות שהתקבלו" — הצג **רק** סכומים מקבצי נפרעים שהועלו, וציין מפורשות אילו חברות חסרות קובץ נפרעים.
+
+5א. **"עמלה צפויה" כוללת ≠ "עמלה צפויה לא שולמה"** — שתי שאלות, שני מספרים:
+   • "כמה העמלה הצפויה (החודש)?" / "כמה אני אמור לקבל?" → קח את **הסכום הכולל** מהבלוק
+     "=== עמלות צפויות לפי ההסכמים — סה\"כ לחודש הפרודוקציה ===". זה production × שיעורי הסכם על **כל** התיק.
+   • "כמה עמלה צפויה עדיין לא שולמה / חייבים לי?" → קח את "עמלה צפויה לא שולמה" מבלוק ההשוואה (זה רק הפער).
+   **אסור** לענות על "כמה העמלה הצפויה" עם מספר ה"לא שולמה" — זו טעות חמורה (הסכום הכולל גדול בהרבה).
+   אם בלוק הסכום הכולל קיים — צטט אותו; אל תחשב בעצמך.
 
 6. **שיעורים גנריים אינם תקפים למוצר ספציפי** — אם בבלוק "שיעורי עמלת נפרעים" שורה מסומנת ב-⚠️[שיעור ברירת מחדל גנרי — לא ספציפי למוצר]:
    - **אסור** להחיל את השיעור הגנרי על מוצר ספציפי שהמשתמש שאל עליו (למשל "פניקס פוליסות 0.40%" אינו תקף עבור "השתלות", "ניתוחים", "אובדן כושר עבודה" וכו').
@@ -727,6 +736,62 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
     return "\n".join(comparison_parts)
 
 
+async def _get_expected_commission_context(
+    db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload
+) -> str | None:
+    """TOTAL expected commission for the active production month (number B in
+    commission_calculation_model.md): every production record × its agreement
+    rate. Independent of נפרעים files — it answers "כמה אני אמור לקבל החודש לפי
+    ההסכמים", which the previous context could NOT answer: `_get_comparison_context`
+    only computed expected commission for the *unpaid* subset (the gap), so the
+    AI reported that small figure and called it "expected commission".
+
+    Uses the SAME shared helper as the production dashboard
+    (rate_select.compute_expected_commission) so the chat number is identical
+    to the dashboard's "עמלות צפויות לפי ההסכמים".
+    """
+    rates = (
+        await db.execute(select(CommissionRate).where(CommissionRate.user_id == user_id))
+    ).scalars().all()
+    if not rates:
+        return None
+
+    recs = (
+        await db.execute(
+            select(ClientRecord).where(
+                ClientRecord.upload_id == prod_upload.id,
+                ClientRecord.user_id == user_id,
+            )
+        )
+    ).scalars().all()
+    if not recs:
+        return None
+
+    total, by_company = compute_expected_commission(recs, list(rates))
+    if total <= 0:
+        return None
+
+    period = getattr(prod_upload, "period_month", None)
+    period_str = f" ({period.isoformat()})" if period else ""
+    parts = [
+        f'=== עמלות צפויות לפי ההסכמים — סה"כ לחודש הפרודוקציה{period_str} ===',
+        "זהו הסכום שאתה אמור לקבל החודש לפי שיעורי ההסכמים על **כל** הפרודוקציה (לא רק מה שלא שולם).",
+        "חישוב המערכת: גמל/השתלמות = צבירה × שיעור שנתי ÷ 12; ביטוח = פרמיה × שיעור פר-מוצר. זהה למספר בלוח הבקרה.",
+        f'סה"כ עמלה צפויה: ₪{total:,.2f}',
+        "פירוט לפי חברה:",
+    ]
+    for row in by_company:
+        parts.append(
+            f"   - {row['company']}: ₪{row['total']:,.2f} ({row['clients_count']} לקוחות)"
+        )
+    parts.append(
+        'הבחנה קריטית: "עמלה צפויה" (הבלוק הזה) = מה שאמור להתקבל על כל הפרודוקציה. '
+        '"עמלה צפויה לא שולמה" (בבלוק ההשוואה) = רק החלק שעדיין לא התקבל מהנפרעים (הפער). '
+        "כששואלים 'כמה העמלה הצפויה' בלי לציין 'לא שולמה' — התכוונו לסכום הכולל כאן."
+    )
+    return "\n".join(parts)
+
+
 async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload) -> str | None:
     """Get My File (recruits) comparison context against production."""
     # Load recruits
@@ -1048,52 +1113,131 @@ async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id
     return "\n".join(all_lines)
 
 
+_HE_MONTH_FULL = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי',
+                  'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+
+
+def _period_label(period_iso: str | None) -> str:
+    """'2026-03-01' → 'מרץ 2026 (2026-03)'. None → 'תקופה לא ידועה'."""
+    if not period_iso:
+        return "תקופה לא ידועה"
+    try:
+        y, m, *_ = period_iso.split("-")
+        return f"{_HE_MONTH_FULL[int(m) - 1]} {y} ({y}-{m})"
+    except (ValueError, IndexError):
+        return period_iso
+
+
 async def _get_historical_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
-    """Get multi-month production history from pre-computed summaries."""
-    result = await db.execute(
-        select(ProductionSummary)
-        .where(ProductionSummary.user_id == user_id)
-        .order_by(desc(ProductionSummary.upload_date))
-        .limit(12)
+    """Per-month production history across EVERY uploaded production file.
+
+    The active production file (=== קובץ פרודוקציה ===) is only ONE month.
+    This block surfaces every other month too, so the AI can answer
+    "הראה לי את חודש מרץ" even when April is the active file.
+
+    Sourced directly from `file_uploads.period_month` (the resolved reporting
+    month — see detect_period_month) joined to `client_records`, NOT from
+    `production_summaries` whose period_label can fall back to the *upload*
+    month when the filename carries no year. Deduplicated to the latest upload
+    per (user, filename) so re-uploads of the same period aren't double-counted.
+    """
+    # Per-period totals (distinct-client counts must be computed per period,
+    # so this query groups by period only).
+    totals = await db.execute(
+        text(
+            """
+            WITH latest_per_filename AS (
+              SELECT DISTINCT ON (fu.user_id, fu.filename) fu.id, fu.period_month
+              FROM file_uploads fu
+              WHERE fu.user_id = :uid AND fu.file_category = 'production'
+              ORDER BY fu.user_id, fu.filename, fu.uploaded_at DESC
+            )
+            SELECT lp.period_month,
+                   COUNT(DISTINCT cr.id_number)                       AS clients,
+                   COALESCE(SUM(cr.total_premium), 0)::numeric(16,2)  AS premium,
+                   COALESCE(SUM(cr.accumulation), 0)::numeric(18,2)   AS accumulation,
+                   COUNT(cr.id)                                       AS products
+            FROM latest_per_filename lp
+            LEFT JOIN client_records cr ON cr.upload_id = lp.id
+            GROUP BY lp.period_month
+            ORDER BY lp.period_month DESC NULLS LAST
+            LIMIT 12
+            """
+        ),
+        {"uid": str(user_id)},
     )
-    summaries = result.scalars().all()
-    if not summaries:
+    total_rows = totals.all()
+    if not total_rows:
         return None
 
-    parts = ["=== היסטוריית פרודוקציה ==="]
-    parts.append("חודש | לקוחות | פרמיה | צבירה | שינוי פרמיה")
-    parts.append("---|---|---|---|---")
+    # Per-period, per-company breakdown (so "which company in March" works).
+    company_rows = (
+        await db.execute(
+            text(
+                """
+                WITH latest_per_filename AS (
+                  SELECT DISTINCT ON (fu.user_id, fu.filename) fu.id, fu.period_month
+                  FROM file_uploads fu
+                  WHERE fu.user_id = :uid AND fu.file_category = 'production'
+                  ORDER BY fu.user_id, fu.filename, fu.uploaded_at DESC
+                )
+                SELECT lp.period_month, cr.receiving_company,
+                       COUNT(DISTINCT cr.id_number)                       AS clients,
+                       COALESCE(SUM(cr.total_premium), 0)::numeric(16,2)  AS premium,
+                       COALESCE(SUM(cr.accumulation), 0)::numeric(18,2)   AS accumulation
+                FROM latest_per_filename lp
+                LEFT JOIN client_records cr ON cr.upload_id = lp.id
+                WHERE cr.receiving_company IS NOT NULL
+                GROUP BY lp.period_month, cr.receiving_company
+                """
+            ),
+            {"uid": str(user_id)},
+        )
+    ).all()
 
-    for s in summaries:
-        premium_change = ""
-        if s.changes_json:
-            pct = s.changes_json.get("premium_diff_pct", 0)
-            if pct > 0:
-                premium_change = f"+{pct}%"
-            elif pct < 0:
-                premium_change = f"{pct}%"
+    from collections import defaultdict
+    by_company: dict[str, list] = defaultdict(list)
+    for period, company, clients, premium, accum in company_rows:
+        key = period.isoformat() if period else None
+        by_company[key].append((company, int(clients), float(premium or 0), float(accum or 0)))
 
+    parts = [
+        "=== היסטוריית פרודוקציה לפי חודש (כל הקבצים שהועלו) ===",
+        "מקור: file_uploads.period_month + client_records (הקובץ האחרון לכל שם קובץ).",
+        "הקובץ הפעיל הוא חודש אחד בלבד — השתמש בבלוק זה לכל שאלה על חודש ספציפי (למשל 'הראה לי את מרץ').",
+        "",
+        "חודש | לקוחות | פרמיה | צבירה | מוצרים | שינוי פרמיה מהחודש הקודם",
+        "---|---|---|---|---|---",
+    ]
+
+    # Rows come newest-first; premium change compares each month to the
+    # chronologically previous (older) one.
+    for i, (period, clients, premium, accum, products) in enumerate(total_rows):
+        period_iso = period.isoformat() if period else None
+        change = "—"
+        if i + 1 < len(total_rows):
+            prev_premium = float(total_rows[i + 1].premium or 0)
+            if prev_premium > 0:
+                pct = (float(premium) - prev_premium) * 100 / prev_premium
+                change = f"{'+' if pct >= 0 else ''}{pct:.0f}%"
         parts.append(
-            f"{s.period_label} | {s.unique_clients:,} | "
-            f"{float(s.total_premium):,.0f}₪ | {float(s.total_accumulation):,.0f}₪ | "
-            f"{premium_change or '—'}"
+            f"{_period_label(period_iso)} | {int(clients):,} | "
+            f"₪{float(premium):,.0f} | ₪{float(accum):,.0f} | {int(products):,} | {change}"
         )
 
-    # Add notable changes for the most recent month
-    latest = summaries[0]
-    if latest.changes_json:
-        ch = latest.changes_json
-        changes_parts = []
-        if ch.get("new_clients", 0) > 0:
-            changes_parts.append(f"+{ch['new_clients']} לקוחות חדשים")
-        if ch.get("removed_clients", 0) > 0:
-            changes_parts.append(f"-{ch['removed_clients']} עזבו")
-        if ch.get("premium_diff", 0) != 0:
-            diff = ch["premium_diff"]
-            sign = "+" if diff > 0 else ""
-            changes_parts.append(f"פרמיה {sign}{diff:,.0f}₪")
-        if changes_parts:
-            parts.append(f"\nשינויים בולטים ({latest.period_label}): {', '.join(changes_parts)}")
+    # Per-company breakdown for each month.
+    parts.append("")
+    parts.append("פירוט לפי חברה (פרמיה / צבירה):")
+    for period, clients, premium, accum, products in total_rows:
+        period_iso = period.isoformat() if period else None
+        companies = sorted(by_company.get(period_iso, []), key=lambda x: -x[2])[:8]
+        if not companies:
+            continue
+        parts.append(f"### {_period_label(period_iso)}")
+        for company, c_clients, c_prem, c_accum in companies:
+            parts.append(
+                f"   - {company}: {c_clients:,} לקוחות, פרמיה ₪{c_prem:,.0f}, צבירה ₪{c_accum:,.0f}"
+            )
 
     return "\n".join(parts)
 
@@ -1150,6 +1294,33 @@ async def _get_customer_history(
     return "\n".join(parts)
 
 
+# Hebrew month names — any mention means the user is asking about a specific
+# reporting period, not just the active (latest) file.
+HE_MONTH_NAMES = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי",
+                  "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+
+# Words/verbs that signal a time-period or cross-period question even without a
+# named month ("השווה את החודשים", "מה היה ברבעון", "לפי תקופה").
+_PERIOD_WORDS = ("חודש", "חודשי", "רבעון", "תקופה", "השווה", "תשווה", "להשוות", "month", "quarter")
+
+_NUMERIC_MONTH_RE = re.compile(r"\b\d{1,2}[/\-.]\d{2,4}\b")
+
+
+def _mentions_period(question: str) -> bool:
+    """True when the question references a specific month/period or compares
+    across periods. Used to pull the per-month production + commission blocks
+    into context — the active file is only ONE month, so these questions can't
+    be answered from it alone (e.g. 'הראה לי את חודש מרץ')."""
+    if not question:
+        return False
+    q = question.lower()
+    if any(m in q for m in HE_MONTH_NAMES):
+        return True
+    if any(w in q for w in _PERIOD_WORDS):
+        return True
+    return bool(_NUMERIC_MONTH_RE.search(question))
+
+
 def _detect_question_topics(question: str) -> set[str]:
     """Detect which data sources are relevant to the user's question."""
     q = question.lower()
@@ -1160,6 +1331,14 @@ def _detect_question_topics(question: str) -> set[str]:
 
     # Commission / comparison keywords
     if any(w in q for w in ["נפרעים", "עמלה", "עמלות", "משולם", "לא שולם", "commission", "השוואה", "השוואת"]):
+        topics.add("comparison")
+
+    # Expected / owed-commission phrasing that doesn't say "עמלה" outright —
+    # still needs the expected-total + comparison blocks. Covers "כמה אני אמור
+    # לקבל", "מה ההכנסה הצפויה", "כמה מגיע לי", "הפער מול הנפרעים", "בפועל".
+    if any(w in q for w in ["צפוי", "צפויה", "צפויות", "אמור לקבל", "אמורה לקבל",
+                            "מגיע לי", "מה מגיע", "חייבים לי", "חייב לי", "פער",
+                            "אקבל", "הכנסה צפויה", "הכנסות צפויות", "בפועל"]):
         topics.add("comparison")
 
     # My file / recruits keywords
@@ -1175,6 +1354,13 @@ def _detect_question_topics(question: str) -> set[str]:
                              "חודשים", "לאורך זמן", "השוואה בין חודשים", "גדל", "ירד",
                              "עלה", "ירידה", "עלייה", "צמיחה", "trend", "history"]):
         topics.add("history")
+
+    # Any reference to a specific month/period (named or numeric) or a
+    # cross-period comparison → the per-month production AND commission blocks
+    # must be in context. These live under the history + comparison topics.
+    if _mentions_period(question):
+        topics.add("history")
+        topics.add("comparison")
 
     # Customer search — if question has names or IDs
     import re
@@ -1513,6 +1699,14 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
                 context_parts.append(cust_hist)
 
     if prod_upload:
+        # TOTAL expected commission (production × agreement rates) — answers
+        # "כמה העמלה הצפויה החודש". Distinct from the unpaid gap in the
+        # comparison block; emitted first so the AI reaches for the right number.
+        if topics & {"comparison", "rates", "history"}:
+            expected_context = await _get_expected_commission_context(db, user_id, prod_upload)
+            if expected_context:
+                context_parts.append(expected_context)
+
         if "comparison" in topics:
             comp_context = await _get_comparison_context(db, user_id, prod_upload)
             if comp_context:

@@ -16,6 +16,12 @@ from app.api.deps import get_paid_user as get_current_user
 from app.services.parser_service import parse_excel, CategoryMismatchError
 from app.services.portal_service import create_snapshots_for_upload
 from app.services.comparison_service import _classify_product_type, _GEMEL_KEYWORDS, _INSURANCE_KEYWORDS
+from app.services.rate_select import (
+    accumulation_based,
+    expected_rate,
+    make_pick_rate,
+    compute_expected_commission,
+)
 from app.utils.sanitize import sanitize_record
 
 router = APIRouter()
@@ -717,8 +723,10 @@ async def get_expected_commission_trend(
     from app.utils.company_norm import normalize_company
 
     # Pull every production upload that's period-tagged. We dedupe per
-    # period_month down to the latest upload — re-uploads of the same month
-    # would otherwise double-count.
+    # period_month down to ONE upload — preferring the active file
+    # (is_production) so the trend agrees with the dashboard/AI, then latest
+    # by uploaded_at for past periods. Re-uploads of the same month would
+    # otherwise double-count or pick a stale duplicate.
     prod_q = await db.execute(
         select(FileUpload)
         .where(
@@ -726,7 +734,7 @@ async def get_expected_commission_trend(
             FileUpload.file_category == "production",
             FileUpload.period_month.isnot(None),
         )
-        .order_by(desc(FileUpload.uploaded_at))
+        .order_by(desc(FileUpload.is_production), desc(FileUpload.uploaded_at))
     )
     prods = prod_q.scalars().all()
     latest_by_period: dict = {}
@@ -742,63 +750,7 @@ async def get_expected_commission_trend(
     )
     user_rates = list(rates_q.scalars().all())
 
-    def _pick_rate(company_name: str, product_name: str | None = None) -> float:
-        if not company_name or not user_rates:
-            return 0.0
-        target_canon = normalize_company(company_name)
-        candidates: list[CommissionRate] = []
-        if target_canon:
-            candidates = [
-                r for r in user_rates
-                if r.company_name and normalize_company(r.company_name) == target_canon
-            ]
-        if not candidates:
-            target_lc = company_name.strip().lstrip("ה").lower()
-            candidates = [
-                r for r in user_rates
-                if r.company_name and (
-                    target_lc in r.company_name.lstrip("ה").lower()
-                    or r.company_name.lstrip("ה").lower() in target_lc
-                )
-            ]
-        if not candidates:
-            return 0.0
-        prod_lc = (product_name or "").strip().lower()
-        if prod_lc:
-            product_matches = [
-                r for r in candidates
-                if r.product and (prod_lc in r.product.lower() or r.product.lower() in prod_lc)
-            ]
-            if product_matches:
-                totals = [r for r in product_matches
-                          if (getattr(r, "rate_kind", None) or "").lower() == "total"]
-                if totals:
-                    return float(totals[0].rate)
-                book = next((r for r in product_matches
-                             if (getattr(r, "rate_kind", None) or "").lower() == "book"), None)
-                reward = next((r for r in product_matches
-                               if (getattr(r, "rate_kind", None) or "").lower() == "reward"), None)
-                if book and reward:
-                    return float(book.rate) + float(reward.rate)
-                if book:
-                    return float(book.rate)
-                if reward:
-                    return float(reward.rate)
-                singles = [r for r in product_matches
-                           if (getattr(r, "rate_kind", None) or "single").lower() == "single"]
-                if singles:
-                    return float(singles[0].rate)
-                return float(product_matches[0].rate)
-        defaults = [r for r in candidates if not r.product]
-        if defaults:
-            prio = [r for r in defaults
-                    if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-            chosen = prio[0] if prio else defaults[0]
-            return float(chosen.rate)
-        prio = [r for r in candidates
-                if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-        chosen = prio[0] if prio else candidates[0]
-        return float(chosen.rate)
+    _pick_rate = make_pick_rate(user_rates)
 
     # Pull production records for all relevant uploads in one query.
     upload_ids = [u.id for u in latest_by_period.values()]
@@ -825,20 +777,21 @@ async def get_expected_commission_trend(
     for upload_id, id_number, company, product_type, product_name, premium, accum in records_q.all():
         if not company:
             continue
-        cat = _classify_product_type(product_type) or ""
-        rate = _pick_rate(company, product_name) or _pick_rate(company, product_type)
+        # Classify by the DATA: any product carrying accumulation (gemel,
+        # השתלמות, פוליסת חיסכון, פנסיה, מנהלים) earns commission on
+        # accumulation; only premium-bearing risk products use premium × rate.
+        accum_f = float(accum or 0)
+        premium_f = float(premium or 0)
+        is_accum = accumulation_based(product_type, accum_f)
+        rate = expected_rate(user_rates, _pick_rate, company, product_name, product_type, is_accum)
         if rate <= 0:
             continue
-        if cat == "gemel_hishtalmut":
-            base = float(accum or 0)
-            if base <= 0:
-                continue
-            exp = base * rate / 12.0
+        if is_accum:
+            exp = accum_f * rate / 12.0
         else:
-            base = float(premium or 0)
-            if base <= 0:
+            if premium_f <= 0:
                 continue
-            exp = base * rate
+            exp = premium_f * rate
         if exp <= 0:
             continue
         period = upload_to_period[upload_id]
@@ -1252,105 +1205,10 @@ async def compare_productions(
     )
     user_rates = list(rates_q.scalars().all())
 
-    from app.utils.company_norm import normalize_company
-
-    def _pick_rate(company_name: str, product_name: str | None = None) -> float:
-        """Find the most-specific rate for (company, product). The user
-        explicitly asked: insurance commissions must use the PER-PRODUCT
-        rate from the agreement (השתלות 7.2%, חיים 11%, etc.), not one
-        generic company-level rate.
-
-        Company matching uses the canonical normalizer (same as elsewhere
-        in this app) so "הפניקס אקסלנס פנסיה וגמל בע\"מ" (production) and
-        "פניקס גמל והשתלמות" (legacy default) both reduce to "הפניקס" and
-        match — substring matching alone fails for these.
-
-        Priority:
-          1. Same company AND product overlaps in either direction
-          2. Same company, product=NULL (company-level default)
-          3. Same company, any product (last resort)
-        """
-        if not company_name or not user_rates:
-            return 0.0
-        target_canon = normalize_company(company_name)
-        if not target_canon:
-            return 0.0
-        candidates = [
-            r for r in user_rates
-            if r.company_name and normalize_company(r.company_name) == target_canon
-        ]
-        # Substring fallback when normalizer can't match (e.g. obscure
-        # company names not in the alias map).
-        if not candidates:
-            target_lc = company_name.strip().lstrip("ה").lower()
-            candidates = [
-                r for r in user_rates
-                if r.company_name and (
-                    target_lc in r.company_name.lstrip("ה").lower()
-                    or r.company_name.lstrip("ה").lower() in target_lc
-                )
-            ]
-        if not candidates:
-            return 0.0
-
-        # Step 1: product match — substring either way (production may use
-        # short names, commission_rates may have long product names).
-        # CRITICAL — per commission_rate_summing.md memory: when a product
-        # has BOTH `book` and `reward` components, the final נפרעים rate is
-        # their SUM (Phoenix/Harel agreements). Don't pick just one.
-        prod_lc = (product_name or "").strip().lower()
-        if prod_lc:
-            product_matches = [
-                r for r in candidates
-                if r.product and (
-                    prod_lc in r.product.lower() or r.product.lower() in prod_lc
-                )
-            ]
-            if product_matches:
-                # If a `total` row exists (literally printed in the doc), use it.
-                totals = [r for r in product_matches
-                          if (getattr(r, "rate_kind", None) or "").lower() == "total"]
-                if totals:
-                    return float(totals[0].rate)
-                # Else: sum book + reward when both exist for this product.
-                book = next((r for r in product_matches
-                             if (getattr(r, "rate_kind", None) or "").lower() == "book"), None)
-                reward = next((r for r in product_matches
-                               if (getattr(r, "rate_kind", None) or "").lower() == "reward"), None)
-                if book and reward:
-                    return float(book.rate) + float(reward.rate)
-                if book:
-                    return float(book.rate)
-                if reward:
-                    return float(reward.rate)
-                # Fall through: single/other kind
-                singles = [r for r in product_matches
-                           if (getattr(r, "rate_kind", None) or "single").lower() == "single"]
-                if singles:
-                    return float(singles[0].rate)
-                return float(product_matches[0].rate)
-
-        # Step 2: company-level default (product is NULL)
-        defaults = [r for r in candidates if not r.product]
-        if defaults:
-            prio = [r for r in defaults
-                    if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-            chosen = prio[0] if prio else defaults[0]
-            return float(chosen.rate)
-
-        # Step 3: any company rate (least specific — only when nothing else)
-        prio = [r for r in candidates
-                if (getattr(r, "rate_kind", None) or "single") in ("total", "single")]
-        chosen = prio[0] if prio else candidates[0]
-        return float(chosen.rate)
-
-    # Walk current production records to compute expected commission per
-    # product (then aggregate by company). For insurance the user
-    # explicitly wants product-specific rates (השתלות 7.2%, חיים 11%, etc.)
-    # — so we pull both product and product_type, and feed the more
-    # specific name to _pick_rate first.
-    expected_by_company: dict[str, dict] = {}
-    expected_total = 0.0
+    # Expected commission per agreement rates over the CURRENT production file.
+    # Insurance uses per-product rates (השתלות 7.2%, חיים 11%, …), gemel uses
+    # accum × rate / 12 — all handled by the shared helper so the dashboard,
+    # the monthly insights view, and the AI chat report identical numbers.
     cur_prod_q = await db.execute(
         select(
             ClientRecord.id_number,
@@ -1361,38 +1219,9 @@ async def compare_productions(
             ClientRecord.accumulation,
         ).where(ClientRecord.upload_id == current_id, ClientRecord.user_id == user.id)
     )
-    for id_number, company, product_type, product_name, premium, accum in cur_prod_q.all():
-        if not company:
-            continue
-        cat = _classify_product_type(product_type) or ""
-        is_gemel = cat == "gemel_hishtalmut"
-        # Use the specific product name first, fall back to product_type.
-        rate = _pick_rate(company, product_name) or _pick_rate(company, product_type)
-        if rate <= 0:
-            continue
-        if is_gemel:
-            base = float(accum or 0)
-            if base <= 0:
-                continue
-            exp = base * rate / 12.0
-        else:
-            base = float(premium or 0)
-            if base <= 0:
-                continue
-            exp = base * rate
-        if exp <= 0:
-            continue
-        bucket = expected_by_company.setdefault(company, {"total": 0.0, "clients": set()})
-        bucket["total"] += exp
-        bucket["clients"].add(id_number)
-        expected_total += exp
-
-    expected_commission_by_company = sorted([
-        {"company": co, "total": round(d["total"], 2), "clients_count": len(d["clients"])}
-        for co, d in expected_by_company.items()
-        if d["total"] > 0
-    ], key=lambda x: -x["total"])
-    expected_commission_total = round(expected_total, 2)
+    expected_commission_total, expected_commission_by_company = compute_expected_commission(
+        cur_prod_q.all(), user_rates
+    )
 
     summary = {
         "new_count": len(new_clients),
