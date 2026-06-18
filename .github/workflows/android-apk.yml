@@ -1,0 +1,56 @@
+name: Build Android APK
+
+on:
+  push:
+    paths:
+      - 'android/**'
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Bootstrap Gradle wrapper
+        working-directory: android
+        run: |
+          gradle wrapper --gradle-version 8.7 --distribution-type bin
+          chmod +x gradlew
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/release/app-release.apk nifraim-sms.apk
+
+      - name: Upload APK to backend
+        if: github.ref == 'refs/heads/main'
+        run: |
+          curl -f -X POST https://nifraim-production.up.railway.app/api/downloads/android \
+            -H "X-APK-Secret: ${{ secrets.ANDROID_APK_SECRET }}" \
+            -F "file=@nifraim-sms.apk"
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nifraim-sms-${{ github.run_number }}
+          path: nifraim-sms.apk
+          retention-days: 30

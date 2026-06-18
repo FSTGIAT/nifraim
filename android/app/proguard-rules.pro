@@ -1,0 +1,3 @@
+-keep class com.nifraim.smsforwarder.SmsReceiver { *; }
+-keep class com.nifraim.smsforwarder.SmsForwardWorker { *; }
+-keepattributes *Annotation*

@@ -40,9 +40,39 @@ class Settings(BaseSettings):
     TWILIO_PUBLIC_WEBHOOK_BASE: str = "http://localhost:8000"  # ngrok/public URL for prod
     TWILIO_PROVISION_COUNTRY: str = "IL"
 
+    # Android APK download — secret used by CI to push new builds
+    ANDROID_APK_SECRET: str = ""
+
     # Symmetric encryption key for portal credentials (Fernet).
     # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     PORTAL_CRED_FERNET_KEY: str = ""
+
+    # Pension clearinghouse (המסלקה הפנסיונית / ממשק אחיד) — asynchronous SFTP vault exchange.
+    # See .claude/plans/based-on-our-hashed-twilight.md for the design.
+    MASLAKA_TRANSPORT: str = "local"               # "local" (file-system mock) | "sftp" (real vault)
+    MASLAKA_ENABLED: bool = False                  # gate scheduler poll + retention jobs
+    # Separate Fernet key from PORTAL_CRED_FERNET_KEY — blast-radius isolation.
+    MASLAKA_ENCRYPTION_KEY: str = ""
+    # Local-filesystem mock vault dirs (used when MASLAKA_TRANSPORT="local").
+    MASLAKA_LOCAL_OUTBOX: str = "./maslaka_vault/outbox"
+    MASLAKA_LOCAL_INBOX: str = "./maslaka_vault/inbox"
+    MASLAKA_LOCAL_ARCHIVE: str = "./maslaka_vault/archive"
+    # Real SFTP vault settings (used when MASLAKA_TRANSPORT="sftp").
+    MASLAKA_SFTP_HOST: str = ""
+    MASLAKA_SFTP_PORT: int = 22
+    MASLAKA_SFTP_USERNAME: str = ""
+    MASLAKA_SFTP_PASSWORD: str = ""
+    MASLAKA_SFTP_KEY_PATH: str = ""
+    MASLAKA_SFTP_OUTBOX: str = "/outbox"
+    MASLAKA_SFTP_INBOX: str = "/inbox"
+    MASLAKA_SFTP_ARCHIVE: str = "/archive"
+    # Our identity in outbound XML (filled in once we have a clearinghouse account).
+    MASLAKA_AGENT_NUMBER: str = ""
+    MASLAKA_AGENT_ID: str = ""
+    # Lifecycle + retention knobs.
+    MASLAKA_RETENTION_DAYS: int = 90
+    MASLAKA_INQUIRY_TIMEOUT_DAYS: int = 7
+    MASLAKA_POLL_INTERVAL_MINUTES: int = 15
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
