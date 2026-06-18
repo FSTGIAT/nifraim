@@ -25,7 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var enableSwitch: SwitchCompat
     private lateinit var statusText: TextView
     private lateinit var lastForwardText: TextView
-    private lateinit var batteryWarning: TextView
+    private lateinit var batteryWarning: LinearLayout
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
