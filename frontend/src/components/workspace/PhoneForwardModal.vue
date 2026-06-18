@@ -52,22 +52,35 @@
             </div>
 
             <div v-if="configured" class="pf-url-wrap">
-              <label class="pf-label">כתובת ה-webhook (העתק אל אפליקציית הטלפון)</label>
-              <div class="pf-url-row">
-                <input
-                  ref="urlInputRef"
-                  class="pf-url-input ltr-number"
-                  :value="store.phoneForward.url"
-                  readonly
-                  @focus="$event.target.select()"
-                />
-                <button class="pf-btn pf-btn--ghost" @click="copyUrl">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                  </svg>
-                  {{ copied ? 'הועתק!' : 'העתק' }}
-                </button>
+              <label class="pf-label">כתובת ה-webhook — סרוק עם הטלפון או העתק</label>
+              <div class="pf-url-main-row">
+                <div class="pf-url-qr-wrap">
+                  <img
+                    :src="`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(store.phoneForward.url)}`"
+                    width="90"
+                    height="90"
+                    alt="QR לכתובת ה-webhook"
+                  />
+                  <span class="pf-url-qr-hint">סרוק → העתק את הכתובת → הדבק באפליקציה</span>
+                </div>
+                <div class="pf-url-right">
+                  <div class="pf-url-row">
+                    <input
+                      ref="urlInputRef"
+                      class="pf-url-input ltr-number"
+                      :value="store.phoneForward.url"
+                      readonly
+                      @focus="$event.target.select()"
+                    />
+                    <button class="pf-btn pf-btn--ghost" @click="copyUrl">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                      </svg>
+                      {{ copied ? 'הועתק!' : 'העתק' }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -92,66 +105,36 @@
             </div>
 
             <div v-if="osTab === 'android'" class="pf-android-setup">
-              <div class="pf-apk-hero" :class="{ 'pf-apk-hero--pending': apkReady === false }">
-                <!-- QR code -->
+              <div class="pf-apk-hero">
                 <div class="pf-apk-qr">
-                  <div v-if="apkReady === null" class="pf-qr-placeholder pf-qr-placeholder--loading">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="pf-qr-spin">
-                      <path d="M21 12a9 9 0 11-6.219-8.56"/>
-                    </svg>
-                  </div>
-                  <div v-else-if="apkReady === false" class="pf-qr-placeholder pf-qr-placeholder--soon">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                      <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="4" height="4"/>
-                    </svg>
-                  </div>
                   <img
-                    v-else
-                    :src="`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(APK_URL)}`"
+                    :src="`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(APK_URL)}`"
                     alt="QR להורדת האפליקציה"
-                    width="130"
-                    height="130"
+                    width="150"
+                    height="150"
                   />
-                  <span class="pf-qr-label">{{ apkReady ? 'סרוק להורדה' : apkReady === null ? 'בודק...' : 'בקרוב' }}</span>
                 </div>
-
                 <div class="pf-apk-info">
                   <div class="pf-apk-name">Nifraim SMS</div>
                   <div class="pf-apk-desc">אפליקציה ייעודית — מעבירה כל SMS לשרת אוטומטית</div>
-
-                  <!-- Ready -->
-                  <a v-if="apkReady" :href="APK_URL" class="pf-btn pf-btn--primary pf-apk-download" download>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/>
-                      <line x1="12" y1="15" x2="12" y2="3"/>
+                  <div class="pf-apk-scan-hint">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F57C00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
                     </svg>
-                    הורד APK
-                  </a>
-
-                  <!-- Not yet available -->
-                  <div v-else-if="apkReady === false" class="pf-apk-pending">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    האפליקציה בהכנה — תהיה זמינה לאחר ה-build הראשון
+                    פתח מצלמה בטלפון וסרוק את הקוד — האפליקציה תורד ישירות לטלפון
                   </div>
-
-                  <!-- Checking -->
-                  <div v-else class="pf-apk-checking">בודק זמינות...</div>
                 </div>
               </div>
 
               <ol class="pf-steps">
                 <li>
-                  <strong>הורד והתקן</strong> — לחץ "הורד APK" או סרוק את הקוד. בטלפון: פתח את הקובץ → אפשר "התקנה ממקורות לא ידועים" אם תישאל.
+                  <strong>התקן</strong> — פתח מצלמה בטלפון וסרוק את הקוד. האפליקציה תורד ישירות לטלפון ← פתח ← התקן.
                 </li>
                 <li>
-                  <strong>הדבק את כתובת ה-Webhook</strong> — העתק את הכתובת שלמעלה ואז פתח את Nifraim SMS בטלפון → הדבק → שמור.
+                  <strong>הדבק את כתובת ה-Webhook</strong> — לחץ "העתק" למעלה, פתח את Nifraim SMS בטלפון ← הדבק ← שמור.
                 </li>
                 <li>
-                  <strong>זהו</strong> — האפליקציה פועלת ברקע. בפעם הבאה שהפורטל שולח SMS, הוא יועבר אוטומטית.
+                  <strong>זהו</strong> — האפליקציה פועלת ברקע בשקט. כל SMS שמגיע מהפורטל מועבר אוטומטית ואתה לא צריך לעשות כלום.
                 </li>
               </ol>
             </div>
@@ -234,19 +217,7 @@ const testMessage = ref('Migdal verification code: 482917')
 const testing = ref(false)
 const testResult = ref(null)
 const confirmRegenOpen = ref(false)
-const apkReady = ref(null) // null=checking, true=ready, false=not yet
-
 const configured = computed(() => !!store.phoneForward?.token)
-
-async function checkApkReady() {
-  apkReady.value = null
-  try {
-    const res = await fetch(APK_URL, { method: 'HEAD' })
-    apkReady.value = res.ok
-  } catch {
-    apkReady.value = false
-  }
-}
 
 watch(
   () => props.open,
@@ -255,15 +226,10 @@ watch(
       loading.value = true
       try { await store.fetchPhoneForward() } finally { loading.value = false }
       testResult.value = null
-      checkApkReady()
     }
   },
   { immediate: true },
 )
-
-watch(osTab, (tab) => {
-  if (tab === 'android' && apkReady.value === null) checkApkReady()
-})
 
 async function onRegenerate() {
   loading.value = true
@@ -410,6 +376,33 @@ async function onTest() {
 }
 
 .pf-url-wrap { margin-top: 8px; }
+.pf-url-main-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.pf-url-qr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.pf-url-qr-wrap img {
+  border-radius: 6px;
+  border: 1px solid #E5E5E5;
+}
+.pf-url-qr-hint {
+  font-size: 10px;
+  color: #9CA3AF;
+  text-align: center;
+  max-width: 90px;
+  line-height: 1.4;
+}
+.pf-url-right {
+  flex: 1;
+  min-width: 0;
+}
 .pf-url-row { display: flex; gap: 8px; }
 .pf-url-input {
   flex: 1;
@@ -522,22 +515,27 @@ async function onTest() {
   color: #706E6B;
   line-height: 1.5;
 }
-.pf-apk-download {
-  align-self: flex-start;
-  margin-top: 6px;
-  text-decoration: none;
+.pf-apk-scan-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
 }
-.pf-apk-pending {
+.pf-qr-label { display: none; }
+.pf-apk-soon {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 7px 12px;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #92400E;
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
   border-radius: 8px;
-  font-size: 12px;
-  color: #6B7280;
-  background: #F3F4F6;
-  border: 1px dashed #D1D5DB;
+  padding: 8px 14px;
 }
 .pf-apk-checking {
   margin-top: 8px;
