@@ -936,21 +936,21 @@ watch(() => innerTab.value, (tab) => {
 }
 
 .upload-step.active .step-icon {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(46, 132, 74, 0.15);
   color: var(--accent-emerald);
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 10px rgba(46, 132, 74, 0.2);
   animation: stepPulse 1.5s ease-in-out infinite;
 }
 
 .upload-step.done .step-icon {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  background: rgba(46, 132, 74, 0.15);
+  color: #2E844A;
   animation: none;
 }
 
 @keyframes stepPulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.2); }
-  50% { box-shadow: 0 0 16px rgba(16, 185, 129, 0.35); }
+  0%, 100% { box-shadow: 0 0 6px rgba(46, 132, 74, 0.2); }
+  50% { box-shadow: 0 0 16px rgba(46, 132, 74, 0.35); }
 }
 
 .step-line {
@@ -1203,7 +1203,7 @@ watch(() => innerTab.value, (tab) => {
   font-family: inherit; border: none; background: transparent;
   color: var(--text-secondary); cursor: pointer; border-radius: 8px;
 }
-.tab-dropdown-menu button:hover { background: var(--bg-alt, #f1f5f9); }
+.tab-dropdown-menu button:hover { background: var(--bg-alt, #F3F3F3); }
 .tab-dropdown-menu button.selected { color: var(--primary); background: rgba(245,124,0,0.06); }
 
 .empty-category {
@@ -1224,7 +1224,7 @@ watch(() => innerTab.value, (tab) => {
 .prod-file-info {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 16px; margin: 12px 0;
-  background: var(--bg-alt, #f8fafc); border-radius: 10px;
+  background: var(--bg-alt, #F3F3F3); border-radius: 10px;
   font-size: 12px; font-weight: 600; color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
 }
@@ -1326,7 +1326,7 @@ watch(() => innerTab.value, (tab) => {
   padding: 8px 16px; font-size: 12px; color: var(--text-muted);
 }
 .commission-file-tag {
-  background: var(--bg-alt, #f1f5f9); padding: 4px 12px;
+  background: var(--bg-alt, #F3F3F3); padding: 4px 12px;
   border-radius: 6px; font-weight: 600; color: var(--text-muted);
   font-size: 11px; border: 1px solid transparent;
   cursor: pointer; font-family: inherit; transition: all 0.15s;
@@ -1340,13 +1340,13 @@ watch(() => innerTab.value, (tab) => {
   display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; justify-content: center;
 }
 .comm-uploaded-tag {
-  background: var(--accent-emerald-bg, #ecfdf5); color: var(--accent-emerald, #10b981);
+  background: var(--accent-emerald-bg, #EBF7EE); color: var(--accent-emerald, #2E844A);
   padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
 }
 .comm-add-file-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; border-radius: 6px;
-  border: 1px dashed var(--border, #e2e8f0); background: transparent;
+  border: 1px dashed var(--border, #E5E5E5); background: transparent;
   color: var(--text-muted); cursor: pointer; transition: all 0.15s;
 }
 .comm-add-file-btn:hover { border-color: var(--primary); color: var(--primary); }

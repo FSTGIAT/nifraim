@@ -118,20 +118,27 @@ def parse_persons(path: Path) -> dict[str, dict]:
         def _cell(idx: int) -> str:
             return cells[idx] if idx < len(cells) else ""
 
+        # Column positions in May 2026 Migdal samples (off-by-2 vs older comment
+        # — Migdal removed two columns around col 18).
+        # 0  full_id        4  role_he      5  email          7  phone
+        # 15 address_he     16 city_he      24 last_name_he   25 first_name_he
+        # 26 dob_raw        29 marital      31 gender_code    43 agent_category
+        # 44 agent_code     45 reference_number
         row = {
             "full_id": _cell(0),
             "id_number": short_id,
             "role_he": _maybe_reverse_hebrew(_cell(4)),
             "role_raw": _cell(4),
             "email": _cell(5) or None,
+            "mobile": _cell(7) or None,
+            "address_he": _maybe_reverse_hebrew(_cell(15)),
+            "city_he": _maybe_reverse_hebrew(_cell(16)),
             "age": _cell(17).strip() or None,
-            "address_he": _maybe_reverse_hebrew(_cell(18)),
-            "city_he": _maybe_reverse_hebrew(_cell(19)),
-            "last_name_he": _maybe_reverse_hebrew(_cell(26)),
-            "first_name_he": _maybe_reverse_hebrew(_cell(27)),
-            "dob_raw": _cell(28).strip() or None,
-            "marital_status_code": _cell(31).strip() or None,
-            "gender_code": _cell(33).strip() or None,
+            "last_name_he": _maybe_reverse_hebrew(_cell(24)),
+            "first_name_he": _maybe_reverse_hebrew(_cell(25)),
+            "dob_raw": _cell(26).strip() or None,
+            "marital_status_code": _cell(29).strip() or None,
+            "gender_code": _cell(31).strip() or None,
             "agent_category": _cell(43).strip() or None,
             "agent_code": _cell(44).strip() or None,
             "reference_number": _cell(45).strip() or None if len(cells) > 45 else None,

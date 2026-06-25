@@ -98,6 +98,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import api from '../../api/client.js'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 defineEmits(['go-to-automation'])
 
@@ -156,7 +157,8 @@ const topCompanies = computed(() => {
     .map(([name]) => name)
 })
 
-const COMPANY_PALETTE = ['#1E40AF', '#0E7490', '#7C3AED', '#B45309', '#15803D']
+// Bright-bold categorical palette (shared) for the stacked company segments.
+const COMPANY_PALETTE = CHART_PALETTE
 
 const series = computed(() => {
   if (!points.value.length) return []
@@ -265,7 +267,7 @@ const chartOptions = computed(() => ({
     zoom: { enabled: false },
     animations: { enabled: true, easing: 'easeinout', speed: 600 },
   },
-  colors: [...COMPANY_PALETTE, '#E8660A', '#94a3b8'],
+  colors: COMPANY_PALETTE,
   plotOptions: {
     bar: {
       horizontal: false,
@@ -295,14 +297,14 @@ const chartOptions = computed(() => ({
       fontFamily: 'Heebo, sans-serif',
       fontSize: '11px',
       fontWeight: 700,
-      colors: ['#1f2937'],
+      colors: ['#181818'],
     },
     background: { enabled: false },
   },
   xaxis: {
     categories: points.value.map(p => p.period_label || ''),
     labels: {
-      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#94a3b8' },
+      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#706E6B' },
     },
     axisBorder: { show: false },
     axisTicks: { show: false },
@@ -310,7 +312,7 @@ const chartOptions = computed(() => ({
   yaxis: {
     labels: {
       formatter: formatCurrency,
-      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#94a3b8' },
+      style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#706E6B' },
     },
   },
   tooltip: {
@@ -326,9 +328,9 @@ const chartOptions = computed(() => ({
     fontSize: '12px',
     itemMargin: { horizontal: 8, vertical: 4 },
     markers: { width: 10, height: 10, radius: 3 },
-    labels: { colors: '#64748b' },
+    labels: { colors: '#706E6B' },
   },
-  grid: { borderColor: '#e2e8f0', strokeDashArray: 3, padding: { top: 20 } },
+  grid: { borderColor: '#E5E5E5', strokeDashArray: 3, padding: { top: 20 } },
 }))
 </script>
 
@@ -388,8 +390,8 @@ const chartOptions = computed(() => ({
   line-height: 1;
 }
 
-.trend-badge--up { background: rgba(16, 185, 129, 0.12); color: #047857; }
-.trend-badge--down { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+.trend-badge--up { background: rgba(46, 132, 74, 0.12); color: #1B5E20; }
+.trend-badge--down { background: rgba(194, 57, 52, 0.12); color: #C23934; }
 .trend-badge--flat { background: var(--border-subtle); color: var(--text-muted); }
 .trend-badge-sub { font-weight: 500; opacity: 0.75; margin-inline-start: 4px; }
 
@@ -409,15 +411,15 @@ const chartOptions = computed(() => ({
 }
 
 .trend-insight--warn {
-  background: rgba(239, 68, 68, 0.06);
-  border-color: rgba(239, 68, 68, 0.25);
-  color: #7f1d1d;
+  background: rgba(194, 57, 52, 0.06);
+  border-color: rgba(194, 57, 52, 0.25);
+  color: #C23934;
 }
 
 .trend-insight--info {
-  background: rgba(59, 130, 246, 0.05);
-  border-color: rgba(59, 130, 246, 0.2);
-  color: #1e3a8a;
+  background: rgba(127, 86, 217, 0.05);
+  border-color: rgba(127, 86, 217, 0.2);
+  color: #7F56D9;
 }
 
 .trend-insight-body { display: flex; gap: 10px; flex: 1; min-width: 0; }
@@ -435,8 +437,8 @@ const chartOptions = computed(() => ({
   opacity: 0.9;
 }
 
-.trend-insight--warn .trend-insight-icon { background: #b91c1c; }
-.trend-insight--info .trend-insight-icon { background: #2563eb; }
+.trend-insight--warn .trend-insight-icon { background: #C23934; }
+.trend-insight--info .trend-insight-icon { background: #7F56D9; }
 
 .trend-insight-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .trend-insight-title { font-size: 13px; font-weight: 700; }
@@ -470,7 +472,7 @@ const chartOptions = computed(() => ({
   gap: 6px;
   padding: 8px 14px;
   border-radius: 10px;
-  background: #b91c1c;
+  background: #C23934;
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -481,7 +483,7 @@ const chartOptions = computed(() => ({
   font-family: inherit;
 }
 
-.trend-insight-cta:hover { background: #991b1b; }
+.trend-insight-cta:hover { background: #C23934; }
 
 .trend-chart-wrap {
   width: 100%;

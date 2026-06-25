@@ -1,14 +1,5 @@
 <template>
   <div class="bi-dashboard">
-    <!-- Category + Company + Period Header -->
-    <div v-if="props.categoryLabel || props.companySource || periodLabel" class="comparison-header-bar">
-      <span v-if="props.companySource" class="header-company">{{ props.companySource }}</span>
-      <span v-if="props.categoryLabel" class="header-category">{{ props.categoryLabel }}</span>
-      <span v-if="periodLabel" class="header-period" :title="`חודש הפרודוקציה הפעילה`">
-        פרודוקציה: {{ periodLabel }}
-      </span>
-    </div>
-
     <!-- AI insight card (התמונה הכוללת) -->
     <AiInsightCard
       v-if="aiViewContext"
@@ -373,6 +364,7 @@ import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { calcExpectedCommission } from '../../utils/commissionCalc.js'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
 import AiInsightCard from '../workspace/AiInsightCard.vue'
 import AiConversationSheet from '../workspace/AiConversationSheet.vue'
@@ -391,18 +383,6 @@ const props = defineProps({
   periodMonth: { type: String, default: '' },
   periodFilesCount: { type: Number, default: 0 },
   periodFilesExcluded: { type: Number, default: 0 },
-})
-
-// "2026-04-01" → "אפריל 2026" — Hebrew month label used in the period chip
-// and the "עמלות שהתקבלו" KPI subtitle.
-const _HE_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
-const periodLabel = computed(() => {
-  if (!props.periodMonth) return ''
-  const m = /^(\d{4})-(\d{2})/.exec(props.periodMonth)
-  if (!m) return ''
-  const monthIdx = parseInt(m[2], 10) - 1
-  if (monthIdx < 0 || monthIdx > 11) return ''
-  return `${_HE_MONTHS[monthIdx]} ${m[1]}`
 })
 
 const emit = defineEmits(['drill-customer'])
@@ -620,14 +600,11 @@ const topClientsData = computed(() => {
   return list.map(c => ({ ...c, pct: Math.round((c.value / maxVal) * 100) }))
 })
 
-const STATUS_COLORS = { matched: '#F57C00', only_production: '#E8720A', only_commission: '#7F56D9' }
-
 const topClientsChartSeries = computed(() => [{
   name: isGemel.value ? 'צבירה' : 'פרמיה',
   data: topClientsData.value.map(c => ({
     x: c.name,
     y: Math.round(c.value),
-    fillColor: STATUS_COLORS[c.status] || '#F57C00',
   })),
 }])
 
@@ -644,12 +621,13 @@ const topClientsChartOptions = computed(() => ({
       distributed: true,
     },
   },
+  colors: CHART_PALETTE,
   legend: { show: false },
   dataLabels: {
     enabled: topN.value <= 20,
     formatter: (val) => formatCompact(val),
     style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '10px', colors: ['#fff'] },
-    dropShadow: { enabled: false },
+    dropShadow: { enabled: true, top: 0, left: 0, blur: 2, opacity: 0.5, color: '#000' },
   },
   xaxis: {
     labels: {
@@ -668,7 +646,7 @@ const topClientsChartOptions = computed(() => ({
     },
   },
   grid: {
-    borderColor: '#F0F0F0',
+    borderColor: '#E5E5E5',
     strokeDashArray: 3,
   },
   tooltip: {
@@ -787,7 +765,7 @@ const statusDonutOptions = computed(() => ({
 }))
 
 // Product treemap
-const treemapColors = ['#F57C00', '#2E844A', '#7F56D9', '#06A59A', '#E8720A', '#C23934', '#38BDF8', '#F472B6', '#6366F1']
+const treemapColors = CHART_PALETTE
 
 const productTreemapSeries = computed(() => [{
   data: productBreakdown.value.map(p => ({
@@ -1254,7 +1232,7 @@ function formatCompact(val) {
   padding: 6px 14px;
   border-radius: 18px;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-alt, #f8f8f8);
+  background: var(--bg-alt, #F3F3F3);
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
@@ -1264,52 +1242,6 @@ function formatCompact(val) {
 }
 .company-filter-bar .company-pill:hover { border-color: var(--brand); color: var(--brand); }
 .company-filter-bar .company-pill.active { background: var(--brand); color: #fff; border-color: var(--brand); }
-
-.comparison-header-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: var(--primary-light);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  margin-bottom: 16px;
-}
-
-.header-company {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.header-category {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--primary);
-  background: rgba(99, 102, 241, 0.08);
-  padding: 3px 10px;
-  border-radius: 12px;
-}
-
-.header-period {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #057a55;
-  background: rgba(5, 122, 85, 0.08);
-  padding: 3px 10px;
-  border-radius: 12px;
-}
-.header-period-warn {
-  font-size: 11px;
-  font-weight: 500;
-  color: #92400e;
-  background: rgba(245, 158, 11, 0.18);
-  padding: 1px 6px;
-  border-radius: 8px;
-}
 
 /* ── Hero Card ── */
 .hero-card {
@@ -1460,9 +1392,9 @@ function formatCompact(val) {
 .kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
 .kpi-red .kpi-value { color: #C23934; }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.kpi-cyan .kpi-icon { background: rgba(6, 165, 154, 0.1); color: #06A59A; }
-.kpi-violet .kpi-icon { background: rgba(139, 92, 246, 0.1); color: #8B5CF6; }
-.kpi-violet .kpi-value { color: #8B5CF6; }
+.kpi-cyan .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
+.kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
+.kpi-violet .kpi-value { color: #7F56D9; }
 
 .kpi-data { min-width: 0; }
 .kpi-value {
@@ -1572,7 +1504,7 @@ function formatCompact(val) {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  background: #F7F8FA;
+  background: #F3F3F3;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1626,7 +1558,7 @@ function formatCompact(val) {
   cursor: pointer;
   transition: background 0.12s;
 }
-.fm-filter-trigger:hover { background: var(--bg-alt, #f8f8f8); }
+.fm-filter-trigger:hover { background: var(--bg-alt, #F3F3F3); }
 .fm-filter-trigger.is-active { color: var(--brand); font-weight: 600; }
 .fm-filter-trigger > span:not(.fm-filter-count) {
   flex: 1;
@@ -1636,7 +1568,7 @@ function formatCompact(val) {
   white-space: nowrap;
 }
 .fm-filter-count {
-  background: var(--bg-alt, #f0f0f0);
+  background: var(--bg-alt, #F3F3F3);
   color: var(--text-muted);
   padding: 1px 7px;
   border-radius: 10px;
@@ -1680,7 +1612,7 @@ function formatCompact(val) {
   padding: 4px 12px;
   border-radius: 16px;
   border: 1px solid var(--border-subtle);
-  background: var(--bg-alt, #f8f8f8);
+  background: var(--bg-alt, #F3F3F3);
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
@@ -1740,7 +1672,7 @@ function formatCompact(val) {
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s;
-  border-bottom: 1px solid #F0F0F0;
+  border-bottom: 1px solid #E5E5E5;
 }
 .fm-row:last-child { border-bottom: none; }
 .fm-row:hover { background: var(--primary-light); }
@@ -1946,7 +1878,7 @@ function formatCompact(val) {
   font-weight: 500;
 }
 .unpaid-strip-amount strong {
-  color: #c0540a;
+  color: #E65100;
   font-weight: 800;
 }
 
@@ -1978,11 +1910,11 @@ function formatCompact(val) {
 .unpaid-strip-btn svg { flex-shrink: 0; }
 
 .unpaid-strip-view {
-  background: rgba(1, 118, 211, 0.06);
+  background: rgba(245, 124, 0, 0.06);
   color: var(--primary);
-  border-color: rgba(1, 118, 211, 0.2);
+  border-color: rgba(245, 124, 0, 0.2);
 }
-.unpaid-strip-view:hover { background: rgba(1, 118, 211, 0.12); border-color: var(--primary); }
+.unpaid-strip-view:hover { background: rgba(245, 124, 0, 0.12); border-color: var(--primary); }
 
 .unpaid-strip-mail {
   background: rgba(232, 114, 10, 0.06);

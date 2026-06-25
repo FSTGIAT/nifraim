@@ -319,7 +319,7 @@ function onChartClick(e, chart, opts) {
 const donutOptions = computed(() => ({
   chart: { type: 'donut', fontFamily: 'Heebo, sans-serif', events: {} },
   labels: ['תואמים', 'פרודוקציה בלבד', 'היקפים בלבד', 'מגויסים חסרים'],
-  colors: ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'],
+  colors: ['#2E844A', '#E8720A', '#7F56D9', '#E3066A'],
   legend: { position: 'bottom', fontSize: '12px' },
   dataLabels: { enabled: true, formatter: (val) => val.toFixed(0) + '%' },
   plotOptions: { pie: { donut: { size: '55%' }, expandOnClick: false } },
@@ -673,8 +673,8 @@ function submitWithPassword() {
 
 .badge-green { background: var(--green-light); color: var(--accent-emerald); }
 .badge-amber { background: var(--amber-light); color: var(--accent-amber); }
-.badge-blue { background: rgba(59, 130, 246, 0.08); color: #3b82f6; }
-.badge-purple { background: rgba(139, 92, 246, 0.08); color: #8b5cf6; }
+.badge-blue { background: rgba(127, 86, 217, 0.08); color: #7F56D9; }
+.badge-purple { background: rgba(227, 6, 106, 0.08); color: #E3066A; }
 
 /* Volume totals */
 .volume-totals {

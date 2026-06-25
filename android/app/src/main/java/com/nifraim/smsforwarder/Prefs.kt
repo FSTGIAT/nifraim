@@ -8,6 +8,8 @@ object Prefs {
     private const val KEY_WEBHOOK_URL = "webhook_url"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_LAST_FORWARD = "last_forward"
+    private const val KEY_TEMPLATES = "templates_json"
+    private const val KEY_TEMPLATES_FETCHED = "templates_fetched"
 
     fun getWebhookUrl(ctx: Context): String =
         ctx.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
@@ -32,4 +34,20 @@ object Prefs {
     fun getLastForward(ctx: Context): Long =
         ctx.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
             .getLong(KEY_LAST_FORWARD, 0L)
+
+    /** Cached company SMS templates (the backend's `templates` JSON array). */
+    fun getTemplatesJson(ctx: Context): String =
+        ctx.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            .getString(KEY_TEMPLATES, "") ?: ""
+
+    fun setTemplatesJson(ctx: Context, json: String) =
+        ctx.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            .edit {
+                putString(KEY_TEMPLATES, json)
+                putLong(KEY_TEMPLATES_FETCHED, System.currentTimeMillis())
+            }
+
+    fun getTemplatesFetched(ctx: Context): Long =
+        ctx.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            .getLong(KEY_TEMPLATES_FETCHED, 0L)
 }

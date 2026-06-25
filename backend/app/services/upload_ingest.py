@@ -90,13 +90,35 @@ def _parse_zip_bundle(content: bytes, filename: str) -> dict:
     normalisation, etc.) carries over from the manual-upload path.
     """
     from app.services.mimshak import is_mimshak_zip, parse_mimshak_zip
+    from app.services.menora_legacy import (
+        is_menora_legacy_zip,
+        parse_menora_legacy_zip,
+    )
+    from app.services.menora_amalot import (
+        is_menora_amalot_zip,
+        parse_menora_amalot_zip,
+    )
 
     if is_mimshak_zip(content):
         return parse_mimshak_zip(content)
 
+    # Menora's כספות vault delivers production as an outer ZIP containing
+    # inner files named `.ARJ` (actually ZIPs) holding CP1255 fixed-width
+    # text (תקן 4-era). Different signature, same production-tab destination.
+    if is_menora_legacy_zip(content):
+        return parse_menora_legacy_zip(content)
+
+    # The same vault delivers the נפרעים (commission) report as an outer ZIP
+    # wrapping a single CP1255 CSV with the standard Menora commission columns.
+    # Routes to format=menora → commission.
+    if is_menora_amalot_zip(content):
+        return parse_menora_amalot_zip(content)
+
     raise ValueError(
         "Unsupported ZIP bundle. Expected a Migdal Mimshak bundle "
-        "(DAT + MBT files). Filename: " + filename
+        "(DAT + MBT files), a Menora legacy bundle (inner .ARJ ZIPs "
+        "with P.TXT/G.TXT), or a Menora amalot/נפרעים CSV ZIP. "
+        "Filename: " + filename
     )
 
 
@@ -107,6 +129,8 @@ async def ingest_file_bytes(
     filename: str,
     password: str | None = None,
     commit: bool = True,
+    make_active: bool = True,
+    company_source_override: str | None = None,
 ) -> tuple[FileUpload, str]:
     """Parse the bytes (xlsx/xls/zip) and persist to the database.
 
@@ -114,14 +138,48 @@ async def ingest_file_bytes(
     to trigger the right downstream hooks (snapshot/summary for production,
     auto-compare for commission). `commit=False` lets the caller compose the
     ingest into a larger transaction.
+
+    `make_active=False` holds a production upload WITHOUT flipping it to the
+    active production file (or deactivating same-company actives). The "run all
+    portals" batch uses this to ingest each per-company file, then aggregate
+    them into ONE merged production upload that becomes the single active file.
+    `company_source_override` forces FileUpload.company_source (e.g. "מאוחד"
+    for the merged files), independent of what the parser detected.
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # Magic-byte override: portal automation plugins occasionally save a real
+    # ZIP (e.g. Migdal Mimshak bundle from the Safes vault) under a misleading
+    # `.xlsx` filename. Sniff the first 4 bytes — if it's a ZIP that the
+    # Mimshak parser recognises, route to the ZIP path regardless of extension.
+    if content[:4] == b"PK\x03\x04" and ext != "zip":
+        from app.services.mimshak import is_mimshak_zip
+        from app.services.menora_legacy import is_menora_legacy_zip
+        from app.services.menora_amalot import is_menora_amalot_zip
+        if (
+            is_mimshak_zip(content)
+            or is_menora_legacy_zip(content)
+            or is_menora_amalot_zip(content)
+        ):
+            ext = "zip"
+
+    # Same idea for a bare Mimshak holdings .DAT (Phoenix SFE כספת serves the
+    # standardised XML envelope as a lone .DAT, sometimes under another name).
+    # Sniff the head for the `<Mimshak>` root and route to the DAT path.
+    if ext != "dat" and content[:6] in (b"<?xml ", b"<Mimsh"):
+        from app.services.mimshak import is_mimshak_dat
+        if is_mimshak_dat(content):
+            ext = "dat"
+
     if ext == "zip":
         result = _parse_zip_bundle(content, filename)
+    elif ext == "dat":
+        from app.services.mimshak import parse_mimshak_dat
+        result = parse_mimshak_dat(content, filename)
     elif ext in ("xlsx", "xls"):
         result = parse_excel(content, filename, password)
     else:
-        raise ValueError(f"Unsupported file extension '{ext}' (expected xlsx/xls/zip)")
+        raise ValueError(f"Unsupported file extension '{ext}' (expected xlsx/xls/zip/dat)")
     fmt = result["format"]
     file_category = _file_category_for_format(fmt)
 
@@ -151,19 +209,36 @@ async def ingest_file_bytes(
         await db.execute(sql_delete(PortalSnapshot).where(
             PortalSnapshot.upload_id.in_(old_ids)
         ))
+        # portal_runs.upload_id references file_uploads.id but the FK has
+        # no ON DELETE rule — when the same filename is re-ingested by a
+        # later run, the prior run's upload_id still points at the old row
+        # and blocks the DELETE. NULL it out so the new ingest can proceed.
+        # (The prior run's success log + downloaded_filename are preserved.)
+        from app.models.portal_run import PortalRun
+        from sqlalchemy import update as sql_update
+        await db.execute(
+            sql_update(PortalRun)
+            .where(PortalRun.upload_id.in_(old_ids))
+            .values(upload_id=None)
+        )
         for old in old_uploads:
             await db.delete(old)
         await db.flush()
 
     from app.services.parser_service import detect_period_month
     from datetime import datetime as _dt
-    period = detect_period_month(filename, result.get("records"), uploaded_at=_dt.utcnow())
+    # A parser may supply an authoritative period_month (e.g. Menora amalot CSV
+    # reads "לתקופה : MM/YYYY" from the title); prefer it over filename/data-date
+    # inference, which the embedded generation timestamp would otherwise fool.
+    period = result.get("period_month") or detect_period_month(
+        filename, result.get("records"), uploaded_at=_dt.utcnow()
+    )
 
     upload = FileUpload(
         user_id=user_id,
         filename=filename,
         file_type=ext,
-        company_source=result["company_source"],
+        company_source=company_source_override or result["company_source"],
         record_count=len(result["records"]),
         format_type=fmt,
         file_category=file_category,
@@ -198,20 +273,24 @@ async def ingest_file_bytes(
 
     await cross_reference_uploads(db, user_id)
 
-    # Production uploads replace the prior active production — same semantics
-    # as the legacy /api/production/upload route, so any ingest path (manual
-    # ZIP/XLSX drop, runner-downloaded ZIP) yields exactly one active production
-    # per user at a time.
-    if fmt == "production":
-        await db.execute(
-            update(FileUpload)
-            .where(
-                FileUpload.user_id == user_id,
-                FileUpload.is_production.is_(True),
-                FileUpload.id != upload.id,
-            )
-            .values(is_production=False)
+    # Production uploads replace the prior active production FROM THE SAME
+    # COMPANY only. Uploads from different companies (Migdal + Menora + ...)
+    # for the same period all stay active simultaneously — together they
+    # form the unified monthly production view. Within a single company the
+    # latest upload still replaces prior ones.
+    # make_active=False holds the upload non-active (batch path): the per-company
+    # production files are aggregated into one merged upload that becomes active
+    # at batch end, so flipping is_production here would double-count.
+    if fmt == "production" and make_active:
+        company = company_source_override or result.get("company_source")
+        deactivate_q = update(FileUpload).where(
+            FileUpload.user_id == user_id,
+            FileUpload.is_production.is_(True),
+            FileUpload.id != upload.id,
         )
+        if company:
+            deactivate_q = deactivate_q.where(FileUpload.company_source == company)
+        await db.execute(deactivate_q.values(is_production=False))
         upload.is_production = True
 
     if commit:

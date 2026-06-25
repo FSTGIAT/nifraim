@@ -15,6 +15,7 @@ export interface MonthlyCommissionMonth {
   expected_total: number | null
   actual_total: number | null
   gap_total: number | null
+  missing_count?: number
 }
 
 export interface MonthlyCommissionProps {
@@ -290,11 +291,11 @@ export function MonthlyCommissionComposition(props: MonthlyCommissionProps) {
             >
               {isEmpty
                 ? 'אין נתונים'
-                : m.production_uploaded && m.commission_uploaded
-                  ? 'הכל הועלה'
-                  : m.production_uploaded
-                    ? 'חסר נפרעים'
-                    : 'חסרה פרודוקציה'}
+                : !m.commission_uploaded
+                  ? (m.production_uploaded ? 'חסר נפרעים' : 'חסרה פרודוקציה')
+                  : (m.missing_count || 0) > 0
+                    ? `חסרים ${m.missing_count} דיווחים`
+                    : 'הכל הועלה'}
             </div>
 
             {/* Expected bar (orange) */}

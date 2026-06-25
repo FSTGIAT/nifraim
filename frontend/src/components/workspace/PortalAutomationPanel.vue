@@ -111,9 +111,9 @@ h3 {
 }
 
 .error-banner {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #b91c1c;
+  background: rgba(194, 57, 52, 0.1);
+  border: 1px solid rgba(194, 57, 52, 0.3);
+  color: #C23934;
   padding: 8px 12px;
   border-radius: 8px;
   margin-bottom: 12px;
@@ -176,7 +176,7 @@ h3 {
 }
 
 .btn-run {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, #2E844A, #1B5E20);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -194,7 +194,7 @@ h3 {
 }
 
 .btn-run:not(:disabled):hover {
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 12px rgba(46, 132, 74, 0.3);
   transform: translateY(-1px);
 }
 </style>

@@ -74,7 +74,7 @@
     <!-- Hero chart: commission trend (most important — sits directly under KPIs) -->
     <ProductionTrendChart @go-to-automation="$emit('go-to-automation')" />
 
-    <!-- Row 1: Company + Product Type side by side -->
+    <!-- Row 1: Company + Product Type side by side (click a bar → drill-down) -->
     <div class="charts-row">
       <div class="chart-card" v-if="analytics.company_breakdown.length">
         <div class="chart-header">
@@ -101,7 +101,7 @@
       </div>
     </div>
 
-    <!-- Row 3: Top Clients (full width) -->
+    <!-- Row 3: Top Clients (full width; click a bar → drill-down) -->
     <div class="chart-card" v-if="hasTopClientsData">
       <div class="chart-header">
         <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
@@ -209,6 +209,7 @@
 import { computed, ref } from 'vue'
 import api from '../../api/client.js'
 import ProductionTrendChart from './ProductionTrendChart.vue'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 const props = defineProps({
   analytics: { type: Object, required: true },
@@ -300,55 +301,32 @@ const activePercent = computed(() => {
   return Math.round((active.count / total) * 100)
 })
 
-// Insurance company brand colors
-const companyColors = {
-  'אקסלנס': '#1a3b6b',
-  'הפניקס': '#f57c00',
-  'מנורה': '#00897b',
-  'הכשרה': '#c62828',
-  'מור': '#0277bd',
-  'אלטשולר': '#1a237e',
-  'כלל': '#6a1b9a',
-  'הראל': '#2e7d32',
-  'מגדל': '#d32f2f',
-  'איילון': '#00838f',
-  'פסגות': '#4527a0',
-  'אנליסט': '#37474f',
-  'ילין לפידות': '#00695c',
-  'מיטב': '#0d47a1',
-}
+// Bright-bold categorical palette shared across all chart bars (see
+// utils/chartPalette.js). Each bar/company/category gets a clearly distinct hue.
+const PALETTE_SERIES = CHART_PALETTE
 
-function getCompanyColor(name) {
-  for (const [key, color] of Object.entries(companyColors)) {
-    if (name.includes(key)) return color
-  }
-  return '#546e7a'
-}
-
-// Shared height for side-by-side charts — driven by the one with more items
+// Shared height for side-by-side charts — driven by the one with more items.
 const chartsRowHeight = computed(() => {
   const productCount = props.analytics.product_type_breakdown.length
   const companyCount = props.analytics.company_breakdown.length
   return Math.max(280, Math.max(productCount, companyCount) * 38)
 })
 
-// Company chart — each bar gets its brand color
+// "התפלגות לפי חברה" — accumulation per company. Click a bar → companies drill-down.
 const companyChartOptions = computed(() => ({
-  chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
-  plotOptions: {
-    bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: true },
+  chart: {
+    type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
+    animations: { enabled: true, easing: 'easeinout', speed: 700 },
+    events: { dataPointSelection: () => openDrilldown('companies') },
   },
-  dataLabels: { enabled: true, formatter: v => '₪' + v.toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif' } },
-  xaxis: {
-    categories: props.analytics.company_breakdown.map(c => c.company),
-    labels: { show: false },
-  },
+  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: true } },
+  dataLabels: { enabled: true, formatter: v => '₪' + Math.round(v).toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif', colors: ['#fff'] }, dropShadow: { enabled: true, top: 0, left: 0, blur: 2, opacity: 0.55, color: '#000' } },
+  xaxis: { categories: props.analytics.company_breakdown.map(c => c.company), labels: { show: false } },
   yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '13px', fontWeight: 600 } } },
-  colors: props.analytics.company_breakdown.map(c => getCompanyColor(c.company)),
+  colors: PALETTE_SERIES,
   legend: { show: false },
-  tooltip: {
-    y: { formatter: v => '₪' + v.toLocaleString() },
-  },
+  states: { active: { filter: { type: 'none' } } },
+  tooltip: { y: { formatter: v => '₪' + Math.round(v).toLocaleString() } },
   grid: { borderColor: 'var(--border-subtle)', xaxis: { lines: { show: false } } },
 }))
 
@@ -357,24 +335,22 @@ const companyChartSeries = computed(() => [{
   data: props.analytics.company_breakdown.map(c => c.accumulation),
 }])
 
-// Product type bar — teal gradient
+// "התפלגות לפי סוג מוצר" — record count per product type (palette orange gradient).
+// Click a bar → products drill-down.
 const productBarOptions = computed(() => ({
-  chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
-  plotOptions: { bar: { horizontal: true, borderRadius: 5, barHeight: '55%' } },
+  chart: {
+    type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
+    animations: { enabled: true, easing: 'easeinout', speed: 700 },
+    events: { dataPointSelection: () => openDrilldown('products') },
+  },
+  plotOptions: { bar: { horizontal: true, borderRadius: 5, barHeight: '55%', distributed: true } },
   dataLabels: { enabled: false },
-  xaxis: {
-    categories: props.analytics.product_type_breakdown.map(p => p.product_type),
-    labels: { style: { fontFamily: 'Heebo, sans-serif' } },
-  },
+  xaxis: { categories: props.analytics.product_type_breakdown.map(p => p.product_type), labels: { style: { fontFamily: 'Heebo, sans-serif' } } },
   yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' }, maxWidth: 200 } },
-  colors: ['#0891b2'],
-  fill: {
-    type: 'gradient',
-    gradient: { shade: 'light', type: 'horizontal', shadeIntensity: 0.15, opacityFrom: 0.9, opacityTo: 1 },
-  },
-  tooltip: {
-    y: { formatter: v => v.toLocaleString() + ' רשומות' },
-  },
+  colors: PALETTE_SERIES,
+  legend: { show: false },
+  states: { active: { filter: { type: 'none' } } },
+  tooltip: { y: { formatter: v => v.toLocaleString() + ' רשומות' } },
   grid: { borderColor: 'var(--border-subtle)' },
 }))
 
@@ -383,7 +359,7 @@ const productBarSeries = computed(() => [{
   data: props.analytics.product_type_breakdown.map(p => p.count),
 }])
 
-// Top clients chart
+// Top clients (premium/accumulation toggle).
 const topClientsData = computed(() =>
   topMetric.value === 'premium'
     ? props.analytics.top_clients_premium.filter(c => c.premium > 0)
@@ -397,22 +373,24 @@ const hasTopClientsData = computed(() =>
   props.analytics.top_clients_accumulation.some(c => c.accumulation > 0)
 )
 
+// Each client bar gets its own palette color (distributed). Click → clients drill-down.
 const topClientsChartOptions = computed(() => ({
-  chart: { type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif' },
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '65%' } },
+  chart: {
+    type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
+    animations: { enabled: true, easing: 'easeinout', speed: 700 },
+    events: { dataPointSelection: () => openDrilldown(topMetric.value === 'premium' ? 'premium' : 'accumulation') },
+  },
+  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '65%', distributed: true } },
   dataLabels: { enabled: false },
   xaxis: {
     categories: topClientsData.value.map(c => c.name || c.id_number),
-    labels: {
-      style: { fontFamily: 'Heebo, sans-serif' },
-      formatter: v => '₪' + Math.round(v).toLocaleString(),
-    },
+    labels: { style: { fontFamily: 'Heebo, sans-serif' }, formatter: v => '₪' + Math.round(v).toLocaleString() },
   },
   yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
-  colors: [topMetric.value === 'premium' ? '#10b981' : '#f59e0b'],
-  tooltip: {
-    y: { formatter: v => '₪' + Math.round(v).toLocaleString() },
-  },
+  colors: PALETTE_SERIES,
+  legend: { show: false },
+  states: { active: { filter: { type: 'none' } } },
+  tooltip: { y: { formatter: v => '₪' + Math.round(v).toLocaleString() } },
   grid: { borderColor: 'var(--border-subtle)' },
 }))
 
@@ -471,18 +449,18 @@ const topClientsChartSeries = computed(() => [{
 }
 
 .kpi-blue .kpi-icon { background: var(--primary-light); color: var(--primary); }
-.kpi-cyan .kpi-icon { background: rgba(34, 211, 238, 0.1); color: #22d3ee; }
+.kpi-cyan .kpi-icon { background: rgba(227, 6, 106, 0.1); color: #E3066A; }
 .kpi-green .kpi-icon { background: var(--green-light); color: var(--accent-emerald); }
 .kpi-amber .kpi-icon { background: var(--amber-light); color: var(--amber); }
 .kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: var(--accent-violet); }
-.kpi-emerald .kpi-icon { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.kpi-emerald .kpi-icon { background: rgba(27, 94, 32, 0.1); color: #1B5E20; }
 
-.kpi-blue:hover { border-color: rgba(37, 99, 235, 0.25); box-shadow: 0 12px 32px rgba(37, 99, 235, 0.12); }
-.kpi-cyan:hover { border-color: rgba(34, 211, 238, 0.25); box-shadow: 0 12px 32px rgba(34, 211, 238, 0.12); }
-.kpi-green:hover { border-color: rgba(16, 185, 129, 0.25); box-shadow: 0 12px 32px rgba(16, 185, 129, 0.12); }
-.kpi-amber:hover { border-color: rgba(245, 158, 11, 0.25); box-shadow: 0 12px 32px rgba(245, 158, 11, 0.12); }
+.kpi-blue:hover { border-color: rgba(245, 124, 0, 0.25); box-shadow: 0 12px 32px rgba(245, 124, 0, 0.12); }
+.kpi-cyan:hover { border-color: rgba(227, 6, 106, 0.25); box-shadow: 0 12px 32px rgba(227, 6, 106, 0.12); }
+.kpi-green:hover { border-color: rgba(46, 132, 74, 0.25); box-shadow: 0 12px 32px rgba(46, 132, 74, 0.12); }
+.kpi-amber:hover { border-color: rgba(232, 114, 10, 0.25); box-shadow: 0 12px 32px rgba(232, 114, 10, 0.12); }
 .kpi-violet:hover { border-color: rgba(127, 86, 217, 0.25); box-shadow: 0 12px 32px rgba(127, 86, 217, 0.12); }
-.kpi-emerald:hover { border-color: rgba(16, 185, 129, 0.25); box-shadow: 0 12px 32px rgba(16, 185, 129, 0.12); }
+.kpi-emerald:hover { border-color: rgba(27, 94, 32, 0.25); box-shadow: 0 12px 32px rgba(27, 94, 32, 0.12); }
 
 .kpi-data { min-width: 0; }
 

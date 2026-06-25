@@ -1,12 +1,14 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
 PortalKind = Literal[
-    "phoenix", "migdal", "clal", "menora", "altshuler",
-    "hachshara", "excellence", "mor", "ayalon", "clal_health",
+    "phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm",
+    "clal", "clal_nifraim",
+    "menora", "menora_nifraim", "altshuler", "hachshara", "excellence", "mor",
+    "ayalon", "clal_health", "harel",
 ]
 
 ScheduleKind = Literal["manual", "daily", "weekly", "monthly"]
@@ -74,6 +76,26 @@ class RunStartOut(BaseModel):
     run_id: str
 
 
+class BatchStartOut(BaseModel):
+    batch_id: str
+
+
+class PortalRunBatchOut(BaseModel):
+    id: str
+    status: str  # pending | running | success | partial | failed
+    total: int
+    succeeded: int
+    failed: int
+    current_run_id: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+    merged_upload_id: str | None = None
+    merged_commission_upload_id: str | None = None
+    period_month: date | None = None
+    error_message: str | None = None
+    runs: list[PortalRunOut] = []
+
+
 class TwilioNumberOut(BaseModel):
     id: str
     phone_number: str
@@ -91,3 +113,6 @@ class OtpInboxOut(BaseModel):
     received_at: datetime
     consumed_at: datetime | None = None
     portal_run_id: str | None = None
+    # Company this OTP was routed to (matched server-side from the body).
+    portal_kind: str | None = None
+    matched_company: str | None = None

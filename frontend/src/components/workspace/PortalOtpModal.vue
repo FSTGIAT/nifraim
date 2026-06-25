@@ -296,10 +296,10 @@ function onBackdrop() {
   margin-top: 10px;
   text-align: center;
   font-size: 12px;
-  color: #b91c1c;
+  color: #C23934;
   padding: 8px 12px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: rgba(194, 57, 52, 0.08);
+  border: 1px solid rgba(194, 57, 52, 0.24);
   border-radius: 8px;
 }
 

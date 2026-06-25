@@ -279,7 +279,7 @@ async function save() {
   margin: 12px 20px 0;
   padding: 8px 12px;
   font-size: 12px;
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border: 1px solid rgba(234, 0, 30, 0.2);
   border-radius: var(--radius-sm, 8px);
@@ -306,7 +306,7 @@ async function save() {
   font-weight: 400;
   color: var(--text-muted);
 }
-.req { color: #ef4444; font-weight: 800; }
+.req { color: #C23934; font-weight: 800; }
 
 .ctrl {
   width: 100%;
@@ -326,7 +326,7 @@ async function save() {
   box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
   background: #fff;
 }
-.ctrl.invalid { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12); }
+.ctrl.invalid { border-color: #C23934; box-shadow: 0 0 0 2px rgba(194, 57, 52, 0.12); }
 .ctrl[disabled] { opacity: 0.6; cursor: not-allowed; }
 select.ctrl { appearance: auto; }
 

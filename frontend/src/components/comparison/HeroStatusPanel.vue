@@ -130,13 +130,12 @@ function onTile(id) {
   padding: 22px 24px 20px;
   overflow: hidden;
   font-family: 'Heebo', sans-serif;
-  color: #F5F1EC;
+  color: var(--text);
   background:
-    radial-gradient(140% 110% at 0% 0%, rgba(245, 124, 0, 0.22) 0%, transparent 55%),
-    linear-gradient(140deg, #0B1220 0%, #161F2E 45%, #1B2536 100%);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 18px 42px rgba(11, 18, 32, 0.18);
+    radial-gradient(140% 110% at 0% 0%, rgba(245, 124, 0, 0.10) 0%, transparent 55%),
+    linear-gradient(140deg, var(--card-bg) 0%, var(--primary-light) 160%);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
   isolation: isolate;
 }
 
@@ -150,7 +149,7 @@ function onTile(id) {
   position: absolute;
   border-radius: 50%;
   filter: blur(60px);
-  opacity: 0.55;
+  opacity: 0.3;
 }
 .glow-a {
   width: 280px;
@@ -183,12 +182,12 @@ function onTile(id) {
   font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.2px;
-  color: #fff;
+  color: var(--text);
 }
 .hh-sub {
   margin: 0;
   font-size: 12.5px;
-  color: rgba(245, 241, 236, 0.62);
+  color: var(--text-muted);
 }
 .hh-pill {
   display: inline-flex;
@@ -198,9 +197,9 @@ function onTile(id) {
   font-size: 11.5px;
   letter-spacing: 0.3px;
   font-weight: 700;
-  color: #FFD2A6;
-  background: rgba(245, 124, 0, 0.16);
-  border: 1px solid rgba(245, 124, 0, 0.32);
+  color: var(--primary-deep);
+  background: rgba(245, 124, 0, 0.12);
+  border: 1px solid rgba(245, 124, 0, 0.28);
   padding: 4px 12px;
   border-radius: 999px;
   white-space: nowrap;
@@ -230,11 +229,9 @@ function onTile(id) {
   flex-direction: column;
   gap: 4px;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   min-width: 0;
   text-align: start;
   font-family: inherit;
@@ -243,7 +240,7 @@ function onTile(id) {
   transition: background 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out;
 }
 .kpi--btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--glass-hover);
   box-shadow: inset 0 0 0 1px rgba(245, 124, 0, 0.32);
   transform: translateY(-1px);
 }
@@ -262,20 +259,20 @@ function onTile(id) {
 .kpi-label {
   font-size: 11.5px;
   font-weight: 600;
-  color: rgba(245, 241, 236, 0.62);
+  color: var(--text-muted);
   letter-spacing: 0.1px;
 }
 .kpi-value {
   font-size: 24px;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);
   letter-spacing: -0.4px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 .kpi-sub {
   font-size: 11.5px;
-  color: rgba(255, 210, 166, 0.78);
+  color: var(--primary-deep);
   font-weight: 600;
 }
 .kpi-chev {
@@ -287,7 +284,7 @@ function onTile(id) {
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  color: #FFD2A6;
+  color: var(--primary-deep);
   background: rgba(245, 124, 0, 0.14);
   opacity: 0.5;
   transition: opacity 180ms ease-out, background 180ms ease-out;
@@ -307,18 +304,18 @@ function onTile(id) {
   gap: 8px;
   padding: 18px 8px 8px;
   text-align: center;
-  color: rgba(245, 241, 236, 0.72);
+  color: var(--text-muted);
 }
-.hero-empty svg { color: #F57C00; opacity: 0.78; }
+.hero-empty svg { color: #F57C00; opacity: 0.85; }
 .hero-empty p {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  color: #fff;
+  color: var(--text);
 }
 .hero-empty span {
   font-size: 12.5px;
-  color: rgba(245, 241, 236, 0.55);
+  color: var(--text-muted);
 }
 
 /* Insight pills */
@@ -329,8 +326,8 @@ function onTile(id) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--primary-light);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
 }
 .hero-insights li {
@@ -338,7 +335,7 @@ function onTile(id) {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(245, 241, 236, 0.88);
+  color: var(--text-secondary);
   font-weight: 600;
   line-height: 1.4;
 }

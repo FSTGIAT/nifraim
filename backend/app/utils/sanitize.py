@@ -14,9 +14,14 @@ MAX_LENGTHS = {
     "client_email": 100,
     "employer_name": 100,
     "employer_id": 20,
+    # Pension clearinghouse (המסלקה הפנסיונית) fields — reused by the
+    # PensionHolding ingest path so sanitize_record() works on holdings too.
+    "provider_code": 20,
+    "match_status": 20,
+    "interface_code": 20,
 }
 
-DATE_FIELDS = {"sign_date", "transfer_date", "rights_assignment_date"}
+DATE_FIELDS = {"sign_date", "transfer_date", "rights_assignment_date", "status_date"}
 
 
 def sanitize_record(rec: dict) -> dict:

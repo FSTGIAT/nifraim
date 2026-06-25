@@ -7,6 +7,8 @@ import { Feature03Audit } from './landing/Feature03Audit'
 import { Feature04Insights } from './landing/Feature04Insights'
 import { Feature05AiDiagram } from './landing/Feature05AiDiagram'
 import { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
+import { WalkthroughComposition } from './walkthrough/WalkthroughComposition'
+import { WALKTHROUGH_DURATION, CANVAS } from './walkthrough/steps'
 
 // Remotion CLI registry. Only used at render time (`npm run render:hero*`, `render:feature-*`)
 // — the landing page itself ships the rendered .webm/.mp4, not these components.
@@ -45,6 +47,14 @@ const RemotionRoot = () => {
         fps={30}
         width={1080}
         height={600}
+      />
+      <Composition
+        id="walkthrough"
+        component={WalkthroughComposition}
+        durationInFrames={WALKTHROUGH_DURATION}
+        fps={30}
+        width={CANVAS.width}
+        height={CANVAS.height}
       />
     </>
   )

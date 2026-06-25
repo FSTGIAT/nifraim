@@ -295,7 +295,7 @@ function getColor(name) {
   for (const [key, color] of Object.entries(COMPANY_COLORS)) {
     if (name.includes(key)) return color
   }
-  return '#94a3b8'
+  return '#706E6B'
 }
 
 function formatCurrency(val) {
@@ -647,8 +647,8 @@ onMounted(() => {
   border-radius: 6px;
 }
 
-.group-category-pill.gemel_hishtalmut { background: rgba(59,130,246,0.08); color: #3b82f6; }
-.group-category-pill.insurance { background: rgba(168,85,247,0.08); color: #a855f7; }
+.group-category-pill.gemel_hishtalmut { background: rgba(127,86,217,0.08); color: #7F56D9; }
+.group-category-pill.insurance { background: rgba(227,6,106,0.08); color: #E3066A; }
 
 .group-meta { display: flex; align-items: center; gap: 14px; }
 .group-count { font-size: 12px; color: var(--text-muted); font-weight: 500; }
@@ -765,7 +765,7 @@ onMounted(() => {
 }
 
 .email-toast.success { background: var(--accent-emerald); color: #fff; }
-.email-toast.error { background: #ef4444; color: #fff; }
+.email-toast.error { background: #EA001E; color: #fff; }
 
 .ltr-number { direction: ltr; unicode-bidi: embed; display: inline-block; }
 
@@ -920,8 +920,8 @@ onMounted(() => {
   border-radius: 4px;
 }
 
-.category-pill-sm.gemel_hishtalmut { background: rgba(59,130,246,0.08); color: #3b82f6; }
-.category-pill-sm.insurance { background: rgba(168,85,247,0.08); color: #a855f7; }
+.category-pill-sm.gemel_hishtalmut { background: rgba(127,86,217,0.08); color: #7F56D9; }
+.category-pill-sm.insurance { background: rgba(227,6,106,0.08); color: #E3066A; }
 
 .status-pill {
   font-size: 10px;
@@ -933,7 +933,7 @@ onMounted(() => {
 .status-pill.open { background: rgba(194,57,52,0.08); color: #C23934; }
 .status-pill.paid { background: rgba(46,132,74,0.08); color: #2E844A; }
 .status-pill.disputed { background: rgba(232,114,10,0.08); color: #E8720A; }
-.status-pill.cancelled { background: rgba(107,114,128,0.08); color: #6b7280; }
+.status-pill.cancelled { background: rgba(112,110,107,0.08); color: #706E6B; }
 
 /* Modal transitions */
 .modal-enter-active { animation: modalIn 0.3s var(--transition); }

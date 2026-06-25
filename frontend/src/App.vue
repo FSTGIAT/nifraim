@@ -85,6 +85,33 @@ const navTabs = [
   --accent-violet: #7F56D9;
   --accent-rose: #E3066A;
   --accent-emerald: #2E844A;
+  /* Bright-bold categorical palette (data-viz + colorful UI like the
+     automation cadences). Mirrors src/utils/chartPalette.js — keep in sync.
+     Use these for charts/categories; use the brand tokens above for chrome. */
+  --chart-1: #EF5350;   /* coral red */
+  --chart-2: #4E9DD0;   /* sky blue */
+  --chart-3: #F9A937;   /* golden amber */
+  --chart-4: #8E44AD;   /* purple */
+  --chart-5: #9CCC3C;   /* lime green */
+  --chart-6: #E84A7F;   /* magenta pink */
+  --chart-7: #3DB6B0;   /* turquoise */
+  --chart-8: #F4D35E;   /* soft yellow */
+  --chart-9: #2F73C4;   /* cobalt blue */
+  --chart-10: #4A8B2C;  /* forest green */
+  --chart-11: #FF5C8A;  /* bright pink */
+  --chart-12: #0E8C8A;  /* teal */
+  --chart-13: #B79CEB;  /* lavender */
+  --chart-14: #2C5F6B;  /* deep teal */
+  --chart-15: #8FD9C6;  /* mint */
+
+  /* Schedule cadence accents — bright-bold so the automation tab pops:
+     daily=sky-blue, weekly=gold, monthly=purple. */
+  --cadence-daily: var(--chart-2);          /* sky blue */
+  --cadence-daily-soft: rgba(78, 157, 208, 0.14);
+  --cadence-weekly: var(--chart-3);         /* gold */
+  --cadence-weekly-soft: rgba(249, 169, 55, 0.14);
+  --cadence-monthly: var(--chart-4);        /* purple */
+  --cadence-monthly-soft: rgba(142, 68, 173, 0.14);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.1);

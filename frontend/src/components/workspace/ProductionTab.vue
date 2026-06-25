@@ -480,7 +480,7 @@ async function handleCompare(currentId, previousId) {
 .month-count {
   font-size: 11.5px;
   font-weight: 700;
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   background: rgba(245, 124, 0, 0.10);
   padding: 3px 9px;
   border-radius: 999px;
@@ -513,7 +513,7 @@ async function handleCompare(currentId, previousId) {
   height: 30px;
   border-radius: 8px;
   background: linear-gradient(135deg, rgba(245, 124, 0, 0.12), rgba(255, 152, 0, 0.06));
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -535,7 +535,7 @@ async function handleCompare(currentId, previousId) {
   align-items: center;
 }
 .hf-meta > span { white-space: nowrap; }
-.hf-time { color: var(--primary-deep, #c2410c); font-weight: 600; }
+.hf-time { color: var(--primary-deep, #E65100); font-weight: 600; }
 .hf-download {
   width: 30px;
   height: 30px;
@@ -550,7 +550,7 @@ async function handleCompare(currentId, previousId) {
 }
 .hf-download:hover {
   background: rgba(245, 124, 0, 0.12);
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
 }
 
 .loading-state {
@@ -641,7 +641,7 @@ async function handleCompare(currentId, previousId) {
   gap: 8px;
   padding: 5px 12px;
   background: var(--green-light);
-  border: 1px solid rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(46, 132, 74, 0.15);
   border-radius: 100px;
   font-size: 12px;
   margin-inline-start: auto;
@@ -723,7 +723,7 @@ async function handleCompare(currentId, previousId) {
   gap: 10px;
   padding: 10px 18px;
   background: var(--green-light);
-  border: 1px solid rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(46, 132, 74, 0.15);
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--accent-emerald);

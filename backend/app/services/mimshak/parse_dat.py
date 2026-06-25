@@ -66,14 +66,18 @@ def _strip_leading_zeros(s: str | None) -> str | None:
 # ── XML walk ─────────────────────────────────────────────────────────────
 
 def find_dat(folder: Path) -> Path:
-    """Pick the main DAT file. Prefers *HOLDNG* names, falls back to first
-    file whose root element is <Mimshak>."""
+    """Pick the main DAT file. Prefers *HOLDNG* names. If multiple HOLDNG
+    files exist (Migdal Safes vault keeps a sliding 3-month history —
+    e.g. `...20260309...DAT`, `...20260414...DAT`, `...20260512...DAT`),
+    return the LATEST: the filename encodes YYYYMMDD between `INP009` and
+    the time suffix, so lexicographic sort = chronological sort = freshest
+    last."""
     candidates = list(folder.glob("*.DAT")) + list(folder.glob("*.dat"))
     if not candidates:
         raise FileNotFoundError(f"No .DAT file found in {folder}")
-    for p in candidates:
-        if "HOLDNG" in p.name.upper():
-            return p
+    holdng = sorted(p for p in candidates if "HOLDNG" in p.name.upper())
+    if holdng:
+        return holdng[-1]
     return candidates[0]
 
 

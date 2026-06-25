@@ -4,3 +4,8 @@ build/
 local.properties
 *.iml
 .idea/
+# Release upload signing — never commit the keystore or its passwords
+keystore.properties
+upload-keystore.jks
+*.jks
+*.keystore

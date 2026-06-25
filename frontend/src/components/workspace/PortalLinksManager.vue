@@ -727,7 +727,7 @@ td.muted {
 .sk-cell {
   height: 14px;
   border-radius: 6px;
-  background: linear-gradient(90deg, var(--bg, #F3F3F3) 0%, #EEEEEE 50%, var(--bg, #F3F3F3) 100%);
+  background: linear-gradient(90deg, var(--bg, #F3F3F3) 0%, #E5E5E5 50%, var(--bg, #F3F3F3) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
 }

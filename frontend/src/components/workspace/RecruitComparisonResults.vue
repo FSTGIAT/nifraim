@@ -1017,8 +1017,8 @@ const statusChartSeries = computed(() => {
 const statusChartOptions = computed(() => {
   const sb = props.result.status_breakdown || {}
   const labels = Object.keys(sb)
-  const colorMap = { 'פעיל': '#2E844A', 'מוקפא': '#0176D3', 'מבוטל': '#EA4335', 'אחר': '#999' }
-  const colors = labels.map(l => colorMap[l] || '#999')
+  const colorMap = { 'פעיל': '#2E844A', 'מוקפא': '#7F56D9', 'מבוטל': '#C23934', 'אחר': '#706E6B' }
+  const colors = labels.map(l => colorMap[l] || '#706E6B')
   return {
     chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
     labels,
@@ -1584,16 +1584,16 @@ const chartOptions = computed(() => ({
 .ins-kpi-orange .ins-kpi-icon { background: rgba(232,114,10,0.12); color: #E8720A; }
 .ins-kpi-orange .ins-kpi-val { color: #E8720A; }
 
-.ins-kpi-cyan { background: rgba(6,189,189,0.06); border-color: rgba(6,189,189,0.1); }
-.ins-kpi-cyan .ins-kpi-icon { background: rgba(6,189,189,0.12); color: #06BDBD; }
-.ins-kpi-cyan .ins-kpi-val { color: #06BDBD; }
+.ins-kpi-cyan { background: rgba(227,6,106,0.06); border-color: rgba(227,6,106,0.1); }
+.ins-kpi-cyan .ins-kpi-icon { background: rgba(227,6,106,0.12); color: #E3066A; }
+.ins-kpi-cyan .ins-kpi-val { color: #E3066A; }
 
 .ins-kpi-violet { background: rgba(127,86,217,0.06); border-color: rgba(127,86,217,0.1); }
 .ins-kpi-violet .ins-kpi-icon { background: rgba(127,86,217,0.12); color: var(--accent-violet); }
 .ins-kpi-violet .ins-kpi-val { color: var(--accent-violet); }
 
-.ins-kpi-primary { background: var(--primary-glow); border-color: rgba(1,118,211,0.1); }
-.ins-kpi-primary .ins-kpi-icon { background: rgba(1,118,211,0.12); color: var(--primary); }
+.ins-kpi-primary { background: var(--primary-glow); border-color: rgba(127,86,217,0.1); }
+.ins-kpi-primary .ins-kpi-icon { background: rgba(127,86,217,0.12); color: var(--primary); }
 .ins-kpi-primary .ins-kpi-val { color: var(--primary); }
 
 .insights-charts-row {
@@ -1612,7 +1612,7 @@ const chartOptions = computed(() => ({
 }
 .ins-chart-clickable:hover {
   border-color: var(--primary);
-  box-shadow: 0 4px 20px rgba(1, 118, 211, 0.08);
+  box-shadow: 0 4px 20px rgba(127, 86, 217, 0.08);
 }
 
 .chart-click-hint {
@@ -1847,10 +1847,10 @@ const chartOptions = computed(() => ({
   align-items: center;
   gap: 4px;
   padding: 5px 10px;
-  border: 1px solid rgba(239, 83, 80, 0.3);
+  border: 1px solid rgba(194, 57, 52, 0.3);
   border-radius: 8px;
-  background: rgba(239, 83, 80, 0.06);
-  color: #ef5350;
+  background: rgba(194, 57, 52, 0.06);
+  color: #C23934;
   font-family: 'Heebo', sans-serif;
   font-size: 11px;
   font-weight: 600;
@@ -1859,7 +1859,7 @@ const chartOptions = computed(() => ({
 }
 
 .slice-clear:hover {
-  background: rgba(239, 83, 80, 0.12);
+  background: rgba(194, 57, 52, 0.12);
 }
 
 .slice-count {
@@ -1998,7 +1998,7 @@ const chartOptions = computed(() => ({
   align-items: center;
   gap: 10px;
   padding: 16px 20px;
-  background: #F7F8FA;
+  background: #F3F3F3;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
@@ -2042,7 +2042,7 @@ const chartOptions = computed(() => ({
 }
 .chip-found { background: var(--green-light); color: var(--accent-emerald); }
 .chip-missing { background: rgba(232,114,10,0.08); color: #E8720A; }
-.chip-company { background: rgba(1,118,211,0.08); color: #0176D3; }
+.chip-company { background: rgba(127,86,217,0.08); color: #7F56D9; }
 .chip-product { background: rgba(127,86,217,0.08); color: #7F56D9; }
 
 /* Modal sections */
@@ -2146,8 +2146,8 @@ const chartOptions = computed(() => ({
   white-space: nowrap;
 }
 .st-active { background: var(--green-light); color: var(--accent-emerald); }
-.st-frozen { background: rgba(1,118,211,0.06); color: var(--primary); }
-.st-cancelled { background: var(--red-light, rgba(234,67,53,0.06)); color: var(--red, #EA4335); }
+.st-frozen { background: rgba(127,86,217,0.06); color: var(--primary); }
+.st-cancelled { background: var(--red-light, rgba(194,57,52,0.06)); color: var(--red, #C23934); }
 
 .modal-total {
   display: flex;
@@ -2203,7 +2203,7 @@ const chartOptions = computed(() => ({
 .action-icon-btn:hover {
   background: var(--primary-glow);
   color: var(--primary);
-  border-color: rgba(1,118,211,0.2);
+  border-color: rgba(127,86,217,0.2);
 }
 
 @media (max-width: 700px) {
@@ -2261,15 +2261,15 @@ const chartOptions = computed(() => ({
 }
 
 .status-select.cs-withdrew {
-  background-color: rgba(239, 83, 80, 0.08);
-  border-color: rgba(239, 83, 80, 0.3);
-  color: #ef5350;
+  background-color: rgba(194, 57, 52, 0.08);
+  border-color: rgba(194, 57, 52, 0.3);
+  color: #C23934;
 }
 
 .status-select.cs-custom {
-  background-color: rgba(1, 118, 211, 0.08);
-  border-color: rgba(1, 118, 211, 0.3);
-  color: #0176D3;
+  background-color: rgba(127, 86, 217, 0.08);
+  border-color: rgba(127, 86, 217, 0.3);
+  color: #7F56D9;
 }
 
 .status-custom-input {

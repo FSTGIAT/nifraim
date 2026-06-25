@@ -2,6 +2,9 @@
   <section class="dock-section">
     <div v-if="store.error" class="dock-error">{{ store.error }}</div>
 
+    <!-- One-click run-all + batch progress + results-ready affordance. -->
+    <PortalRunAllBar @view-results="$emit('batch-done')" />
+
     <Motion
       v-if="dockKinds.length"
       as="div"
@@ -59,8 +62,9 @@ import PortalAutomationDockItem from './PortalAutomationDockItem.vue'
 import PortalCredentialModal from './PortalCredentialModal.vue'
 import PortalOtpModal from './PortalOtpModal.vue'
 import PhoneForwardModal from './PhoneForwardModal.vue'
+import PortalRunAllBar from './PortalRunAllBar.vue'
 
-const emit = defineEmits(['success', 'failure', 'navigate-to-credentials'])
+const emit = defineEmits(['success', 'failure', 'navigate-to-credentials', 'batch-done'])
 const store = usePortalAutomationStore()
 
 const mouseX = useMotionValue(Infinity)
@@ -151,8 +155,16 @@ const activeCompanyLabel = computed(() => {
 
 watch(() => store.activeRun?.status, (s) => {
   if (s === 'awaiting_otp') otpModalOpen.value = true
-  if (['success', 'failed', 'timeout'].includes(s)) {
+  // Close the modal as soon as the run leaves awaiting_otp — even on
+  // intermediate `downloading`/`parsing` states. Otherwise phone-forward
+  // can deliver the OTP and advance the run while the modal is still
+  // open; a manual submit then hits a 400 "Run is not awaiting OTP".
+  if (['downloading', 'parsing', 'success', 'failed', 'timeout'].includes(s)) {
     otpModalOpen.value = false
+  }
+  // During a batch the per-child run cycles through success/failed many times;
+  // the batch-level watcher owns completion, so skip the single-run emits here.
+  if (!store.activeBatchId && ['success', 'failed', 'timeout'].includes(s)) {
     if (s === 'success') emit('success', { credential: activeCredential.value, run: store.activeRun })
     else emit('failure', { credential: activeCredential.value, run: store.activeRun })
   }
@@ -194,9 +206,9 @@ onMounted(async () => {
 .dock-error {
   margin: 0 auto;
   padding: 8px 12px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.24);
-  color: #b91c1c;
+  background: rgba(234, 0, 30, 0.08);
+  border: 1px solid rgba(234, 0, 30, 0.24);
+  color: var(--red-deep);
   border-radius: 8px;
   font-size: 12.5px;
   max-width: 540px;
@@ -232,7 +244,7 @@ onMounted(async () => {
 }
 .dock-empty p { margin: 0; }
 .dock-cta {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
   color: #fff;
   border: none;
   border-radius: 9px;

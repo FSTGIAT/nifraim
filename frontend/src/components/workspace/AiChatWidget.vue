@@ -371,35 +371,35 @@ watch(
 }
 
 .source-tag.production {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: rgba(127, 86, 217, 0.1);
+  color: #7F56D9;
+  border: 1px solid rgba(127, 86, 217, 0.15);
 }
 .source-tag.production:hover {
-  background: rgba(99, 102, 241, 0.2);
-  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(127, 86, 217, 0.2);
+  border-color: rgba(127, 86, 217, 0.3);
   transform: translateY(-1px);
 }
 
 .source-tag.commission {
-  background: rgba(34, 211, 238, 0.1);
-  color: #0891b2;
-  border: 1px solid rgba(34, 211, 238, 0.15);
+  background: rgba(46, 132, 74, 0.1);
+  color: #2E844A;
+  border: 1px solid rgba(46, 132, 74, 0.15);
 }
 .source-tag.commission:hover {
-  background: rgba(34, 211, 238, 0.2);
-  border-color: rgba(34, 211, 238, 0.3);
+  background: rgba(46, 132, 74, 0.2);
+  border-color: rgba(46, 132, 74, 0.3);
   transform: translateY(-1px);
 }
 
 .source-tag.myfile {
-  background: rgba(167, 139, 250, 0.1);
-  color: #7c3aed;
-  border: 1px solid rgba(167, 139, 250, 0.15);
+  background: rgba(227, 6, 106, 0.1);
+  color: #E3066A;
+  border: 1px solid rgba(227, 6, 106, 0.15);
 }
 .source-tag.myfile:hover {
-  background: rgba(167, 139, 250, 0.2);
-  border-color: rgba(167, 139, 250, 0.3);
+  background: rgba(227, 6, 106, 0.2);
+  border-color: rgba(227, 6, 106, 0.3);
   transform: translateY(-1px);
 }
 
@@ -444,7 +444,7 @@ watch(
 }
 
 .message-avatar.assistant {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #7F56D9 0%, #E3066A 100%);
   color: #fff;
 }
 
@@ -703,7 +703,7 @@ watch(
   max-width: 100%;
 }
 .chat-doc-chip-error {
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border-color: rgba(234, 0, 30, 0.2);
 }

@@ -253,7 +253,7 @@ onMounted(() => {
 }
 .rcf-dl:hover:not(:disabled) {
   background: rgba(245, 124, 0, 0.08);
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   border-color: rgba(245, 124, 0, 0.32);
 }
 .rcf-dl:disabled { cursor: default; opacity: 0.7; }
@@ -261,7 +261,7 @@ onMounted(() => {
   width: 13px;
   height: 13px;
   border: 1.6px solid rgba(245, 124, 0, 0.25);
-  border-top-color: var(--primary-deep, #c2410c);
+  border-top-color: var(--primary-deep, #E65100);
   border-radius: 50%;
   animation: rcfSpin 0.8s linear infinite;
 }

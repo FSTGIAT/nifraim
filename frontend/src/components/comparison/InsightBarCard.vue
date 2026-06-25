@@ -54,7 +54,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['select', 'open-all'])
 
-const ORANGE_SHADES = ['#C2410C', '#DD6B20', '#ED7D2D', '#F57C00', '#FF8E26', '#FF9F40', '#FFB266', '#FFC68C']
+const ORANGE_SHADES = ['#E65100', '#DD6B20', '#ED7D2D', '#F57C00', '#FF8E26', '#FF9F40', '#FFB266', '#FFC68C']
 
 const hasData = computed(() => props.items.length > 0)
 const chartHeight = computed(() => Math.max(220, 50 + props.items.length * 38))
@@ -104,7 +104,7 @@ const chartOptions = computed(() => ({
       fontFamily: 'Heebo, sans-serif',
       fontSize: '11.5px',
       fontWeight: 700,
-      colors: ['#1f1b16'],
+      colors: ['#181818'],
     },
   },
   xaxis: {
@@ -120,7 +120,7 @@ const chartOptions = computed(() => ({
         fontFamily: 'Heebo, sans-serif',
         fontSize: '13px',
         fontWeight: 700,
-        colors: '#1f1b16',
+        colors: '#181818',
       },
     },
   },
@@ -138,9 +138,9 @@ const chartOptions = computed(() => ({
       const value = w.config.series[seriesIndex].data[dataPointIndex]
       return `
         <div style="padding:8px 10px;font-family:Heebo,sans-serif;direction:rtl">
-          <div style="font-weight:700;margin-bottom:4px;color:#1f1b16">${item.label || ''}</div>
-          <div style="font-family:ui-monospace,Menlo,monospace;color:#c2410c;font-weight:700">${shortShekel(value)}</div>
-          ${item.meta ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${item.meta}</div>` : ''}
+          <div style="font-weight:700;margin-bottom:4px;color:#181818">${item.label || ''}</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;color:#E65100;font-weight:700">${shortShekel(value)}</div>
+          ${item.meta ? `<div style="font-size:11px;color:#706E6B;margin-top:2px">${item.meta}</div>` : ''}
         </div>`
     },
   },
@@ -196,7 +196,7 @@ function onBarClick(_, __, opts) {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   background: rgba(245, 124, 0, 0.08);
   border: 1px solid rgba(245, 124, 0, 0.22);
   padding: 3px 10px;
@@ -232,7 +232,7 @@ function onBarClick(_, __, opts) {
   gap: 5px;
   background: transparent;
   border: none;
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;

@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
 
 .ai-viz-error {
   padding: 14px;
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border: 1px solid rgba(234, 0, 30, 0.2);
   border-radius: var(--radius-md);

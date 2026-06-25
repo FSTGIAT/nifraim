@@ -24,9 +24,10 @@ const HAIRLINE = '#EADFCC'
 const BRAND = '#F57C00'
 const BRAND_DEEP = '#E65100'
 
-const CAD_DAILY = '#C2410C'
-const CAD_WEEKLY = '#0E7490'
-const CAD_MONTHLY = '#4338CA'
+// Bright-bold cadence colors (match --cadence-* in App.vue / chartPalette.js)
+const CAD_DAILY = '#4E9DD0'   // sky blue
+const CAD_WEEKLY = '#F9A937'  // gold
+const CAD_MONTHLY = '#8E44AD' // purple
 
 interface ZoneSpec {
   kind: 'daily' | 'weekly' | 'monthly'
@@ -50,7 +51,7 @@ interface BrandSpec {
 
 const BRANDS: BrandSpec[] = [
   { name: 'מגדל',     color: '#1E3A8A', initial: 'מ' },
-  { name: 'הפניקס',   color: '#7C2D12', initial: 'פ' },
+  { name: 'הפניקס',   color: '#2E5BBF', initial: 'פ' },
   { name: 'הראל',     color: '#065F46', initial: 'ה' },
 ]
 

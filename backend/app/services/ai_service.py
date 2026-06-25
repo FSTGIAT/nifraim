@@ -187,20 +187,37 @@ def _record_to_dict(r):
     return {c.key: getattr(r, c.key) for c in r.__table__.columns if c.key not in ("id", "user_id", "upload_id")}
 
 
-async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple[str | None, FileUpload | None]:
-    """Get production file analytics as context string."""
-    # Find active production upload
+async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple[str | None, FileUpload | None, list]:
+    """Get production file analytics as context string.
+
+    Production is no longer a singleton: multiple companies' uploads
+    (Migdal, Menora, …) coexist as is_production=True for the same month.
+    We aggregate across all of them — mirroring the production dashboard's
+    unified /current view — and return the most-recent upload as the
+    representative anchor (for filename / period_month) plus the full list
+    of active upload IDs so downstream context builders can scope records
+    across every active file.
+    """
+    # Find all active production uploads (most recent first)
     result = await db.execute(
-        select(FileUpload).where(
+        select(FileUpload)
+        .where(
             FileUpload.user_id == user_id,
             FileUpload.is_production == True,
         )
+        .order_by(desc(FileUpload.uploaded_at))
     )
-    prod_upload = result.scalar_one_or_none()
-    if not prod_upload:
-        return None, None
+    prod_uploads = result.scalars().all()
+    if not prod_uploads:
+        return None, None, []
 
-    uid = prod_upload.id
+    prod_upload = prod_uploads[0]  # representative anchor (most recent)
+    uids = [u.id for u in prod_uploads]
+    filename_display = (
+        f"פרודוקציה מאוחדת — {len(prod_uploads)} חברות"
+        if len(prod_uploads) > 1
+        else prod_upload.filename
+    )
 
     # Totals
     totals = await db.execute(
@@ -209,7 +226,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
             func.count(func.distinct(ClientRecord.id_number)).label("unique_clients"),
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("total_premium"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("total_accumulation"),
-        ).where(ClientRecord.upload_id == uid)
+        ).where(ClientRecord.upload_id.in_(uids))
     )
     t = totals.one()
 
@@ -220,7 +237,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
             func.count().label("count"),
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.product_type.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.product_type.isnot(None))
         .group_by(ClientRecord.product_type)
         .order_by(desc(func.count()))
     )
@@ -237,7 +254,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
             func.min(ClientRecord.last_name).label("last_name"),
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("total_prem"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.total_premium), 0)))
         .limit(10)
@@ -255,7 +272,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
             func.min(ClientRecord.last_name).label("last_name"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("total_accum"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
         .limit(10)
@@ -267,7 +284,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
 
     parts = [
         "=== קובץ פרודוקציה ===",
-        f"שם קובץ: {prod_upload.filename}",
+        f"שם קובץ: {filename_display}",
         f"סה\"כ רשומות (מוצרים): {t.cnt}",
         f"לקוחות ייחודיים: {t.unique_clients}",
         f"סה\"כ פרמיה: {float(t.total_premium):,.0f}₪",
@@ -282,7 +299,7 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.receiving_company.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.receiving_company.isnot(None))
         .group_by(ClientRecord.receiving_company)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
     )
@@ -299,10 +316,10 @@ async def _get_production_context(db: AsyncSession, user_id: uuid.UUID) -> tuple
     if top_accum:
         parts.append(f"לקוחות מובילים (צבירה): {', '.join(top_accum)}")
 
-    return "\n".join(parts), prod_upload
+    return "\n".join(parts), prod_upload, uids
 
 
-async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload) -> str | None:
+async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload, prod_upload_ids: list) -> str | None:
     """Recompute comparison from latest commission uploads and format as context.
 
     Matches the dashboard logic exactly:
@@ -355,10 +372,10 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
         seen_keys.add(key)
         comm_uploads.append(u)
 
-    # Load production records
+    # Load production records (across all active production uploads)
     prod_result = await db.execute(
         select(ClientRecord).where(
-            ClientRecord.upload_id == prod_upload.id,
+            ClientRecord.upload_id.in_(prod_upload_ids),
             ClientRecord.user_id == user_id,
         )
     )
@@ -737,7 +754,7 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
 
 
 async def _get_expected_commission_context(
-    db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload
+    db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload, prod_upload_ids: list
 ) -> str | None:
     """TOTAL expected commission for the active production month (number B in
     commission_calculation_model.md): every production record × its agreement
@@ -759,7 +776,7 @@ async def _get_expected_commission_context(
     recs = (
         await db.execute(
             select(ClientRecord).where(
-                ClientRecord.upload_id == prod_upload.id,
+                ClientRecord.upload_id.in_(prod_upload_ids),
                 ClientRecord.user_id == user_id,
             )
         )
@@ -792,7 +809,7 @@ async def _get_expected_commission_context(
     return "\n".join(parts)
 
 
-async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload) -> str | None:
+async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload: FileUpload, prod_upload_ids: list) -> str | None:
     """Get My File (recruits) comparison context against production."""
     # Load recruits
     recruits_result = await db.execute(
@@ -809,10 +826,10 @@ async def _get_myfile_context(db: AsyncSession, user_id: uuid.UUID, prod_upload:
         if key not in recruits_by_id:
             recruits_by_id[key] = r
 
-    # Load production records grouped by normalized id
+    # Load production records grouped by normalized id (all active uploads)
     prod_result = await db.execute(
         select(ClientRecord).where(
-            ClientRecord.upload_id == prod_upload.id,
+            ClientRecord.upload_id.in_(prod_upload_ids),
             ClientRecord.user_id == user_id,
         )
     )
@@ -1020,7 +1037,7 @@ STOP_WORDS = {'האם', 'מה', 'כמה', 'של', 'את', 'לי', 'על', 'יש'
               'גם', 'עם', 'בין', 'כל', 'אני', 'הם', 'הן', 'אנחנו', 'אתה', 'את'}
 
 
-async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id, question: str) -> str | None:
+async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_ids: list, question: str) -> str | None:
     """Search for specific customers mentioned in the question, in both production and commission files."""
     import re
 
@@ -1035,7 +1052,7 @@ async def _search_customers(db: AsyncSession, user_id: uuid.UUID, prod_upload_id
         return None
 
     # Get all upload IDs to search (production + commission)
-    upload_ids_to_search = [(prod_upload_id, "פרודוקציה")]
+    upload_ids_to_search = [(pid, "פרודוקציה") for pid in prod_upload_ids]
 
     comm_uploads_result = await db.execute(
         select(FileUpload)
@@ -1668,7 +1685,7 @@ async def _get_commission_periods_context(db: AsyncSession, user_id: uuid.UUID) 
 
 
 async def build_user_context(db: AsyncSession, user_id, question: str = "") -> str | None:
-    prod_context, prod_upload = await _get_production_context(db, user_id)
+    prod_context, prod_upload, prod_upload_ids = await _get_production_context(db, user_id)
 
     # Even without a production file we still want the AI to be helpful when
     # the user has only uploaded reference documents (commission agreements).
@@ -1703,23 +1720,23 @@ async def build_user_context(db: AsyncSession, user_id, question: str = "") -> s
         # "כמה העמלה הצפויה החודש". Distinct from the unpaid gap in the
         # comparison block; emitted first so the AI reaches for the right number.
         if topics & {"comparison", "rates", "history"}:
-            expected_context = await _get_expected_commission_context(db, user_id, prod_upload)
+            expected_context = await _get_expected_commission_context(db, user_id, prod_upload, prod_upload_ids)
             if expected_context:
                 context_parts.append(expected_context)
 
         if "comparison" in topics:
-            comp_context = await _get_comparison_context(db, user_id, prod_upload)
+            comp_context = await _get_comparison_context(db, user_id, prod_upload, prod_upload_ids)
             if comp_context:
                 context_parts.append(comp_context)
 
         if "myfile" in topics:
-            myfile_context = await _get_myfile_context(db, user_id, prod_upload)
+            myfile_context = await _get_myfile_context(db, user_id, prod_upload, prod_upload_ids)
             if myfile_context:
                 context_parts.append(myfile_context)
 
         # Search for specific customers if question contains names/IDs
         if question and "search" in topics:
-            search_context = await _search_customers(db, user_id, prod_upload.id, question)
+            search_context = await _search_customers(db, user_id, prod_upload_ids, question)
             if search_context:
                 context_parts.append(search_context)
 

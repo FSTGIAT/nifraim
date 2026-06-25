@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.work.*
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -50,6 +51,7 @@ class MainActivity : AppCompatActivity() {
         saveBtn.setOnClickListener {
             Prefs.setWebhookUrl(this, urlEdit.text.toString().trim())
             Toast.makeText(this, "נשמר", Toast.LENGTH_SHORT).show()
+            refreshTemplates()
             updateStatus()
         }
 
@@ -81,7 +83,49 @@ class MainActivity : AppCompatActivity() {
         }
 
         checkAndRequestPermissions()
+        refreshTemplates()
+        schedulePeriodicTemplateRefresh()
         updateStatus()
+
+        // If the agent installed via their personalized Play link, the webhook URL
+        // arrives in the install referrer — fill it in automatically (first launch
+        // only, never clobbering a manually-pasted URL).
+        InstallReferrerHelper.maybeConfigureFromReferrer(this) {
+            runOnUiThread {
+                urlEdit.setText(Prefs.getWebhookUrl(this))
+                refreshTemplates()
+                updateStatus()
+                Toast.makeText(this, "כתובת ה-Webhook הוגדרה אוטומטית", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Fetch the latest company SMS templates now (off the main thread).
+     *  NOT expedited: on API <= 30 WorkManager runs expedited work as a
+     *  foreground service and calls getForegroundInfo(), which CoroutineWorker
+     *  throws on unless overridden — that crashed the app on launch. A normal
+     *  one-time request fetches within seconds, which is plenty. */
+    private fun refreshTemplates() {
+        val request = OneTimeWorkRequestBuilder<TemplateFetchWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            )
+            .build()
+        WorkManager.getInstance(this).enqueue(request)
+    }
+
+    /** Keep templates current on background-only phones (daily). */
+    private fun schedulePeriodicTemplateRefresh() {
+        val request = PeriodicWorkRequestBuilder<TemplateFetchWorker>(24, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            )
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "template-refresh",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
     }
 
     override fun onResume() {

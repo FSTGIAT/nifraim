@@ -33,8 +33,15 @@ class PortalRun(Base):
     downloaded_filename: Mapped[str | None] = mapped_column(String(255))
     upload_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("file_uploads.id"))
 
+    # Set when this run is part of a "run all portals" batch. SET NULL so a
+    # purged batch doesn't take its child runs' history with it.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("portal_run_batches.id", ondelete="SET NULL"), nullable=True
+    )
+
     __table_args__ = (
         Index("ix_portal_runs_user_started", "user_id", "started_at"),
         Index("ix_portal_runs_status", "status"),
         Index("ix_portal_runs_credential", "credential_id", "started_at"),
+        Index("ix_portal_runs_batch", "batch_id", "started_at"),
     )

@@ -1,0 +1,43 @@
+// ===================================================================
+// Phoenix נפרעים export  —  PowerTerm PSL macro
+// (PowerTerm WebConnect 5.8 — syntax verified against the bundled WebHelp)
+// ===================================================================
+// Runs INSIDE PowerTerm, so keystrokes go straight to the host — none of
+// the Windows focus / scancode / Hebrew-mode problems that block external
+// automation.
+//
+// From the host MAIN MENU it:
+//   1. picks option 13  (הורדת קבצים ל-PC  → export form)
+//   2. Enter  (accept the pre-filled form / selected row)
+//   3. כ      (download the file → C:\fnxbox\)
+//
+// ── HOW TO RUN ─────────────────────────────────────────────────────
+// In PowerTerm, find the script commands (under the menus / a Script
+// submenu): "RunScript" → pick this file. Or bind it to a key with
+// "key" so one press exports.
+//
+// ── EVEN SIMPLER / MOST RELIABLE: RECORD instead of this script ────
+// PowerTerm WebConnect has a recorder that captures your exact keys
+// (including כ in the right encoding):
+//   1. StartScriptRecording
+//   2. do the export yourself: 13 <Enter> <Enter> כ
+//   3. StopScriptRecording  →  SaveRecordedScript
+//   4. replay anytime with ActivateRecordedScript (or bind it to a key)
+// Use the recorded script if the 'כ' below comes through wrong.
+// ===================================================================
+
+wait 1 seconds
+
+// 1) main menu → option 13 → export form
+send "13<enter>"
+wait 2 seconds
+
+// 2) accept the form / selected row
+send "<enter>"
+wait 1 seconds
+
+// 3) download to PC
+send "כ"
+wait 3 seconds
+
+// Done — file lands in C:\fnxbox\ (MU_NK_HAYV_MOSHE_<period>).

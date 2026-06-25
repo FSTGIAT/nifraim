@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: #FFF8F0;
+  background: #FFF3E0;
   cursor: pointer;
   overflow: hidden;
 }

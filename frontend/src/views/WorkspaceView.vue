@@ -20,6 +20,9 @@
     <!-- Email-provider settings — opens from the menu's Settings item. -->
     <EmailSettingsModal v-model:open="emailSettingsOpen" />
 
+    <!-- Phone-forward setup — lifted here so the activation checklist can open it. -->
+    <PhoneForwardModal :open="phoneForwardOpen" @close="phoneForwardOpen = false" />
+
     <!-- Portal-automation run progress — floats above everything while
          a run is in flight or just finished. Auto-dismisses on success
          after 5s; user can dismiss failures manually. -->
@@ -98,6 +101,11 @@
         </div>
 
         <div class="home-content">
+          <ActivationChecklist
+            @open-phone-forward="phoneForwardOpen = true"
+            @open-add-portal="onActivationAddPortal"
+            @run-automation="onCardSelect('portal-automation')"
+          />
           <WorkspaceTabs
             v-model="activeTab"
             :view-mode="viewMode"
@@ -135,7 +143,7 @@
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
-              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" />
+              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="activeTab = 'comparison'" />
             </Transition>
           </div>
         </main>
@@ -213,7 +221,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide, shallowRef } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
@@ -226,6 +234,9 @@ import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionMod
 import YieldRecommendationsModal from '../components/workspace/YieldRecommendationsModal.vue'
 import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
+import PhoneForwardModal from '../components/workspace/PhoneForwardModal.vue'
+import ActivationChecklist from '../components/workspace/ActivationChecklist.vue'
+import { activationState } from '../utils/activationState.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
@@ -251,6 +262,19 @@ const comparisonStore = useComparisonStore()
 const productionStore = useProductionStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
+
+// Activation checklist → setup entry points
+const phoneForwardOpen = ref(false)
+const autoOpenAddPortal = ref(false)
+function onActivationAddPortal() {
+  autoOpenAddPortal.value = true
+  onCardSelect('portal-automation')
+}
+// Bell "המשך הגדרה" reminder → bring the user back to the home view so the
+// (home-only) activation checklist remounts and shows itself.
+watch(() => activationState.forceShow, (v) => {
+  if (v) viewMode.value = 'home'
+})
 
 // AI viz modal — opens whenever the top-level AiChatWidget surfaces viz
 // payload(s) (bar / donut / kpi / fund-track). Multi-viz: synthesis answers
@@ -773,12 +797,25 @@ async function openFundDetail(trackId) {
 }
 
 /* View switch transitions */
+/* Top-level tab switch — directional slide+fade so moving between tabs reads
+   as the content sliding in (RTL-aware: new view enters from the inline-start). */
 .view-switch-enter-active {
-  animation: fadeInUp 0.4s var(--transition);
+  animation: viewSlideIn 0.26s var(--transition);
 }
-
 .view-switch-leave-active {
-  animation: cardFadeOut 0.2s ease-out;
+  animation: viewSlideOut 0.15s ease-in;
+}
+@keyframes viewSlideIn {
+  from { opacity: 0; transform: translateX(-22px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes viewSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(14px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view-switch-enter-active,
+  .view-switch-leave-active { animation: none; }
 }
 
 /* Full-page drop overlay */
@@ -878,6 +915,11 @@ async function openFundDetail(trackId) {
     opacity: 0;
     transform: translateY(-8px);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-switch-enter-active,
+  .tab-switch-leave-active { animation: none; }
 }
 
 @media (max-width: 768px) {

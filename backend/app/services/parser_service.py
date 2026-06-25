@@ -20,6 +20,8 @@ from app.utils.hebrew_mappings import (
     CLAL_HEALTH_NIFRAIM_COLUMNS,
     MIGDAL_NIFRAIM_COLUMNS,
     AYALON_NIFRAIM_COLUMNS,
+    UNIFIED_NIFRAIM_COLUMNS,
+    UNIFIED_NIFRAIM_SIGNATURE,
     VOLUME_REPORT_COLUMNS,
     VOLUME_RATES_COLUMNS,
     AGENT_TRACKING_SIGNATURE,
@@ -71,8 +73,12 @@ _HE_MONTH_TO_INT = {
 
 import re as _re_month_helper  # avoid shadowing module-level imports elsewhere
 # With year: "אפריל 26" / "מרץ 2026"
+# Year must be a 4-digit 20xx OR a STANDALONE 2-digit token. The 2-digit
+# alternative is word-bounded (no surrounding digits) so trailing codes like
+# "אפריל 61826" / "עמלות בריאות 9345" don't get their first two digits
+# mis-read as a year ("61"→2061, "93"→2093).
 _RE_MONTH_YEAR = _re_month_helper.compile(
-    r"(?P<month>" + "|".join(_HE_MONTH_TO_INT.keys()) + r")[\s'`׳]*(?P<year>20\d{2}|\d{2})"
+    r"(?P<month>" + "|".join(_HE_MONTH_TO_INT.keys()) + r")[\s'`׳]*(?P<year>20\d{2}|(?<!\d)\d{2}(?!\d))"
 )
 # Month-only (no year): "אפריל.xlsx" — caller infers year from uploaded_at
 # (production file labelled April uploaded in May → year = 2026).
@@ -110,13 +116,25 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
         m = _RE_MONTH_YEAR.search(filename)
         if m:
             month = _HE_MONTH_TO_INT[m.group("month")]
-            year = int(m.group("year"))
+            yr_raw = m.group("year")
+            year = int(yr_raw)
             if year < 100:
                 year += 2000
             try:
-                return _date(year, month, 1)
+                cand = _date(year, month, 1)
             except ValueError:
-                pass
+                cand = None
+            if cand is not None:
+                # A 2-digit "year" that lands well before the upload is almost
+                # certainly a code (policy/agency number like "אפריל 24"), not a
+                # year — fall through to month-only inference from uploaded_at.
+                too_old = (
+                    len(yr_raw) == 2
+                    and uploaded_at and hasattr(uploaded_at, "year")
+                    and cand < _date(uploaded_at.year - 1, uploaded_at.month, 1)
+                )
+                if not too_old:
+                    return cand
         m = _RE_NUM_MONTH.search(filename)
         if m:
             month = int(m.group("month"))
@@ -174,7 +192,18 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
         if proc_dates:
             return max(proc_dates)
     if uploaded_at and hasattr(uploaded_at, "year"):
-        return _date(uploaded_at.year, uploaded_at.month, 1)
+        # Last-resort fallback (no month/year in filename, no data dates).
+        # Commission files arrive ~30 days late, so a file uploaded in May with
+        # no other signal almost always describes April — shift back one month.
+        # Production is the agent's own current data, so it keeps the upload
+        # month. (There is no "current month" commission yet, by definition.)
+        y, mo = uploaded_at.year, uploaded_at.month
+        if _filename_looks_like_commission(filename):
+            if mo == 1:
+                y, mo = y - 1, 12
+            else:
+                mo -= 1
+        return _date(y, mo, 1)
     return None
 
 
@@ -204,6 +233,10 @@ def detect_format(columns: list[str], filename: str | None = None) -> str:
     # Check more specific formats first
     if col_set & VOLUME_REPORT_SIGNATURE:
         return "volume_report"
+    # Unified נפרעים (merged multi-company file from "run all portals"). Its
+    # "קטגוריה" header is unique, so detect it before any other commission sig.
+    if UNIFIED_NIFRAIM_SIGNATURE <= col_set:
+        return "unified_nifraim"
     # PRODUCTION: require ALL three sig columns AND filename doesn't veto.
     if PRODUCTION_FILE_SIGNATURE <= col_set and not forbid_production:
         return "production"
@@ -247,6 +280,7 @@ _COMMISSION_FORMATS = {
     "clal_life_nifraim", "clal_health_nifraim",
     "ayalon_nifraim", "migdal_nifraim",
     "phoenix_insurance_nifraim", "company_report",
+    "unified_nifraim",
 }
 _RECRUIT_FORMATS = {"agent_tracking"}
 _VOLUME_FORMATS = {"volume_report"}
@@ -574,6 +608,8 @@ def parse_excel(
         return _parse_migdal_nifraim(df)
     elif file_format == "ayalon_nifraim":
         return _parse_ayalon_nifraim(df)
+    elif file_format == "unified_nifraim":
+        return _parse_unified_nifraim(df)
     else:
         # Try to parse as generic — map whatever columns we can
         return _parse_generic(df, filename=filename)
@@ -819,6 +855,61 @@ def _parse_nifraim(df: pd.DataFrame) -> dict:
     return {
         "format": "nifraim",
         "company_source": "מור",
+        "records": records,
+    }
+
+
+def _parse_unified_nifraim(df: pd.DataFrame) -> dict:
+    """Parse the unified נפרעים file produced by the "run all portals" batch
+    aggregator (COLUMNS_UNIFIED_NIFRAIM).
+
+    Maps straight to the normalized commission ClientRecord fields. The
+    "קטגוריה" / "חודש" columns are display-only and intentionally NOT mapped —
+    the comparison engine re-derives category from fund_type keywords (as it
+    does for every commission format), and per-row company is preserved via
+    receiving_company so per-company pairing still works.
+    """
+    records = []
+    numeric_fields = {
+        "total_premium", "accumulation", "commission_paid",
+        "commission_before_fee", "actual_amount",
+        "annual_commission_pct", "monthly_commission_pct",
+    }
+
+    for _, row in df.iterrows():
+        record = {}
+        for heb_col, eng_field in UNIFIED_NIFRAIM_COLUMNS.items():
+            if heb_col not in df.columns:
+                continue
+            val = row.get(heb_col)
+            if eng_field in numeric_fields:
+                record[eng_field] = parse_numeric(val)
+            else:
+                record[eng_field] = (
+                    str(val).strip()
+                    if val is not None and not (isinstance(val, float) and pd.isna(val))
+                    else None
+                )
+
+        if not record.get("id_number"):
+            continue
+        id_str = str(record["id_number"])
+        if id_str.endswith(".0"):
+            id_str = id_str[:-2]
+        record["id_number"] = id_str
+
+        # Mirror to the unified-display fields the comparison engine reads.
+        record["balance"] = record.get("accumulation")
+        if not record.get("product"):
+            record["product"] = record.get("fund_type")
+        record["reconciliation_status"] = "no_data"
+        records.append(record)
+
+    # Multi-company file — no single company_source; the per-row
+    # receiving_company carries provenance for company filtering.
+    return {
+        "format": "unified_nifraim",
+        "company_source": "מאוחד",
         "records": records,
     }
 

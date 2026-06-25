@@ -317,6 +317,38 @@ CLAL_HEALTH_NIFRAIM_SIGNATURE = {"זיהוי מבוטח", "תשלום עמלה �
 MIGDAL_NIFRAIM_SIGNATURE = {"פרמיה משולמת", "ת.ז מבוטח"}
 AYALON_NIFRAIM_SIGNATURE = {"פרמיה נפרעת", "סך עמלת סוכן"}
 
+# --- Unified נפרעים (merged multi-company commission file from "run all portals") ---
+# The batch aggregator writes every downloaded commission record into ONE file
+# in this normalized schema so it ingests as a single canonical commission
+# upload. "קטגוריה" is a display/detection column only — it is NOT mapped to a
+# DB field; category is re-derived from fund_type keywords like every other
+# commission format.
+UNIFIED_NIFRAIM_COLUMNS = {
+    "מספר ת.ז": "id_number",
+    "שם פרטי": "first_name",
+    "שם משפחה": "last_name",
+    "יצרן": "receiving_company",
+    "סוג מוצר": "fund_type",
+    "מוצר": "product",
+    "מס' פוליסה/חשבון": "fund_policy_number",
+    "פרמיה": "total_premium",
+    "צבירה": "accumulation",
+    "עמלה ששולמה": "commission_paid",
+    'עמלה לפני מע"מ': "commission_before_fee",
+    "סכום בפועל": "actual_amount",
+    "שיעור עמלה שנתי": "annual_commission_pct",
+    "שיעור עמלה חודשי": "monthly_commission_pct",
+}
+
+# Ordered header row the aggregator writes (includes display-only קטגוריה/חודש).
+COLUMNS_UNIFIED_NIFRAIM = [
+    "מספר ת.ז", "שם פרטי", "שם משפחה", "יצרן", "קטגוריה", "סוג מוצר", "מוצר",
+    "מס' פוליסה/חשבון", "פרמיה", "צבירה", "עמלה ששולמה", 'עמלה לפני מע"מ',
+    "סכום בפועל", "שיעור עמלה שנתי", "שיעור עמלה חודשי", "חודש",
+]
+
+UNIFIED_NIFRAIM_SIGNATURE = {"קטגוריה", "עמלה ששולמה"}
+
 # Column mappings for Volume Report (דוח היקפים)
 VOLUME_REPORT_COLUMNS = {
     "מס.זהות": "id_number",

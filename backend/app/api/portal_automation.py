@@ -35,6 +35,8 @@ from app.models.agent_twilio_number import AgentTwilioNumber
 from app.models.otp_inbox import OtpInbox
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
+from app.models.portal_run_batch import PortalRunBatch
+from app.models.sms_otp_template import SmsOtpTemplate
 from app.models.user import User
 from app.schemas.portal_automation import (
     OtpInboxOut,
@@ -45,11 +47,14 @@ from app.schemas.portal_automation import (
     PortalCredentialUpdate,
     PortalRunOut,
     RunStartOut,
+    BatchStartOut,
+    PortalRunBatchOut,
     TwilioNumberOut,
 )
 from app.services import twilio_provisioning
 from app.services.portal_automation.companies import PORTAL_LABELS, REGISTRY
 from app.services.portal_automation.runner import run_automation, run_phone_change
+from app.services.portal_automation.batch_runner import run_batch
 from app.utils.crypto import encrypt
 
 logger = logging.getLogger(__name__)
@@ -108,7 +113,7 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 # Portal kinds (public catalog for the UI dropdown)
 # ──────────────────────────────────────────────────────────────────────────
 
-IMPLEMENTED_PORTALS = {"phoenix", "migdal"}
+IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "menora", "menora_nifraim", "clal", "clal_nifraim"}
 
 
 @router.get("/portal-kinds")
@@ -321,6 +326,128 @@ async def trigger_run(
     return RunStartOut(run_id=str(run.id))
 
 
+ACTIVE_BATCH_STATUSES = {"pending", "running"}
+
+
+@router.post("/batches/run", response_model=BatchStartOut)
+async def run_all_portals(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Start a "run all portals" batch: every active credential runs
+    sequentially, then the downloads are aggregated into one merged production
+    file + one merged נפרעים file and the comparison runs automatically."""
+    # Reject if a batch or any single run is already active for this user.
+    active_batch = await db.execute(
+        select(PortalRunBatch).where(
+            PortalRunBatch.user_id == user.id,
+            PortalRunBatch.status.in_(ACTIVE_BATCH_STATUSES),
+        )
+    )
+    if active_batch.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="הורדה אוטומטית כבר פעילה")
+
+    active_run = await db.execute(
+        select(PortalRun).where(
+            PortalRun.user_id == user.id,
+            PortalRun.status.in_(ACTIVE_RUN_STATUSES),
+        )
+    )
+    if active_run.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="קיימת הרצה פעילה — המתן לסיומה")
+
+    active_creds = await db.execute(
+        select(func.count(PortalCredential.id)).where(
+            PortalCredential.user_id == user.id,
+            PortalCredential.is_active.is_(True),
+        )
+    )
+    if (active_creds.scalar() or 0) == 0:
+        raise HTTPException(status_code=400, detail="אין חיבורי פורטל פעילים")
+
+    batch = PortalRunBatch(
+        user_id=user.id,
+        status="pending",
+        started_at=datetime.utcnow(),
+    )
+    db.add(batch)
+    await db.commit()
+    await db.refresh(batch)
+
+    asyncio.create_task(run_batch(batch.id))
+    return BatchStartOut(batch_id=str(batch.id))
+
+
+def _batch_to_out(batch: PortalRunBatch, runs: list[PortalRun]) -> PortalRunBatchOut:
+    return PortalRunBatchOut(
+        id=str(batch.id),
+        status=batch.status,
+        total=batch.total,
+        succeeded=batch.succeeded,
+        failed=batch.failed,
+        current_run_id=str(batch.current_run_id) if batch.current_run_id else None,
+        started_at=batch.started_at,
+        finished_at=batch.finished_at,
+        merged_upload_id=str(batch.merged_upload_id) if batch.merged_upload_id else None,
+        merged_commission_upload_id=(
+            str(batch.merged_commission_upload_id) if batch.merged_commission_upload_id else None
+        ),
+        period_month=batch.period_month,
+        error_message=batch.error_message,
+        runs=[_run_to_out(r) for r in runs],
+    )
+
+
+@router.get("/batches/latest", response_model=PortalRunBatchOut | None)
+async def get_latest_batch(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The user's most recent "run all portals" batch, or null if they've never
+    run one. Drives the new-user activation checklist (step 4 = first successful
+    run). Declared before /batches/{batch_id} so "latest" isn't read as an id."""
+    result = await db.execute(
+        select(PortalRunBatch)
+        .where(PortalRunBatch.user_id == user.id)
+        .order_by(PortalRunBatch.started_at.desc())
+        .limit(1)
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        return None
+
+    runs_q = await db.execute(
+        select(PortalRun)
+        .where(PortalRun.batch_id == batch.id)
+        .order_by(PortalRun.started_at.asc())
+    )
+    return _batch_to_out(batch, list(runs_q.scalars().all()))
+
+
+@router.get("/batches/{batch_id}", response_model=PortalRunBatchOut)
+async def get_batch(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(PortalRunBatch).where(
+            PortalRunBatch.id == uuid.UUID(batch_id),
+            PortalRunBatch.user_id == user.id,
+        )
+    )
+    batch = result.scalar_one_or_none()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    runs_q = await db.execute(
+        select(PortalRun)
+        .where(PortalRun.batch_id == batch.id)
+        .order_by(PortalRun.started_at.asc())
+    )
+    return _batch_to_out(batch, list(runs_q.scalars().all()))
+
+
 @router.get("/runs/{run_id}", response_model=PortalRunOut)
 async def get_run(
     run_id: str,
@@ -449,6 +576,8 @@ async def list_recent_otps(
             received_at=r.received_at,
             consumed_at=r.consumed_at,
             portal_run_id=str(r.portal_run_id) if r.portal_run_id else None,
+            portal_kind=r.portal_kind,
+            matched_company=r.matched_company,
         )
         for r in result.scalars().all()
     ]
@@ -589,12 +718,18 @@ async def twilio_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if cred:
             user_id = cred.user_id
 
+    # Tag the company so the runner can route this code to the right portal.
+    from app.services.otp_routing import match_otp_company
+    portal_kind, matched_company = await match_otp_company(db, body, from_)
+
     db.add(OtpInbox(
         user_id=user_id,
         from_number=from_[:20],
         to_number=to[:20],
         body=body,
         otp_code=otp_code,
+        portal_kind=portal_kind,
+        matched_company=matched_company,
     ))
     await db.commit()
 
@@ -641,6 +776,61 @@ async def get_my_phone_forward(
     }
 
 
+@router.get("/phone-forward/{token}/next-otp")
+async def next_otp_for_external_driver(
+    token: str,
+    company: str | None = None,
+    after: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Token-authed: return + CONSUME the newest unconsumed OTP for the token's
+    user, optionally company-filtered. Lets an EXTERNAL process (the Windows
+    Phoenix-terminal browser driver) get a HANDS-FREE OTP from `otp_inbox` — the
+    same phone-forward chain the runner uses — instead of an operator typing it.
+    `company` is a base portal_kind (e.g. `phoenix`) → matches that-company OR
+    untagged codes, preferring the exact tag. `after` is an ISO timestamp to scope
+    to codes received since the login submit. Returns {"otp": code|null}."""
+    from sqlalchemy import or_, case as _case
+
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == token).limit(1)
+    )).scalar_one_or_none()
+    if not user:
+        return {"otp": None}
+
+    since = None
+    if after:
+        try:
+            since = datetime.fromisoformat(after)
+        except Exception:
+            since = None
+    base = (company or "").split("_")[0] or None
+
+    stmt = select(OtpInbox).where(
+        OtpInbox.user_id == user.id,
+        OtpInbox.consumed_at.is_(None),
+        OtpInbox.otp_code.is_not(None),
+    )
+    if since is not None:
+        stmt = stmt.where(OtpInbox.received_at >= since)
+    if base:
+        stmt = stmt.where(
+            or_(OtpInbox.portal_kind == base, OtpInbox.portal_kind.is_(None))
+        ).order_by(
+            _case((OtpInbox.portal_kind == base, 1), else_=0).desc(),
+            OtpInbox.received_at.desc(),
+        )
+    else:
+        stmt = stmt.order_by(OtpInbox.received_at.desc())
+
+    row = (await db.execute(stmt.limit(1))).scalar_one_or_none()
+    if not row:
+        return {"otp": None}
+    row.consumed_at = datetime.utcnow()
+    await db.commit()
+    return {"otp": row.otp_code, "company": row.matched_company}
+
+
 @router.post("/phone-forward/token/regenerate")
 async def regenerate_phone_forward_token(
     request: Request,
@@ -668,15 +858,49 @@ async def test_phone_forward(
     otp_match = OTP_REGEX.search(body)
     otp_code = otp_match.group(1) if otp_match else None
 
+    from app.services.otp_routing import match_otp_company
+    portal_kind, matched_company = await match_otp_company(db, body)
+
     db.add(OtpInbox(
         user_id=user.id,
         from_number="phone-forward-test",
         to_number="test",
         body=body[:500],
         otp_code=otp_code,
+        portal_kind=portal_kind,
+        matched_company=matched_company,
     ))
     await db.commit()
-    return {"extracted_otp": otp_code}
+    return {"extracted_otp": otp_code, "portal_kind": portal_kind, "company": matched_company}
+
+
+@router.get("/phone-forward/{token}/templates")
+async def phone_forward_templates(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """SMS-OTP templates for the Android forwarder. PUBLIC — token-authenticated
+    the same way as the webhook (the app already holds this token in its webhook
+    URL). Returns the GLOBAL active templates so the app knows which SMS to pass.
+
+    Unknown tokens get an empty list + 200 (don't leak token validity).
+    """
+    user_result = await db.execute(
+        select(User).where(User.phone_forward_token == token).limit(1)
+    )
+    if user_result.scalar_one_or_none() is None:
+        return {"templates": []}
+
+    result = await db.execute(
+        select(SmsOtpTemplate)
+        .where(SmsOtpTemplate.active.is_(True))
+        .order_by(SmsOtpTemplate.is_block, SmsOtpTemplate.company_name)
+    )
+    templates = [
+        {"company_name": t.company_name, "pattern": t.pattern, "is_block": t.is_block}
+        for t in result.scalars().all()
+    ]
+    return {"templates": templates}
 
 
 @router.post("/phone-forward/{token}")
@@ -769,12 +993,20 @@ async def phone_forward_webhook(
     otp_match = OTP_REGEX.search(body_text)
     otp_code = otp_match.group(1) if otp_match else None
 
+    # Tag the company from the SMS body (the forwarder strips the sender) so the
+    # runner can route this code to the right portal. iPhone-proof: depends only
+    # on the body text, not on any app-supplied metadata.
+    from app.services.otp_routing import match_otp_company
+    portal_kind, matched_company = await match_otp_company(db, body_text)
+
     db.add(OtpInbox(
         user_id=user.id,
         from_number="phone-forward",
         to_number=(user.phone or "personal")[:20],
         body=body_text[:500],
         otp_code=otp_code,
+        portal_kind=portal_kind,
+        matched_company=matched_company,
     ))
     await db.commit()
-    return {"status": "ok", "extracted": bool(otp_code)}
+    return {"status": "ok", "extracted": bool(otp_code), "company": matched_company}

@@ -118,15 +118,15 @@ watch(
   flex-shrink: 0;
 }
 .stage--done {
-  background: rgba(16, 185, 129, 0.10);
-  border-color: rgba(16, 185, 129, 0.28);
-  color: #047857;
+  background: rgba(46, 132, 74, 0.10);
+  border-color: rgba(46, 132, 74, 0.28);
+  color: #1B5E20;
 }
-.stage--done .stage-dot { background: #047857; color: #fff; }
+.stage--done .stage-dot { background: #1B5E20; color: #fff; }
 .stage--active {
   background: rgba(245, 124, 0, 0.10);
   border-color: rgba(245, 124, 0, 0.30);
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
 }
 .stage--active .stage-dot { background: transparent; }
 .stage-pulse {
@@ -151,6 +151,6 @@ watch(
   font-size: 12px;
   font-weight: 600;
 }
-.banner--ok  { background: rgba(16, 185, 129, 0.10); color: #047857; border: 1px solid rgba(16, 185, 129, 0.24); }
-.banner--err { background: rgba(239, 68, 68, 0.08);  color: #b91c1c; border: 1px solid rgba(239, 68, 68, 0.24); }
+.banner--ok  { background: rgba(46, 132, 74, 0.10); color: #1B5E20; border: 1px solid rgba(46, 132, 74, 0.24); }
+.banner--err { background: rgba(194, 57, 52, 0.08);  color: #C23934; border: 1px solid rgba(194, 57, 52, 0.24); }
 </style>

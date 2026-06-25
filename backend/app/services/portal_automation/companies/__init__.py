@@ -6,41 +6,71 @@ To add a new portal, create a module under this directory with a subclass of
 
 from app.services.portal_automation.base import BasePortalAutomation
 from app.services.portal_automation.companies.phoenix import PhoenixPortal
+from app.services.portal_automation.companies.phoenix_nifraim import PhoenixNifraimPortal
+from app.services.portal_automation.companies.phoenix_nifraim_gemel import PhoenixNifraimGemelPortal
+from app.services.portal_automation.companies.phoenix_sfe import PhoenixSfePortal
 from app.services.portal_automation.companies.migdal import MigdalPortal
+from app.services.portal_automation.companies.migdal_apm import MigdalApmPortal
 from app.services.portal_automation.companies.clal import ClalPortal
+from app.services.portal_automation.companies.clal_nifraim import ClalNifraimPortal
 from app.services.portal_automation.companies.menora import MenoraPortal
+from app.services.portal_automation.companies.menora_nifraim import MenoraNifraimPortal
 from app.services.portal_automation.companies.altshuler import AltshulerPortal
 from app.services.portal_automation.companies.hachshara import HachsharaPortal
 from app.services.portal_automation.companies.excellence import ExcellencePortal
 from app.services.portal_automation.companies.mor import MorPortal
 from app.services.portal_automation.companies.ayalon import AyalonPortal
 from app.services.portal_automation.companies.clal_health import ClalHealthPortal
+from app.services.portal_automation.companies.harel import HarelPortal
+from app.services.portal_automation.companies.harel_commissions import HarelCommissionsPortal
+from app.services.portal_automation.companies.harel_savings import HarelSavingsPortal
 
 
 REGISTRY: dict[str, type[BasePortalAutomation]] = {
     "phoenix": PhoenixPortal,
+    "phoenix_nifraim": PhoenixNifraimPortal,
+    "phoenix_nifraim_gemel": PhoenixNifraimGemelPortal,
+    "phoenix_sfe": PhoenixSfePortal,
     "migdal": MigdalPortal,
+    "migdal_apm": MigdalApmPortal,
     "clal": ClalPortal,
+    "clal_nifraim": ClalNifraimPortal,
     "menora": MenoraPortal,
+    "menora_nifraim": MenoraNifraimPortal,
     "altshuler": AltshulerPortal,
     "hachshara": HachsharaPortal,
     "excellence": ExcellencePortal,
     "mor": MorPortal,
     "ayalon": AyalonPortal,
     "clal_health": ClalHealthPortal,
+    "harel": HarelPortal,
+    "harel_commissions": HarelCommissionsPortal,
+    "harel_savings": HarelSavingsPortal,
 }
 
 
 # UI display labels (Hebrew). Frontend can fetch this list to populate dropdowns.
+# Note: `migdal` and `migdal_apm` are two distinct portals with separate
+# credentials — Safes (the file vault, mostly ייצור) vs. אזור סוכנים (where
+# the נפרעים report lives). Labels disambiguate so the dropdown isn't ambiguous.
 PORTAL_LABELS: dict[str, str] = {
     "phoenix": "הפניקס",
-    "migdal": "מגדל",
-    "clal": "כלל חיים",
+    "phoenix_nifraim": "הפניקס — נפרעים חא\"ט ובריאות (פרודוקציה)",
+    "phoenix_nifraim_gemel": "הפניקס — נפרעים גמל (פרודוקציה)",
+    "phoenix_sfe": "הפניקס — כספת (SFE)",
+    "migdal": "מגדל — כספת (ייצור)",
+    "migdal_apm": "מגדל — אזור סוכנים (עמלות)",
+    "clal": "כלל — פיילינק (פרודוקציה)",
+    "clal_nifraim": "כלל — עמלות (נפרעים)",
     "menora": "מנורה",
+    "menora_nifraim": "מנורה — נפרעים",
     "altshuler": "אלטשולר",
     "hachshara": "הכשרה",
     "excellence": "אקסלנס",
     "mor": "מור",
     "ayalon": "איילון",
     "clal_health": "כלל בריאות",
+    "harel": "הראל",
+    "harel_commissions": "הראל — ריכוז תשלומי עמלות",
+    "harel_savings": "הראל — מוצרי צבירה (פרודוקציה)",
 }

@@ -33,3 +33,10 @@ Thumbs.db
 
 # Runtime data (portal automation screenshots, uploads, etc.)
 data/
+
+# Live-test scripts holding real insurer credentials (never commit)
+backend/livetest_harel_savings.py
+
+# Maslaka local-mock SFTP runtime vault (generated)
+maslaka_vault/
+backend/maslaka_vault/

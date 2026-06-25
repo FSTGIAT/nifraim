@@ -167,6 +167,82 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     }
   }
 
+  // ── "Run all portals" batch ────────────────────────────────────────────
+  const activeBatchId = ref(null)
+  const activeBatch = ref(null)          // PortalRunBatchOut (status, runs[], ...)
+  const batchJustFinished = ref(null)    // set to the finished batch for one tick
+  const latestBatch = ref(null)          // most recent batch (any status) or null — drives activation checklist step 4
+  let batchPollHandle = null
+  const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
+
+  function _stopBatchPolling() {
+    if (batchPollHandle) {
+      clearInterval(batchPollHandle)
+      batchPollHandle = null
+    }
+  }
+
+  async function fetchLatestBatch() {
+    try {
+      const res = await api.get('/portal-automation/batches/latest')
+      latestBatch.value = res.data || null
+    } catch {
+      latestBatch.value = null
+    }
+    return latestBatch.value
+  }
+
+  async function fetchBatch(batchId) {
+    const res = await api.get(`/portal-automation/batches/${batchId}`)
+    activeBatch.value = res.data
+    // Mirror the currently-running child into activeRun so PortalOtpModal
+    // (bound to activeRun) targets the right run during a sequential batch.
+    const cur = res.data.current_run_id
+    if (cur) {
+      const child = (res.data.runs || []).find((r) => r.id === cur)
+      if (child) {
+        activeRun.value = child
+        activeRunId.value = child.id
+      }
+    }
+    return res.data
+  }
+
+  function _startBatchPolling(batchId) {
+    _stopBatchPolling()
+    let polls = 0
+    const maxPolls = 1200 // generous — a full batch can take many minutes
+    batchPollHandle = setInterval(async () => {
+      polls += 1
+      try {
+        const data = await fetchBatch(batchId)
+        if (BATCH_TERMINAL.has(data.status) || polls >= maxPolls) {
+          _stopBatchPolling()
+          activeRun.value = null
+          activeRunId.value = null
+          await fetchCredentials()
+          batchJustFinished.value = data
+        }
+      } catch (e) {
+        _stopBatchPolling()
+      }
+    }, 1500)
+  }
+
+  async function runAllPortals() {
+    error.value = null
+    try {
+      const res = await api.post('/portal-automation/batches/run')
+      activeBatchId.value = res.data.batch_id
+      activeBatch.value = { id: res.data.batch_id, status: 'pending', runs: [] }
+      _startBatchPolling(res.data.batch_id)
+      return res.data.batch_id
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בהפעלת הורדה אוטומטית'
+      throw e
+    }
+  }
+
   async function submitOtp(runId, otp) {
     await api.post(`/portal-automation/runs/${runId}/submit-otp`, { otp })
   }
@@ -259,8 +335,11 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
 
   function reset() {
     _stopPolling()
+    _stopBatchPolling()
     activeRunId.value = null
     activeRun.value = null
+    activeBatchId.value = null
+    activeBatch.value = null
   }
 
   return {
@@ -269,6 +348,13 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     runs,
     activeRunId,
     activeRun,
+    activeBatchId,
+    activeBatch,
+    batchJustFinished,
+    latestBatch,
+    fetchLatestBatch,
+    runAllPortals,
+    fetchBatch,
     twilioNumber,
     phoneForward,
     otpInbox,

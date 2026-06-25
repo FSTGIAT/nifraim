@@ -295,17 +295,17 @@ function shade(hex, pct) {
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .prf-shell--ok {
-  border-color: rgba(16, 185, 129, 0.40);
+  border-color: rgba(46, 132, 74, 0.40);
   box-shadow:
-    0 20px 50px -8px rgba(16, 185, 129, 0.25),
-    0 0 0 4px rgba(16, 185, 129, 0.08),
+    0 20px 50px -8px rgba(46, 132, 74, 0.25),
+    0 0 0 4px rgba(46, 132, 74, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .prf-shell--err {
-  border-color: rgba(239, 68, 68, 0.40);
+  border-color: rgba(194, 57, 52, 0.40);
   box-shadow:
-    0 20px 50px -8px rgba(239, 68, 68, 0.25),
-    0 0 0 4px rgba(239, 68, 68, 0.08),
+    0 20px 50px -8px rgba(194, 57, 52, 0.25),
+    0 0 0 4px rgba(194, 57, 52, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
@@ -324,10 +324,10 @@ function shade(hex, pct) {
   transition: width 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 .prf-shell--ok .prf-topbar-fill {
-  background: linear-gradient(90deg, #047857, #10B981, #34D399);
+  background: linear-gradient(90deg, #1B5E20, #2E844A, #2E844A);
 }
 .prf-shell--err .prf-topbar-fill {
-  background: linear-gradient(90deg, #991B1B, #DC2626, #F87171);
+  background: linear-gradient(90deg, #C23934, #EA001E, #C23934);
 }
 .prf-shimmer {
   position: absolute;
@@ -490,15 +490,15 @@ function shade(hex, pct) {
   min-width: 10px;
 }
 .prf-stage-line--done {
-  background: linear-gradient(90deg, #10B981, #34D399);
+  background: linear-gradient(90deg, #2E844A, #2E844A);
 }
 
 .prf-stage--done .prf-stage-marker {
-  background: linear-gradient(135deg, #047857, #10B981);
+  background: linear-gradient(135deg, #1B5E20, #2E844A);
   color: #fff;
   transform: scale(1.05);
 }
-.prf-stage--done .prf-stage-label { color: #047857; }
+.prf-stage--done .prf-stage-label { color: #1B5E20; }
 
 .prf-stage--active .prf-stage-marker {
   background: linear-gradient(135deg, #F57C00, #FF9800);
@@ -507,7 +507,7 @@ function shade(hex, pct) {
   box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.18);
 }
 .prf-stage--active .prf-stage-label {
-  color: #c2410c;
+  color: #E65100;
   font-weight: 700;
 }
 .prf-stage-pulse {
@@ -523,10 +523,10 @@ function shade(hex, pct) {
 }
 
 .prf-stage--failed .prf-stage-marker {
-  background: linear-gradient(135deg, #991B1B, #DC2626);
+  background: linear-gradient(135deg, #C23934, #EA001E);
   color: #fff;
 }
-.prf-stage--failed .prf-stage-label { color: #b91c1c; }
+.prf-stage--failed .prf-stage-label { color: #C23934; }
 
 /* ── Reassurance + banners ── */
 .prf-reassure {
@@ -538,7 +538,7 @@ function shade(hex, pct) {
   border: 1px dashed rgba(245, 124, 0, 0.30);
   border-radius: 10px;
   font-size: 12px;
-  color: #c2410c;
+  color: #E65100;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -554,14 +554,14 @@ function shade(hex, pct) {
   font-weight: 600;
 }
 .prf-banner--ok {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(52, 211, 153, 0.06));
-  color: #047857;
-  border: 1px solid rgba(16, 185, 129, 0.24);
+  background: linear-gradient(135deg, rgba(46, 132, 74, 0.10), rgba(52, 211, 153, 0.06));
+  color: #1B5E20;
+  border: 1px solid rgba(46, 132, 74, 0.24);
 }
 .prf-banner--err {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.04));
-  color: #991b1b;
-  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: linear-gradient(135deg, rgba(194, 57, 52, 0.08), rgba(248, 113, 113, 0.04));
+  color: #C23934;
+  border: 1px solid rgba(194, 57, 52, 0.24);
   align-items: flex-start;
 }
 .prf-banner-text {

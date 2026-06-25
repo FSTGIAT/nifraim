@@ -15,6 +15,12 @@ export {
   MONTHLY_COMMISSION_FPS,
 } from './MonthlyCommission'
 export type { MonthlyCommissionProps, MonthlyCommissionMonth } from './MonthlyCommission'
+export {
+  MissingFilesComposition,
+  MISSING_FILES_DURATION_FRAMES,
+  MISSING_FILES_FPS,
+} from './MissingFiles'
+export type { MissingFilesProps, MissingFilesMonth, MissingFilesCompany } from './MissingFiles'
 export type { Viz } from './types'
 export * from './types'
 

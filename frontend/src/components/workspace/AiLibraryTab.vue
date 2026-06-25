@@ -1055,10 +1055,10 @@ function buildScaleMock() {
   place-items: center;
   flex-shrink: 0;
 }
-.lib-icon--prod   { background: rgba(99, 102, 241, 0.12); color: #4f46e5; }
+.lib-icon--prod   { background: rgba(127, 86, 217, 0.12); color: #7F56D9; }
 .lib-icon--comm   { background: rgba(245, 124, 0, 0.12); color: var(--primary-deep); }
-.lib-icon--myfile { background: rgba(167, 139, 250, 0.14); color: #7c3aed; }
-.lib-icon--rates  { background: rgba(34, 211, 238, 0.14); color: #0891b2; }
+.lib-icon--myfile { background: rgba(227, 6, 106, 0.14); color: #E3066A; }
+.lib-icon--rates  { background: rgba(46, 132, 74, 0.14); color: #2E844A; }
 
 .lib-section-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .lib-section-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
@@ -1307,8 +1307,8 @@ function buildScaleMock() {
 }
 .lib-cat-chip-label { color: var(--text-secondary); }
 .lib-cat-chip-value { font-size: 14px; font-weight: 800; color: var(--text); }
-.lib-cat-chip--financial { border-color: rgba(99, 102, 241, 0.3); }
-.lib-cat-chip--financial .lib-cat-chip-value { color: #4f46e5; }
+.lib-cat-chip--financial { border-color: rgba(127, 86, 217, 0.3); }
+.lib-cat-chip--financial .lib-cat-chip-value { color: #7F56D9; }
 .lib-cat-chip--insurance { border-color: rgba(46, 132, 74, 0.3); }
 .lib-cat-chip--insurance .lib-cat-chip-value { color: var(--accent-emerald); }
 .lib-cat-note {
@@ -1375,7 +1375,7 @@ function buildScaleMock() {
   gap: 8px;
   padding: 10px 14px;
   font-size: 12.5px;
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border: 1px solid rgba(234, 0, 30, 0.2);
   border-radius: var(--radius-md);
@@ -1386,7 +1386,7 @@ function buildScaleMock() {
   border-radius: 999px;
   background: #ffffff;
   border: 1px solid rgba(234, 0, 30, 0.35);
-  color: #8A1111;
+  color: #C23934;
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 700;
@@ -1394,7 +1394,7 @@ function buildScaleMock() {
   transition: background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
-.lib-error-retry:hover { background: #8A1111; color: #ffffff; }
+.lib-error-retry:hover { background: #C23934; color: #ffffff; }
 
 /* ===== Skeleton ===== */
 .lib-skeleton { display: flex; flex-direction: column; gap: 20px; }

@@ -590,6 +590,92 @@ async def latest_comparison(
     }
 
 
+@router.get("/company-summary")
+async def company_summary(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cross-company reconciliation overview spanning BOTH categories.
+
+    One row per company: produced / matched / unpaid / received / expected /
+    gap. Sources are the SAME ones the dashboards use — produced & received
+    come from the persisted comparison result_json; the gap (unpaid expected)
+    comes from the canonical `debts` table — so the overview can't drift from
+    the per-company drill-down.
+    """
+    from app.utils.company_norm import normalize_company
+
+    def _key(name):
+        return normalize_company(name) or (name or "")
+
+    # company → aggregates
+    agg: dict[str, dict] = {}
+
+    def _bucket(name):
+        k = _key(name)
+        if k not in agg:
+            agg[k] = {
+                "company": name or k,
+                "produced": 0, "matched": 0, "unpaid": 0,
+                "received": 0.0, "gap": 0.0,
+            }
+        return agg[k]
+
+    # produced + received from the latest comparison per category
+    for category in ("gemel_hishtalmut", "insurance"):
+        row_q = await db.execute(
+            select(CommissionComparison)
+            .where(
+                CommissionComparison.user_id == user.id,
+                CommissionComparison.category == category,
+            )
+            .order_by(desc(CommissionComparison.computed_at))
+            .limit(1)
+        )
+        row = row_q.scalar_one_or_none()
+        if not row or not row.result_json:
+            continue
+        for cust in row.result_json.get("customers", []):
+            for p in cust.get("production_products", []) or []:
+                b = _bucket(p.get("company") or p.get("company_full"))
+                b["produced"] += 1
+            for p in cust.get("commission_products", []) or []:
+                b = _bucket(p.get("company"))
+                b["received"] += float(p.get("commission") or 0)
+
+    # unpaid count + gap (expected unpaid) from the canonical debts table
+    debts_q = await db.execute(
+        select(
+            Debt.company_name,
+            func.count().label("count"),
+            func.coalesce(func.sum(Debt.expected_amount), 0).label("gap"),
+        )
+        .where(Debt.user_id == user.id, Debt.status == "open")
+        .group_by(Debt.company_name)
+    )
+    for r in debts_q.all():
+        b = _bucket(r.company_name)
+        b["unpaid"] += int(r.count or 0)
+        b["gap"] += float(r.gap or 0)
+
+    companies = []
+    totals = {"produced": 0, "matched": 0, "unpaid": 0, "received": 0.0, "expected": 0.0, "gap": 0.0}
+    for b in agg.values():
+        b["matched"] = max(b["produced"] - b["unpaid"], 0)
+        b["expected"] = round(b["received"] + b["gap"], 2)
+        b["received"] = round(b["received"], 2)
+        b["gap"] = round(b["gap"], 2)
+        companies.append(b)
+        for k in ("produced", "matched", "unpaid", "received", "expected", "gap"):
+            totals[k] += b[k]
+
+    companies.sort(key=lambda x: x["gap"], reverse=True)
+    totals["received"] = round(totals["received"], 2)
+    totals["expected"] = round(totals["expected"], 2)
+    totals["gap"] = round(totals["gap"], 2)
+    return {"companies": companies, "totals": totals}
+
+
 @router.patch("/mark-paid")
 async def mark_paid(
     data: PaymentStatusUpdate,

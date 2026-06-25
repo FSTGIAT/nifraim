@@ -27,6 +27,7 @@ from app.models.fund_track_fund import FundTrackFund
 from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.models.yield_recommendation import YieldRecommendation
+from app.utils.company_norm import normalize_company
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,25 @@ def _top_fund(track_id: str, funds_by_track: dict[str, list[FundTrackFund]]) -> 
     return sorted(funds, key=lambda f: f.rank or 999)[0]
 
 
+def _company_fund(track_id: str, company: str | None,
+                  funds_by_track: dict[str, list[FundTrackFund]]) -> FundTrackFund | None:
+    """The fund in this track that belongs to the client's CURRENT company.
+
+    Fund names embed the provider ("הפניקס מניות", "אלטשולר שחם גמל מניות"),
+    so we match the normalized company key against them. Returns None when the
+    company isn't represented in the track's fund list — the caller then falls
+    back to the track average as the baseline. Lets us measure the gap against
+    where the client's money ACTUALLY sits instead of a generic benchmark."""
+    key = normalize_company(company)
+    if not key:
+        return None
+    for f in funds_by_track.get(track_id, []):
+        fkey = normalize_company(f.fund_name)
+        if fkey and (key in fkey or fkey in key):
+            return f
+    return None
+
+
 def _confidence(category_found: bool, risk_explicit: bool, move_is_same_risk: bool) -> str:
     """High when classification was unambiguous AND move stays in same risk
     class. Medium when one signal is soft. Low when crossing risk classes."""
@@ -235,7 +255,17 @@ async def generate_recommendations(db: AsyncSession, user_id: uuid.UUID) -> int:
         if current_track is None:
             continue
 
-        cur_annual = _annualized(current_track.y3_return, current_track.y5_return, current_track.y1_return)
+        # Baseline = the client's CURRENT company's fund in this track, when we
+        # can identify it (fund names embed the provider). Falls back to the
+        # track average. This makes the "current" yield and the recommendation
+        # gap specific to where the client's money actually sits — and is why
+        # two clients in the same category but different companies now see
+        # different numbers instead of one identical recommendation.
+        cur_fund = _company_fund(current_track.id, company, funds_by_track)
+        cur_y1 = cur_fund.y1_return if cur_fund else current_track.y1_return
+        cur_y3 = cur_fund.y3_return if cur_fund else current_track.y3_return
+        cur_y5 = cur_fund.y5_return if cur_fund else current_track.y5_return
+        cur_annual = _annualized(cur_y3, cur_y5, cur_y1)
         if cur_annual is None:
             continue
 
@@ -247,6 +277,9 @@ async def generate_recommendations(db: AsyncSession, user_id: uuid.UUID) -> int:
             """Build & stage one recommendation. Returns 1 if added, 0 if it
             failed the gain threshold. Uses the blended 3Y+5Y annual return of
             the concrete destination fund (fallback: track average)."""
+            # Don't recommend the client into the very fund they're already in.
+            if dest_fund is not None and cur_fund is not None and dest_fund.id == cur_fund.id:
+                return 0
             rec_annual = None
             if dest_fund is not None:
                 rec_annual = _annualized(dest_fund.y3_return, dest_fund.y5_return, dest_fund.y1_return)
@@ -288,9 +321,9 @@ async def generate_recommendations(db: AsyncSession, user_id: uuid.UUID) -> int:
                 product_type=product_type,
                 current_company=company,
                 current_track=current_track.label_he,
-                current_yield_1y=Decimal(str(current_track.y1_return)) if current_track.y1_return is not None else None,
-                current_yield_3y=Decimal(str(current_track.y3_return)) if current_track.y3_return is not None else None,
-                current_yield_5y=Decimal(str(current_track.y5_return)) if current_track.y5_return is not None else None,
+                current_yield_1y=Decimal(str(cur_y1)) if cur_y1 is not None else None,
+                current_yield_3y=Decimal(str(cur_y3)) if cur_y3 is not None else None,
+                current_yield_5y=Decimal(str(cur_y5)) if cur_y5 is not None else None,
                 recommended_track_id=dest_track.id,
                 recommended_track_name=dest_track.label_he,
                 recommended_fund_name=rec_fund_name,

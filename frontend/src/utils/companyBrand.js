@@ -24,14 +24,20 @@ export const COMPANY_BRAND = {
   },
   phoenix: {
     label: 'הפניקס',
-    color: '#1F3D7A',
+    color: '#2E5BBF',
     // Rising phoenix — flame above wing
     iconPath: 'M12 4 8 11h8L12 4Zm0 7c2 0 4 2 4 4s-2 5-4 5-4-2-4-5 2-4 4-4Zm-7 9h14',
   },
   clal: {
     label: 'כלל',
-    color: '#003B7A',
+    color: '#1B5BC9',
     // Concentric arcs — "all/inclusive"
+    iconPath: 'M4 12a8 8 0 0 1 16 0M7 12a5 5 0 0 1 10 0M10 12a2 2 0 0 1 4 0',
+  },
+  clal_nifraim: {
+    label: 'כלל — עמלות (נפרעים)',
+    color: '#1B5BC9',
+    // Same concentric-arcs mark as `clal` (same portal, נפרעים report family)
     iconPath: 'M4 12a8 8 0 0 1 16 0M7 12a5 5 0 0 1 10 0M10 12a2 2 0 0 1 4 0',
   },
   clal_health: {
@@ -42,13 +48,19 @@ export const COMPANY_BRAND = {
   },
   menora: {
     label: 'מנורה',
-    color: '#0F4C92',
+    color: '#2E73C7',
     // 7-branch menorah
+    iconPath: 'M12 4v14M9 7v9M6 10v6M3 13v3M15 7v9M18 10v6M21 13v3M3 20h18',
+  },
+  menora_nifraim: {
+    label: 'מנורה — נפרעים',
+    color: '#2E73C7',
+    // Same menorah mark as `menora` (same portal, נפרעים report family)
     iconPath: 'M12 4v14M9 7v9M6 10v6M3 13v3M15 7v9M18 10v6M21 13v3M3 20h18',
   },
   altshuler: {
     label: 'אלטשולר',
-    color: '#2E3A4B',
+    color: '#4A5A7A',
     // Diamond + ascending bars (financial growth)
     iconPath: 'M4 20V13M9 20V9M14 20V5M19 20v-9M4 9 12 3l8 6',
   },
@@ -84,7 +96,7 @@ export const COMPANY_BRAND = {
   },
   yelin: {
     label: 'ילין לפידות',
-    color: '#1B4D3E',
+    color: '#2F7A5E',
     // Stylized "Y" mark
     iconPath: 'M12 21V12M12 12 6 4M12 12l6-8M4 21h16',
   },

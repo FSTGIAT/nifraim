@@ -94,11 +94,11 @@ const sparkOptions = computed(() => ({
   background: var(--tone-color);
 }
 
-.tone-amber   { --tone-color: #F57C00; --tone-bg: rgba(245, 124, 0, 0.08); --tone-fg: #c2410c; }
-.tone-emerald { --tone-color: #0E7C3A; --tone-bg: rgba(14, 124, 58, 0.08); --tone-fg: #0E7C3A; }
-.tone-blue    { --tone-color: #1F3D7A; --tone-bg: rgba(31, 61, 122, 0.08); --tone-fg: #1F3D7A; }
-.tone-violet  { --tone-color: #4338CA; --tone-bg: rgba(67, 56, 202, 0.08); --tone-fg: #4338CA; }
-.tone-red     { --tone-color: #b91c1c; --tone-bg: rgba(239, 68, 68, 0.08); --tone-fg: #b91c1c; }
+.tone-amber   { --tone-color: #F57C00; --tone-bg: rgba(245, 124, 0, 0.08); --tone-fg: #E65100; }
+.tone-emerald { --tone-color: #2E844A; --tone-bg: rgba(46, 132, 74, 0.08); --tone-fg: #2E844A; }
+.tone-blue    { --tone-color: #7F56D9; --tone-bg: rgba(127, 86, 217, 0.08); --tone-fg: #7F56D9; }
+.tone-violet  { --tone-color: #E3066A; --tone-bg: rgba(227, 6, 106, 0.08); --tone-fg: #E3066A; }
+.tone-red     { --tone-color: #C23934; --tone-bg: rgba(194, 57, 52, 0.08); --tone-fg: #C23934; }
 
 .kpi-head {
   display: flex;
@@ -146,8 +146,8 @@ const sparkOptions = computed(() => ({
   background: var(--bg);
   border: 1px solid var(--border-subtle);
 }
-.kpi-delta.dir-up   { color: #0E7C3A; background: rgba(14, 124, 58, 0.10); border-color: rgba(14, 124, 58, 0.24); }
-.kpi-delta.dir-down { color: #b91c1c; background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.24); }
+.kpi-delta.dir-up   { color: #2E844A; background: rgba(46, 132, 74, 0.10); border-color: rgba(46, 132, 74, 0.24); }
+.kpi-delta.dir-down { color: #C23934; background: rgba(194, 57, 52, 0.10); border-color: rgba(194, 57, 52, 0.24); }
 .kpi-delta.dir-flat { color: var(--text-muted); }
 
 .kpi-spark {

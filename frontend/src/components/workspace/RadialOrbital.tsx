@@ -13,6 +13,7 @@
 
 import * as React from 'react'
 import { useState, useEffect, useRef, type ElementType, type MouseEvent } from 'react'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 export interface OrbitalItem {
   id: number
@@ -104,7 +105,7 @@ export default function RadialOrbital({
           position: 'absolute',
           inset: `${size / 2 - orbitRadius - 4}px`,
           borderRadius: '50%',
-          border: `1px dashed ${COLORS.primaryGlow}`,
+          border: `1px dashed ${COLORS.border}`,
           pointerEvents: 'none',
         }}
       />
@@ -176,6 +177,8 @@ export default function RadialOrbital({
         const hovered = hoveredId === item.id
         const energy = item.energy ?? 60
         const haloSize = 38 + energy * 0.18  // 38..56px
+        // Each node gets a distinct bright-palette color (shared CHART_PALETTE).
+        const nodeColor = CHART_PALETTE[i % CHART_PALETTE.length]
 
         return (
           <div
@@ -206,7 +209,7 @@ export default function RadialOrbital({
                 marginLeft: -haloSize / 2,
                 marginTop: -haloSize / 2,
                 borderRadius: '50%',
-                background: `radial-gradient(circle, rgba(245, 124, 0, 0.22) 0%, rgba(245, 124, 0, 0) 70%)`,
+                background: `radial-gradient(circle, ${nodeColor}3D 0%, ${nodeColor}00 70%)`,
                 animation: hovered ? 'orb-node-pulse 1.6s ease-in-out infinite' : undefined,
                 pointerEvents: 'none',
               }}
@@ -217,13 +220,13 @@ export default function RadialOrbital({
                 width: 38,
                 height: 38,
                 borderRadius: '50%',
-                background: hovered ? COLORS.primary : COLORS.surface,
-                color: hovered ? '#FFFFFF' : COLORS.primary,
+                background: hovered ? nodeColor : COLORS.surface,
+                color: hovered ? '#FFFFFF' : nodeColor,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: `2px solid ${hovered ? COLORS.primary : COLORS.primaryGlow}`,
-                boxShadow: hovered ? COLORS.shadowLg : COLORS.shadowSm,
+                border: `2px solid ${hovered ? nodeColor : nodeColor + '55'}`,
+                boxShadow: hovered ? `0 10px 26px ${nodeColor}59, 0 4px 12px rgba(0,0,0,0.08)` : COLORS.shadowSm,
                 transition: 'background 0.18s ease, color 0.18s ease, transform 0.18s ease',
                 transform: hovered ? 'scale(1.12)' : 'scale(1)',
               }}
@@ -240,8 +243,8 @@ export default function RadialOrbital({
                 whiteSpace: 'nowrap',
                 fontSize: 11,
                 fontWeight: 600,
-                color: hovered ? COLORS.primaryDeep : COLORS.textMuted,
-                background: hovered ? 'rgba(255, 243, 224, 0.92)' : 'transparent',
+                color: hovered ? nodeColor : COLORS.textMuted,
+                background: hovered ? `${nodeColor}1A` : 'transparent',
                 padding: hovered ? '3px 8px' : 0,
                 borderRadius: 6,
                 transition: 'all 0.18s ease',

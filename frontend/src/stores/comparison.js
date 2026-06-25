@@ -150,6 +150,25 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
+  // Cross-company reconciliation overview (both categories), feeds the
+  // "סיכום לפי חברה" table at the top of the Comparison tab.
+  const companySummary = ref(null)
+  const fetchingSummary = ref(false)
+
+  async function fetchCompanySummary() {
+    fetchingSummary.value = true
+    try {
+      const res = await api.get('/comparison/company-summary')
+      companySummary.value = res.data || null
+      return companySummary.value
+    } catch (e) {
+      console.warn('fetchCompanySummary failed', e)
+      return null
+    } finally {
+      fetchingSummary.value = false
+    }
+  }
+
   function reset() {
     activeCategory.value = null
     results.gemel_hishtalmut = null
@@ -163,6 +182,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     activeCategory, results, result,
     uploading, error, filterStatus, searchQuery,
     lastComputedAt, fetchingLatest,
+    companySummary, fetchingSummary, fetchCompanySummary,
     selectCategory, clearCategory, hasResultFor, resetCategory,
     uploadAndCompare, compareExisting, compareWithProduction, autoCompare,
     fetchLatest, reset,

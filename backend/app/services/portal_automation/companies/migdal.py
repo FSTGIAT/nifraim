@@ -26,30 +26,47 @@ PORTAL_URL = "https://mfte.migdal.co.il/#/"
 
 class MigdalPortal(BasePortalAutomation):
     portal_kind = "migdal"
-    company_label = "מגדל"
+    company_label = "מגדל — כספת (ייצור)"
 
     async def login(self, page: "Page", username: str, password: str) -> None:
+        # The consolidated Migdal credential may carry TWO logins joined by `|`:
+        # `<mfte_user>|<apm_user>` / `<mfte_pw>|<apm_pw>` (the production Safes
+        # vault vs the apmaccess נפרעים portal). Use the FIRST part here for the
+        # mfte login; download_reports() uses the second for apmaccess. No `|` →
+        # the same value is used for both.
+        username = username.split("|")[0].strip()
+        password = password.split("|")[0].strip()
         # Migdal Safes System uses a 2-step email-first login (Google-style):
         # email page → Next → password page → Sign in → OTP page.
         await page.goto(PORTAL_URL, wait_until="networkidle", timeout=30000)
 
-        # Step 1: username
+        # Step 1: username. The Next button reads "הבא" (verified live
+        # 2026-06-20) and is disabled until the email field is filled; the
+        # English/המשך variants are kept only as language-fallbacks.
         await self._wait_visible(page, "input#email")
         await page.fill("input#email", username)
-        # The "Next" / "המשך" label depends on UI language; match either.
-        await page.click("button:has-text('Next'), button:has-text('המשך')")
+        await page.click(
+            "button:has-text('הבא'), button:has-text('Next'), button:has-text('המשך')"
+        )
 
-        # Step 2: password (note: input type=text + custom show/hide, not type=password)
+        # Step 2: password (input type=text + custom show/hide, not type=password).
+        # The submit button reads "התחבר" (verified live 2026-06-20).
         await self._wait_visible(page, "input#password", timeout=15000)
         await page.fill("input#password", password)
-        await page.click("button:has-text('Sign in'), button:has-text('כניסה')")
+        await page.click(
+            "button:has-text('התחבר'), button:has-text('Sign in'), button:has-text('כניסה')"
+        )
 
         # Step 3: OTP page — input#otp, "Sign in" button (verified against live portal).
         await self._wait_visible(page, "input#otp", timeout=20000)
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
         await page.fill("input#otp", otp)
-        await page.click("button:has-text('Sign in'), button:has-text('כניסה')")
+        # OTP submit reuses the password-page button label ("התחבר"); keep the
+        # other labels as fallbacks in case the OTP page differs.
+        await page.click(
+            "button:has-text('התחבר'), button:has-text('Sign in'), button:has-text('כניסה')"
+        )
         # Migdal Safes System is an SPA — `networkidle` settles before the
         # hash route flips off /tfa, so dumping/clicking here would still
         # see the OTP page DOM. Wait for the URL to actually leave /tfa.
@@ -69,9 +86,10 @@ class MigdalPortal(BasePortalAutomation):
         download_dir: Path,
         *,
         username: str | None = None,
+        password: str | None = None,
+        otp_provider=None,
     ) -> list[Path]:
-        # Migdal commission reports are typically not password-protected; leave None
-        # so msoffcrypto isn't tried unnecessarily.
+        # Migdal Safes vault contents are NOT password-protected.
         self.report_password = None
 
         # Always dump the post-OTP landing page next to the run's screenshot so
@@ -85,13 +103,13 @@ class MigdalPortal(BasePortalAutomation):
         await self._dump_page_state(page, debug_base)
 
         download_dir.mkdir(parents=True, exist_ok=True)
-        target = download_dir / "migdal_commission.xlsx"
+        # Provisional name — we sniff the real bytes after download and
+        # rename to `.zip` once we see the Mimshak ZIP magic header.
+        target = download_dir / "migdal_safes.xlsx"
 
-        # Fallback path: many SPA portals serve files via XHR (Content-Disposition
-        # never reaches Playwright's expect_download). Attach a response listener
-        # BEFORE any click so we capture the bytes regardless of how Migdal
-        # delivers them. The listener fills `xhr_capture` if it sees an Excel
-        # response; we check it after the click flow finishes.
+        # XHR capture fallback — some Kiteworks endpoints serve via XHR with
+        # `responseType: 'blob'` so the native expect_download never fires.
+        # Listener attached BEFORE any clicks. Re-checked after the flow.
         xhr_capture: dict = {"bytes": None, "url": None}
 
         async def _on_response(resp):
@@ -99,19 +117,21 @@ class MigdalPortal(BasePortalAutomation):
                 ct = (resp.headers.get("content-type") or "").lower()
                 cd = (resp.headers.get("content-disposition") or "").lower()
                 url = resp.url.lower()
-                is_excel = (
+                is_excel_or_zip = (
                     "spreadsheetml" in ct
                     or "vnd.ms-excel" in ct
-                    or "octet-stream" in ct and (".xlsx" in url or ".xls" in url or "frommigdal" in url)
+                    or "zip" in ct
+                    or "octet-stream" in ct
                     or ".xlsx" in url
+                    or ".zip" in url
                     or ".xls" in url and "/css" not in url
                     or "frommigdal" in url
                     or ".xlsx" in cd
-                    or ".xls" in cd
+                    or ".zip" in cd
                 )
-                if is_excel and xhr_capture["bytes"] is None:
+                if is_excel_or_zip and xhr_capture["bytes"] is None:
                     body = await resp.body()
-                    if body and len(body) > 1024:  # skip tiny preflight responses
+                    if body and len(body) > 1024:
                         xhr_capture["bytes"] = body
                         xhr_capture["url"] = resp.url
             except Exception:
@@ -119,219 +139,333 @@ class MigdalPortal(BasePortalAutomation):
 
         page.on("response", _on_response)
 
-        # Some accounts land on a dashboard with a nav menu instead of the file
-        # vault directly. Try to navigate to "my files / reports / downloads"
-        # first; harmless no-op if we're already on the vault page.
-        nav_candidates = [
-            "a:has-text('הקבצים שלי')",
-            "a:has-text('הקבצים')",
-            "a:has-text('קבצים')",
-            "a:has-text('הורדות')",
-            "a:has-text('דוחות')",
-            "a:has-text('Safes')",
-            "a:has-text('My Files')",
-            "button:has-text('הקבצים שלי')",
-            "[role='link']:has-text('קבצים')",
-        ]
-        await self._click_first_visible(page, nav_candidates, timeout=4000)
-
-        # The "Migdal Safes System" landing page is a file-vault — files for
-        # the agent are listed by name like `{USERNAME}_FROMMIGDAL_<index>`.
-        # Build the precise file selector when we know the username; fall back
-        # to a generic _FROMMIGDAL match otherwise.
+        # ─── Explicit Kiteworks navigation per operator's flow ────────────
+        # Per QA: post-OTP → ALL FILES → first FROMMIGDAL folder → Root → LIFE
+        # → download. Each step keys off the `font-bold` label class Kiteworks
+        # uses for both folder rows and breadcrumbs.
         user_upper = (username or "").strip().upper()
-        file_candidates: list[str] = []
-        if user_upper:
-            file_candidates.extend([
-                f"a:has-text('{user_upper}_FROMMIGDAL')",
-                f"button:has-text('{user_upper}_FROMMIGDAL')",
-                f"[role='link']:has-text('{user_upper}_FROMMIGDAL')",
-                f"tr:has-text('{user_upper}_FROMMIGDAL')",
-                f"li:has-text('{user_upper}_FROMMIGDAL')",
-                f"div[role='row']:has-text('{user_upper}_FROMMIGDAL')",
-            ])
-        file_candidates.extend([
-            "a:has-text('_FROMMIGDAL')",
-            "button:has-text('_FROMMIGDAL')",
-            "[role='link']:has-text('_FROMMIGDAL')",
-            "tr:has-text('_FROMMIGDAL')",
-            "li:has-text('_FROMMIGDAL')",
-            "a:has-text('FROMMIGDAL')",
-            # Last resort: any row mentioning Excel-like extensions
-            "tr:has-text('.xlsx')",
-            "a:has-text('.xlsx')",
-        ])
 
-        # Trigger download via expect_download wrapped around the click flow.
-        # On some accounts the file-row click already triggers the download;
-        # on others a toolbar Download button is needed. Either way the
-        # response listener above also captures XHR-served files as a fallback.
-        download_candidates = [
-            "button:has-text('Download')",
-            "button:has-text('הורד')",
-            "button:has-text('הורדה')",
-            "a:has-text('Download')",
-            "a:has-text('הורד')",
-            "[aria-label='Download']",
-            "[aria-label='הורדה']",
-            "button:has-text('יצוא')",
-            "button:has-text('יצוא לאקסל')",
-            "a:has-text('Excel')",
-            "a:has-text('XLSX')",
-            "[role='button']:has-text('Download')",
-            "[title*='Download']",
-            "[title*='הורד']",
-        ]
+        async def _checkpoint(stem: str) -> Path:
+            """Snapshot + DOM dump under <run_id>_<stem>.{png,html,txt}."""
+            p = SCREENSHOT_ROOT / f"{run_id}_{stem}.png"
+            await self._safe_screenshot(page, p)
+            await self._dump_page_state(page, p)
+            return p
 
-        clicked_file: str | None = None
-        download = None
+        async def _click_step(label: str, selectors: list[str], timeout: int = 8000) -> str | None:
+            """Click the first matching selector, wait for navigation to
+            settle, dump checkpoint, return the matched selector (or None)."""
+            sel = await self._click_first_visible(page, selectors, timeout=timeout)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=4000)
+            except Exception:
+                pass
+            await _checkpoint(f"nav_{label}")
+            return sel
+
         try:
-            async with page.expect_download(timeout=45000) as dl_info:
-                clicked_file = await self._click_first_visible(page, file_candidates, timeout=15000)
-                if not clicked_file:
-                    # No file row found — raise inside expect_download so the
-                    # context exits cleanly; we'll re-raise with detail below.
-                    raise RuntimeError("file-row-not-found")
-                # Migdal uses Kiteworks PDN where _FROMMIGDAL rows are
-                # actually folders ("1 item"). Clicking navigates into
-                # /folder/{uuid}. Capture the page state mid-flight so we
-                # know what's inside without needing a second debug run.
-                import asyncio as _asyncio
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=4000)
-                except Exception:
-                    pass
-                inner_dump = SCREENSHOT_ROOT / f"{run_id}_after_row_click.png"
-                await self._safe_screenshot(page, inner_dump)
-                await self._dump_page_state(page, inner_dump)
+            # Step 1: ensure we're at the ALL FILES root. Best-effort —
+            # post-OTP often lands here already, in which case the click is
+            # a no-op. The label is inside a `font-bold` div per the UI.
+            await _click_step("1_all_files", [
+                'text="ALL FILES"',
+                'div.font-bold:has-text("ALL FILES")',
+                '[class*="font-bold"]:has-text("ALL FILES")',
+                'a:has-text("ALL FILES")',
+                'button:has-text("ALL FILES")',
+            ], timeout=4000)
 
-                # Two-level pattern: now we should be INSIDE the folder.
-                # Try the same FROMMIGDAL pattern again (the inner file may
-                # share the prefix), plus generic Excel/file selectors.
-                inner_candidates: list[str] = []
-                if user_upper:
-                    inner_candidates.extend([
-                        f"a:has-text('{user_upper}_FROMMIGDAL')",
-                        f"tr:has-text('{user_upper}_FROMMIGDAL')",
-                    ])
-                inner_candidates.extend([
-                    "a:has-text('_FROMMIGDAL')",
-                    "tr:has-text('_FROMMIGDAL')",
-                    "a:has-text('.xlsx')",
-                    "a:has-text('.xls')",
-                    "a:has-text('.csv')",
-                    "tr:has-text('.xlsx')",
-                    "tr:has-text('.xls')",
+            # Step 2: click the first FROMMIGDAL folder row.
+            from_migdal_selectors: list[str] = []
+            if user_upper:
+                from_migdal_selectors.extend([
+                    f'text="{user_upper}_FROMMIGDAL_01"',
+                    f'div.font-bold:has-text("{user_upper}_FROMMIGDAL")',
+                    f'a:has-text("{user_upper}_FROMMIGDAL")',
+                    f'tr:has-text("{user_upper}_FROMMIGDAL")',
                 ])
-                await self._click_first_visible(page, inner_candidates, timeout=6000)
+            from_migdal_selectors.extend([
+                'div.font-bold:has-text("_FROMMIGDAL")',
+                '[class*="font-bold"]:has-text("_FROMMIGDAL")',
+                'a:has-text("_FROMMIGDAL")',
+                'tr:has-text("_FROMMIGDAL")',
+                'li:has-text("_FROMMIGDAL")',
+            ])
+            clicked_frommigdal = await _click_step(
+                "2_frommigdal", from_migdal_selectors, timeout=12000
+            )
+            if not clicked_frommigdal:
+                raise RuntimeError(
+                    f"לא נמצא תיקיית {user_upper or 'AGENT'}_FROMMIGDAL ב-{page.url}"
+                )
 
-                # Capture again after the inner click — this is where the
-                # download button (or download itself) should appear.
+            # Step 3: click "Root" subfolder.
+            clicked_root = await _click_step("3_root", [
+                'text="Root"',
+                'div.font-bold:has-text("Root")',
+                '[class*="font-bold"]:has-text("Root")',
+                'a:has-text("Root")',
+                'tr:has-text("Root")',
+            ], timeout=10000)
+            if not clicked_root:
+                raise RuntimeError(f"לא נמצאה תיקיית Root ב-{page.url}")
+
+            # Step 4: discover subfolders at Root level. Folder rows render
+            # as `<a>` tags inside Kiteworks file-list (operator-confirmed
+            # via run a0a3c225's nav_3_root_no_match.txt). Wait briefly for
+            # the SPA's async list render — earlier dumps were captured too
+            # fast and showed only the breadcrumb.
+            import asyncio as _asyncio
+            for _ in range(12):  # up to 6s waiting for content to render
+                first_pass = await page.evaluate("""
+                    () => [...document.querySelectorAll('a')]
+                        .map(a => (a.textContent || '').trim())
+                        .filter(t => t)
+                """)
+                # Look for non-breadcrumb folder candidates
+                if any(t not in {"Tracked Activity", "Root", "ALL FILES"}
+                       and "_FROMMIGDAL_" not in t.upper()
+                       and len(t) > 1
+                       for t in first_pass):
+                    break
+                await _asyncio.sleep(0.5)
+
+            EXCLUDED = {
+                "Tracked Activity",
+                "Skip to main content",
+                "ALL FILES",
+                "Root",
+                "Migdal Safes System",
+                "Sign in",
+                "English",
+                "Resend",
+            }
+            root_subfolders: list[str] = await page.evaluate(
+                """(excluded) => {
+                    const skip = new Set(excluded);
+                    const seen = new Set();
+                    const out = [];
+                    for (const a of document.querySelectorAll('a')) {
+                        const t = (a.textContent || '').trim();
+                        if (!t || skip.has(t)) continue;
+                        if (t.toUpperCase().includes('_FROMMIGDAL_')) continue;  // breadcrumb of parent
+                        if (seen.has(t)) continue;
+                        seen.add(t);
+                        out.push(t);
+                    }
+                    return out;
+                }""",
+                list(EXCLUDED),
+            )
+
+            from app.services.portal_automation.runner import logger as _logger
+
+            if not root_subfolders:
+                await _checkpoint("3_root_no_match")
+                raise RuntimeError(
+                    f"לא נמצאו תיקיות מוצר תחת Root ב-{page.url}. "
+                    f"בדוק {run_id}_nav_3_root_no_match.txt"
+                )
+
+            _logger.info(
+                "Migdal: discovered %d Root subfolders: %s",
+                len(root_subfolders), root_subfolders,
+            )
+
+            # Helpers for download flow (used per subfolder)
+            download_candidates = [
+                'button:has-text("Download")',
+                'button:has-text("הורד")',
+                'button:has-text("הורדה")',
+                'a:has-text("Download")',
+                '[aria-label="Download"]',
+                '[aria-label="הורדה"]',
+                '[title*="Download"]',
+                '[title*="הורד"]',
+                'button[aria-label*="download" i]',
+                '[role="button"]:has-text("Download")',
+            ]
+            select_all_candidates = [
+                'input[type="checkbox"][aria-label*="select all" i]',
+                'th input[type="checkbox"]',
+                'button[aria-label*="select all" i]',
+                'input[type="checkbox"][aria-label*="הכל" i]',
+            ]
+
+            async def _download_current_folder(label: str) -> Path:
+                """Download whatever the currently-open folder contains as a
+                ZIP. Saves to download_dir/migdal_<label>.zip. Falls back to
+                the XHR capture if expect_download doesn't fire."""
+                out = download_dir / f"migdal_{label}.zip"
+                nonlocal xhr_capture
+                # Reset XHR buffer between subfolders so we don't reuse the
+                # previous one's bytes for the next folder.
+                xhr_capture = {"bytes": None, "url": None}
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=4000)
+                    async with page.expect_download(timeout=45000) as dl_info:
+                        direct = await self._click_first_visible(
+                            page, download_candidates, timeout=4000
+                        )
+                        if not direct:
+                            await self._click_first_visible(
+                                page, select_all_candidates, timeout=2500
+                            )
+                            await self._click_first_visible(
+                                page, download_candidates, timeout=4000
+                            )
+                    download = await dl_info.value
+                    await download.save_as(str(out))
+                except Exception as native_err:
+                    import asyncio
+                    for _ in range(20):
+                        if xhr_capture["bytes"]:
+                            break
+                        await asyncio.sleep(0.5)
+                    if xhr_capture["bytes"]:
+                        out.write_bytes(xhr_capture["bytes"])
+                    else:
+                        raise RuntimeError(
+                            f"הורדה לא הופעלה ב-{label} ({page.url}): {native_err}"
+                        )
+                return out
+
+            # Step 5: iterate every Root subfolder. For each: click in,
+            # download, navigate back to Root for the next iteration.
+            downloaded_zips: list[Path] = []
+            for idx, folder_name in enumerate(root_subfolders, start=1):
+                clicked = await _click_step(f"5_{idx}_{folder_name}", [
+                    f'text="{folder_name}"',
+                    f'div.font-bold:has-text("{folder_name}")',
+                    f'a:has-text("{folder_name}")',
+                ], timeout=10000)
+                if not clicked:
+                    _logger.warning(
+                        "Migdal: couldn't enter subfolder %r — skipping", folder_name,
+                    )
+                    continue
+                try:
+                    zip_path = await _download_current_folder(folder_name.lower())
+                    downloaded_zips.append(zip_path)
+                    _logger.info(
+                        "Migdal: downloaded %s → %s (%d bytes)",
+                        folder_name, zip_path.name, zip_path.stat().st_size,
+                    )
+                except Exception as e:
+                    _logger.warning(
+                        "Migdal: download failed for %s: %s", folder_name, e,
+                    )
+
+                # Return to Root for the next iteration (or end of loop).
+                # The "Root" breadcrumb link is always present at the top of
+                # the folder view inside any Root/<subfolder> page.
+                await _click_step(f"5_{idx}_back", [
+                    'a:has-text("Root"):not(:has-text("/"))',
+                    'text="Root"',
+                ], timeout=6000)
+
+            if not downloaded_zips:
+                raise RuntimeError(
+                    f"לא הצלחנו להוריד אף תיקיה מ-Root ({len(root_subfolders)} ניסיונות)"
+                )
+
+            # Step 6: merge all downloaded Mimshak bundles into one xlsx
+            # with a clean Hebrew filename for the production tab.
+            from app.services.mimshak import merge_mimshak_zips_to_xlsx
+            zip_bytes_list = [p.read_bytes() for p in downloaded_zips]
+
+            # Build the display filename from the latest period found in any
+            # DAT filename inside the bundles. Pattern: `...INP\d{3}YYYYMMDD\d+.DAT`
+            import re, zipfile, io
+            latest_yyyymmdd = ""
+            for zb in zip_bytes_list:
+                try:
+                    with zipfile.ZipFile(io.BytesIO(zb)) as zf:
+                        for n in zf.namelist():
+                            m = re.search(r'INP\d{3}(\d{8})', n.upper())
+                            if m and m.group(1) > latest_yyyymmdd:
+                                latest_yyyymmdd = m.group(1)
                 except Exception:
                     pass
-                inner2_dump = SCREENSHOT_ROOT / f"{run_id}_after_inner_click.png"
-                await self._safe_screenshot(page, inner2_dump)
-                await self._dump_page_state(page, inner2_dump)
 
-                # Kiteworks shows a kebab `⋮` per row with Download in the
-                # dropdown — try that pattern too (most reliable for OneDrive-
-                # /SharePoint-like UIs).
-                kebab_candidates = [
-                    "button[aria-label*='options' i]",
-                    "button[aria-label*='actions' i]",
-                    "button[aria-label*='more' i]",
-                    "button[title*='options' i]",
-                    "button[title*='actions' i]",
-                    "[role='button'][aria-haspopup='menu']",
-                ]
-                await self._click_first_visible(page, kebab_candidates, timeout=4000)
-
-                # If a menu opened, click Download inside it.
-                menu_download_candidates = [
-                    "li:has-text('Download')",
-                    "[role='menuitem']:has-text('Download')",
-                    "li:has-text('הורד')",
-                    "[role='menuitem']:has-text('הורד')",
-                    "li:has-text('הורדה')",
-                    "a:has-text('Download')",
-                ]
-                await self._click_first_visible(page, menu_download_candidates, timeout=4000)
-
-                # Final fallback: original toolbar Download buttons.
-                await self._click_first_visible(page, download_candidates, timeout=4000)
-            download = await dl_info.value
-            await download.save_as(str(target))
-        except Exception as native_err:
-            # Native download didn't fire — fall back to XHR capture. Wait a
-            # short grace period for the response listener to fill the buffer.
-            import asyncio
-            for _ in range(20):  # 20 * 0.5s = 10s grace
-                if xhr_capture["bytes"]:
-                    break
-                await asyncio.sleep(0.5)
-
-            if xhr_capture["bytes"]:
-                target.write_bytes(xhr_capture["bytes"])
+            HEBREW_MONTHS = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                             'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+            if latest_yyyymmdd and len(latest_yyyymmdd) == 8:
+                yyyy = latest_yyyymmdd[:4]
+                mm = int(latest_yyyymmdd[4:6])
+                period_label = f"{HEBREW_MONTHS[mm]} {yyyy}"
             else:
-                visible_hint = debug_base.with_suffix(".txt").name
-                file_status = (
-                    f"לא נמצא קובץ של הסוכן (חיפש {len(file_candidates)} מועמדים, כולל "
-                    f"{user_upper}_FROMMIGDAL)"
-                    if str(native_err) == "file-row-not-found"
-                    else f"קובץ נלחץ ({clicked_file}) אבל לא הופעלה הורדה"
-                )
-                raise RuntimeError(
-                    f"{file_status} ב-{page.url}. "
-                    f"בדוק רשימת אלמנטים גלויים ב-{visible_hint}: {native_err}"
-                )
+                from datetime import datetime as _dt
+                now = _dt.utcnow()
+                period_label = f"{HEBREW_MONTHS[now.month]} {now.year}"
+
+            merged_xlsx = download_dir / f"מגדל - ייצור ({period_label}).xlsx"
+            merge_mimshak_zips_to_xlsx(zip_bytes_list, merged_xlsx)
+            _logger.info(
+                "Migdal: merged %d bundle(s) → %s",
+                len(downloaded_zips), merged_xlsx.name,
+            )
+            target = merged_xlsx
         finally:
             page.remove_listener("response", _on_response)
 
-        downloaded: list[Path] = [target]
+        # `target` is now the merged synthetic xlsx produced by
+        # merge_mimshak_zips_to_xlsx — a real Excel file. No magic-byte
+        # rename needed (and would be wrong: xlsx itself starts with PK).
+        results: list[Path] = [target]
 
-        # ─── Best-effort production (Mimshak) ZIP download ──────────────
-        # Migdal's production-export ("מבנה אחיד" / Mimshak) lives on a
-        # separate menu we haven't mapped yet. Attempt common navigation
-        # paths and dump page state so the first run produces evidence we
-        # can refine selectors from. NEVER fail the whole run on this step
-        # — the commission file is the main deliverable; production is a
-        # bonus today and will become reliable as we tune selectors.
-        try:
-            production_path = await self._try_download_mimshak(page, download_dir, run_id)
-            if production_path:
-                downloaded.append(production_path)
-                from app.services.portal_automation.runner import logger as _runner_logger
-                _runner_logger.info(
-                    "Migdal: also downloaded production ZIP %s", production_path.name
+        # ── Also grab נפרעים from the apmaccess APM portal (SECOND login) ──
+        # mfte (production) and apmaccess (נפרעים) are different sites with their
+        # own SMS OTP, so this needs a 2nd OTP via the runner's otp_provider.
+        # One Migdal credential drives both (creds from the `|`-split, or the
+        # same value if no delimiter). Best-effort — production is still returned.
+        if otp_provider is not None and password is not None:
+            apm_page = None
+            try:
+                from app.services.portal_automation.companies.migdal_apm import (
+                    MigdalApmPortal,
                 )
-        except Exception as e:
-            # Diagnostics already dumped inside the helper. Log + move on.
-            from app.services.portal_automation.runner import logger as _runner_logger
-            _runner_logger.warning(
-                "Migdal production-export attempt failed (run %s): %s. "
-                "Until Mimshak menu selectors are mapped, manually upload the "
-                "LIFE*.zip file from Migdal — it ingests via the same pipeline.",
-                run_id, e,
-            )
+                from app.services.portal_automation.runner import logger as _logger
+                apm_user = (username or "").split("|")[-1].strip()
+                apm_pw = (password or "").split("|")[-1].strip()
+                apm = MigdalApmPortal()
+                apm_page = await page.context.new_page()
+                # login() goes to apmaccess + submits creds → triggers the 2nd SMS
+                # and waits for the OTP field.
+                await apm.login(apm_page, apm_user, apm_pw)
+                otp2 = await otp_provider()            # runner waits for the 2nd code
+                await apm.submit_otp(apm_page, otp2)
+                nif_files = await apm.download_reports(
+                    apm_page, download_dir, username=apm_user
+                )
+                results.extend(nif_files or [])
+                _logger.info(
+                    "migdal: also downloaded apmaccess נפרעים → %s",
+                    [f.name for f in (nif_files or [])],
+                )
+            except Exception as e:
+                from app.services.portal_automation.runner import logger as _logger
+                _logger.warning(
+                    "migdal: apmaccess נפרעים grab failed (production still returned): %s", e
+                )
+            finally:
+                if apm_page is not None:
+                    try:
+                        await apm_page.close()
+                    except Exception:
+                        pass
 
-        return downloaded
+        return results
 
+    # Legacy helper kept for the change_contact_phone flow only — the main
+    # download_reports above now navigates ALL FILES → FROMMIGDAL → Root →
+    # LIFE explicitly, so this best-effort Mimshak-menu probe is no longer
+    # called from the happy path. Left for reference / future re-use.
     async def _try_download_mimshak(
         self,
         page: "Page",
         download_dir: Path,
         run_id: str,
     ) -> Path | None:
-        """Attempt to navigate to Migdal's Mimshak/production-export menu and
-        download the ZIP. Returns the saved path, or None if the menu wasn't
-        found (no exception raised — production is best-effort today).
-
-        Dumps page state to `<run_id>_prod_*.{png,html,txt}` at each
-        checkpoint so we can refine selectors from real evidence after the
-        first run that gets this far.
-        """
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
 
         # Checkpoint 0: where we are before any navigation

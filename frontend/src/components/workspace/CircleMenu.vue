@@ -150,8 +150,8 @@ const ICONS = {
   border-radius: 50%;
   background:
     radial-gradient(circle at center,
-      rgba(232, 102, 10, 0.18) 0%,
-      rgba(232, 102, 10, 0.06) 40%,
+      rgba(232, 114, 10, 0.18) 0%,
+      rgba(232, 114, 10, 0.06) 40%,
       transparent 70%);
   opacity: 0;
   transform: scale(0.7);
@@ -174,9 +174,9 @@ const ICONS = {
   color: #FFFFFF;
   background:
     radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.25), transparent 55%),
-    linear-gradient(140deg, #FF9A3D 0%, #F57C00 38%, #E8660A 65%, #C85A00 100%);
+    linear-gradient(140deg, #FF9800 0%, #F57C00 38%, #E8720A 65%, #E65100 100%);
   box-shadow:
-    0 8px 24px rgba(232, 102, 10, 0.38),
+    0 8px 24px rgba(232, 114, 10, 0.38),
     0 2px 6px rgba(45, 37, 34, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.35),
     inset 0 -8px 12px rgba(120, 50, 0, 0.25);
@@ -209,7 +209,7 @@ const ICONS = {
   position: absolute;
   inset: -8px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(232, 102, 10, 0.5) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(232, 114, 10, 0.5) 0%, transparent 65%);
   z-index: -1;
   animation: cm-pulse 2.6s ease-in-out infinite;
   pointer-events: none;
@@ -226,11 +226,11 @@ const ICONS = {
     linear-gradient(140deg, #3A3330 0%, #2D2522 100%);
   color: #FFE2C2;
   box-shadow:
-    0 0 0 3px rgba(232, 102, 10, 0.18),
-    0 0 0 1px rgba(232, 102, 10, 0.6),
+    0 0 0 3px rgba(232, 114, 10, 0.18),
+    0 0 0 1px rgba(232, 114, 10, 0.6),
     0 10px 28px rgba(45, 37, 34, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  border-color: rgba(232, 102, 10, 0.4);
+  border-color: rgba(232, 114, 10, 0.4);
 }
 
 /* Icon swap transition — fade + slight blur */
@@ -257,7 +257,7 @@ const ICONS = {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(232, 102, 10, 0.18);
+  border: 1px solid rgba(232, 114, 10, 0.18);
   border-radius: 50%;
   color: #2D2522;
   background: linear-gradient(155deg, #FFFFFF 0%, #FBF4ED 100%);
@@ -276,13 +276,13 @@ const ICONS = {
   will-change: transform, opacity;
 }
 .cm-item:hover {
-  background: linear-gradient(140deg, #FF9A3D 0%, #E8660A 100%);
-  border-color: rgba(232, 102, 10, 0.65);
+  background: linear-gradient(140deg, #FF9800 0%, #E8720A 100%);
+  border-color: rgba(232, 114, 10, 0.65);
   color: #FFFFFF;
   /* Layer hover transform AFTER the orbit translate by stacking transforms in JS */
   box-shadow:
-    0 12px 28px rgba(232, 102, 10, 0.40),
-    0 2px 6px rgba(232, 102, 10, 0.20),
+    0 12px 28px rgba(232, 114, 10, 0.40),
+    0 2px 6px rgba(232, 114, 10, 0.20),
     inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .cm-item:active { filter: brightness(0.96); }

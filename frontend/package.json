@@ -15,9 +15,12 @@
     "render:feature-03": "remotion render src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.mp4 && remotion render src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-03-audit public/landing/feature-03-audit.jpg --frame 75",
     "render:feature-04": "remotion render src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.mp4 && remotion render src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-04-insights public/landing/feature-04-insights.jpg --frame 75",
     "render:feature-05": "remotion render src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.mp4 && remotion render src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.webm --codec vp9 && remotion still src/remotion/Root.tsx feature-05-ai public/landing/feature-05-ai.jpg --frame 75",
-    "render:features-all": "npm run render:feature-01 && npm run render:feature-02 && npm run render:feature-03 && npm run render:feature-04 && npm run render:feature-05"
+    "render:features-all": "npm run render:feature-01 && npm run render:feature-02 && npm run render:feature-03 && npm run render:feature-04 && npm run render:feature-05",
+    "render:walkthrough": "remotion render src/remotion/Root.tsx walkthrough public/walkthrough.mp4",
+    "render:walkthrough-webm": "remotion render src/remotion/Root.tsx walkthrough public/walkthrough.webm --codec vp9"
   },
   "dependencies": {
+    "@ark-ui/react": "^5.37.2",
     "@paper-design/shaders-react": "^0.0.76",
     "@remotion/player": "^4.0.451",
     "apexcharts": "^5.3.6",

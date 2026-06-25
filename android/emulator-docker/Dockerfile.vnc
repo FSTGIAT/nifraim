@@ -1,0 +1,11 @@
+# Adds a browser-viewable screen (noVNC) on top of the headless emulator image.
+# View at http://localhost:6080/vnc.html after `docker run -p 6080:6080`.
+FROM nifraim-emulator
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        xvfb x11vnc novnc websockify \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY boot-vnc.sh /boot-vnc.sh
+RUN chmod +x /boot-vnc.sh
+CMD ["/boot-vnc.sh"]

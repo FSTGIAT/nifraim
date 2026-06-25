@@ -95,7 +95,7 @@ function handleDelete() {
   position: absolute;
   inset: -1px;
   border-radius: calc(var(--radius-lg) + 1px);
-  background: linear-gradient(135deg, var(--primary-light), rgba(34, 211, 238, 0.15), rgba(127, 86, 217, 0.08));
+  background: linear-gradient(135deg, var(--primary-light), rgba(46, 132, 74, 0.15), rgba(127, 86, 217, 0.08));
   opacity: 0.6;
   filter: blur(1px);
   z-index: 0;
@@ -141,7 +141,7 @@ function handleDelete() {
 .file-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, var(--primary-light), rgba(34, 211, 238, 0.1));
+  background: linear-gradient(135deg, var(--primary-light), rgba(46, 132, 74, 0.1));
   border: 1px solid var(--primary-light);
   border-radius: 14px;
   display: flex;

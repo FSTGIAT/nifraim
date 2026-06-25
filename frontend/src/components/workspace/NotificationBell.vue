@@ -114,6 +114,7 @@
                     <button v-if="a.actions.includes('open_customer')" class="bp-action" type="button" @click="onOpenCustomer(a)">פתח לקוח</button>
                     <button v-if="a.actions.includes('open_comparison')" class="bp-action" type="button" @click="onOpenComparison(a)">פתח השוואה</button>
                     <button v-if="a.actions.includes('run_automation')" class="bp-action bp-action--primary" type="button" @click="onRunAutomation(a)">הרץ אוטומציה</button>
+                    <button v-if="a.actions.includes('reopen_activation')" class="bp-action bp-action--primary" type="button" @click="onReopenActivation(a)">המשך הגדרה</button>
                     <button class="bp-action bp-action--ghost" type="button" @click="store.dismiss(a.id)">דחה</button>
                   </div>
                 </div>
@@ -129,6 +130,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useNotificationsStore } from '../../stores/notifications.js'
+import { reopenActivation } from '../../utils/activationState.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { showMailPreview } from '../../utils/mailPreviewState.js'
 import { brandForLabel } from '../../utils/companyBrand.js'
@@ -136,7 +138,7 @@ import { brandForLabel } from '../../utils/companyBrand.js'
 /** Lighten a hex by `factor` (0..1) by interpolating each channel toward
  *  white. Used to brighten dark brand colors for the wash top-stop. */
 function lighten(hex, factor) {
-  const clean = (hex || '#666').replace('#', '')
+  const clean = (hex || '#706E6B').replace('#', '')
   const n = parseInt(clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean, 16)
   const r = Math.min(255, Math.floor(((n >> 16) & 0xff) + (255 - ((n >> 16) & 0xff)) * factor))
   const g = Math.min(255, Math.floor(((n >> 8)  & 0xff) + (255 - ((n >> 8)  & 0xff)) * factor))
@@ -146,7 +148,7 @@ function lighten(hex, factor) {
 /** Perceived luminance 0..1 — used to decide how much to brighten very-dark
  *  brand colors (Phoenix navy, Clal deep-blue) extra. */
 function luminance(hex) {
-  const clean = (hex || '#666').replace('#', '')
+  const clean = (hex || '#706E6B').replace('#', '')
   const n = parseInt(clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean, 16)
   const r = ((n >> 16) & 0xff) / 255
   const g = ((n >> 8) & 0xff) / 255
@@ -159,9 +161,9 @@ function luminance(hex) {
  *  LIGHTER variant of the brand at the top → brand color at the bottom,
  *  so the card reads bright without losing the brand identity. */
 const SEVERITY_PAINT = {
-  error:   { base: '#FB7185', deep: '#DC2626' },   // soft rose → red
-  warning: { base: '#FCD34D', deep: '#D97706' },   // bright amber → deep amber
-  info:    { base: '#60A5FA', deep: '#2563EB' },   // sky → vivid blue
+  error:   { base: '#EA001E', deep: '#C23934' },   // vivid red → deep red
+  warning: { base: '#F57C00', deep: '#E65100' },   // orange → deep amber
+  info:    { base: '#7F56D9', deep: '#7F56D9' },   // violet → violet
 }
 function paintFor(alert) {
   const co = alert?.meta?.companyName
@@ -277,6 +279,13 @@ function onRunAutomation() {
   // Jump to the automation tab — the user picks which credential to run.
   // (Auto-triggering a specific run would need a backend mapping company → credential.)
   window.location.hash = '#automation'
+  close()
+}
+
+function onReopenActivation(a) {
+  // Re-open the new-user activation checklist (it auto-hides after first view).
+  reopenActivation()
+  store.unpinAlert(a.id)
   close()
 }
 
@@ -416,7 +425,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.12), 0 8px 20px rgba(245, 124, 0, 0.18);
 }
 .bell-btn.has-alerts {
-  color: var(--primary-deep, #C2410C);
+  color: var(--primary-deep, #E65100);
   border-color: rgba(245, 124, 0, 0.40);
   background: linear-gradient(135deg, rgba(245, 124, 0, 0.06) 0%, var(--card-bg, #fff) 100%);
 }
@@ -622,7 +631,7 @@ onBeforeUnmount(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #10B981;
+  color: #2E844A;
   opacity: 0.6;
 }
 
@@ -658,9 +667,9 @@ onBeforeUnmount(() => {
 
 /* Severity defaults — overridden inline per-card via paintStyle() which
  * pulls the actual company brand color (Migdal red, Phoenix navy, etc.). */
-.bp-card--error   { --c-base: #DC2626; --c-deep: #7F1D1D; --c-edge: rgba(220, 38, 38, 0.32); }
-.bp-card--warning { --c-base: #F59E0B; --c-deep: #B45309; --c-edge: rgba(245, 158, 11, 0.32); }
-.bp-card--info    { --c-base: #3B82F6; --c-deep: #1D4ED8; --c-edge: rgba(59, 130, 246, 0.32); }
+.bp-card--error   { --c-base: #EA001E; --c-deep: #C23934; --c-edge: rgba(194, 57, 52, 0.32); }
+.bp-card--warning { --c-base: #E8720A; --c-deep: #E65100; --c-edge: rgba(232, 114, 10, 0.32); }
+.bp-card--info    { --c-base: #7F56D9; --c-deep: #7F56D9; --c-edge: rgba(127, 86, 217, 0.32); }
 
 .bp-card-wash {
   display: flex;

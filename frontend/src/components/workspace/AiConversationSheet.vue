@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
   margin: 10px 14px 0;
   padding: 8px 12px;
   font-size: 12px;
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border: 1px solid rgba(234, 0, 30, 0.2);
   border-radius: var(--radius-sm);
@@ -492,11 +492,11 @@ onBeforeUnmount(() => {
 .ai-msg-warnings {
   margin-top: 8px;
   padding: 8px 10px;
-  background: #fff8e6;
-  border: 1px solid #f0c869;
+  background: #FFF3E0;
+  border: 1px solid #F0C869;
   border-radius: var(--radius-sm);
   font-size: 12px;
-  color: #6b5418;
+  color: #E8720A;
 }
 .ai-msg-warnings-title {
   display: inline-flex;
@@ -504,7 +504,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-weight: 700;
   margin-bottom: 4px;
-  color: #875b00;
+  color: #E8720A;
 }
 .ai-msg-warnings ul {
   margin: 0;
@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
 }
 .ai-doc-chip-error {
-  color: #8A1111;
+  color: #C23934;
   background: rgba(234, 0, 30, 0.06);
   border-color: rgba(234, 0, 30, 0.2);
 }

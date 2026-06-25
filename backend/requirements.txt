@@ -25,3 +25,4 @@ beautifulsoup4>=4.12
 playwright>=1.48
 cryptography>=43
 twilio>=9
+paramiko==3.5.0

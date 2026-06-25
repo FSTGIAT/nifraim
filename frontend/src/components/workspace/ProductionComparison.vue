@@ -791,7 +791,7 @@
               <!-- Filtered total -->
               <div v-if="filterModal.category === 'commission'" class="fm-filtered-total">
                 <span>סה"כ עמלה:</span>
-                <span class="ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(filteredCommissionTotal) }}</span>
+                <span class="ltr-number" style="font-weight:700;color:#E3066A">{{ formatAmount(filteredCommissionTotal) }}</span>
                 <span class="ltr-number" style="color:var(--text-muted);font-size:0.82rem">({{ filteredCustomers.length }} לקוחות)</span>
               </div>
 
@@ -845,7 +845,7 @@
                         <span v-else>—</span>
                       </td>
                       <td v-if="filterModal.category === 'changed' || filterModal.category === 'commission'">
-                        <span v-if="clientCommission(c)" class="ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(clientCommission(c)) }}</span>
+                        <span v-if="clientCommission(c)" class="ltr-number" style="font-weight:700;color:#E3066A">{{ formatAmount(clientCommission(c)) }}</span>
                         <span v-else>—</span>
                         <span v-if="c.commission_diff && filterModal.category === 'commission' && !commissionCompanyFilter" class="change-pill" :class="c.commission_diff > 0 ? 'pill-up' : 'pill-down'" style="margin-right:6px">
                           {{ c.commission_diff > 0 ? '▲' : '▼' }} <span class="ltr-number">{{ c.commission_diff > 0 ? '+' : '' }}{{ formatAmount(c.commission_diff) }}</span>
@@ -986,7 +986,7 @@
                     </div>
                     <div v-if="detailCustomer.commission_details.length > 1" class="commission-company-row commission-total-row">
                       <span class="commission-company-name" style="font-weight:700">סה"כ</span>
-                      <span class="commission-company-amount ltr-number" style="font-weight:700;color:#ec4899">{{ formatAmount(detailCustomer.commission) }}</span>
+                      <span class="commission-company-amount ltr-number" style="font-weight:700;color:#E3066A">{{ formatAmount(detailCustomer.commission) }}</span>
                     </div>
                   </div>
 
@@ -1074,6 +1074,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import * as XLSX from 'xlsx'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import api from '../../api/client.js'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 import AiInsightCard from './AiInsightCard.vue'
 import AiConversationSheet from './AiConversationSheet.vue'
 import AiVizPanel from './AiVizPanel.vue'
@@ -1202,10 +1203,10 @@ onBeforeUnmount(() => {
 
 // Chart
 const CATEGORIES = [
-  { key: 'new', label: 'חדשים', color: '#10b981' },
-  { key: 'removed', label: 'הוסרו', color: '#ef4444' },
-  { key: 'changed', label: 'שונו', color: '#f59e0b' },
-  { key: 'unchanged', label: 'ללא שינוי', color: '#94a3b8' },
+  { key: 'new', label: 'חדשים', color: '#2E844A' },
+  { key: 'removed', label: 'הוסרו', color: '#C23934' },
+  { key: 'changed', label: 'שונו', color: '#E8720A' },
+  { key: 'unchanged', label: 'ללא שינוי', color: '#706E6B' },
 ]
 
 const chartSeries = computed(() => {
@@ -1236,7 +1237,7 @@ const chartOptions = computed(() => ({
             label: 'סה"כ לקוחות',
             fontSize: '12px',
             fontWeight: 600,
-            color: '#64748b',
+            color: '#706E6B',
             formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
           }
         }
@@ -1259,11 +1260,8 @@ const chartOptions = computed(() => ({
 }))
 
 // Company palette for sub-charts
-const COMPANY_COLORS = [
-  '#6366f1', '#06b6d4', '#f43f5e', '#8b5cf6', '#14b8a6',
-  '#ec4899', '#f97316', '#0ea5e9', '#84cc16', '#a855f7',
-  '#eab308', '#64748b',
-]
+// Bright-bold categorical palette (shared) for company legends/charts.
+const COMPANY_COLORS = CHART_PALETTE
 
 function groupByCompany(clients) {
   const map = {}
@@ -1299,7 +1297,7 @@ function makeCompanyChartOptions(labels, colorOffset = 0) {
               label: 'סה"כ',
               fontSize: '11px',
               fontWeight: 600,
-              color: '#64748b',
+              color: '#706E6B',
               formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
             }
           }
@@ -1342,9 +1340,9 @@ const changedByCompany = computed(() => {
 
 // ===== Changed Insights =====
 const CHANGE_TYPES = [
-  { field: 'פרמיה', label: 'פרמיה', color: '#6366f1' },
-  { field: 'צבירה', label: 'צבירה', color: '#06b6d4' },
-  { field: 'מוצרים', label: 'מוצרים', color: '#f59e0b' },
+  { field: 'פרמיה', label: 'פרמיה', color: '#F57C00' },
+  { field: 'צבירה', label: 'צבירה', color: '#2E844A' },
+  { field: 'מוצרים', label: 'מוצרים', color: '#7F56D9' },
 ]
 
 const barMode = ref('premium')
@@ -1436,7 +1434,7 @@ const changeTypeChartOptions = computed(() => ({
             label: 'סוגי שינויים',
             fontSize: '11px',
             fontWeight: 600,
-            color: '#64748b',
+            color: '#706E6B',
             formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0).toLocaleString()
           }
         }
@@ -1487,17 +1485,17 @@ const topChangersChartOptions = computed(() => {
         distributed: true,
         colors: {
           ranges: [
-            { from: -999999999, to: -0.01, color: '#ef4444' },
-            { from: 0, to: 999999999, color: '#10b981' },
+            { from: -999999999, to: -0.01, color: '#C23934' },
+            { from: 0, to: 999999999, color: '#2E844A' },
           ]
         }
       }
     },
-    colors: data.map(c => (c[diffKey] || 0) >= 0 ? '#10b981' : '#ef4444'),
+    colors: data.map(c => (c[diffKey] || 0) >= 0 ? '#2E844A' : '#C23934'),
     dataLabels: {
       enabled: true,
       formatter: (val) => (val >= 0 ? '+' : '') + '₪' + Math.abs(val).toLocaleString(),
-      style: { fontSize: '11px', fontWeight: 700, colors: ['#1e293b'] },
+      style: { fontSize: '11px', fontWeight: 700, colors: ['#181818'] },
       offsetX: 6,
     },
     xaxis: {
@@ -2423,8 +2421,8 @@ function formatVal(val) {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 }
 
-.changed-kpi.kpi-green { border-color: rgba(16, 185, 129, 0.25); background: rgba(16, 185, 129, 0.06); }
-.changed-kpi.kpi-red { border-color: rgba(239, 68, 68, 0.25); background: rgba(239, 68, 68, 0.06); }
+.changed-kpi.kpi-green { border-color: rgba(46, 132, 74, 0.25); background: rgba(46, 132, 74, 0.06); }
+.changed-kpi.kpi-red { border-color: rgba(194, 57, 52, 0.25); background: rgba(194, 57, 52, 0.06); }
 
 .changed-kpi-value {
   font-size: 18px;
@@ -2442,7 +2440,7 @@ function formatVal(val) {
 }
 
 .changed-kpi.kpi-pink { border-color: rgba(236, 72, 153, 0.25); background: rgba(236, 72, 153, 0.06); }
-.kpi-pink .changed-kpi-value { color: #ec4899; }
+.kpi-pink .changed-kpi-value { color: #E3066A; }
 
 .kpi-split {
   display: flex;
@@ -2567,7 +2565,7 @@ function formatVal(val) {
 .comm-expected-value {
   font-size: 18px;
   font-weight: 700;
-  color: #0f766e;
+  color: #2E844A;
   line-height: 1;
 }
 .comm-gap-label {
@@ -2577,7 +2575,7 @@ function formatVal(val) {
   margin-top: 2px;
 }
 .comm-gap-label.comm-gap-neg {
-  color: #b45309;
+  color: #E65100;
 }
 
 .comm-insights-grid {
@@ -2729,9 +2727,9 @@ function formatVal(val) {
 }
 
 .cmsb-primary { background: linear-gradient(90deg, #F57C00, #FF9800); }
-.cmsb-muted   { background: linear-gradient(90deg, #D8D4CF, #E8E4DF); }
-.cmsb-up      { background: linear-gradient(90deg, #2E844A, #3EA65F); }
-.cmsb-down    { background: linear-gradient(90deg, #B42318, #D64545); }
+.cmsb-muted   { background: linear-gradient(90deg, #DDDBDA, #E8E4DF); }
+.cmsb-up      { background: linear-gradient(90deg, #1B5E20, #2E844A); }
+.cmsb-down    { background: linear-gradient(90deg, #C23934, #EA001E); }
 
 .cmsb-label {
   font-size: 9px;
@@ -3163,12 +3161,12 @@ function formatVal(val) {
   border: none;
   font-family: inherit;
   font-size: 12.5px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, #706E6B);
   cursor: pointer;
   transition: background 0.12s;
 }
-.fm-filter-trigger:hover { background: var(--bg-alt, #f8f8f8); }
-.fm-filter-trigger.is-active { color: #ec4899; font-weight: 600; }
+.fm-filter-trigger:hover { background: var(--bg-alt, #F3F3F3); }
+.fm-filter-trigger.is-active { color: #E3066A; font-weight: 600; }
 .fm-filter-trigger > span:not(.fm-filter-count) {
   flex: 1;
   text-align: right;
@@ -3177,15 +3175,15 @@ function formatVal(val) {
   white-space: nowrap;
 }
 .fm-filter-count {
-  background: var(--bg-alt, #f0f0f0);
-  color: var(--text-secondary, #64748b);
+  background: var(--bg-alt, #F3F3F3);
+  color: var(--text-secondary, #706E6B);
   padding: 1px 7px;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
 }
 .fm-filter-trigger.is-active .fm-filter-count {
-  background: #ec4899;
+  background: #E3066A;
   color: #fff;
 }
 .fm-filter-clear {
@@ -3197,14 +3195,14 @@ function formatVal(val) {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, #706E6B);
   cursor: pointer;
   border-radius: 4px;
 }
 .fm-filter-clear:hover { background: var(--border-subtle); color: var(--text); }
 .fm-filter-chevron {
   transition: transform 0.18s;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, #706E6B);
 }
 .fm-filter-chevron.open { transform: rotate(180deg); }
 
@@ -3225,18 +3223,18 @@ function formatVal(val) {
   gap: 5px;
   padding: 5px 12px;
   border-radius: 20px;
-  border: 1.5px solid var(--border-subtle, #e2e8f0);
+  border: 1.5px solid var(--border-subtle, #E5E5E5);
   background: var(--card-bg, #fff);
   cursor: pointer;
   font-size: 12.5px;
   font-family: inherit;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, #706E6B);
   transition: all 0.15s ease;
 }
-.company-pill:hover { border-color: #ec4899; color: #ec4899; }
+.company-pill:hover { border-color: #E3066A; color: #E3066A; }
 .company-pill.active {
-  background: #ec4899;
-  border-color: #ec4899;
+  background: #E3066A;
+  border-color: #E3066A;
   color: #fff;
 }
 .company-pill .pill-amount { font-weight: 700; font-size: 11.5px; }
@@ -3272,7 +3270,7 @@ function formatVal(val) {
 }
 
 .commission-company-name { font-size: 13.5px; color: var(--text); }
-.commission-company-amount { font-size: 13.5px; font-weight: 600; color: #ec4899; }
+.commission-company-amount { font-size: 13.5px; font-weight: 600; color: #E3066A; }
 
 .commission-total-row {
   margin-top: 4px;
@@ -3288,19 +3286,19 @@ function formatVal(val) {
   padding: 10px 14px;
   margin-top: 8px;
   border-radius: 8px;
-  background: rgba(245, 158, 11, 0.06);
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  color: #92400e;
+  background: rgba(232, 114, 10, 0.06);
+  border: 1px solid rgba(232, 114, 10, 0.15);
+  color: #E65100;
   font-size: 12.5px;
   line-height: 1.5;
 }
-.no-commission-diff-note svg { flex-shrink: 0; color: #f59e0b; }
+.no-commission-diff-note svg { flex-shrink: 0; color: #E8720A; }
 
 .kpi-no-diff-note {
   display: block;
   font-size: 10.5px;
-  color: #92400e;
-  background: rgba(245, 158, 11, 0.08);
+  color: #E65100;
+  background: rgba(232, 114, 10, 0.08);
   padding: 3px 8px;
   border-radius: 6px;
   margin-top: 4px;
@@ -3387,8 +3385,8 @@ function formatVal(val) {
   white-space: nowrap;
 }
 
-.fm-table .pill-up { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.fm-table .pill-down { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.fm-table .pill-up { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
+.fm-table .pill-down { background: rgba(194, 57, 52, 0.1); color: #C23934; }
 
 .fm-empty {
   padding: 32px;
@@ -3524,7 +3522,7 @@ function formatVal(val) {
   color: var(--text-muted);
   font-size: 0.78rem;
 }
-.ct-commission-val { font-weight: 700; color: #ec4899; }
+.ct-commission-val { font-weight: 700; color: #E3066A; }
 .ct-commission-note { font-size: 11px; color: var(--text-muted); margin-right: 6px; }
 
 .detail-val-new {
@@ -3594,13 +3592,13 @@ function formatVal(val) {
 }
 
 .compare-file-current .cf-label {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba(46, 132, 74, 0.12);
+  color: #2E844A;
 }
 
 .compare-file-previous .cf-label {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  background: rgba(112, 110, 107, 0.15);
+  color: #706E6B;
 }
 
 .cf-name {
@@ -3744,9 +3742,9 @@ function formatVal(val) {
   display: inline-block;
 }
 
-.dot-new { background: #10b981; }
-.dot-removed { background: #ef4444; }
-.dot-changed { background: #f59e0b; }
+.dot-new { background: #2E844A; }
+.dot-removed { background: #C23934; }
+.dot-changed { background: #E8720A; }
 
 .td-name { font-weight: 600; }
 .td-id { font-size: 12px; color: var(--text-muted); }
@@ -3769,8 +3767,8 @@ function formatVal(val) {
   white-space: nowrap;
 }
 
-.pill-up { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.pill-down { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.pill-up { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
+.pill-down { background: rgba(194, 57, 52, 0.1); color: #C23934; }
 
 .pc-empty {
   text-align: center;
@@ -3809,7 +3807,7 @@ function formatVal(val) {
 .action-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: 6px;
-  border: none; background: var(--bg-alt, #f1f5f9); color: var(--text-muted);
+  border: none; background: var(--bg-alt, #F3F3F3); color: var(--text-muted);
   cursor: pointer; transition: all 0.15s;
   margin-right: 8px;
 }
@@ -3827,7 +3825,7 @@ function formatVal(val) {
   background: #fff7ed;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
-  color: #9a3412;
+  color: #E65100;
   line-height: 1.6;
 }
 .mail-preview-body {
@@ -3841,7 +3839,7 @@ function formatVal(val) {
   line-height: 1.6;
   direction: rtl;
   resize: none;
-  background: #f8fafc;
+  background: #F3F3F3;
   color: var(--text);
   min-height: 240px;
 }

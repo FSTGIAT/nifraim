@@ -361,7 +361,7 @@ function fmtCell(val) {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: #F7F8FA;
+  background: #F3F3F3;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   position: relative;
@@ -393,7 +393,7 @@ function fmtCell(val) {
   display: flex;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  background: #FAFBFC;
+  background: #F3F3F3;
 }
 
 .kpi {
@@ -407,8 +407,8 @@ function fmtCell(val) {
 .kpi-label { display: block; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.2px; }
 .kpi-val { display: block; font-size: 13px; font-weight: 800; color: var(--text); margin-top: 1px; }
 .kpi-green { color: var(--green); }
-.kpi-cyan { color: #06A59A; }
-.kpi-expected { color: var(--accent-emerald, #059669); }
+.kpi-cyan { color: #7F56D9; }
+.kpi-expected { color: var(--accent-emerald, #2E844A); }
 
 /* ── Product rows ── */
 .products-scroll {
@@ -435,11 +435,11 @@ function fmtCell(val) {
   transition: background 0.12s;
 }
 
-.p-row:hover { background: #F5F7FA; }
+.p-row:hover { background: #F3F3F3; }
 
 .p-production-only {
   border-right: 3px solid var(--amber);
-  background: rgba(251, 146, 60, 0.03);
+  background: rgba(232, 114, 10, 0.03);
 }
 
 .p-commission {
@@ -491,9 +491,9 @@ function fmtCell(val) {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(251, 146, 60, 0.08);
+  background: rgba(232, 114, 10, 0.08);
   color: var(--amber);
-  border: 1px solid rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(232, 114, 10, 0.12);
 }
 
 /* Amounts grid — right side */
@@ -528,7 +528,7 @@ function fmtCell(val) {
 
 .amt-green { color: var(--green); }
 .amt-muted { color: var(--primary); font-weight: 600; }
-.amt-expected { color: var(--accent-emerald, #059669); font-weight: 700; }
+.amt-expected { color: var(--accent-emerald, #2E844A); font-weight: 700; }
 .amt-date { color: var(--text-muted); font-size: 11px; font-weight: 500; }
 
 /* Empty state */

@@ -344,6 +344,43 @@ Agent manages links in RecruitsTab → PortalLinksManager (collapsible section)
 
 ---
 
+## Hands-Free OTP: Android SMS Forwarder + Template Filter
+
+Portal automation needs the SMS OTP an insurer sends to the agent's phone. The
+agent installs the **Nifraim SMS** Android app (`android/`, native Kotlin) which
+forwards qualifying SMS to a per-user webhook; the runner consumes the code.
+
+**Chain**: insurer SMS → `SmsReceiver` → `OtpFilter` → `TemplateFetchWorker`-cached
+templates → `WorkManager` HTTPS POST → `POST /api/portal-automation/phone-forward/{token}`
+→ `otp_inbox` row → `runner._wait_for_otp()` polls (1s, 240s timeout) → `submit_otp`.
+
+**Which SMS get forwarded** — `OtpFilter.shouldForward(sender, body, templates)`:
+`BLOCK match → drop · ALLOW match → forward · fail-open (any 4-8 digit code) →
+forward · else drop`. No templates cached yet → built-in keyword fallback. Personal
+SMS without a code, and SMS matching a BLOCK template, never leave the device.
+
+**Templates** are GLOBAL (one insurer's OTP wording is the same for every agent),
+table `sms_otp_templates`, managed via `/api/sms-otp-templates` (CRUD + `/seed`)
+and the "תבניות זיהוי SMS" manager in `PhoneForwardModal.vue`. The app fetches them
+via `GET /api/portal-automation/phone-forward/{token}/templates` (token-auth) and
+caches to Prefs. Patterns are plain regex (no inline flags), compiled
+IGNORE_CASE + DOT_MATCHES_ALL on both device (Kotlin) and the JS test box, so one
+stored pattern is portable. **Real insurer OTP text often omits the company name**
+(Harel & Phoenix share `סיסמתך למכלול שלי`; Migdal uses `apmaccess`) — anchor on
+the real wording, not the brand. Default patterns: `api/sms_otp_templates.py`.
+
+**Key files**: `android/app/src/main/java/com/nifraim/smsforwarder/{OtpFilter,TemplateFetchWorker,SmsReceiver,Prefs,MainActivity}.kt`,
+`models/sms_otp_template.py`, `api/sms_otp_templates.py`, `api/portal_automation.py`
+(webhook + templates endpoint), `models/otp_inbox.py`, `PhoneForwardModal.vue`.
+
+**Testing**: see the `android-sms-test` skill for the Docker-emulator setup and the
+proven live-run procedure. E2E: `backend/tests/test_template_filter_otp.py` (ALLOW/
+FAIL-OPEN/BLOCK) and `test_full_otp_automation.py`. Build the APK via
+`android/emulator-docker/build-apk.sh`; the Railway APK predates the filter and
+must be re-uploaded.
+
+---
+
 ## Patterns & Conventions
 
 ### Backend

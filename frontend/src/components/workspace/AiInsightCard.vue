@@ -13,44 +13,44 @@
         </svg>
         <span>התמונה הכוללת — מופעל עם AI</span>
       </span>
-      <button
-        class="ai-copy-btn"
-        :class="{ 'ai-copy-btn--done': copied }"
-        :title="copied ? 'הועתק!' : 'העתק סיכום'"
-        @click="copySummary"
-        type="button"
-        aria-label="העתק סיכום"
-      >
-        <svg v-if="!copied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-        </svg>
-        <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      </button>
+      <div class="ai-head-actions">
+        <button class="ai-continue" @click="$emit('open-sheet', '')" type="button">
+          <span>המשך שיחה</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+        </button>
+        <button
+          class="ai-copy-btn"
+          :class="{ 'ai-copy-btn--done': copied }"
+          :title="copied ? 'הועתק!' : 'העתק סיכום'"
+          @click="copySummary"
+          type="button"
+          aria-label="העתק סיכום"
+        >
+          <svg v-if="!copied" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+          <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <p class="ai-summary">{{ viewContext.summary }}</p>
 
-    <div class="ai-card-row ai-card-row--actions">
-      <div class="ai-chips">
-        <button
-          v-for="chip in viewContext.suggestions"
-          :key="chip"
-          class="ai-chip"
-          @click="$emit('open-sheet', chip)"
-          type="button"
-        >
-          {{ chip }}
-        </button>
-      </div>
-      <button class="ai-continue" @click="$emit('open-sheet', '')" type="button">
-        <span>המשך שיחה</span>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="19" y1="12" x2="5" y2="12"/>
-          <polyline points="12 19 5 12 12 5"/>
-        </svg>
+    <div class="ai-chips">
+      <button
+        v-for="chip in viewContext.suggestions"
+        :key="chip"
+        class="ai-chip"
+        @click="$emit('open-sheet', chip)"
+        type="button"
+      >
+        {{ chip }}
       </button>
     </div>
   </div>
@@ -86,6 +86,7 @@ async function copySummary() {
 <style scoped>
 .ai-insight-card {
   position: relative;
+  width: 100%;
   border-radius: var(--radius-lg);
   padding: 16px 20px 14px;
   background:
@@ -139,6 +140,13 @@ async function copySummary() {
   color: var(--primary-deep);
   text-transform: none;
 }
+
+.ai-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .ai-eyebrow-icon {
   color: var(--primary);
   filter: drop-shadow(0 1px 2px rgba(245, 124, 0, 0.3));
@@ -181,17 +189,12 @@ async function copySummary() {
   font-weight: 500;
 }
 
-.ai-card-row--actions {
-  padding-top: 2px;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .ai-chips {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  flex: 1;
   min-width: 0;
 }
 
@@ -222,37 +225,40 @@ async function copySummary() {
   box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.25);
 }
 
+/* Primary CTA — filled, so it reads as the deliberate next step (not orphaned). */
 .ai-continue {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 8px 14px;
+  font-size: 12.5px;
   font-weight: 700;
-  color: var(--text-muted);
-  background: transparent;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.15s, background 0.15s, transform 0.15s;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.28);
+  transition: transform 0.18s var(--transition), box-shadow 0.18s, filter 0.15s;
   flex-shrink: 0;
 }
-.ai-continue svg { opacity: 0.55; transition: transform 0.18s, opacity 0.18s; }
+.ai-continue svg { opacity: 0.9; transition: transform 0.18s; }
 .ai-continue:hover {
-  color: var(--primary-deep);
-  background: rgba(245, 124, 0, 0.06);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.36);
+  filter: brightness(1.03);
 }
-.ai-continue:hover svg { opacity: 1; transform: translateX(-3px); }
+.ai-continue:hover svg { transform: translateX(-3px); }
 .ai-continue:focus-visible {
   outline: none;
-  color: var(--primary-deep);
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.2);
+  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.3);
 }
 
-@media (max-width: 640px) {
-  .ai-card-row--actions { flex-direction: column; align-items: stretch; gap: 8px; }
-  .ai-continue { align-self: flex-end; }
+@media (max-width: 560px) {
+  .ai-continue span { display: none; }
+  .ai-continue { padding: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

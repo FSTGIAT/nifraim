@@ -312,7 +312,7 @@ function findRateForProduct(product) {
 
 .product-row.production-only {
   border-right: 3px solid var(--amber);
-  background: rgba(251, 146, 60, 0.04);
+  background: rgba(232, 114, 10, 0.04);
 }
 
 .product-status-badge {
@@ -337,15 +337,15 @@ function findRateForProduct(product) {
 }
 
 .production-badge {
-  background: rgba(251, 146, 60, 0.08);
+  background: rgba(232, 114, 10, 0.08);
   color: var(--amber);
-  border: 1px solid rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(232, 114, 10, 0.12);
 }
 
 .withdrawal-badge {
-  background: rgba(251, 146, 60, 0.12);
+  background: rgba(232, 114, 10, 0.12);
   color: var(--amber);
-  border: 1px solid rgba(251, 146, 60, 0.15);
+  border: 1px solid rgba(232, 114, 10, 0.15);
 }
 
 .paying-badge {
@@ -438,7 +438,7 @@ function findRateForProduct(product) {
 }
 
 .amount-item.accumulation .amount-value {
-  color: #38BDF8;
+  color: #7F56D9;
 }
 
 .amount-item.accumulation .amount-value.zero-accumulation {
@@ -472,8 +472,8 @@ function findRateForProduct(product) {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(251, 146, 60, 0.04);
-  border: 1px solid rgba(251, 146, 60, 0.12);
+  background: rgba(232, 114, 10, 0.04);
+  border: 1px solid rgba(232, 114, 10, 0.12);
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -488,7 +488,7 @@ function findRateForProduct(product) {
 }
 
 .production-summary:hover {
-  background: rgba(251, 146, 60, 0.08);
+  background: rgba(232, 114, 10, 0.08);
 }
 
 .production-summary-text {

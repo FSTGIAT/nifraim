@@ -14,6 +14,7 @@ import { computed, ref } from 'vue'
 import api from '../api/client.js'
 
 const LS_DISMISSED = 'notif.dismissed.v1'   // { [alertId]: timestamp }
+const LS_PINNED = 'notif.pinned.v1'         // [alert, …] — client-pinned, survive refresh()
 
 function loadDismissed() {
   try {
@@ -23,6 +24,15 @@ function loadDismissed() {
 }
 function saveDismissed(obj) {
   try { localStorage.setItem(LS_DISMISSED, JSON.stringify(obj)) } catch { /* quota */ }
+}
+function loadPinned() {
+  try {
+    const raw = localStorage.getItem(LS_PINNED)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+function savePinned(arr) {
+  try { localStorage.setItem(LS_PINNED, JSON.stringify(arr)) } catch { /* quota */ }
 }
 
 function fmtMoney(n) {
@@ -93,16 +103,22 @@ function effectivePeriod(upload) {
 
 export const useNotificationsStore = defineStore('notifications', () => {
   // ─── State ───────────────────────────────────────────────
-  const alerts = ref([])                  // active (undismissed) alerts
+  const alerts = ref([])                  // active (undismissed) server alerts
+  const pinned = ref(loadPinned())        // client-pinned alerts (e.g. activation reminder)
   const loading = ref(false)
   const error = ref(null)
   const lastRefreshedAt = ref(null)
   const dismissed = ref(loadDismissed())  // { [id]: ts }
 
   // ─── Derived ─────────────────────────────────────────────
-  const visibleAlerts = computed(() =>
-    alerts.value.filter((a) => !dismissed.value[a.id]),
-  )
+  // Pinned alerts come first and survive refresh()/_setAlerts (which only
+  // replaces the server-derived list). Dedup so a pinned id wins over a server one.
+  const visibleAlerts = computed(() => {
+    const pinnedVisible = pinned.value.filter((a) => !dismissed.value[a.id])
+    const pinnedIds = new Set(pinnedVisible.map((a) => a.id))
+    const server = alerts.value.filter((a) => !dismissed.value[a.id] && !pinnedIds.has(a.id))
+    return [...pinnedVisible, ...server]
+  })
   const unreadCount = computed(() => visibleAlerts.value.length)
 
   // ─── Mutations ───────────────────────────────────────────
@@ -114,6 +130,23 @@ export const useNotificationsStore = defineStore('notifications', () => {
       seen.add(a.id)
       return true
     })
+  }
+
+  function pinAlert(alert) {
+    if (pinned.value.some((a) => a.id === alert.id)) return
+    pinned.value = [alert, ...pinned.value]
+    savePinned(pinned.value)
+    // Un-dismiss so a previously-dismissed reminder reappears when re-pinned.
+    if (dismissed.value[alert.id]) {
+      const next = { ...dismissed.value }
+      delete next[alert.id]
+      dismissed.value = next
+      saveDismissed(next)
+    }
+  }
+  function unpinAlert(id) {
+    pinned.value = pinned.value.filter((a) => a.id !== id)
+    savePinned(pinned.value)
   }
 
   function dismiss(id) {
@@ -312,9 +345,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   return {
-    alerts, loading, error, lastRefreshedAt, dismissed,
+    alerts, pinned, loading, error, lastRefreshedAt, dismissed,
     visibleAlerts, unreadCount,
     refresh, dismiss, dismissAll, restoreAll,
+    pinAlert, unpinAlert,
     startBackground, stopBackground,
   }
 })

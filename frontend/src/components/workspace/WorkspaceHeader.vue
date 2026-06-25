@@ -627,18 +627,18 @@ onBeforeUnmount(() => {
 }
 
 .sub-status.active {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: rgba(46, 132, 74, 0.1);
+  color: #2E844A;
 }
 
 .sub-status.cancelled {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background: rgba(232, 114, 10, 0.1);
+  color: #E8720A;
 }
 
 .sub-status.expired {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: rgba(194, 57, 52, 0.1);
+  color: #C23934;
 }
 
 .sub-card-info,
@@ -656,7 +656,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--red);
   background: var(--red-light);
-  border: 1px solid rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(194, 57, 52, 0.15);
   border-radius: 6px;
   cursor: pointer;
   font-family: inherit;
@@ -664,7 +664,7 @@ onBeforeUnmount(() => {
 }
 
 .btn-cancel-sub:hover {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(194, 57, 52, 0.12);
   border-color: var(--red);
 }
 

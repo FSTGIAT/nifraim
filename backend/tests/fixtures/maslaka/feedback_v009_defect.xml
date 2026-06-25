@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Stub Feedback v009 DEFECT message — exercises the failure path.
+  Replace `__REQUEST_REFERENCE__` before dropping into the inbox.
+-->
+<Feedback version="v009">
+  <RequestReference>__REQUEST_REFERENCE__</RequestReference>
+  <Status>DEFECT</Status>
+  <ErrorCode>INVALID_CUSTOMER</ErrorCode>
+  <ErrorDetail>Customer ID not found in any provider registry</ErrorDetail>
+  <Timestamp>2026-05-31T08:00:00Z</Timestamp>
+</Feedback>

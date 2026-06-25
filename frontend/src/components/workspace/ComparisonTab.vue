@@ -64,29 +64,45 @@
     <template v-else-if="productionStore.currentFile">
       <!-- Toolbar: production badge + category toggle -->
       <div class="comparison-toolbar">
-        <div class="toolbar-production">
-          <div class="toolbar-prod-dot"></div>
-          <span class="toolbar-prod-name">{{ productionStore.currentFile.filename }}</span>
-          <span class="toolbar-prod-count ltr-number">{{ productionStore.currentFile.record_count.toLocaleString() }}</span>
+        <div class="toolbar-sources">
+          <div class="toolbar-production">
+            <div class="toolbar-prod-dot"></div>
+            <span class="toolbar-prod-name">{{ productionStore.currentFile.filename }}</span>
+            <span class="toolbar-prod-count ltr-number">{{ productionStore.currentFile.record_count.toLocaleString() }}</span>
+          </div>
+          <!-- נפרעים side: the merged commission source spanning all companies. -->
+          <div v-if="nifraimCompanyCount > 0" class="toolbar-nifraim">
+            <div class="toolbar-nif-dot"></div>
+            <span class="toolbar-nif-name">נפרעים מאוחד</span>
+            <span class="toolbar-nif-count ltr-number">{{ nifraimCompanyCount }} חברות</span>
+          </div>
         </div>
 
-        <div class="category-toggle">
-          <button
-            v-for="cat in categories"
-            :key="cat.key"
-            class="toggle-segment"
-            :class="{ active: comparisonStore.activeCategory === cat.key }"
-            @click="onSelectCategory(cat.key)"
-          >
-            <span class="segment-label">{{ cat.label }}</span>
-            <span v-if="comparisonStore.hasResultFor(cat.key)" class="segment-dot"></span>
-          </button>
+        <div class="toolbar-end">
+          <div class="category-toggle">
+            <button
+              v-for="cat in categories"
+              :key="cat.key"
+              class="toggle-segment"
+              :class="{ active: comparisonStore.activeCategory === cat.key }"
+              @click="onSelectCategory(cat.key)"
+            >
+              <span class="segment-label">{{ cat.label }}</span>
+              <span v-if="comparisonStore.hasResultFor(cat.key)" class="segment-dot"></span>
+            </button>
+          </div>
+
+          <!-- History: last 3 commission files behind a clean icon popover.
+               Clicking a file opens its comparison. -->
+          <RecentFilesPopover @select="onCommissionFileSelect" />
         </div>
       </div>
 
-      <!-- Recent commission files — sits under the production toolbar.
-           Clicking a card opens its comparison instead of just downloading. -->
-      <RecentCommissionFiles @select="onCommissionFileSelect" />
+      <!-- Cross-company reconciliation overview (both categories) -->
+      <CompanyReconciliationSummary
+        :summary="comparisonStore.companySummary"
+        @drill="onDrillCompany"
+      />
 
       <!-- Content area -->
       <Transition name="tab-switch" mode="out-in">
@@ -130,7 +146,8 @@ import { useUploadsStore } from '../../stores/uploads.js'
 import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
-import RecentCommissionFiles from '../comparison/RecentCommissionFiles.vue'
+import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
+import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
 import PortalAutomationPanel from './PortalAutomationPanel.vue'
 
 defineEmits(['go-to-portal-automation'])
@@ -138,6 +155,15 @@ defineEmits(['go-to-portal-automation'])
 const productionStore = useProductionStore()
 const comparisonStore = useComparisonStore()
 const uploadsStore = useUploadsStore()
+
+// How many companies feed the merged נפרעים side — drives the toolbar badge.
+// Sourced from the cross-company summary (loaded on mount) with a fallback to
+// the active comparison result's commission_company_sources.
+const nifraimCompanyCount = computed(() => {
+  const fromSummary = comparisonStore.companySummary?.companies?.length || 0
+  if (fromSummary) return fromSummary
+  return comparisonStore.result?.commission_company_sources?.length || 0
+})
 
 const categories = [
   {
@@ -309,10 +335,30 @@ async function onAutomationSuccess({ run }) {
   } catch (_) { /* surfaced via store.error */ }
 }
 
+// Clicking a company row in the summary → open the category that has results
+// for it (prefer one with a persisted comparison) and let the existing
+// per-company filter bar take over inside the dashboard.
+async function onDrillCompany(_company) {
+  const order = ['gemel_hishtalmut', 'insurance']
+  let target = order.find((c) => comparisonStore.hasResultFor(c))
+  if (!target) {
+    for (const c of order) {
+      const r = await comparisonStore.fetchLatest(c)
+      if (r) { target = c; break }
+    }
+  }
+  if (target) {
+    comparisonStore.selectCategory(target)
+    if (!comparisonStore.hasResultFor(target)) await comparisonStore.fetchLatest(target)
+  }
+}
+
 onMounted(async () => {
   if (!productionStore.currentFile && !productionStore.loading) {
     await productionStore.fetchCurrent()
   }
+  // Load the cross-company overview (no-op if no comparisons exist yet).
+  comparisonStore.fetchCompanySummary()
   // Auto-select first category so toggle always has an active segment
   if (!comparisonStore.activeCategory) {
     comparisonStore.selectCategory('gemel_hishtalmut')
@@ -534,11 +580,59 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 
+.toolbar-sources {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
 .toolbar-production {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+/* נפרעים badge — orange-tinted to read as the commission side, distinct from
+   the emerald production badge. */
+.toolbar-nifraim {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-inline-start: 10px;
+  border-inline-start: 1px solid var(--border, #e5e7eb);
+}
+.toolbar-nif-dot {
+  width: 7px;
+  height: 7px;
+  background: #f57c00;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.toolbar-nif-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.toolbar-nif-count {
+  font-size: 11px;
+  color: #b45309;
+  background: rgba(245, 124, 0, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .toolbar-prod-dot {
@@ -661,6 +755,10 @@ onMounted(async () => {
     opacity: 0;
     transform: translateY(-8px);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-switch-enter-active,
+  .tab-switch-leave-active { animation: none; }
 }
 
 .ltr-number {

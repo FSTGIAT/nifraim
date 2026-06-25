@@ -252,7 +252,7 @@ function absoluteHebrew(iso) {
 }
 .dm-table td { vertical-align: middle; }
 .dm-table .num { text-align: end; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-.dm-table .num.bold { color: #c2410c; font-weight: 700; }
+.dm-table .num.bold { color: #E65100; font-weight: 700; }
 .dm-table .meta { color: var(--text-muted); font-size: 12px; }
 .dm-table .since { white-space: nowrap; }
 .dm-label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
@@ -280,14 +280,14 @@ function absoluteHebrew(iso) {
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.dm-caret--open { transform: rotate(180deg); color: var(--primary-deep, #c2410c); }
+.dm-caret--open { transform: rotate(180deg); color: var(--primary-deep, #E65100); }
 
 .since-pill {
   display: inline-block;
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--primary-deep, #c2410c);
+  color: var(--primary-deep, #E65100);
   background: rgba(245, 124, 0, 0.08);
   border: 1px solid rgba(245, 124, 0, 0.22);
   border-radius: 999px;
@@ -329,7 +329,7 @@ function absoluteHebrew(iso) {
 }
 .dm-detail-table tr:last-child td { border-bottom: none; }
 .dm-detail-table .num { text-align: end; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-.dm-detail-table .num.bold { color: #c2410c; font-weight: 700; }
+.dm-detail-table .num.bold { color: #E65100; font-weight: 700; }
 .policy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .policy-product { font-weight: 600; color: var(--text); }
 .policy-num { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }

@@ -223,7 +223,7 @@ watch(() => props.open, async (now) => {
   border-bottom: 1px solid rgba(45, 37, 34, 0.06);
 }
 
-.cs-search-icon { color: #E8660A; flex-shrink: 0; }
+.cs-search-icon { color: #E8720A; flex-shrink: 0; }
 
 .cs-input {
   flex: 1;
@@ -247,7 +247,7 @@ watch(() => props.open, async (now) => {
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.cs-close:hover { background: rgba(232, 102, 10, 0.10); color: #E8660A; }
+.cs-close:hover { background: rgba(232, 114, 10, 0.10); color: #E8720A; }
 
 .cs-results {
   max-height: 50vh;
@@ -279,7 +279,7 @@ watch(() => props.open, async (now) => {
   border-bottom: 1px solid rgba(45, 37, 34, 0.04);
 }
 .cs-result:last-child { border-bottom: none; }
-.cs-result:hover { background: rgba(232, 102, 10, 0.06); }
+.cs-result:hover { background: rgba(232, 114, 10, 0.06); }
 
 .cs-result-main {
   display: flex;
@@ -305,7 +305,7 @@ watch(() => props.open, async (now) => {
   gap: 12px;
   font-size: 12px;
 }
-.cs-result-company { color: #E8660A; font-weight: 600; }
+.cs-result-company { color: #E8720A; font-weight: 600; }
 .cs-result-products { color: rgba(45, 37, 34, 0.5); }
 
 /* ── Detail modal (opens on result click) ── */
@@ -355,7 +355,7 @@ watch(() => props.open, async (now) => {
   display: flex;
   gap: 12px;
   padding: 16px 22px;
-  background: linear-gradient(135deg, rgba(232, 102, 10, 0.06), rgba(245, 124, 0, 0.02));
+  background: linear-gradient(135deg, rgba(232, 114, 10, 0.06), rgba(245, 124, 0, 0.02));
 }
 .cs-kpi {
   flex: 1;

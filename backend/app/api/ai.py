@@ -53,15 +53,17 @@ async def get_sources(
     """Return the data sources the AI has access to."""
     sources = []
 
-    # Production file
+    # Production files — no longer a singleton: multiple companies' uploads
+    # coexist as active, so list each one.
     prod = await db.execute(
-        select(FileUpload).where(
+        select(FileUpload)
+        .where(
             FileUpload.user_id == user.id,
             FileUpload.is_production == True,
         )
+        .order_by(desc(FileUpload.uploaded_at))
     )
-    prod_upload = prod.scalar_one_or_none()
-    if prod_upload:
+    for prod_upload in prod.scalars().all():
         sources.append({"type": "production", "label": "פרודוקציה", "filename": prod_upload.filename})
 
     # Commission files (deduplicated by filename)

@@ -39,7 +39,10 @@
             </div>
             <div v-else-if="error" class="mc-state mc-state--error">{{ error }}</div>
             <template v-else>
-              <div ref="mountEl" class="mc-mount" aria-hidden="true"></div>
+              <div class="mc-viz-row">
+                <div ref="mountEl" class="mc-mount mc-mount--bars" aria-hidden="true"></div>
+                <div ref="mountElCircle" class="mc-mount mc-mount--circle" aria-hidden="true"></div>
+              </div>
 
               <!-- Textual summary table — gives the same numbers the Remotion
                    animation shows, in a format the user can scroll/copy. -->
@@ -104,6 +107,7 @@ const emit = defineEmits(['update:open'])
 const insightsStore = useInsightsStore()
 
 const mountEl = ref(null)
+const mountElCircle = ref(null)
 const loading = computed(() => insightsStore.monthlyLoading)
 const error = computed(() => insightsStore.monthlyError)
 const months = computed(() => insightsStore.monthly?.months || [])
@@ -114,29 +118,37 @@ function fmt(v) {
   return '₪' + Math.round(v).toLocaleString('he-IL')
 }
 
-// One chip per month telling the user at a glance whether each input exists.
-// Three states keep the table readable when a month has only commission OR
-// only production (e.g. February has נפרעים but no production tagged for it).
+// One chip per month telling the user at a glance the upload state. Note
+// "הכל הועלה" must mean every recurring נפרעים company filed — not merely that
+// one commission file exists — otherwise it contradicts the missing-files ring
+// (e.g. April had a file from הפניקס but מור/מנורה were still missing).
 function statusChipClass(m) {
-  if (m.production_uploaded && m.commission_uploaded) return 'mc-chip--ok'
   if (!m.production_uploaded && !m.commission_uploaded) return 'mc-chip--missing'
-  return 'mc-chip--partial'
+  if (!m.commission_uploaded) return 'mc-chip--partial'
+  if ((m.missing_count || 0) > 0) return 'mc-chip--partial'
+  return 'mc-chip--ok'
 }
 function statusChipLabel(m) {
-  if (m.production_uploaded && m.commission_uploaded) return 'הכל הועלה'
   if (!m.production_uploaded && !m.commission_uploaded) return 'אין נתונים'
-  if (m.production_uploaded) return 'חסר נפרעים'
-  return 'חסרה פרודוקציה'
+  if (!m.production_uploaded) return 'חסרה פרודוקציה'
+  if (!m.commission_uploaded) return 'חסר נפרעים'
+  const miss = m.missing_count || 0
+  if (miss === 1) return 'חסר דיווח אחד'
+  if (miss > 1) return `חסרים ${miss} דיווחים`
+  return 'הכל הועלה'
 }
 
 function close() {
   emit('update:open', false)
 }
 
-// ── Remotion mounting — same chunk-split + stale-root pattern as AiVizPanel
+// ── Remotion mounting — same chunk-split + stale-root pattern as AiVizPanel.
+// Two players side by side: bars (expected vs actual) + circle (missing files).
 let reactStack = null
-let reactRoot = null
+let reactRoot = null            // bars
 let currentMountEl = null
+let reactRootCircle = null      // missing-files ring
+let currentMountElCircle = null
 
 async function ensureReactStack() {
   if (reactStack) return reactStack
@@ -153,57 +165,89 @@ async function ensureReactStack() {
     Comp: remotion.MonthlyCommissionComposition,
     durationFrames: remotion.MONTHLY_COMMISSION_DURATION_FRAMES,
     fps: remotion.MONTHLY_COMMISSION_FPS,
+    CircleComp: remotion.MissingFilesComposition,
+    circleDuration: remotion.MISSING_FILES_DURATION_FRAMES,
+    circleFps: remotion.MISSING_FILES_FPS,
   }
   return reactStack
+}
+
+function commonPlayerProps(prefersReducedMotion) {
+  const restFrames = prefersReducedMotion ? 0 : 108000  // ~1h still-tail
+  return {
+    autoPlay: true,
+    loop: false,
+    controls: false,
+    clickToPlay: false,
+    doubleClickToFullscreen: false,
+    showPosterWhenUnplayed: false,
+    showPosterWhenPaused: false,
+    showPosterWhenEnded: false,
+    showPosterWhenBuffering: false,
+    acknowledgeRemotionLicense: true,
+    style: { width: '100%', borderRadius: 12, overflow: 'hidden' },
+    _restFrames: restFrames,
+  }
 }
 
 async function renderPlayer() {
   if (!mountEl.value || !months.value.length) return
   try {
     const stack = await ensureReactStack()
-    if (!mountEl.value) return
-    if (reactRoot && currentMountEl !== mountEl.value) {
-      try { reactRoot.unmount() } catch { /* ignore */ }
-      reactRoot = null
-    }
-    if (!reactRoot) {
-      reactRoot = stack.createRoot(mountEl.value)
-      currentMountEl = mountEl.value
-    }
     const prefersReducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const restFrames = prefersReducedMotion ? 0 : 108000  // ~1h tail so final frame persists
-    const totalFrames = (prefersReducedMotion ? 1 : stack.durationFrames) + restFrames
+    const base = commonPlayerProps(prefersReducedMotion)
+    const periodKey = months.value[0]?.period_month
 
-    // months are returned newest-first by API; the Remotion composition
-    // arranges them right-to-left so the newest sits on the right (Hebrew
-    // reading order). Reverse here so the chronological array reads
-    // "oldest → newest" left-to-right in LTR but renders RTL in the card.
-    const payload = { months: [...months.value].reverse() }
+    // ── Bars (expected vs actual). API is newest-first; reverse so the
+    // composition renders oldest→newest left-to-right (RTL card → newest right).
+    if (mountEl.value) {
+      if (reactRoot && currentMountEl !== mountEl.value) {
+        try { reactRoot.unmount() } catch { /* ignore */ }
+        reactRoot = null
+      }
+      if (!reactRoot) {
+        reactRoot = stack.createRoot(mountEl.value)
+        currentMountEl = mountEl.value
+      }
+      const totalFrames = (prefersReducedMotion ? 1 : stack.durationFrames) + base._restFrames
+      reactRoot.render(stack.createElement(stack.Player, {
+        ...base,
+        key: `mc-bars-${months.value.length}-${periodKey}`,
+        component: stack.Comp,
+        inputProps: { months: [...months.value].reverse() },
+        durationInFrames: totalFrames,
+        fps: stack.fps,
+        compositionWidth: 760,
+        compositionHeight: 440,
+      }))
+    }
 
-    const element = stack.createElement(stack.Player, {
-      key: `monthly-commission-${months.value.length}-${months.value[0]?.period_month}`,
-      component: stack.Comp,
-      inputProps: payload,
-      durationInFrames: totalFrames,
-      fps: stack.fps,
-      compositionWidth: 760,
-      compositionHeight: 440,
-      autoPlay: true,
-      loop: false,
-      controls: false,
-      clickToPlay: false,
-      doubleClickToFullscreen: false,
-      showPosterWhenUnplayed: false,
-      showPosterWhenPaused: false,
-      showPosterWhenEnded: false,
-      showPosterWhenBuffering: false,
-      acknowledgeRemotionLicense: true,
-      style: { width: '100%', borderRadius: 12, overflow: 'hidden' },
-    })
-    reactRoot.render(element)
+    // ── Circle (missing נפרעים files). Newest month at the top of the stack.
+    if (mountElCircle.value) {
+      if (reactRootCircle && currentMountElCircle !== mountElCircle.value) {
+        try { reactRootCircle.unmount() } catch { /* ignore */ }
+        reactRootCircle = null
+      }
+      if (!reactRootCircle) {
+        reactRootCircle = stack.createRoot(mountElCircle.value)
+        currentMountElCircle = mountElCircle.value
+      }
+      const circleFrames = (prefersReducedMotion ? 1 : stack.circleDuration) + base._restFrames
+      const ringCount = Math.max(1, months.value.length)
+      reactRootCircle.render(stack.createElement(stack.Player, {
+        ...base,
+        key: `mc-circle-${months.value.length}-${periodKey}`,
+        component: stack.CircleComp,
+        inputProps: { months: months.value },
+        durationInFrames: circleFrames,
+        fps: stack.circleFps,
+        compositionWidth: 480,
+        compositionHeight: Math.min(560, 180 + ringCount * 180),
+      }))
+    }
   } catch (e) {
     console.error('[MonthlyCommissionModal] render failed', e)
   }
@@ -232,6 +276,11 @@ onBeforeUnmount(() => {
     reactRoot = null
     currentMountEl = null
   }
+  if (reactRootCircle) {
+    try { reactRootCircle.unmount() } catch { /* ignore */ }
+    reactRootCircle = null
+    currentMountElCircle = null
+  }
 })
 </script>
 
@@ -250,7 +299,7 @@ onBeforeUnmount(() => {
 }
 .mc-card {
   width: 100%;
-  max-width: 820px;
+  max-width: 1320px;
   max-height: 94vh;
   background: var(--bg-surface, #fff);
   border-radius: var(--radius-lg, 16px);
@@ -265,7 +314,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border, #DDDBDA);
-  background: linear-gradient(135deg, #FFF8F0 0%, #FFFFFF 100%);
+  background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%);
 }
 .mc-head-left { display: flex; align-items: center; gap: 12px; }
 .mc-badge {
@@ -317,6 +366,18 @@ onBeforeUnmount(() => {
 @keyframes mc-spin { to { transform: rotate(360deg); } }
 
 .mc-mount { width: 100%; }
+/* Two players side by side: bars (wider) + missing-files circle. Stacks on
+   narrow screens. */
+.mc-viz-row {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+.mc-mount--bars { flex: 2 1 0; min-width: 0; }
+.mc-mount--circle { flex: 1 1 0; min-width: 0; }
+@media (max-width: 880px) {
+  .mc-viz-row { flex-direction: column; }
+}
 
 .mc-table-wrap {
   border: 1px solid var(--border, #DDDBDA);

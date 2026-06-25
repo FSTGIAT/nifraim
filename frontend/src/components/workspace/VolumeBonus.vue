@@ -242,9 +242,9 @@ td {
   font-weight: 600;
 }
 
-.freq-monthly { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.freq-quarterly { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-.freq-yearly { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.freq-monthly { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
+.freq-quarterly { background: rgba(227, 6, 106, 0.1); color: #E3066A; }
+.freq-yearly { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
 .freq-other { background: var(--bg-surface); color: var(--text-muted); }
 
 /* Paid status select */
@@ -268,15 +268,15 @@ td {
 .paid-select:focus { outline: none; border-color: var(--primary); }
 
 .paid-select.paid-yes {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(46, 132, 74, 0.1);
+  color: #2E844A;
+  border-color: rgba(46, 132, 74, 0.3);
 }
 
 .paid-select.paid-no {
-  background: rgba(239, 68, 68, 0.06);
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(194, 57, 52, 0.06);
+  color: #C23934;
+  border-color: rgba(194, 57, 52, 0.2);
 }
 
 /* Total row */

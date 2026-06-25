@@ -24,6 +24,9 @@ try:
     from .xlsx_writer import (
         build_insurance_product_row,
         build_coverage_row,
+        build_lifehlth_product_row,
+        build_covrlife_product_row,
+        build_life_product_row,
         build_workbook,
         _fmt_date,
     )
@@ -35,6 +38,9 @@ except ImportError:
     from xlsx_writer import (  # type: ignore
         build_insurance_product_row,
         build_coverage_row,
+        build_lifehlth_product_row,
+        build_covrlife_product_row,
+        build_life_product_row,
         build_workbook,
         _fmt_date,
     )
@@ -184,12 +190,191 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
                 payment_frequency_label=payment_freq_label,
             ))
 
+    # ─── Augment with policies from LIFEHLTH.MBT ─────────────────────────
+    # The DAT file's HOLDNG records only cover the agent's currently-active
+    # primary policies (typically 5-10). LIFEHLTH.MBT carries the agent's
+    # FULL register (life + health + mortgage life — typically 50-150+).
+    # Add the policies not already captured by the DAT pass so the
+    # production view reflects the agent's whole book.
+    #
+    # Scope filters (match the Migdal "agent production report" view):
+    # - Class 4 (savings-linked riders) is excluded — those don't appear
+    #   in the manual reference and inflate the count.
+    # - Customer must exist in PERSON.MBT — that's the canonical "primary
+    #   insured" list. LIFEHLTH/COVRLIFE customer-id columns sometimes
+    #   reference beneficiaries / children who aren't the agent's clients.
+    primary_customers = set(mbt_data.get("persons", {}).keys())
+
+    def _normalize_customer_id(raw: str) -> str:
+        """Migdal stores customer ids in MBT files as `01` + 9-digit national.
+        Strip the 2-digit branch prefix then leading zeros to align with
+        PERSON.MBT keys (which use plain stripped 9-digit ids)."""
+        if raw and raw.startswith("01") and len(raw) == 11:
+            raw = raw[2:]
+        return raw.lstrip("0") if raw else ""
+
+    lifehlth_path = folder / "LIFEHLTH.MBT"
+    extra_lifehlth = 0
+    # Hoisted out of the `if lifehlth_path.exists()` block so the COVRLIFE pass
+    # below can dedup against LIFEHLTH-only (matching Surense's counting model,
+    # which counts a life policy once from DAT *and* once from COVRLIFE *and*
+    # once from LIFE.MBT — but only once across LIFEHLTH duplicates).
+    seen_lifehlth_policies: set[str] = set()
+    if lifehlth_path.exists():
+        try:
+            from .mbt import _read_text, _split_pipe
+        except ImportError:
+            from mbt import _read_text, _split_pipe  # type: ignore
+        for raw_line in _read_text(lifehlth_path).splitlines():
+            if not raw_line.strip():
+                continue
+            cells = _split_pipe(raw_line)
+            if len(cells) < 50:
+                continue
+            # All LIFEHLTH classes (1-5) are health sub-types per ref —
+            # see comment in build_lifehlth_product_row. Don't skip any class.
+            # Col 10 is policy ID, col 9 is customer ID (verified by overlap test
+            # against PERSON.MBT — 109/109 matches on col 9, 0/109 on col 10).
+            policy_id = (cells[10].lstrip("0") if cells[10] else "") or cells[10]
+            if not policy_id or policy_id in seen_lifehlth_policies:
+                continue
+            customer_short = _normalize_customer_id(cells[9])
+            if primary_customers and customer_short not in primary_customers:
+                continue
+            seen_lifehlth_policies.add(policy_id)
+            mbt_person = mbt_data["persons"].get(customer_short)
+            insurance_rows.append(build_lifehlth_product_row(
+                cells=cells,
+                mbt_person=mbt_person,
+                insurer_name=insurer_name,
+                agent_num=agent_num,
+            ))
+            extra_lifehlth += 1
+
+    # ─── Augment with policies from COVRLIFE.MBT ─────────────────────────
+    # COVRLIFE holds 399 rider rows / 115 distinct policies — these are
+    # mostly health-coverage policies whose primary records aren't in
+    # LIFEHLTH. We emit one row per distinct policy_ref, classifying each
+    # by *inheriting* the parent customer's dominant LIFEHLTH class
+    # (col 2) rather than running the brittle rider-name keyword
+    # classifier. Rationale: rider names like "ביטוח חיים למקרה מוות"
+    # appear on HEALTH policies and would otherwise be mis-classified.
+    from collections import Counter as _Counter
+    covrlife_path = folder / "COVRLIFE.MBT"
+    extra_covrlife = 0
+
+    # Per-customer LIFEHLTH dominant class (computed from raw LIFEHLTH)
+    cust_dom_class: dict[str, str] = {}
+    if lifehlth_path.exists():
+        cust_classes: dict[str, _Counter] = {}
+        for raw in _read_text(lifehlth_path).splitlines():
+            if not raw.strip(): continue
+            c = _split_pipe(raw)
+            if len(c) < 11: continue
+            cid = _normalize_customer_id(c[9])
+            klass = c[2]
+            if cid and klass:
+                cust_classes.setdefault(cid, _Counter())[klass] += 1
+        for cid, ctr in cust_classes.items():
+            cust_dom_class[cid] = ctr.most_common(1)[0][0]
+
+    CLASS_TO_LABELS = {
+        "1": ("ביטוח חיים", "מגדל - חיים"),
+        "2": ("ביטוח בריאות", "מגדל - בריאות"),
+        "3": ("ביטוח חיים משכנתא", "מגדל - ביטוח חיים משכנתא"),
+    }
+
+    if covrlife_path.exists():
+        # Dedup COVRLIFE only against LIFEHLTH (not DAT) — the 6 life policies
+        # that live in BOTH DAT and COVRLIFE should be emitted twice to match
+        # Surense's product count (which lists each source's policies).
+        seen_covrlife: set[str] = set()
+        for raw_line in _read_text(covrlife_path).splitlines():
+            if not raw_line.strip():
+                continue
+            cells = _split_pipe(raw_line)
+            if len(cells) < 20:
+                continue
+            # COVRLIFE col 1 has the `01`-prefixed policy ref; strip prefix
+            # then leading zeros to normalize against LIFEHLTH col 10.
+            policy_ref = cells[1]
+            if policy_ref.startswith("01") and len(policy_ref) == 11:
+                policy_ref = policy_ref[2:]
+            policy_id = policy_ref.lstrip("0") or policy_ref
+            if not policy_id or policy_id in seen_covrlife or policy_id in seen_lifehlth_policies:
+                continue
+            customer_short = cells[18].lstrip("0") if cells[18] else ""
+            if primary_customers and customer_short not in primary_customers:
+                continue
+            seen_covrlife.add(policy_id)
+
+            # Look up the customer's dominant LIFEHLTH class — use it to
+            # override the rider-name keyword classifier in build_covrlife.
+            dom_class = cust_dom_class.get(customer_short)
+            override = CLASS_TO_LABELS.get(dom_class) if dom_class else None
+
+            mbt_person = mbt_data["persons"].get(customer_short)
+            row = build_covrlife_product_row(
+                cells=cells,
+                mbt_person=mbt_person,
+                insurer_name=insurer_name,
+                agent_num=agent_num,
+            )
+            # Apply class override: row[1]=סוג מוצר, row[2]=מוצר
+            if override is not None:
+                row[1] = override[0]
+                row[2] = override[1]
+            insurance_rows.append(row)
+            extra_covrlife += 1
+
+    # ─── Augment with policies from LIFE.MBT ─────────────────────────────
+    # DAT's HOLDNG snapshot is the primary source for life policies and
+    # normally matches LIFE.MBT 1:1 for current-month active policies.
+    # This loop is a defensive fallback: any LIFE.MBT entry whose policy_id
+    # the DAT pass didn't already emit gets added so paid-up / dormant
+    # policies don't silently vanish when DAT drops them.
+    life_path = folder / "LIFE.MBT"
+    extra_life = 0
+    if life_path.exists():
+        try:
+            from .mbt import _read_text, _split_pipe
+        except ImportError:
+            from mbt import _read_text, _split_pipe  # type: ignore
+        # No cross-source dedup — LIFE.MBT entries duplicate the DAT snapshot's
+        # life policies by design (register vs active-holdings view). Surense
+        # emits both; we now match that.
+        seen_life: set[str] = set()
+        for raw_line in _read_text(life_path).splitlines():
+            if not raw_line.strip():
+                continue
+            cells = _split_pipe(raw_line)
+            if len(cells) < 20:
+                continue
+            policy_id = (cells[10].lstrip("0") if cells[10] else "") or cells[10]
+            if not policy_id or policy_id in seen_life:
+                continue
+            seen_life.add(policy_id)
+            customer_short = _normalize_customer_id(cells[11])
+            mbt_person = mbt_data["persons"].get(customer_short)
+            insurance_rows.append(build_life_product_row(
+                cells=cells,
+                mbt_person=mbt_person,
+                insurer_name=insurer_name,
+                agent_num=agent_num,
+            ))
+            extra_life += 1
+
     wb = build_workbook(insurance_rows, coverage_rows, agent_number=agent_num)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
 
+    dat_count = len(insurance_rows) - extra_lifehlth - extra_covrlife - extra_life
     print(
-        f"✓ wrote {len(insurance_rows)} policies + {len(coverage_rows)} coverages "
+        f"✓ wrote {len(insurance_rows)} policies "
+        f"(DAT={dat_count}, "
+        f"LIFEHLTH+={extra_lifehlth}, COVRLIFE+={extra_covrlife}, "
+        f"LIFE+={extra_life}) "
+        f"+ {len(coverage_rows)} coverages "
         f"to {out_path} (insurer={insurer_name}, agent={agent_num})",
         file=sys.stderr,
     )

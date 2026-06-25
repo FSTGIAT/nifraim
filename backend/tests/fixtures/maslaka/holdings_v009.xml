@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Stub Holdings v009 message — three products for one customer across two
+  insurers. Replace `__REQUEST_REFERENCE__` and `__CUSTOMER_ID__` (must
+  match a known customer in client_records) before dropping into the inbox.
+
+  When the real XSD lands, replace this layout to match Holdings v009 exactly.
+  The parser at services/maslaka/adapter.py is the single point of change.
+-->
+<Holdings version="v009">
+  <RequestReference>__REQUEST_REFERENCE__</RequestReference>
+  <Timestamp>2026-05-31T08:30:00Z</Timestamp>
+
+  <Product>
+    <CustomerIdNumber>__CUSTOMER_ID__</CustomerIdNumber>
+    <ProviderCode>521000123</ProviderCode>
+    <ProductTypeCode>03</ProductTypeCode>
+    <ProductName>ביטוח חיים משכנתא</ProductName>
+    <PolicyNumber>20508103</PolicyNumber>
+    <Track>בסיסי</Track>
+    <Accumulation>0.00</Accumulation>
+    <TotalPremium>125.04</TotalPremium>
+    <ExpectedPension>0.00</ExpectedPension>
+    <StatusDate>2026-04-30</StatusDate>
+    <InsuranceCoverage>[{"coverage_name":"מקרה מוות","sum_assured":442442}]</InsuranceCoverage>
+  </Product>
+
+  <Product>
+    <CustomerIdNumber>__CUSTOMER_ID__</CustomerIdNumber>
+    <ProviderCode>521000123</ProviderCode>
+    <ProductTypeCode>03</ProductTypeCode>
+    <ProductName>ביטוח חיים משכנתא</ProductName>
+    <PolicyNumber>20508104</PolicyNumber>
+    <Track>בסיסי</Track>
+    <Accumulation>0.00</Accumulation>
+    <TotalPremium>55.05</TotalPremium>
+    <ExpectedPension>0.00</ExpectedPension>
+    <StatusDate>2026-04-30</StatusDate>
+    <InsuranceCoverage>[{"coverage_name":"מקרה מוות","sum_assured":195343}]</InsuranceCoverage>
+  </Product>
+
+  <Product>
+    <CustomerIdNumber>__CUSTOMER_ID__</CustomerIdNumber>
+    <ProviderCode>520000789</ProviderCode>
+    <ProductTypeCode>03</ProductTypeCode>
+    <ProductName>ביטוח חיים משכנתא</ProductName>
+    <PolicyNumber>365937093</PolicyNumber>
+    <Track>בסיסי</Track>
+    <Accumulation>0.00</Accumulation>
+    <TotalPremium>310.91</TotalPremium>
+    <ExpectedPension>0.00</ExpectedPension>
+    <StatusDate>2026-04-30</StatusDate>
+    <InsuranceCoverage>[{"coverage_name":"מקרה מוות","sum_assured":2082268}]</InsuranceCoverage>
+  </Product>
+</Holdings>

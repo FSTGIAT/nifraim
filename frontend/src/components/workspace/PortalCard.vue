@@ -67,14 +67,19 @@
           <span class="rs-label">{{ badgeLabel }}</span>
           <span v-if="cred.last_run_at" class="rs-time">· {{ relativeHebrew(cred.last_run_at) }}</span>
         </span>
-      </div>
-
-      <!-- Error preview -->
-      <div v-if="cred.last_error" class="last-error" :title="cred.last_error">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <span>{{ cred.last_error.slice(0, 80) }}</span>
+        <button
+          v-if="cred.last_error"
+          class="rs-error-pill"
+          type="button"
+          :title="cred.last_error"
+          aria-label="הצג פרטי שגיאה"
+          @click.stop="$emit('view-error', cred.last_error)"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>פרטים</span>
+        </button>
       </div>
 
       <!-- Live progress -->
@@ -87,26 +92,29 @@
         <button
           class="btn-run"
           :disabled="isRunning"
+          :aria-label="isRunning ? 'רץ' : 'הרץ עכשיו'"
+          :title="isRunning ? 'רץ…' : 'הרץ עכשיו'"
           @click="$emit('run')"
         >
           <span v-if="isRunning" class="btn-spinner" aria-hidden="true"></span>
-          <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
             <polygon points="6 4 20 12 6 20" />
           </svg>
-          <span>{{ isRunning ? 'רץ…' : 'הרץ עכשיו' }}</span>
         </button>
-        <button class="btn-icon" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-          </svg>
-        </button>
-        <button class="btn-icon btn-icon--danger" type="button" title="מחיקה" aria-label="מחיקה" @click="$emit('delete')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            <line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
-          </svg>
-        </button>
+        <div class="actions-secondary">
+          <button class="btn-icon" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            </svg>
+          </button>
+          <button class="btn-icon btn-icon--danger" type="button" title="מחיקה" aria-label="מחיקה" @click="$emit('delete')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+          </button>
+        </div>
       </footer>
     </div>
   </article>
@@ -117,6 +125,7 @@ import { computed } from 'vue'
 import PortalRunProgress from './PortalRunProgress.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 import { brandFor } from '../../utils/companyBrand.js'
+import { nearestChartColor } from '../../utils/chartPalette.js'
 
 const props = defineProps({
   cred: { type: Object, required: true },
@@ -124,8 +133,10 @@ const props = defineProps({
   isRunning: { type: Boolean, default: false },
   activeRun: { type: Object, default: null },
   draggable: { type: Boolean, default: false },
+  // Distinct on-palette wash color assigned by the parent (de-duped per company).
+  washColor: { type: String, default: '' },
 })
-defineEmits(['run', 'edit', 'delete', 'dragstart'])
+defineEmits(['run', 'edit', 'delete', 'dragstart', 'view-error'])
 
 const SCHEDULE_LABELS = { daily: 'יומי', weekly: 'שבועי', monthly: 'חודשי' }
 const STATUS_LABELS = {
@@ -176,9 +187,13 @@ const runStripAriaLabel = computed(() => {
   return `היסטוריה: ${counts.success || 0} הצלחות, ${(counts.failed || 0) + (counts.timeout || 0)} כישלונות`
 })
 
+// Card wash uses the bright-bold palette, picking the palette color CLOSEST to
+// the company's brand color (see nearestChartColor) — so the board is on-palette
+// but each company keeps a recognizable hue (Phoenix→palette-blue, Harel→red…).
+
 // Brand wash gradient — darken the brand color by ~22% for the gradient bottom.
 function hexShift(hex, factor) {
-  const clean = (hex || '#666').replace('#', '')
+  const clean = (hex || '#706E6B').replace('#', '')
   const n = parseInt(clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean, 16)
   const r = Math.max(0, Math.min(255, Math.floor(((n >> 16) & 0xff) * factor)))
   const g = Math.max(0, Math.min(255, Math.floor(((n >> 8) & 0xff) * factor)))
@@ -186,8 +201,8 @@ function hexShift(hex, factor) {
   return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
 }
 const washStyle = computed(() => {
-  const base = brand.value.color
-  const deep = hexShift(base, 0.72)
+  const base = props.washColor || nearestChartColor(brand.value.color)
+  const deep = hexShift(base, 0.82)
   return {
     background: `linear-gradient(135deg, ${base} 0%, ${deep} 100%)`,
     '--brand-base': base,
@@ -217,21 +232,21 @@ const washStyle = computed(() => {
 .cred-card:active { cursor: grabbing; }
 
 .cred-card--cadence-manual  { --cadence-color: transparent; }
-.cred-card--cadence-daily   { --cadence-color: #C2410C; }
-.cred-card--cadence-weekly  { --cadence-color: #0E7490; }
-.cred-card--cadence-monthly { --cadence-color: #4338CA; }
+.cred-card--cadence-daily   { --cadence-color: var(--cadence-daily); }
+.cred-card--cadence-weekly  { --cadence-color: var(--cadence-weekly); }
+.cred-card--cadence-monthly { --cadence-color: var(--cadence-monthly); }
 
-/* Status accents — outer ring tone */
-.cred-card--success { border-color: rgba(16, 185, 129, 0.34); }
-.cred-card--failed  { border-color: rgba(239, 68, 68, 0.34); }
-.cred-card--running { border-color: rgba(59, 130, 246, 0.42); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10), 0 8px 24px rgba(17, 12, 6, 0.10); }
+/* Status accents — outer ring tone (Salesforce Lightning palette) */
+.cred-card--success { border-color: rgba(46, 132, 74, 0.55); }
+.cred-card--failed  { border-color: rgba(234, 0, 30, 0.55); }
+.cred-card--running { border-color: rgba(31, 168, 140, 0.55); box-shadow: 0 0 0 3px rgba(31, 168, 140, 0.14), 0 8px 24px rgba(17, 12, 6, 0.10); }
 
 /* Scanning beam */
 .scan-beam {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent 0%, var(--primary, #F57C00) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--primary) 50%, transparent 100%);
   background-size: 50% 100%;
   background-repeat: no-repeat;
   animation: scanSweep 1.5s linear infinite;
@@ -270,7 +285,7 @@ const washStyle = computed(() => {
   width: 160px;
   height: 160px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(255,255,255,0.32) 0%, transparent 65%);
   top: -60px;
   inset-inline-end: -40px;
   pointer-events: none;
@@ -349,7 +364,7 @@ const washStyle = computed(() => {
   padding: 3px 8px 3px 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
-  color: var(--cadence-color, #C2410C);
+  color: var(--cadence-color, var(--primary-deep));
   border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
   letter-spacing: 0.2px;
@@ -389,17 +404,17 @@ const washStyle = computed(() => {
   position: relative;
   transition: transform 0.2s ease;
 }
-.rs-dot--success { background: #10B981; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--failed  { background: #EF4444; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--timeout { background: #F59E0B; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--running { background: #3B82F6; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+.rs-dot--success { background: var(--green); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+.rs-dot--failed  { background: var(--red); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+.rs-dot--timeout { background: var(--amber); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+.rs-dot--running { background: var(--primary); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
 .rs-dot--empty   { background: rgba(0, 0, 0, 0.08); }
 .rs-dot--pulse {
   animation: dotPulse 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1);
 }
 @keyframes dotPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.55); }
-  50%      { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(245, 124, 0, 0); }
 }
 
 .rs-meta {
@@ -416,9 +431,9 @@ const washStyle = computed(() => {
   font-weight: 800;
   letter-spacing: 0.1px;
 }
-.run-strip--success .rs-label { color: #047857; }
-.run-strip--failed  .rs-label { color: #B91C1C; }
-.run-strip--running .rs-label { color: #1D4ED8; }
+.run-strip--success .rs-label { color: var(--green); }
+.run-strip--failed  .rs-label { color: var(--red); }
+.run-strip--running .rs-label { color: var(--primary); }
 .run-strip--none    .rs-label { color: var(--text-muted); }
 .rs-time {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -427,26 +442,28 @@ const washStyle = computed(() => {
   font-weight: 600;
 }
 
-/* Error preview */
-.last-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 11.5px;
-  color: #B91C1C;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.18);
-  border-radius: 7px;
-  padding: 6px 8px;
-  line-height: 1.4;
+/* Inline error pill — opens popup with full message */
+.rs-error-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 6px;
+  background: rgba(234, 0, 30, 0.12);
+  color: var(--red);
+  border: 1px solid rgba(234, 0, 30, 0.30);
+  border-radius: 999px;
+  padding: 2px 9px 2px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.last-error svg { flex-shrink: 0; margin-top: 1px; }
-.last-error span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.rs-error-pill:hover {
+  background: rgba(234, 0, 30, 0.20);
+  border-color: rgba(234, 0, 30, 0.55);
+  transform: translateY(-1px);
 }
 
 .cc-progress {
@@ -459,33 +476,37 @@ const washStyle = computed(() => {
 .actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
 }
+.actions-secondary {
+  display: flex;
+  gap: 6px;
+}
 .btn-run {
-  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, #27bd9f, #178f78);
   color: #fff;
   border: none;
-  border-radius: 9px;
-  padding: 9px 14px;
-  font-family: inherit;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.1px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.30);
+  box-shadow: 0 4px 12px rgba(31, 168, 140, 0.30);
   transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  flex-shrink: 0;
 }
+/* Play triangle is visually-left-biased; nudge it 2px so it reads centered in the circle */
+.btn-run svg { transform: translateX(1.5px); }
 .btn-run:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(245, 124, 0, 0.42);
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 10px 22px rgba(31, 168, 140, 0.42);
 }
 .btn-run:disabled {
   background: var(--text-muted);
@@ -518,8 +539,21 @@ const washStyle = computed(() => {
 }
 .btn-icon:hover { background: var(--bg); color: var(--text); border-color: var(--text-muted); }
 .btn-icon--danger:hover {
-  color: #B91C1C;
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.06);
+  color: var(--red-deep);
+  border-color: rgba(234, 0, 30, 0.4);
+  background: rgba(234, 0, 30, 0.06);
+}
+
+/* Respect reduced-motion for all decorative animations */
+@media (prefers-reduced-motion: reduce) {
+  .scan-beam,
+  .rs-dot--pulse,
+  .btn-spinner {
+    animation: none;
+  }
+  .cred-card,
+  .cred-card:hover {
+    transform: none;
+  }
 }
 </style>

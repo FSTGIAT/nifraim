@@ -57,13 +57,45 @@ def _compute_data_fingerprint(records: list[dict]) -> str:
 
 
 async def _get_production_upload(db: AsyncSession, user_id: uuid.UUID) -> FileUpload | None:
+    """Returns the latest active production upload. Kept for backwards
+    compatibility — most callers should use _get_production_upload_ids()
+    instead since multiple companies' production files can be active
+    simultaneously (unified monthly view)."""
     result = await db.execute(
         select(FileUpload).where(
             FileUpload.user_id == user_id,
             FileUpload.is_production == True,
         )
+        .order_by(FileUpload.uploaded_at.desc())
+        .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def _get_production_upload_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Returns ALL active production upload IDs for the user — one per
+    company. The dashboard aggregates records across these so Migdal +
+    Menora + ... appear as one unified monthly production."""
+    result = await db.execute(
+        select(FileUpload.id).where(
+            FileUpload.user_id == user_id,
+            FileUpload.is_production == True,
+        )
+    )
+    return [row[0] for row in result.all()]
+
+
+async def _get_all_production_uploads(db: AsyncSession, user_id: uuid.UUID) -> list[FileUpload]:
+    """All active production uploads (one per company). Used by /current
+    and aggregation endpoints to render unified info."""
+    result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user_id,
+            FileUpload.is_production == True,
+        )
+        .order_by(FileUpload.uploaded_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def _get_companies_for_upload(db: AsyncSession, upload_id: uuid.UUID) -> list[str]:
@@ -106,8 +138,18 @@ async def upload_production(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"שגיאה בפענוח הקובץ: {str(e)}")
 
-    # Check if new file has different data than current production
-    old_prod = await _get_production_upload(db, user.id)
+    # Find prior active production FROM THE SAME COMPANY only. Different
+    # companies' production files coexist as is_production=True so the
+    # dashboard merges them into one monthly view.
+    new_company = result.get("company_source")
+    same_company_q = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.is_production.is_(True),
+            FileUpload.company_source == new_company,
+        )
+    )
+    old_prod = same_company_q.scalar_one_or_none()
     if old_prod:
         # Build a fingerprint from the new parsed data
         new_fingerprint = _compute_data_fingerprint(result["records"])
@@ -136,7 +178,7 @@ async def upload_production(
                 detail="הקובץ מכיל נתונים זהים לקובץ הפרודוקציה הנוכחי — לא בוצע שינוי"
             )
 
-        # Deactivate previous production file (keep file_category for history)
+        # Deactivate previous same-company production (keep file_category for history)
         old_prod.is_production = False
 
     # Create new production upload
@@ -194,22 +236,192 @@ async def get_current_production(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get current production file info."""
-    upload = await _get_production_upload(db, user.id)
-    if not upload:
+    """Get unified production summary across all active company files.
+
+    Migdal + Menora + ... uploads for the same period all stay
+    is_production=True. This endpoint aggregates them into one "monthly
+    production" view: combined record count, all companies, latest period.
+    The `id` and `filename` reflect the most-recent upload (used by the UI
+    as a representative anchor); `companies` lists every contributing one.
+    """
+    uploads = await _get_all_production_uploads(db, user.id)
+    if not uploads:
         return None
 
-    companies = await _get_companies_for_upload(db, upload.id)
+    primary = uploads[0]  # most recent (ordered desc by uploaded_at)
+    total_records = sum(u.record_count or 0 for u in uploads)
+
+    # Collect every contributing company from each upload's records
+    companies_set: set[str] = set()
+    for u in uploads:
+        for c in await _get_companies_for_upload(db, u.id):
+            companies_set.add(c)
+    # Fallback to company_source values when receiving_company is sparse
+    for u in uploads:
+        if u.company_source:
+            companies_set.add(u.company_source)
+    companies = sorted(c for c in companies_set if c not in ("nan", "None"))
+
+    # Latest period across all active uploads
+    periods = [u.period_month for u in uploads if u.period_month]
+    latest_period = max(periods) if periods else None
+
+    # When multiple companies feed the unified view, surface a synthetic
+    # label so the UI doesn't claim it's just one company's file.
+    if len(uploads) > 1:
+        company_label = f"{len(uploads)} חברות"  # "N companies"
+        filename_label = f"פרודוקציה מאוחדת — {len(uploads)} חברות"
+    else:
+        company_label = primary.company_source
+        filename_label = primary.filename
 
     return ProductionFileInfo(
-        id=str(upload.id),
-        filename=upload.filename,
-        file_type=upload.file_type,
-        company_source=upload.company_source,
-        record_count=upload.record_count,
-        uploaded_at=upload.uploaded_at,
-        period_month=upload.period_month,
+        id=str(primary.id),
+        filename=filename_label,
+        file_type=primary.file_type,
+        company_source=company_label,
+        record_count=total_records,
+        uploaded_at=primary.uploaded_at,
+        period_month=latest_period,
         companies=companies,
+    )
+
+
+@router.get("/export.xlsx")
+async def export_unified_production(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a unified monthly production xlsx with **one sheet per
+    company source upload** (Migdal, Menora, …) plus a summary sheet.
+
+    Scoped to the **latest active production upload per `company_source`**
+    — this matches what each portal-automation run delivers (one bundle
+    per company per month). Records inside each sheet keep their full
+    Mimshak/legacy schema so the file reads like the Migdal xlsx but
+    with extra sections for the other companies.
+    """
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    import pandas as pd
+
+    uploads = await _get_all_production_uploads(db, user.id)
+    if not uploads:
+        raise HTTPException(status_code=404, detail="אין קובץ פרודוקציה פעיל")
+
+    # Scope to the LATEST period only — strips historical noise so the file
+    # reflects "this month's automation output from each company".
+    periods_present = [u.period_month for u in uploads if u.period_month]
+    target_period = max(periods_present) if periods_present else None
+    if target_period:
+        uploads = [u for u in uploads if u.period_month == target_period]
+
+    # Keep only the LATEST active upload per company_source — this maps
+    # 1:1 to "one automated download per company per month".
+    seen: dict[str, FileUpload] = {}
+    for u in uploads:  # uploads are sorted DESC by uploaded_at
+        key = u.company_source or "ללא חברה"
+        if key not in seen:
+            seen[key] = u
+    latest_per_company = list(seen.values())
+
+    HEBREW_MONTHS = ["", "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+                     "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"]
+    periods = [u.period_month for u in latest_per_company if u.period_month]
+    period = max(periods) if periods else None
+
+    # Build one DataFrame per company, plus a summary
+    company_dfs: list[tuple[str, pd.DataFrame, int]] = []
+    grand_total_records = 0
+    grand_total_premium = 0.0
+    grand_total_accumulation = 0.0
+
+    for u in latest_per_company:
+        result = await db.execute(
+            select(
+                ClientRecord.id_number,
+                ClientRecord.first_name,
+                ClientRecord.last_name,
+                ClientRecord.receiving_company,
+                ClientRecord.product,
+                ClientRecord.product_type,
+                ClientRecord.fund_policy_number,
+                ClientRecord.total_premium,
+                ClientRecord.accumulation,
+                ClientRecord.product_status,
+                ClientRecord.is_active,
+                ClientRecord.processing_date,
+                ClientRecord.sign_date,
+            )
+            .where(ClientRecord.upload_id == u.id)
+            .order_by(ClientRecord.id_number)
+        )
+        rows = result.all()
+        df = pd.DataFrame([
+            {
+                "ת.ז": r.id_number,
+                "שם פרטי": r.first_name,
+                "שם משפחה": r.last_name,
+                "חברה מקבלת": r.receiving_company,
+                "מוצר": r.product,
+                "סוג מוצר": r.product_type,
+                "מספר פוליסה": r.fund_policy_number,
+                "פרמיה": float(r.total_premium) if r.total_premium else None,
+                "צבירה": float(r.accumulation) if r.accumulation else None,
+                "סטטוס מוצר": r.product_status,
+                "פעיל": r.is_active,
+                "תאריך עיבוד": r.processing_date,
+                "תאריך הצטרפות": r.sign_date,
+            }
+            for r in rows
+        ])
+        # Excel sheet names: max 31 chars, no `:\/?*[]`
+        safe_name = (u.company_source or "—")[:31]
+        for bad in r":\/?*[]":
+            safe_name = safe_name.replace(bad, " ")
+        company_dfs.append((safe_name, df, len(rows)))
+        grand_total_records += len(rows)
+        grand_total_premium += df["פרמיה"].fillna(0).sum() if not df.empty else 0
+        grand_total_accumulation += df["צבירה"].fillna(0).sum() if not df.empty else 0
+
+    summary_df = pd.DataFrame([
+        {
+            "חברה": u.company_source or "—",
+            "מספר רשומות": cnt,
+            "סך פרמיה": float(df["פרמיה"].fillna(0).sum()) if not df.empty else 0.0,
+            "סך צבירה": float(df["צבירה"].fillna(0).sum()) if not df.empty else 0.0,
+            "תקופה": u.period_month.strftime("%Y-%m") if u.period_month else "",
+            "קובץ מקור": u.filename,
+        }
+        for u, (_, df, cnt) in zip(latest_per_company, company_dfs)
+    ] + [
+        {
+            "חברה": "סה״כ",
+            "מספר רשומות": grand_total_records,
+            "סך פרמיה": float(grand_total_premium),
+            "סך צבירה": float(grand_total_accumulation),
+            "תקופה": period.strftime("%Y-%m") if period else "",
+            "קובץ מקור": f"{len(latest_per_company)} חברות",
+        }
+    ])
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        # Summary first so it opens to the overview
+        summary_df.to_excel(writer, sheet_name="סיכום", index=False)
+        # One sheet per company. Hebrew sheet names render correctly in Excel.
+        for name, df, _ in company_dfs:
+            df.to_excel(writer, sheet_name=name, index=False)
+    buf.seek(0)
+
+    label = f"{HEBREW_MONTHS[period.month]} {period.year}" if period else ""
+    fname = f"פרודוקציה מאוחדת{' ' + label if label else ''}.xlsx"
+    from urllib.parse import quote
+    cd = f"attachment; filename=production_merged.xlsx; filename*=UTF-8''{quote(fname)}"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": cd},
     )
 
 
@@ -259,13 +471,15 @@ async def get_production_analytics(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Analytics for current production file."""
-    upload = await _get_production_upload(db, user.id)
-    if not upload:
-        return None
+    """Analytics aggregated across ALL active production uploads.
 
-    uid = upload.id
-    base = select(ClientRecord).where(ClientRecord.upload_id == uid)
+    Multiple companies (Migdal + Menora + …) can each have an
+    is_production=True upload for the same period; KPIs combine them so
+    the dashboard reflects the unified monthly production.
+    """
+    uids = await _get_production_upload_ids(db, user.id)
+    if not uids:
+        return None
 
     # Totals
     totals = await db.execute(
@@ -275,7 +489,7 @@ async def get_production_analytics(
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("total_premium"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("total_accumulation"),
             func.count(func.distinct(ClientRecord.receiving_company)).label("companies_count"),
-        ).where(ClientRecord.upload_id == uid)
+        ).where(ClientRecord.upload_id.in_(uids))
     )
     t = totals.one()
 
@@ -288,7 +502,7 @@ async def get_production_analytics(
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.receiving_company.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.receiving_company.isnot(None))
         .group_by(ClientRecord.receiving_company)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
     )
@@ -304,7 +518,7 @@ async def get_production_analytics(
             func.count().label("count"),
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.product_type.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.product_type.isnot(None))
         .group_by(ClientRecord.product_type)
         .order_by(desc(func.count()))
     )
@@ -319,7 +533,7 @@ async def get_production_analytics(
             ClientRecord.product_status,
             func.count().label("count"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.product_status.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.product_status.isnot(None))
         .group_by(ClientRecord.product_status)
         .order_by(desc(func.count()))
     )
@@ -337,7 +551,7 @@ async def get_production_analytics(
             func.coalesce(func.sum(ClientRecord.total_premium), 0).label("premium"),
             func.count().label("products"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.total_premium), 0)))
         .limit(10)
@@ -356,7 +570,7 @@ async def get_production_analytics(
             func.coalesce(func.sum(ClientRecord.accumulation), 0).label("accumulation"),
             func.count().label("products"),
         )
-        .where(ClientRecord.upload_id == uid, ClientRecord.id_number.isnot(None))
+        .where(ClientRecord.upload_id.in_(uids), ClientRecord.id_number.isnot(None))
         .group_by(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name)
         .order_by(desc(func.coalesce(func.sum(ClientRecord.accumulation), 0)))
         .limit(10)
@@ -387,14 +601,19 @@ async def get_production_clients(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get all clients from the active production file, grouped by id_number."""
-    upload = await _get_production_upload(db, user.id)
-    if not upload:
+    """Get all clients from the active production file, grouped by id_number.
+
+    Aggregates across all active production uploads (one per company) so a
+    client appearing in both Migdal and Menora is shown once with summed
+    premium/accumulation across both feeds.
+    """
+    uids = await _get_production_upload_ids(db, user.id)
+    if not uids:
         return []
 
     order_col = func.coalesce(func.sum(ClientRecord.accumulation), 0) if sort == "accumulation" else func.coalesce(func.sum(ClientRecord.total_premium), 0)
 
-    filters = [ClientRecord.upload_id == upload.id, ClientRecord.id_number.isnot(None)]
+    filters = [ClientRecord.upload_id.in_(uids), ClientRecord.id_number.isnot(None)]
     if search:
         search = search.strip()
         filters.append(
@@ -437,15 +656,15 @@ async def get_client_detail(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get all products for a specific client from the active production file."""
-    upload = await _get_production_upload(db, user.id)
-    if not upload:
+    """Get all products for a specific client across active production uploads."""
+    uids = await _get_production_upload_ids(db, user.id)
+    if not uids:
         raise HTTPException(status_code=404, detail="אין קובץ פרודוקציה פעיל")
 
     result = await db.execute(
         select(ClientRecord)
         .where(
-            ClientRecord.upload_id == upload.id,
+            ClientRecord.upload_id.in_(uids),
             ClientRecord.id_number == id_number.lstrip('0'),
         )
     )

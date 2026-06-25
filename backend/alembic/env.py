@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base
 from app.models import User, FileUpload, ClientRecord, CommissionRate, Recruit, CompanyContact
+# Pension clearinghouse models (4 tables) — import so Alembic autogenerate sees them.
+from app.models import PensionInquiry, PensionHolding, PensionAuditLog, PensionRawPayload  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

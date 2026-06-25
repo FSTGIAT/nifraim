@@ -11,7 +11,7 @@
     >
       <defs>
         <marker id="drag-trail-arrow" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto">
-          <path d="M0 0 L10 5 L0 10 z" fill="var(--primary, #F57C00)" />
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--primary)" />
         </marker>
         <filter id="drag-trail-glow" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="4" />
@@ -22,7 +22,7 @@
       <!-- main dashed line -->
       <path
         :d="dragTrail.path"
-        stroke="var(--primary, #F57C00)"
+        stroke="var(--primary)"
         stroke-width="2.5"
         fill="none"
         stroke-dasharray="7 5"
@@ -31,7 +31,7 @@
         class="drag-trail-line"
       />
       <!-- start anchor dot -->
-      <circle :cx="dragTrail.start.x" :cy="dragTrail.start.y" r="6" fill="var(--primary, #F57C00)" stroke="#fff" stroke-width="2" />
+      <circle :cx="dragTrail.start.x" :cy="dragTrail.start.y" r="6" fill="var(--primary)" stroke="#fff" stroke-width="2" />
       <!-- snap pulse on the target -->
       <circle
         v-if="dragSnapZone"
@@ -39,7 +39,7 @@
         :cy="dragTrail.end.y"
         r="14"
         fill="none"
-        stroke="var(--primary, #F57C00)"
+        stroke="var(--primary)"
         stroke-width="2"
         class="drag-trail-snap"
       />
@@ -111,7 +111,7 @@
                 <circle cx="15" cy="6" r="0.7" fill="currentColor" /><circle cx="15" cy="12" r="0.7" fill="currentColor" /><circle cx="15" cy="18" r="0.7" fill="currentColor" />
               </svg>
             </span>
-            <span class="chip-brand" :style="{ background: brandFor(cred.portal_kind).color }" aria-hidden="true">
+            <span class="chip-brand" :style="{ background: credColor(cred.portal_kind) }" aria-hidden="true">
               {{ brandInitial(cred.portal_kind) }}
             </span>
             <span class="chip-name">{{ portalLabel(cred.portal_kind) }}</span>
@@ -151,7 +151,7 @@
           <span class="pane-title">פורטלים</span>
           <span class="pane-sub">{{ paneSub }}</span>
         </div>
-        <button class="btn-add" type="button" @click="$emit('add')">
+        <button v-if="credentials.length" class="btn-add" type="button" @click="$emit('add')">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12h14" /><path d="M12 5v14" />
           </svg>
@@ -159,14 +159,14 @@
         </button>
       </header>
 
-      <!-- ── Empty state — Remotion intro showcase ───────────── -->
+      <!-- ── Empty state — clean, single CTA ─────────────────── -->
       <div v-if="!credentials.length" class="empty-state">
-        <div ref="introMountEl" class="empty-intro" aria-hidden="true">
-          <div v-if="introError" class="intro-fallback">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="18" x="3" y="4" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-          </div>
+        <div class="empty-art" aria-hidden="true">
+          <span class="empty-art-ring"></span>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
         </div>
         <div class="empty-copy">
           <h3>חבר פורטל ראשון</h3>
@@ -191,6 +191,7 @@
           >
             <PortalCard
               :cred="cred"
+              :wash-color="credColor(cred.portal_kind)"
               :is-running="isRunning(cred.id)"
               :portal-label="portalLabel(cred.portal_kind)"
               :active-run="activeRun"
@@ -198,6 +199,7 @@
               @run="$emit('run', cred.id)"
               @edit="$emit('edit', cred)"
               @delete="$emit('delete', cred.id)"
+              @view-error="(msg) => $emit('view-error', { cred, message: msg })"
               @dragstart="onDragStart(cred.id, $event)"
               @dragend="onDragEnd"
             />
@@ -225,9 +227,10 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import PortalCard from './PortalCard.vue'
 import { brandFor } from '../../utils/companyBrand.js'
+import { nearestChartColor, assignNearestDistinct } from '../../utils/chartPalette.js'
 
 const props = defineProps({
   credentials: { type: Array, required: true },
@@ -236,7 +239,7 @@ const props = defineProps({
   activeRunId: { type: String, default: null },
 })
 
-const emit = defineEmits(['run', 'edit', 'delete', 'schedule', 'unschedule', 'add'])
+const emit = defineEmits(['run', 'edit', 'delete', 'schedule', 'unschedule', 'add', 'view-error'])
 
 const zones = [
   { kind: 'daily',   label: 'יומי',   sub: 'כל יום · 09:00' },
@@ -251,6 +254,21 @@ const cardsByKind = computed(() => {
   }
   return out
 })
+
+// Distinct on-palette color per company (nearest-to-brand, de-duplicated so
+// several red insurers don't collapse to the same red). Shared by cards + chips.
+const colorByKind = computed(() => {
+  const seen = []
+  for (const c of props.credentials || []) {
+    if (!seen.some((s) => s.key === c.portal_kind)) {
+      seen.push({ key: c.portal_kind, brand: brandFor(c.portal_kind).color })
+    }
+  }
+  return assignNearestDistinct(seen)
+})
+function credColor(kind) {
+  return colorByKind.value.get(kind) || nearestChartColor(brandFor(kind).color)
+}
 
 const unscheduled = computed(() =>
   (props.credentials || []).filter((c) => !c.schedule_kind || c.schedule_kind === 'manual'),
@@ -398,101 +416,7 @@ function onPaneDrop(event) {
   draggingId.value = null
 }
 
-// ─── Remotion intro (empty-state showcase) ───────────────
-const introMountEl = ref(null)
-const introError = ref(false)
-let reactStack = null
-let reactRoot = null
-let currentMountEl = null
-let renderCounter = 0
-
-function prefersReducedMotion() {
-  return typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
-async function ensureReactStack() {
-  if (reactStack) return reactStack
-  const [rdClient, react, player, remotion] = await Promise.all([
-    import('react-dom/client'),
-    import('react'),
-    import('@remotion/player'),
-    import('../../remotion'),
-  ])
-  reactStack = {
-    createRoot: rdClient.createRoot,
-    createElement: react.createElement,
-    Player: player.Player,
-    AutomationIntro: remotion.AutomationIntro,
-    AUTOMATION_INTRO_DURATION: remotion.AUTOMATION_INTRO_DURATION,
-  }
-  return reactStack
-}
-
-async function renderIntro() {
-  if (!introMountEl.value) return
-  if (prefersReducedMotion()) return  // respect user preference — fallback icon stays
-  try {
-    const stack = await ensureReactStack()
-    if (!introMountEl.value) return
-    if (reactRoot && currentMountEl !== introMountEl.value) {
-      try { reactRoot.unmount() } catch { /* ignore */ }
-      reactRoot = null
-    }
-    if (!reactRoot) {
-      reactRoot = stack.createRoot(introMountEl.value)
-      currentMountEl = introMountEl.value
-    }
-    renderCounter += 1
-    const el = stack.createElement(stack.Player, {
-      key: `automation-intro-${renderCounter}`,
-      component: stack.AutomationIntro,
-      durationInFrames: stack.AUTOMATION_INTRO_DURATION,
-      fps: 30,
-      compositionWidth: 1080,
-      compositionHeight: 600,
-      autoPlay: true,
-      loop: true,
-      controls: false,
-      clickToPlay: false,
-      doubleClickToFullscreen: false,
-      showPosterWhenUnplayed: false,
-      showPosterWhenPaused: false,
-      showPosterWhenEnded: false,
-      showPosterWhenBuffering: false,
-      acknowledgeRemotionLicense: true,
-      style: { width: '100%', height: '100%' },
-    })
-    reactRoot.render(el)
-  } catch (e) {
-    console.warn('[PortalAutomationCanvas] intro render failed', e)
-    introError.value = true
-  }
-}
-
-function teardownIntro() {
-  if (reactRoot) {
-    try { reactRoot.unmount() } catch { /* ignore */ }
-    reactRoot = null
-    currentMountEl = null
-  }
-}
-
-// Mount intro when entering empty state; tear down when leaving.
-watch(
-  () => props.credentials.length,
-  (n) => {
-    if (n === 0) {
-      nextTick(renderIntro)
-    } else {
-      teardownIntro()
-    }
-  },
-)
-
 onMounted(() => {
-  if (!props.credentials.length) nextTick(renderIntro)
   window.addEventListener('resize', onResize)
 })
 onBeforeUnmount(() => {
@@ -500,7 +424,6 @@ onBeforeUnmount(() => {
   if (leaveZoneTimeout) clearTimeout(leaveZoneTimeout)
   document.removeEventListener('dragover', onDocDragOver)
   window.removeEventListener('resize', onResize)
-  teardownIntro()
 })
 </script>
 
@@ -529,11 +452,11 @@ onBeforeUnmount(() => {
 .rail {
   /* In RTL flex row: higher order = visual-left, so rail is order 2 */
   order: 2;
-  flex: 0 0 240px;     /* sized to give the zone cards real presence  */
+  flex: 0 0 212px;     /* compact schedule rail                       */
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;           /* breathing room between schedule cards       */
+  gap: 10px;           /* tighter — three zones fit without scrolling */
   position: sticky;
   top: 80px;
   align-self: flex-start;
@@ -567,14 +490,27 @@ onBeforeUnmount(() => {
   position: relative;
   background: var(--card-bg, #fff);
   border: 1.5px solid var(--border-subtle);
-  border-radius: 14px;
-  padding: 14px 14px 14px;
+  border-radius: 12px;
+  padding: 12px 12px 11px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 200px;
+  gap: 9px;
+  min-height: 128px;
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+/* Monday-style colored group ribbon */
+.zone::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--cadence);
+  z-index: 1;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
 }
 .zone-grid {
   position: absolute;
@@ -611,10 +547,10 @@ onBeforeUnmount(() => {
   100% { opacity: 0;    transform: scale(8); }
 }
 
-/* Cadence palette */
-.zone--daily   { --cadence: #C2410C; --cadence-bg: rgba(194, 65, 12, 0.04);  --cadence-strong: rgba(194, 65, 12, 0.10); }
-.zone--weekly  { --cadence: #0E7490; --cadence-bg: rgba(14, 116, 144, 0.04); --cadence-strong: rgba(14, 116, 144, 0.10); }
-.zone--monthly { --cadence: #4338CA; --cadence-bg: rgba(67, 56, 202, 0.04);  --cadence-strong: rgba(67, 56, 202, 0.10); }
+/* Cadence palette — Salesforce Lightning (orange / green / violet, distinct) */
+.zone--daily   { --cadence: var(--cadence-daily);   --cadence-bg: color-mix(in srgb, var(--cadence) 10%, transparent);  --cadence-strong: color-mix(in srgb, var(--cadence) 22%, transparent); }
+.zone--weekly  { --cadence: var(--cadence-weekly);  --cadence-bg: color-mix(in srgb, var(--cadence) 10%, transparent);  --cadence-strong: color-mix(in srgb, var(--cadence) 22%, transparent); }
+.zone--monthly { --cadence: var(--cadence-monthly); --cadence-bg: color-mix(in srgb, var(--cadence) 10%, transparent);  --cadence-strong: color-mix(in srgb, var(--cadence) 22%, transparent); }
 
 .zone {
   background:
@@ -639,33 +575,40 @@ onBeforeUnmount(() => {
   position: relative;
 }
 .zone-icon {
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cadence) 10%, transparent);
-  color: var(--cadence);
-  border: 1px solid color-mix(in srgb, var(--cadence) 18%, transparent);
+  border-radius: 9px;
+  background: var(--cadence);
+  color: #fff;
+  border: 1px solid color-mix(in srgb, var(--cadence) 80%, #000 10%);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--cadence) 38%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, 0.25);
   flex-shrink: 0;
 }
-.zone-icon svg { width: 18px; height: 18px; }
-.zone-meta { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 2px; }
-.zone-title { font-size: 15px; font-weight: 800; color: var(--text); line-height: 1.15; letter-spacing: -0.1px; }
-.zone-sub { font-size: 11.5px; color: var(--text-muted); line-height: 1.2; }
+.zone-icon svg { width: 15px; height: 15px; }
+.zone-meta { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.zone-title { font-size: 13.5px; font-weight: 800; color: var(--text); line-height: 1.15; letter-spacing: -0.1px; }
+.zone-sub { font-size: 10.5px; color: var(--text-muted); line-height: 1.2; }
 .zone-count {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
+  font-weight: 800;
+  color: #fff;
   letter-spacing: 0.5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--cadence);
+  border: none;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--cadence) 35%, transparent);
   flex-shrink: 0;
 }
-.zone-count[data-count="0"] { opacity: 0.55; }
+.zone-count[data-count="0"] {
+  opacity: 0.4;
+  background: var(--text-muted);
+  box-shadow: none;
+}
 
 .zone-empty {
   position: relative;
@@ -674,14 +617,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-size: 12.5px;
+  gap: 6px;
+  font-size: 11.5px;
   color: var(--text-muted);
-  border-radius: 10px;
+  border-radius: 9px;
   border: 1.5px dashed color-mix(in srgb, var(--cadence) 22%, transparent);
   background: color-mix(in srgb, var(--cadence) 3%, transparent);
-  min-height: 100px;
-  padding: 14px 12px;
+  min-height: 56px;
+  padding: 8px 10px;
   text-align: center;
   transition: color 0.2s, border-color 0.2s, background 0.2s;
 }
@@ -762,12 +705,12 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .chip-run:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary, #F57C00) 12%, transparent);
-  color: var(--primary-deep, #C2410C);
-  border-color: color-mix(in srgb, var(--primary, #F57C00) 28%, transparent);
+  background: rgba(31, 168, 140, 0.12);
+  color: #1A7F69;
+  border-color: rgba(31, 168, 140, 0.30);
 }
 .chip-run:disabled { opacity: 0.5; cursor: not-allowed; }
-.chip-x:hover { background: rgba(239, 68, 68, 0.16); color: #b91c1c; }
+.chip-x:hover { background: rgba(234, 0, 30, 0.16); color: var(--red-deep); }
 .chip-spinner {
   width: 9px; height: 9px;
   border: 1.5px solid currentColor;
@@ -808,9 +751,9 @@ onBeforeUnmount(() => {
   .pane { max-width: none; margin-inline: 0; flex-basis: auto; width: 100%; order: 0; }
 }
 .pane.is-over {
-  border-color: var(--primary, #F57C00);
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.10), 0 14px 32px rgba(0,0,0,0.06);
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.04) 0%, transparent 50%), var(--card-bg, #fff);
+  border-color: #1FA88C;
+  box-shadow: 0 0 0 4px rgba(31, 168, 140, 0.12), 0 14px 32px rgba(0,0,0,0.06);
+  background: linear-gradient(135deg, rgba(143, 217, 198, 0.10) 0%, transparent 50%), var(--card-bg, #fff);
 }
 
 .pane-head {
@@ -829,7 +772,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, #4E9DD0, #1FA88C);  /* pastel sky → teal, no orange */
   color: #fff;
   border: none;
   border-radius: 9px;
@@ -840,15 +783,17 @@ onBeforeUnmount(() => {
   font-size: 13px;
   letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 5px 12px rgba(245, 124, 0, 0.28);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  box-shadow: 0 5px 12px rgba(31, 168, 140, 0.26);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
   flex-shrink: 0;
 }
 .btn-add:hover {
   transform: translateY(-1px);
-  box-shadow: 0 9px 20px rgba(245, 124, 0, 0.38);
+  filter: brightness(1.04);
+  box-shadow: 0 9px 20px rgba(31, 168, 140, 0.34);
 }
-.btn-add--cta { height: 40px; padding: 10px 18px; font-size: 13.5px; }
+.btn-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
+.btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
 /* Cards grid */
 .pane-body { flex: 1; display: flex; flex-direction: column; gap: 12px; }
@@ -872,45 +817,46 @@ onBeforeUnmount(() => {
 .card-flip-leave-to   { opacity: 0; transform: scale(0.92) translateX(40px); position: absolute; }
 .card-flip-leave-active { position: absolute; }
 
-/* Empty state */
+/* Empty state — single, centered, calm (no fake-UI animation) */
 .empty-state {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 22px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
   min-height: 440px;
+  padding: 24px;
 }
-@media (max-width: 720px) {
-  .empty-state { grid-template-columns: 1fr; }
-}
-.empty-intro {
+.empty-art {
   position: relative;
-  width: 100%;
-  aspect-ratio: 9 / 5;
-  border-radius: 14px;
-  overflow: hidden;
-  background: linear-gradient(135deg, #FFF8F0 0%, #FFFBF4 100%);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 14px rgba(26, 20, 16, 0.04);
-}
-.intro-fallback {
-  position: absolute;
-  inset: 0;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  color: var(--text-muted);
-  opacity: 0.4;
+  color: #1FA88C;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(78, 157, 208, 0.16), transparent 60%),
+    rgba(143, 217, 198, 0.18);
+  border: 1px solid rgba(31, 168, 140, 0.22);
+}
+.empty-art-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(31, 168, 140, 0.3);
 }
 .empty-copy {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 12px;
-  padding: 4px;
 }
 .empty-copy h3 {
   margin: 0;
-  font-size: 22px;
+  font-size: 23px;
   font-weight: 800;
   color: var(--text);
   letter-spacing: -0.3px;
@@ -918,10 +864,10 @@ onBeforeUnmount(() => {
 }
 .empty-copy p {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-muted);
   line-height: 1.6;
-  max-width: 38ch;
+  max-width: 42ch;
 }
 
 /* All scheduled */
@@ -942,13 +888,47 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(16, 185, 129, 0.10);
-  color: #047857;
-  border: 1px solid rgba(16, 185, 129, 0.22);
+  background: rgba(46, 132, 74, 0.10);
+  color: var(--green-deep);
+  border: 1px solid rgba(46, 132, 74, 0.22);
 }
 .allscheduled-msg { font-size: 13.5px; max-width: 36ch; margin: 0; line-height: 1.5; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Staggered entrance — schedule zones + credential cards ───── */
+@keyframes auto-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.zone,
+.card-slot {
+  animation: auto-rise 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Zones follow .rail-head, so the first zone is the 2nd child of .rail */
+.zone:nth-child(2) { animation-delay: 40ms; }
+.zone:nth-child(3) { animation-delay: 80ms; }
+.zone:nth-child(4) { animation-delay: 120ms; }
+.card-slot:nth-child(1) { animation-delay: 40ms; }
+.card-slot:nth-child(2) { animation-delay: 80ms; }
+.card-slot:nth-child(3) { animation-delay: 120ms; }
+.card-slot:nth-child(4) { animation-delay: 160ms; }
+.card-slot:nth-child(5) { animation-delay: 200ms; }
+.card-slot:nth-child(6) { animation-delay: 240ms; }
+.card-slot:nth-child(7) { animation-delay: 280ms; }
+.card-slot:nth-child(8) { animation-delay: 320ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .zone,
+  .card-slot {
+    animation: none;
+    transform: none;
+  }
+  .zone.is-pulsing .zone-ripple::after,
+  .chip-spinner {
+    animation: none;
+  }
+}
 </style>
 
 <!-- Trail overlay is Teleported to <body>, so scoped styles can't reach it. -->
@@ -976,5 +956,11 @@ onBeforeUnmount(() => {
   0%   { opacity: 0.9; transform: scale(1);   }
   70%  { opacity: 0;   transform: scale(2.2); }
   100% { opacity: 0;   transform: scale(2.2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drag-trail-line,
+  .drag-trail-snap {
+    animation: none;
+  }
 }
 </style>

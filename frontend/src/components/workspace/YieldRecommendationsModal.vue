@@ -542,7 +542,7 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
   justify-content: space-between;
   padding: 14px 22px;
   border-bottom: 1px solid var(--border, #DDDBDA);
-  background: linear-gradient(135deg, #FFF8F0 0%, #FFFFFF 100%);
+  background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%);
 }
 .yr-head-left { display: flex; align-items: center; gap: 12px; }
 .yr-badge {
@@ -550,7 +550,7 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   color: #fff;
-  background: linear-gradient(135deg, #F57C00 0%, #FFA040 100%);
+  background: linear-gradient(135deg, #F57C00 0%, #FF9800 100%);
   box-shadow: 0 4px 10px rgba(245, 124, 0, 0.3);
 }
 .yr-titles { display: flex; flex-direction: column; }
@@ -695,9 +695,9 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
   border: 1px solid transparent;
 }
 .yr-pill--general {
-  background: rgba(63, 81, 99, 0.08);
-  color: #3F5163;
-  border-color: rgba(63, 81, 99, 0.18);
+  background: rgba(112, 110, 107, 0.08);
+  color: #706E6B;
+  border-color: rgba(112, 110, 107, 0.18);
 }
 .yr-pill--stocks {
   background: rgba(245, 124, 0, 0.10);
@@ -705,9 +705,9 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
   border-color: rgba(245, 124, 0, 0.28);
 }
 .yr-pill--same {
-  background: rgba(63, 81, 99, 0.06);
-  color: #4A5C70;
-  border-color: rgba(63, 81, 99, 0.14);
+  background: rgba(112, 110, 107, 0.06);
+  color: #706E6B;
+  border-color: rgba(112, 110, 107, 0.14);
 }
 .yr-pill--aggressive {
   background: rgba(230, 81, 0, 0.10);
@@ -721,12 +721,12 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
 }
 .yr-pill--conf-medium {
   background: rgba(112, 110, 107, 0.08);
-  color: #6B6964;
+  color: #706E6B;
   border-color: rgba(112, 110, 107, 0.20);
 }
 .yr-pill--conf-low {
   background: rgba(112, 110, 107, 0.06);
-  color: #8A8884;
+  color: #706E6B;
   border-color: rgba(112, 110, 107, 0.16);
 }
 
@@ -990,7 +990,7 @@ watch([filterMoveType, filterRisk, searchQuery, sortBy, viewMode], () => {
   background: linear-gradient(90deg,
     var(--primary, #F57C00) 0%,
     var(--primary-deep, #E65100) 60%,
-    #B43E00 100%);
+    #E65100 100%);
   border-radius: inherit;
   transform-origin: right center; /* RTL: bar grows from the right */
   animation: yr-mag-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 220ms both;

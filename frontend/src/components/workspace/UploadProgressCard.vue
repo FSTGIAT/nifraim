@@ -100,11 +100,11 @@ function formatBytes(bytes) {
 }
 
 .upload-card--complete {
-  border-color: var(--green, #2e7d32);
+  border-color: var(--green, #2E844A);
 }
 
 .upload-card--error {
-  border-color: var(--red, #c62828);
+  border-color: var(--red, #C23934);
 }
 
 .upload-icon {
@@ -118,7 +118,7 @@ function formatBytes(bytes) {
 }
 
 .upload-card--complete .upload-icon {
-  color: var(--green, #2e7d32);
+  color: var(--green, #2E844A);
 }
 
 .upload-body {
@@ -173,7 +173,7 @@ function formatBytes(bytes) {
 }
 
 .upload-card--complete .upload-bar-fill {
-  background: var(--green, #2e7d32);
+  background: var(--green, #2E844A);
 }
 
 .upload-meta {
@@ -215,8 +215,8 @@ function formatBytes(bytes) {
 }
 
 .upload-cancel:hover {
-  background: var(--red-light, rgba(220, 38, 38, 0.1));
-  color: var(--red, #c62828);
+  background: var(--red-light, rgba(194, 57, 52, 0.1));
+  color: var(--red, #C23934);
 }
 
 .ltr-number {

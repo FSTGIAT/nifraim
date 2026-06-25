@@ -12,12 +12,13 @@ updates the run row throughout.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
@@ -35,9 +36,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DOWNLOAD_ROOT = PROJECT_ROOT / "data" / "portal_downloads"
 SCREENSHOT_ROOT = PROJECT_ROOT / "data" / "portal_screenshots"
 
-OTP_WAIT_TIMEOUT_S = 90
+OTP_WAIT_TIMEOUT_S = 240   # 4 minutes — accommodates manual OTP relay through chat
 OTP_POLL_INTERVAL_S = 1.0
-RUN_HARD_TIMEOUT_S = 180
+RUN_HARD_TIMEOUT_S = 360
 
 
 class OtpTimeout(TimeoutError):
@@ -61,25 +62,63 @@ async def _set_status(db: AsyncSession, run: PortalRun, *, status: str | None = 
     await db.commit()
 
 
-async def _wait_for_otp(db: AsyncSession, run: PortalRun, user_id: uuid.UUID) -> str:
-    """Poll otp_inbox for an OTP that arrived after this run started.
+async def _wait_for_otp(
+    db: AsyncSession,
+    run: PortalRun,
+    user_id: uuid.UUID,
+    since: datetime,
+    portal_kind: str | None = None,
+) -> str:
+    """Poll otp_inbox for an OTP that arrived after `since`.
+
+    `since` is captured the moment this run enters `awaiting_otp` (i.e. right
+    after login submits and the portal sends the SMS), NOT when the PortalRun
+    row was created. In a "run all" batch the credentials run back-to-back, so
+    matching from row-creation time (`run.started_at`) could let a late OTP from
+    the PREVIOUS portal be consumed by the NEXT run — leaving the real code
+    unmatched and the run stuck on the OTP screen. Anchoring on `since` scopes
+    each wait to the code its own login triggered.
+
+    Company routing: incoming OTPs are tagged at insert time with the insurer's
+    BASE company token (`otp_inbox.portal_kind`, e.g. "phoenix"). We derive the
+    same base from the running credential and accept ONLY a code tagged for this
+    company OR an untagged code (NULL — no template matched / generic), preferring
+    the company-tagged one. This means a code that arrived for a DIFFERENT company
+    is never consumed here — the core fix for cross-company OTP theft in a batch.
+    The NULL fallback guarantees no regression: a portal without a seeded template
+    still works exactly as before (time-based only).
 
     Matches rows scoped to the user OR broadcast (user_id IS NULL). Marks the
     consumed row to prevent reuse.
     """
+    base = (portal_kind or "").split("_")[0] or None
     deadline = asyncio.get_event_loop().time() + OTP_WAIT_TIMEOUT_S
     while asyncio.get_event_loop().time() < deadline:
-        result = await db.execute(
+        stmt = (
             select(OtpInbox)
             .where(
                 OtpInbox.consumed_at.is_(None),
                 OtpInbox.otp_code.is_not(None),
-                OtpInbox.received_at >= run.started_at,
+                OtpInbox.received_at >= since,
                 ((OtpInbox.user_id == user_id) | (OtpInbox.user_id.is_(None))),
             )
-            .order_by(OtpInbox.received_at.desc())
-            .limit(1)
         )
+        if base:
+            # Accept this company's tagged code or an untagged one; reject codes
+            # tagged for other companies. Prefer the exact-company match, then
+            # newest. NOTE: a plain `(portal_kind == base).desc()` mis-sorts —
+            # for an untagged row `NULL == base` is SQL NULL, which sorts FIRST
+            # under DESC (NULLS FIRST), beating the real match. A CASE coalesces
+            # the untagged/non-match rows to 0 so the exact company wins.
+            stmt = stmt.where(
+                (OtpInbox.portal_kind == base) | (OtpInbox.portal_kind.is_(None))
+            ).order_by(
+                case((OtpInbox.portal_kind == base, 1), else_=0).desc(),
+                OtpInbox.received_at.desc(),
+            )
+        else:
+            stmt = stmt.order_by(OtpInbox.received_at.desc())
+        result = await db.execute(stmt.limit(1))
         row = result.scalar_one_or_none()
         if row:
             row.consumed_at = datetime.utcnow()
@@ -90,7 +129,21 @@ async def _wait_for_otp(db: AsyncSession, run: PortalRun, user_id: uuid.UUID) ->
     raise OtpTimeout("לא התקבל קוד OTP תוך 90 שניות. הזן קוד ידנית או הפעל מחדש.")
 
 
-async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
+async def _run_inner(
+    db: AsyncSession,
+    run: PortalRun,
+    *,
+    make_active: bool = True,
+    defer_post_ingest: bool = False,
+) -> list[tuple]:
+    """Log in, pass OTP, download and ingest one credential's files.
+
+    Returns the ingested files as ``(upload_id, file_category, company_source)``
+    tuples. ``make_active=False`` holds production uploads non-active (batch
+    path — the merged file becomes active later). ``defer_post_ingest=True``
+    skips the per-file snapshot/summary/auto-compare hooks so the batch can
+    fire them after aggregation. Defaults preserve the single-run behaviour.
+    """
     cred_result = await db.execute(
         select(PortalCredential).where(PortalCredential.id == run.credential_id)
     )
@@ -110,26 +163,113 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(accept_downloads=True)
+        # Prefer the real Google Chrome binary over bundled Chromium — the
+        # TLS / JA3 fingerprint of bundled Chromium is detectable by edge
+        # WAFs (Harel reroutes to F5 APM with errorcode=19/22 based on it),
+        # while real Chrome's fingerprint matches what their browser sends.
+        # Falls back to chromium when chrome isn't installed.
+        try:
+            browser = await pw.chromium.launch(
+                channel="chrome",
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                ],
+            )
+        except Exception:
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                ],
+            )
+        # Real-Chrome UA + viewport + locale so APM / WAF gates don't bounce
+        # us based on the headless fingerprint.
+        context = await browser.new_context(
+            accept_downloads=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0 Safari/537.36"
+            ),
+            viewport={"width": 1366, "height": 768},
+            locale="he-IL",
+            extra_http_headers={
+                "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
+                # Real Google Chrome's UA-CH brand list — Harel's edge
+                # uses these to fingerprint real-Chrome vs Chromium.
+                "sec-ch-ua": '"Google Chrome";v="124", "Chromium";v="124", "Not-A.Brand";v="99"',
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-ch-ua-mobile": "?0",
+            },
+        )
+        # Hide `navigator.webdriver` so bot detection doesn't flag the page.
+        await context.add_init_script(
+            """
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'languages', {get: () => ['he-IL', 'he', 'en']});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            """
+        )
         page = await context.new_page()
         try:
             await _set_status(db, run, status="running", stage="login")
             await plugin.login(page, cred.username, password)
 
-            await _set_status(db, run, status="awaiting_otp", stage="otp")
-            otp = await _wait_for_otp(db, run, cred.user_id)
-            await plugin.submit_otp(page, otp)
+            if plugin.requires_otp:
+                # Anchor the OTP wait at this instant — login() just submitted,
+                # which is what triggers the SMS. Only codes arriving from here
+                # on belong to this run (see _wait_for_otp docstring).
+                otp_since = datetime.utcnow()
+                await _set_status(db, run, status="awaiting_otp", stage="otp")
+                otp = await _wait_for_otp(
+                    db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind
+                )
+                await plugin.submit_otp(page, otp)
+
+            # A consolidated multi-login plugin (e.g. Migdal mfte+apmaccess) can
+            # call this to obtain a SECOND OTP after a second login inside
+            # download_reports. It re-enters awaiting_otp with a FRESH `since`
+            # (so it waits for the new code, not the already-consumed first one)
+            # and routes by the same company key (cred.portal_kind).
+            async def _request_otp_mid_download() -> str:
+                # Backdate `since` by a buffer: a second-login SMS can arrive in
+                # the 1-2s before this callback runs. Safe — the first code is
+                # already consumed (consumed_at set) and matching is company-
+                # routed, so the only unconsumed code in the window is this one.
+                otp_since2 = datetime.utcnow() - timedelta(seconds=30)
+                await _set_status(db, run, status="awaiting_otp", stage="otp_2")
+                code = await _wait_for_otp(
+                    db, run, cred.user_id, otp_since2, portal_kind=cred.portal_kind
+                )
+                await _set_status(db, run, status="downloading", stage="download")
+                return code
 
             await _set_status(db, run, status="downloading", stage="download")
-            files = await plugin.download_reports(page, download_dir, username=cred.username)
+            # Only pass otp_provider / password to plugins that DECLARE them (or
+            # accept **kwargs) — the other ~18 plugins keep their existing
+            # signature and never see them. Avoids a TypeError without touching
+            # every plugin. `password` lets a consolidated plugin log into a
+            # SECOND no-OTP site with the same creds (e.g. Phoenix folds the SFE
+            # vault production into the agentportal run).
+            dl_kwargs = {"username": cred.username}
+            _dl_params = inspect.signature(plugin.download_reports).parameters
+            _accepts_kw = any(p.kind == p.VAR_KEYWORD for p in _dl_params.values())
+            if "otp_provider" in _dl_params or _accepts_kw:
+                dl_kwargs["otp_provider"] = _request_otp_mid_download
+            if "password" in _dl_params or _accepts_kw:
+                dl_kwargs["password"] = password
+            files = await plugin.download_reports(page, download_dir, **dl_kwargs)
             if not files:
                 raise RuntimeError("Plugin returned no downloaded files")
 
             await _set_status(db, run, status="parsing", stage="parse")
             first_filename: str | None = None
             first_upload_id: uuid.UUID | None = None
-            ingested: list[tuple[uuid.UUID, str]] = []  # (upload_id, file_category)
+            # (upload_id, file_category, company_source)
+            ingested: list[tuple] = []
             for path in files:
                 content = path.read_bytes()
                 try:
@@ -140,6 +280,7 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
                         filename=path.name,
                         password=plugin.report_password,
                         commit=False,  # commit happens once at the end
+                        make_active=make_active,
                     )
                 except Exception as ingest_err:
                     # Don't let a single bad file kill the whole run — log and
@@ -152,7 +293,7 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
                 if first_upload_id is None:
                     first_upload_id = upload.id
                     first_filename = path.name
-                ingested.append((upload.id, upload.file_category))
+                ingested.append((upload.id, upload.file_category, upload.company_source))
 
             run.downloaded_filename = first_filename
             run.upload_id = first_upload_id
@@ -162,13 +303,16 @@ async def _run_inner(db: AsyncSession, run: PortalRun) -> None:
             #   production → portal snapshots + production summary
             #   commission → auto-comparison against the active production
             # Shared with the manual upload route — single dispatcher.
-            for upload_id, file_category in ingested:
-                try:
-                    schedule_post_ingest(cred.user_id, upload_id, file_category)
-                except Exception as e:
-                    logger.warning(
-                        "Post-ingest dispatch failed for upload %s: %s", upload_id, e
-                    )
+            # A batch defers these until after the merged files are built.
+            if not defer_post_ingest:
+                for upload_id, file_category, _company in ingested:
+                    try:
+                        schedule_post_ingest(cred.user_id, upload_id, file_category)
+                    except Exception as e:
+                        logger.warning(
+                            "Post-ingest dispatch failed for upload %s: %s", upload_id, e
+                        )
+            return ingested
         except Exception:
             await plugin._safe_screenshot(page, screenshot_path)
             await plugin._dump_page_state(page, screenshot_path)
@@ -204,8 +348,11 @@ async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) 
             await _set_status(db, run, status="running", stage="login")
             await plugin.login(page, cred.username, password)
 
+            otp1_since = datetime.utcnow()
             await _set_status(db, run, status="awaiting_otp", stage="otp")
-            otp1 = await _wait_for_otp(db, run, cred.user_id)
+            otp1 = await _wait_for_otp(
+                db, run, cred.user_id, otp1_since, portal_kind=cred.portal_kind
+            )
             await plugin.submit_otp(page, otp1)
 
             # Step 2: navigate to settings, submit new phone → OTP #2 to OLD phone.
@@ -213,8 +360,11 @@ async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) 
             await plugin.change_contact_phone(page, new_phone)
 
             # Step 3: wait for OTP #2 and confirm.
+            otp2_since = datetime.utcnow()
             await _set_status(db, run, status="awaiting_otp", stage="phone_confirm")
-            otp2 = await _wait_for_otp(db, run, cred.user_id)
+            otp2 = await _wait_for_otp(
+                db, run, cred.user_id, otp2_since, portal_kind=cred.portal_kind
+            )
             await plugin.confirm_contact_phone_change(page, otp2)
 
             cred.contact_phone_synced_to = new_phone

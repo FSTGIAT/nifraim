@@ -71,8 +71,8 @@ function directionClass(v) {
   z-index: 101; /* above WorkspaceHeader's 100 */
   height: 32px;
   overflow: hidden;
-  background: #1e293b; /* slate-800 — keeps the Nasdaq dark-strip feel */
-  border-bottom: 1px solid rgba(245, 240, 235, 0.08);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-subtle);
   /* Lock direction LTR so the keyframe translate behaves the same regardless
      of the parent's RTL flow; chip content itself stays RTL (see .ticker-chip). */
   direction: ltr;
@@ -103,13 +103,13 @@ function directionClass(v) {
   align-items: center;
   gap: 8px;
   padding: 4px 12px 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  color: inherit;
+  color: var(--text-secondary);
   text-decoration: none;
   white-space: nowrap;
   flex-shrink: 0;
@@ -118,13 +118,13 @@ function directionClass(v) {
   transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 .ticker-chip:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--glass-hover);
+  border-color: var(--border);
 }
 .ticker-chip:focus-visible {
   outline: none;
-  border-color: rgba(245, 124, 0, 0.6);
-  background: rgba(255, 255, 255, 0.10);
+  border-color: var(--primary);
+  background: var(--glass-hover);
 }
 .ticker-chip:active {
   transform: scale(0.98);
@@ -136,20 +136,20 @@ function directionClass(v) {
   border-radius: 2px;
   flex-shrink: 0;
 }
-.ticker-chip--down .ticker-bar { background: #ef4444; }
-.ticker-chip--up   .ticker-bar { background: #22c55e; }
-.ticker-chip--flat .ticker-bar { background: #64748b; }
+.ticker-chip--down .ticker-bar { background: #C23934; }
+.ticker-chip--up   .ticker-bar { background: #2E844A; }
+.ticker-chip--flat .ticker-bar { background: #706E6B; }
 
 .ticker-label {
-  color: #e2e8f0;
+  color: var(--text-secondary);
 }
 
 .ticker-pct {
   font-weight: 700;
 }
-.ticker-chip--down .ticker-pct { color: #f87171; }
-.ticker-chip--up   .ticker-pct { color: #4ade80; }
-.ticker-chip--flat .ticker-pct { color: #94a3b8; }
+.ticker-chip--down .ticker-pct { color: #C23934; }
+.ticker-chip--up   .ticker-pct { color: #2E844A; }
+.ticker-chip--flat .ticker-pct { color: var(--text-muted); }
 
 @media (max-width: 720px) {
   .stock-ticker { display: none; }

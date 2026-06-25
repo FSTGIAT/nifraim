@@ -20,22 +20,47 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-from column_maps import (
-    COLUMNS_INSURANCE_PRODUCTS,
-    COLUMNS_INSURANCE_COVERAGES,
-    COLUMNS_SUMMARY_BY_INSURER,
-    COLUMNS_SUMMARY_BY_PRODUCT,
-    INSURER_NAME_OVERRIDES,
-    SUG_MUTZAR_LABELS,
-    STATUS_POLISA_LABELS,
-    SUG_TEUDA_LABELS,
-    MIN_LABELS,
-    SUG_MEVUTACH_LABELS,
-    TADIRUT_TASHLUM_LABELS,
-    SUG_KISUI_LABELS,
-    COV_PERIOD_DEFINED,
-    COV_PERIOD_OPEN,
-)
+# Import the column constants whether this module is loaded as a package
+# submodule (app.services.mimshak.xlsx_writer) or standalone via the sys.path
+# fallback in to_production_xlsx.py.
+try:
+    from .column_maps import (
+        COLUMNS_INSURANCE_PRODUCTS,
+        COLUMNS_INSURANCE_COVERAGES,
+        COLUMNS_SUMMARY_BY_INSURER,
+        COLUMNS_SUMMARY_BY_PRODUCT,
+        COLUMNS_SAVINGS_PRODUCTS,
+        COLUMNS_INVESTMENT_TRACKS,
+        INSURER_NAME_OVERRIDES,
+        SUG_MUTZAR_LABELS,
+        STATUS_POLISA_LABELS,
+        SUG_TEUDA_LABELS,
+        MIN_LABELS,
+        SUG_MEVUTACH_LABELS,
+        TADIRUT_TASHLUM_LABELS,
+        SUG_KISUI_LABELS,
+        COV_PERIOD_DEFINED,
+        COV_PERIOD_OPEN,
+    )
+except ImportError:
+    from column_maps import (  # type: ignore
+        COLUMNS_INSURANCE_PRODUCTS,
+        COLUMNS_INSURANCE_COVERAGES,
+        COLUMNS_SUMMARY_BY_INSURER,
+        COLUMNS_SUMMARY_BY_PRODUCT,
+        COLUMNS_SAVINGS_PRODUCTS,
+        COLUMNS_INVESTMENT_TRACKS,
+        INSURER_NAME_OVERRIDES,
+        SUG_MUTZAR_LABELS,
+        STATUS_POLISA_LABELS,
+        SUG_TEUDA_LABELS,
+        MIN_LABELS,
+        SUG_MEVUTACH_LABELS,
+        TADIRUT_TASHLUM_LABELS,
+        SUG_KISUI_LABELS,
+        COV_PERIOD_DEFINED,
+        COV_PERIOD_OPEN,
+    )
 
 
 # ── Value formatters ─────────────────────────────────────────────────────
@@ -111,6 +136,25 @@ def _normalize_insurer(name: str | None) -> str:
     return INSURER_NAME_OVERRIDES.get(name, name)
 
 
+# Migdal's production report uses a fixed bucket label per `סוג מוצר` in the
+# `מוצר` column — every life row reads "מגדל - חיים", every health row
+# "מגדל - בריאות", etc. The raw policy product name (e.g. "מגדל קשת לפרט")
+# lives in DAT's SHEM-TOCHNIT, but the report normalizes it away.
+_PRODUCT_BUCKET_BY_SUG: dict[str, str] = {
+    "ביטוח חיים": "מגדל - חיים",
+    "ביטוח בריאות": "מגדל - בריאות",
+    "ביטוח חיים משכנתא": "מגדל - ביטוח חיים משכנתא",
+    "ביטוח סיעוד": "מגדל - סיעוד",
+    "ביטוח כללי": "מגדל - כללי",
+    "ביטוח נסיעות": "מגדל - נסיעות",
+}
+
+
+def _bucket_product_label(sug_mutzar: str) -> str:
+    """Return the REF-style `מוצר` bucket label for a given `סוג מוצר`."""
+    return _PRODUCT_BUCKET_BY_SUG.get(sug_mutzar, sug_mutzar)
+
+
 def _default_employer_name(customer: dict) -> str:
     """Personal-insurance rows in the reference xlsx default `שם מעסיק` to
     "<last_name> <first_name>" (last name first)."""
@@ -162,10 +206,17 @@ def build_insurance_product_row(
     employer_id = policy.get("MPR-MAASIK-BE-YATZRAN") or (id_int if isinstance(id_int, int) else "")
     employer_name = policy.get("SHEM-MAASIK") or _default_employer_name(customer)
 
+    # Normalize `מוצר` to REF's bucket label (matches Migdal's production
+    # report convention — see `_bucket_product_label`). The raw SHEM-TOCHNIT
+    # value (e.g. "מגדל קשת לפרט") is preserved on the coverage sheet, not here.
+    sug_mutzar = (
+        _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="")
+        or _lookup(SUG_MUTZAR_LABELS, "1")
+    )
     return [
         _normalize_insurer(insurer_name),
-        _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="") or _lookup(SUG_MUTZAR_LABELS, "1"),
-        policy.get("SHEM-TOCHNIT") or "",
+        sug_mutzar,
+        _bucket_product_label(sug_mutzar),
         policy.get("MISPAR-POLISA-O-HESHBON") or "",
         agency_name,
         customer.get("SHEM-PRATI") or "",
@@ -189,6 +240,304 @@ def build_insurance_product_row(
         "",  # מיופה כוח אחרון (TODO: PerutMeyupeKoach name resolution)
         agency_name,  # מת"ל — same value as סוכנות in reference
         _fmt_date(policy.get("TAARICH-NECHONUT")),
+    ]
+
+
+def build_lifehlth_product_row(
+    *,
+    cells: list[str],
+    mbt_person: dict | None,
+    insurer_name: str,
+    agent_num: str | None,
+) -> list:
+    """Construct an insurance product row directly from a LIFEHLTH.MBT line.
+
+    LIFEHLTH.MBT carries the agent's FULL policy register (life + health +
+    mortgage life), not just the current-month HOLDNG slice that the DAT
+    file ships. Column layout (verified against the May 2026 Migdal Safes
+    sample):
+
+        col  2 — product class (1=life, 2=health, 3=mortgage life, 4=other)
+        col  9 — full policy id (`01` + 9 digits)
+        col 10 — short customer id (9-digit national)
+        col 14 — customer full name (visual-Hebrew encoding)
+        col 15 — policy start date (DDMMYYYY)
+        col 16 — policy end date
+        col 17 — status code (1 = active)
+        col 39 — last activity date
+        col 48 — annual premium
+        col 49 — monthly premium
+
+    The first three classes match the Migdal "production report" product
+    labels 1:1 (ביטוח חיים / ביטוח בריאות / ביטוח חיים משכנתא); class 4 falls
+    back to a generic Hebrew label.
+    """
+    # Import here to avoid circular imports at module load
+    from app.services.mimshak.mbt import _maybe_reverse_hebrew
+
+    def _safe(idx):
+        return cells[idx] if len(cells) > idx else ""
+
+    # MBT files store dates as DDMMYYYY (e.g. "01062015" → 2015-06-01),
+    # not the YYYYMMDD that _fmt_date expects. Swap to YYYYMMDD first.
+    def _fmt_ddmmyyyy(raw: str | None) -> date | None:
+        if not raw or len(raw) != 8 or not raw.isdigit():
+            return None
+        return _fmt_date(raw[4:8] + raw[2:4] + raw[0:2])
+
+    # Col 10 is the policy id (8-9 digits), col 9 is the customer id
+    # (`01` + 9-digit national). Verified by PERSON.MBT overlap test.
+    policy_id = _strip_zeros(_safe(10)) or _safe(10)
+    raw_cid = _safe(9)
+    if raw_cid.startswith("01") and len(raw_cid) == 11:
+        raw_cid = raw_cid[2:]
+    customer_id_raw = raw_cid.lstrip("0") or raw_cid
+    id_int = _id_number_int(customer_id_raw)
+
+    name_he = _maybe_reverse_hebrew(_safe(14))
+    parts = name_he.strip().split(" ", 1)
+    first_name = parts[0] if parts and parts[0] else ""
+    last_name = parts[1] if len(parts) > 1 else ""
+
+    # LIFEHLTH.MBT — empirically verified against REF
+    # (מגדל פרודוקציה חהשוואת רועי.xlsx): every col-2 class (1-5) maps to
+    # ביטוח בריאות in the operator's reference report (109/109 policies match
+    # by policy number). The col-2 codes are health sub-types (dental,
+    # surgery, etc.), not a life/health split despite the file name.
+    sug_mutzar, product_name = "ביטוח בריאות", "מגדל - בריאות"
+
+    monthly_premium = _to_float(_safe(49)) or 0.0
+    start_date = _fmt_ddmmyyyy(_safe(15))
+    last_activity = _fmt_ddmmyyyy(_safe(39))
+    status_code = _safe(17)
+    status_label = "פעיל" if status_code == "1" else ("מבוטל" if status_code else "")
+
+    email = (mbt_person or {}).get("email") or ""
+    phone = (mbt_person or {}).get("mobile") or ""
+    city = (mbt_person or {}).get("city_he") or ""
+    dob = _fmt_ddmmyyyy((mbt_person or {}).get("dob_raw"))
+    age = _compute_age(dob, datetime.now().date()) if dob else None
+    gender = _lookup(MIN_LABELS, (mbt_person or {}).get("gender_code"))
+
+    return [
+        _normalize_insurer(insurer_name),
+        sug_mutzar,
+        product_name,
+        policy_id,
+        "",  # סוכנות (not in MBT — same as DAT path)
+        first_name,
+        last_name,
+        id_int,
+        _format_phone(phone),
+        email,
+        dob,
+        age,
+        gender,
+        city,
+        "",  # סיווג לקוח
+        round(monthly_premium, 2),
+        status_label,
+        last_activity,
+        start_date,
+        id_int,  # מזהה מעסיק (personal policy → same as ID)
+        _default_employer_name({"SHEM-PRATI": first_name, "SHEM-MISHPACHA": last_name}),
+        agent_num or "",
+        "",  # תיאור מספר סוכן
+        "",  # מיופה כוח אחרון
+        "",  # מת"ל
+        None,  # נכון ליום (DAT-specific; LIFEHLTH has no global valuation date)
+    ]
+
+
+def build_life_product_row(
+    *,
+    cells: list[str],
+    mbt_person: dict | None,
+    insurer_name: str,
+    agent_num: str | None,
+) -> list:
+    """Construct an insurance product row directly from a LIFE.MBT line.
+
+    LIFE.MBT carries the agent's primary life policies. The DAT HOLDNG
+    snapshot normally covers the same set, but this builder exists as a
+    defensive fallback for the edge case where a LIFE.MBT entry is absent
+    from the current month's DAT (e.g. a paid-up policy that fell out of
+    the active-holdings slice). Column layout (verified against the May
+    2026 Migdal Safes sample, 133-column rows):
+
+        col 10 — policy id (`0` + 8 digits) — matches DAT MISPAR-POLISA-O-HESHBON
+        col 11 — customer national id (`01` + 9 digits)
+        col 14 — customer name (visual-order Hebrew)
+        col 15 — sign date (DDMMYYYY)
+        col 16 — end date (DDMMYYYY)
+        col 20 — annual premium amount
+    """
+    from app.services.mimshak.mbt import _maybe_reverse_hebrew
+
+    def _safe(idx):
+        return cells[idx] if len(cells) > idx else ""
+
+    def _fmt_ddmmyyyy(raw: str | None) -> date | None:
+        if not raw or len(raw) != 8 or not raw.isdigit():
+            return None
+        return _fmt_date(raw[4:8] + raw[2:4] + raw[0:2])
+
+    policy_id = _strip_zeros(_safe(10)) or _safe(10)
+    raw_cid = _safe(11)
+    if raw_cid.startswith("01") and len(raw_cid) == 11:
+        raw_cid = raw_cid[2:]
+    customer_id_raw = raw_cid.lstrip("0") or raw_cid
+    id_int = _id_number_int(customer_id_raw)
+
+    # Prefer PERSON.MBT name (logical-order, already-reversed) over the
+    # visual-order col 14 fallback.
+    person = mbt_person or {}
+    first_name = person.get("first_name_he") or ""
+    last_name = person.get("last_name_he") or ""
+    if not (first_name or last_name):
+        name_he = _maybe_reverse_hebrew(_safe(14)).strip()
+        parts = name_he.split(" ", 1)
+        first_name = parts[0] if parts and parts[0] else ""
+        last_name = parts[1] if len(parts) > 1 else ""
+
+    annual_premium = _to_float(_safe(20)) or 0.0
+    monthly_premium = round(annual_premium / 12, 2) if annual_premium else 0.0
+    start_date = _fmt_ddmmyyyy(_safe(15))
+    end_date = _fmt_ddmmyyyy(_safe(16))
+    today = datetime.now().date()
+    status_label = "פעיל" if (end_date is None or end_date >= today) else "סילוק"
+
+    sug_mutzar = "ביטוח חיים"
+    product_name = _bucket_product_label(sug_mutzar)
+
+    email = person.get("email") or ""
+    phone = person.get("mobile") or ""
+    city = person.get("city_he") or ""
+    dob = _fmt_ddmmyyyy(person.get("dob_raw"))
+    age = _compute_age(dob, today) if dob else None
+    gender = _lookup(MIN_LABELS, person.get("gender_code"))
+
+    return [
+        _normalize_insurer(insurer_name),
+        sug_mutzar,
+        product_name,
+        policy_id,
+        "",  # סוכנות
+        first_name,
+        last_name,
+        id_int,
+        _format_phone(phone),
+        email,
+        dob,
+        age,
+        gender,
+        city,
+        "",  # סיווג לקוח
+        monthly_premium,
+        status_label,
+        None,  # תאריך עדכון סטטוס
+        start_date,
+        id_int,  # מזהה מעסיק
+        _default_employer_name({"SHEM-PRATI": first_name, "SHEM-MISHPACHA": last_name}),
+        agent_num or "",
+        "",  # תיאור מספר סוכן
+        "",  # מיופה כוח אחרון
+        "",  # מת"ל
+        None,  # נכון ליום
+    ]
+
+
+def build_covrlife_product_row(
+    *,
+    cells: list[str],
+    mbt_person: dict | None,
+    insurer_name: str,
+    agent_num: str | None,
+) -> list:
+    """Construct an insurance product row from a COVRLIFE.MBT line.
+
+    COVRLIFE carries riders/coverages — 399 raw rows for 115 distinct
+    policies in the May 2026 Migdal sample. One row per distinct policy
+    is sufficient for the production view; the coverage name (col 19)
+    becomes the product label.
+
+    Column layout (verified):
+        col  0 — rider_code
+        col  1 — policy_ref (`01` + 9 digits)
+        col  4 — rider_start (DDMMYYYY)
+        col  5 — rider_end
+        col  8 — annual premium
+        col  9 — monthly premium
+        col 18 — short customer id (9 digits)
+        col 19 — coverage name (visual Hebrew — used as product label and
+                 keyword-classified into ביטוח חיים / בריאות / משכנתא)
+    """
+    from app.services.mimshak.mbt import _maybe_reverse_hebrew
+
+    def _safe(idx):
+        return cells[idx] if len(cells) > idx else ""
+
+    policy_id = _strip_zeros(_safe(1)) or _safe(1)
+    customer_short = _strip_zeros(_safe(18)) or _safe(18)
+    id_int = _id_number_int(_safe(18))
+    coverage_name = _maybe_reverse_hebrew(_safe(19)).strip()
+
+    # Classify product type from coverage name keywords. Order matters —
+    # match the more specific terms first.
+    health_kw = ("ניתוח", "אשפוז", "תרופ", "בריאות", "רפוא", "מחלות", "שיניים", "סיעוד")
+    mort_kw   = ("משכנתא",)
+    life_kw   = ("חיים", "מוות", "נכות", "תאונה", "אובדן")
+    if any(kw in coverage_name for kw in mort_kw):
+        sug_mutzar, product = "ביטוח חיים משכנתא", "מגדל - ביטוח חיים משכנתא"
+    elif any(kw in coverage_name for kw in health_kw):
+        sug_mutzar, product = "ביטוח בריאות", coverage_name or "מגדל - בריאות"
+    elif any(kw in coverage_name for kw in life_kw):
+        sug_mutzar, product = "ביטוח חיים", coverage_name or "מגדל - חיים"
+    else:
+        sug_mutzar, product = "ביטוח חיים", coverage_name or "מגדל"
+
+    monthly_premium = _to_float(_safe(9)) or 0.0
+    start_date = _fmt_date(_safe(4))
+    status_label = "פעיל" if _safe(3) == "01" else ("מבוטל" if _safe(3) else "")
+
+    # Customer details via PERSON.MBT lookup
+    person = mbt_person or {}
+    first_name = person.get("first_name_he") or ""
+    last_name = person.get("last_name_he") or ""
+    email = person.get("email") or ""
+    phone = person.get("mobile") or ""
+    city = person.get("city_he") or ""
+    dob = _fmt_date(person.get("dob_raw"))
+    age = _compute_age(dob, datetime.now().date()) if dob else None
+    gender = _lookup(MIN_LABELS, person.get("gender_code"))
+
+    return [
+        _normalize_insurer(insurer_name),
+        sug_mutzar,
+        product,
+        policy_id,
+        "",  # סוכנות
+        first_name,
+        last_name,
+        id_int,
+        _format_phone(phone),
+        email,
+        dob,
+        age,
+        gender,
+        city,
+        "",  # סיווג לקוח
+        round(monthly_premium, 2),
+        status_label,
+        None,  # תאריך עדכון סטטוס
+        start_date,
+        id_int,  # מזהה מעסיק
+        f"{first_name} {last_name}".strip() or "",
+        agent_num or "",
+        "",  # תיאור מספר סוכן
+        "",  # מיופה כוח אחרון
+        "",  # מת"ל
+        None,  # נכון ליום
     ]
 
 
@@ -229,10 +578,17 @@ def build_coverage_row(
     sum_insured = (_to_float(coverage.get("SCHUM-BITUAH-LEMAVET"))
                    or _to_float(coverage.get("SCHUM-KISUI")))
 
+    # Same `מוצר` bucket-label normalization as the insurance-products sheet —
+    # see _bucket_product_label. SHEM-TOCHNIT (e.g. "מגדל קשת לפרט") is the
+    # raw Migdal policy name; the report rolls it up to "מגדל - חיים" etc.
+    cov_sug_mutzar = (
+        _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="")
+        or _lookup(SUG_MUTZAR_LABELS, "1")
+    )
     return [
         _normalize_insurer(insurer_name),
-        _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="") or _lookup(SUG_MUTZAR_LABELS, "1"),
-        policy.get("SHEM-TOCHNIT") or "",
+        cov_sug_mutzar,
+        _bucket_product_label(cov_sug_mutzar),
         policy.get("MISPAR-POLISA-O-HESHBON") or "",
         customer.get("SHEM-PRATI") or "",
         customer.get("SHEM-MISHPACHA") or "",
@@ -299,13 +655,16 @@ def _write_sheet(wb: Workbook, title: str, columns: list[str], rows: list[list])
 def _build_summary_rows(
     insurance_rows: list[list],
     agent_number: str | int | None = None,
+    savings_rows: list[list] | None = None,
 ) -> tuple[list[list], list[list]]:
-    """Aggregate insurance detail rows into the two summary sheets.
+    """Aggregate insurance + savings detail rows into the two summary sheets.
 
-    Returns (summary_by_insurer, summary_by_product). Currently covers only
-    the insurance half — `צבירה`/`הפקדה` columns stay 0 until savings DAT
-    lands in Phase 1b.
+    Returns (summary_by_insurer, summary_by_product). Insurance rows feed the
+    `פרמיה בניהול` column; savings rows feed `צבירה בניהול`. ``savings_rows``
+    defaults to empty (the original Migdal-only behaviour).
     """
+    savings_rows = savings_rows or []
+
     # Column indices in COLUMNS_INSURANCE_PRODUCTS
     INS_COL = COLUMNS_INSURANCE_PRODUCTS.index("יצרן")
     ID_COL = COLUMNS_INSURANCE_PRODUCTS.index("מספר ת.ז")
@@ -314,19 +673,34 @@ def _build_summary_rows(
     PROD_COL = COLUMNS_INSURANCE_PRODUCTS.index("מוצר")
     AGENT_COL = COLUMNS_INSURANCE_PRODUCTS.index("מספר סוכן")
 
-    # Per-insurer
+    # Column indices in COLUMNS_SAVINGS_PRODUCTS (sheet 3)
+    S_INS_COL = COLUMNS_SAVINGS_PRODUCTS.index("יצרן")
+    S_ID_COL = COLUMNS_SAVINGS_PRODUCTS.index("מספר ת.ז")
+    S_TYPE_COL = COLUMNS_SAVINGS_PRODUCTS.index("סוג מוצר")
+    S_PROD_COL = COLUMNS_SAVINGS_PRODUCTS.index("מוצר")
+    S_AGENT_COL = COLUMNS_SAVINGS_PRODUCTS.index("מספר סוכן")
+    S_ACCUM_COL = COLUMNS_SAVINGS_PRODUCTS.index("צבירה")
+
+    # Per-insurer (premium from insurance rows, accumulation from savings rows)
     by_insurer: dict[str, dict] = defaultdict(lambda: {
-        "customers": set(), "products": 0, "premium": 0.0, "agent": agent_number,
+        "customers": set(), "products": 0, "premium": 0.0, "accum": 0.0, "agent": agent_number,
     })
     for row in insurance_rows:
-        k = row[INS_COL] or ""
-        b = by_insurer[k]
+        b = by_insurer[row[INS_COL] or ""]
         if row[ID_COL]:
             b["customers"].add(row[ID_COL])
         b["products"] += 1
         b["premium"] += float(row[PREM_COL] or 0)
         if b["agent"] is None and row[AGENT_COL]:
             b["agent"] = row[AGENT_COL]
+    for row in savings_rows:
+        b = by_insurer[row[S_INS_COL] or ""]
+        if row[S_ID_COL]:
+            b["customers"].add(row[S_ID_COL])
+        b["products"] += 1
+        b["accum"] += float(row[S_ACCUM_COL] or 0)
+        if b["agent"] is None and row[S_AGENT_COL]:
+            b["agent"] = row[S_AGENT_COL]
 
     sum_ins = []
     for name, v in sorted(by_insurer.items()):
@@ -335,14 +709,14 @@ def _build_summary_rows(
             v["agent"] or "",
             len(v["customers"]),
             v["products"],
-            0.0,                 # צבירה בניהול — savings only
-            0.0,                 # הפקדה בניהול — savings only
+            round(v["accum"], 2),    # צבירה בניהול
+            0.0,                     # הפקדה בניהול — deposit not tracked yet
             round(v["premium"], 2),
         ])
 
     # Per (insurer, type, product)
     by_product: dict[tuple, dict] = defaultdict(lambda: {
-        "customers": set(), "products": 0, "premium": 0.0, "agent": agent_number,
+        "customers": set(), "products": 0, "premium": 0.0, "accum": 0.0, "agent": agent_number,
     })
     for row in insurance_rows:
         key = (row[INS_COL] or "", row[TYPE_COL] or "", row[PROD_COL] or "")
@@ -353,6 +727,15 @@ def _build_summary_rows(
         b["premium"] += float(row[PREM_COL] or 0)
         if b["agent"] is None and row[AGENT_COL]:
             b["agent"] = row[AGENT_COL]
+    for row in savings_rows:
+        key = (row[S_INS_COL] or "", row[S_TYPE_COL] or "", row[S_PROD_COL] or "")
+        b = by_product[key]
+        if row[S_ID_COL]:
+            b["customers"].add(row[S_ID_COL])
+        b["products"] += 1
+        b["accum"] += float(row[S_ACCUM_COL] or 0)
+        if b["agent"] is None and row[S_AGENT_COL]:
+            b["agent"] = row[S_AGENT_COL]
 
     sum_prod = []
     for key, v in sorted(by_product.items()):
@@ -362,7 +745,7 @@ def _build_summary_rows(
             v["agent"] or "",
             len(v["customers"]),
             v["products"],
-            0.0, 0.0,
+            round(v["accum"], 2), 0.0,
             round(v["premium"], 2),
         ])
 
@@ -373,41 +756,29 @@ def build_workbook(
     insurance_rows: list[list],
     coverage_rows: list[list],
     agent_number: str | int | None = None,
+    savings_rows: list[list] | None = None,
+    investment_rows: list[list] | None = None,
 ) -> Workbook:
-    """Assemble the full 6-sheet workbook. Sheets 3 + 4 (savings) are written
-    with headers only — Phase 1b will fill them."""
+    """Assemble the full 6-sheet workbook.
+
+    ``savings_rows`` (sheet 3, מוצרי חיסכון) and ``investment_rows`` (sheet 4,
+    מסלולי השקעה) are optional — default ``None`` keeps the original Migdal
+    behaviour of writing those sheets with headers only. The "run all portals"
+    aggregator passes savings rows so accumulation/gemel products land on
+    sheet 3 with their צבירה values."""
+    savings_rows = savings_rows or []
+    investment_rows = investment_rows or []
     wb = Workbook()
     # Remove the default sheet created by openpyxl
     wb.remove(wb.active)
 
-    summary_ins, summary_prod = _build_summary_rows(insurance_rows, agent_number)
+    summary_ins, summary_prod = _build_summary_rows(insurance_rows, agent_number, savings_rows)
 
     # Sheet order matches the reference file
     _write_sheet(wb, "דוח מסכם לפי יצרן", COLUMNS_SUMMARY_BY_INSURER, summary_ins)
     _write_sheet(wb, "דוח מסכם לפי מוצר", COLUMNS_SUMMARY_BY_PRODUCT, summary_prod)
-    # Empty placeholders (headers only) for savings sheets — filled in Phase 1b
-    _write_sheet(wb, "מוצרי חיסכון", [
-        "יצרן", "סוג מוצר", "מוצר", "מס' מ\"ה", "מס' חשבון/פוליסה", "סוכנות",
-        "שם פרטי לקוח", "שם משפחה לקוח", "מספר ת.ז", "סלולרי לקוח", 'דוא"ל לקוח',
-        "תאריך לידה", "גיל", "מגדר", "יישוב", "סיווג לקוח", "סטטוס מוצר",
-        "תאריך עדכון סטטוס", "תאריך הצטרפות למוצר", "מעמד", "מזהה מעסיק",
-        "שם מעסיק", "צבירה", "שכר למוצר", "שיעור תגמולים עובד",
-        "שיעור תגמולים מעסיק", "שיעור הפרשה לפיצויים", "הפקדה אחרונה",
-        "תאריך הפקדה אחרונה", "דמי ניהול מהפקדה", "דמי ניהול מצבירה",
-        "מקדם מובטח לפרישה", "מסלול ביטוח (פנסיה)", "מספר סוכן",
-        "תיאור מספר סוכן", "מיופה כוח אחרון", 'מת"ל', "נכון ליום", "קידוד אחיד",
-    ], [])
-    _write_sheet(wb, "מסלולי השקעה", [
-        "יצרן", "סוג מוצר", "מוצר", "מס' מ\"ה", "מס' חשבון/פוליסה",
-        "שם פרטי לקוח", "שם משפחה לקוח", "מספר ת.ז", "סלולרי לקוח",
-        'דוא"ל לקוח', "סטטוס מוצר", "תאריך עדכון סטטוס",
-        "תאריך הצטרפות למוצר", "מעמד", "מזהה מעסיק", "שם מעסיק",
-        "צבירה במוצר", "מספר סוכן", "תיאור מספר סוכן", 'מת"ל', "נכון ליום",
-        "שם מסלול", "קוד מסלול", "צבירה במסלול", "תשואה חודש דווח",
-        "תשואה מצטברת (מתחילת שנה)", "תשואה מצטברת (36 חודשים)",
-        "תשואה מצטברת (60 חודשים)", "תשואה שנתית ממוצעת (36 חודשים)",
-        "תשואה שנתית ממוצעת (60 חודשים)", "חודש דווח תשואות",
-    ], [])
+    _write_sheet(wb, "מוצרי חיסכון", COLUMNS_SAVINGS_PRODUCTS, savings_rows)
+    _write_sheet(wb, "מסלולי השקעה", COLUMNS_INVESTMENT_TRACKS, investment_rows)
     _write_sheet(wb, "מוצרי ביטוח", COLUMNS_INSURANCE_PRODUCTS, insurance_rows)
     _write_sheet(wb, "מוצרי ביטוח (כיסויים)", COLUMNS_INSURANCE_COVERAGES, coverage_rows)
 

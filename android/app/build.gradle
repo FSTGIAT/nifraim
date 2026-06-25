@@ -3,23 +3,44 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Release upload-signing config is loaded from android/keystore.properties when
+// present (Play uploads). The file holds the upload-key passwords and is gitignored;
+// when it's absent (local/CI dev builds) we fall back to the debug key so the build
+// never breaks. Play App Signing re-signs the AAB with the real app-signing key.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace 'com.nifraim.smsforwarder'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.nifraim.smsforwarder"
         minSdk 26
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.debug
+            signingConfig keystorePropsFile.exists() ? signingConfigs.release : signingConfigs.debug
         }
     }
 
@@ -37,4 +58,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.work:work-runtime-ktx:2.9.1'
+    // Reads the Play Store install referrer so a personalized install link can
+    // auto-configure the agent's webhook URL on first launch.
+    implementation 'com.android.installreferrer:installreferrer:2.2'
 }

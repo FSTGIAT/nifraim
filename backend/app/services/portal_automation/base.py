@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
+
+# An async callable the runner passes into download_reports so a plugin can
+# request a SECOND SMS OTP mid-download (for companies whose production and
+# נפרעים reports sit behind two different logins, e.g. Migdal mfte + apmaccess).
+# Awaiting it flips the run back to `awaiting_otp`, waits for a fresh
+# company-routed code, and returns it.
+OtpProvider = Callable[[], Awaitable[str]]
 
 
 class BasePortalAutomation(ABC):
@@ -24,6 +31,16 @@ class BasePortalAutomation(ABC):
     portal_kind: str = ""
     company_label: str = ""  # Hebrew display name
     report_password: str | None = None
+    # Set to False by plugins whose portal doesn't have a 2FA step (e.g. the
+    # Harel safe vault — accessed via direct ASP.NET form login). The runner
+    # checks this flag and skips the otp_inbox poll + submit_otp call.
+    requires_otp: bool = True
+    # Set to False to exclude a portal from the "run all" batch (still runnable
+    # as a single manual run). Used for dead-end portals that can't auto-download
+    # (e.g. the Phoenix Ericom terminal) and for sub-reports that another portal
+    # already downloads in one login (e.g. phoenix_nifraim_gemel, folded into
+    # phoenix_nifraim). Keeps the batch from burning an OTP on a guaranteed fail.
+    include_in_batch: bool = True
 
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:
@@ -47,12 +64,19 @@ class BasePortalAutomation(ABC):
         download_dir: Path,
         *,
         username: str | None = None,
+        otp_provider: "OtpProvider | None" = None,
     ) -> list[Path]:
         """Navigate to the reports section and download every relevant file.
 
         ``username`` is forwarded so plugins can build precise selectors when a
         portal labels files by agent (e.g. Migdal Safes System uses
         ``{USERNAME}_FROMMIGDAL_*`` filenames). Plugins are free to ignore it.
+
+        ``otp_provider`` (optional) lets a plugin obtain a SECOND OTP after a
+        second login inside download_reports — `otp = await otp_provider()`.
+        Only multi-login consolidated plugins (e.g. Migdal mfte+apmaccess) use
+        it; everyone else ignores it. The runner passes None when there's no
+        OTP context (e.g. the no-OTP SFE vault).
 
         Returns the list of saved file paths (under `download_dir`).
         """
@@ -148,6 +172,112 @@ class BasePortalAutomation(ABC):
             lines = [f"URL: {url}", f"TITLE: {title}", "", "VISIBLE INTERACTIVE ELEMENTS:"]
             lines.extend(interactive[:200])
             stem.with_suffix(".txt").write_text("\n".join(lines), encoding="utf-8")
+        except Exception:
+            # Diagnostics must never raise — the original error is what matters
+            pass
+
+    async def _dump_all_frames(self, page: "Page", base_path: Path) -> None:
+        """Like `_dump_page_state`, but dumps EVERY frame (top + nested
+        iframes), not just the top document.
+
+        Legacy terminal emulators (Phoenix's "מסוף", Ericom/Flynet/OpenText)
+        live inside an iframe — sometimes nested several levels deep — or paint
+        to a `<canvas>`. `page.content()` only returns the top document, so the
+        terminal screen is invisible to `_dump_page_state`. This helper walks
+        `page.frames` and, per frame, writes:
+
+            <stem>__frameNN.html — that frame's full DOM
+            <stem>__frameNN.txt  — url/name, the <iframe> element's id/src, and
+                                    a dump of canvas/pre/table/input/text nodes
+
+        plus a `<stem>__elements.txt` on the top doc enumerating every
+        iframe/canvas/object/embed (the canvas tell-tale for "this is a pixel
+        terminal we can't scrape"). Never raises.
+        """
+        try:
+            base_path.parent.mkdir(parents=True, exist_ok=True)
+            stem = base_path.with_suffix("")
+            await self._safe_screenshot(page, base_path)
+
+            # Top-document embedded-object inventory — answers "what is the terminal".
+            try:
+                inventory = await page.evaluate(
+                    """() => {
+                        const vw = window.innerWidth, vh = window.innerHeight;
+                        const out = [];
+                        for (const el of document.querySelectorAll('iframe, canvas, object, embed, applet')) {
+                            const r = el.getBoundingClientRect();
+                            const big = r.width >= vw * 0.5 && r.height >= vh * 0.4;
+                            out.push(
+                                `${el.tagName.toLowerCase()}`
+                                + ` id=${el.id || '-'}`
+                                + ` name=${el.getAttribute('name') || '-'}`
+                                + ` src=${el.getAttribute('src') || el.getAttribute('data') || '-'}`
+                                + ` size=${Math.round(r.width)}x${Math.round(r.height)}`
+                                + (big ? ' [VIEWPORT-SIZED]' : '')
+                            );
+                        }
+                        return {viewport: `${vw}x${vh}`, items: out};
+                    }"""
+                )
+            except Exception:
+                inventory = {"viewport": "?", "items": []}
+
+            inv_lines = [
+                f"URL: {page.url}",
+                f"VIEWPORT: {inventory.get('viewport')}",
+                f"FRAME COUNT: {len(page.frames)}",
+                "",
+                "EMBEDDED OBJECTS (iframe/canvas/object/embed/applet):",
+            ]
+            inv_lines.extend(inventory.get("items") or ["(none)"])
+            stem.with_name(stem.name + "__elements").with_suffix(".txt").write_text(
+                "\n".join(inv_lines), encoding="utf-8"
+            )
+
+            # Per-frame DOM + content dump.
+            for idx, frame in enumerate(page.frames):
+                fstem = stem.with_name(f"{stem.name}__frame{idx:02d}")
+                try:
+                    html = await frame.content()
+                    fstem.with_suffix(".html").write_text(html, encoding="utf-8")
+                except Exception:
+                    html = ""
+
+                try:
+                    el = await frame.frame_element()
+                    el_tag = await el.evaluate(
+                        "e => `${e.tagName.toLowerCase()} id=${e.id||'-'} name=${e.getAttribute('name')||'-'} src=${e.getAttribute('src')||'-'}`"
+                    )
+                except Exception:
+                    el_tag = "(top frame or detached)"
+
+                try:
+                    nodes = await frame.evaluate(
+                        """() => {
+                            const out = [];
+                            for (const el of document.querySelectorAll('canvas, pre, table, input, textarea, [class*="term"], [class*="screen"], [id*="term"], [id*="screen"]')) {
+                                const r = el.getBoundingClientRect();
+                                const txt = (el.innerText || el.value || el.textContent || '').trim().replace(/\\s+/g, ' ');
+                                out.push(`${el.tagName.toLowerCase()} id=${el.id||'-'} class=${(el.className||'').toString().slice(0,60)} size=${Math.round(r.width)}x${Math.round(r.height)} text="${txt.slice(0,300)}"`);
+                            }
+                            return out;
+                        }"""
+                    )
+                except Exception:
+                    nodes = []
+
+                flines = [
+                    f"FRAME {idx}",
+                    f"URL: {frame.url}",
+                    f"NAME: {frame.name}",
+                    f"ELEMENT: {el_tag}",
+                    f"HTML_LEN: {len(html)}",
+                    "",
+                    "TERMINAL-CANDIDATE NODES (canvas/pre/table/input/term/screen):",
+                ]
+                flines.extend(nodes[:120] or ["(none)"])
+                fstem.with_suffix(".txt").write_text("\n".join(flines), encoding="utf-8")
         except Exception:
             # Diagnostics must never raise — the original error is what matters
             pass
