@@ -27,6 +27,10 @@ PORTAL_URL = "https://mfte.migdal.co.il/#/"
 class MigdalPortal(BasePortalAutomation):
     portal_kind = "migdal"
     company_label = "מגדל — כספת (ייצור)"
+    # Migdal answers Railway's datacenter IP directly (proven live 2026-06-26),
+    # so skip the IL residential proxy — avoids its latency/cost. The apmaccess
+    # נפרעים leg shares this context. See memory `railway_ip_geoblocked_insurers`.
+    needs_residential_proxy = False
 
     async def login(self, page: "Page", username: str, password: str) -> None:
         # The consolidated Migdal credential may carry TWO logins joined by `|`:

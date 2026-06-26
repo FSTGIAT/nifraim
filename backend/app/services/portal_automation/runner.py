@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import async_session
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
@@ -30,6 +31,33 @@ from app.services.upload_ingest import ingest_file_bytes, schedule_post_ingest
 from app.utils.crypto import decrypt
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_proxy(proxy_url: str) -> dict | None:
+    """Parse a proxy URL ("http://user:pass@host:port" or "http://host:port")
+    into Playwright's proxy dict {server, username?, password?}. Returns None
+    for an empty/invalid value so the caller connects directly. Credentials go
+    in their own keys (Playwright wants the server WITHOUT inline auth)."""
+    proxy_url = (proxy_url or "").strip()
+    if not proxy_url:
+        return None
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(proxy_url if "://" in proxy_url else f"http://{proxy_url}")
+        if not u.hostname:
+            return None
+        server = f"{u.scheme or 'http'}://{u.hostname}"
+        if u.port:
+            server += f":{u.port}"
+        out: dict = {"server": server}
+        if u.username:
+            out["username"] = u.username
+        if u.password:
+            out["password"] = u.password
+        return out
+    except Exception:
+        logger.warning("Invalid IL_RESIDENTIAL_PROXY value; connecting directly")
+        return None
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -185,9 +213,29 @@ async def _run_inner(
                     "--no-sandbox",
                 ],
             )
+        # Israeli insurer WAFs geo-block Railway's foreign datacenter IP. Route
+        # geo-blocked portals through an IL residential proxy when one is set;
+        # otherwise (or for direct-OK portals like Migdal) connect directly.
+        context_proxy = None
+        if getattr(plugin, "needs_residential_proxy", True):
+            context_proxy = _parse_proxy(getattr(settings, "IL_RESIDENTIAL_PROXY", ""))
+            if context_proxy and context_proxy.get("username"):
+                # Pin ONE sticky residential IP for this whole run (login → OTP →
+                # download must share an IP or the insurer WAF/F5-APM session
+                # breaks). Bright Data: append `-session-<id>` to the username.
+                # Per-run id → each run gets its own IP, no cross-run reuse.
+                if "-session-" not in context_proxy["username"]:
+                    context_proxy["username"] += f"-session-{run.id.hex[:12]}"
+            if context_proxy:
+                logger.info(
+                    "Run %s (%s): routing via IL residential proxy %s",
+                    run.id, cred.portal_kind, context_proxy.get("server"),
+                )
+
         # Real-Chrome UA + viewport + locale so APM / WAF gates don't bounce
         # us based on the headless fingerprint.
         context = await browser.new_context(
+            proxy=context_proxy,
             accept_downloads=True,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

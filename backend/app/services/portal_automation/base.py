@@ -41,6 +41,16 @@ class BasePortalAutomation(ABC):
     # already downloads in one login (e.g. phoenix_nifraim_gemel, folded into
     # phoenix_nifraim). Keeps the batch from burning an OTP on a guaranteed fail.
     include_in_batch: bool = True
+    # Israeli insurer WAFs geo/datacenter-block non-IL IPs: from Railway's
+    # foreign datacenter IP, harel/menora/phoenix hang at the first page.goto
+    # (30s timeout) while the same domains answer in <250ms from a local IL IP.
+    # When True AND settings.IL_RESIDENTIAL_PROXY is configured, the runner
+    # routes this portal's browser context through the IL residential proxy.
+    # Default True (most IL insurers block); Migdal opts out (works direct).
+    # No proxy env set → runner falls back to a direct connection, so this flag
+    # is a no-op until a proxy is provisioned. See memory
+    # `railway_ip_geoblocked_insurers`.
+    needs_residential_proxy: bool = True
 
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:

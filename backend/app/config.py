@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     # Generate once: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     PORTAL_CRED_FERNET_KEY: str = ""
 
+    # Israeli residential/ISP proxy for portal automation. Israeli insurer WAFs
+    # geo-block Railway's foreign datacenter IP (harel/menora/phoenix time out at
+    # the first page.goto), so the runner routes geo-blocked portals' browser
+    # contexts through this proxy. Format: a full proxy URL
+    # "http://user:pass@host:port" (or "http://host:port"). Empty → direct
+    # connection (no proxy), the pre-proxy behavior. See memory
+    # `railway_ip_geoblocked_insurers`.
+    IL_RESIDENTIAL_PROXY: str = ""
+
     # Pension clearinghouse (המסלקה הפנסיונית / ממשק אחיד) — asynchronous SFTP vault exchange.
     # See .claude/plans/based-on-our-hashed-twilight.md for the design.
     MASLAKA_TRANSPORT: str = "local"               # "local" (file-system mock) | "sftp" (real vault)
