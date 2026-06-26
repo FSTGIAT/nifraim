@@ -203,6 +203,12 @@ async def _run_inner(
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
+                    # Containers default to a tiny 64MB /dev/shm; Chrome fills it
+                    # and the tab/renderer crashes (Railway "Crashed!" during a
+                    # batch). Write shared memory to /tmp instead. Standard
+                    # container fix; does NOT change the TLS/JA3 fingerprint.
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
                 ],
             )
         except Exception:
@@ -211,6 +217,12 @@ async def _run_inner(
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
+                    # Containers default to a tiny 64MB /dev/shm; Chrome fills it
+                    # and the tab/renderer crashes (Railway "Crashed!" during a
+                    # batch). Write shared memory to /tmp instead. Standard
+                    # container fix; does NOT change the TLS/JA3 fingerprint.
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
                 ],
             )
         # Israeli insurer WAFs geo-block Railway's foreign datacenter IP. Route
