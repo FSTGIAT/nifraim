@@ -236,6 +236,12 @@ async def _run_inner(
         # us based on the headless fingerprint.
         context = await browser.new_context(
             proxy=context_proxy,
+            # The IL residential proxy (Bright Data) terminates TLS with its own
+            # CA, so Playwright sees ERR_CERT_AUTHORITY_INVALID on the target's
+            # HTTPS. Accept it ONLY when going through the proxy (the documented
+            # `-k` equivalent); direct connections (e.g. Migdal) keep full TLS
+            # validation. See memory `railway_ip_geoblocked_insurers`.
+            ignore_https_errors=bool(context_proxy),
             accept_downloads=True,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
