@@ -76,6 +76,12 @@ def _slug(s: str) -> str:
 class HarelPortal(BasePortalAutomation):
     portal_kind = "harel"
     company_label = "הראל"
+    # Harel's WAF blocks the shared ISP zone's hosting ASN (WS Telecom) at the
+    # network layer (ERR_TUNNEL_CONNECTION_FAILED on ~6/6 IPs) but accepts a
+    # Bright Data residential-zone IP (302). Route all Harel variants through the
+    # residential zone via IL_HAREL_PROXY; falls back to IL_RESIDENTIAL_PROXY if
+    # unset. Inherited by _HarelReportPortal / harel_savings / harel_commissions.
+    proxy_zone_env = "IL_HAREL_PROXY"
     # The legacy SAFE-vault flow (harelsafe.co.il, `|`-split password) is a
     # SEPARATE production source from the agents-portal. The batch's single Harel
     # credential is the consolidated `harel_savings` (production + נפרעים in one
@@ -107,21 +113,43 @@ class HarelPortal(BasePortalAutomation):
         await self._safe_screenshot(page, landing)
         await self._dump_page_state(page, landing)
 
-        # F5 APM often bounces fresh requests to a "logout"/error page with
-        # a `<a href="/">לחץ כאן</a>` link that resets the session. Operator
-        # confirmed this is the normal flow — click through to get the real
-        # login form. Loop up to 3x in case the reset takes more than once.
-        for attempt in range(3):
-            if "errorcode" not in page.url and "my.logout" not in page.url:
+        # F5 APM can interrupt login two ways BEFORE the credentials form, both
+        # resolved by clicking a reset link that returns the real login form:
+        #   1. errorcode / my.logout bounce → Hebrew "לחץ כאן" link.
+        #   2. "Access policy evaluation is already in progress for your current
+        #      session" — a STALE/concurrent F5 session (a prior run that didn't
+        #      log out). Reset link is English "here" whose href is
+        #      `javascript:document.location=redirectURI`; clicking it kills the
+        #      old session and drops back on the credentials form (operator
+        #      confirmed). F5 allows ONE session per user, so without this every
+        #      run after the first lands here instead of the OTP screen and times
+        #      out at the otpass wait. Clicking it at login start = self-healing.
+        # Loop a few times: click whichever reset link is present until the
+        # username field appears.
+        reset_selectors = (
+            "a:has-text('לחץ כאן')",
+            "a[href*='redirectURI']",
+            "a[href^='javascript:document.location']",
+        )
+        for attempt in range(4):
+            if await page.locator("input[name='username']").count():
                 break
-            try:
-                await page.click("a:has-text('לחץ כאן')", timeout=4000)
-                await page.wait_for_load_state("domcontentloaded", timeout=10000)
-            except Exception:
-                break
+            clicked = False
+            for sel in reset_selectors:
+                try:
+                    link = page.locator(sel).first
+                    if await link.count():
+                        await link.click(timeout=4000)
+                        await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        clicked = True
+                        break
+                except Exception:
+                    continue
             recovery = SCREENSHOT_ROOT / f"harel_apm_recovery_{safe_user}_{attempt}.png"
             await self._safe_screenshot(page, recovery)
             await self._dump_page_state(page, recovery)
+            if not clicked:
+                break
 
         # Inline APM form fill — explicit waits, since the shared helper's
         # selector iteration races with Harel's form re-render after the

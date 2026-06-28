@@ -230,7 +230,14 @@ async def _run_inner(
         # otherwise (or for direct-OK portals like Migdal) connect directly.
         context_proxy = None
         if getattr(plugin, "needs_residential_proxy", True):
-            context_proxy = _parse_proxy(getattr(settings, "IL_RESIDENTIAL_PROXY", ""))
+            # Per-portal zone selection: a portal whose insurer blocks the default
+            # ISP zone's ASN (e.g. Harel) names a different zone var. Fall back to
+            # the shared IL_RESIDENTIAL_PROXY when the portal-specific var is empty.
+            proxy_env = getattr(plugin, "proxy_zone_env", "IL_RESIDENTIAL_PROXY")
+            proxy_url = getattr(settings, proxy_env, "") or getattr(
+                settings, "IL_RESIDENTIAL_PROXY", ""
+            )
+            context_proxy = _parse_proxy(proxy_url)
             if context_proxy and context_proxy.get("username"):
                 # Pin ONE sticky residential IP for this whole run (login → OTP →
                 # download must share an IP or the insurer WAF/F5-APM session

@@ -1,0 +1,31 @@
+# Exclude heavy / build-irrelevant paths from the Railway upload context.
+# The Dockerfile only needs frontend/ (source) and backend/ (source).
+# (Railway uses this like .gitignore for `railway up`.)
+
+# Large non-build assets
+nifraim-vid/
+android/
+data/
+maslaka_vault/
+backend/maslaka_vault/
+
+# Dependency / build dirs (rebuilt in the image)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.venv/
+backend/venv/
+**/__pycache__/
+*.pyc
+
+# VCS / tooling / local
+.git/
+.claude/
+.vscode/
+.idea/
+
+# Secrets / local-only
+.env
+.env.*
+*.xls
+*.xlsx

@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # `railway_ip_geoblocked_insurers`.
     IL_RESIDENTIAL_PROXY: str = ""
 
+    # Per-portal proxy override for Harel. Harel's WAF blocks the ISP zone's
+    # hosting ASN (WS Telecom) at the network layer (ERR_TUNNEL_CONNECTION_FAILED),
+    # but accepts a Bright Data *residential* zone IP. Point this at the
+    # residential-zone proxy URL; plugins with proxy_zone_env="IL_HAREL_PROXY"
+    # use it instead of IL_RESIDENTIAL_PROXY. Empty → falls back to
+    # IL_RESIDENTIAL_PROXY. See memory `railway_ip_geoblocked_insurers`.
+    IL_HAREL_PROXY: str = ""
+
     # Pension clearinghouse (המסלקה הפנסיונית / ממשק אחיד) — asynchronous SFTP vault exchange.
     # See .claude/plans/based-on-our-hashed-twilight.md for the design.
     MASLAKA_TRANSPORT: str = "local"               # "local" (file-system mock) | "sftp" (real vault)

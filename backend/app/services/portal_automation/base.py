@@ -52,6 +52,14 @@ class BasePortalAutomation(ABC):
     # `railway_ip_geoblocked_insurers`.
     needs_residential_proxy: bool = True
 
+    # Which settings env var holds the proxy URL for this portal. Defaults to the
+    # shared ISP zone (IL_RESIDENTIAL_PROXY). A portal whose insurer blocks the
+    # default zone's ASN overrides this to a different zone's var (e.g. Harel →
+    # "IL_HAREL_PROXY", a residential zone). The runner falls back to
+    # IL_RESIDENTIAL_PROXY when the named var is empty. See memory
+    # `railway_ip_geoblocked_insurers`.
+    proxy_zone_env: str = "IL_RESIDENTIAL_PROXY"
+
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:
         """Navigate to the portal and submit username + password.

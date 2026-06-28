@@ -40,3 +40,6 @@ backend/livetest_harel_savings.py
 # Maslaka local-mock SFTP runtime vault (generated)
 maslaka_vault/
 backend/maslaka_vault/
+
+# Large local video project (not part of the deployed app)
+nifraim-vid/
