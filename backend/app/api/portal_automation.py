@@ -65,6 +65,25 @@ router = APIRouter()
 OTP_REGEX = re.compile(r"\b(\d{4,8})\b")
 ACTIVE_RUN_STATUSES = {"pending", "running", "awaiting_otp", "downloading", "parsing"}
 TERMINAL_RUN_STATUSES = {"success", "failed", "timeout"}
+# A worker is "live" if it heartbeated within this window.
+WORKER_LIVE_WINDOW_S = 90
+
+
+async def _should_defer_to_worker(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Decide whether to ENQUEUE a run for the agent's local worker instead of
+    executing it on Railway. True when the global WORKER_MODE override is set, OR
+    — the normal path — when this user's local worker has a recent heartbeat.
+    Auto-detection means the agent never flips a setting: installing + running the
+    worker (it heartbeats) automatically routes their downloads to it; with no
+    live worker, Railway runs them inline (pre-worker behavior)."""
+    if settings.WORKER_MODE:
+        return True
+    row = (await db.execute(
+        select(WorkerHeartbeat.last_seen).where(WorkerHeartbeat.user_id == user_id)
+    )).scalar_one_or_none()
+    if not row:
+        return False
+    return (datetime.utcnow() - row).total_seconds() <= WORKER_LIVE_WINDOW_S
 
 
 def _cred_to_out(c: PortalCredential, recent: list[str] | None = None) -> PortalCredentialOut:
@@ -321,11 +340,10 @@ async def trigger_run(
     await db.commit()
     await db.refresh(run)
 
-    # Fire and forget — runner owns its own DB session.
-    # In WORKER_MODE the run stays "pending" for the agent's local worker to
+    # If the agent's local worker is live, leave the run "pending" for it to
     # claim and execute from an Israeli IP (no geo-block / no Bright Data POST
-    # block). Otherwise Railway executes inline (pre-worker behavior).
-    if not settings.WORKER_MODE:
+    # block). Otherwise Railway executes inline. Auto-detected — no manual flag.
+    if not await _should_defer_to_worker(db, user.id):
         asyncio.create_task(run_automation(run.id))
 
     return RunStartOut(run_id=str(run.id))
@@ -379,9 +397,9 @@ async def run_all_portals(
     await db.commit()
     await db.refresh(batch)
 
-    # In WORKER_MODE leave the batch "pending" for the local worker to claim;
-    # otherwise execute inline on Railway (pre-worker behavior).
-    if not settings.WORKER_MODE:
+    # If the agent's local worker is live, leave the batch "pending" for it to
+    # claim; otherwise execute inline on Railway. Auto-detected — no manual flag.
+    if not await _should_defer_to_worker(db, user.id):
         asyncio.create_task(run_batch(batch.id))
     return BatchStartOut(batch_id=str(batch.id))
 

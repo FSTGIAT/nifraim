@@ -33,14 +33,15 @@ async def _fail_orphaned_runs() -> None:
     ACTIVE = ("pending", "running", "awaiting_otp", "downloading", "parsing")
     try:
         async with async_session() as db:
-            stmt = update(PortalRun).where(PortalRun.status.in_(ACTIVE))
-            if settings.WORKER_MODE:
-                # In WORKER_MODE execution lives in an EXTERNAL local process, so
-                # a Railway restart does NOT orphan its in-flight runs — only reap
-                # ones clearly stale (older than the run hard-timeout window), to
-                # avoid killing a run the worker is actively executing.
-                cutoff = datetime.utcnow() - timedelta(minutes=20)
-                stmt = stmt.where(PortalRun.started_at < cutoff)
+            # Execution may live in an EXTERNAL local worker (auto-detected per
+            # user, or forced via WORKER_MODE), so a Railway restart does NOT
+            # necessarily orphan an in-flight run. Only reap clearly-stale ones
+            # (older than the run hard-timeout window) so we never kill a run the
+            # worker is actively executing, while still unsticking dead runs.
+            cutoff = datetime.utcnow() - timedelta(minutes=20)
+            stmt = update(PortalRun).where(
+                PortalRun.status.in_(ACTIVE), PortalRun.started_at < cutoff
+            )
             await db.execute(
                 stmt.values(
                     status="failed",
