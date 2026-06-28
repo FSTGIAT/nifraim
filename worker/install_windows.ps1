@@ -65,8 +65,13 @@ if (Test-Path $envPath) {
     if ($_ -match "^\s*([A-Z_]+)=") { if ($managed -notcontains $Matches[1]) { $lines += $_ } }
   }
 }
-Set-Content -Path $envPath -Value $lines -Encoding UTF8
-Write-Host "[Nifraim] Wrote $envPath"
+# Write .env WITHOUT a BOM. Windows PowerShell 5.1's `-Encoding UTF8` prepends a
+# UTF-8 BOM, which corrupts the FIRST line's key (﻿DATABASE_URL) → the worker
+# can't read DATABASE_URL → it crashes on startup and never connects. Use .NET's
+# no-BOM UTF8 encoder (all values here are ASCII anyway).
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines($envPath, $lines, $utf8NoBom)
+Write-Host "[Nifraim] Wrote $envPath (no BOM)"
 
 # 5. Scheduled Task — start at logon, restart on failure
 $bat = Join-Path $Repo "worker\start_worker.bat"

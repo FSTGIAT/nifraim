@@ -35,14 +35,21 @@ _ROOT = Path(__file__).resolve().parent.parent  # repo root (/.../test)
 _env = {}
 _env_file = _ROOT / ".env"
 if _env_file.exists():
-    for _line in _env_file.read_text().splitlines():
-        _s = _line.strip()
+    # utf-8-sig strips a UTF-8 BOM if present. Windows PowerShell 5.1's
+    # `Set-Content -Encoding UTF8` writes a BOM, which would corrupt the FIRST
+    # key (﻿DATABASE_URL → unreadable → worker can't boot → never connects).
+    for _line in _env_file.read_text(encoding="utf-8-sig").splitlines():
+        _s = _line.strip().lstrip("﻿")
         if _s and not _s.startswith("#") and "=" in _s:
             _k, _v = _s.split("=", 1)
-            _env[_k.strip()] = _v.strip().strip('"').strip("'")
+            _env[_k.strip().lstrip("﻿")] = _v.strip().strip('"').strip("'")
 
 if not os.environ.get("DATABASE_URL") and _env.get("DATABASE_URL"):
     os.environ["DATABASE_URL"] = _env["DATABASE_URL"]
+# Push JWT_SECRET (required by Settings) into the env so config loads even if
+# pydantic mis-reads a BOM'd .env — env vars take precedence over the file.
+if not os.environ.get("JWT_SECRET") and _env.get("JWT_SECRET"):
+    os.environ["JWT_SECRET"] = _env["JWT_SECRET"]
 os.environ.setdefault("DATABASE_URL_SYNC", os.environ.get("DATABASE_URL", "").replace("+asyncpg", ""))
 os.environ.setdefault("PORTAL_CRED_FERNET_KEY", _env.get("PORTAL_CRED_FERNET_KEY", ""))
 os.environ["IL_RESIDENTIAL_PROXY"] = ""   # direct from this IL machine — no proxy
@@ -59,7 +66,14 @@ from app.models.worker_heartbeat import WorkerHeartbeat
 from app.services.portal_automation.runner import run_automation
 from app.services.portal_automation.batch_runner import run_batch
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# Log to BOTH the console and a file (worker.log at repo root) so a hidden
+# Scheduled Task still leaves a shareable record of any startup crash.
+_LOG_FILE = str(_ROOT / "worker.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler(_LOG_FILE, encoding="utf-8")],
+)
 log = logging.getLogger("nifraim-worker")
 
 USER_EMAIL = os.environ.get("WORKER_USER_EMAIL", "royg@nifraim.com")

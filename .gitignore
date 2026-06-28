@@ -43,3 +43,7 @@ backend/maslaka_vault/
 
 # Large local video project (not part of the deployed app)
 nifraim-vid/
+
+# Local worker runtime logs
+worker.log
+worker/worker_console.log
