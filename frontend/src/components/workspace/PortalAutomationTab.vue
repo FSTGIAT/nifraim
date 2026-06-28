@@ -13,6 +13,12 @@
           <h2 class="page-title">פורטלי חברות הביטוח</h2>
         </div>
       </div>
+      <button v-if="store.credentials.length" class="head-add" type="button" @click="openAdd">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14" /><path d="M12 5v14" />
+        </svg>
+        <span>הוסף פורטל</span>
+      </button>
     </header>
 
     <!-- Run all portals → aggregate to one production + one נפרעים file → compare. -->
@@ -337,7 +343,33 @@ onUnmounted(() => {
   letter-spacing: -0.4px;
   line-height: 1.1;
 }
-/* Right-side board stats — Monday "info cells" */
+
+/* Add-portal button — sits at the inline-end of the page header */
+.head-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #4E9DD0, #1FA88C);  /* pastel sky → teal */
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  height: 40px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  box-shadow: 0 5px 13px rgba(31, 168, 140, 0.26);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+  flex-shrink: 0;
+}
+.head-add:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+  box-shadow: 0 9px 20px rgba(31, 168, 140, 0.34);
+}
+.head-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
+
 /* ─── Dashboard grid: main panels + activity sidebar ────── */
 .dash {
   display: grid;

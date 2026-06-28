@@ -1,18 +1,5 @@
 <template>
   <div class="auto-canvas" :class="{ 'is-empty': !credentials.length }">
-    <header class="pane-head">
-      <div class="pane-titles">
-        <span class="pane-title">פורטלים</span>
-        <span class="pane-sub">{{ paneSub }}</span>
-      </div>
-      <button v-if="credentials.length" class="btn-add" type="button" @click="$emit('add')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M5 12h14" /><path d="M12 5v14" />
-        </svg>
-        <span>הוסף פורטל</span>
-      </button>
-    </header>
-
     <!-- ── Empty state — clean, single CTA ─────────────────── -->
     <div v-if="!credentials.length" class="empty-state">
       <div class="empty-art" aria-hidden="true">
@@ -152,12 +139,6 @@ function groupTint(hex) {
   return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, 0.12)`
 }
 
-const paneSub = computed(() => {
-  const total = props.credentials.length
-  if (!total) return 'עוד אין פורטלים מחוברים'
-  return `${total} פורטל${total === 1 ? '' : 'ים'} מחובר${total === 1 ? '' : 'ים'}`
-})
-
 function isRunning(credId) {
   return props.activeRunId && props.activeRun?.credential_id === credId
 }
@@ -171,19 +152,7 @@ function isRunning(credId) {
   min-height: 420px;
 }
 
-/* ─── Header ─────────────────────────────────────────────── */
-.pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed var(--border-subtle);
-}
-.pane-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pane-title { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -0.2px; }
-.pane-sub { font-size: 12px; color: var(--text-muted); }
-
+/* ─── Add-portal button (empty-state CTA) ────────────────── */
 .btn-add {
   display: inline-flex;
   align-items: center;
