@@ -1,122 +1,91 @@
 <template>
   <article
-    class="cred-card"
-    :class="[
-      `cred-card--${badgeKind}`,
-      `cred-card--cadence-${cred.schedule_kind || 'manual'}`,
-      { scheduled: isScheduled, running: isRunning },
-    ]"
-    :draggable="draggable"
-    @dragstart="$emit('dragstart', $event)"
+    class="pcard"
+    :class="[`pcard--${badgeKind}`, { running: isRunning }]"
+    :style="cardVars"
   >
     <!-- Active-run scanning beam -->
-    <span v-if="isRunning" class="scan-beam" aria-hidden="true"></span>
+    <span v-if="isRunning" class="pcard__beam" aria-hidden="true"></span>
+    <!-- Pastel brand accent line -->
+    <span class="pcard__accent" aria-hidden="true"></span>
 
-    <!-- ─── WASH HEADER ──────────────────────────────────────── -->
-    <header class="wash" :style="washStyle">
-      <span class="wash-glow" aria-hidden="true"></span>
-      <span class="wash-overlay" aria-hidden="true"></span>
-
-      <span class="wash-art" :title="brand.label" aria-hidden="true">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">
+    <!-- ─── HEAD: brand tile + identity + status ─────────────── -->
+    <header class="pcard__head">
+      <span class="pcard__tile" :title="brand.label" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path :d="brand.iconPath" />
         </svg>
       </span>
-
-      <div class="wash-titles">
-        <span class="wash-name">{{ portalLabel }}</span>
-        <span class="wash-user">{{ cred.username }}</span>
+      <div class="pcard__id">
+        <span class="pcard__name">{{ portalLabel }}</span>
+        <span class="pcard__user ltr-number">{{ cred.username }}</span>
       </div>
-
-      <span class="wash-grip" aria-hidden="true" title="גרור לשינוי תזמון">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="9" cy="6" r="1.2" /><circle cx="9" cy="12" r="1.2" /><circle cx="9" cy="18" r="1.2" />
-          <circle cx="15" cy="6" r="1.2" /><circle cx="15" cy="12" r="1.2" /><circle cx="15" cy="18" r="1.2" />
-        </svg>
-      </span>
-
-      <!-- Schedule chip — overlays the wash bottom-end corner when scheduled -->
-      <span v-if="isScheduled" class="sched-corner" :title="`תזמון: ${scheduleLabel}`">
-        <svg v-if="cred.schedule_kind === 'daily'" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-        </svg>
-        <svg v-else-if="cred.schedule_kind === 'weekly'" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect width="18" height="18" x="3" y="4" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
-        </svg>
-        <svg v-else width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect width="18" height="18" x="3" y="4" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
-        </svg>
-        <span>{{ scheduleLabel }}</span>
+      <span class="pcard__status" :class="`pcard__status--${badgeKind}`">
+        <span class="pcard__status-dot" aria-hidden="true"></span>
+        <span>{{ statusText }}</span>
       </span>
     </header>
 
-    <!-- ─── BODY ─────────────────────────────────────────────── -->
-    <div class="body">
-      <!-- Run-history strip -->
-      <div class="run-strip" :class="`run-strip--${badgeKind}`" :aria-label="runStripAriaLabel">
-        <span class="rs-dots" role="img">
-          <span
-            v-for="(s, i) in displayedHistory"
-            :key="i"
-            class="rs-dot"
-            :class="[`rs-dot--${dotClass(s)}`, { 'rs-dot--pulse': i === 0 && isRunning }]"
-            :title="dotTitle(s)"
-          ></span>
-        </span>
-        <span class="rs-meta">
-          <span class="rs-label">{{ badgeLabel }}</span>
-          <span v-if="cred.last_run_at" class="rs-time">· {{ relativeHebrew(cred.last_run_at) }}</span>
-        </span>
-        <button
-          v-if="cred.last_error"
-          class="rs-error-pill"
-          type="button"
-          :title="cred.last_error"
-          aria-label="הצג פרטי שגיאה"
-          @click.stop="$emit('view-error', cred.last_error)"
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <span>פרטים</span>
-        </button>
-      </div>
-
-      <!-- Live progress -->
-      <div v-if="activeRun?.credential_id === cred.id" class="cc-progress">
-        <PortalRunProgress :runId="activeRun.id" />
-      </div>
-
-      <!-- Actions -->
-      <footer class="actions">
-        <button
-          class="btn-run"
-          :disabled="isRunning"
-          :aria-label="isRunning ? 'רץ' : 'הרץ עכשיו'"
-          :title="isRunning ? 'רץ…' : 'הרץ עכשיו'"
-          @click="$emit('run')"
-        >
-          <span v-if="isRunning" class="btn-spinner" aria-hidden="true"></span>
-          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
-            <polygon points="6 4 20 12 6 20" />
-          </svg>
-        </button>
-        <div class="actions-secondary">
-          <button class="btn-icon" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-            </svg>
-          </button>
-          <button class="btn-icon btn-icon--danger" type="button" title="מחיקה" aria-label="מחיקה" @click="$emit('delete')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              <line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
-            </svg>
-          </button>
-        </div>
-      </footer>
+    <!-- ─── META: run history + last run ────────────────────── -->
+    <div class="pcard__meta" :aria-label="runStripAriaLabel">
+      <span class="pcard__dots" role="img">
+        <span
+          v-for="(s, i) in displayedHistory"
+          :key="i"
+          class="pcard__dot"
+          :class="[`pcard__dot--${dotClass(s)}`, { 'pcard__dot--pulse': i === 0 && isRunning }]"
+          :title="dotTitle(s)"
+        ></span>
+      </span>
+      <span v-if="cred.last_run_at" class="pcard__when">{{ relativeHebrew(cred.last_run_at) }}</span>
+      <button
+        v-if="cred.last_error"
+        class="pcard__errpill"
+        type="button"
+        :title="cred.last_error"
+        aria-label="הצג פרטי שגיאה"
+        @click="$emit('view-error', cred.last_error)"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <span>פרטים</span>
+      </button>
     </div>
+
+    <!-- Live progress -->
+    <div v-if="activeRun?.credential_id === cred.id" class="pcard__progress">
+      <PortalRunProgress :runId="activeRun.id" />
+    </div>
+
+    <!-- ─── ACTIONS ─────────────────────────────────────────── -->
+    <footer class="pcard__actions">
+      <button
+        class="pcard__run"
+        type="button"
+        :disabled="isRunning"
+        :aria-label="isRunning ? 'רץ' : 'הרצה עכשיו'"
+        @click="$emit('run')"
+      >
+        <span v-if="isRunning" class="pcard__spinner" aria-hidden="true"></span>
+        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <polygon points="6 4 20 12 6 20" />
+        </svg>
+        <span>{{ isRunning ? 'רץ…' : 'הרצה עכשיו' }}</span>
+      </button>
+      <button class="pcard__ic" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        </svg>
+      </button>
+      <button class="pcard__ic pcard__ic--danger" type="button" title="מחיקה" aria-label="מחיקה" @click="$emit('delete')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+      </button>
+    </footer>
   </article>
 </template>
 
@@ -132,24 +101,26 @@ const props = defineProps({
   portalLabel: { type: String, required: true },
   isRunning: { type: Boolean, default: false },
   activeRun: { type: Object, default: null },
-  draggable: { type: Boolean, default: false },
   // Distinct on-palette wash color assigned by the parent (de-duped per company).
   washColor: { type: String, default: '' },
 })
-defineEmits(['run', 'edit', 'delete', 'dragstart', 'view-error'])
+defineEmits(['run', 'edit', 'delete', 'view-error'])
 
-const SCHEDULE_LABELS = { daily: 'יומי', weekly: 'שבועי', monthly: 'חודשי' }
 const STATUS_LABELS = {
   success: 'הצליח',
   failed: 'נכשל',
   timeout: 'פסק זמן',
   none: 'טרם הופעל',
 }
+const STATUS_PILL = {
+  running: 'פעיל כעת',
+  success: 'תקין',
+  failed: 'שגיאה',
+  none: 'ממתין',
+}
 const HISTORY_SLOTS = 7
 
 const brand = computed(() => brandFor(props.cred.portal_kind))
-const isScheduled = computed(() => props.cred.schedule_kind && props.cred.schedule_kind !== 'manual')
-const scheduleLabel = computed(() => SCHEDULE_LABELS[props.cred.schedule_kind] || '')
 
 const badgeKind = computed(() => {
   const s = props.cred.last_run_status
@@ -159,7 +130,7 @@ const badgeKind = computed(() => {
   if (['failed', 'timeout'].includes(s)) return 'failed'
   return 'running'
 })
-const badgeLabel = computed(() => STATUS_LABELS[props.cred.last_run_status] || STATUS_LABELS[badgeKind.value])
+const statusText = computed(() => STATUS_PILL[badgeKind.value] || STATUS_PILL.none)
 
 // Pad recent history (most-recent first) to a fixed 7 slots so the strip width is stable.
 const displayedHistory = computed(() => {
@@ -187,373 +158,274 @@ const runStripAriaLabel = computed(() => {
   return `היסטוריה: ${counts.success || 0} הצלחות, ${(counts.failed || 0) + (counts.timeout || 0)} כישלונות`
 })
 
-// Card wash uses the bright-bold palette, picking the palette color CLOSEST to
-// the company's brand color (see nearestChartColor) — so the board is on-palette
-// but each company keeps a recognizable hue (Phoenix→palette-blue, Harel→red…).
-
-// Brand wash gradient — darken the brand color by ~22% for the gradient bottom.
-function hexShift(hex, factor) {
+// Soft pastel SaaS look: the brand color only tints the icon tile + accent line,
+// expressed as low-alpha rgba so every company reads as a calm pastel card.
+function hexToRgb(hex) {
   const clean = (hex || '#706E6B').replace('#', '')
-  const n = parseInt(clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean, 16)
-  const r = Math.max(0, Math.min(255, Math.floor(((n >> 16) & 0xff) * factor)))
-  const g = Math.max(0, Math.min(255, Math.floor(((n >> 8) & 0xff) * factor)))
-  const b = Math.max(0, Math.min(255, Math.floor((n & 0xff) * factor)))
-  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean
+  const n = parseInt(full, 16)
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
 }
-const washStyle = computed(() => {
+const cardVars = computed(() => {
   const base = props.washColor || nearestChartColor(brand.value.color)
-  const deep = hexShift(base, 0.82)
+  const [r, g, b] = hexToRgb(base)
   return {
-    background: `linear-gradient(135deg, ${base} 0%, ${deep} 100%)`,
-    '--brand-base': base,
-    '--brand-deep': deep,
+    '--brand': base,
+    '--brand-soft': `rgba(${r}, ${g}, ${b}, 0.13)`,
+    '--brand-soft2': `rgba(${r}, ${g}, ${b}, 0.07)`,
+    '--brand-line': `rgba(${r}, ${g}, ${b}, 0.55)`,
   }
 })
 </script>
 
 <style scoped>
-.cred-card {
+.pcard {
   position: relative;
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  border-radius: 18px;
   display: flex;
   flex-direction: column;
-  transition: transform 0.18s var(--transition, ease), border-color 0.18s, box-shadow 0.18s;
-  cursor: grab;
+  gap: 14px;
+  padding: 16px 16px 14px;
   overflow: hidden;
-  box-shadow: 0 1px 0 rgba(26, 20, 16, 0.02), 0 2px 6px rgba(26, 20, 16, 0.04);
+  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.05);
+  transition: transform 0.18s var(--transition, ease), border-color 0.18s, box-shadow 0.18s;
 }
-.cred-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--text-muted);
-  box-shadow: 0 14px 28px rgba(17, 12, 6, 0.10), 0 4px 8px rgba(17, 12, 6, 0.04);
+.pcard:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border-subtle));
+  box-shadow: 0 16px 32px rgba(17, 12, 6, 0.10), 0 4px 10px rgba(17, 12, 6, 0.04);
 }
-.cred-card:active { cursor: grabbing; }
 
-.cred-card--cadence-manual  { --cadence-color: transparent; }
-.cred-card--cadence-daily   { --cadence-color: var(--cadence-daily); }
-.cred-card--cadence-weekly  { --cadence-color: var(--cadence-weekly); }
-.cred-card--cadence-monthly { --cadence-color: var(--cadence-monthly); }
+/* Pastel brand accent line along the top edge */
+.pcard__accent {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--brand-line), color-mix(in srgb, var(--brand) 20%, transparent));
+  opacity: 0.9;
+}
 
-/* Status accents — outer ring tone (Salesforce Lightning palette) */
-.cred-card--success { border-color: rgba(46, 132, 74, 0.55); }
-.cred-card--failed  { border-color: rgba(234, 0, 30, 0.55); }
-.cred-card--running { border-color: rgba(31, 168, 140, 0.55); box-shadow: 0 0 0 3px rgba(31, 168, 140, 0.14), 0 8px 24px rgba(17, 12, 6, 0.10); }
+/* Status ring tones */
+.pcard--success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); }
+.pcard--failed  { border-color: color-mix(in srgb, var(--red) 38%, var(--border-subtle)); }
+.pcard--running { border-color: rgba(31, 168, 140, 0.5); box-shadow: 0 0 0 3px rgba(31, 168, 140, 0.12), 0 10px 26px rgba(17, 12, 6, 0.08); }
 
-/* Scanning beam */
-.scan-beam {
+/* Scanning beam while running */
+.pcard__beam {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent 0%, var(--primary) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, #1FA88C 50%, transparent 100%);
   background-size: 50% 100%;
   background-repeat: no-repeat;
-  animation: scanSweep 1.5s linear infinite;
+  animation: pcScan 1.5s linear infinite;
   pointer-events: none;
-  z-index: 4;
-  border-top-left-radius: 14px;
-  border-top-right-radius: 14px;
+  z-index: 3;
 }
-@keyframes scanSweep {
+@keyframes pcScan {
   0%   { background-position: -50% 0; }
   100% { background-position: 150% 0; }
 }
 
-/* ───── WASH HEADER ───── */
-.wash {
-  position: relative;
+/* ───── HEAD ───── */
+.pcard__head {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 12px;
-  padding: 14px 14px 16px;
-  color: #fff;
-  min-height: 84px;
-  overflow: hidden;
 }
-.wash-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(120% 80% at 100% 0%, rgba(255, 255, 255, 0.18) 0%, transparent 55%),
-    rgba(0, 0, 0, 0.10);
-  pointer-events: none;
-}
-.wash-glow {
-  position: absolute;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,0.32) 0%, transparent 65%);
-  top: -60px;
-  inset-inline-end: -40px;
-  pointer-events: none;
-  filter: blur(4px);
-}
-.wash-art {
-  position: relative;
-  z-index: 1;
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+.pcard__tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.20),
-    0 4px 10px rgba(0, 0, 0, 0.18);
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand-soft);
   flex-shrink: 0;
 }
-.wash-art svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3)); }
-
-.wash-titles {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.wash-name {
-  font-size: 17px;
+.pcard__id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pcard__name {
+  font-size: 16px;
   font-weight: 800;
+  color: var(--text);
   letter-spacing: -0.2px;
   line-height: 1.15;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wash-user {
+.pcard__user {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11.5px;
   letter-spacing: 0.3px;
-  line-height: 1.2;
-  color: rgba(255, 255, 255, 0.86);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wash-grip {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  color: rgba(255, 255, 255, 0.78);
-  cursor: grab;
-  user-select: none;
-  opacity: 0.7;
-  flex-shrink: 0;
-  transition: opacity 0.15s;
-}
-.cred-card:hover .wash-grip { opacity: 1; }
 
-.sched-corner {
-  position: absolute;
-  z-index: 2;
-  bottom: 8px;
-  inset-inline-end: 10px;
+/* Status pill — pastel */
+.pcard__status {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  font-weight: 800;
-  padding: 3px 8px 3px 7px;
+  gap: 5px;
+  padding: 4px 10px 4px 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--cadence-color, var(--primary-deep));
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  letter-spacing: 0.2px;
-  backdrop-filter: blur(4px);
-}
-
-/* ───── BODY ───── */
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px 12px;
-}
-
-/* Run-history strip */
-.run-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-}
-.rs-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.rs-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.08);
-  display: inline-block;
-  position: relative;
-  transition: transform 0.2s ease;
-}
-.rs-dot--success { background: var(--green); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--failed  { background: var(--red); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--timeout { background: var(--amber); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--running { background: var(--primary); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
-.rs-dot--empty   { background: rgba(0, 0, 0, 0.08); }
-.rs-dot--pulse {
-  animation: dotPulse 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1);
-}
-@keyframes dotPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55); }
-  50%      { box-shadow: 0 0 0 6px rgba(245, 124, 0, 0); }
-}
-
-.rs-meta {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  min-width: 0;
-  margin-inline-start: auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.rs-label {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.1px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid transparent;
 }
-.run-strip--success .rs-label { color: var(--green); }
-.run-strip--failed  .rs-label { color: var(--red); }
-.run-strip--running .rs-label { color: var(--primary); }
-.run-strip--none    .rs-label { color: var(--text-muted); }
-.rs-time {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 10.5px;
-  color: var(--text-muted);
-  font-weight: 600;
+.pcard__status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.pcard__status--success { background: rgba(46, 132, 74, 0.12); color: var(--green-deep); border-color: rgba(46, 132, 74, 0.24); }
+.pcard__status--failed  { background: rgba(234, 0, 30, 0.10); color: var(--red-deep); border-color: rgba(234, 0, 30, 0.24); }
+.pcard__status--running { background: rgba(31, 168, 140, 0.13); color: #178f78; border-color: rgba(31, 168, 140, 0.30); }
+.pcard__status--none    { background: rgba(112, 110, 107, 0.12); color: var(--text-muted); border-color: rgba(112, 110, 107, 0.22); }
+.pcard__status--running .pcard__status-dot {
+  box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5);
+  animation: pcDot 1.6s ease-out infinite;
+}
+@keyframes pcDot {
+  0%   { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(31, 168, 140, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0); }
 }
 
-/* Inline error pill — opens popup with full message */
-.rs-error-pill {
+/* ───── META ───── */
+.pcard__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--brand-soft2);
+  border: 1px solid color-mix(in srgb, var(--brand) 10%, transparent);
+}
+.pcard__dots { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pcard__dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.10);
+  display: inline-block;
+}
+.pcard__dot--success { background: var(--green); }
+.pcard__dot--failed  { background: var(--red); }
+.pcard__dot--timeout { background: var(--amber); }
+.pcard__dot--running { background: #1FA88C; }
+.pcard__dot--empty   { background: rgba(0, 0, 0, 0.10); }
+.pcard__dot--pulse { animation: pcDotPulse 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1); }
+@keyframes pcDotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(31, 168, 140, 0); }
+}
+.pcard__when {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+.pcard__errpill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-inline-start: 6px;
-  background: rgba(234, 0, 30, 0.12);
+  margin-inline-start: auto;
+  background: rgba(234, 0, 30, 0.10);
   color: var(--red);
-  border: 1px solid rgba(234, 0, 30, 0.30);
+  border: 1px solid rgba(234, 0, 30, 0.26);
   border-radius: 999px;
   padding: 2px 9px 2px 7px;
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.2px;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.rs-error-pill:hover {
-  background: rgba(234, 0, 30, 0.20);
-  border-color: rgba(234, 0, 30, 0.55);
-  transform: translateY(-1px);
-}
+.pcard__errpill:hover { background: rgba(234, 0, 30, 0.18); border-color: rgba(234, 0, 30, 0.5); transform: translateY(-1px); }
 
-.cc-progress {
-  margin-top: 2px;
-  padding-top: 8px;
+.pcard__progress {
+  padding-top: 10px;
   border-top: 1px dashed var(--border-subtle);
 }
 
-/* ───── Actions ───── */
-.actions {
+/* ───── ACTIONS ───── */
+.pcard__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-subtle);
 }
-.actions-secondary {
-  display: flex;
-  gap: 6px;
-}
-.btn-run {
+.pcard__run {
+  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #27bd9f, #178f78);
-  color: #fff;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
   border: none;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 50%;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #5BB4DE, #1FA88C);  /* pastel sky → teal */
+  color: #fff;
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(31, 168, 140, 0.30);
-  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-  flex-shrink: 0;
+  box-shadow: 0 5px 13px rgba(31, 168, 140, 0.26);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
-/* Play triangle is visually-left-biased; nudge it 2px so it reads centered in the circle */
-.btn-run svg { transform: translateX(1.5px); }
-.btn-run:hover:not(:disabled) {
-  transform: translateY(-1px) scale(1.04);
-  box-shadow: 0 10px 22px rgba(31, 168, 140, 0.42);
+.pcard__run:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+  box-shadow: 0 10px 22px rgba(31, 168, 140, 0.36);
 }
-.btn-run:disabled {
-  background: var(--text-muted);
-  cursor: not-allowed;
-  opacity: 0.55;
-  box-shadow: none;
-}
+.pcard__run:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+.pcard__run svg { transform: translateX(1px); }
+.pcard__run:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
 
-.btn-spinner {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
+.pcard__spinner {
+  width: 13px; height: 13px;
+  border: 1.6px solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: pcSpin 0.8s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pcSpin { to { transform: rotate(360deg); } }
 
-.btn-icon {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-  width: 34px;
-  height: 34px;
+.pcard__ic {
+  width: 38px; height: 38px;
   display: grid;
   place-items: center;
-  cursor: pointer;
+  border-radius: 11px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg);
   color: var(--text-muted);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
 }
-.btn-icon:hover { background: var(--bg); color: var(--text); border-color: var(--text-muted); }
-.btn-icon--danger:hover {
+.pcard__ic:hover { background: var(--card-bg); color: var(--text); border-color: var(--text-muted); transform: translateY(-1px); }
+.pcard__ic--danger:hover {
   color: var(--red-deep);
   border-color: rgba(234, 0, 30, 0.4);
   background: rgba(234, 0, 30, 0.06);
 }
 
-/* Respect reduced-motion for all decorative animations */
 @media (prefers-reduced-motion: reduce) {
-  .scan-beam,
-  .rs-dot--pulse,
-  .btn-spinner {
+  .pcard__beam,
+  .pcard__dot--pulse,
+  .pcard__status--running .pcard__status-dot,
+  .pcard__spinner {
     animation: none;
   }
-  .cred-card,
-  .cred-card:hover {
-    transform: none;
-  }
+  .pcard, .pcard:hover { transform: none; }
 }
 </style>

@@ -12,13 +12,9 @@
           </span>
           <h2 class="page-title">פורטלי חברות הביטוח</h2>
         </div>
-        <p class="page-sub">חבר חברה אחת, גרור לתזמון, והדוח יוריד את עצמו.</p>
+        <p class="page-sub">חבר חברה אחת והדוח יוריד את עצמו.</p>
       </div>
       <div v-if="store.credentials.length" class="page-stats" aria-label="סטטיסטיקה">
-        <div class="stat-pill stat-pill--scheduled">
-          <span class="stat-num ltr-number">{{ scheduledCount }}</span>
-          <span class="stat-lbl">מתוזמן</span>
-        </div>
         <div class="stat-pill stat-pill--total">
           <span class="stat-num ltr-number">{{ store.credentials.length }}</span>
           <span class="stat-lbl">סה״כ פורטלים</span>
@@ -46,8 +42,6 @@
       @run="runNow"
       @edit="openEdit"
       @delete="deleteCred"
-      @schedule="onSchedule"
-      @unschedule="onUnschedule"
       @add="openAdd"
       @view-error="onViewError"
     />
@@ -164,10 +158,6 @@ const props = defineProps({
 const emit = defineEmits(['go-to-comparison', 'opened'])
 const store = usePortalAutomationStore()
 
-const scheduledCount = computed(() =>
-  store.credentials.filter((c) => c.schedule_kind && c.schedule_kind !== 'manual').length,
-)
-
 const otpRefreshing = ref(false)
 let otpAutoTimer = null
 
@@ -223,14 +213,6 @@ async function runNow(id) {
 async function deleteCred(id) {
   if (!confirm('למחוק את ההגדרה?')) return
   await store.deleteCredential(id)
-}
-
-// ─── Schedule drag results ────────────────────────────────
-async function onSchedule({ id, schedule_kind }) {
-  await store.updateSchedule(id, schedule_kind)
-}
-async function onUnschedule(id) {
-  await store.updateSchedule(id, 'manual')
 }
 
 // ─── OTP modal (shared across all card runs) ──────────────
@@ -379,11 +361,6 @@ onUnmounted(() => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
-.stat-pill--scheduled {
-  border-color: color-mix(in srgb, var(--chart-10) 50%, transparent);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--chart-10) 12%, transparent) 0%, transparent 100%);
-}
-.stat-pill--scheduled .stat-num { color: var(--chart-10); }
 .stat-pill--total {
   border-color: color-mix(in srgb, var(--chart-2) 50%, transparent);
   background: linear-gradient(135deg, color-mix(in srgb, var(--chart-2) 12%, transparent) 0%, transparent 100%);
