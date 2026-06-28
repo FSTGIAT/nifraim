@@ -52,18 +52,45 @@ class MorPortal(BasePortalAutomation):
         await self._safe_screenshot(page, land)
         await self._dump_page_state(page, land)
 
-        # Fields have dynamic Kendo ids → select by placeholder substring.
-        await self._wait_visible(page, "input[placeholder*='רשיון']", timeout=20000)
-        await page.fill("input[placeholder*='רשיון']", license_no)
-        await page.fill("input[placeholder*='זהות']", id_no)
-        await page.fill("input[placeholder*='טלפון']", phone)
-        await page.wait_for_timeout(400)
+        # Angular reactive form + Kendo inputs: page.fill() leaves the controls
+        # ng-pristine/ng-invalid so the submit button stays disabled. Real
+        # KEYSTROKES are required to drive Angular's validation. The ת"ז field
+        # needs 9 digits and the phone 10 — pad a leading zero when the stored
+        # value drops it (operator stores 40336281 / 504302306).
+        if len(id_no) == 8 and not id_no.startswith("0"):
+            id_no = "0" + id_no
+        if len(phone) == 9 and not phone.startswith("0"):
+            phone = "0" + phone
 
-        await self._click_first_visible(page, [
-            "button:has-text('כניסה')",
-            "input[type='submit']",
-            "button[type='submit']",
-        ], timeout=8000)
+        async def _type(sel: str, val: str):
+            await self._wait_visible(page, sel, timeout=15000)
+            await page.click(sel)
+            await page.keyboard.type(val, delay=70)
+            cur = await page.input_value(sel)
+            if cur != val:  # retry once if a char dropped
+                await page.fill(sel, "")
+                await page.click(sel)
+                await page.keyboard.type(val, delay=90)
+
+        await _type("input[formcontrolname='licenseId']", license_no)
+        await _type("input[formcontrolname='identity']", id_no)
+        await _type("input[placeholder*='טלפון']", phone)
+        await page.keyboard.press("Tab")
+
+        # Kendo/Angular validate asynchronously — WAIT for the submit button to
+        # actually enable before clicking (a premature click hits the disabled
+        # button and no-ops, leaving us stuck on the login form).
+        try:
+            await page.wait_for_selector(
+                "button[type='submit']:not([disabled])", state="attached", timeout=12000
+            )
+        except Exception:
+            err = await page.evaluate(
+                "() => [...document.querySelectorAll('.k-tooltip, [id^=kendo-error]')]"
+                ".map(e => e.innerText.trim()).filter(Boolean).join(' | ')"
+            )
+            raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
+        await page.click("button[type='submit']:not([disabled])")
 
         try:
             await page.wait_for_load_state("networkidle", timeout=8000)
@@ -73,37 +100,42 @@ class MorPortal(BasePortalAutomation):
         await self._safe_screenshot(page, post)
         await self._dump_page_state(page, post)
 
-        # Wait for the SMS-OTP field (selectors unknown until first live run —
-        # broad set; refine from mor_login_*_post_submit.txt).
-        await self._wait_visible(
-            page,
-            (
-                "input[autocomplete='one-time-code'], "
-                "input[name*='otp' i], input[id*='otp' i], "
-                "input[placeholder*='קוד'], input[placeholder*='סיסמ'], "
-                "input[name*='code' i], input[id*='code' i], "
-                "input[inputmode='numeric']"
-            ),
-            timeout=25000,
-        )
+        # After submit Mor either opens the OTP MODAL (#otpInput,
+        # formcontrolname="otpCode", maxlength 6) or shows "אירעה שגיאה"
+        # (rejected credentials / rate-limit). Race the two so we fail fast with
+        # a clear message instead of a blind OTP-field timeout.
+        otp_sel = "#otpInput, input[formcontrolname='otpCode']"
+        deadline = 30
+        for _ in range(deadline * 2):
+            if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
+                return
+            try:
+                err = page.locator("text=אירעה שגיאה")
+                if await err.count() and await err.first.is_visible():
+                    raise RuntimeError(
+                        "Mor: הכניסה נדחתה (אירעה שגיאה) — בדוק מס' רשיון/ת\"ז/טלפון "
+                        "או המתן דקות (חסימת ניסיונות חוזרים)."
+                    )
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
+        raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
-        digits = re.sub(r"\D", "", otp or "")
-        otp_sel = (
-            "input[autocomplete='one-time-code'], "
-            "input[name*='otp' i], input[id*='otp' i], "
-            "input[placeholder*='קוד'], input[placeholder*='סיסמ'], "
-            "input[name*='code' i], input[inputmode='numeric']"
-        )
+        digits = re.sub(r"\D", "", otp or "")[:6]
+        otp_sel = "#otpInput, input[formcontrolname='otpCode']"
         filled = False
         try:
-            await page.fill(otp_sel, digits, timeout=4000)
+            await self._wait_visible(page, otp_sel, timeout=8000)
+            await page.click(otp_sel)
+            await page.keyboard.type(digits, delay=70)  # Angular needs keystrokes
             filled = True
         except Exception:
             try:
-                await page.click(otp_sel, timeout=3000)
-                await page.keyboard.type(digits, delay=50)
+                await page.fill(otp_sel, digits, timeout=3000)
                 filled = True
             except Exception:
                 pass
