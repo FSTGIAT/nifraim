@@ -1235,7 +1235,7 @@ async def worker_installer_ps(token: str, request: Request, db: AsyncSession = D
     )).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="not found")
-    base = str(request.base_url).rstrip("/")
+    base = str(request.base_url).rstrip("/").replace("http://", "https://", 1)
     ps = _worker_installer_ps(
         base, token,
         settings.WORKER_PUBLIC_DATABASE_URL or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
@@ -1252,7 +1252,7 @@ async def worker_installer(request: Request, user: User = Depends(get_current_us
     from fastapi.responses import PlainTextResponse
     if not user.phone_forward_token:
         raise HTTPException(status_code=400, detail="הפעל קודם 'העברת SMS אוטומטית' (טוקן טלפון חסר)")
-    base = str(request.base_url).rstrip("/")
+    base = str(request.base_url).rstrip("/").replace("http://", "https://", 1)
     url = f"{base}/api/portal-automation/worker/installer-ps/{user.phone_forward_token}"
     bat = (
         "@echo off\r\n"
