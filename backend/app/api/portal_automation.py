@@ -1207,13 +1207,27 @@ try {{
   $enc = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllLines((Join-Path $Install '.env'), $lines, $enc)
 
-  Report "registering auto-start task"
+  Report "setting up auto-start (no admin needed)"
   $worker = Join-Path $Install 'backend\\local_worker.py'
-  $act = New-ScheduledTaskAction -Execute $py -Argument $worker
-  $trg = New-ScheduledTaskTrigger -AtLogOn
-  $set = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
-  Register-ScheduledTask -TaskName 'NifraimLocalWorker' -Action $act -Trigger $trg -Settings $set -Force | Out-Null
-  Start-ScheduledTask -TaskName 'NifraimLocalWorker'
+  # Hidden launcher .vbs in the user's Startup folder = auto-start at logon
+  # WITHOUT elevation (Register-ScheduledTask needs admin → 'Access is denied').
+  $startup = [Environment]::GetFolderPath('Startup')
+  $vbsPath = Join-Path $startup 'NifraimWorker.vbs'
+  $vbs = 'q = Chr(34)' + [Environment]::NewLine + 'CreateObject("WScript.Shell").Run q & "' + $py + '" & q & " " & q & "' + $worker + '" & q, 0, False'
+  [System.IO.File]::WriteAllText($vbsPath, $vbs, (New-Object System.Text.UTF8Encoding($false)))
+  # Best-effort Scheduled Task too (auto-restart), but ignore if not elevated.
+  try {{
+    $act = New-ScheduledTaskAction -Execute $py -Argument ('"' + $worker + '"')
+    $trg = New-ScheduledTaskTrigger -AtLogOn
+    $set = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+    Register-ScheduledTask -TaskName 'NifraimLocalWorker' -Action $act -Trigger $trg -Settings $set -Force | Out-Null
+    Report "scheduled task registered"
+  }} catch {{
+    Report "no admin for scheduled task - using Startup folder (works the same)"
+  }}
+  # Start the worker NOW (hidden, no admin) so it connects immediately.
+  Report "starting worker now"
+  Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + $vbsPath + '"') -WindowStyle Hidden
 
   Report "done — worker started; the website should show 'המחשב מחובר' within ~20s"
   Write-Host "[Nifraim] הסתיים. חזרו לאתר." -ForegroundColor Green
