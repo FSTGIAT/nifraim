@@ -102,6 +102,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("nifraim-worker")
 
+# Single-instance guard: bind a fixed localhost port as a lock. If another worker
+# already holds it, exit cleanly — prevents two workers double-running jobs.
+import socket as _slock
+try:
+    _SINGLETON = _slock.socket(_slock.AF_INET, _slock.SOCK_STREAM)
+    _SINGLETON.bind(("127.0.0.1", 47615))
+    _SINGLETON.listen(1)
+except OSError:
+    log.info("another Nifraim worker is already running — exiting this instance")
+    raise SystemExit(0)
+
 USER_EMAIL = os.environ.get("WORKER_USER_EMAIL", "royg@nifraim.com")
 POLL_S = float(os.environ.get("WORKER_POLL_SECONDS", "5"))
 HEARTBEAT_S = 15

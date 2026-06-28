@@ -1152,91 +1152,153 @@ async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
 # bundle, builds a venv, installs deps + Chromium, writes a BOM-free .env,
 # registers the Scheduled Task, and REPORTS each step + errors to /worker/log.
 def _worker_installer_ps(base: str, token: str, db_url: str, fernet: str, email: str) -> str:
-    return f"""# ===========================================================
-#  Nifraim — התקנת הורדה אוטומטית ({email})
-#  הורידו והריצו (לחיצה ימנית -> Run with PowerShell). זהו — שום דבר נוסף.
-# ===========================================================
+    """PowerShell installer with a clean pastel WinForms progress window. The
+    console is hidden (the .bat runs -WindowStyle Hidden); pip/Chromium output
+    goes to a temp log, not the screen; the window auto-closes on success (no
+    Enter). If WinForms can't load, the same install runs headless as a fallback."""
+    tpl = r"""
 $ErrorActionPreference = 'Stop'
-$Base   = '{base}'
-$Token  = '{token}'
-$DbUrl  = '{db_url}'
-$Fernet = '{fernet}'
-$Email  = '{email}'
+$Base   = '__BASE__'
+$Token  = '__TOKEN__'
+$DbUrl  = '__DBURL__'
+$Fernet = '__FERNET__'
+$Email  = '__EMAIL__'
 $Install = Join-Path $env:LOCALAPPDATA 'Nifraim'
+$Log = Join-Path $env:TEMP 'nifraim_install.log'
 
-function Report($m) {{
-  Write-Host "[Nifraim] $m"
-  try {{ Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ("installer: " + $m) -TimeoutSec 15 | Out-Null }} catch {{}}
-}}
+$Work = {
+  function Up($m, $p) {
+    if ($sync) { $sync.status = $m; if ($p) { $sync.pct = $p } }
+    try { Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ("installer: " + $m) -TimeoutSec 10 | Out-Null } catch {}
+  }
+  try {
+    if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw 'Python 3.10+ required (python.org), then run again.' }
+    New-Item -ItemType Directory -Force -Path $Install | Out-Null
+    Up 'מוריד רכיבים' 15
+    $zip = Join-Path $Install 'worker.zip'
+    Invoke-WebRequest -Uri "$Base/api/portal-automation/worker/bundle/$Token" -OutFile $zip -TimeoutSec 180
+    Expand-Archive -Path $zip -DestinationPath $Install -Force
+    Up 'מתקין רכיבים (כמה דקות)' 40
+    & python -m venv (Join-Path $Install 'venv') *>> $Log
+    $py = Join-Path $Install 'venv\Scripts\python.exe'
+    & $py -m pip install --upgrade pip *>> $Log
+    & $py -m pip install -r (Join-Path $Install 'backend\requirements.txt') *>> $Log
+    & $py -m playwright install chromium *>> $Log
+    Up 'מגדיר' 80
+    $lines = @(
+      "DATABASE_URL=$DbUrl",
+      "DATABASE_URL_SYNC=$($DbUrl -replace '\+asyncpg','')",
+      "PORTAL_CRED_FERNET_KEY=$Fernet",
+      "JWT_SECRET=local-worker",
+      "WORKER_USER_EMAIL=$Email",
+      "WORKER_LOG_BASE=$Base",
+      "WORKER_LOG_TOKEN=$Token",
+      "IL_RESIDENTIAL_PROXY="
+    )
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines((Join-Path $Install '.env'), $lines, $enc)
+    $worker = Join-Path $Install 'backend\local_worker.py'
+    $startup = [Environment]::GetFolderPath('Startup')
+    $vbsPath = Join-Path $startup 'NifraimWorker.vbs'
+    $vbs = 'q = Chr(34)' + [Environment]::NewLine + 'CreateObject("WScript.Shell").Run q & "' + $py + '" & q & " " & q & "' + $worker + '" & q, 0, False'
+    [System.IO.File]::WriteAllText($vbsPath, $vbs, $enc)
+    Up 'מפעיל' 92
+    Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*local_worker.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + $vbsPath + '"') -WindowStyle Hidden
+    if ($sync) { $sync.pct = 100; $sync.done = $true }
+    Up 'done' 100
+  } catch {
+    if ($sync) { $sync.error = $_.Exception.Message }
+    Up ('FATAL: ' + $_.Exception.Message)
+  }
+}
 
-try {{
-  Report "start on $env:COMPUTERNAME (user $Email)"
-  if (-not (Get-Command python -ErrorAction SilentlyContinue)) {{
-    Report "ERROR: Python not found — install Python 3.10+ from python.org (tick 'Add to PATH') then re-run."
-    Read-Host "Enter ליציאה"; exit 1
-  }}
-  New-Item -ItemType Directory -Force -Path $Install | Out-Null
+try {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  $sync = [hashtable]::Synchronized(@{ status = 'מתחילים'; pct = 5; done = $false; error = $null })
 
-  Report "downloading worker bundle"
-  $zip = Join-Path $Install 'worker.zip'
-  Invoke-WebRequest -Uri "$Base/api/portal-automation/worker/bundle/$Token" -OutFile $zip -TimeoutSec 180
-  Report "extracting"
-  Expand-Archive -Path $zip -DestinationPath $Install -Force
+  $form = New-Object System.Windows.Forms.Form
+  $form.Text = 'Nifraim'
+  $form.ClientSize = New-Object System.Drawing.Size(460, 250)
+  $form.StartPosition = 'CenterScreen'
+  $form.FormBorderStyle = 'FixedSingle'
+  $form.MaximizeBox = $false; $form.MinimizeBox = $false
+  $form.BackColor = [System.Drawing.Color]::FromArgb(234, 247, 241)
+  $form.RightToLeft = 'Yes'; $form.RightToLeftLayout = $true
+  $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+  $form.TopMost = $true
 
-  Report "creating venv + installing dependencies (a few minutes)"
-  & python -m venv (Join-Path $Install 'venv')
-  $py = Join-Path $Install 'venv\\Scripts\\python.exe'
-  & $py -m pip install --upgrade pip | Out-Null
-  & $py -m pip install -r (Join-Path $Install 'backend\\requirements.txt')
-  Report "installing Chromium"
-  & $py -m playwright install chromium
+  $title = New-Object System.Windows.Forms.Label
+  $title.Text = 'Nifraim - התקנת הורדה אוטומטית'
+  $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
+  $title.ForeColor = [System.Drawing.Color]::FromArgb(11, 59, 52)
+  $title.AutoSize = $false; $title.TextAlign = 'MiddleCenter'; $title.SetBounds(20, 26, 420, 40)
+  $form.Controls.Add($title)
 
-  Report "writing config"
-  $lines = @(
-    "DATABASE_URL=$DbUrl",
-    "DATABASE_URL_SYNC=$($DbUrl -replace '\\+asyncpg','')",
-    "PORTAL_CRED_FERNET_KEY=$Fernet",
-    "JWT_SECRET=local-worker",
-    "WORKER_USER_EMAIL=$Email",
-    "WORKER_LOG_BASE=$Base",
-    "WORKER_LOG_TOKEN=$Token",
-    "IL_RESIDENTIAL_PROXY="
-  )
-  # .env at $Install (= parent of the bundled backend\\) — worker reads _ROOT/.env.
-  # Write WITHOUT BOM (PS 5.1 -Encoding UTF8 adds one → corrupts DATABASE_URL).
-  $enc = New-Object System.Text.UTF8Encoding($false)
-  [System.IO.File]::WriteAllLines((Join-Path $Install '.env'), $lines, $enc)
+  $sub = New-Object System.Windows.Forms.Label
+  $sub.Text = 'מתקין את תוכנת ההורדה במחשב - רק רגע'
+  $sub.ForeColor = [System.Drawing.Color]::FromArgb(17, 81, 74)
+  $sub.AutoSize = $false; $sub.TextAlign = 'MiddleCenter'; $sub.SetBounds(20, 72, 420, 24)
+  $form.Controls.Add($sub)
 
-  Report "setting up auto-start (no admin needed)"
-  $worker = Join-Path $Install 'backend\\local_worker.py'
-  # Hidden launcher .vbs in the user's Startup folder = auto-start at logon
-  # WITHOUT elevation (Register-ScheduledTask needs admin → 'Access is denied').
-  $startup = [Environment]::GetFolderPath('Startup')
-  $vbsPath = Join-Path $startup 'NifraimWorker.vbs'
-  $vbs = 'q = Chr(34)' + [Environment]::NewLine + 'CreateObject("WScript.Shell").Run q & "' + $py + '" & q & " " & q & "' + $worker + '" & q, 0, False'
-  [System.IO.File]::WriteAllText($vbsPath, $vbs, (New-Object System.Text.UTF8Encoding($false)))
-  # Best-effort Scheduled Task too (auto-restart), but ignore if not elevated.
-  try {{
-    $act = New-ScheduledTaskAction -Execute $py -Argument ('"' + $worker + '"')
-    $trg = New-ScheduledTaskTrigger -AtLogOn
-    $set = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
-    Register-ScheduledTask -TaskName 'NifraimLocalWorker' -Action $act -Trigger $trg -Settings $set -Force | Out-Null
-    Report "scheduled task registered"
-  }} catch {{
-    Report "no admin for scheduled task - using Startup folder (works the same)"
-  }}
-  # Start the worker NOW (hidden, no admin) so it connects immediately.
-  Report "starting worker now"
-  Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + $vbsPath + '"') -WindowStyle Hidden
+  $status = New-Object System.Windows.Forms.Label
+  $status.Text = $sync.status
+  $status.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
+  $status.ForeColor = [System.Drawing.Color]::FromArgb(4, 120, 87)
+  $status.AutoSize = $false; $status.TextAlign = 'MiddleCenter'; $status.SetBounds(20, 130, 420, 30)
+  $form.Controls.Add($status)
 
-  Report "done — worker started; the website should show 'המחשב מחובר' within ~20s"
-  Write-Host "[Nifraim] הסתיים. חזרו לאתר." -ForegroundColor Green
-}} catch {{
-  Report ("FATAL: " + $_.Exception.Message)
-  Write-Host $_.Exception.Message -ForegroundColor Red
-}}
-Read-Host "Enter לסגירה"
+  $bar = New-Object System.Windows.Forms.ProgressBar
+  $bar.Style = 'Marquee'; $bar.MarqueeAnimationSpeed = 28; $bar.SetBounds(40, 172, 380, 16)
+  $form.Controls.Add($bar)
+
+  $btn = New-Object System.Windows.Forms.Button
+  $btn.Text = 'סגור'; $btn.SetBounds(180, 205, 100, 30); $btn.Visible = $false
+  $btn.FlatStyle = 'Flat'; $btn.BackColor = [System.Drawing.Color]::White
+  $btn.Add_Click({ $form.Close() })
+  $form.Controls.Add($btn)
+
+  $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
+  $rs.SessionStateProxy.SetVariable('sync', $sync)
+  $rs.SessionStateProxy.SetVariable('Install', $Install)
+  $rs.SessionStateProxy.SetVariable('Log', $Log)
+  $rs.SessionStateProxy.SetVariable('Base', $Base)
+  $rs.SessionStateProxy.SetVariable('Token', $Token)
+  $rs.SessionStateProxy.SetVariable('DbUrl', $DbUrl)
+  $rs.SessionStateProxy.SetVariable('Fernet', $Fernet)
+  $rs.SessionStateProxy.SetVariable('Email', $Email)
+  $psw = [powershell]::Create(); $psw.Runspace = $rs
+  $null = $psw.AddScript($Work.ToString())
+  $h = $psw.BeginInvoke()
+
+  $timer = New-Object System.Windows.Forms.Timer
+  $timer.Interval = 300
+  $timer.Add_Tick({
+    $status.Text = $sync.status
+    if ($sync.error) {
+      $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 0
+      $status.ForeColor = [System.Drawing.Color]::FromArgb(185, 28, 28)
+      $status.Text = 'שגיאה: ' + $sync.error
+      $btn.Visible = $true
+    } elseif ($sync.done) {
+      $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 100
+      $status.Text = 'הותקן! המחשב מחובר - חוזרים לאתר'
+      $t2 = New-Object System.Windows.Forms.Timer
+      $t2.Interval = 3500; $t2.Add_Tick({ $t2.Stop(); $form.Close() }); $t2.Start()
+    }
+  })
+  $timer.Start()
+  [void]$form.ShowDialog()
+  try { $psw.EndInvoke($h) } catch {}
+} catch {
+  $sync = $null
+  & $Work
+}
 """
+    return (tpl.replace("__BASE__", base).replace("__TOKEN__", token)
+               .replace("__DBURL__", db_url).replace("__FERNET__", fernet)
+               .replace("__EMAIL__", email))
 
 
 @router.get("/worker/installer-ps/{token}")
@@ -1270,11 +1332,7 @@ async def worker_installer(request: Request, user: User = Depends(get_current_us
     url = f"{base}/api/portal-automation/worker/installer-ps/{user.phone_forward_token}"
     bat = (
         "@echo off\r\n"
-        "title Nifraim - Installer\r\n"
-        "echo [Nifraim] Installing the auto-download worker... please wait.\r\n"
-        f'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm \'{url}\' | iex"\r\n'
-        "echo.\r\n"
-        "pause\r\n"
+        f'start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "irm \'{url}\' | iex"\r\n'
     )
     return PlainTextResponse(
         bat,
