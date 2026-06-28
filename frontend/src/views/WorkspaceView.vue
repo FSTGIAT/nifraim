@@ -106,6 +106,7 @@
             @open-add-portal="onActivationAddPortal"
             @run-automation="onCardSelect('portal-automation')"
           />
+          <WorkerInstallCard />
           <WorkspaceTabs
             v-model="activeTab"
             :view-mode="viewMode"
@@ -236,6 +237,7 @@ import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
 import PhoneForwardModal from '../components/workspace/PhoneForwardModal.vue'
 import ActivationChecklist from '../components/workspace/ActivationChecklist.vue'
+import WorkerInstallCard from '../components/workspace/WorkerInstallCard.vue'
 import { activationState } from '../utils/activationState.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'

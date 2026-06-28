@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     # `railway_ip_geoblocked_insurers`.
     WORKER_MODE: bool = False
 
+    # Public (externally reachable) async DB URL the local worker connects to —
+    # NOT the Railway-internal DATABASE_URL (postgres.railway.internal is only
+    # reachable inside Railway). Format: postgresql+asyncpg://user:pass@host:port/db
+    # Used to generate the personalized worker installer. Empty → installer
+    # emits a placeholder for the operator to fill.
+    WORKER_PUBLIC_DATABASE_URL: str = ""
+
     # Per-portal proxy override for Harel. Harel's WAF blocks the ISP zone's
     # hosting ASN (WS Telecom) at the network layer (ERR_TUNNEL_CONNECTION_FAILED),
     # but accepts a Bright Data *residential* zone IP. Point this at the

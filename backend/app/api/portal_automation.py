@@ -1076,3 +1076,40 @@ async def worker_status(
         "hostname": row.hostname,
         "current_job": row.current_job,
     }
+
+
+# ── Personalized one-file installer for the local worker ──
+# Returns a Windows PowerShell setup script pre-filled with this agent's config,
+# so first-time setup is "download → right-click → Run with PowerShell". Owner-
+# auth'd; the worker connects to the public DB URL (WORKER_PUBLIC_DATABASE_URL).
+@router.get("/worker/installer")
+async def worker_installer(user: User = Depends(get_current_user)):
+    from fastapi.responses import PlainTextResponse
+
+    db_url = settings.WORKER_PUBLIC_DATABASE_URL or "<<מלא_כתובת_מסד_נתונים_ציבורית>>"
+    fernet = settings.PORTAL_CRED_FERNET_KEY or "<<מלא_מפתח_הצפנה>>"
+    email = user.email
+    ps = f"""# ============================================================
+#  Nifraim — התקנת הורדה אוטומטית (מותאם ל-{email})
+#  הוראות: שמרו קובץ זה בתיקיית הפרויקט (התיקייה שמכילה את backend\\ ו-worker\\),
+#  ואז לחצו עליו לחיצה ימנית → Run with PowerShell.
+# ============================================================
+$ErrorActionPreference = 'Stop'
+$Repo = $PSScriptRoot
+if (-not (Test-Path "$Repo\\worker\\install_windows.ps1")) {{
+  Write-Host "[Nifraim] הניחו קובץ זה בתיקיית הפרויקט (לצד התיקייה worker\\) והריצו שוב." -ForegroundColor Red
+  Read-Host "הקישו Enter ליציאה"; exit 1
+}}
+& "$Repo\\worker\\install_windows.ps1" `
+  -DatabaseUrl "{db_url}" `
+  -FernetKey   "{fernet}" `
+  -UserEmail   "{email}"
+Write-Host ""
+Write-Host "[Nifraim] ההתקנה הסתיימה. חזרו לאתר — המחוון אמור להפוך ל'המחשב מחובר'." -ForegroundColor Green
+Read-Host "הקישו Enter לסגירה"
+"""
+    return PlainTextResponse(
+        ps,
+        headers={"Content-Disposition": 'attachment; filename="nifraim-worker-setup.ps1"'},
+        media_type="text/plain; charset=utf-8",
+    )
