@@ -1275,19 +1275,25 @@ try {
   $timer = New-Object System.Windows.Forms.Timer
   $timer.Interval = 300
   $timer.Add_Tick({
-    $status.Text = $sync.status
-    if ($sync.error) {
-      $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 0
-      $status.ForeColor = [System.Drawing.Color]::FromArgb(185, 28, 28)
-      $status.Text = 'שגיאה: ' + $sync.error
-      $btn.Visible = $true
-    } elseif ($sync.done) {
-      $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 100
-      $status.Text = 'הותקן! המחשב מחובר - חוזרים לאתר'
-      $t2 = New-Object System.Windows.Forms.Timer
-      $t2.Interval = 3500; $t2.Add_Tick({ $t2.Stop(); $form.Close() }); $t2.Start()
-    }
-  })
+    try {
+      if ($null -eq $sync) { return }
+      $status.Text = [string]$sync.status
+      if ($sync.error) {
+        $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 0
+        $status.ForeColor = [System.Drawing.Color]::FromArgb(185, 28, 28)
+        $status.Text = 'שגיאה: ' + $sync.error
+        $btn.Visible = $true
+      } elseif ($sync.done) {
+        $timer.Stop(); $bar.Style = 'Continuous'; $bar.Value = 100
+        $status.Text = 'הותקן! המחשב מחובר - חוזרים לאתר'
+        $form.Tag = 'done'
+        $t2 = New-Object System.Windows.Forms.Timer
+        $t2.Interval = 3500
+        $t2.Add_Tick({ $t2.Stop(); $form.Close() }.GetNewClosure())
+        $t2.Start()
+      }
+    } catch {}
+  }.GetNewClosure())
   $timer.Start()
   [void]$form.ShowDialog()
   try { $psw.EndInvoke($h) } catch {}
@@ -1330,9 +1336,15 @@ async def worker_installer(request: Request, user: User = Depends(get_current_us
         raise HTTPException(status_code=400, detail="הפעל קודם 'העברת SMS אוטומטית' (טוקן טלפון חסר)")
     base = str(request.base_url).rstrip("/").replace("http://", "https://", 1)
     url = f"{base}/api/portal-automation/worker/installer-ps/{user.phone_forward_token}"
+    # Download the PS to a temp file and run it as -File (NOT irm|iex): a real
+    # script scope is required for the WinForms event handlers to see their
+    # variables. Console hidden; the GUI window is the only thing the user sees.
     bat = (
         "@echo off\r\n"
-        f'start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "irm \'{url}\' | iex"\r\n'
+        "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
+        f'"$p = Join-Path $env:TEMP \'nifraim_setup.ps1\'; irm \'{url}\' -OutFile $p; '
+        "Start-Process powershell -WindowStyle Hidden -ArgumentList "
+        "'-NoProfile','-ExecutionPolicy','Bypass','-File',$p\"\r\n"
     )
     return PlainTextResponse(
         bat,
