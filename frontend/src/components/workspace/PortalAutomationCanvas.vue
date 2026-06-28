@@ -34,17 +34,30 @@
       </div>
     </div>
 
-    <!-- ── Cards grouped by company ─────────────────────────── -->
+    <!-- ── Cards grouped by company, in framed panels ───────── -->
     <div v-else class="groups">
-      <section v-for="g in groups" :key="g.key" class="company-group">
-        <header class="group-head">
-          <span class="group-icon" :style="{ color: g.color, background: groupTint(g.color) }" aria-hidden="true">
+      <section v-for="g in groups" :key="g.key" class="company-panel">
+        <header class="panel-head" :style="{ '--brand': g.color, '--brand-tint': groupTint(g.color) }">
+          <span class="group-icon" aria-hidden="true">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path :d="g.brand.iconPath" />
             </svg>
           </span>
           <span class="group-name">{{ g.label }}</span>
           <span class="group-count ltr-number">{{ g.creds.length }}</span>
+
+          <!-- Per-company health -->
+          <span class="health" :title="`${g.health.ok}/${g.health.total} תקינים`">
+            <span class="health-dots" aria-hidden="true">
+              <span
+                v-for="(d, i) in g.health.dots"
+                :key="i"
+                class="health-dot"
+                :class="`health-dot--${d}`"
+              ></span>
+            </span>
+            <span class="health-label">{{ g.health.ok }}/{{ g.health.total }} תקינים</span>
+          </span>
         </header>
 
         <TransitionGroup name="card-flip" tag="div" class="cards-grid">
@@ -116,7 +129,20 @@ const groups = computed(() => {
     }
     map.get(key).creds.push(c)
   }
-  return Array.from(map.values())
+  // Per-company health: how many of the company's portals last ran OK, plus a
+  // compact dot row (one per credential, newest last_run_status).
+  return Array.from(map.values()).map((g) => {
+    const total = g.creds.length
+    const ok = g.creds.filter((c) => c.last_run_status === 'success').length
+    const dots = g.creds.map((c) => {
+      const s = c.last_run_status
+      if (s === 'success') return 'success'
+      if (s === 'failed' || s === 'timeout') return 'failed'
+      if (!s) return 'empty'
+      return 'running'
+    })
+    return { ...g, health: { ok, total, dots } }
+  })
 })
 
 function groupTint(hex) {
@@ -185,22 +211,26 @@ function isRunning(credId) {
 .btn-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
-/* ─── Company groups ─────────────────────────────────────── */
+/* ─── Company panels ─────────────────────────────────────── */
 .groups {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 16px;
 }
-.company-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.company-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 16px);
+  padding: 14px 16px 16px;
+  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.04);
 }
-.group-head {
+.panel-head {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding-bottom: 2px;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px dashed var(--border-subtle);
 }
 .group-icon {
   width: 30px;
@@ -209,6 +239,8 @@ function isRunning(credId) {
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  color: var(--brand);
+  background: var(--brand-tint);
 }
 .group-name {
   font-size: 14.5px;
@@ -227,11 +259,25 @@ function isRunning(credId) {
   padding: 2px 9px;
   line-height: 1.4;
 }
+/* Per-company health — pushed to the inline-end of the header */
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+.health-dots { display: inline-flex; gap: 3px; }
+.health-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0,0,0,0.10); }
+.health-dot--success { background: var(--green); }
+.health-dot--failed  { background: var(--red); }
+.health-dot--running { background: #1FA88C; }
+.health-dot--empty   { background: rgba(0,0,0,0.10); }
+.health-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
 
-/* ─── Cards grid — full-width responsive ─────────────────── */
+/* ─── Cards grid — fills the panel row (auto-fit) ─────────── */
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
   position: relative;
 }

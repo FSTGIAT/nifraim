@@ -3,6 +3,19 @@
     <!-- Run-all-portals bar: one click downloads every active portal, then
          aggregates into one production + one נפרעים file and runs the compare. -->
     <div class="runall-bar">
+      <div class="hero-copy">
+        <Typewriter
+          class="hero-tagline"
+          :text="taglines"
+          :speed="70"
+          :delete-speed="40"
+          :delay="1800"
+        />
+        <span class="hero-sub">
+          <template v-if="activeCredCount">{{ activeCredCount }} חברות מחוברות · לחיצה אחת מורידה ומשווה הכל</template>
+          <template v-else>חברו פורטל אחד והדוחות יורדו אוטומטית</template>
+        </span>
+      </div>
       <!-- MetalButton — 3-layer metallic CTA (outer edge / inner sheen / face) -->
       <div class="metal" :class="{ 'metal--disabled': anyRunning || !!store.activeBatchId }">
         <span class="metal__inner" aria-hidden="true"></span>
@@ -21,13 +34,6 @@
           <span>הורדה אוטומטית מכל החברות</span>
         </button>
       </div>
-      <span v-if="activeCredCount" class="runall-hint">{{ activeCredCount }} חברות מחוברות</span>
-      <!-- Local worker liveness: is the agent's computer on & ready to run? -->
-      <span class="worker-chip" :class="worker.online ? 'worker-chip--on' : 'worker-chip--off'"
-            :title="workerTitle">
-        <span class="worker-dot" aria-hidden="true"></span>
-        {{ worker.online ? 'המחשב מחובר' : 'המחשב מנותק' }}
-      </span>
     </div>
 
     <!-- Live batch progress -->
@@ -65,33 +71,21 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { brandFor } from '../../utils/companyBrand.js'
+import Typewriter from '../common/Typewriter.vue'
 
 const emit = defineEmits(['view-results'])
 const store = usePortalAutomationStore()
 const comparisonStore = useComparisonStore()
 
-// ── Local worker liveness chip ──
-const worker = computed(() => store.workerStatus || { online: false })
-const workerTitle = computed(() => {
-  if (worker.value.online) {
-    return worker.value.current_job
-      ? `פעיל: ${worker.value.current_job}`
-      : `מחובר${worker.value.hostname ? ' (' + worker.value.hostname + ')' : ''}`
-  }
-  return worker.value.last_seen
-    ? `נראה לאחרונה: ${new Date(worker.value.last_seen).toLocaleString('he-IL')}`
-    : 'המחשב המקומי לא מחובר'
-})
-let workerPoll = null
-onMounted(() => {
-  store.fetchWorkerStatus()
-  workerPoll = setInterval(() => store.fetchWorkerStatus(), 20000)
-})
-onUnmounted(() => { if (workerPoll) clearInterval(workerPoll) })
+const taglines = [
+  'הורדה אוטומטית מכל החברות',
+  'בלי להקליד קוד ידנית',
+  'הדוחות יורדים לבד',
+]
 
 const batch = computed(() => store.activeBatch)
 const batchDone = ref(null)
@@ -160,14 +154,41 @@ watch(() => store.batchJustFinished, async (b) => {
   flex-direction: column;
   gap: 12px;
   font-family: 'Heebo', sans-serif;
+  padding: 20px 24px;
+  border-radius: var(--radius-lg, 16px);
+  border: 1px solid var(--border-subtle);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(78, 157, 208, 0.10) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(31, 168, 140, 0.08) 0%, var(--primary-light, #FFF3E0) 0%, rgba(255,255,255,0) 60%),
+    var(--card-bg);
+  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 8px 22px rgba(26, 20, 16, 0.05);
 }
 
-/* ───── Run-all bar ───── */
+/* ───── Run-all hero bar ───── */
 .runall-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 18px;
   flex-wrap: wrap;
+}
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.hero-tagline {
+  font-size: clamp(18px, 2.4vw, 26px);
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.4px;
+  line-height: 1.15;
+}
+.hero-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 /* ── MetalButton (success/green) — faithful 3-layer metallic CTA ───────── */
 .metal {
@@ -240,39 +261,6 @@ watch(() => store.batchJustFinished, async (b) => {
 .metal__btn:focus-visible { outline: 2px solid #1FA88C; outline-offset: 4px; }
 .metal--disabled { opacity: 0.5; box-shadow: none; }
 .metal--disabled .metal__btn { cursor: not-allowed; }
-.runall-hint {
-  font-size: 12.5px;
-  color: var(--text-secondary, #6b7280);
-}
-
-/* ───── Local worker liveness chip ───── */
-.worker-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 700;
-  border: 1px solid transparent;
-}
-.worker-chip--on  { background: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16,185,129,0.3); }
-.worker-chip--off { background: rgba(107,114,128,0.1); color: #6b7280; border-color: rgba(107,114,128,0.24); }
-.worker-dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.worker-chip--on .worker-dot {
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
-  animation: worker-pulse 1.8s ease-out infinite;
-}
-@keyframes worker-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
-  70%  { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
 
 /* ───── Batch progress ───── */
 .batch-progress {

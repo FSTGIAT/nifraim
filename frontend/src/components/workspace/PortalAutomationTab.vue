@@ -13,16 +13,13 @@
           <h2 class="page-title">פורטלי חברות הביטוח</h2>
         </div>
       </div>
-      <div v-if="store.credentials.length" class="page-stats" aria-label="סטטיסטיקה">
-        <div class="stat-pill stat-pill--total">
-          <span class="stat-num ltr-number">{{ store.credentials.length }}</span>
-          <span class="stat-lbl">סה״כ פורטלים</span>
-        </div>
-      </div>
     </header>
 
     <!-- Run all portals → aggregate to one production + one נפרעים file → compare. -->
     <PortalRunAllBar class="runall-block" @view-results="emit('go-to-comparison')" />
+
+    <!-- KPI stat band -->
+    <PortalStatBand v-if="store.credentials.length" />
 
     <div v-if="store.error" class="error-banner">{{ store.error }}</div>
 
@@ -31,19 +28,26 @@
       <span>טוען פורטלים…</span>
     </div>
 
-    <!-- ─── Main canvas: vertical schedule rail + cards pane ─── -->
-    <PortalAutomationCanvas
-      v-else
-      :credentials="store.credentials"
-      :portal-label="portalLabel"
-      :active-run="store.activeRun"
-      :active-run-id="store.activeRunId"
-      @run="runNow"
-      @edit="openEdit"
-      @delete="deleteCred"
-      @add="openAdd"
-      @view-error="onViewError"
-    />
+    <!-- ─── Dashboard: company panels + activity sidebar ────── -->
+    <div v-else class="dash" :class="{ 'dash--empty': !store.credentials.length }">
+      <PortalAutomationCanvas
+        class="dash__main"
+        :credentials="store.credentials"
+        :portal-label="portalLabel"
+        :active-run="store.activeRun"
+        :active-run-id="store.activeRunId"
+        @run="runNow"
+        @edit="openEdit"
+        @delete="deleteCred"
+        @add="openAdd"
+        @view-error="onViewError"
+      />
+      <PortalActivityPanel
+        v-if="store.credentials.length"
+        class="dash__aside"
+        @view-results="emit('go-to-comparison')"
+      />
+    </div>
 
     <!-- ─── Debug disclosure ────────────────────────────────── -->
     <details class="debug-block">
@@ -149,6 +153,8 @@ import PortalCredentialModal from './PortalCredentialModal.vue'
 import PortalAutomationCanvas from './PortalAutomationCanvas.vue'
 import PortalOtpModal from './PortalOtpModal.vue'
 import PortalRunAllBar from './PortalRunAllBar.vue'
+import PortalStatBand from './PortalStatBand.vue'
+import PortalActivityPanel from './PortalActivityPanel.vue'
 
 const props = defineProps({
   // When the activation checklist routes here, auto-open the add-credential modal.
@@ -265,6 +271,7 @@ onMounted(async () => {
   await store.fetchPortalKinds()
   await store.fetchCredentials()
   await store.fetchOtpInbox()
+  store.fetchLatestBatch()
   if (props.autoOpenAdd) {
     openAdd()
     emit('opened')
@@ -331,46 +338,17 @@ onUnmounted(() => {
   line-height: 1.1;
 }
 /* Right-side board stats — Monday "info cells" */
-.page-stats {
-  display: flex;
-  gap: 10px;
-  align-items: stretch;
-  flex-shrink: 0;
+/* ─── Dashboard grid: main panels + activity sidebar ────── */
+.dash {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
 }
-.stat-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 8px 16px;
-  border-radius: 12px;
-  border: 1.5px solid var(--border-subtle);
-  background: var(--card-bg);
-  min-width: 84px;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-.stat-pill:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-.stat-pill--total {
-  border-color: color-mix(in srgb, var(--chart-2) 50%, transparent);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--chart-2) 12%, transparent) 0%, transparent 100%);
-}
-.stat-pill--total .stat-num { color: var(--chart-2); }
-.stat-num {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  letter-spacing: -0.5px;
-}
-.stat-lbl {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  margin-top: 4px;
+@media (min-width: 1024px) {
+  .dash:not(.dash--empty) {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
 }
 
 .error-banner {
@@ -568,7 +546,6 @@ onUnmounted(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; }
-  .stat-pill:hover,
   .err-btn--primary:hover { transform: none; }
 }
 </style>
