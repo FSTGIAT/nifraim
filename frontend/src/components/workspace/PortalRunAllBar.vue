@@ -30,11 +30,6 @@
       </span>
     </div>
 
-    <!-- Offline warning: clicking download won't do anything until the computer is on -->
-    <div v-if="!worker.online" class="worker-warn">
-      ההורדה רצה מהמחשב המקומי. ודאו שתוכנת Nifraim פועלת והמחשב דולק כדי להוריד נתונים.
-    </div>
-
     <!-- Live batch progress -->
     <div v-if="batch && !batchDone" class="batch-progress">
       <div class="batch-progress__head">
@@ -277,14 +272,6 @@ watch(() => store.batchJustFinished, async (b) => {
   0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
   70%  { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-.worker-warn {
-  font-size: 12.5px;
-  color: var(--red-deep, #b45309);
-  background: rgba(244, 211, 94, 0.14);
-  border: 1px solid rgba(216, 168, 0, 0.3);
-  border-radius: 10px;
-  padding: 9px 13px;
 }
 
 /* ───── Batch progress ───── */
