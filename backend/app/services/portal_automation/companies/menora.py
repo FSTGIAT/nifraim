@@ -253,12 +253,46 @@ class MenoraPortal(BasePortalAutomation):
         page.on("response", _on_response)
 
         try:
-            # ── Step 1: confirm we landed on agents-site after OTP ──
-            # Do NOT force-navigate here. Menora authenticates through F5
-            # BIG-IP APM; a manual goto bypasses the session and lands on
-            # "Access policy evaluation is already in progress" error.
-            # If the URL isn't agents-site, the OTP submit failed — abort
-            # with the dump for diagnosis.
+            # ── Step 1: ensure we're on agents-site after OTP ──
+            # Do NOT force-navigate (goto bypasses the F5 APM session). After OTP
+            # the SPA redirects to /agents-site organically. BUT a stale/concurrent
+            # F5 session (e.g. a prior run that didn't log out, or a retry) lands
+            # on a "BIG-IP - Error Page" ("Access policy evaluation is already in
+            # progress") whose only control is a "here" reset link. Click it to
+            # drop the old session and let the authenticated session continue —
+            # the same recovery the Harel plugin uses. Retry a few times.
+            for _attempt in range(3):
+                if "/agents-site" in page.url:
+                    break
+                reset = None
+                for sel in (
+                    "a:has-text('here')",
+                    "a:has-text('לחץ כאן')",
+                    "a:has-text('כאן')",
+                    "a[href*='redirectURI']",
+                ):
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.count():
+                            reset = loc
+                            break
+                    except Exception:
+                        continue
+                if reset is None:
+                    break
+                await _checkpoint(f"0_bigip_recovery_{_attempt}")
+                try:
+                    await reset.click(timeout=5000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    try:
+                        await page.wait_for_url(
+                            lambda u: "/agents-site" in (u or ""), timeout=15000
+                        )
+                    except Exception:
+                        pass
+                except Exception:
+                    break
+
             if "/agents-site" not in page.url:
                 await _checkpoint("0_not_on_agents_site")
                 raise RuntimeError(

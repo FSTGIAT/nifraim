@@ -154,7 +154,10 @@ async def _wait_for_otp(
             await db.commit()
             return row.otp_code
         await asyncio.sleep(OTP_POLL_INTERVAL_S)
-    raise OtpTimeout("לא התקבל קוד OTP תוך 90 שניות. הזן קוד ידנית או הפעל מחדש.")
+    raise OtpTimeout(
+        f"לא התקבל קוד OTP תוך {OTP_WAIT_TIMEOUT_S // 60} דקות. ודאו שהטלפון דולק "
+        f"ושאפליקציית Nifraim SMS מעבירה את הקוד, ונסו שוב."
+    )
 
 
 async def _run_inner(
@@ -289,13 +292,20 @@ async def _run_inner(
         page = await context.new_page()
         try:
             await _set_status(db, run, status="running", stage="login")
+            # Anchor the OTP wait BEFORE login(). Several portals (menora,
+            # phoenix_nifraim) SMS the code the instant credentials submit —
+            # which happens DURING login(), before it returns (it also waits for
+            # the OTP screen to render). Anchoring AFTER login() raced: the SMS
+            # often landed in otp_inbox a few seconds before the anchor, so the
+            # `received_at >= since` filter discarded it and the run waited the
+            # full timeout for a code that had already arrived (live: menora
+            # 028997 arrived 6s into the run, never consumed). Capturing here
+            # includes the whole login window; cross-company theft is still
+            # prevented by per-company SMS-template tagging in _wait_for_otp.
+            otp_since = datetime.utcnow()
             await plugin.login(page, cred.username, password)
 
             if plugin.requires_otp:
-                # Anchor the OTP wait at this instant — login() just submitted,
-                # which is what triggers the SMS. Only codes arriving from here
-                # on belong to this run (see _wait_for_otp docstring).
-                otp_since = datetime.utcnow()
                 await _set_status(db, run, status="awaiting_otp", stage="otp")
                 otp = await _wait_for_otp(
                     db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind
