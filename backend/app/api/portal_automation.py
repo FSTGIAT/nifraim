@@ -1010,3 +1010,35 @@ async def phone_forward_webhook(
     ))
     await db.commit()
     return {"status": "ok", "extracted": bool(otp_code), "company": matched_company}
+
+
+# ── Debug: serve portal-automation capture artifacts (screenshots/page dumps) ──
+# Auth-gated, read-only, basename-sanitized. Temporary aid for diagnosing portal
+# login failures (e.g. Harel OTP screen not rendering through the IL proxy).
+@router.get("/_debug/screenshots")
+async def list_debug_screenshots(user: User = Depends(get_current_user)):
+    from app.services.portal_automation.runner import SCREENSHOT_ROOT
+    if not SCREENSHOT_ROOT.exists():
+        return {"root": str(SCREENSHOT_ROOT), "files": []}
+    files = []
+    for p in sorted(SCREENSHOT_ROOT.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if p.is_file():
+            st = p.stat()
+            files.append({"name": p.name, "size": st.st_size, "mtime": st.st_mtime})
+    return {"root": str(SCREENSHOT_ROOT), "files": files}
+
+
+@router.get("/_debug/screenshots/{name}")
+async def get_debug_screenshot(name: str, user: User = Depends(get_current_user)):
+    from pathlib import Path as _Path
+    from fastapi.responses import FileResponse, PlainTextResponse
+    from app.services.portal_automation.runner import SCREENSHOT_ROOT
+    safe = _Path(name).name  # strip any path components
+    if safe != name or not re.match(r"^[A-Za-z0-9._\-]+\.(png|txt|html)$", safe):
+        raise HTTPException(status_code=400, detail="bad name")
+    fp = SCREENSHOT_ROOT / safe
+    if not fp.exists():
+        raise HTTPException(status_code=404, detail="not found")
+    if safe.endswith((".txt", ".html")):
+        return PlainTextResponse(fp.read_text(errors="replace"))
+    return FileResponse(str(fp))
