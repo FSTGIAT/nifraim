@@ -122,23 +122,37 @@ async def _claim_pending_batch(uid):
 
 
 async def _claim_pending_run(uid):
-    """Atomically claim the oldest pending STANDALONE run (not a batch child)."""
+    """Atomically claim the oldest pending STANDALONE run (not a batch child).
+    Returns (run_id, portal_kind) or None."""
+    from app.models.portal_credential import PortalCredential
     async with async_session() as db:
-        rid = (await db.execute(
-            select(PortalRun.id)
+        row = (await db.execute(
+            select(PortalRun.id, PortalCredential.portal_kind)
+            .join(PortalCredential, PortalCredential.id == PortalRun.credential_id)
             .where(PortalRun.user_id == uid, PortalRun.status == "pending",
                    PortalRun.batch_id.is_(None))
             .order_by(PortalRun.started_at).limit(1)
-        )).scalar_one_or_none()
-        if rid is None:
+        )).first()
+        if row is None:
             return None
+        rid, kind = row
         res = await db.execute(
             update(PortalRun)
             .where(PortalRun.id == rid, PortalRun.status == "pending")
             .values(status="running").returning(PortalRun.id)
         )
         await db.commit()
-        return res.scalar_one_or_none()
+        return (res.scalar_one_or_none(), kind)
+
+
+async def _run_phoenix_terminal(rid):
+    """Phoenix terminal production is a Windows-native flow (Edge + PowerTerm +
+    KERMIT), not a Playwright plugin — drive it via the orchestrator subprocess."""
+    import subprocess, sys
+    from pathlib import Path
+    script = Path(__file__).resolve().parent / "scripts" / "windows" / "phoenix_terminal_run.py"
+    log.info("dispatching phoenix_terminal orchestrator for run %s", rid)
+    subprocess.run([sys.executable, str(script), str(rid)], timeout=1800)
 
 
 async def main():
@@ -158,11 +172,15 @@ async def main():
                 log.info("✔ batch %s done", bid)
                 continue
 
-            rid = await _claim_pending_run(uid)
-            if rid is not None:
-                log.info("▶ claimed run %s — running locally", rid)
-                await _beat(uid, current_job=f"מריץ הורדת חברה", touch_job=True)
-                await run_automation(rid)
+            claimed = await _claim_pending_run(uid)
+            if claimed is not None:
+                rid, kind = claimed
+                log.info("▶ claimed run %s (%s) — running locally", rid, kind)
+                await _beat(uid, current_job="מריץ הורדת חברה", touch_job=True)
+                if kind == "phoenix_terminal":
+                    await _run_phoenix_terminal(rid)
+                else:
+                    await run_automation(rid)
                 await _beat(uid, current_job=None, touch_job=True)
                 log.info("✔ run %s done", rid)
                 continue
