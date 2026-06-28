@@ -46,8 +46,8 @@
         <div class="wic__step">
           <span class="wic__num">2</span>
           <div class="wic__steptext">
-            <strong>הריצו את הקובץ</strong>
-            <span>לחיצה ימנית על הקובץ ← <code>Run with PowerShell</code>. ההתקנה מתבצעת אוטומטית.</span>
+            <strong>לחצו עליו פעמיים</strong>
+            <span>Double-click על הקובץ שירד. אם תופיע אזהרת אבטחה — <code>Run</code>. ההתקנה מתבצעת לבד.</span>
           </div>
         </div>
         <div class="wic__step">
@@ -91,15 +91,15 @@ async function downloadInstaller() {
   hint.value = ''
   try {
     const res = await api.get('/portal-automation/worker/installer', { responseType: 'blob' })
-    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/plain' }))
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/octet-stream' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = 'nifraim-worker-setup.ps1'
+    a.download = 'nifraim-worker-setup.bat'
     document.body.appendChild(a)
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-    hint.value = 'הקובץ ירד. הניחו אותו בתיקיית הפרויקט והריצו (לחיצה ימנית ← Run with PowerShell).'
+    hint.value = 'הקובץ ירד. לחצו עליו פעמיים (Double-click). אם מופיעה אזהרת אבטחה — לחצו Run.'
   } catch (e) {
     hint.value = 'ההורדה נכשלה. נסו שוב או פנו לתמיכה.'
   } finally {

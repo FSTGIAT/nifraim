@@ -55,6 +55,32 @@ os.environ.setdefault("PORTAL_CRED_FERNET_KEY", _env.get("PORTAL_CRED_FERNET_KEY
 os.environ["IL_RESIDENTIAL_PROXY"] = ""   # direct from this IL machine — no proxy
 os.environ["IL_HAREL_PROXY"] = ""
 
+# ── Remote diagnostics: POST startup + any fatal error to the server so support
+# can "follow the log" via `railway logs` even when this worker can't reach the
+# DB. Uses ONLY stdlib + the .env token, and is installed BEFORE the app imports
+# so an import/config crash is still reported. ───────────────────────────────
+import sys as _sys, socket as _sock, traceback as _tb, urllib.request as _ureq
+_LOG_BASE = (_env.get("WORKER_LOG_BASE", "") or os.environ.get("WORKER_LOG_BASE", "")).rstrip("/")
+_LOG_TOKEN = _env.get("WORKER_LOG_TOKEN", "") or os.environ.get("WORKER_LOG_TOKEN", "")
+
+def _post_log(msg: str) -> None:
+    if not (_LOG_BASE and _LOG_TOKEN):
+        return
+    try:
+        data = f"[{_sock.gethostname()}] {msg}".encode("utf-8", "replace")[:4000]
+        _ureq.urlopen(_ureq.Request(
+            f"{_LOG_BASE}/api/portal-automation/worker/log/{_LOG_TOKEN}",
+            data=data, method="POST"), timeout=15)
+    except Exception:
+        pass
+
+def _excepthook(et, ev, tb):
+    _post_log("FATAL: " + "".join(_tb.format_exception(et, ev, tb))[-3500:])
+    _sys.__excepthook__(et, ev, tb)
+
+_sys.excepthook = _excepthook
+_post_log("worker process starting (importing app…)")
+
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -173,6 +199,7 @@ async def main():
     uid = await _resolve_user_id()
     log.info("Nifraim worker started — host=%s user=%s poll=%ss", HOSTNAME, USER_EMAIL, POLL_S)
     await _beat(uid, current_job=None, touch_job=True)
+    _post_log(f"worker ONLINE — user={USER_EMAIL} poll={POLL_S}s (DB heartbeat ok)")
     asyncio.create_task(_heartbeat_loop(uid))
 
     while True:

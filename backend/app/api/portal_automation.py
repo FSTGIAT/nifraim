@@ -1096,38 +1096,174 @@ async def worker_status(
     }
 
 
-# ── Personalized one-file installer for the local worker ──
-# Returns a Windows PowerShell setup script pre-filled with this agent's config,
-# so first-time setup is "download → right-click → Run with PowerShell". Owner-
-# auth'd; the worker connects to the public DB URL (WORKER_PUBLIC_DATABASE_URL).
-@router.get("/worker/installer")
-async def worker_installer(user: User = Depends(get_current_user)):
-    from fastapi.responses import PlainTextResponse
+# ── Remote worker log sink (so support can "follow the log" server-side) ──
+# Public, token-in-URL (phone_forward_token). The local worker + its installer
+# POST diagnostics here; we echo them to the app log (visible in `railway logs`)
+# even when the worker can't reach the DB. Never leaks whether a token is valid.
+@router.post("/worker/log/{token}")
+async def worker_log(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == token)
+    )).scalar_one_or_none()
+    body = (await request.body()).decode("utf-8", "replace")[:4000]
+    logger.warning("WORKER-LOG [%s]: %s", user.email if user else "unknown-token", body)
+    return {"status": "ok"}
 
-    db_url = settings.WORKER_PUBLIC_DATABASE_URL or "<<מלא_כתובת_מסד_נתונים_ציבורית>>"
-    fernet = settings.PORTAL_CRED_FERNET_KEY or "<<מלא_מפתח_הצפנה>>"
-    email = user.email
-    ps = f"""# ============================================================
-#  Nifraim — התקנת הורדה אוטומטית (מותאם ל-{email})
-#  הוראות: שמרו קובץ זה בתיקיית הפרויקט (התיקייה שמכילה את backend\\ ו-worker\\),
-#  ואז לחצו עליו לחיצה ימנית → Run with PowerShell.
-# ============================================================
+
+# ── Self-contained worker code bundle (token-auth, no GitHub/git needed) ──
+# Zips the worker's Python (under a backend/ prefix so paths mirror the repo).
+@router.get("/worker/bundle/{token}")
+async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
+    import io, zipfile
+    from pathlib import Path as _P
+    from fastapi.responses import Response
+
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == token)
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+
+    backend = _P(__file__).resolve().parents[2]   # …/backend
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in (backend / "app").rglob("*"):
+            if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
+                z.write(p, "backend/" + str(p.relative_to(backend)).replace("\\", "/"))
+        for rel in ("local_worker.py", "requirements.txt"):
+            fp = backend / rel
+            if fp.exists():
+                z.write(fp, "backend/" + rel)
+        wdir = backend / "scripts" / "windows"
+        if wdir.exists():
+            for p in wdir.rglob("*"):
+                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
+                    z.write(p, "backend/" + str(p.relative_to(backend)).replace("\\", "/"))
+    buf.seek(0)
+    return Response(buf.read(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="nifraim-worker.zip"'})
+
+
+# ── Self-contained installer ──
+# Download is a .BAT (double-click; immune to PowerShell execution policy, which
+# hard-blocks unsigned downloaded .ps1). The .bat runs PowerShell with
+# -ExecutionPolicy Bypass and pipes the PS installer (served at /installer-ps via
+# token) straight into memory (irm|iex). The PS installer downloads the worker
+# bundle, builds a venv, installs deps + Chromium, writes a BOM-free .env,
+# registers the Scheduled Task, and REPORTS each step + errors to /worker/log.
+def _worker_installer_ps(base: str, token: str, db_url: str, fernet: str, email: str) -> str:
+    return f"""# ===========================================================
+#  Nifraim — התקנת הורדה אוטומטית ({email})
+#  הורידו והריצו (לחיצה ימנית -> Run with PowerShell). זהו — שום דבר נוסף.
+# ===========================================================
 $ErrorActionPreference = 'Stop'
-$Repo = $PSScriptRoot
-if (-not (Test-Path "$Repo\\worker\\install_windows.ps1")) {{
-  Write-Host "[Nifraim] הניחו קובץ זה בתיקיית הפרויקט (לצד התיקייה worker\\) והריצו שוב." -ForegroundColor Red
-  Read-Host "הקישו Enter ליציאה"; exit 1
+$Base   = '{base}'
+$Token  = '{token}'
+$DbUrl  = '{db_url}'
+$Fernet = '{fernet}'
+$Email  = '{email}'
+$Install = Join-Path $env:LOCALAPPDATA 'Nifraim'
+
+function Report($m) {{
+  Write-Host "[Nifraim] $m"
+  try {{ Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ("installer: " + $m) -TimeoutSec 15 | Out-Null }} catch {{}}
 }}
-& "$Repo\\worker\\install_windows.ps1" `
-  -DatabaseUrl "{db_url}" `
-  -FernetKey   "{fernet}" `
-  -UserEmail   "{email}"
-Write-Host ""
-Write-Host "[Nifraim] ההתקנה הסתיימה. חזרו לאתר — המחוון אמור להפוך ל'המחשב מחובר'." -ForegroundColor Green
-Read-Host "הקישו Enter לסגירה"
+
+try {{
+  Report "start on $env:COMPUTERNAME (user $Email)"
+  if (-not (Get-Command python -ErrorAction SilentlyContinue)) {{
+    Report "ERROR: Python not found — install Python 3.10+ from python.org (tick 'Add to PATH') then re-run."
+    Read-Host "Enter ליציאה"; exit 1
+  }}
+  New-Item -ItemType Directory -Force -Path $Install | Out-Null
+
+  Report "downloading worker bundle"
+  $zip = Join-Path $Install 'worker.zip'
+  Invoke-WebRequest -Uri "$Base/api/portal-automation/worker/bundle/$Token" -OutFile $zip -TimeoutSec 180
+  Report "extracting"
+  Expand-Archive -Path $zip -DestinationPath $Install -Force
+
+  Report "creating venv + installing dependencies (a few minutes)"
+  & python -m venv (Join-Path $Install 'venv')
+  $py = Join-Path $Install 'venv\\Scripts\\python.exe'
+  & $py -m pip install --upgrade pip | Out-Null
+  & $py -m pip install -r (Join-Path $Install 'backend\\requirements.txt')
+  Report "installing Chromium"
+  & $py -m playwright install chromium
+
+  Report "writing config"
+  $lines = @(
+    "DATABASE_URL=$DbUrl",
+    "DATABASE_URL_SYNC=$($DbUrl -replace '\\+asyncpg','')",
+    "PORTAL_CRED_FERNET_KEY=$Fernet",
+    "JWT_SECRET=local-worker",
+    "WORKER_USER_EMAIL=$Email",
+    "WORKER_LOG_BASE=$Base",
+    "WORKER_LOG_TOKEN=$Token",
+    "IL_RESIDENTIAL_PROXY="
+  )
+  # .env at $Install (= parent of the bundled backend\\) — worker reads _ROOT/.env.
+  # Write WITHOUT BOM (PS 5.1 -Encoding UTF8 adds one → corrupts DATABASE_URL).
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllLines((Join-Path $Install '.env'), $lines, $enc)
+
+  Report "registering auto-start task"
+  $worker = Join-Path $Install 'backend\\local_worker.py'
+  $act = New-ScheduledTaskAction -Execute $py -Argument $worker
+  $trg = New-ScheduledTaskTrigger -AtLogOn
+  $set = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+  Register-ScheduledTask -TaskName 'NifraimLocalWorker' -Action $act -Trigger $trg -Settings $set -Force | Out-Null
+  Start-ScheduledTask -TaskName 'NifraimLocalWorker'
+
+  Report "done — worker started; the website should show 'המחשב מחובר' within ~20s"
+  Write-Host "[Nifraim] הסתיים. חזרו לאתר." -ForegroundColor Green
+}} catch {{
+  Report ("FATAL: " + $_.Exception.Message)
+  Write-Host $_.Exception.Message -ForegroundColor Red
+}}
+Read-Host "Enter לסגירה"
 """
+
+
+@router.get("/worker/installer-ps/{token}")
+async def worker_installer_ps(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """The PowerShell installer body, fetched by the .bat via irm|iex (token-auth,
+    no JWT on the machine)."""
+    from fastapi.responses import PlainTextResponse
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == token)
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+    base = str(request.base_url).rstrip("/")
+    ps = _worker_installer_ps(
+        base, token,
+        settings.WORKER_PUBLIC_DATABASE_URL or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
+        settings.PORTAL_CRED_FERNET_KEY or "",
+        user.email,
+    )
+    return PlainTextResponse(ps, media_type="text/plain; charset=utf-8")
+
+
+@router.get("/worker/installer")
+async def worker_installer(request: Request, user: User = Depends(get_current_user)):
+    """Download = a .BAT (double-clickable, immune to PS execution policy). It runs
+    PowerShell with -ExecutionPolicy Bypass and pipes the PS installer into memory."""
+    from fastapi.responses import PlainTextResponse
+    if not user.phone_forward_token:
+        raise HTTPException(status_code=400, detail="הפעל קודם 'העברת SMS אוטומטית' (טוקן טלפון חסר)")
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/api/portal-automation/worker/installer-ps/{user.phone_forward_token}"
+    bat = (
+        "@echo off\r\n"
+        "title Nifraim - Installer\r\n"
+        "echo [Nifraim] Installing the auto-download worker... please wait.\r\n"
+        f'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm \'{url}\' | iex"\r\n'
+        "echo.\r\n"
+        "pause\r\n"
+    )
     return PlainTextResponse(
-        ps,
-        headers={"Content-Disposition": 'attachment; filename="nifraim-worker-setup.ps1"'},
-        media_type="text/plain; charset=utf-8",
+        bat,
+        headers={"Content-Disposition": 'attachment; filename="nifraim-worker-setup.bat"'},
+        media_type="application/octet-stream",
     )
