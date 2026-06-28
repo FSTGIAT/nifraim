@@ -53,7 +53,7 @@ from app.schemas.portal_automation import (
     TwilioNumberOut,
 )
 from app.services import twilio_provisioning
-from app.services.portal_automation.companies import PORTAL_LABELS, REGISTRY
+from app.services.portal_automation.companies import PORTAL_LABELS, REGISTRY, WORKER_ONLY_PORTALS
 from app.services.portal_automation.runner import run_automation, run_phone_change
 from app.services.portal_automation.batch_runner import run_batch
 from app.utils.crypto import encrypt
@@ -133,14 +133,15 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 # Portal kinds (public catalog for the UI dropdown)
 # ──────────────────────────────────────────────────────────────────────────
 
-IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings"}
+IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "phoenix_terminal"}
 
 
 @router.get("/portal-kinds")
 async def list_portal_kinds(user: User = Depends(get_current_user)):
+    kinds = list(REGISTRY.keys()) + [k for k in WORKER_ONLY_PORTALS if k not in REGISTRY]
     return [
         {"id": kind, "label": PORTAL_LABELS[kind], "implemented": kind in IMPLEMENTED_PORTALS}
-        for kind in REGISTRY.keys()
+        for kind in kinds
     ]
 
 
@@ -188,7 +189,7 @@ async def create_credential(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if payload.portal_kind not in REGISTRY:
+    if payload.portal_kind not in REGISTRY and payload.portal_kind not in WORKER_ONLY_PORTALS:
         raise HTTPException(status_code=400, detail="Unknown portal_kind")
 
     existing = await db.execute(

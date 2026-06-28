@@ -93,6 +93,31 @@ async def _delete_uploads(db, upload_ids: list[uuid.UUID]) -> None:
     await db.flush()
 
 
+async def _run_worker_only_portal(db, run, cred):
+    """Dispatch a non-Playwright portal (phoenix_terminal) to its native Windows
+    orchestrator subprocess. Returns (success, upload_id). Failure-tolerant — a
+    crash here marks only this child failed; the rest of the batch continues."""
+    import subprocess, sys, os
+    from pathlib import Path
+    from app.services.portal_automation.companies import WORKER_ONLY_PORTALS
+    rel = WORKER_ONLY_PORTALS.get(cred.portal_kind)
+    script = Path(__file__).resolve().parents[3] / rel if rel else None
+    if not script or not script.exists():
+        await _set_status(db, run, status="failed", error="orchestrator not found", finished=True)
+        return False, None
+    env = {**os.environ, "PHOENIX_MBT_WAIT_S": os.environ.get("PHOENIX_MBT_WAIT_S", "150")}
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, lambda: subprocess.run(
+            [sys.executable, str(script), str(run.id)], timeout=330, env=env))
+    except Exception as e:
+        logger.exception("worker-only portal %s failed", cred.portal_kind)
+        await _set_status(db, run, status="failed", error=str(e)[:300], finished=True)
+        return False, None
+    await db.refresh(run)
+    return (run.status == "success", run.upload_id)
+
+
 async def run_batch(batch_id: uuid.UUID) -> None:
     """Top-level entry point. Owns its own DB session and never raises."""
     async with async_session() as db:
@@ -118,7 +143,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
 
     user_id = batch.user_id
 
-    from app.services.portal_automation.companies import REGISTRY
+    from app.services.portal_automation.companies import REGISTRY, WORKER_ONLY_PORTALS
 
     creds_q = await db.execute(
         select(PortalCredential)
@@ -135,6 +160,9 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     creds: list[PortalCredential] = []
     skipped: list[str] = []
     for c in all_creds:
+        if c.portal_kind in WORKER_ONLY_PORTALS:
+            creds.append(c)  # native-orchestrator portal (e.g. phoenix_terminal)
+            continue
         plugin_cls = REGISTRY.get(c.portal_kind)
         if plugin_cls is None or not getattr(plugin_cls, "include_in_batch", True):
             skipped.append(c.portal_kind)
@@ -164,6 +192,19 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         await db.flush()
         batch.current_run_id = run.id
         await db.commit()
+
+        if cred.portal_kind in WORKER_ONLY_PORTALS:
+            ok, up = await _run_worker_only_portal(db, run, cred)
+            if ok and up:
+                prod_upload_ids.append(up)
+                batch.succeeded += 1
+                cred.last_run_status = "success"; cred.last_error = None
+            else:
+                batch.failed += 1
+                cred.last_run_status = "failed"
+            cred.last_run_at = datetime.utcnow()
+            await db.commit()
+            continue
 
         try:
             ingested = await asyncio.wait_for(

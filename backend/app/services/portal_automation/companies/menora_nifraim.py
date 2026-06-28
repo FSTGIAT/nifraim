@@ -55,7 +55,7 @@ class MenoraNifraimPortal(MenoraPortal):
     # Folded into the consolidated `menora` plugin, which downloads BOTH the
     # production bundle and this נפרעים row in one login. Still runnable as a
     # manual single run.
-    include_in_batch = False
+    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
 
     async def download_reports(
         self,

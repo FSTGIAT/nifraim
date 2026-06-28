@@ -73,4 +73,14 @@ PORTAL_LABELS: dict[str, str] = {
     "harel": "הראל",
     "harel_commissions": "הראל — ריכוז תשלומי עמלות",
     "harel_savings": "הראל — מוצרי צבירה (פרודוקציה)",
+    "phoenix_terminal": "הפניקס — טרמינל (פרודוקציה)",
+}
+
+# Portals that are NOT Playwright plugins (so NOT in REGISTRY) — driven by the
+# LOCAL WORKER via a native Windows orchestrator (backend/scripts/windows/
+# phoenix_terminal_run.py). They are creatable, selectable, and batch-eligible,
+# but run_automation/_run_inner cannot execute them; local_worker and
+# batch_runner dispatch them specially. Value = the orchestrator script entry.
+WORKER_ONLY_PORTALS: dict[str, str] = {
+    "phoenix_terminal": "scripts/windows/phoenix_terminal_run.py",
 }

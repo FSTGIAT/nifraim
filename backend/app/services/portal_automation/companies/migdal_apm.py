@@ -44,7 +44,7 @@ class MigdalApmPortal(BasePortalAutomation):
     # Folded into the consolidated `migdal` plugin, which downloads the mfte
     # production then logs into apmaccess (2nd OTP via the runner's otp_provider)
     # for this נפרעים report. Still runnable as a manual single run.
-    include_in_batch = False
+    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
 
     async def login(self, page: "Page", username: str, password: str) -> None:
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)

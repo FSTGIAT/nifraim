@@ -56,7 +56,7 @@ class HarelCommissionsPortal(HarelPortal):
     # Folded into the consolidated `harel_savings` plugin, which downloads both
     # production (מוצרי צבירה) and this נפרעים report in one agents-portal login.
     # Still runnable as a manual single run.
-    include_in_batch = False
+    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
 
     async def download_reports(
         self,
