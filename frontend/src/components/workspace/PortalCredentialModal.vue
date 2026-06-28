@@ -35,11 +35,12 @@
                 :disabled="mode === 'edit'"
               >
                 <option value="" disabled>בחר חברה</option>
-                <option v-for="k in store.portalKinds" :key="k.id" :value="k.id">
-                  {{ k.label }}{{ k.implemented ? '' : ' (לא ממומש)' }}
+                <option v-for="k in pickerKinds" :key="k.id" :value="k.id">
+                  {{ optionLabel(k) }}{{ k.implemented ? '' : ' (לא ממומש)' }}
                 </option>
               </select>
             </label>
+            <p v-if="selectedUrl" class="portal-url ltr-number">{{ selectedUrl }}</p>
 
             <label class="row">
               <span class="row-label">שם משתמש <span class="req">*</span></span>
@@ -137,6 +138,19 @@ const saving = ref(false)
 const title = ref('')
 
 const phoneForwardConfigured = computed(() => !!store.phoneForward?.token)
+
+// Picker: implemented portals first; clean "<company> — <category>" labels + URL.
+const pickerKinds = computed(() =>
+  [...(store.portalKinds || [])].sort(
+    (a, b) => (a.implemented === b.implemented ? 0 : a.implemented ? -1 : 1),
+  ),
+)
+function optionLabel(k) {
+  return k.company && k.category ? `${k.company} — ${k.category}` : k.label
+}
+const selectedUrl = computed(
+  () => store.portalKinds.find((x) => x.id === form.portal_kind)?.url || '',
+)
 
 watch(
   () => [props.open, props.mode, props.credential],
@@ -329,6 +343,14 @@ async function save() {
 .ctrl.invalid { border-color: #C23934; box-shadow: 0 0 0 2px rgba(194, 57, 52, 0.12); }
 .ctrl[disabled] { opacity: 0.6; cursor: not-allowed; }
 select.ctrl { appearance: auto; }
+.portal-url {
+  margin: 4px 2px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  direction: ltr;
+  text-align: left;
+  word-break: break-all;
+}
 
 .otp-method-fieldset {
   border: 1px solid var(--border-subtle);

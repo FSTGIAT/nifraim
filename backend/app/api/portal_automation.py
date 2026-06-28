@@ -53,7 +53,7 @@ from app.schemas.portal_automation import (
     TwilioNumberOut,
 )
 from app.services import twilio_provisioning
-from app.services.portal_automation.companies import PORTAL_LABELS, REGISTRY, WORKER_ONLY_PORTALS
+from app.services.portal_automation.companies import PORTAL_LABELS, PORTAL_META, REGISTRY, WORKER_ONLY_PORTALS
 from app.services.portal_automation.runner import run_automation, run_phone_change
 from app.services.portal_automation.batch_runner import run_batch
 from app.utils.crypto import encrypt
@@ -133,16 +133,28 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 # Portal kinds (public catalog for the UI dropdown)
 # ──────────────────────────────────────────────────────────────────────────
 
-IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "phoenix_terminal"}
+# Note: the dead-end Ericom `phoenix` terminal is intentionally NOT listed — its
+# real production path is `phoenix_terminal`.
+IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings"}
 
 
 @router.get("/portal-kinds")
 async def list_portal_kinds(user: User = Depends(get_current_user)):
     kinds = list(REGISTRY.keys()) + [k for k in WORKER_ONLY_PORTALS if k not in REGISTRY]
-    return [
-        {"id": kind, "label": PORTAL_LABELS[kind], "implemented": kind in IMPLEMENTED_PORTALS}
-        for kind in kinds
-    ]
+    out = []
+    for kind in kinds:
+        company, category, url = PORTAL_META.get(kind, ("", "", ""))
+        out.append({
+            "id": kind,
+            "label": PORTAL_LABELS[kind],
+            "company": company,
+            "category": category,           # "פרודוקציה" / "נפרעים" / …
+            "url": url,
+            "implemented": kind in IMPLEMENTED_PORTALS,
+        })
+    # Implemented first, then grouped by company, then category.
+    out.sort(key=lambda o: (not o["implemented"], o["company"], o["category"]))
+    return out
 
 
 # ──────────────────────────────────────────────────────────────────────────

@@ -84,3 +84,29 @@ PORTAL_LABELS: dict[str, str] = {
 WORKER_ONLY_PORTALS: dict[str, str] = {
     "phoenix_terminal": "scripts/windows/phoenix_terminal_run.py",
 }
+
+# Clean picker metadata: (company, category, login_url) per portal_kind. Drives a
+# simple "<company> <category>" option + the URL in the "add portal" UI. PORTAL_LABELS
+# stays the verbose label used elsewhere (batch pills etc.).
+PORTAL_META: dict[str, tuple[str, str, str]] = {
+    "menora":               ("מנורה", "פרודוקציה", "https://menoranet.menora.co.il/"),
+    "menora_nifraim":       ("מנורה", "נפרעים", "https://menoranet.menora.co.il/"),
+    "migdal":               ("מגדל", "פרודוקציה", "https://mfte.migdal.co.il/"),
+    "migdal_apm":           ("מגדל", "נפרעים", "https://apmaccess.migdal.co.il/my.policy"),
+    "harel_savings":        ("הראל", "פרודוקציה", "https://agents.harel-group.co.il/my.policy"),
+    "harel_commissions":    ("הראל", "נפרעים", "https://agents.harel-group.co.il/my.policy"),
+    "harel":                ("הראל", "פרודוקציה (כספת)", "https://www.harelsafe.co.il/Login.aspx"),
+    "phoenix_terminal":     ("הפניקס", "פרודוקציה", "https://agent.fnx.co.il/my.policy"),
+    "phoenix_nifraim":      ("הפניקס", "נפרעים חיים+בריאות", "https://agent.fnx.co.il/my.policy"),
+    "phoenix_nifraim_gemel":("הפניקס", "נפרעים גמל", "https://agent.fnx.co.il/my.policy"),
+    "phoenix_sfe":          ("הפניקס", "פרודוקציה (כספת SFE)", "https://sfe.fnx.co.il/SFE/"),
+    "phoenix":              ("הפניקס", "טרמינל (ישן)", "https://agent.fnx.co.il/my.policy"),
+    "clal":                 ("כלל", "פרודוקציה", "https://www.clalbit.co.il/"),
+    "clal_nifraim":         ("כלל", "נפרעים", "https://www.clalbit.co.il/"),
+    "clal_health":          ("כלל בריאות", "נפרעים", ""),
+    "altshuler":            ("אלטשולר", "פרודוקציה", ""),
+    "hachshara":            ("הכשרה", "פרודוקציה", ""),
+    "excellence":           ("אקסלנס", "פרודוקציה", ""),
+    "mor":                  ("מור", "פרודוקציה", ""),
+    "ayalon":               ("איילון", "פרודוקציה", ""),
+}
