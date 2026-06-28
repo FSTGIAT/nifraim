@@ -57,6 +57,11 @@ class MorPortal(BasePortalAutomation):
         # KEYSTROKES are required to drive Angular's validation. The ת"ז field
         # needs 9 digits and the phone 10 — pad a leading zero when the stored
         # value drops it (operator stores 40336281 / 504302306).
+        # Mor's server wants the 9-digit forms (with the leading 0) for BOTH the
+        # license and the ת"ז, and the 10-digit phone — even though the client
+        # form validates the shorter forms (server returns "אירעה שגיאה").
+        if len(license_no) == 8 and not license_no.startswith("0"):
+            license_no = "0" + license_no
         if len(id_no) == 8 and not id_no.startswith("0"):
             id_no = "0" + id_no
         if len(phone) == 9 and not phone.startswith("0"):
