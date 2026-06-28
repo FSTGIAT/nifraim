@@ -107,6 +107,6 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
     "altshuler":            ("אלטשולר", "פרודוקציה", ""),
     "hachshara":            ("הכשרה", "פרודוקציה", ""),
     "excellence":           ("אקסלנס", "פרודוקציה", ""),
-    "mor":                  ("מור", "פרודוקציה", ""),
+    "mor":                  ("מור", "נפרעים", "https://join.more.co.il/agentsportal/agents/login"),
     "ayalon":               ("איילון", "פרודוקציה", ""),
 }

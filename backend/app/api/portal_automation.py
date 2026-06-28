@@ -135,7 +135,7 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 
 # Note: the dead-end Ericom `phoenix` terminal is intentionally NOT listed — its
 # real production path is `phoenix_terminal`.
-IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings"}
+IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "mor"}
 
 
 @router.get("/portal-kinds")
