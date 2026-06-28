@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     # `railway_ip_geoblocked_insurers`.
     IL_RESIDENTIAL_PROXY: str = ""
 
+    # When True, Railway does NOT execute portal runs itself — it only enqueues
+    # them (status="pending"). A LOCAL worker (the agent's Israeli Windows
+    # machine, see backend/local_worker.py) polls the DB, claims pending jobs and
+    # runs Playwright locally from a real IL IP — sidestepping the foreign-IP
+    # geo-block + Bright Data no-KYC POST block entirely. Default False keeps the
+    # pre-worker behavior (Railway executes inline). See memory
+    # `railway_ip_geoblocked_insurers`.
+    WORKER_MODE: bool = False
+
     # Per-portal proxy override for Harel. Harel's WAF blocks the ISP zone's
     # hosting ASN (WS Telecom) at the network layer (ERR_TUNNEL_CONNECTION_FAILED),
     # but accepts a Bright Data *residential* zone IP. Point this at the

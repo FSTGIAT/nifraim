@@ -15,8 +15,20 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   const otpInbox = ref([])
   const loading = ref(false)
   const error = ref(null)
+  // Local worker liveness (the agent's Israeli machine that runs the automation)
+  const workerStatus = ref({ online: false, last_seen: null, hostname: null, current_job: null })
 
   let pollHandle = null
+
+  async function fetchWorkerStatus() {
+    try {
+      const res = await api.get('/portal-automation/worker/status')
+      workerStatus.value = res.data
+    } catch (_) {
+      workerStatus.value = { online: false, last_seen: null, hostname: null, current_job: null }
+    }
+    return workerStatus.value
+  }
 
   async function fetchPortalKinds() {
     const res = await api.get('/portal-automation/portal-kinds')
@@ -360,6 +372,8 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     otpInbox,
     loading,
     error,
+    workerStatus,
+    fetchWorkerStatus,
     fetchPortalKinds,
     fetchCredentials,
     createCredential,

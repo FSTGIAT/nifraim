@@ -22,6 +22,17 @@
         </button>
       </div>
       <span v-if="activeCredCount" class="runall-hint">{{ activeCredCount }} חברות מחוברות</span>
+      <!-- Local worker liveness: is the agent's computer on & ready to run? -->
+      <span class="worker-chip" :class="worker.online ? 'worker-chip--on' : 'worker-chip--off'"
+            :title="workerTitle">
+        <span class="worker-dot" aria-hidden="true"></span>
+        {{ worker.online ? 'המחשב מחובר' : 'המחשב מנותק' }}
+      </span>
+    </div>
+
+    <!-- Offline warning: clicking download won't do anything until the computer is on -->
+    <div v-if="!worker.online" class="worker-warn">
+      ההורדה רצה מהמחשב המקומי. ודאו שתוכנת Nifraim פועלת והמחשב דולק כדי להוריד נתונים.
     </div>
 
     <!-- Live batch progress -->
@@ -59,7 +70,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { brandFor } from '../../utils/companyBrand.js'
@@ -67,6 +78,25 @@ import { brandFor } from '../../utils/companyBrand.js'
 const emit = defineEmits(['view-results'])
 const store = usePortalAutomationStore()
 const comparisonStore = useComparisonStore()
+
+// ── Local worker liveness chip ──
+const worker = computed(() => store.workerStatus || { online: false })
+const workerTitle = computed(() => {
+  if (worker.value.online) {
+    return worker.value.current_job
+      ? `פעיל: ${worker.value.current_job}`
+      : `מחובר${worker.value.hostname ? ' (' + worker.value.hostname + ')' : ''}`
+  }
+  return worker.value.last_seen
+    ? `נראה לאחרונה: ${new Date(worker.value.last_seen).toLocaleString('he-IL')}`
+    : 'המחשב המקומי לא מחובר'
+})
+let workerPoll = null
+onMounted(() => {
+  store.fetchWorkerStatus()
+  workerPoll = setInterval(() => store.fetchWorkerStatus(), 20000)
+})
+onUnmounted(() => { if (workerPoll) clearInterval(workerPoll) })
 
 const batch = computed(() => store.activeBatch)
 const batchDone = ref(null)
@@ -218,6 +248,43 @@ watch(() => store.batchJustFinished, async (b) => {
 .runall-hint {
   font-size: 12.5px;
   color: var(--text-secondary, #6b7280);
+}
+
+/* ───── Local worker liveness chip ───── */
+.worker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.worker-chip--on  { background: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16,185,129,0.3); }
+.worker-chip--off { background: rgba(107,114,128,0.1); color: #6b7280; border-color: rgba(107,114,128,0.24); }
+.worker-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.worker-chip--on .worker-dot {
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  animation: worker-pulse 1.8s ease-out infinite;
+}
+@keyframes worker-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  70%  { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.worker-warn {
+  font-size: 12.5px;
+  color: var(--red-deep, #b45309);
+  background: rgba(244, 211, 94, 0.14);
+  border: 1px solid rgba(216, 168, 0, 0.3);
+  border-radius: 10px;
+  padding: 9px 13px;
 }
 
 /* ───── Batch progress ───── */

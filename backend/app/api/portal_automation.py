@@ -38,6 +38,7 @@ from app.models.portal_run import PortalRun
 from app.models.portal_run_batch import PortalRunBatch
 from app.models.sms_otp_template import SmsOtpTemplate
 from app.models.user import User
+from app.models.worker_heartbeat import WorkerHeartbeat
 from app.schemas.portal_automation import (
     OtpInboxOut,
     OtpSubmitIn,
@@ -321,7 +322,11 @@ async def trigger_run(
     await db.refresh(run)
 
     # Fire and forget — runner owns its own DB session.
-    asyncio.create_task(run_automation(run.id))
+    # In WORKER_MODE the run stays "pending" for the agent's local worker to
+    # claim and execute from an Israeli IP (no geo-block / no Bright Data POST
+    # block). Otherwise Railway executes inline (pre-worker behavior).
+    if not settings.WORKER_MODE:
+        asyncio.create_task(run_automation(run.id))
 
     return RunStartOut(run_id=str(run.id))
 
@@ -374,7 +379,10 @@ async def run_all_portals(
     await db.commit()
     await db.refresh(batch)
 
-    asyncio.create_task(run_batch(batch.id))
+    # In WORKER_MODE leave the batch "pending" for the local worker to claim;
+    # otherwise execute inline on Railway (pre-worker behavior).
+    if not settings.WORKER_MODE:
+        asyncio.create_task(run_batch(batch.id))
     return BatchStartOut(batch_id=str(batch.id))
 
 
@@ -1042,3 +1050,29 @@ async def get_debug_screenshot(name: str, user: User = Depends(get_current_user)
     if safe.endswith((".txt", ".html")):
         return PlainTextResponse(fp.read_text(errors="replace"))
     return FileResponse(str(fp))
+
+
+# ── Local worker liveness (online/offline indicator for the web UI) ──
+# The agent's local Windows worker writes its heartbeat straight to the DB; this
+# read-only endpoint lets the site show whether that machine is on & ready.
+WORKER_ONLINE_WINDOW_S = 90
+
+
+@router.get("/worker/status")
+async def worker_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = (await db.execute(
+        select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
+    )).scalar_one_or_none()
+    if not row or not row.last_seen:
+        return {"online": False, "last_seen": None, "hostname": None, "current_job": None}
+    age = (datetime.utcnow() - row.last_seen).total_seconds()
+    return {
+        "online": age <= WORKER_ONLINE_WINDOW_S,
+        "last_seen": row.last_seen.isoformat(),
+        "age_seconds": int(age),
+        "hostname": row.hostname,
+        "current_job": row.current_job,
+    }
