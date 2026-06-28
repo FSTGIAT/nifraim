@@ -36,7 +36,7 @@
               >
                 <option value="" disabled>בחר חברה</option>
                 <option v-for="k in pickerKinds" :key="k.id" :value="k.id">
-                  {{ optionLabel(k) }}{{ k.implemented ? '' : ' (לא ממומש)' }}
+                  {{ optionLabel(k) }}
                 </option>
               </select>
             </label>
@@ -139,11 +139,10 @@ const title = ref('')
 
 const phoneForwardConfigured = computed(() => !!store.phoneForward?.token)
 
-// Picker: implemented portals first; clean "<company> — <category>" labels + URL.
+// Picker: only portals we actually use (implemented). Keep the currently-selected
+// kind too so edit mode always shows its value. Clean "<company> — <category>".
 const pickerKinds = computed(() =>
-  [...(store.portalKinds || [])].sort(
-    (a, b) => (a.implemented === b.implemented ? 0 : a.implemented ? -1 : 1),
-  ),
+  (store.portalKinds || []).filter((k) => k.implemented || k.id === form.portal_kind),
 )
 function optionLabel(k) {
   return k.company && k.category ? `${k.company} — ${k.category}` : k.label
