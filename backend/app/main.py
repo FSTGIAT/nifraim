@@ -24,18 +24,25 @@ async def lifespan(app: FastAPI):
 
 
 async def _fail_orphaned_runs() -> None:
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from sqlalchemy import update
     from app.database import async_session
     from app.models.portal_run import PortalRun
+    from app.config import settings
 
     ACTIVE = ("pending", "running", "awaiting_otp", "downloading", "parsing")
     try:
         async with async_session() as db:
+            stmt = update(PortalRun).where(PortalRun.status.in_(ACTIVE))
+            if settings.WORKER_MODE:
+                # In WORKER_MODE execution lives in an EXTERNAL local process, so
+                # a Railway restart does NOT orphan its in-flight runs — only reap
+                # ones clearly stale (older than the run hard-timeout window), to
+                # avoid killing a run the worker is actively executing.
+                cutoff = datetime.utcnow() - timedelta(minutes=20)
+                stmt = stmt.where(PortalRun.started_at < cutoff)
             await db.execute(
-                update(PortalRun)
-                .where(PortalRun.status.in_(ACTIVE))
-                .values(
+                stmt.values(
                     status="failed",
                     error_message="Run interrupted by server restart",
                     finished_at=datetime.utcnow(),
