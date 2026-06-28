@@ -12,7 +12,6 @@
           </span>
           <h2 class="page-title">פורטלי חברות הביטוח</h2>
         </div>
-        <p class="page-sub">חבר חברה אחת והדוח יוריד את עצמו.</p>
       </div>
       <div v-if="store.credentials.length" class="page-stats" aria-label="סטטיסטיקה">
         <div class="stat-pill stat-pill--total">
@@ -331,13 +330,6 @@ onUnmounted(() => {
   letter-spacing: -0.4px;
   line-height: 1.1;
 }
-.page-sub {
-  margin: 6px 0 0;
-  font-size: 13.5px;
-  color: var(--text-muted);
-  padding-inline-start: 50px;
-}
-
 /* Right-side board stats — Monday "info cells" */
 .page-stats {
   display: flex;

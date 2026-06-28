@@ -34,29 +34,43 @@
       </div>
     </div>
 
-    <!-- ── Cards grid — full-width responsive ──────────────── -->
-    <TransitionGroup v-else name="card-flip" tag="div" class="cards-grid">
-      <div v-for="cred in credentials" :key="cred.id" class="card-slot">
-        <PortalCard
-          :cred="cred"
-          :wash-color="credColor(cred.portal_kind)"
-          :is-running="isRunning(cred.id)"
-          :portal-label="portalLabel(cred.portal_kind)"
-          :active-run="activeRun"
-          @run="$emit('run', cred.id)"
-          @edit="$emit('edit', cred)"
-          @delete="$emit('delete', cred.id)"
-          @view-error="(msg) => $emit('view-error', { cred, message: msg })"
-        />
-      </div>
-    </TransitionGroup>
+    <!-- ── Cards grouped by company ─────────────────────────── -->
+    <div v-else class="groups">
+      <section v-for="g in groups" :key="g.key" class="company-group">
+        <header class="group-head">
+          <span class="group-icon" :style="{ color: g.color, background: groupTint(g.color) }" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path :d="g.brand.iconPath" />
+            </svg>
+          </span>
+          <span class="group-name">{{ g.label }}</span>
+          <span class="group-count ltr-number">{{ g.creds.length }}</span>
+        </header>
+
+        <TransitionGroup name="card-flip" tag="div" class="cards-grid">
+          <div v-for="cred in g.creds" :key="cred.id" class="card-slot">
+            <PortalCard
+              :cred="cred"
+              :wash-color="credColor(cred.portal_kind)"
+              :is-running="isRunning(cred.id)"
+              :portal-label="portalLabel(cred.portal_kind)"
+              :active-run="activeRun"
+              @run="$emit('run', cred.id)"
+              @edit="$emit('edit', cred)"
+              @delete="$emit('delete', cred.id)"
+              @view-error="(msg) => $emit('view-error', { cred, message: msg })"
+            />
+          </div>
+        </TransitionGroup>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import PortalCard from './PortalCard.vue'
-import { brandFor } from '../../utils/companyBrand.js'
+import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 import { nearestChartColor, assignNearestDistinct } from '../../utils/chartPalette.js'
 
 const props = defineProps({
@@ -81,6 +95,35 @@ const colorByKind = computed(() => {
 })
 function credColor(kind) {
   return colorByKind.value.get(kind) || nearestChartColor(brandFor(kind).color)
+}
+
+// Group credentials by company — Harel/Clal/… variants collapse under one
+// heading via brandForLabel's substring match on the portal's display label.
+const groups = computed(() => {
+  const map = new Map()
+  for (const c of props.credentials || []) {
+    const lbl = props.portalLabel(c.portal_kind)
+    const b = brandForLabel(lbl)
+    const key = b.label && b.label !== '?' ? b.label : lbl
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label: key,
+        brand: b,
+        color: credColor(c.portal_kind),
+        creds: [],
+      })
+    }
+    map.get(key).creds.push(c)
+  }
+  return Array.from(map.values())
+})
+
+function groupTint(hex) {
+  const clean = (hex || '#706E6B').replace('#', '')
+  const full = clean.length === 3 ? clean.split('').map((ch) => ch + ch).join('') : clean
+  const n = parseInt(full, 16)
+  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, 0.12)`
 }
 
 const paneSub = computed(() => {
@@ -141,6 +184,49 @@ function isRunning(credId) {
 }
 .btn-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
+
+/* ─── Company groups ─────────────────────────────────────── */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.company-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 2px;
+}
+.group-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.group-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.group-count {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 2px 9px;
+  line-height: 1.4;
+}
 
 /* ─── Cards grid — full-width responsive ─────────────────── */
 .cards-grid {

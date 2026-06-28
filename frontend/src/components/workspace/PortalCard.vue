@@ -64,14 +64,14 @@
         class="pcard__run"
         type="button"
         :disabled="isRunning"
+        :title="isRunning ? 'רץ…' : 'הרצה עכשיו'"
         :aria-label="isRunning ? 'רץ' : 'הרצה עכשיו'"
         @click="$emit('run')"
       >
         <span v-if="isRunning" class="pcard__spinner" aria-hidden="true"></span>
-        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <polygon points="6 4 20 12 6 20" />
         </svg>
-        <span>{{ isRunning ? 'רץ…' : 'הרצה עכשיו' }}</span>
       </button>
       <button class="pcard__ic" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -359,26 +359,23 @@ const cardVars = computed(() => {
 .pcard__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: auto;
 }
 .pcard__run {
-  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  width: 38px;
   height: 38px;
-  padding: 0 14px;
+  padding: 0;
   border: none;
   border-radius: 11px;
   background: linear-gradient(135deg, #5BB4DE, #1FA88C);  /* pastel sky → teal */
   color: #fff;
-  font-family: inherit;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.1px;
   cursor: pointer;
+  flex-shrink: 0;
   box-shadow: 0 5px 13px rgba(31, 168, 140, 0.26);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
