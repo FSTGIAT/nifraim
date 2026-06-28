@@ -8,7 +8,7 @@ PortalKind = Literal[
     "phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm",
     "clal", "clal_nifraim",
     "menora", "menora_nifraim", "altshuler", "hachshara", "excellence", "mor",
-    "ayalon", "clal_health", "harel",
+    "ayalon", "clal_health", "harel", "harel_commissions", "harel_savings",
 ]
 
 ScheduleKind = Literal["manual", "daily", "weekly", "monthly"]

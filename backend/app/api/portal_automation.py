@@ -133,7 +133,7 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 # Portal kinds (public catalog for the UI dropdown)
 # ──────────────────────────────────────────────────────────────────────────
 
-IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "menora", "menora_nifraim", "clal", "clal_nifraim"}
+IMPLEMENTED_PORTALS = {"phoenix", "phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings"}
 
 
 @router.get("/portal-kinds")
