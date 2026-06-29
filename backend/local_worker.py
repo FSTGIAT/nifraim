@@ -27,8 +27,15 @@ import os
 import socket
 import asyncio
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
+
+# When THIS worker process started — a UI update request newer than this means
+# "you're running stale code, pull + restart".
+_STARTED_AT = datetime.utcnow()
+# Deploy branch fallback if the checkout is on a detached HEAD.
+_DEPLOY_BRANCH = "claude/automate-otp-login-fCKdi"
 
 # ── Load secrets from the repo-root .env for any field the launching env omits ──
 _ROOT = Path(__file__).resolve().parent.parent  # repo root (/.../test)
@@ -144,10 +151,55 @@ async def _beat(uid, current_job: str | None = None, touch_job: bool = False):
         await db.commit()
 
 
+async def _maybe_self_update(uid):
+    """If the website's 'עדכן עובד' button was pressed (update_requested_at newer
+    than this process's start), git-pull the deploy branch and re-exec so the new
+    code loads — the user never touches git or the machine. NON-FATAL: a failed
+    pull still restarts on the existing code."""
+    async with async_session() as db:
+        row = (await db.execute(
+            select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
+        )).scalar_one_or_none()
+    req = getattr(row, "update_requested_at", None)
+    if not req or req <= _STARTED_AT:
+        return
+    log.info("UI requested worker update (at %s) — pulling + restarting", req)
+    _post_log(f"update requested ({req}) — git pull + re-exec")
+    # Clear the flag FIRST so we don't loop after re-exec.
+    try:
+        async with async_session() as db:
+            await db.execute(
+                update(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
+                .values(update_requested_at=None)
+            )
+            await db.commit()
+    except Exception as e:
+        log.warning("could not clear update flag: %s", e)
+    # Pull the latest code on whatever branch this checkout tracks (.env / venv /
+    # data are gitignored, so reset --hard never touches creds or downloads).
+    try:
+        branch = subprocess.check_output(
+            ["git", "-C", str(_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+            text=True, timeout=30,
+        ).strip()
+        if not branch or branch == "HEAD":
+            branch = _DEPLOY_BRANCH
+            subprocess.run(["git", "-C", str(_ROOT), "checkout", branch], timeout=60)
+        subprocess.run(["git", "-C", str(_ROOT), "fetch", "origin"], timeout=120)
+        subprocess.run(["git", "-C", str(_ROOT), "reset", "--hard", f"origin/{branch}"], timeout=120)
+        log.info("worker code updated to origin/%s — re-executing", branch)
+    except Exception as e:
+        log.warning("self-update git pull failed (%s) — re-executing on existing code", e)
+    _post_log("re-executing worker with updated code")
+    # Replace this process image with a fresh one running the pulled code.
+    os.execv(_sys.executable, [_sys.executable, str(Path(__file__).resolve())])
+
+
 async def _heartbeat_loop(uid):
     while True:
         try:
             await _beat(uid)
+            await _maybe_self_update(uid)
         except Exception as e:
             log.warning("heartbeat failed: %s", e)
         await asyncio.sleep(HEARTBEAT_S)

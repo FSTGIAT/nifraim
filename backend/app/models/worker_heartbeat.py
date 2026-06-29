@@ -29,3 +29,8 @@ class WorkerHeartbeat(Base):
     # Free-text label of what the worker is doing now (e.g. "running batch …"),
     # shown in the UI tooltip. NULL = idle.
     current_job: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Set by the "עדכן עובד" UI button (POST /worker/request-update). The worker
+    # checks this on each heartbeat; if it's newer than the worker's own start
+    # time it self-updates (git pull) + reloads, then clears it. NULL = nothing
+    # requested. Lets the user update the worker without touching git/the machine.
+    update_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

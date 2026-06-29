@@ -17,6 +17,20 @@
         </div>
       </div>
       <p v-if="worker.online && worker.current_job" class="worker__job">{{ worker.current_job }}</p>
+      <button
+        v-if="worker.online"
+        class="worker__update"
+        type="button"
+        :disabled="updating || worker.update_pending"
+        @click="onUpdateWorker"
+        title="מושך את הקוד העדכני ומפעיל מחדש את המחשב המקומי — בלי גיט ובלי לגעת במחשב"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
+        </svg>
+        <span>{{ (updating || worker.update_pending) ? 'מתעדכן…' : 'עדכן עובד' }}</span>
+      </button>
+      <p v-if="updateMsg" class="worker__update-msg">{{ updateMsg }}</p>
     </section>
 
     <!-- ── Last batch result ─────────────────────────────────── -->
@@ -57,12 +71,30 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 
 defineEmits(['view-results'])
 const store = usePortalAutomationStore()
+
+const updating = ref(false)
+const updateMsg = ref('')
+async function onUpdateWorker() {
+  if (updating.value) return
+  updating.value = true
+  updateMsg.value = ''
+  try {
+    const res = await store.requestWorkerUpdate()
+    updateMsg.value = res?.detail || 'בקשת עדכון נשלחה — המחשב יתעדכן ויופעל מחדש'
+    await store.fetchWorkerStatus()
+  } catch (e) {
+    updateMsg.value = e?.response?.data?.detail || 'שליחת בקשת העדכון נכשלה'
+  } finally {
+    setTimeout(() => { updating.value = false }, 4000)
+    setTimeout(() => { updateMsg.value = '' }, 9000)
+  }
+}
 
 const worker = computed(() => store.workerStatus || { online: false })
 const batch = computed(() => store.latestBatch)
@@ -149,6 +181,33 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 6px 9px;
+}
+.worker__update {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary, var(--text-muted));
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 11px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.worker__update:hover:not(:disabled) {
+  background: var(--card-bg);
+  border-color: var(--text-muted);
+  transform: translateY(-1px);
+}
+.worker__update:disabled { opacity: .6; cursor: default; }
+.worker__update svg { flex: none; }
+.worker__update-msg {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--text-secondary, var(--text-muted));
 }
 
 /* Batch */

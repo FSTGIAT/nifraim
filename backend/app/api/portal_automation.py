@@ -1106,7 +1106,28 @@ async def worker_status(
         "age_seconds": int(age),
         "hostname": row.hostname,
         "current_job": row.current_job,
+        # True while an update was requested but the worker hasn't picked it up yet
+        # (still pending). Cleared by the worker after it self-updates.
+        "update_pending": row.update_requested_at is not None,
     }
+
+
+@router.post("/worker/request-update")
+async def worker_request_update(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Ask the agent's local worker to pull the latest code + restart itself — no
+    git/console needed. Sets a flag the worker reads on its next heartbeat (≤15s);
+    it then `git reset --hard` to the deploy branch and re-execs. Idempotent."""
+    row = (await db.execute(
+        select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
+    )).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=409, detail="לא נמצא עובד מקומי — ודאו שהמחשב מחובר")
+    row.update_requested_at = datetime.utcnow()
+    await db.commit()
+    return {"ok": True, "detail": "בקשת עדכון נשלחה לעובד — יתעדכן ויופעל מחדש תוך כדקה"}
 
 
 # ── Remote worker log sink (so support can "follow the log" server-side) ──

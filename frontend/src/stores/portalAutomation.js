@@ -16,7 +16,7 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   const loading = ref(false)
   const error = ref(null)
   // Local worker liveness (the agent's Israeli machine that runs the automation)
-  const workerStatus = ref({ online: false, last_seen: null, hostname: null, current_job: null })
+  const workerStatus = ref({ online: false, last_seen: null, hostname: null, current_job: null, update_pending: false })
 
   let pollHandle = null
 
@@ -25,9 +25,16 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
       const res = await api.get('/portal-automation/worker/status')
       workerStatus.value = res.data
     } catch (_) {
-      workerStatus.value = { online: false, last_seen: null, hostname: null, current_job: null }
+      workerStatus.value = { online: false, last_seen: null, hostname: null, current_job: null, update_pending: false }
     }
     return workerStatus.value
+  }
+
+  // "עדכן עובד" button — ask the local worker to git-pull + restart itself (no git
+  // or console needed). The worker reads the flag on its next heartbeat (≤15s).
+  async function requestWorkerUpdate() {
+    const res = await api.post('/portal-automation/worker/request-update')
+    return res.data
   }
 
   async function fetchPortalKinds() {
@@ -374,6 +381,7 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     error,
     workerStatus,
     fetchWorkerStatus,
+    requestWorkerUpdate,
     fetchPortalKinds,
     fetchCredentials,
     createCredential,
