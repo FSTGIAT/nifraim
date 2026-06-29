@@ -411,6 +411,33 @@ download to `C:\fnxbox`) → `phoenix_mu.parse_phoenix_mu` → ingest as product
 
 ---
 
+## Local Worker & Self-Update (`local-worker` skill)
+
+Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the
+agent's **local Windows machine in Israel** (the "worker"), which points its DB at prod and
+ingests there. The website button only *creates* the batch; if a worker is online
+(`worker_heartbeats.last_seen` ≤ 90s) Railway leaves it pending for the worker to claim, else it
+runs inline and the IL portals fail.
+
+**The worker is a DOWNLOADED BUNDLE, not a git checkout.** Code lives at
+`C:\Users\<user>\AppData\Local\Nifraim\` (no `.git`), delivered by
+`GET /api/portal-automation/worker/bundle/{token}` (zip of `backend/app/**` + `local_worker.py` +
+`requirements.txt` + `scripts/windows/**`). **Never `git pull` the worker** — updates mean
+**re-downloading the bundle**, which reflects Railway's deployed code (so `railway up` first).
+
+**"עדכן עובד" self-update button** (`PortalActivityPanel.vue` → `POST /worker/request-update`):
+sets `worker_heartbeats.update_requested_at`; the worker's `_maybe_self_update` (each heartbeat,
+≤15s) sees a flag newer than its start, downloads+extracts the bundle in-process, and `os.execv`
+re-execs. The download is in-memory → it never lands in the browser Downloads folder (by design;
+users handle nothing). A stale flag self-clears so the UI doesn't stick on מתעדכן…. Debug via
+`railway logs | grep WORKER-LOG` (the worker POSTs progress to `/worker/log/{token}`) and the
+worker's file mtimes. A worker can be **online but on stale code** — verify after updates.
+
+See the **`local-worker` skill** for the full architecture, the bootstrap path (updating a
+pre-self-update worker), and gotchas (Phoenix terminal needs an ELEVATED worker for SendInput).
+
+---
+
 ## Patterns & Conventions
 
 ### Backend
