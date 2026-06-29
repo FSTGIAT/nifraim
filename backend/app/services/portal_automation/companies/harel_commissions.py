@@ -144,16 +144,48 @@ class HarelCommissionsPortal(HarelPortal):
         # ── The report renders inside an "intellisys" BI iframe — all params,
         # the סנן מידע button, the עמלות drill numbers and the bar-excel button
         # live INSIDE it. Acquire the frame and operate within it. ──
-        async def _get_frame():
-            for _ in range(30):
-                el = await page.query_selector(
-                    "iframe.intellisys, iframe[id*='intellisys'], "
-                    "iframe[src*='_sp_dashboard']"
-                )
-                if el:
-                    fr = await el.content_frame()
-                    if fr:
-                        return fr
+        async def _get_frame(poll_seconds: int = 40):
+            # Hardened like _harel_report._get_frame (harel_savings): poll ~40s with
+            # 3 strategies so a slow BI render / re-attach doesn't fail the run.
+            _SELS = (
+                "iframe.intellisys",
+                "iframe[id*='intellisys']",
+                "iframe[src*='intellisys']",
+                "iframe[name*='intellisys']",
+                "iframe[src*='_sp_dashboard']",
+            )
+            _KW = ("intellisys", "_sp_dashboard")
+            for _ in range(max(1, poll_seconds * 2)):
+                # 1) DOM iframe element → content_frame
+                for sel in _SELS:
+                    try:
+                        el = await page.query_selector(sel)
+                        if el:
+                            fr = await el.content_frame()
+                            if fr:
+                                return fr
+                    except Exception:
+                        pass
+                # 2) Playwright frame URL/name scan (before the <iframe> attaches)
+                try:
+                    for fr in page.frames:
+                        u = (fr.url or "").lower(); n = (fr.name or "").lower()
+                        if u in ("", "about:blank"):
+                            continue
+                        if any(kw in u or kw in n for kw in _KW):
+                            return fr
+                except Exception:
+                    pass
+                # 3) any frame with Intellisys drillable cells (last resort)
+                try:
+                    for fr in page.frames:
+                        try:
+                            if await fr.locator("td.click-enter").count() > 0:
+                                return fr
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
                 await asyncio.sleep(0.5)
             return None
 
