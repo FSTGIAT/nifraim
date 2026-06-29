@@ -40,17 +40,67 @@ class _HarelReportPortal(HarelPortal):
 
     # ── frame / dump / click helpers ──────────────────────────────────────────
 
-    async def _get_frame(self, page: "Page"):
+    async def _get_frame(self, page: "Page", *, poll_seconds: int = 40):
         """Return the intellisys dashboard iframe (re-query each call — it can
-        re-render on filter/drill)."""
-        for _ in range(30):
-            el = await page.query_selector(
-                "iframe.intellisys, iframe[id*='intellisys'], iframe[src*='_sp_dashboard']"
-            )
-            if el:
-                fr = await el.content_frame()
-                if fr:
-                    return fr
+        re-render on filter/drill).
+
+        Polls for up to *poll_seconds* (default 40 s, up from the original 15 s,
+        to handle slow BI renders after deep drills or on flaky connections).
+        Each 0.5 s tick tries three strategies in order:
+
+        1. CSS selector against the DOM iframe element (five variants: class,
+           id-substring, src-substring, name-substring, _sp_dashboard src).
+        2. Direct ``page.frames`` scan by URL/name keyword — catches iframes
+           whose outer-DOM ``<iframe>`` element hasn't attached yet but whose
+           Playwright Frame object is already navigated.
+        3. Any frame that has rendered Intellisys drillable cells
+           (``td.click-enter``) — last resort so we never false-positive on
+           empty or utility frames.
+        """
+        _SELS = (
+            "iframe.intellisys",
+            "iframe[id*='intellisys']",
+            "iframe[src*='intellisys']",
+            "iframe[name*='intellisys']",
+            "iframe[src*='_sp_dashboard']",
+        )
+        _KW = ("intellisys", "_sp_dashboard")
+        iters = max(1, poll_seconds * 2)  # 0.5 s per tick
+        for _ in range(iters):
+            # Strategy 1: DOM element → content_frame
+            for sel in _SELS:
+                try:
+                    el = await page.query_selector(sel)
+                    if el:
+                        fr = await el.content_frame()
+                        if fr:
+                            return fr
+                except Exception:
+                    pass
+            # Strategy 2: Playwright frame URL / name scan (no DOM element needed)
+            try:
+                for fr in page.frames:
+                    try:
+                        url = fr.url or ""
+                        name = fr.name or ""
+                        if url in ("", "about:blank"):
+                            continue
+                        if any(kw in url.lower() or kw in name.lower() for kw in _KW):
+                            return fr
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            # Strategy 3: any frame with Intellisys drillable cells
+            try:
+                for fr in page.frames:
+                    try:
+                        if await fr.locator("td.click-enter").count() > 0:
+                            return fr
+                    except Exception:
+                        continue
+            except Exception:
+                pass
             await asyncio.sleep(0.5)
         return None
 
@@ -178,8 +228,26 @@ class _HarelReportPortal(HarelPortal):
 
         frame = await self._get_frame(page)
         if frame is None:
-            await self._safe_screenshot(page, SCREENSHOT_ROOT / f"{run_id}_1_no_frame.png")
-            await self._dump_page_state(page, SCREENSHOT_ROOT / f"{run_id}_1_no_frame.png")
+            # The BI iframe might still be loading, or the session bounced to
+            # hangup.php3 mid-goto. Try hangup recovery and re-poll for a
+            # shorter window before giving up completely.
+            try:
+                await self._recover_hangup(page)
+                await page.wait_for_timeout(2000)
+            except Exception:
+                pass
+            frame = await self._get_frame(page, poll_seconds=10)
+
+        if frame is None:
+            _no_frame = SCREENSHOT_ROOT / f"{run_id}_1_no_frame.png"
+            await self._safe_screenshot(page, _no_frame)
+            await self._dump_page_state(page, _no_frame)
+            try:
+                # Full iframe inventory for post-mortem (src/name/id of every
+                # frame Playwright knows about — see _no_frame.iframes.txt).
+                await self._dump_all_frames(page, _no_frame)
+            except Exception:
+                pass
             raise RuntimeError(f"לא נמצא iframe של הדוח (intellisys) ב-{page.url}.")
         for sel in ("#_ctrlParam__2", ".param-container", "button.bar-excel"):
             try:

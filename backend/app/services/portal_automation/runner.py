@@ -70,7 +70,11 @@ BROWSER_PROFILE_ROOT = PROJECT_ROOT / "data" / "browser_profiles"
 
 OTP_WAIT_TIMEOUT_S = 240   # 4 minutes — accommodates manual OTP relay through chat
 OTP_POLL_INTERVAL_S = 1.0
-RUN_HARD_TIMEOUT_S = 360
+# 10 min per run. Must exceed the worst legit run: a cold reCAPTCHA profile's login
+# retries (Mor/Meitav reload+warm, ~250s) + the 240s OTP wait + download. At 360s a
+# slow-warming Mor was killed mid-OTP. No-OTP portals still fail fast at the 240s OTP
+# timeout, so this only buys headroom for genuinely-slow logins — never hangs longer.
+RUN_HARD_TIMEOUT_S = 600
 
 
 class OtpTimeout(TimeoutError):

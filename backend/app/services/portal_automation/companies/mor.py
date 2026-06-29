@@ -81,6 +81,63 @@ class MorPortal(BasePortalAutomation):
         if len(phone) == 9 and not phone.startswith("0"):
             phone = "0" + phone
 
+        # ---- Form-ready retry ---------------------------------------------------
+        # On a COLD persistent-profile (first run after a worker restart) the
+        # Angular reactive form may take longer than 15 s to paint, or a
+        # transient reCAPTCHA challenge causes the page to blank-reload after
+        # cookies settle.  Retry up to 4 times (re-goto between attempts, 22 s
+        # each) so the first batch run of the day self-heals without human
+        # intervention.  Dump screenshot + state on every miss so the next
+        # failure is diagnosable even without a live re-run.
+        _FORM_FIELD = "input[formcontrolname='licenseId']"
+        _MAX_ATT = 4
+        _form_ready = False
+        for _att in range(1, _MAX_ATT + 1):
+            try:
+                await page.wait_for_selector(_FORM_FIELD, state="visible", timeout=22000)
+                _form_ready = True
+                break
+            except Exception:
+                # Dump what the browser shows right now
+                _retry_path = SCREENSHOT_ROOT / f"mor_login_{safe}_retry{_att}.png"
+                await self._safe_screenshot(page, _retry_path)
+                await self._dump_page_state(page, _retry_path)
+                # Detect an obvious block / error page for the diagnostic txt
+                try:
+                    _body_text = await page.evaluate(
+                        "() => (document.body && document.body.innerText || '').slice(0, 800)"
+                    )
+                except Exception:
+                    _body_text = ""
+                # Log the detection in the .txt (already written by _dump_page_state);
+                # do NOT raise yet — a reload may still recover the session.
+                _ = any(
+                    kw in _body_text
+                    for kw in ("אירעה שגיאה", "שגיאה", "reCAPTCHA", "Access Denied", "blocked")
+                )
+                if _att < _MAX_ATT:
+                    # Re-navigate so the persistent-profile cookies & reputation
+                    # get another chance to satisfy reCAPTCHA Enterprise.
+                    try:
+                        await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=40000)
+                        try:
+                            await page.wait_for_load_state("networkidle", timeout=12000)
+                        except Exception:
+                            pass
+                        await page.wait_for_timeout(3000)
+                    except Exception:
+                        pass
+
+        if not _form_ready:
+            _fail_path = SCREENSHOT_ROOT / f"mor_login_{safe}_failed.png"
+            await self._safe_screenshot(page, _fail_path)
+            await self._dump_page_state(page, _fail_path)
+            raise RuntimeError(
+                f"Mor: שדה הכניסה (licenseId) לא הופיע לאחר {_MAX_ATT} ניסיונות טעינה — "
+                f"בדוק mor_login_{safe}_retry*.txt לאיבחון."
+            )
+        # -------------------------------------------------------------------------
+
         async def _type(sel: str, val: str):
             await self._wait_visible(page, sel, timeout=15000)
             await page.click(sel)

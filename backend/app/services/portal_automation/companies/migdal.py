@@ -24,6 +24,34 @@ if TYPE_CHECKING:
 PORTAL_URL = "https://mfte.migdal.co.il/#/"
 
 
+async def _retry_file_op(fn, *, attempts: int = 4, delay: float = 0.6):
+    """Call fn() and retry on PermissionError/OSError (covers Windows WinError 32
+    file-lock errors that antivirus or Playwright's temp-file move can trigger).
+
+    fn may be:
+      - a plain sync callable  → result = fn()
+      - a callable returning a coroutine → result = await fn()
+
+    Back-off: delay * (attempt+1) seconds between retries (0.6 s, 1.2 s, 1.8 s …).
+    Raises the last exception if all attempts fail.
+    """
+    import asyncio as _asyncio
+    import inspect as _inspect
+
+    last_err: BaseException = RuntimeError("no attempts made")
+    for i in range(attempts):
+        try:
+            result = fn()
+            if _inspect.isawaitable(result):
+                result = await result
+            return result
+        except (PermissionError, OSError) as e:
+            last_err = e
+            if i < attempts - 1:
+                await _asyncio.sleep(delay * (i + 1))
+    raise last_err
+
+
 class MigdalPortal(BasePortalAutomation):
     portal_kind = "migdal"
     company_label = "מגדל — כספת (ייצור)"
@@ -305,6 +333,11 @@ class MigdalPortal(BasePortalAutomation):
                 # Reset XHR buffer between subfolders so we don't reuse the
                 # previous one's bytes for the next folder.
                 xhr_capture = {"bytes": None, "url": None}
+                # Pre-unlink stale destination so a lingering Windows file-
+                # handle from a previous run doesn't cause WinError 32 when
+                # save_as tries to overwrite it.
+                if out.exists():
+                    await _retry_file_op(lambda: out.unlink(missing_ok=True))
                 try:
                     async with page.expect_download(timeout=45000) as dl_info:
                         direct = await self._click_first_visible(
@@ -318,7 +351,9 @@ class MigdalPortal(BasePortalAutomation):
                                 page, download_candidates, timeout=4000
                             )
                     download = await dl_info.value
-                    await download.save_as(str(out))
+                    # Retry on WinError 32: Playwright moves the temp download
+                    # file into place and AV/Explorer can briefly lock it.
+                    await _retry_file_op(lambda: download.save_as(str(out)))
                 except Exception as native_err:
                     import asyncio
                     for _ in range(20):
@@ -326,7 +361,10 @@ class MigdalPortal(BasePortalAutomation):
                             break
                         await asyncio.sleep(0.5)
                     if xhr_capture["bytes"]:
-                        out.write_bytes(xhr_capture["bytes"])
+                        # XHR path: same WinError 32 guard for the fallback write.
+                        await _retry_file_op(
+                            lambda: out.write_bytes(xhr_capture["bytes"])
+                        )
                     else:
                         raise RuntimeError(
                             f"הורדה לא הופעלה ב-{label} ({page.url}): {native_err}"
@@ -375,7 +413,12 @@ class MigdalPortal(BasePortalAutomation):
             # Step 6: merge all downloaded Mimshak bundles into one xlsx
             # with a clean Hebrew filename for the production tab.
             from app.services.mimshak import merge_mimshak_zips_to_xlsx
-            zip_bytes_list = [p.read_bytes() for p in downloaded_zips]
+            # Each zip was just written; on Windows a transient AV/Explorer
+            # handle can still block read_bytes — retry per file.
+            zip_bytes_list = [
+                await _retry_file_op(lambda p=p: p.read_bytes())
+                for p in downloaded_zips
+            ]
 
             # Build the display filename from the latest period found in any
             # DAT filename inside the bundles. Pattern: `...INP\d{3}YYYYMMDD\d+.DAT`
@@ -403,7 +446,13 @@ class MigdalPortal(BasePortalAutomation):
                 period_label = f"{HEBREW_MONTHS[now.month]} {now.year}"
 
             merged_xlsx = download_dir / f"מגדל - ייצור ({period_label}).xlsx"
-            merge_mimshak_zips_to_xlsx(zip_bytes_list, merged_xlsx)
+            # Pre-unlink stale merged file before writing so openpyxl / the OS
+            # doesn't hit WinError 32 on an already-open xlsx from a prior run.
+            if merged_xlsx.exists():
+                await _retry_file_op(lambda: merged_xlsx.unlink(missing_ok=True))
+            await _retry_file_op(
+                lambda: merge_mimshak_zips_to_xlsx(zip_bytes_list, merged_xlsx)
+            )
             _logger.info(
                 "Migdal: merged %d bundle(s) → %s",
                 len(downloaded_zips), merged_xlsx.name,
