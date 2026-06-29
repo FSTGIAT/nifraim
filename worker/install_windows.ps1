@@ -48,6 +48,14 @@ Write-Host "[Nifraim] Installing dependencies (this can take a few minutes)…"
 Write-Host "[Nifraim] Installing Playwright Chromium…"
 & $py -m playwright install chromium
 
+# 3b. Windows-only deps the Phoenix terminal driver needs but that are NOT in the
+#     (Linux/Railway) backend requirements: pywin32 (win32gui/SendInput to drive
+#     the PowerTerm green screen) + Pillow (window screen-grabs). Without pywin32
+#     the export step crashes at `import win32gui` → "export script exit 1" and the
+#     terminal is left open & undriven. See memory phoenix_terminal_production.
+Write-Host "[Nifraim] Installing Windows terminal-driver deps (pywin32, Pillow)…"
+& $py -m pip install pywin32 pillow
+
 # 4. .env at repo root
 $envPath = Join-Path $Repo ".env"
 $lines = @(
@@ -73,15 +81,25 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllLines($envPath, $lines, $utf8NoBom)
 Write-Host "[Nifraim] Wrote $envPath (no BOM)"
 
-# 5. Scheduled Task — start at logon, restart on failure
+# 5. Scheduled Task — start at logon, restart on failure.
+#    RunLevel Highest + Interactive principal: the worker must run ELEVATED so its
+#    SendInput keystrokes pass Windows UIPI into the Phoenix PowerTerm terminal
+#    (a medium-integrity worker's keystrokes are silently dropped → the "13"/'כ'
+#    export does nothing). Interactive logon keeps it in the user's desktop
+#    session so it can drive the GUI. Registering a Highest task needs admin —
+#    run this installer elevated; if it can't, use worker\elevate_worker.bat
+#    afterwards (one UAC) to upgrade the task in place.
 $bat = Join-Path $Repo "worker\start_worker.bat"
 $taskName = "NifraimLocalWorker"
 $action  = New-ScheduledTaskAction -Execute $bat
 $trigger = New-ScheduledTaskTrigger -AtLogOn
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+             -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
             -StartWhenAvailable -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Hours 0)
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
-Write-Host "[Nifraim] Registered Scheduled Task '$taskName' (auto-start at logon)."
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+  -Principal $principal -Settings $settings -Force | Out-Null
+Write-Host "[Nifraim] Registered Scheduled Task '$taskName' (elevated, auto-start at logon)."
 
 # Start it now
 Start-ScheduledTask -TaskName $taskName

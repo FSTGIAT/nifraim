@@ -170,6 +170,41 @@ ALTSHULER_COLUMNS = {
     "מספר קופה": "fund_number",
 }
 
+# Column mappings for Yelin Lapidot commission report (ילין לפידות — פירוט עמלות).
+# Downloaded from online.yl-invest.co.il agent portal → top menu עמלות → ייצוא
+# לאקסל. Gemel/accumulation-based: balance = יתרת חשבון, commission = עמלה נטו
+# לסוכן. Period lives in the שנה/חודש columns (handled in _parse_yelin_nifraim).
+YELIN_NIFRAIM_COLUMNS = {
+    "ת.ז": "id_number",
+    "שם עמית": "full_name",
+    "חשבון": "fund_policy_number",
+    "מספר סוכן": "agent_number",
+    "יתרת חשבון": "balance",
+    "עמלה נטו לסוכן": "commission_paid",
+    "אחוז דמי ניהול": "management_fee",
+}
+# "עמלה נטו לסוכן" is unique to Yelin; pair with "אחוז דמי ניהול" for safety.
+YELIN_NIFRAIM_SIGNATURE = {"עמלה נטו לסוכן", "אחוז דמי ניהול"}
+
+# Meitav Dash commission report (מיטב דש — דוח עמלות לסוכן / "נפרעים חודשי גמל
+# והשתלמות"). Gemel/accumulation-based: balance = יתרה, commission = עמלה. Period
+# lives in "תאריך היתרה" (handled in _parse_meitav_nifraim). The first data row is
+# a "דוגמה" (sample) row — skipped by the id_number filter.
+MEITAV_NIFRAIM_COLUMNS = {
+    'ת"ז/ח"פ': "id_number",
+    "שם עמית": "full_name",
+    "מספר חשבון": "fund_policy_number",
+    "שם קופה": "product",
+    "יתרה": "balance",
+    "עמלה": "commission_paid",
+    'שיעור דנ"ח': "management_fee",
+    "מעמד": "employment_status",
+    "תאריך הצטרפות": "sign_date",
+    "מספר סוכן משני": "agent_number",
+}
+# 'דנ"ח ברוטו' + 'סוג עמלה' are unique to the Meitav export.
+MEITAV_NIFRAIM_SIGNATURE = {'דנ"ח ברוטו', "סוג עמלה"}
+
 # Column mappings for Phoenix Insurance Commission Report (נפרעים הפניקס ביטוח)
 PHOENIX_INSURANCE_NIFRAIM_COLUMNS = {
     "תז המבוטח": "id_number",

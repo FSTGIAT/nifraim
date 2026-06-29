@@ -23,9 +23,10 @@ PORTAL_URL = "https://join.more.co.il/agentsportal/agents/login"
 class MorPortal(BasePortalAutomation):
     portal_kind = "mor"
     company_label = "מור"
-    # Keep out of the run-all batch until live-verified (nav selectors are
-    # best-effort until the first real run). Flip to True after verification.
-    include_in_batch = False
+    # In the run-all batch. Mor's reCAPTCHA Enterprise gate only passes on the
+    # Windows LOCAL WORKER (real desktop Chrome + IL IP) — never headless/Linux
+    # Railway — so the batch must defer this credential to the worker.
+    include_in_batch = True
     # Mor's login is gated by reCAPTCHA *Enterprise* (score-based). The server
     # returns HTTP 400 ("אירעה שגיאה") whenever Google scores the browser as a
     # bot. Proven live: headless + the runner's UA override → 400; headed +
@@ -158,15 +159,27 @@ class MorPortal(BasePortalAutomation):
             except Exception:
                 pass
         await page.wait_for_timeout(400)
-        await self._click_first_visible(page, [
-            "button:has-text('אישור')",
-            "button:has-text('כניסה')",
-            "button:has-text('המשך')",
-            "input[type='submit']",
-            "button[type='submit']",
+        # CRITICAL: the OTP submit button lives inside the <app-otp> dialog, but
+        # the LOGIN form BEHIND the modal ALSO has a `type=submit` "כניסה" button
+        # that appears FIRST in the DOM. A bare `button:has-text('כניסה')` clicks
+        # that background button → the OTP is never submitted and the modal just
+        # sits there (no error). Scope the click to the dialog; fall back to
+        # pressing Enter inside the OTP field.
+        clicked = await self._click_first_visible(page, [
+            "app-otp button[type='submit']",
+            ".k-dialog-content button[type='submit']",
+            "app-otp button:has-text('כניסה')",
         ], timeout=6000)
+        if not clicked:
+            try:
+                await page.focus(otp_sel)
+                await page.keyboard.press("Enter")
+            except Exception:
+                pass
+        # Accepted ⇒ the OTP dialog detaches (the SPA keeps the URL on
+        # /agents/login, so don't gate on the URL).
         try:
-            await page.wait_for_url(lambda u: "login" not in (u or "").lower(), timeout=20000)
+            await page.wait_for_selector("app-otp", state="detached", timeout=20000)
         except Exception:
             pass
         post = SCREENSHOT_ROOT / "mor_post_otp.png"
@@ -174,6 +187,16 @@ class MorPortal(BasePortalAutomation):
         await self._dump_page_state(page, post)
         if not filled:
             raise RuntimeError("Mor: לא נמצא שדה OTP — בדוק mor_login_*_post_submit.txt")
+        # If the OTP dialog is still open, the code was rejected (or the click
+        # missed) — fail with the on-screen error instead of silently navigating
+        # download_reports against the login page.
+        if await page.locator("#otpInput").count() and await page.locator("#otpInput").first.is_visible():
+            err = await page.evaluate(
+                "() => {const e=document.querySelector('.erroronbatt');return e?e.innerText.trim():'';}"
+            )
+            raise RuntimeError(
+                f"Mor: קוד ה-OTP לא התקבל (מודאל ה-OTP עדיין פתוח). {('שגיאה: '+err) if err else ''}"
+            )
 
     async def download_reports(self, page: "Page", download_dir: Path, **kwargs) -> list[Path]:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
@@ -188,18 +211,23 @@ class MorPortal(BasePortalAutomation):
 
         await ck("nav_0_home")
 
-        # 1) Right-menu → "חישוב עמלות".
+        # 1) Right side-menu (Kendo drawer) → "תגמול" — the commission/נפרעים
+        #    report. Live DOM: <li kendodraweritem aria-label="תגמול"
+        #    class="k-drawer-item tagmul" data-kendo-drawer-index="8">. NOTE the
+        #    label is "תגמול" (compensation), NOT "חישוב עמלות"; "חישוב תגמול"
+        #    (index 9) is a DIFFERENT item — match aria-label exactly so we don't
+        #    hit it. Click the <li>; fall back to its inner k-item-text span.
         await self._click_first_visible(page, [
-            "a:has-text('חישוב עמלות')",
-            "span:has-text('חישוב עמלות')",
-            "*:has-text('חישוב עמלות')",
-            "a:has-text('עמלות')",
+            "li[aria-label='תגמול']",
+            "li.k-drawer-item.tagmul",
+            "li[data-kendo-drawer-index='8']",
+            "li[aria-label='תגמול'] span.k-item-text",
         ], timeout=12000)
         try:
             await page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
             pass
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(2000)
         await ck("nav_1_commissions")
 
         # 2) Download to Excel (latest month default; refine selection after the

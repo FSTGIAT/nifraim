@@ -85,6 +85,7 @@ class PhoenixNifraimPortal(PhoenixPortal):
         await self._click_first_visible(
             page,
             [
+                "button:has-text('קראתי והבנתי')",  # privacy/consent banner (2026-06)
                 "button:has-text('סגור')",
                 "button:has-text('אישור')",
                 "button:has-text('הבנתי')",
@@ -208,8 +209,15 @@ async def download_health_report(
     # only enter the DOM once the header is clicked. The חא"ט link is uniquely
     # identified by carrying BOTH נפרעים + בריאות (the גמל report lacks בריאות;
     # the "הפרשי"/"היקף" reports lack נפרעים). Toggle until visible.
+    #
+    # The sidebar nav item is a <span>עמלות</span>; the home dashboard also grew an
+    # "עמלות" summary WIDGET rendered as <h2>עמלות</h2> (with שנה נוכחית/שנה קודמת
+    # links). `get_by_text("עמלות", exact=True).first` matched the widget header,
+    # so the click was a no-op and the nav flyout (the נפרעים links) never opened
+    # (live 2026-06-29: נפרעים count = 0 in the DOM). Scope to the nav <span> via
+    # :text-is so the <h2> widget can't be picked.
     nifraim_link = root_page.locator("a:has-text('נפרעים'):has-text('בריאות')").first
-    amlot_header = root_page.get_by_text("עמלות", exact=True).first
+    amlot_header = root_page.locator("span:text-is('עמלות')").first
     expanded = False
     for _ in range(3):
         try:

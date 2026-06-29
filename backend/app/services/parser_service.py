@@ -1,6 +1,6 @@
 import io
 import tempfile
-from datetime import datetime
+from datetime import datetime, date
 
 import msoffcrypto
 import pandas as pd
@@ -13,6 +13,9 @@ from app.utils.hebrew_mappings import (
     HACHSHARA_NIFRAIM_COLUMNS,
     MENORA_COLUMNS,
     ALTSHULER_COLUMNS,
+    YELIN_NIFRAIM_COLUMNS,
+    MEITAV_NIFRAIM_COLUMNS,
+    MEITAV_NIFRAIM_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
     HAREL_NIFRAIM_COLUMNS,
     HAREL_SAVINGS_NIFRAIM_COLUMNS,
@@ -32,6 +35,7 @@ from app.utils.hebrew_mappings import (
     HACHSHARA_NIFRAIM_SIGNATURE,
     MENORA_SIGNATURE,
     ALTSHULER_SIGNATURE,
+    YELIN_NIFRAIM_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_SIGNATURE,
     HAREL_NIFRAIM_SIGNATURE,
     HAREL_SAVINGS_NIFRAIM_SIGNATURE,
@@ -248,6 +252,11 @@ def detect_format(columns: list[str], filename: str | None = None) -> str:
         return "menora"
     if col_set & ALTSHULER_SIGNATURE:
         return "altshuler"
+    if col_set & YELIN_NIFRAIM_SIGNATURE:
+        return "yelin_nifraim"
+
+    if MEITAV_NIFRAIM_SIGNATURE.issubset(col_set):
+        return "meitav_nifraim"
     if col_set & HAREL_SAVINGS_NIFRAIM_SIGNATURE:
         return "harel_savings_nifraim"
     if col_set & HAREL_NIFRAIM_SIGNATURE:
@@ -275,7 +284,8 @@ def detect_format(columns: list[str], filename: str | None = None) -> str:
 # right tab (production vs commission vs recruits vs volume).
 _PRODUCTION_FORMATS = {"production"}
 _COMMISSION_FORMATS = {
-    "nifraim", "hachshara_nifraim", "menora", "altshuler",
+    "nifraim", "hachshara_nifraim", "menora", "altshuler", "yelin_nifraim",
+    "meitav_nifraim",
     "harel_savings_nifraim", "harel_nifraim",
     "clal_life_nifraim", "clal_health_nifraim",
     "ayalon_nifraim", "migdal_nifraim",
@@ -496,8 +506,17 @@ def parse_excel(
                         break
             wb.close()
             buf.seek(0)
-            nrows = max(max_row + 1, 10)  # read at least 10 rows
-            df = pd.read_excel(buf, engine=engine, sheet_name=0, nrows=nrows)
+            if max_row <= 1:
+                # openpyxl read_only/data_only returns None for the cells of some
+                # minimally-generated xlsx (e.g. the Hachshara portal export — it
+                # warns "Workbook contains no default style"), so max_row collapses
+                # to 1 and the nrows cap silently truncates a real report to ~10
+                # rows. The count is unreliable here → read ALL rows; the
+                # `dropna(how="all")` below still trims genuine trailing blanks.
+                df = pd.read_excel(buf, engine=engine, sheet_name=0)
+            else:
+                nrows = max(max_row + 1, 10)  # cap huge sparse files
+                df = pd.read_excel(buf, engine=engine, sheet_name=0, nrows=nrows)
     else:
         df = pd.read_excel(buf, engine=engine)
 
@@ -594,6 +613,10 @@ def parse_excel(
         return _parse_menora(df)
     elif file_format == "altshuler":
         return _parse_altshuler(df)
+    elif file_format == "yelin_nifraim":
+        return _parse_yelin_nifraim(df)
+    elif file_format == "meitav_nifraim":
+        return _parse_meitav_nifraim(df)
     elif file_format == "harel_nifraim":
         return _parse_harel_nifraim(df)
     elif file_format == "harel_savings_nifraim":
@@ -1085,6 +1108,145 @@ def _parse_altshuler(df: pd.DataFrame) -> dict:
         "company_source": "אלטשולר",
         "records": records,
     }
+
+
+def _parse_yelin_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Yelin Lapidot commission report (ילין לפידות — פירוט עמלות).
+
+    Gemel/accumulation-based: balance = יתרת חשבון, commission = עמלה נטו לסוכן.
+    The period is NOT in the filename (the export is named generically) — it
+    lives in the שנה/חודש columns, so we surface it via ``period_month`` which
+    ``upload_ingest`` prefers over the filename-based ``detect_period_month``.
+    """
+    records = []
+    period_month = None
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in YELIN_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("balance", "commission_paid", "management_fee"):
+                    record[eng_field] = parse_numeric(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (isinstance(val, float) and pd.isna(val)) else None
+
+        # Period from שנה / חודש (first valid row wins).
+        if period_month is None:
+            try:
+                yr = int(parse_numeric(row.get("שנה")))
+                mo = int(parse_numeric(row.get("חודש")))
+                if 2000 <= yr <= 2100 and 1 <= mo <= 12:
+                    period_month = date(yr, mo, 1)
+            except (TypeError, ValueError):
+                pass
+
+        # Split full_name into first/last if present
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean id_number — remove .0 artifacts
+        if record.get("id_number"):
+            id_str = str(record["id_number"])
+            if id_str.endswith(".0"):
+                id_str = id_str[:-2]
+            record["id_number"] = id_str
+
+        # Clean agent_number / fund_policy_number — remove .0 artifacts
+        for fld in ("agent_number", "fund_policy_number"):
+            if record.get(fld):
+                v = str(record[fld])
+                if v.endswith(".0"):
+                    v = v[:-2]
+                record[fld] = v
+
+        # Cross-compatibility: map balance for unified display
+        if record.get("balance"):
+            record["month_end_balance"] = record["balance"]
+
+        record["receiving_company"] = "ילין לפידות"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip rows without id_number (metadata/totals rows)
+        if record.get("id_number") and record["id_number"] not in ("nan", "None", ""):
+            records.append(record)
+
+    result = {
+        "format": "yelin_nifraim",
+        "company_source": "ילין לפידות",
+        "records": records,
+    }
+    if period_month is not None:
+        result["period_month"] = period_month
+    return result
+
+
+def _parse_meitav_nifraim(df: pd.DataFrame) -> dict:
+    """Parse Meitav Dash commission report (מיטב דש — דוח עמלות לסוכן / "נפרעים
+    חודשי גמל והשתלמות"). Gemel/accumulation-based: balance = יתרה, commission =
+    עמלה, management-fee rate = שיעור דנ"ח. The period lives in "תאריך היתרה"
+    (surfaced via ``period_month``; the export filename is generic). The first
+    data row is a "דוגמה" (sample) row — dropped by the id_number filter."""
+    records = []
+    period_month = None
+
+    for _, row in df.iterrows():
+        record = {}
+
+        for heb_col, eng_field in MEITAV_NIFRAIM_COLUMNS.items():
+            if heb_col in df.columns:
+                val = row.get(heb_col)
+                if eng_field in ("balance", "commission_paid", "management_fee"):
+                    record[eng_field] = parse_numeric(val)
+                else:
+                    record[eng_field] = str(val).strip() if val is not None and not (
+                        isinstance(val, float) and pd.isna(val)) else None
+
+        # Split full_name into first/last.
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Clean .0 artifacts on id / policy / agent numbers.
+        for fld in ("id_number", "fund_policy_number", "agent_number"):
+            if record.get(fld):
+                v = str(record[fld])
+                if v.endswith(".0"):
+                    v = v[:-2]
+                record[fld] = v
+
+        # Cross-compatibility: accumulation display.
+        if record.get("balance"):
+            record["month_end_balance"] = record["balance"]
+
+        record["receiving_company"] = "מיטב דש"
+        record["reconciliation_status"] = "no_data"
+
+        # Skip the "דוגמה" sample row + metadata/total rows (no real ת"ז).
+        idn = record.get("id_number")
+        if idn and idn not in ("nan", "None", "", "דוגמה") and any(c.isdigit() for c in idn):
+            records.append(record)
+            # Period from "תאריך היתרה" (balance date) — only from VALID rows, so
+            # the "דוגמה" sample row's 2000-01-01 never sets the period.
+            if period_month is None:
+                d = parse_date(row.get("תאריך היתרה"))
+                if d is not None:
+                    period_month = date(d.year, d.month, 1)
+
+    result = {
+        "format": "meitav_nifraim",
+        "company_source": "מיטב דש",
+        "records": records,
+    }
+    if period_month is not None:
+        result["period_month"] = period_month
+    return result
 
 
 def _parse_harel_nifraim(df: pd.DataFrame) -> dict:

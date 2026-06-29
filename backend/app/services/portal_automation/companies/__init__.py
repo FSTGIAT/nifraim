@@ -24,6 +24,8 @@ from app.services.portal_automation.companies.clal_health import ClalHealthPorta
 from app.services.portal_automation.companies.harel import HarelPortal
 from app.services.portal_automation.companies.harel_commissions import HarelCommissionsPortal
 from app.services.portal_automation.companies.harel_savings import HarelSavingsPortal
+from app.services.portal_automation.companies.yelin import YelinPortal
+from app.services.portal_automation.companies.meitav import MeitavPortal
 
 
 REGISTRY: dict[str, type[BasePortalAutomation]] = {
@@ -46,6 +48,8 @@ REGISTRY: dict[str, type[BasePortalAutomation]] = {
     "harel": HarelPortal,
     "harel_commissions": HarelCommissionsPortal,
     "harel_savings": HarelSavingsPortal,
+    "yelin": YelinPortal,
+    "meitav": MeitavPortal,
 }
 
 
@@ -64,7 +68,7 @@ PORTAL_LABELS: dict[str, str] = {
     "clal_nifraim": "כלל — עמלות (נפרעים)",
     "menora": "מנורה",
     "menora_nifraim": "מנורה — נפרעים",
-    "altshuler": "אלטשולר",
+    "altshuler": "אלטשולר — עמלות (נפרעים)",
     "hachshara": "הכשרה",
     "excellence": "אקסלנס",
     "mor": "מור",
@@ -73,6 +77,8 @@ PORTAL_LABELS: dict[str, str] = {
     "harel": "הראל",
     "harel_commissions": "הראל — ריכוז תשלומי עמלות",
     "harel_savings": "הראל — מוצרי צבירה (פרודוקציה)",
+    "yelin": "ילין לפידות — עמלות (נפרעים)",
+    "meitav": "מיטב דש — דוח עמלות לסוכן (נפרעים)",
     "phoenix_terminal": "הפניקס — טרמינל (פרודוקציה)",
 }
 
@@ -104,9 +110,11 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
     "clal":                 ("כלל", "פרודוקציה", "https://www.clalbit.co.il/"),
     "clal_nifraim":         ("כלל", "נפרעים", "https://www.clalbit.co.il/"),
     "clal_health":          ("כלל בריאות", "נפרעים", ""),
-    "altshuler":            ("אלטשולר", "פרודוקציה", ""),
-    "hachshara":            ("הכשרה", "פרודוקציה", ""),
+    "altshuler":            ("אלטשולר", "נפרעים", "https://agents.as-invest.co.il/Login"),
+    "hachshara":            ("הכשרה", "נפרעים", "https://agents-login.hcsra.co.il/my.policy"),
     "excellence":           ("אקסלנס", "פרודוקציה", ""),
     "mor":                  ("מור", "נפרעים", "https://join.more.co.il/agentsportal/agents/login"),
+    "yelin":                ("ילין לפידות", "נפרעים", "https://online.yl-invest.co.il/agents/"),
+    "meitav":               ("מיטב דש", "נפרעים", "https://customers.meitav.co.il/v2/login/LoginAgent"),
     "ayalon":               ("איילון", "פרודוקציה", ""),
 }

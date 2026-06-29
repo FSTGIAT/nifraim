@@ -1,6 +1,26 @@
+import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 import pandas as pd
+
+
+def to_jsonable(obj):
+    """Coerce an arbitrary tree into JSON-safe primitives for a JSONB column.
+    asyncpg's JSONB encoder can't serialise Decimal/date/UUID (DB Numeric →
+    Decimal), so walk the tree once. Canonical home for the helper that
+    batch_runner.py and api/comparison.py each duplicate locally."""
+    if isinstance(obj, dict):
+        return {k: to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    return obj
 
 # Max lengths matching the DB schema
 MAX_LENGTHS = {

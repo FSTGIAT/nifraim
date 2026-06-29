@@ -140,8 +140,13 @@ async def download_gemel_report(
     # Step 1: expand the "עמלות" accordion and reveal the גמל report link.
     # Uniquely matched by נפרעים + גמל (the חא"ט reports lack גמל; the "הפרשי"/
     # "היקף" reports lack נפרעים).
+    #
+    # Scope the accordion header to the sidebar nav <span>עמלות</span> via :text-is
+    # — the home dashboard grew an "עמלות" summary WIDGET (<h2>עמלות</h2>) that
+    # `get_by_text("עמלות", exact=True).first` matched instead, so the click was a
+    # no-op and the flyout never opened (live 2026-06-29). See phoenix_nifraim.py.
     gemel_link = root_page.locator("a:has-text('נפרעים'):has-text('גמל')").first
-    amlot_header = root_page.get_by_text("עמלות", exact=True).first
+    amlot_header = root_page.locator("span:text-is('עמלות')").first
     expanded = False
     for _ in range(3):
         try:

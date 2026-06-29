@@ -41,13 +41,29 @@ DEFAULT_SMS_OTP_TEMPLATES = [
      "example": "שלום, הסיסמא הזמנית לחשבונך במנורה היא - 647087 @menoranet.menora.co.il #647087"},
     {"company_name": "כלל", "portal_kind": "clal", "pattern": r"(כלל|clal).*\d{4,8}",
      "example": "קוד האימות לחשבון האישי שלך הוא: 672428 תודה, כלל ביטוח ופיננסים"},
-    {"company_name": "אלטשולר", "portal_kind": "altshuler", "pattern": r"(אלטשולר|altshuler).*\d{4,8}"},
+    # Real Altshuler OTP is CODE-FIRST ("שלום, NNNNNN הנו קוד האימות ... אלטשולר שחם"),
+    # so a keyword-then-code pattern never tagged it (it forwarded only via fail-open,
+    # untagged). Match the company name on EITHER side of the code. (match_otp_company
+    # extracts the digits separately, so the company anchor is what matters.)
+    {"company_name": "אלטשולר", "portal_kind": "altshuler",
+     "pattern": r"(אלטשולר|altshuler).*\d{4,8}|\d{4,8}.*(אלטשולר|altshuler)",
+     "example": "שלום, 707560 הנו קוד האימות החד פעמי שלך לכניסה לאתר אלטשולר שחם."},
+    # Yelin Lapidot is also code-first ("NNNNNN קוד האימות ... ילין לפידות #NNNNNN").
+    {"company_name": "ילין לפידות", "portal_kind": "yelin",
+     "pattern": r"(ילין|yelin|yl-invest).*\d{4,8}|\d{4,8}.*(ילין|yelin|yl-invest)",
+     "example": "209210 קוד האימות לשירותים דיגיטלים - ילין לפידות @online.yl-invest.co.il #209210"},
+    # מיטב דש — bidirectional (Israeli OTP SMS are often code-first); anchor on
+    # מיטב/meitav. Live OTP wording unverified (refine example after first run).
+    {"company_name": "מיטב דש", "portal_kind": "meitav",
+     "pattern": r"(מיטב|meitav|meitavdash).*\d{4,8}|\d{4,8}.*(מיטב|meitav)"},
     {"company_name": "הכשרה", "portal_kind": "hachshara", "pattern": r"(הכשרה|hachshara).*\d{4,8}"},
     {"company_name": "אקסלנס", "portal_kind": "excellence", "pattern": r"(אקסלנס|excellence).*\d{4,8}"},
     {"company_name": "איילון", "portal_kind": "ayalon", "pattern": r"(איילון|אילון|ayalon).*\d{4,8}"},
     # "מור" is a short token that appears inside other words — require a word
     # boundary (space / punctuation / digit follows) so we don't mis-tag.
-    {"company_name": "מור", "portal_kind": "mor", "pattern": r"(מור[\s\-:.,].*\d{4,8}|more.?invest.*\d{4,8}|morefund.*\d{4,8})"},
+    # Code may precede or follow the "מור" token — match either order (still
+    # boundary-guarded so it won't fire inside a longer word). Live SMS unverified.
+    {"company_name": "מור", "portal_kind": "mor", "pattern": r"(מור[\s\-:.,].*\d{4,8}|\d{4,8}.*מור[\s\-:.,]|more.?invest.*\d{4,8}|morefund.*\d{4,8})"},
     # Privacy block: personal bank 2FA — DROP even though it carries a code.
     {"company_name": "בנק", "portal_kind": None, "is_block": True, "pattern": r"בנק.*\d{4,8}"},
     # Generic OTP-context catch-all (company sent from a bare short code).

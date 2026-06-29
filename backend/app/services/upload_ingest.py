@@ -29,7 +29,7 @@ from app.services.reconciliation_service import (
     apply_rate_deviation,
     cross_reference_uploads,
 )
-from app.utils.sanitize import sanitize_record
+from app.utils.sanitize import sanitize_record, to_jsonable
 
 
 logger = logging.getLogger(__name__)
@@ -415,8 +415,8 @@ async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_uploa
                 user_id=user_id,
                 category=comparison.get("commission_category") or "unknown",
                 production_upload_id=prod_upload.id,
-                summary_json=comparison.get("summary") or {},
-                result_json=comparison,
+                summary_json=to_jsonable(comparison.get("summary") or {}),
+                result_json=to_jsonable(comparison),
                 commission_company_sources=sources,
             )
             db.add(row)
