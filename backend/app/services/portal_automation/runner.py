@@ -63,6 +63,10 @@ def _parse_proxy(proxy_url: str) -> dict | None:
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DOWNLOAD_ROOT = PROJECT_ROOT / "data" / "portal_downloads"
 SCREENSHOT_ROOT = PROJECT_ROOT / "data" / "portal_screenshots"
+# Persistent Chrome profiles (one dir per portal_kind) for plugins that set
+# `use_persistent_profile` — a real on-disk profile so reCAPTCHA Enterprise
+# cookies/reputation survive across runs (e.g. Mor). See base.py flags.
+BROWSER_PROFILE_ROOT = PROJECT_ROOT / "data" / "browser_profiles"
 
 OTP_WAIT_TIMEOUT_S = 240   # 4 minutes — accommodates manual OTP relay through chat
 OTP_POLL_INTERVAL_S = 1.0
@@ -194,43 +198,16 @@ async def _run_inner(
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
-        # Prefer the real Google Chrome binary over bundled Chromium — the
-        # TLS / JA3 fingerprint of bundled Chromium is detectable by edge
-        # WAFs (Harel reroutes to F5 APM with errorcode=19/22 based on it),
-        # while real Chrome's fingerprint matches what their browser sends.
-        # Falls back to chromium when chrome isn't installed.
-        try:
-            browser = await pw.chromium.launch(
-                channel="chrome",
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    # Containers default to a tiny 64MB /dev/shm; Chrome fills it
-                    # and the tab/renderer crashes (Railway "Crashed!" during a
-                    # batch). Write shared memory to /tmp instead. Standard
-                    # container fix; does NOT change the TLS/JA3 fingerprint.
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ],
-            )
-        except Exception:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    # Containers default to a tiny 64MB /dev/shm; Chrome fills it
-                    # and the tab/renderer crashes (Railway "Crashed!" during a
-                    # batch). Write shared memory to /tmp instead. Standard
-                    # container fix; does NOT change the TLS/JA3 fingerprint.
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ],
-            )
+        # Per-portal anti-bot fingerprint controls (see base.py). Defaults keep
+        # every existing portal on the shared headless + UA-override path.
+        headed = getattr(plugin, "headed", False)
+        native = getattr(plugin, "native_fingerprint", False)
+        persist = getattr(plugin, "use_persistent_profile", False)
+
         # Israeli insurer WAFs geo-block Railway's foreign datacenter IP. Route
         # geo-blocked portals through an IL residential proxy when one is set;
         # otherwise (or for direct-OK portals like Migdal) connect directly.
+        # Hoisted above the launch so a persistent context can receive it too.
         context_proxy = None
         if getattr(plugin, "needs_residential_proxy", True):
             # Per-portal zone selection: a portal whose insurer blocks the default
@@ -254,41 +231,93 @@ async def _run_inner(
                     run.id, cred.portal_kind, context_proxy.get("server"),
                 )
 
-        # Real-Chrome UA + viewport + locale so APM / WAF gates don't bounce
-        # us based on the headless fingerprint.
-        context = await browser.new_context(
+        # `--disable-blink-features=AutomationControlled` is itself a bot tell to
+        # reCAPTCHA Enterprise — drop it for native-fingerprint plugins.
+        launch_args = [
+            "--no-sandbox",
+            # Containers default to a tiny 64MB /dev/shm; Chrome fills it and the
+            # tab/renderer crashes (Railway "Crashed!" during a batch). Write
+            # shared memory to /tmp. Container fix; no TLS/JA3 change.
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
+        if not native:
+            launch_args.insert(0, "--disable-blink-features=AutomationControlled")
+
+        # Context kwargs shared by both launch paths. A native-fingerprint plugin
+        # lets real Chrome send its own UA + Client-Hints — a pinned UA that
+        # disagrees with the engine version sinks the reCAPTCHA Enterprise score
+        # (proven against Mor). The override path keeps the Real-Chrome UA + UA-CH
+        # brand list that Harel's edge uses to tell real-Chrome from Chromium.
+        context_kwargs = dict(
             proxy=context_proxy,
             # The IL residential proxy (Bright Data) terminates TLS with its own
-            # CA, so Playwright sees ERR_CERT_AUTHORITY_INVALID on the target's
-            # HTTPS. Accept it ONLY when going through the proxy (the documented
-            # `-k` equivalent); direct connections (e.g. Migdal) keep full TLS
-            # validation. See memory `railway_ip_geoblocked_insurers`.
+            # CA → ERR_CERT_AUTHORITY_INVALID. Accept it ONLY through the proxy
+            # (the `-k` equivalent); direct connections keep full TLS validation.
             ignore_https_errors=bool(context_proxy),
             accept_downloads=True,
-            user_agent=(
+            viewport={"width": 1366, "height": 768},
+            locale="he-IL",
+        )
+        if native:
+            context_kwargs["extra_http_headers"] = {
+                "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
+            }
+        else:
+            context_kwargs["user_agent"] = (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0 Safari/537.36"
-            ),
-            viewport={"width": 1366, "height": 768},
-            locale="he-IL",
-            extra_http_headers={
+            )
+            context_kwargs["extra_http_headers"] = {
                 "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
-                # Real Google Chrome's UA-CH brand list — Harel's edge
-                # uses these to fingerprint real-Chrome vs Chromium.
                 "sec-ch-ua": '"Google Chrome";v="124", "Chromium";v="124", "Not-A.Brand";v="99"',
                 "sec-ch-ua-platform": '"Windows"',
                 "sec-ch-ua-mobile": "?0",
-            },
-        )
-        # Hide `navigator.webdriver` so bot detection doesn't flag the page.
-        await context.add_init_script(
-            """
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'languages', {get: () => ['he-IL', 'he', 'en']});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            """
-        )
+            }
+
+        # Prefer real Google Chrome over bundled Chromium — its TLS/JA3
+        # fingerprint matches a real browser (Harel's edge bounces Chromium to
+        # F5 APM errorcode=19/22). Falls back to chromium when chrome is absent.
+        browser = None
+        if persist:
+            # A real on-disk profile (one dir per portal_kind) so reCAPTCHA
+            # Enterprise cookies/reputation survive across runs. launch_persistent_context
+            # IS the context (no separate browser object).
+            profile_dir = BROWSER_PROFILE_ROOT / cred.portal_kind
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                context = await pw.chromium.launch_persistent_context(
+                    str(profile_dir), channel="chrome", headless=not headed,
+                    args=launch_args, **context_kwargs,
+                )
+            except Exception:
+                context = await pw.chromium.launch_persistent_context(
+                    str(profile_dir), headless=not headed,
+                    args=launch_args, **context_kwargs,
+                )
+        else:
+            try:
+                browser = await pw.chromium.launch(
+                    channel="chrome", headless=not headed, args=launch_args,
+                )
+            except Exception:
+                browser = await pw.chromium.launch(
+                    headless=not headed, args=launch_args,
+                )
+            context = await browser.new_context(**context_kwargs)
+
+        # Hide `navigator.webdriver` for the override path. Skipped for a native
+        # fingerprint — real Chrome already reports a consistent surface and the
+        # patch is itself detectable by reCAPTCHA Enterprise.
+        if not native:
+            await context.add_init_script(
+                """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'languages', {get: () => ['he-IL', 'he', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                """
+            )
         page = await context.new_page()
         try:
             await _set_status(db, run, status="running", stage="login")
@@ -402,7 +431,8 @@ async def _run_inner(
             raise
         finally:
             await context.close()
-            await browser.close()
+            if browser is not None:  # None on the persistent-context path
+                await browser.close()
 
 
 async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) -> None:
@@ -458,7 +488,8 @@ async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) 
             raise
         finally:
             await context.close()
-            await browser.close()
+            if browser is not None:  # None on the persistent-context path
+                await browser.close()
 
 
 async def run_phone_change(run_id: uuid.UUID, new_phone: str) -> None:

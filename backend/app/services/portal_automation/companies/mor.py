@@ -26,6 +26,19 @@ class MorPortal(BasePortalAutomation):
     # Keep out of the run-all batch until live-verified (nav selectors are
     # best-effort until the first real run). Flip to True after verification.
     include_in_batch = False
+    # Mor's login is gated by reCAPTCHA *Enterprise* (score-based). The server
+    # returns HTTP 400 ("אירעה שגיאה") whenever Google scores the browser as a
+    # bot. Proven live: headless + the runner's UA override → 400; headed +
+    # native fingerprint + a persistent profile → 201 Success → OTP modal. So
+    # Mor must run on the LOCAL WORKER (headed desktop session, real IL IP) —
+    # never the headless Railway container. See memory `portal_mor`.
+    headed = True
+    native_fingerprint = True
+    use_persistent_profile = True
+    # Run on the worker's OWN residential IL IP — a Bright Data datacenter proxy
+    # IP would sink the reCAPTCHA Enterprise score. (Also a no-op unless a proxy
+    # env is set, but we never want one routed here.)
+    needs_residential_proxy = False
 
     def _split(self, username: str, password: str) -> tuple[str, str, str]:
         """username='<license>|<id>', password='<phone>'. Falls back to

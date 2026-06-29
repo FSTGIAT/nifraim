@@ -60,6 +60,28 @@ class BasePortalAutomation(ABC):
     # `railway_ip_geoblocked_insurers`.
     proxy_zone_env: str = "IL_RESIDENTIAL_PROXY"
 
+    # --- Anti-bot fingerprint controls (per-portal) -----------------------
+    # Some portals gate login behind Google reCAPTCHA *Enterprise* (score-based,
+    # not a checkbox) — e.g. Mor (join.more.co.il). Its backend rejects the
+    # login POST with HTTP 400 when Google scores the browser as a bot. Three
+    # signals sink the score and must be neutralised together:
+    #   1. headless Chrome              → set `headed = True`
+    #   2. UA string ≠ Client-Hints ver → set `native_fingerprint = True`
+    #      (the shared runner pins UA=Chrome/124 while the engine is 131; the
+    #      mismatch is a strong bot tell. native_fingerprint drops the UA +
+    #      sec-ch-ua overrides AND the --disable-blink-features flag so real
+    #      Chrome sends its own consistent fingerprint.)
+    #   3. no browser reputation        → set `use_persistent_profile = True`
+    #      (a real on-disk profile dir, so reCAPTCHA cookies/history persist).
+    # All proven live against Mor: the headless+override config gets 400, the
+    # headed+native+persistent config gets 201 Success. Portals needing these
+    # CANNOT run on the headless Railway container — they run on the local
+    # worker (real IL IP + a desktop session). Defaults keep every existing
+    # portal on the current shared-browser path unchanged.
+    headed: bool = False
+    native_fingerprint: bool = False
+    use_persistent_profile: bool = False
+
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:
         """Navigate to the portal and submit username + password.
