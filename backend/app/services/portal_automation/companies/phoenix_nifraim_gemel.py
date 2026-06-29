@@ -68,7 +68,7 @@ class PhoenixNifraimGemelPortal(PhoenixNifraimPortal):
     # גמל reports in a single login (see PhoenixNifraimPortal.download_reports), so
     # running this separately would burn a second Phoenix OTP for the same data.
     # Still registered for manual single-run use.
-    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
+    include_in_batch = False  # phoenix_nifraim already pulls גמל in the same login
 
     async def download_reports(
         self,

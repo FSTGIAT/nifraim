@@ -62,6 +62,24 @@ os.environ.setdefault("PORTAL_CRED_FERNET_KEY", _env.get("PORTAL_CRED_FERNET_KEY
 os.environ["IL_RESIDENTIAL_PROXY"] = ""   # direct from this IL machine — no proxy
 os.environ["IL_HAREL_PROXY"] = ""
 
+# ── Pin TEMP/TMP to a durable dir owned by the worker ────────────────────────
+# When the worker is launched from inside MobaXterm, TEMP points at MobaXterm's
+# ephemeral filesystem (…\Temp\Mxt251\mx86_64b\var\log\xwin\…) which gets cleaned
+# mid-session. That vanishing dir produced ENOENT crashes — Playwright's
+# `BrowserType.launch: mkdtemp …\xwin\playwright-artifacts` (e.g. the yelin run)
+# and openpyxl's temp file during the batch-end merge. Force a stable temp root
+# next to the worker install so every subprocess (browsers, pandas/openpyxl)
+# inherits a path that survives the whole run.
+try:
+    _TMP = _ROOT / "worker_tmp"
+    _TMP.mkdir(parents=True, exist_ok=True)
+    for _k in ("TMP", "TEMP", "TMPDIR"):
+        os.environ[_k] = str(_TMP)
+    import tempfile as _tempfile
+    _tempfile.tempdir = str(_TMP)
+except Exception:
+    pass  # fall back to the inherited TEMP rather than refuse to boot
+
 # ── Remote diagnostics: POST startup + any fatal error to the server so support
 # can "follow the log" via `railway logs` even when this worker can't reach the
 # DB. Uses ONLY stdlib + the .env token, and is installed BEFORE the app imports

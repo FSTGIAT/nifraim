@@ -161,7 +161,12 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     skipped: list[str] = []
     for c in all_creds:
         if c.portal_kind in WORKER_ONLY_PORTALS:
-            creds.append(c)  # native-orchestrator portal (e.g. phoenix_terminal)
+            # WORKER_ONLY portals (phoenix_terminal) drive a native Windows
+            # green-screen via SendInput and need an ELEVATED worker. In a normal
+            # batch they reliably fail ("login script exit 1"), so skip them here
+            # to honour the "don't burn a slot on a guaranteed failure" intent
+            # above — they remain available as explicit single manual runs.
+            skipped.append(c.portal_kind)
             continue
         plugin_cls = REGISTRY.get(c.portal_kind)
         if plugin_cls is None or not getattr(plugin_cls, "include_in_batch", True):
