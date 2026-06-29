@@ -151,11 +151,32 @@ async def _beat(uid, current_job: str | None = None, touch_job: bool = False):
         await db.commit()
 
 
+def _download_and_extract_bundle() -> bool:
+    """RE-DOWNLOAD the worker code bundle from the server and extract it over the
+    repo root — the SAME delivery the installer used (the worker is a downloaded
+    bundle, NOT a git checkout). The zip is prefixed with `backend/`, so extracting
+    at _ROOT lands files exactly where they belong. Returns True on success.
+    .env / venv / data are NOT in the bundle, so creds & downloads are untouched."""
+    base = (_env.get("WORKER_LOG_BASE", "") or os.environ.get("WORKER_LOG_BASE", "")).rstrip("/")
+    token = _env.get("WORKER_LOG_TOKEN", "") or os.environ.get("WORKER_LOG_TOKEN", "")
+    if not (base and token):
+        log.warning("no WORKER_LOG_BASE/TOKEN — cannot download bundle")
+        return False
+    import io as _io, zipfile as _zip
+    url = f"{base}/api/portal-automation/worker/bundle/{token}"
+    data = _ureq.urlopen(_ureq.Request(url), timeout=180).read()
+    with _zip.ZipFile(_io.BytesIO(data)) as z:
+        z.extractall(str(_ROOT))
+    log.info("worker bundle (%d bytes) extracted to %s", len(data), _ROOT)
+    return True
+
+
 async def _maybe_self_update(uid):
     """If the website's 'עדכן עובד' button was pressed (update_requested_at newer
-    than this process's start), git-pull the deploy branch and re-exec so the new
-    code loads — the user never touches git or the machine. NON-FATAL: a failed
-    pull still restarts on the existing code."""
+    than this process's start), RE-DOWNLOAD the code bundle from the server (same
+    way the installer delivers it — no git) and re-exec so the new code loads. The
+    user never touches git or the machine. NON-FATAL: a failed download still
+    restarts on the existing code."""
     async with async_session() as db:
         row = (await db.execute(
             select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
@@ -163,9 +184,8 @@ async def _maybe_self_update(uid):
     req = getattr(row, "update_requested_at", None)
     if not req:
         return
-    if req <= _STARTED_AT:
-        # Stale request (predates this process — we already restarted/updated since).
-        # Clear it so the UI's "מתעדכן…"/update_pending doesn't stick forever.
+
+    async def _clear():
         try:
             async with async_session() as db:
                 await db.execute(
@@ -173,38 +193,23 @@ async def _maybe_self_update(uid):
                     .values(update_requested_at=None)
                 )
                 await db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("could not clear update flag: %s", e)
+
+    if req <= _STARTED_AT:
+        # Stale request (predates this process — we already restarted/updated since).
+        # Clear it so the UI's "מתעדכן…"/update_pending doesn't stick forever.
+        await _clear()
         return
-    log.info("UI requested worker update (at %s) — pulling + restarting", req)
-    _post_log(f"update requested ({req}) — git pull + re-exec")
-    # Clear the flag FIRST so we don't loop after re-exec.
+    log.info("UI requested worker update (at %s) — downloading bundle + restarting", req)
+    _post_log(f"update requested ({req}) — downloading bundle + re-exec")
+    await _clear()  # clear FIRST so we don't loop after re-exec.
     try:
-        async with async_session() as db:
-            await db.execute(
-                update(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
-                .values(update_requested_at=None)
-            )
-            await db.commit()
+        _download_and_extract_bundle()
     except Exception as e:
-        log.warning("could not clear update flag: %s", e)
-    # Pull the latest code on whatever branch this checkout tracks (.env / venv /
-    # data are gitignored, so reset --hard never touches creds or downloads).
-    try:
-        branch = subprocess.check_output(
-            ["git", "-C", str(_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
-            text=True, timeout=30,
-        ).strip()
-        if not branch or branch == "HEAD":
-            branch = _DEPLOY_BRANCH
-            subprocess.run(["git", "-C", str(_ROOT), "checkout", branch], timeout=60)
-        subprocess.run(["git", "-C", str(_ROOT), "fetch", "origin"], timeout=120)
-        subprocess.run(["git", "-C", str(_ROOT), "reset", "--hard", f"origin/{branch}"], timeout=120)
-        log.info("worker code updated to origin/%s — re-executing", branch)
-    except Exception as e:
-        log.warning("self-update git pull failed (%s) — re-executing on existing code", e)
+        log.warning("bundle self-update failed (%s) — re-executing on existing code", e)
     _post_log("re-executing worker with updated code")
-    # Replace this process image with a fresh one running the pulled code.
+    # Replace this process image with a fresh one running the freshly-downloaded code.
     os.execv(_sys.executable, [_sys.executable, str(Path(__file__).resolve())])
 
 
