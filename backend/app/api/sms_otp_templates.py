@@ -25,6 +25,12 @@ DEFAULT_SMS_OTP_TEMPLATES = [
     {"company_name": "מגדל", "portal_kind": "migdal", "pattern": r"(מגדל|migdal|apmaccess).*\d{4,8}",
      "example": "שלום, סיסמת הכניסה לפורטל apmaccess היא 055543"},
     {"company_name": "הפניקס", "portal_kind": "phoenix", "pattern": r"(הפניקס|פניקס|fnx).*\d{4,8}"},
+    # Phoenix's agent.fnx.co.il F5 terminal login SMS is brand-less: "הסיסמה:NNNNNN".
+    # Without this it falls to the generic "כללי" tag (NULL) and loses the next-otp
+    # tie-break to junk/other untagged codes. Anchored on the bare "הסיסמה:" form
+    # (other insurers use "קוד אימות"/"הסיסמא הזמנית"/"מכלול"), so low false-positive.
+    {"company_name": "הפניקס", "portal_kind": "phoenix", "pattern": r"הסיסמה\s*:\s*\d{4,8}",
+     "example": "הסיסמה:086802"},
     {"company_name": "הראל", "portal_kind": "harel", "pattern": r"(הראל|harel).*\d{4,8}"},
     # "סיסמתך למכלול שלי: NNNNNN" is a SHARED OTP sender used by multiple insurers
     # (seen for both Harel and Phoenix) — its own template so either forwards,

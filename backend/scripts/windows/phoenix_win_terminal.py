@@ -207,6 +207,7 @@ def _press_vk(vk):
 
 
 _SCANCODE = 0x0008
+_EXTENDED = 0x0001
 
 
 def _press_scancode(sc):
@@ -214,6 +215,18 @@ def _press_scancode(sc):
     they map scancode+mode to the host charset, ignoring Unicode WM_CHAR)."""
     _emit(_KBD(0, sc, _SCANCODE, 0, None))
     _emit(_KBD(0, sc, _SCANCODE | _KEYUP, 0, None))
+
+
+def _press_arrow_down():
+    """Inject the REAL down-arrow (the navigation key in the cursor cluster),
+    not numpad-2. A plain VK_DOWN/scancode 0x50 with NumLock on is read by the
+    host as numpad '2' and types into the command field instead of moving the
+    highlighted row. The fix is the EXTENDED-key flag (the 0xE0-prefixed
+    scancode) plus the VK — this is the physical arrow key, NumLock-independent.
+    Sends both the VK (0x28) and the extended scancode (0x50) for robustness."""
+    VK_DOWN = 0x28
+    _emit(_KBD(VK_DOWN, 0x50, _EXTENDED, 0, None))
+    _emit(_KBD(VK_DOWN, 0x50, _EXTENDED | _KEYUP, 0, None))
 
 
 def _press_alt_shift():
@@ -367,16 +380,18 @@ def main():
                     for p in _glob.glob(os.path.join(FNXBOX, "MU_*"))}
 
         before = files_state()
-        VK_F3 = 0x72   # select prev file in the list
-        VK_F4 = 0x73   # select next (down) file in the list — the on-screen hint
-                       # is "(F3/F4)בחירה"; the arrow key registers as numpad-'2'
-                       # (NumLock on) and types into the field instead of moving.
-        # Operator's EXACT sequence from the MAIN MENU (confirmed 2026-06-25),
-        # keyboard-mode-aware — the host reads the Windows layout:
+        # Operator's EXACT sequence from the MAIN MENU (file-list screen shows
+        # MU_NK_HAYV_MOSHE_2026_05 highlighted on row 1, _2026_06 on row 2;
+        # bottom hint "(F3/F4)לדפדוף  הקש 'כ'-הורדת קובץ"):
         #   [ENGLISH] "13" + Enter  ->  Enter x5 more  ->  Down-arrow x1
-        #   -> [HEBREW] 'כ'  (download MU_NK_HAYV to C:\fnxbox)
-        # The Down-arrow selects the right file row before download — without it
-        # the כ acts on the wrong/empty selection (the bug we hit).
+        #   -> [HEBREW] 'כ'  ->  Enter  (download the selected file to C:\fnxbox)
+        # Two fixes over the earlier broken run (live-observed 2026-06-29):
+        #   • The row highlight moves with the real DOWN-ARROW, not F4 (F4/F3
+        #     only PAGE — "לדפדוף"). The naive arrow was read as numpad-2 under
+        #     NumLock and stayed on row 1 (_05); _press_arrow_down() sends the
+        #     EXTENDED arrow so the highlight actually moves to _06 (June).
+        #   • 'כ' lands in the command field but does NOTHING until ENTER submits
+        #     it — that missing Enter is why the prior run downloaded nothing.
         def tap(keys, settle=1.2, tag=None):
             force_foreground(hwnd); focus_click(hwnd); time.sleep(0.2)
             send_keys(hwnd, keys); time.sleep(settle)
@@ -387,17 +402,27 @@ def main():
         _log("  [EN] '13' + Enter"); tap("13\n", settle=1.3, tag="1_after13")
         for n in range(1, 6):
             _log(f"  Enter #{n}"); tap("\n", settle=1.3, tag=f"2_enter{n}")
-        # F4 once = select the NEXT (down) file row (newest = MU_..._06). The
-        # arrow key registers as numpad-'2' and stays on row 1 (the _05 bug).
-        _log("  F4 x1 (select next/newest file)")
+        # Down-arrow x1 = move the highlighted row from _05 (row 1) to _06 (row 2,
+        # the June file = the one we want). EXTENDED arrow (NumLock-independent).
+        _log("  Down-arrow x1 (select _06 / June row)")
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.2)
-        send_vk(hwnd, VK_F4); time.sleep(1.0); snap("2b_select")
-        # HEBREW: 'כ' (download) — Alt+Shift to Hebrew, scancode 0x21 (physical
-        # כ/f key), then Alt+Shift back to English.
-        _log("  Alt+Shift -> Hebrew, 'כ' (scancode 0x21), Alt+Shift -> back")
+        _press_arrow_down(); time.sleep(1.0); snap("2b_select")
+        # HEBREW: 'כ' (download command) — Alt+Shift to Hebrew, scancode 0x21
+        # (physical כ/f key). Then ENTER to execute (the previously-missing step).
+        _log("  Alt+Shift -> Hebrew, 'כ' (scancode 0x21), then Enter")
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.3)
         _press_alt_shift(); time.sleep(0.7)
-        _press_scancode(0x21)
+        _press_scancode(0x21); time.sleep(0.5)
+        # Enter to submit the 'כ' command → starts the KERMIT transfer. Do NOT
+        # snap between כ and Enter — grab() toggles topmost and can steal the
+        # command-field focus so Enter misses. Re-assert foreground, then Enter.
+        windll_u = __import__("ctypes").windll.user32
+        try:
+            windll_u.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        time.sleep(0.2)
+        _press_vk(0x0D)
         # CRITICAL: 'כ' opens the KERMIT File-Transfer dialog and the receive
         # begins immediately. Do NOT touch the terminal now — NO screenshots
         # (grab() uses PrintWindow + topmost which interrupts PowerTerm's receive
