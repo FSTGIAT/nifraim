@@ -161,7 +161,20 @@ async def _maybe_self_update(uid):
             select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
         )).scalar_one_or_none()
     req = getattr(row, "update_requested_at", None)
-    if not req or req <= _STARTED_AT:
+    if not req:
+        return
+    if req <= _STARTED_AT:
+        # Stale request (predates this process — we already restarted/updated since).
+        # Clear it so the UI's "מתעדכן…"/update_pending doesn't stick forever.
+        try:
+            async with async_session() as db:
+                await db.execute(
+                    update(WorkerHeartbeat).where(WorkerHeartbeat.user_id == uid)
+                    .values(update_requested_at=None)
+                )
+                await db.commit()
+        except Exception:
+            pass
         return
     log.info("UI requested worker update (at %s) — pulling + restarting", req)
     _post_log(f"update requested ({req}) — git pull + re-exec")
