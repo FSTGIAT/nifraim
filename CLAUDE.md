@@ -369,6 +369,14 @@ stored pattern is portable. **Real insurer OTP text often omits the company name
 (Harel & Phoenix share `סיסמתך למכלול שלי`; Migdal uses `apmaccess`) — anchor on
 the real wording, not the brand. Default patterns: `api/sms_otp_templates.py`.
 
+**Tagging is for correctness, not just labels.** External drivers (the Windows
+Phoenix-terminal flow) pull a code via `GET /phone-forward/{token}/next-otp?company=<base>`,
+which returns the NEWEST unconsumed code preferring an exact `portal_kind` tag over an
+untagged (NULL) one. An untagged real OTP shares the bucket with junk SMS (e.g. a
+clearinghouse welcome whose phone number `OTP_REGEX` extracts as a fake code) → newest junk
+wins. If a run grabs the wrong code with no cross-company race, seed the missing company
+template (Phoenix's terminal SMS is brand-less `הסיסמה:NNNNNN`).
+
 **Key files**: `android/app/src/main/java/com/nifraim/smsforwarder/{OtpFilter,TemplateFetchWorker,SmsReceiver,Prefs,MainActivity}.kt`,
 `models/sms_otp_template.py`, `api/sms_otp_templates.py`, `api/portal_automation.py`
 (webhook + templates endpoint), `models/otp_inbox.py`, `PhoneForwardModal.vue`.
@@ -378,6 +386,28 @@ proven live-run procedure. E2E: `backend/tests/test_template_filter_otp.py` (ALL
 FAIL-OPEN/BLOCK) and `test_full_otp_automation.py`. Build the APK via
 `android/emulator-docker/build-apk.sh`; the Railway APK predates the filter and
 must be re-uploaded.
+
+---
+
+## Windows-Native Terminal Production (Phoenix `phoenix_terminal`)
+
+Most portals are Playwright plugins (`services/portal_automation/companies/`), but Phoenix
+production lives in a native Ericom **PowerTerm** green-screen, not the DOM. It is a
+`WORKER_ONLY_PORTALS` entry (not in `REGISTRY`); the local worker subprocesses
+`backend/scripts/windows/phoenix_terminal_run.py` to run it. Flow: close stale TERM windows →
+`phoenix_browser_win.py` (Edge login + hands-free OTP) → `phoenix_win_terminal.py export`
+(SendInput: option-13 → down-arrow×1 to pick the month → Hebrew `כ` + **Enter** → KERMIT
+download to `C:\fnxbox`) → `phoenix_mu.parse_phoenix_mu` → ingest as production/הפניקס.
+
+- **Two-Python split (WSL box).** The orchestrator runs on the **WSL venv** (app/DB deps) and
+  shells the GUI sub-steps to **Windows Python** (`PHOENIX_WIN_PYTHON`, auto-detected
+  `/mnt/c/Python313`), translating `C:\…`→`/mnt/c`. On a native-Windows worker one venv has
+  both, so it's a no-op.
+- **MU file parses directly to production** — no external MU→.MBT converter. `phoenix_mu.py`:
+  accumulation is `[70:75]` **whole shekels (no /100)**; the file has NO customer names; premium
+  left None (not fabricated). Mirrors `phoenix_terminal.py`'s `PRODUCTION_COLUMNS`.
+- **Key files**: `scripts/windows/{phoenix_terminal_run,phoenix_browser_win,phoenix_win_terminal}.py`,
+  `services/phoenix_mu.py`, `services/phoenix_terminal.py`. See memory `phoenix_terminal_production`.
 
 ---
 
