@@ -184,6 +184,14 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     comm_upload_ids: list[uuid.UUID] = []
     prod_periods: list[date] = []
 
+    # OTP-timeout failures get ONE end-of-batch retry (section 1b). Their codes
+    # DID arrive (verified in run 5947ff2e) — just minutes late, after the phone's
+    # Doze/battery-opt queue flushed in a burst. Retrying after the rest of the
+    # batch (phone now warm, fresh login → fresh code) recovers most of them. We
+    # retry ONLY OtpTimeout — a genuinely-broken portal (export/login error) is
+    # not re-attempted, so we never burn extra OTPs on a guaranteed failure.
+    otp_failed: list[PortalCredential] = []
+
     # ── 1. Run every credential sequentially ─────────────────────────────
     for cred in creds:
         run = PortalRun(
@@ -229,6 +237,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             cred.last_run_status = "failed"
             cred.last_error = str(e)
             batch.failed += 1
+            otp_failed.append(cred)
         except asyncio.TimeoutError:
             await _set_status(db, run, status="timeout",
                               error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
@@ -248,6 +257,62 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
 
     batch.current_run_id = None
     await db.commit()
+
+    # ── 1b. One retry pass for OTP-timeout failures ───────────────────────
+    # Runs BEFORE the merge so any recovered file is folded into the unified
+    # production/commission workbooks. A new PortalRun row is created per retry
+    # (preserves the pass-1 failure in history); on success we flip the batch
+    # tally (failed-1, succeeded+1) so totals stay consistent.
+    if otp_failed:
+        logger.info(
+            "Batch %s: retrying %d OTP-timeout portal(s): %s",
+            batch.id, len(otp_failed), [c.portal_kind for c in otp_failed],
+        )
+        for cred in otp_failed:
+            run = PortalRun(
+                user_id=user_id,
+                credential_id=cred.id,
+                status="pending",
+                started_at=datetime.utcnow(),
+                batch_id=batch.id,
+            )
+            db.add(run)
+            await db.flush()
+            batch.current_run_id = run.id
+            await db.commit()
+
+            try:
+                ingested = await asyncio.wait_for(
+                    _run_inner(db, run, make_active=False, defer_post_ingest=True),
+                    timeout=RUN_HARD_TIMEOUT_S,
+                )
+                cred.last_run_status = "success"
+                cred.last_error = None
+                batch.succeeded += 1
+                batch.failed -= 1  # undo the pass-1 OtpTimeout increment
+                for upload_id, file_category, _company in (ingested or []):
+                    if file_category == "production":
+                        prod_upload_ids.append(upload_id)
+                    elif file_category == "commission":
+                        comm_upload_ids.append(upload_id)
+            except OtpTimeout as e:
+                # Still no OTP — leave the pass-1 failed tally as-is.
+                await _set_status(db, run, status="failed", error=str(e), finished=True)
+                cred.last_error = str(e)
+            except asyncio.TimeoutError:
+                await _set_status(db, run, status="timeout",
+                                  error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
+                cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
+            except Exception as e:
+                logger.exception("Batch retry run %s failed", run.id)
+                await _set_status(db, run, status="failed", error=str(e), finished=True)
+                cred.last_error = str(e)
+            finally:
+                cred.last_run_at = datetime.utcnow()
+                await db.commit()
+
+        batch.current_run_id = None
+        await db.commit()
 
     # Resolve held upload period months (for naming + batch.period_month).
     if prod_upload_ids:
