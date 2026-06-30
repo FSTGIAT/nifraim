@@ -34,6 +34,10 @@ from pathlib import Path
 # When THIS worker process started — a UI update request newer than this means
 # "you're running stale code, pull + restart".
 _STARTED_AT = datetime.utcnow()
+# True while a batch/run is actively executing. The heartbeat loop's self-update
+# (os.execv re-exec) must NOT fire mid-run — that tears down the live browser and
+# fails every in-flight portal. We defer the update until the run finishes.
+_BUSY = False
 # Deploy branch fallback if the checkout is on a detached HEAD.
 _DEPLOY_BRANCH = "claude/automate-otp-login-fCKdi"
 
@@ -219,6 +223,14 @@ async def _maybe_self_update(uid):
         # Clear it so the UI's "מתעדכן…"/update_pending doesn't stick forever.
         await _clear()
         return
+    if _BUSY:
+        # A batch/run is in progress. Re-exec now would close the live browser and
+        # fail every in-flight portal (the exact bug that nuked a user's batch).
+        # Leave the flag set (UI keeps showing "מתעדכן…" = queued) and apply it on
+        # the next heartbeat after the run finishes.
+        log.info("update requested but a run is in progress — deferring self-update until it finishes")
+        _post_log("update requested — deferred until the current run finishes")
+        return
     log.info("UI requested worker update (at %s) — downloading bundle + restarting", req)
     _post_log(f"update requested ({req}) — downloading bundle + re-exec")
     await _clear()  # clear FIRST so we don't loop after re-exec.
@@ -239,6 +251,40 @@ async def _heartbeat_loop(uid):
         except Exception as e:
             log.warning("heartbeat failed: %s", e)
         await asyncio.sleep(HEARTBEAT_S)
+
+
+async def _reconcile_orphans(uid):
+    """On startup, NO batch/run can legitimately be executing yet — this worker is
+    the sole executor for the user and hasn't claimed anything. So any batch/run
+    left non-terminal by a PREVIOUS worker that died/re-exec'd/crashed mid-run is an
+    orphan. Fail them now so they don't block new downloads forever
+    ("הורדה אוטומטית כבר פעילה") and don't show a phantom "running" in the UI."""
+    msg = "הופסק עקב הפעלה מחדש של העובד"
+    now = datetime.utcnow()
+    try:
+        async with async_session() as db:
+            await db.execute(
+                update(PortalRun)
+                .where(PortalRun.user_id == uid,
+                       PortalRun.status.in_(["pending", "running", "awaiting_otp",
+                                             "downloading", "parsing"]))
+                .values(status="failed", error_message=msg, finished_at=now)
+            )
+            res = await db.execute(
+                update(PortalRunBatch)
+                .where(PortalRunBatch.user_id == uid,
+                       PortalRunBatch.status.in_(["pending", "running"]))
+                .values(status="failed", error_message=msg, finished_at=now,
+                        current_run_id=None)
+                .returning(PortalRunBatch.id)
+            )
+            n = len(res.fetchall())
+            await db.commit()
+        if n:
+            log.info("reconciled %d orphaned batch(es)/runs on startup", n)
+            _post_log(f"startup: cleared {n} orphaned batch(es) from a prior worker")
+    except Exception as e:
+        log.warning("orphan reconciliation failed (non-fatal): %s", e)
 
 
 async def _claim_pending_batch(uid):
@@ -299,15 +345,23 @@ async def main():
     log.info("Nifraim worker started — host=%s user=%s poll=%ss", HOSTNAME, USER_EMAIL, POLL_S)
     await _beat(uid, current_job=None, touch_job=True)
     _post_log(f"worker ONLINE — user={USER_EMAIL} poll={POLL_S}s (DB heartbeat ok)")
+    # Clear any batch/run a prior worker left mid-flight (crash/re-exec) so it can't
+    # block new downloads or show a phantom "running".
+    await _reconcile_orphans(uid)
     asyncio.create_task(_heartbeat_loop(uid))
 
+    global _BUSY
     while True:
         try:
             bid = await _claim_pending_batch(uid)
             if bid is not None:
                 log.info("▶ claimed batch %s — running all portals locally", bid)
                 await _beat(uid, current_job=f"מריץ הורדה מכל החברות", touch_job=True)
-                await run_batch(bid)
+                _BUSY = True
+                try:
+                    await run_batch(bid)
+                finally:
+                    _BUSY = False
                 await _beat(uid, current_job=None, touch_job=True)
                 log.info("✔ batch %s done", bid)
                 continue
@@ -317,10 +371,14 @@ async def main():
                 rid, kind = claimed
                 log.info("▶ claimed run %s (%s) — running locally", rid, kind)
                 await _beat(uid, current_job="מריץ הורדת חברה", touch_job=True)
-                if kind == "phoenix_terminal":
-                    await _run_phoenix_terminal(rid)
-                else:
-                    await run_automation(rid)
+                _BUSY = True
+                try:
+                    if kind == "phoenix_terminal":
+                        await _run_phoenix_terminal(rid)
+                    else:
+                        await run_automation(rid)
+                finally:
+                    _BUSY = False
                 await _beat(uid, current_job=None, touch_job=True)
                 log.info("✔ run %s done", rid)
                 continue

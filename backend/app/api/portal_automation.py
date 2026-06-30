@@ -21,11 +21,11 @@ import logging
 import re
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -84,6 +84,53 @@ async def _should_defer_to_worker(db: AsyncSession, user_id: uuid.UUID) -> bool:
     if not row:
         return False
     return (datetime.utcnow() - row).total_seconds() <= WORKER_LIVE_WINDOW_S
+
+
+# A batch can't legitimately run longer than this — past it, it's orphaned.
+MAX_BATCH_AGE_S = 60 * 90          # 90 min (11 portals × up to ~5min OTP + run/aggregate)
+# If the worker is offline, an "active" batch older than this is dead, not running.
+ORPHAN_OFFLINE_GRACE_S = 60 * 3    # 3 min
+
+
+async def _recover_orphan_batches(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Mark a user's stuck batches/runs failed so a dead worker never permanently
+    blocks new downloads. Orphan when: worker offline (no heartbeat in window) and
+    the batch has sat active past a short grace, OR the batch is older than any real
+    batch could take. Returns the number of batches reaped. Idempotent + safe: a
+    genuinely-running batch on a LIVE worker (recent heartbeat, within MAX age) is
+    left untouched."""
+    now = datetime.utcnow()
+    worker_live = await _should_defer_to_worker(db, user_id)
+    cutoff = now - timedelta(seconds=(MAX_BATCH_AGE_S if worker_live else ORPHAN_OFFLINE_GRACE_S))
+
+    res = await db.execute(
+        update(PortalRunBatch)
+        .where(
+            PortalRunBatch.user_id == user_id,
+            PortalRunBatch.status.in_(ACTIVE_BATCH_STATUSES),
+            PortalRunBatch.started_at < cutoff,
+        )
+        .values(status="failed", current_run_id=None, finished_at=now,
+                error_message="בוטל אוטומטית — ההרצה לא הסתיימה (העובד כנראה נותק)")
+        .returning(PortalRunBatch.id)
+    )
+    reaped = [r[0] for r in res.fetchall()]
+    # Fail any non-terminal runs of the reaped batches AND any orphaned standalone
+    # runs (older than the same cutoff) so the per-run guard is consistent.
+    await db.execute(
+        update(PortalRun)
+        .where(
+            PortalRun.user_id == user_id,
+            PortalRun.status.in_(ACTIVE_RUN_STATUSES),
+            ((PortalRun.batch_id.in_(reaped)) | (PortalRun.started_at < cutoff)),
+        )
+        .values(status="failed", finished_at=now,
+                error_message="בוטל אוטומטית — ההרצה לא הסתיימה (העובד כנראה נותק)")
+    )
+    if reaped:
+        await db.commit()
+        logger.warning("Auto-recovered %d orphaned batch(es) for user %s", len(reaped), user_id)
+    return len(reaped)
 
 
 def _cred_to_out(c: PortalCredential, recent: list[str] | None = None) -> PortalCredentialOut:
@@ -373,6 +420,14 @@ async def run_all_portals(
     """Start a "run all portals" batch: every active credential runs
     sequentially, then the downloads are aggregated into one merged production
     file + one merged נפרעים file and the comparison runs automatically."""
+    # Self-heal first: an "active" batch/run whose worker died (re-exec, crash,
+    # reboot) would otherwise block this user forever ("הורדה אוטומטית כבר פעילה")
+    # with no way out. Auto-fail orphans so the user never has to untangle a stuck
+    # run. An orphan = active batch/run AND (no live worker to be running it OR it's
+    # older than the absolute max a real batch could take). When a worker IS live it
+    # also self-reconciles on restart; this is the API-side safety net.
+    await _recover_orphan_batches(db, user.id)
+
     # Reject if a batch or any single run is already active for this user.
     active_batch = await db.execute(
         select(PortalRunBatch).where(
