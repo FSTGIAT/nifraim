@@ -53,10 +53,12 @@ ACCOUNT_NUMBER = "113061826"
 class HarelCommissionsPortal(HarelPortal):
     portal_kind = "harel_commissions"
     company_label = "הראל — ריכוז תשלומי עמלות"
-    # Folded into the consolidated `harel_savings` plugin, which downloads both
-    # production (מוצרי צבירה) and this נפרעים report in one agents-portal login.
-    # Still runnable as a manual single run.
-    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
+    # Folded into the consolidated `harel_savings` plugin: harel_savings runs after
+    # this alphabetically and calls HarelCommissionsPortal().download_reports() on its
+    # OWN authenticated page — one Harel login yields BOTH production (מוצרי צבירה) and
+    # this נפרעים report with no second OTP. Running standalone in the batch only burns a
+    # duplicate Harel OTP and produces a false failure. Manual single-runs are unaffected.
+    include_in_batch = False
 
     async def download_reports(
         self,

@@ -148,56 +148,80 @@ class MorPortal(BasePortalAutomation):
                 await page.click(sel)
                 await page.keyboard.type(val, delay=90)
 
-        await _type("input[formcontrolname='licenseId']", license_no)
-        await _type("input[formcontrolname='identity']", id_no)
-        await _type("input[placeholder*='טלפון']", phone)
-        await page.keyboard.press("Tab")
-
-        # Kendo/Angular validate asynchronously — WAIT for the submit button to
-        # actually enable before clicking (a premature click hits the disabled
-        # button and no-ops, leaving us stuck on the login form).
-        try:
-            await page.wait_for_selector(
-                "button[type='submit']:not([disabled])", state="attached", timeout=12000
-            )
-        except Exception:
-            err = await page.evaluate(
-                "() => [...document.querySelectorAll('.k-tooltip, [id^=kendo-error]')]"
-                ".map(e => e.innerText.trim()).filter(Boolean).join(' | ')"
-            )
-            raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
-        await page.click("button[type='submit']:not([disabled])")
-
-        try:
-            await page.wait_for_load_state("networkidle", timeout=8000)
-        except Exception:
-            pass
-        post = SCREENSHOT_ROOT / f"mor_login_{safe}_post_submit.png"
-        await self._safe_screenshot(page, post)
-        await self._dump_page_state(page, post)
-
-        # After submit Mor either opens the OTP MODAL (#otpInput,
-        # formcontrolname="otpCode", maxlength 6) or shows "אירעה שגיאה"
-        # (rejected credentials / rate-limit). Race the two so we fail fast with
-        # a clear message instead of a blind OTP-field timeout.
+        # Fill + submit, with ONE retry on a transient reCAPTCHA-Enterprise
+        # rejection. Mor's server returns "אירעה שגיאה" post-submit when Google
+        # scores the session low (cold profile / low recent activity) — NOT a bad
+        # credential. The reCAPTCHA token has a short TTL, so waiting ~90s and
+        # re-navigating earns a fresh scoring window. Retry once before failing so
+        # a single bad score doesn't kill the whole batch run (it passed yesterday
+        # on the same creds). See math/diagnosis: the run died in 11s on attempt 1.
         otp_sel = "#otpInput, input[formcontrolname='otpCode']"
-        deadline = 30
-        for _ in range(deadline * 2):
-            if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
-                return
+        _MAX_SUBMIT_ATT = 2
+        for _att in range(1, _MAX_SUBMIT_ATT + 1):
+            if _att > 1:
+                await page.wait_for_timeout(90_000)  # let the old reCAPTCHA token expire
+                try:
+                    await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=40000)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=15000)
+                    except Exception:
+                        pass
+                    await page.wait_for_selector(_FORM_FIELD, state="visible", timeout=22000)
+                except Exception:
+                    pass
+
+            await _type("input[formcontrolname='licenseId']", license_no)
+            await _type("input[formcontrolname='identity']", id_no)
+            await _type("input[placeholder*='טלפון']", phone)
+            await page.keyboard.press("Tab")
+
+            # Kendo/Angular validate asynchronously — WAIT for the submit button to
+            # actually enable before clicking (a premature click hits the disabled
+            # button and no-ops, leaving us stuck on the login form).
             try:
-                err = page.locator("text=אירעה שגיאה")
-                if await err.count() and await err.first.is_visible():
-                    raise RuntimeError(
-                        "Mor: הכניסה נדחתה (אירעה שגיאה) — בדוק מס' רשיון/ת\"ז/טלפון "
-                        "או המתן דקות (חסימת ניסיונות חוזרים)."
-                    )
-            except RuntimeError:
-                raise
+                await page.wait_for_selector(
+                    "button[type='submit']:not([disabled])", state="attached", timeout=12000
+                )
+            except Exception:
+                err = await page.evaluate(
+                    "() => [...document.querySelectorAll('.k-tooltip, [id^=kendo-error]')]"
+                    ".map(e => e.innerText.trim()).filter(Boolean).join(' | ')"
+                )
+                raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
+            await page.click("button[type='submit']:not([disabled])")
+
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 pass
-            await page.wait_for_timeout(500)
-        raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
+            post = SCREENSHOT_ROOT / f"mor_login_{safe}_post_submit{_att}.png"
+            await self._safe_screenshot(page, post)
+            await self._dump_page_state(page, post)
+
+            # After submit Mor either opens the OTP MODAL (#otpInput,
+            # formcontrolname="otpCode", maxlength 6) or shows "אירעה שגיאה".
+            deadline = 30
+            _rejected = False
+            for _ in range(deadline * 2):
+                if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
+                    return  # OTP modal open — success
+                try:
+                    err = page.locator("text=אירעה שגיאה")
+                    if await err.count() and await err.first.is_visible():
+                        _rejected = True
+                        break
+                except Exception:
+                    pass
+                await page.wait_for_timeout(500)
+
+            if _rejected:
+                if _att < _MAX_SUBMIT_ATT:
+                    continue  # transient reCAPTCHA — refresh token and retry once
+                raise RuntimeError(
+                    "Mor: הכניסה נדחתה (אירעה שגיאה) — בדוק מס' רשיון/ת\"ז/טלפון "
+                    "או המתן דקות (חסימת ניסיונות חוזרים)."
+                )
+            raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT

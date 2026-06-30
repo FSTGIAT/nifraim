@@ -239,6 +239,23 @@ class _HarelReportPortal(HarelPortal):
             frame = await self._get_frame(page, poll_seconds=10)
 
         if frame is None:
+            # Last resort: a FULL re-navigation to the report URL (no new login/OTP).
+            # The intellisys BI iframe is sometimes slow to attach on the first paint
+            # — seen on the savings/מוצרי צבירה report (2026-06-30 batch) — and a
+            # reload + another ~30s poll recovers it instead of failing the whole run.
+            try:
+                await self._recover_hangup(page)
+                await page.goto(report_url, wait_until="domcontentloaded", timeout=30000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=12000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(3000)
+            except Exception:
+                pass
+            frame = await self._get_frame(page, poll_seconds=30)
+
+        if frame is None:
             _no_frame = SCREENSHOT_ROOT / f"{run_id}_1_no_frame.png"
             await self._safe_screenshot(page, _no_frame)
             await self._dump_page_state(page, _no_frame)

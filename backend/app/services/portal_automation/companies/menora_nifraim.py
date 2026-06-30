@@ -52,10 +52,12 @@ class MenoraNifraimPortal(MenoraPortal):
 
     portal_kind = "menora_nifraim"
     company_label = "מנורה — נפרעים"
-    # Folded into the consolidated `menora` plugin, which downloads BOTH the
-    # production bundle and this נפרעים row in one login. Still runnable as a
-    # manual single run.
-    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
+    # Folded into the consolidated `menora` plugin: the menora production run calls
+    # MenoraNifraimPortal()._download_nifraim_row() in the SAME authenticated session,
+    # so one Menora login yields both production and this נפרעים report. Running standalone
+    # in the batch forces a redundant second login with no resent OTP → the OTP-input
+    # selector never appears → 25s login timeout. Manual single-runs are unaffected.
+    include_in_batch = False
 
     async def download_reports(
         self,
