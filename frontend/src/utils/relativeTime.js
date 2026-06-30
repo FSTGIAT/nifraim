@@ -2,7 +2,18 @@
 // Falls back to absolute date for anything older than a week.
 export function relativeHebrew(input) {
   if (!input) return ''
-  const d = input instanceof Date ? input : new Date(input)
+  let d
+  if (input instanceof Date) {
+    d = input
+  } else {
+    // The backend sends naive UTC timestamps (datetime.utcnow().isoformat()) with
+    // NO timezone designator. JS parses a tz-less datetime as LOCAL time, so in
+    // Israel (UTC+2/+3) a worker seen moments ago reads "לפני 3 שעות". Treat a
+    // tz-less datetime string as UTC by appending 'Z' before parsing.
+    let s = String(input)
+    if (/T\d{2}:\d{2}/.test(s) && !/([zZ]|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z'
+    d = new Date(s)
+  }
   if (isNaN(d.getTime())) return ''
   const diffMs = Date.now() - d.getTime()
   if (diffMs < 0) return 'הרגע'

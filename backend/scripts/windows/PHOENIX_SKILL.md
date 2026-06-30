@@ -54,8 +54,11 @@ aware (the host reads the Windows layout):
 - **Select the file with F4, NOT the arrow key** — the down-arrow registers as numpad-`2`
   (NumLock on) and types into the field instead of moving the selection, so it downloads the
   wrong (top) row. The on-screen hint literally says `(F3/F4)בחירה`. F4 = next/down.
-- `כ` (Alt+Shift→Hebrew, scancode `0x21`, the physical כ/f key) triggers a **KERMIT** receive
-  of the selected file to `C:\fnxbox\`.
+- `כ` (scancode `0x21`, the physical כ/f key) triggers a **KERMIT** receive of the selected
+  file to `C:\fnxbox\`. The layout must be Hebrew for the scancode to render as `כ` (not `f`):
+  set it **deterministically** via `_ensure_hebrew()` (LoadKeyboardLayout + WM_INPUTLANGCHANGEREQUEST),
+  **never** a blind `Alt+Shift` toggle — the file-list screen is already Hebrew, so a toggle flips
+  it to English and types `f` (live bug 2026-06-30).
 
 **Two things that make KERMIT actually COMPLETE (it stalled at block 6 before):**
 - **Drive the LIVE terminal, not a zombie.** PowerTerm can leave a stale `TERM` window;

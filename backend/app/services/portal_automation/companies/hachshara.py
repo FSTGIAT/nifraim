@@ -51,13 +51,30 @@ class HachsharaPortal(BasePortalAutomation):
         # `my.logout.php3?errorcode=19` ("הגישה נדחתה … session information")
         # whose recovery link is **חיבור חדש** (Hachshara's wording — Phoenix uses
         # התחבר מחדש / לחץ כאן). Click it until the real logon form appears.
-        for _ in range(4):
+        #
+        # A SECOND recovery case (seen when re-running within ~30 min of a prior
+        # run): the prior F5 session is still alive, so the portal shows a
+        # "זמן החיבור פג"/"פג תוקף" interstitial with a **חיבור מחדש** (reconnect)
+        # button — NOT the same wording as the errorcode-19 link, and the logon
+        # form's username input is absent/covered behind it. Detect that screen by
+        # its text (not just by a missing username input) and click reconnect.
+        for _ in range(5):
             has_user = await page.locator("input[name='username']").count()
-            if has_user and "errorcode" not in page.url and "logout" not in page.url:
+            try:
+                body = (await page.inner_text("body"))[:1500]
+            except Exception:
+                body = ""
+            session_expired = ("זמן החיבור" in body or "פג תוקף" in body
+                               or "פג זמן" in body or "החיבור פג" in body)
+            if has_user and not session_expired and "errorcode" not in page.url \
+                    and "logout" not in page.url:
                 break
             clicked = await self._click_first_visible(page, [
+                "a:has-text('חיבור מחדש')", "button:has-text('חיבור מחדש')",
+                "input[value*='חיבור מחדש']",
                 "a:has-text('חיבור חדש')", "a:has-text('התחבר מחדש')",
-                "a:has-text('לחץ כאן')", "input[value*='חיבור']",
+                "button:has-text('התחבר מחדש')", "a:has-text('לחץ כאן')",
+                "input[value*='חיבור']", "button:has-text('חיבור')",
             ], timeout=5000)
             if not clicked:
                 break

@@ -230,7 +230,12 @@ def _press_arrow_down():
 
 
 def _press_alt_shift():
-    """Send Alt+Shift — the Windows layout toggle (English <-> Hebrew)."""
+    """Send Alt+Shift — the Windows layout TOGGLE (English <-> Hebrew). LEGACY /
+    no longer used: the toggle is state-dependent (it flips relative to whatever
+    layout is CURRENTLY active), which is exactly what caused the 'typed f instead
+    of כ' bug — the file-list screen was already on Hebrew, so the toggle flipped
+    it to English. _ensure_hebrew() uses an idempotent re-SET instead. Kept only
+    for ad-hoc manual use."""
     import time as _t
     VK_ALT, VK_SHIFT = 0x12, 0x10
     _emit(_KBD(VK_ALT, 0, 0, 0, None))           # Alt down
@@ -238,6 +243,86 @@ def _press_alt_shift():
     _t.sleep(0.05)
     _emit(_KBD(VK_SHIFT, 0, _KEYUP, 0, None))    # Shift up
     _emit(_KBD(VK_ALT, 0, _KEYUP, 0, None))      # Alt up
+
+
+# Layout-id strings for LoadKeyboardLayoutW. Hebrew = 0x040D, US English = 0x0409.
+_KLID_HEBREW = "0000040D"
+_KLID_ENGLISH = "00000409"
+
+
+def _set_kbd_layout(hwnd, klid):
+    """DETERMINISTICALLY set a keyboard layout for the TARGET window's input
+    thread — state-independent, unlike the blind Alt+Shift TOGGLE. Three steps:
+    (1) load the layout, (2) PostMessage WM_INPUTLANGCHANGEREQUEST to the terminal
+    (the documented way to change ANOTHER thread's input language), and (3) belt-
+    and-suspenders: attach to its input queue and ActivateKeyboardLayout. The host
+    maps a raw scancode through whatever layout is active on the focused thread, so
+    this is what makes scancode 0x21 produce 'כ' rather than 'f'. Returns the HKL
+    (0 on failure)."""
+    import win32process
+    import win32api
+    import win32gui
+    user32 = _ctypes.windll.user32
+    # HKL is a POINTER-sized handle. Declare it so ctypes' default signed c_int
+    # doesn't truncate / sign-corrupt a secondary-layout handle (e.g. 0xF01D040D)
+    # into a negative int that ActivateKeyboardLayout/PostMessage can't match.
+    user32.LoadKeyboardLayoutW.restype = _ctypes.c_void_p
+    user32.LoadKeyboardLayoutW.argtypes = [_wt.LPCWSTR, _wt.UINT]
+    user32.ActivateKeyboardLayout.restype = _ctypes.c_void_p
+    user32.ActivateKeyboardLayout.argtypes = [_ctypes.c_void_p, _wt.UINT]
+    KLF_ACTIVATE = 0x00000001
+    WM_INPUTLANGCHANGEREQUEST = 0x0050
+    hkl = user32.LoadKeyboardLayoutW(klid, KLF_ACTIVATE) or 0
+    try:
+        win32gui.PostMessage(hwnd, WM_INPUTLANGCHANGEREQUEST, 0, hkl)
+    except Exception:
+        pass
+    try:
+        t_tgt = win32process.GetWindowThreadProcessId(hwnd)[0]
+        cur = win32api.GetCurrentThreadId()
+        attached = bool(t_tgt and t_tgt != cur and user32.AttachThreadInput(cur, t_tgt, True))
+        if hkl:
+            user32.ActivateKeyboardLayout(hkl, 0)
+        if attached:
+            user32.AttachThreadInput(cur, t_tgt, False)
+    except Exception:
+        pass
+    return hkl
+
+
+def _layout_langid(hwnd):
+    """Low-word language id of the TARGET window thread's ACTIVE keyboard layout
+    (0x040D = Hebrew, 0x0409 = English; 0 if it can't be read)."""
+    import win32process
+    user32 = _ctypes.windll.user32
+    user32.GetKeyboardLayout.restype = _ctypes.c_void_p
+    user32.GetKeyboardLayout.argtypes = [_wt.DWORD]
+    try:
+        t = win32process.GetWindowThreadProcessId(hwnd)[0]
+        return (user32.GetKeyboardLayout(t) or 0) & 0xFFFF
+    except Exception:
+        return 0
+
+
+def _ensure_hebrew(hwnd):
+    """Make the terminal's input layout Hebrew, deterministically, and STAY there
+    (the operator's instruction: this last step must be Hebrew so 'כ' types 'כ',
+    not 'f'). Falls back to a SINGLE Alt+Shift only if the explicit set verifiably
+    did not take. The retry RE-SETS Hebrew (idempotent) rather than toggling — a
+    toggle could flip an already-applied Hebrew back to English on a stale read and
+    re-introduce the exact 'f' bug, whereas setting Hebrew when it's already Hebrew
+    is a harmless no-op. Returns True iff Hebrew is active after."""
+    import time as _t
+    lang = 0
+    for attempt in range(1, 4):
+        _set_kbd_layout(hwnd, _KLID_HEBREW)
+        _t.sleep(0.6)
+        lang = _layout_langid(hwnd)
+        if lang == 0x040D:
+            break
+        _log(f"    layout=0x{lang:04x} after set #{attempt} — re-setting Hebrew (never toggling)")
+    _log(f"    layout now 0x{lang:04x} (want 0x040d Hebrew)")
+    return lang == 0x040D
 
 
 def focus_click(hwnd):
@@ -407,11 +492,18 @@ def main():
         _log("  Down-arrow x1 (select _06 / June row)")
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.2)
         _press_arrow_down(); time.sleep(1.0); snap("2b_select")
-        # HEBREW: 'כ' (download command) — Alt+Shift to Hebrew, scancode 0x21
-        # (physical כ/f key). Then ENTER to execute (the previously-missing step).
-        _log("  Alt+Shift -> Hebrew, 'כ' (scancode 0x21), then Enter")
+        # HEBREW: 'כ' (download command). The layout MUST be Hebrew here so the
+        # raw 0x21 scancode (physical כ/f key) maps to 'כ', not 'f'. Set Hebrew
+        # DETERMINISTICALLY and STAY in Hebrew — a blind Alt+Shift toggle flipped
+        # the already-Hebrew terminal to English and typed 'f' (live bug 2026-06-30).
+        # Then ENTER to execute (the previously-missing submit step).
+        _log("  ensure Hebrew layout (deterministic), 'כ' (scancode 0x21), then Enter")
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.3)
-        _press_alt_shift(); time.sleep(0.7)
+        _ensure_hebrew(hwnd); time.sleep(0.2)
+        # Re-assert foreground right before injection — the scancode is translated
+        # by the FOREGROUND thread's active layout, so don't let focus drift after
+        # we've set Hebrew.
+        force_foreground(hwnd); time.sleep(0.15)
         _press_scancode(0x21); time.sleep(0.5)
         # Enter to submit the 'כ' command → starts the KERMIT transfer. Do NOT
         # snap between כ and Enter — grab() toggles topmost and can steal the
@@ -523,11 +615,11 @@ def main():
             _log(f"  Enter #{n}"); tap("\n", settle=1.5, tag=f"2_enter{n}")
         # Some screens may need the Hebrew כ confirm like option 13 — attempt it,
         # but the build often writes the .MBT set straight to Downloads on its own.
-        _log("  Alt+Shift -> Hebrew, 'כ' (scancode 0x21), Alt+Shift -> back")
+        _log("  ensure Hebrew layout (deterministic), 'כ' (scancode 0x21), restore English")
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.3)
-        _press_alt_shift(); time.sleep(0.7)
+        _ensure_hebrew(hwnd); time.sleep(0.2)
         _press_scancode(0x21); time.sleep(0.8); snap14("3_kaf")
-        _press_alt_shift(); time.sleep(0.4)
+        _set_kbd_layout(hwnd, _KLID_ENGLISH); time.sleep(0.4)
         _log("  Enter (confirm)"); tap("\n", settle=2.5, tag="4_after")
         # The production build can take a while; wait up to 120s for .MBT to land.
         changed = []
@@ -557,11 +649,11 @@ def main():
                   for p in _glob.glob(os.path.join(FNXBOX, "MU_*"))}
         force_foreground(hwnd); focus_click(hwnd); time.sleep(0.4)
         grab(hwnd, os.path.join(FNXBOX, "heb_0_before.png"))
-        _log("  Alt+Shift -> Hebrew"); _press_alt_shift(); time.sleep(0.7)
+        _log("  ensure Hebrew layout (deterministic)"); _ensure_hebrew(hwnd); time.sleep(0.3)
         grab(hwnd, os.path.join(FNXBOX, "heb_1_switched.png"))
         _log("  send כ (scancode 0x21, the f/כ key)"); _press_scancode(0x21); time.sleep(0.8)
         grab(hwnd, os.path.join(FNXBOX, "heb_2_kaf.png"))
-        _log("  Alt+Shift -> back to English"); _press_alt_shift(); time.sleep(0.4)
+        _log("  restore English layout"); _set_kbd_layout(hwnd, _KLID_ENGLISH); time.sleep(0.4)
         grab(hwnd, os.path.join(FNXBOX, "heb_3_back.png"))
         now = {os.path.basename(p): (os.path.getsize(p), os.path.getmtime(p))
                for p in _glob.glob(os.path.join(FNXBOX, "MU_*"))}
