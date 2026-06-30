@@ -47,66 +47,91 @@ class HachsharaPortal(BasePortalAutomation):
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
         await page.wait_for_timeout(1500)
 
-        # F5 BIG-IP errorcode-19 bounce: first hit lands on
-        # `my.logout.php3?errorcode=19` ("הגישה נדחתה … session information")
-        # whose recovery link is **חיבור חדש** (Hachshara's wording — Phoenix uses
-        # התחבר מחדש / לחץ כאן). Click it until the real logon form appears.
-        #
-        # A SECOND recovery case (seen when re-running within ~30 min of a prior
-        # run): the prior F5 session is still alive, so the portal shows a
-        # "זמן החיבור פג"/"פג תוקף" interstitial with a **חיבור מחדש** (reconnect)
-        # button — NOT the same wording as the errorcode-19 link, and the logon
-        # form's username input is absent/covered behind it. Detect that screen by
-        # its text (not just by a missing username input) and click reconnect.
-        for _ in range(5):
-            has_user = await page.locator("input[name='username']").count()
+        # F5 BIG-IP stale-session recovery. Two screens block the logon form:
+        #   1. errorcode-19 bounce (my.logout.php3?errorcode=19).
+        #   2. "זמן החיבור פג תוקף" interstitial — seen when re-running within ~30
+        #      min: the prior F5 session is STILL ALIVE. Its only control is a
+        #      **"חיבור חדש"** link (href="/").
+        # CRITICAL: the expiry page ALSO renders `input#text` — the SAME selector
+        # as Hachshara's OTP field — so naively waiting for the OTP input is a FALSE
+        # positive: we'd report login-OK and then sit on awaiting_otp for a code the
+        # insurer never sent (the login was never actually submitted). The reliable
+        # cure for a live stale session is to CLEAR COOKIES (kills the F5 session) so
+        # a clean logon form is served, then re-enter credentials. We also verify we
+        # truly LEFT the expiry screen before trusting the OTP field.
+        async def _blocked():
             try:
                 body = (await page.inner_text("body"))[:1500]
             except Exception:
                 body = ""
-            session_expired = ("זמן החיבור" in body or "פג תוקף" in body
-                               or "פג זמן" in body or "החיבור פג" in body)
-            if has_user and not session_expired and "errorcode" not in page.url \
-                    and "logout" not in page.url:
+            expired = any(t in body for t in ("זמן החיבור", "פג תוקף", "פג זמן", "החיבור פג"))
+            return expired or "errorcode" in page.url or "logout" in page.url
+
+        for _ in range(5):
+            has_user = await page.locator("input[name='username']").count()
+            if has_user and not await _blocked():
                 break
-            clicked = await self._click_first_visible(page, [
-                "a:has-text('חיבור מחדש')", "button:has-text('חיבור מחדש')",
-                "input[value*='חיבור מחדש']",
-                "a:has-text('חיבור חדש')", "a:has-text('התחבר מחדש')",
-                "button:has-text('התחבר מחדש')", "a:has-text('לחץ כאן')",
-                "input[value*='חיבור']", "button:has-text('חיבור')",
-            ], timeout=5000)
-            if not clicked:
-                break
+            # Kill the stale session so the logon form (not the expiry screen) loads,
+            # click any recovery link, then reload PORTAL_URL fresh.
             try:
-                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                await page.context.clear_cookies()
             except Exception:
                 pass
-            await page.wait_for_timeout(2000)
+            await self._click_first_visible(page, [
+                "a:has-text('חיבור חדש')", "a:has-text('חיבור מחדש')",
+                "button:has-text('חיבור מחדש')", "a:has-text('התחבר מחדש')",
+                "a:has-text('לחץ כאן')", "input[value*='חיבור']",
+            ], timeout=4000)
+            try:
+                await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
 
         # Fill + submit ourselves (the shared apm_login_submit's normal click on
         # the submit input TIMES OUT here — the `input[type=submit]` value=התחברות
         # is present+visible but not click-actionable, it's covered). Submit via
         # Enter in the password field (canonical F5 POST form), force-click fallback.
-        await self._wait_visible(page, "input[name='username']", timeout=15000)
-        await page.fill("input[name='username']", username)
-        await page.fill("input[name='password']", password)
-        try:
-            await page.press("input[name='password']", "Enter")
-        except Exception:
-            pass
-        try:
-            await page.wait_for_load_state("domcontentloaded", timeout=8000)
-        except Exception:
-            pass
-        # Fallback: still on the logon form → force-click the submit input.
-        if await page.locator("input[name='username']").count():
+        async def _fill_and_submit():
+            await self._wait_visible(page, "input[name='username']", timeout=15000)
+            await page.fill("input[name='username']", username)
+            await page.fill("input[name='password']", password)
             try:
-                await page.click("input[type='submit']", force=True, timeout=4000)
+                await page.press("input[name='password']", "Enter")
             except Exception:
                 pass
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            if await page.locator("input[name='username']").count():
+                try:
+                    await page.click("input[type='submit']", force=True, timeout=4000)
+                except Exception:
+                    pass
+
+        await _fill_and_submit()
+
+        # If the submit landed back on the expiry/errorcode screen, the login didn't
+        # take (stale session) — clear cookies and redo it ONCE on a fresh form.
+        if await _blocked():
+            try:
+                await page.context.clear_cookies()
+            except Exception:
+                pass
+            await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(1500)
+            await _fill_and_submit()
 
         await self._wait_visible(page, self._OTP_SEL, timeout=20000)
+        # Guard against the false positive: the expiry page carries input#text too.
+        # If we're still on it, fail fast + clearly instead of a misleading 5-min
+        # "no OTP" timeout (the code was never sent).
+        if await _blocked():
+            raise RuntimeError(
+                "הכשרה: נותרנו במסך 'זמן החיבור פג תוקף' אחרי התחברות — הסשן הישן לא נוקה "
+                "(לא נשלח OTP). נסו שוב בעוד מספר דקות."
+            )
 
     # Hachshara's OTP input is name="text"/id="text" ("קוד חד פעמי"), NOT the usual
     # otp/code/answer names. Keep the others as fallbacks.
