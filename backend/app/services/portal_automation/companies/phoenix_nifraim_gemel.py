@@ -145,7 +145,15 @@ async def download_gemel_report(
     # — the home dashboard grew an "עמלות" summary WIDGET (<h2>עמלות</h2>) that
     # `get_by_text("עמלות", exact=True).first` matched instead, so the click was a
     # no-op and the flyout never opened (live 2026-06-29). See phoenix_nifraim.py.
-    gemel_link = root_page.locator("a:has-text('נפרעים'):has-text('גמל')").first
+    #
+    # Use a union selector for the גמל link: Phoenix SPA nav items may render as
+    # <a>, <button>, or Angular CDK elements depending on portal version.
+    _GEMEL_LINK_SEL = (
+        "a:has-text('נפרעים'):has-text('גמל'), "
+        "button:has-text('נפרעים'):has-text('גמל'), "
+        "[role='menuitem']:has-text('נפרעים'):has-text('גמל')"
+    )
+    gemel_link = root_page.locator(_GEMEL_LINK_SEL).first
     amlot_header = root_page.locator("span:text-is('עמלות')").first
     expanded = False
     for _ in range(3):
@@ -159,7 +167,18 @@ async def download_gemel_report(
             await amlot_header.click(timeout=5000)
         except Exception:
             pass
-        await root_page.wait_for_timeout(1200)
+        # Wait up to 3s for the accordion animation — using wait_for_selector
+        # so we break out immediately once the link appears rather than sleeping
+        # a fixed 1.2s and then potentially clicking again (which would COLLAPSE
+        # the accordion on the next iteration).
+        try:
+            await root_page.wait_for_selector(
+                _GEMEL_LINK_SEL, state="visible", timeout=3000
+            )
+            expanded = True
+            break
+        except Exception:
+            pass
     if not expanded:
         try:
             expanded = await gemel_link.is_visible()
