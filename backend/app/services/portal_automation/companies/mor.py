@@ -292,6 +292,25 @@ class MorPortal(BasePortalAutomation):
 
         await ck("nav_0_home")
 
+        # 0) Dismiss the post-login announcement modal. Mor now shows a custom
+        #    Angular modal on login (<lib-modal id="mainModal" class="response-modal">,
+        #    e.g. the "סוכנות וסוכנים יקרים" updated-bank-account notice, a הבא/קודם
+        #    slideshow). Its .lib-modal-background backdrop intercepts pointer
+        #    events, so the תגמול drawer click below is swallowed and no report
+        #    downloads. Close it via the ✕ (button.btn-close-modal). Loop a few
+        #    times in case a second slide/modal stacks; full no-op when absent, so
+        #    runs where Mor shows nothing are unaffected.
+        for _ in range(3):
+            try:
+                close_btn = page.locator("button.btn-close-modal")
+                if not await close_btn.count():
+                    break
+                await close_btn.first.click(timeout=3000)
+                await page.wait_for_timeout(800)
+            except Exception:
+                break
+        await ck("nav_0b_after_modal")
+
         # 1) Right side-menu (Kendo drawer) → "תגמול" — the commission/נפרעים
         #    report. Live DOM: <li kendodraweritem aria-label="תגמול"
         #    class="k-drawer-item tagmul" data-kendo-drawer-index="8">. NOTE the
