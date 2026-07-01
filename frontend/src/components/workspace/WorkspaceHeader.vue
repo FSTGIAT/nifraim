@@ -114,6 +114,15 @@
           <div class="user-avatar">{{ avatarLetter }}</div>
           <span class="user-name">{{ auth.user.full_name || auth.user.email }}</span>
         </div>
+        <!-- Admin dashboard (admins only) -->
+        <router-link v-if="auth.user?.is_admin" to="/admin" class="btn-admin" title="ניהול משתמשים">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </router-link>
         <!-- Settings gear -->
         <div class="settings-wrapper" ref="settingsRef">
           <button class="btn-settings" data-tour="settings-gear" @click="settingsOpen = !settingsOpen" title="הגדרות">
@@ -432,6 +441,23 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Admin dashboard link (admins only) ── */
+.btn-admin {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all 0.25s var(--transition);
+}
+
+.btn-admin:hover {
+  background: rgba(127, 86, 217, 0.1);
+  color: var(--accent-violet);
 }
 
 /* ── Settings gear ── */
