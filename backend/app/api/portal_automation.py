@@ -63,6 +63,20 @@ router = APIRouter()
 
 
 OTP_REGEX = re.compile(r"\b(\d{4,8})\b")
+
+# phone_forward_token is secrets.token_urlsafe(...) → strictly [A-Za-z0-9_-].
+# Phones sometimes save the webhook URL with a stray character glued to the
+# token (an RTL keyboard appended e.g. "ךּ" → %D7%9A%D6%BC when the field was
+# hand-edited), so the exact-match user lookup fails and the SMS is silently
+# dropped as "unknown token". Strip anything that can't be in a real token so
+# such copy-paste corruption still resolves to the correct user.
+_TOKEN_INVALID_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _clean_token(token: str) -> str:
+    return _TOKEN_INVALID_RE.sub("", token or "")
+
+
 ACTIVE_RUN_STATUSES = {"pending", "running", "awaiting_otp", "downloading", "parsing"}
 TERMINAL_RUN_STATUSES = {"success", "failed", "timeout"}
 # A worker is "live" if it heartbeated within this window.
@@ -887,7 +901,7 @@ async def next_otp_for_external_driver(
     from sqlalchemy import or_, case as _case
 
     user = (await db.execute(
-        select(User).where(User.phone_forward_token == token).limit(1)
+        select(User).where(User.phone_forward_token == _clean_token(token)).limit(1)
     )).scalar_one_or_none()
     if not user:
         return {"otp": None}
@@ -980,7 +994,7 @@ async def phone_forward_templates(
     Unknown tokens get an empty list + 200 (don't leak token validity).
     """
     user_result = await db.execute(
-        select(User).where(User.phone_forward_token == token).limit(1)
+        select(User).where(User.phone_forward_token == _clean_token(token)).limit(1)
     )
     if user_result.scalar_one_or_none() is None:
         return {"templates": []}
@@ -1065,7 +1079,7 @@ async def phone_forward_webhook(
     )
 
     user_result = await db.execute(
-        select(User).where(User.phone_forward_token == token).limit(1)
+        select(User).where(User.phone_forward_token == _clean_token(token)).limit(1)
     )
     user = user_result.scalar_one_or_none()
     if not user:
@@ -1192,7 +1206,7 @@ async def worker_request_update(
 @router.post("/worker/log/{token}")
 async def worker_log(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     user = (await db.execute(
-        select(User).where(User.phone_forward_token == token)
+        select(User).where(User.phone_forward_token == _clean_token(token))
     )).scalar_one_or_none()
     body = (await request.body()).decode("utf-8", "replace")[:4000]
     logger.warning("WORKER-LOG [%s]: %s", user.email if user else "unknown-token", body)
@@ -1208,7 +1222,7 @@ async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
     from fastapi.responses import Response
 
     user = (await db.execute(
-        select(User).where(User.phone_forward_token == token)
+        select(User).where(User.phone_forward_token == _clean_token(token))
     )).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="not found")
@@ -1402,7 +1416,7 @@ async def worker_installer_ps(token: str, request: Request, db: AsyncSession = D
     no JWT on the machine)."""
     from fastapi.responses import PlainTextResponse
     user = (await db.execute(
-        select(User).where(User.phone_forward_token == token)
+        select(User).where(User.phone_forward_token == _clean_token(token))
     )).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="not found")
