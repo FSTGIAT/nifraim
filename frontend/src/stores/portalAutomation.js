@@ -148,12 +148,20 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   function _startPolling(runId) {
     _stopPolling()
     let polls = 0
-    const maxPolls = 80 // ~120s at 1.5s intervals
+    // ~10 min at 1.5s. A real run can outlast a short window: harel_savings
+    // alone is ~2 min, and the CONSOLIDATED Harel (one login → מוצרי צבירה גמל
+    // + מגוון + נפרעים) or a slow Migdal/Phoenix export runs several minutes.
+    // If the poller stops while the run is still going, activeRunId clears and
+    // the card falls back to the credential's PREVIOUS last_run_status — which
+    // flashes a stale שגיאה even though the run then succeeds. Give it real room.
+    const maxPolls = 400
 
     pollHandle = setInterval(async () => {
       polls += 1
       try {
         const data = await fetchRun(runId)
+        // Only give up early on a TRUE terminal status. On the safety cap, do a
+        // final authoritative re-fetch so we don't surface a mid-run stale state.
         if (TERMINAL_STATUSES.has(data.status) || polls >= maxPolls) {
           _stopPolling()
           activeRunId.value = null
