@@ -292,23 +292,65 @@ class MorPortal(BasePortalAutomation):
 
         await ck("nav_0_home")
 
-        # 0) Dismiss the post-login announcement modal. Mor now shows a custom
-        #    Angular modal on login (<lib-modal id="mainModal" class="response-modal">,
-        #    e.g. the "סוכנות וסוכנים יקרים" updated-bank-account notice, a הבא/קודם
-        #    slideshow). Its .lib-modal-background backdrop intercepts pointer
-        #    events, so the תגמול drawer click below is swallowed and no report
-        #    downloads. Close it via the ✕ (button.btn-close-modal). Loop a few
-        #    times in case a second slide/modal stacks; full no-op when absent, so
-        #    runs where Mor shows nothing are unaffected.
+        # 0) Dismiss the post-login announcement modal. Mor shows a custom Angular
+        #    modal on login (<lib-modal id="mainModal" class="response-modal">, e.g.
+        #    the "סוכנות וסוכנים יקרים" updated-bank-account notice — a הבא/קודם
+        #    slideshow). Its .lib-modal-background backdrop (z-index 99998,
+        #    rgba(0,0,0,.75)) intercepts pointer events, so the תגמול drawer click
+        #    below is swallowed and no report downloads.
+        #
+        #    VERIFIED against the live failed-run dump (9677d0fd_nav_0_home): the
+        #    ✕ is `button.btn-close-modal` but it's ICON-ONLY (no text) and can sit
+        #    off the visible-elements list, so a plain click may miss — and on a
+        #    multi-slide modal the ✕ may only appear on the last slide. So: try the
+        #    ✕ + Escape a few times, then GUARANTEE dismissal by nuking the modal in
+        #    the DOM (hide #mainModal, remove the backdrop, drop body.g-modal-open).
+        #    All steps are full no-ops when no modal is present.
         for _ in range(3):
             try:
                 close_btn = page.locator("button.btn-close-modal")
                 if not await close_btn.count():
                     break
-                await close_btn.first.click(timeout=3000)
-                await page.wait_for_timeout(800)
+                clicked = False
+                for j in range(min(await close_btn.count(), 5)):
+                    b = close_btn.nth(j)
+                    try:
+                        if await b.is_visible():
+                            await b.click(timeout=3000)
+                            clicked = True
+                            break
+                    except Exception:
+                        continue
+                if not clicked:
+                    try:
+                        await close_btn.first.click(timeout=2000, force=True)
+                    except Exception:
+                        pass
+                await page.wait_for_timeout(700)
             except Exception:
                 break
+        # Escape as a second-chance dismiss (Angular listens for it on some modals).
+        try:
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(400)
+        except Exception:
+            pass
+        # Bulletproof fallback: if ANY response-modal / backdrop is still in the DOM,
+        # remove it outright so the drawer click can't be intercepted. It's only an
+        # announcement — tearing it down client-side is safe.
+        try:
+            await page.evaluate(
+                """() => {
+                    document.querySelectorAll(
+                        'lib-modal, .lib-modal, .lib-modal-background, .response-modal'
+                    ).forEach(el => el.remove());
+                    document.body.classList.remove('g-modal-open');
+                    document.body.style.overflow = '';
+                }"""
+            )
+            await page.wait_for_timeout(300)
+        except Exception:
+            pass
         await ck("nav_0b_after_modal")
 
         # 1) Right side-menu (Kendo drawer) → "תגמול" — the commission/נפרעים
