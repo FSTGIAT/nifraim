@@ -201,6 +201,19 @@ class HarelCommissionsPortal(_HarelReportPortal):
             # Use _vis_click_last — there are 3 bar-excel buttons in the nested
             # grids; the deepest (correct) one is appended last in the DOM.
             target = download_dir / "הראל נפרעים חיים ובריאות.xlsx"
+            # The report toolbar (bar-excel) renders a beat AFTER the grid loads.
+            # A batch run can reach here before it exists → intermittent
+            # "no-excel-button" (works on a slower manual run, fails in the batch).
+            # Wait for the toolbar button to actually appear before exporting.
+            try:
+                await frame.locator(
+                    "button.bar-excel, [title='הדפס תצורת אקסל']"
+                ).last.wait_for(state="visible", timeout=15000)
+            except Exception:
+                _logger.warning(
+                    "Harel-commissions: bar-excel toolbar not visible after 15s; "
+                    "attempting export anyway"
+                )
             try:
                 async with page.expect_download(timeout=30000) as dl_info:
                     ok = False

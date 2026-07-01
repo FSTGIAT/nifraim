@@ -344,9 +344,13 @@ async def download_health_report(
         # Step 4: emit the file.
         if as_commission:
             # Keep the raw report → natively detects as commission (הפניקס).
-            out = download_dir / 'הפניקס נפרעים חא"ט ובריאות.xlsx'
+            # NOTE: the filename must NOT contain a double-quote (חא"ט) — `"` is an
+            # illegal character in Windows filenames and raw_path.rename() would die
+            # with WinError 123 on the worker, silently dropping Phoenix נפרעים from
+            # the batch. Use the quote-free spelling חאט.
+            out = download_dir / 'הפניקס נפרעים חאט ובריאות.xlsx'
             if out.exists():
-                out = download_dir / 'הפניקס נפרעים חאט ובריאות.xlsx'
+                out.unlink()
             raw_path.rename(out)
             logger.info("phoenix_nifraim: נפרעים (commission) file %s", out.name)
             return out

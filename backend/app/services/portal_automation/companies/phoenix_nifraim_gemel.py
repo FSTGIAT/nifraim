@@ -279,7 +279,7 @@ async def download_gemel_report(
             # it opens a DROPDOWN (e.g. current-page vs full-report), it does NOT
             # download directly. So: (1) click the trigger, (2) click the menu item
             # that actually exports, capturing the download.
-            trigger_ok = await self._click_first_visible(page, download_selectors, timeout=12000)
+            trigger_ok = await plugin._click_first_visible(page, download_selectors, timeout=12000)
             if not trigger_ok:
                 await _checkpoint(page, "gm_3_no_button")
                 raise _fail("gm_3_no_button", "Phoenix גמל: 'להורדת דוח אקסל' trigger not found")
@@ -320,7 +320,7 @@ async def download_gemel_report(
             action_matched = None
             try:
                 async with page.expect_download(timeout=60000) as dl_info:
-                    action_matched = await self._click_first_visible(page, action_selectors, timeout=8000)
+                    action_matched = await plugin._click_first_visible(page, action_selectors, timeout=8000)
                     if not action_matched:
                         # No menu appeared — maybe the trigger itself downloads but
                         # was slow; just wait on the native event from the trigger.

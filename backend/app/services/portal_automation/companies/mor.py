@@ -352,6 +352,17 @@ class MorPortal(BasePortalAutomation):
         except Exception:
             pass
         await ck("nav_0b_after_modal")
+        from app.services.portal_automation.runner import logger as _mlog
+        try:
+            _backdrop = await page.locator(
+                ".lib-modal-background, lib-modal#mainModal, .response-modal"
+            ).count()
+            _mlog.info(
+                "Mor nav: after modal-dismiss — url=%s backdrop_remaining=%d",
+                page.url, _backdrop,
+            )
+        except Exception:
+            pass
 
         # 1) Right side-menu (Kendo drawer) → "תגמול" — the commission/נפרעים
         #    report. Live DOM: <li kendodraweritem aria-label="תגמול"
@@ -371,6 +382,10 @@ class MorPortal(BasePortalAutomation):
             pass
         await page.wait_for_timeout(2000)
         await ck("nav_1_commissions")
+        try:
+            _mlog.info("Mor nav: after תגמול click — url=%s", page.url)
+        except Exception:
+            pass
 
         # 2) Download to Excel (latest month default; refine selection after the
         #    first live run from nav_1_commissions.txt).
