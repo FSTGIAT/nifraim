@@ -215,8 +215,39 @@ class MorPortal(BasePortalAutomation):
                 await page.wait_for_timeout(500)
 
             if _rejected:
+                # RECOVERY (verified manually by the agent live): the "אירעה שגיאה"
+                # is transient — simply clicking the login button (התחברות/כניסה)
+                # AGAIN on the same page, with NO re-navigation, pushes straight
+                # through to the OTP modal. Try several quick re-clicks before the
+                # heavier token-refresh retry.
+                from app.services.portal_automation.runner import logger as _llog
+                for _reclick in range(6):
+                    try:
+                        btn = page.locator(
+                            "button[type='submit']:not([disabled]), "
+                            "button:has-text('התחבר'):not([disabled]), "
+                            "button:has-text('כניסה'):not([disabled])"
+                        ).first
+                        await btn.wait_for(state="visible", timeout=8000)
+                        await btn.click()
+                    except Exception:
+                        # a disabled submit button re-enables once the form is
+                        # re-touched — nudge the phone field then retry the click.
+                        try:
+                            await page.click("input[placeholder*='טלפון']")
+                            await page.keyboard.press("Tab")
+                            await page.wait_for_timeout(600)
+                        except Exception:
+                            pass
+                        continue
+                    for _ in range(24):  # ~12s: OTP modal appears or another error
+                        if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
+                            _llog.info("Mor login: recovered via re-click #%d → OTP modal open", _reclick + 1)
+                            return
+                        await page.wait_for_timeout(500)
+                    _llog.info("Mor login: re-click #%d did not open OTP yet", _reclick + 1)
                 if _att < _MAX_SUBMIT_ATT:
-                    continue  # transient reCAPTCHA — refresh token and retry once
+                    continue  # heavier retry: refresh reCAPTCHA token + re-nav
                 raise RuntimeError(
                     "Mor: הכניסה נדחתה (אירעה שגיאה) — בדוק מס' רשיון/ת\"ז/טלפון "
                     "או המתן דקות (חסימת ניסיונות חוזרים)."
