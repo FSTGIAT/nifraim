@@ -31,7 +31,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.services.portal_automation.companies.menora import MenoraPortal
+from app.services.portal_automation.companies.menora import MenoraPortal, open_menora_vault
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
