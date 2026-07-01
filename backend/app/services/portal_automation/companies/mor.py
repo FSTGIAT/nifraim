@@ -404,6 +404,7 @@ class MorPortal(BasePortalAutomation):
 
         today = _date.today()
         loaded = 0
+        found_m, found_y = today.month, today.year
         for back in range(0, 8):
             m, y = today.month - back, today.year
             while m <= 0:
@@ -430,6 +431,7 @@ class MorPortal(BasePortalAutomation):
                 loaded = 0 if norec else n
                 _mlog.info("Mor: month 01/%02d/%d → rows=%d norecords=%d", m, y, n, norec)
                 if loaded > 0:
+                    found_m, found_y = m, y
                     break
             except Exception as e:
                 _mlog.warning("Mor: month 01/%02d/%d select/search failed: %s", m, y, e)
@@ -443,7 +445,9 @@ class MorPortal(BasePortalAutomation):
                 f"בחירת החודש/חיפוש נכשלו — בדוק {run_id}_nav_1b_month_selected.{{png,html,txt}}"
             )
 
-        target = download_dir / "מור נפרעים.xlsx"
+        # Embed the loaded month (MM-YYYY) in the filename so detect_period_month
+        # reads it directly (step 2) instead of falling back to data-date inference.
+        target = download_dir / f"מור נפרעים {found_m:02d}-{found_y}.xlsx"
         xhr = {"bytes": None}
 
         async def on_resp(resp):
