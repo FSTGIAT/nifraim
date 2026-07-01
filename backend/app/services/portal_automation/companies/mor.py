@@ -156,7 +156,9 @@ class MorPortal(BasePortalAutomation):
         # a single bad score doesn't kill the whole batch run (it passed yesterday
         # on the same creds). See math/diagnosis: the run died in 11s on attempt 1.
         otp_sel = "#otpInput, input[formcontrolname='otpCode']"
-        _MAX_SUBMIT_ATT = 2
+        # Single submit — the recovery below patiently waits instead of re-navigating
+        # (re-nav + re-submit just burns the reCAPTCHA score further).
+        _MAX_SUBMIT_ATT = 1
         for _att in range(1, _MAX_SUBMIT_ATT + 1):
             if _att > 1:
                 await page.wait_for_timeout(90_000)  # let the old reCAPTCHA token expire
@@ -215,42 +217,36 @@ class MorPortal(BasePortalAutomation):
                 await page.wait_for_timeout(500)
 
             if _rejected:
-                # RECOVERY (verified manually by the agent live): the "אירעה שגיאה"
-                # is transient — simply clicking the login button (התחברות/כניסה)
-                # AGAIN on the same page, with NO re-navigation, pushes straight
-                # through to the OTP modal. Try several quick re-clicks before the
-                # heavier token-refresh retry.
+                # Mor's reCAPTCHA-Enterprise returns "אירעה שגיאה" post-submit when it
+                # scores the session low. DO NOT spam re-clicks or re-navigate — each
+                # extra submit lowers the score further (a rapid test loop today drove
+                # it low enough that even manual clicks bounced). Instead: ONE gentle
+                # re-click, then PATIENTLY wait for the OTP modal (up to ~2 min) so a
+                # transient recovery — or an operator clicking התחבר on the headed
+                # worker — carries it through, WITHOUT burning the score.
                 from app.services.portal_automation.runner import logger as _llog
-                for _reclick in range(6):
-                    try:
-                        btn = page.locator(
-                            "button[type='submit']:not([disabled]), "
-                            "button:has-text('התחבר'):not([disabled]), "
-                            "button:has-text('כניסה'):not([disabled])"
-                        ).first
-                        await btn.wait_for(state="visible", timeout=8000)
-                        await btn.click()
-                    except Exception:
-                        # a disabled submit button re-enables once the form is
-                        # re-touched — nudge the phone field then retry the click.
-                        try:
-                            await page.click("input[placeholder*='טלפון']")
-                            await page.keyboard.press("Tab")
-                            await page.wait_for_timeout(600)
-                        except Exception:
-                            pass
-                        continue
-                    for _ in range(24):  # ~12s: OTP modal appears or another error
-                        if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
-                            _llog.info("Mor login: recovered via re-click #%d → OTP modal open", _reclick + 1)
-                            return
-                        await page.wait_for_timeout(500)
-                    _llog.info("Mor login: re-click #%d did not open OTP yet", _reclick + 1)
-                if _att < _MAX_SUBMIT_ATT:
-                    continue  # heavier retry: refresh reCAPTCHA token + re-nav
+                try:
+                    btn = page.locator(
+                        "button[type='submit']:not([disabled]), "
+                        "button:has-text('התחבר'):not([disabled]), "
+                        "button:has-text('כניסה'):not([disabled])"
+                    ).first
+                    await btn.wait_for(state="visible", timeout=6000)
+                    await btn.click()
+                except Exception:
+                    pass
+                _llog.info(
+                    "Mor login: 'אירעה שגיאה' (low reCAPTCHA score) — waiting up to 120s "
+                    "for OTP modal (operator may click התחבר on the headed worker)"
+                )
+                for _i in range(60):  # 60 × 2s = 120s
+                    if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
+                        _llog.info("Mor login: OTP modal opened (recovered) after ~%ds", _i * 2)
+                        return
+                    await page.wait_for_timeout(2000)
                 raise RuntimeError(
-                    "Mor: הכניסה נדחתה (אירעה שגיאה) — בדוק מס' רשיון/ת\"ז/טלפון "
-                    "או המתן דקות (חסימת ניסיונות חוזרים)."
+                    "Mor: הכניסה נדחתה (אירעה שגיאה) — ציון reCAPTCHA נמוך מריצות חוזרות. "
+                    "המתן ~20-30 דקות ונסה שוב (ריצה בודדת עוברת); בבאטצ' מור רץ פעם אחת."
                 )
             raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 
