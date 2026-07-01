@@ -387,24 +387,61 @@ class MorPortal(BasePortalAutomation):
         except Exception:
             pass
 
-        # 2) Pick the LAST (most recent) month, then export ITS detail to Excel.
-        #    The month list renders as a Kendo/HTML grid — click the last row so
-        #    the detail grid loads before we hit ייצוא לאקסל. Best-effort across a
-        #    few row selectors; the checkpoint dump captures the page for refining.
-        try:
-            month_rows = page.locator(
-                "kendo-grid tbody tr.k-master-row, table.k-grid-table tbody tr, "
-                "kendo-grid tbody tr, table tbody tr"
-            )
-            await month_rows.last.wait_for(state="visible", timeout=8000)
-            n = await month_rows.count()
-            if n:
-                await month_rows.nth(n - 1).click(timeout=5000)
-                _mlog.info("Mor: clicked last month row (%d rows total)", n)
-                await page.wait_for_timeout(1800)
-        except Exception as e:
-            _mlog.warning("Mor: last-month select failed (%s) — exporting default view", e)
+        # 2) חישוב תגמול shows NO data until a MONTH is chosen: the startDate Kendo
+        #    date-picker is empty on load (grid = "NO DATA FOUND"), so exporting
+        #    immediately yields an empty 19-column file. Set the latest month that
+        #    HAS data (Mor נפרעים lags → walk back from this month), click חפש to
+        #    load the grid, THEN export. Reference of a correct file:
+        #    Desktop/KIKO/12_2025_נפרעים מור.xlsx = 455 rows × 19 cols.
+        from datetime import date as _date
+
+        date_input = page.locator(
+            "kendo-datepicker[formcontrolname='startDate'] input.k-input, "
+            "kendo-datepicker[formcontrolname='startDate'] input"
+        ).first
+        search_btn = page.locator("button:has-text('חפש')").first
+        data_rows = page.locator("kendo-grid tbody tr.k-master-row")
+
+        today = _date.today()
+        loaded = 0
+        for back in range(0, 8):
+            m, y = today.month - back, today.year
+            while m <= 0:
+                m += 12
+                y -= 1
+            digits = f"01{m:02d}{y}"  # dd mm yyyy (he-IL) — Kendo dateinput auto-advances segments
+            try:
+                await date_input.click(timeout=6000)
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Delete")
+                await date_input.type(digits, delay=70)
+                await page.keyboard.press("Tab")
+                await page.wait_for_timeout(400)
+                await search_btn.click(timeout=6000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1500)
+                norec = await page.locator(
+                    "kendo-grid .k-grid-norecords, kendo-grid td.k-grid-norecords"
+                ).count()
+                n = await data_rows.count()
+                loaded = 0 if norec else n
+                _mlog.info("Mor: month 01/%02d/%d → rows=%d norecords=%d", m, y, n, norec)
+                if loaded > 0:
+                    break
+            except Exception as e:
+                _mlog.warning("Mor: month 01/%02d/%d select/search failed: %s", m, y, e)
+        _mlog.info("Mor: month selection done — loaded_rows=%d", loaded)
         await ck("nav_1b_month_selected")
+        if loaded == 0:
+            # Don't export an empty grid (it would ingest as a false-success 0-row
+            # file). Surface a clear error + the dump so the month-pick can be fixed.
+            raise RuntimeError(
+                f"Mor: לא נטענו נתונים ב'חישוב תגמול' לאף חודש (8 חודשים אחורה). "
+                f"בחירת החודש/חיפוש נכשלו — בדוק {run_id}_nav_1b_month_selected.{{png,html,txt}}"
+            )
 
         target = download_dir / "מור נפרעים.xlsx"
         xhr = {"bytes": None}
