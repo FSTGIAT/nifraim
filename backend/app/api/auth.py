@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, Token, UserOut, ForgotPasswordRequest, ResetPasswordRequest
 from app.services.auth_service import hash_password, verify_password, create_access_token
-from app.services.email_service import send_reset_password_email
+from app.services.email_service import send_reset_password_email, FRONTEND_URL
 from app.api.deps import get_current_user
 
 router = APIRouter()
@@ -62,7 +62,13 @@ async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depend
         await send_reset_password_email(user.email, user.full_name or "", token)
     except Exception as e:
         import logging
-        logging.error(f"Failed to send reset email: {e}")
+        # Email delivery failed (e.g. SMTP 535 auth rejected). The reset token is
+        # already committed above, so recovery is still possible — surface the
+        # ready-to-use reset link in the server log so the operator can hand it to
+        # the user manually while the mailbox credentials are being fixed.
+        reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+        logging.error(f"Failed to send reset email to {user.email}: {e}")
+        logging.warning(f"PASSWORD RESET LINK (deliver manually) for {user.email}: {reset_url}")
         raise HTTPException(status_code=500, detail=f"שגיאה בשליחת האימייל: {e}")
 
     return {"message": "קישור לאיפוס סיסמה נשלח לאימייל שלך"}
