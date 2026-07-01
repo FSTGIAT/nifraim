@@ -167,6 +167,26 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
           activeRunId.value = null
           // Refresh credential list so last_run_status pill updates
           await fetchCredentials()
+          // Race-proof the pill: fetchCredentials() can fire microseconds before the
+          // runner commits the credential's last_run_status (runner.py finally-block),
+          // re-surfacing a stale שגיאה even though the run SUCCEEDED (observed on
+          // menora נפרעים). The just-finished run's own terminal status is
+          // authoritative for that credential — apply it after the refetch so it wins.
+          if (TERMINAL_STATUSES.has(data.status) && data.credential_id) {
+            const idx = credentials.value.findIndex(
+              (c) => String(c.id) === String(data.credential_id),
+            )
+            if (idx >= 0) {
+              credentials.value[idx] = {
+                ...credentials.value[idx],
+                last_run_status: data.status,
+                last_error:
+                  data.status === 'success'
+                    ? null
+                    : credentials.value[idx].last_error || data.error_message || null,
+              }
+            }
+          }
         }
       } catch (e) {
         _stopPolling()
