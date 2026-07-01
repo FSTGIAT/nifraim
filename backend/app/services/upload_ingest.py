@@ -336,15 +336,24 @@ async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_uploa
 
     try:
         async with async_session() as db:
+            # Production is NO LONGER a singleton — multiple companies' production
+            # uploads coexist as is_production=True (see unified_production_per_month).
+            # scalar_one_or_none() here raised MultipleResultsFound, silently killing
+            # the auto-compare for every commission file. Aggregate them all (like
+            # /current does) and anchor the comparison FK on the newest.
             prod_q = await db.execute(
-                select(FileUpload).where(
+                select(FileUpload)
+                .where(
                     FileUpload.user_id == user_id,
                     FileUpload.is_production.is_(True),
                 )
+                .order_by(FileUpload.uploaded_at)
             )
-            prod_upload = prod_q.scalar_one_or_none()
-            if not prod_upload:
+            prod_uploads = list(prod_q.scalars().all())
+            if not prod_uploads:
                 return
+            prod_upload_ids = [u.id for u in prod_uploads]
+            prod_upload = prod_uploads[-1]  # newest — FK anchor only
 
             new_comm_q = await db.execute(
                 select(FileUpload).where(FileUpload.id == commission_upload_id)
@@ -375,7 +384,7 @@ async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_uploa
             all_comm_q = await db.execute(
                 select(ClientRecord).where(
                     ClientRecord.user_id == user_id,
-                    ClientRecord.upload_id != prod_upload.id,
+                    ClientRecord.upload_id.notin_(prod_upload_ids),
                 )
             )
             all_comm_records = [_to_dict(r) for r in all_comm_q.scalars().all()]
@@ -384,7 +393,7 @@ async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_uploa
 
             prod_q2 = await db.execute(
                 select(ClientRecord).where(
-                    ClientRecord.upload_id == prod_upload.id,
+                    ClientRecord.upload_id.in_(prod_upload_ids),
                     ClientRecord.user_id == user_id,
                 )
             )
