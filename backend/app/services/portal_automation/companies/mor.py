@@ -364,31 +364,48 @@ class MorPortal(BasePortalAutomation):
         except Exception:
             pass
 
-        # 1) Right side-menu (Kendo drawer) → "תגמול" — the commission/נפרעים
-        #    report. Live DOM: <li kendodraweritem aria-label="תגמול"
-        #    class="k-drawer-item tagmul" data-kendo-drawer-index="8">. NOTE the
-        #    label is "תגמול" (compensation), NOT "חישוב עמלות"; "חישוב תגמול"
-        #    (index 9) is a DIFFERENT item — match aria-label exactly so we don't
-        #    hit it. Click the <li>; fall back to its inner k-item-text span.
+        # 1) Right side-menu (Kendo drawer) → "חישוב תגמול" — the DETAILED
+        #    commission-calculation report (the agent calls it "חישוב עמלות").
+        #    IMPORTANT: the sibling "תגמול" (index 8) is only a monthly SUMMARY
+        #    (חודש/סטטוס/נפרעים/דמי סליקה/…) with NO policy-level detail and no
+        #    id_number — the parser rejects it (unknown_format_known_company). The
+        #    real per-policy נפרעים lives under "חישוב תגמול" (index 9): pick the
+        #    latest month there, THEN export.
         await self._click_first_visible(page, [
-            "li[aria-label='תגמול']",
-            "li.k-drawer-item.tagmul",
-            "li[data-kendo-drawer-index='8']",
-            "li[aria-label='תגמול'] span.k-item-text",
+            "li[aria-label='חישוב תגמול']",
+            "li[data-kendo-drawer-index='9']",
+            "li[aria-label='חישוב תגמול'] span.k-item-text",
         ], timeout=12000)
         try:
             await page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
             pass
         await page.wait_for_timeout(2000)
-        await ck("nav_1_commissions")
+        await ck("nav_1_calc")
         try:
-            _mlog.info("Mor nav: after תגמול click — url=%s", page.url)
+            _mlog.info("Mor nav: after חישוב תגמול click — url=%s", page.url)
         except Exception:
             pass
 
-        # 2) Download to Excel (latest month default; refine selection after the
-        #    first live run from nav_1_commissions.txt).
+        # 2) Pick the LAST (most recent) month, then export ITS detail to Excel.
+        #    The month list renders as a Kendo/HTML grid — click the last row so
+        #    the detail grid loads before we hit ייצוא לאקסל. Best-effort across a
+        #    few row selectors; the checkpoint dump captures the page for refining.
+        try:
+            month_rows = page.locator(
+                "kendo-grid tbody tr.k-master-row, table.k-grid-table tbody tr, "
+                "kendo-grid tbody tr, table tbody tr"
+            )
+            await month_rows.last.wait_for(state="visible", timeout=8000)
+            n = await month_rows.count()
+            if n:
+                await month_rows.nth(n - 1).click(timeout=5000)
+                _mlog.info("Mor: clicked last month row (%d rows total)", n)
+                await page.wait_for_timeout(1800)
+        except Exception as e:
+            _mlog.warning("Mor: last-month select failed (%s) — exporting default view", e)
+        await ck("nav_1b_month_selected")
+
         target = download_dir / "מור נפרעים.xlsx"
         xhr = {"bytes": None}
 
