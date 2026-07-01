@@ -23,6 +23,7 @@
       <!-- Tabs -->
       <div class="admin-tabs">
         <button :class="{ active: tab === 'users' }" @click="tab = 'users'">משתמשים</button>
+        <button :class="{ active: tab === 'agents' }" @click="tab = 'agents'">סטטוס סוכנים</button>
         <button :class="{ active: tab === 'subscriptions' }" @click="tab = 'subscriptions'">מנויים</button>
       </div>
 
@@ -31,6 +32,12 @@
         <div class="section-header-row">
           <h2>ניהול משתמשים</h2>
           <span class="count-badge ltr-number">{{ users.length }}</span>
+          <button class="btn-create" @click="openCreate">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            צור משתמש
+          </button>
         </div>
         <div v-if="loadingUsers" class="loading">טוען...</div>
         <table v-else class="admin-table">
@@ -83,6 +90,42 @@
         </table>
       </div>
 
+      <!-- Agents Status Tab -->
+      <div v-if="tab === 'agents'" class="admin-section">
+        <div class="section-header-row">
+          <h2>סטטוס סוכנים</h2>
+          <span class="count-badge ltr-number">{{ onlineCount }}/{{ agents.length }}</span>
+        </div>
+        <div v-if="loadingAgents" class="loading">טוען...</div>
+        <table v-else class="admin-table">
+          <thead>
+            <tr>
+              <th>שם</th>
+              <th>אימייל</th>
+              <th>חברה</th>
+              <th>חיבור עובד</th>
+              <th>נראה לאחרונה</th>
+              <th>מחשב</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="a in agents" :key="a.id">
+              <td>{{ a.full_name || '—' }}</td>
+              <td class="ltr-number">{{ a.email }}</td>
+              <td>{{ a.company_name || '—' }}</td>
+              <td>
+                <span class="worker" :class="a.worker_online ? 'worker--on' : 'worker--off'">
+                  <span class="worker__dot" aria-hidden="true"></span>
+                  <span class="worker__state">{{ a.worker_online ? 'מחובר' : 'מנותק' }}</span>
+                </span>
+              </td>
+              <td class="ltr-number">{{ a.worker_online ? '—' : (a.last_seen ? formatDateTime(a.last_seen) : 'טרם דיווח') }}</td>
+              <td>{{ a.hostname || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <!-- Subscriptions Tab -->
       <div v-if="tab === 'subscriptions'" class="admin-section">
         <div class="section-header-row">
@@ -118,17 +161,72 @@
         </table>
       </div>
     </main>
+
+    <!-- Create User Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showCreate" class="cu-overlay" @click.self="closeCreate">
+          <div class="cu-modal" role="dialog" aria-modal="true">
+            <div class="cu-header">
+              <h3>צור משתמש חדש</h3>
+              <button class="cu-close" @click="closeCreate" aria-label="סגור">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <form class="cu-body" @submit.prevent="submitCreate">
+              <label class="cu-field">
+                <span>אימייל <em>*</em></span>
+                <input v-model="createForm.email" type="email" required dir="ltr" autocomplete="off" />
+              </label>
+              <label class="cu-field">
+                <span>סיסמה <em>*</em></span>
+                <input v-model="createForm.password" type="text" required dir="ltr" autocomplete="off" />
+              </label>
+              <label class="cu-field">
+                <span>שם מלא</span>
+                <input v-model="createForm.full_name" type="text" />
+              </label>
+              <label class="cu-field">
+                <span>טלפון</span>
+                <input v-model="createForm.phone" type="text" dir="ltr" />
+              </label>
+              <label class="cu-field">
+                <span>חברה</span>
+                <input v-model="createForm.company_name" type="text" />
+              </label>
+              <label class="cu-check">
+                <input v-model="createForm.is_admin" type="checkbox" />
+                <span>הרשאות אדמין</span>
+              </label>
+
+              <p v-if="createError" class="cu-error">{{ createError }}</p>
+
+              <div class="cu-actions">
+                <button type="button" class="cu-btn cu-btn--ghost" @click="closeCreate">ביטול</button>
+                <button type="submit" class="cu-btn cu-btn--primary" :disabled="creating">
+                  {{ creating ? 'יוצר...' : 'צור משתמש' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '../api/client.js'
 
 const tab = ref('users')
 const users = ref([])
+const agents = ref([])
 const subscriptions = ref([])
 const loadingUsers = ref(true)
+const loadingAgents = ref(true)
 const loadingSubs = ref(true)
 
 const statusLabels = {
@@ -138,9 +236,43 @@ const statusLabels = {
   expired: 'פג תוקף',
 }
 
+const onlineCount = computed(() => agents.value.filter((a) => a.worker_online).length)
+
+// Create-user modal state
+const showCreate = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const createForm = ref({ email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false })
+
+// Poll agents-status while the agents tab is open so online state stays fresh.
+let agentsTimer = null
+function startAgentsPolling() {
+  stopAgentsPolling()
+  agentsTimer = setInterval(fetchAgents, 30000)
+}
+function stopAgentsPolling() {
+  if (agentsTimer) {
+    clearInterval(agentsTimer)
+    agentsTimer = null
+  }
+}
+
+watch(tab, (t) => {
+  if (t === 'agents') {
+    fetchAgents()
+    startAgentsPolling()
+  } else {
+    stopAgentsPolling()
+  }
+})
+
 onMounted(() => {
   fetchUsers()
   fetchSubscriptions()
+})
+
+onUnmounted(() => {
+  stopAgentsPolling()
 })
 
 async function fetchUsers() {
@@ -152,6 +284,47 @@ async function fetchUsers() {
     console.error('Failed to fetch users:', e)
   } finally {
     loadingUsers.value = false
+  }
+}
+
+async function fetchAgents() {
+  loadingAgents.value = true
+  try {
+    const res = await api.get('/admin/agents-status')
+    agents.value = res.data
+  } catch (e) {
+    console.error('Failed to fetch agents status:', e)
+  } finally {
+    loadingAgents.value = false
+  }
+}
+
+function openCreate() {
+  createError.value = ''
+  createForm.value = { email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false }
+  showCreate.value = true
+}
+
+function closeCreate() {
+  showCreate.value = false
+}
+
+async function submitCreate() {
+  creating.value = true
+  createError.value = ''
+  try {
+    const res = await api.post('/admin/users', createForm.value)
+    users.value.unshift(res.data)
+    showCreate.value = false
+  } catch (e) {
+    if (e.response?.status === 400) {
+      createError.value = 'האימייל כבר רשום במערכת'
+    } else {
+      createError.value = 'יצירת המשתמש נכשלה'
+    }
+    console.error('Failed to create user:', e)
+  } finally {
+    creating.value = false
   }
 }
 
@@ -189,6 +362,20 @@ function formatDate(dateStr) {
   if (!dateStr) return '—'
   try {
     return new Date(dateStr).toLocaleDateString('he-IL')
+  } catch {
+    return dateStr
+  }
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—'
+  try {
+    return new Date(dateStr).toLocaleString('he-IL', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   } catch {
     return dateStr
   }
@@ -411,5 +598,211 @@ function formatDate(dateStr) {
   background: var(--red-light);
   border-color: transparent;
   color: var(--red);
+}
+
+/* Create-user button */
+.btn-create {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--primary);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-create:hover {
+  background: var(--primary-deep);
+}
+
+/* Worker online/offline chip (mirrors PortalActivityPanel) */
+.worker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.worker__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.worker--on .worker__dot {
+  background: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  animation: worker-pulse 1.8s ease-out infinite;
+}
+
+@keyframes worker-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.worker__state {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.worker--off .worker__state {
+  color: var(--text-muted);
+}
+
+/* Create-user modal */
+.cu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1010;
+  padding: 24px;
+}
+
+.cu-modal {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.cu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cu-header h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.cu-close {
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
+.cu-close:hover {
+  color: var(--text);
+}
+
+.cu-body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cu-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cu-field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cu-field em {
+  color: var(--red);
+  font-style: normal;
+}
+
+.cu-field input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.cu-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.cu-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.cu-error {
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cu-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+.cu-btn {
+  padding: 9px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cu-btn--primary {
+  background: var(--primary);
+  color: white;
+}
+
+.cu-btn--primary:hover:not(:disabled) {
+  background: var(--primary-deep);
+}
+
+.cu-btn--primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cu-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.cu-btn--ghost:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.2s;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
 }
 </style>

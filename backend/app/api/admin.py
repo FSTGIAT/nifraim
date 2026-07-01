@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
@@ -11,9 +12,15 @@ from app.models.subscription import Subscription
 from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.commission_comparison import CommissionComparison
-from app.schemas.user import UserAdminOut, UserAdminUpdate
+from app.models.worker_heartbeat import WorkerHeartbeat
+from app.schemas.user import UserAdminOut, UserAdminUpdate, UserAdminCreate, AgentStatusOut
+from app.services.auth_service import hash_password
 
 router = APIRouter()
+
+# A worker is "online" if it heartbeated within this window. Mirrors
+# WORKER_LIVE_WINDOW_S in app/api/portal_automation.py (the source of truth).
+WORKER_LIVE_WINDOW_S = 90
 
 
 @router.get("/users", response_model=list[UserAdminOut])
@@ -23,19 +30,78 @@ async def list_users(
 ):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
-    return [
-        UserAdminOut(
-            id=str(u.id),
-            email=u.email,
-            full_name=u.full_name,
-            phone=u.phone,
-            company_name=u.company_name,
-            is_active=u.is_active,
-            is_admin=u.is_admin,
-            created_at=u.created_at.isoformat() if u.created_at else "",
+    return [_user_admin_out(u) for u in users]
+
+
+def _user_admin_out(u: User) -> UserAdminOut:
+    return UserAdminOut(
+        id=str(u.id),
+        email=u.email,
+        full_name=u.full_name,
+        phone=u.phone,
+        company_name=u.company_name,
+        is_active=u.is_active,
+        is_admin=u.is_admin,
+        created_at=u.created_at.isoformat() if u.created_at else "",
+    )
+
+
+@router.post("/users", response_model=UserAdminOut, status_code=201)
+async def create_user(
+    body: UserAdminCreate,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    email = body.email.lower()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+        phone=body.phone,
+        company_name=body.company_name,
+        is_active=True,  # admin-created accounts are active immediately
+        is_admin=body.is_admin,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    return _user_admin_out(user)
+
+
+@router.get("/agents-status", response_model=list[AgentStatusOut])
+async def agents_status(
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every agent + whether their local worker is currently connected."""
+    result = await db.execute(
+        select(User, WorkerHeartbeat)
+        .outerjoin(WorkerHeartbeat, WorkerHeartbeat.user_id == User.id)
+        .order_by(User.created_at.desc())
+    )
+    now = datetime.utcnow()
+    out: list[AgentStatusOut] = []
+    for user, hb in result.all():
+        online = hb is not None and (now - hb.last_seen).total_seconds() <= WORKER_LIVE_WINDOW_S
+        out.append(
+            AgentStatusOut(
+                id=str(user.id),
+                email=user.email,
+                full_name=user.full_name,
+                company_name=user.company_name,
+                is_active=user.is_active,
+                worker_online=online,
+                last_seen=hb.last_seen.isoformat() if hb and hb.last_seen else None,
+                hostname=hb.hostname if hb else None,
+                current_job=hb.current_job if hb else None,
+            )
         )
-        for u in users
-    ]
+    return out
 
 
 @router.patch("/users/{user_id}", response_model=UserAdminOut)
@@ -58,16 +124,7 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
 
-    return UserAdminOut(
-        id=str(user.id),
-        email=user.email,
-        full_name=user.full_name,
-        phone=user.phone,
-        company_name=user.company_name,
-        is_active=user.is_active,
-        is_admin=user.is_admin,
-        created_at=user.created_at.isoformat() if user.created_at else "",
-    )
+    return _user_admin_out(user)
 
 
 @router.get("/subscriptions")

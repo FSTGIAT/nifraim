@@ -53,3 +53,24 @@ class UserAdminOut(BaseModel):
 class UserAdminUpdate(BaseModel):
     is_active: bool | None = None
     is_admin: bool | None = None
+
+
+class UserAdminCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str | None = None
+    phone: str | None = None
+    company_name: str | None = None
+    is_admin: bool = False
+
+
+class AgentStatusOut(BaseModel):
+    id: str
+    email: str
+    full_name: str | None
+    company_name: str | None
+    is_active: bool
+    worker_online: bool
+    last_seen: str | None = None        # ISO 8601
+    hostname: str | None = None
+    current_job: str | None = None
