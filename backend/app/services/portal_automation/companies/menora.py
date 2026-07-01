@@ -66,7 +66,23 @@ class MenoraPortal(BasePortalAutomation):
 
         await self._wait_visible(page, "input#username", timeout=15000)
         await page.fill("input#username", username)
-        await page.fill("input#phoneNumber", password)
+        # Normalize the phone (password holds the phone for Menora's reversed creds).
+        # A stored number that lost its leading 0 (e.g. 9-digit "5XXXXXXXX" instead
+        # of "05XXXXXXXX") is rejected by Menora's login → the field ends up empty,
+        # no SMS is sent, and the OTP box never appears (25s timeout). Restore it.
+        phone = re.sub(r"\D", "", password or "")
+        if len(phone) == 9 and not phone.startswith("0"):
+            phone = "0" + phone
+        await page.fill("input#phoneNumber", phone)
+        # MUI controlled inputs occasionally drop a programmatic fill — if the field
+        # didn't take the value, type it key-by-key so the SMS request actually fires.
+        try:
+            if (await page.input_value("input#phoneNumber")) != phone:
+                await page.click("input#phoneNumber")
+                await page.fill("input#phoneNumber", "")
+                await page.keyboard.type(phone, delay=40)
+        except Exception:
+            pass
         await page.wait_for_timeout(500)
 
         # Single submit button labeled "אישור" (Angular handler bound after the
