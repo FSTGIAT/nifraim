@@ -125,7 +125,7 @@
         </router-link>
         <!-- Settings gear -->
         <div class="settings-wrapper" ref="settingsRef">
-          <button class="btn-settings" data-tour="settings-gear" @click="toggleSettings" title="הגדרות">
+          <button class="btn-settings" data-tour="settings-gear" @click="settingsOpen = !settingsOpen" title="הגדרות">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
@@ -148,19 +148,6 @@
                 </svg>
                 העברת SMS אוטומטית
               </button>
-
-              <!-- Worker install — permanent entry point (survives dismissing
-                   the home-screen card) so the download is never lost. -->
-              <button class="settings-link-btn" :disabled="workerDownloading" @click="downloadWorkerInstaller">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M12 7v6M9 10l3 3 3-3"/>
-                </svg>
-                {{ workerDownloading ? 'מוריד…' : 'חבר מחשב להורדה אוטומטית' }}
-                <span class="worker-chip" :class="workerOnline ? 'worker-chip--on' : 'worker-chip--off'">
-                  <span class="worker-chip-dot"></span>{{ workerOnline ? 'מחובר' : 'לא מחובר' }}
-                </span>
-              </button>
-              <p v-if="workerHint" class="settings-hint">{{ workerHint }}</p>
 
               <!-- Subscription info -->
               <div v-if="subStore.status" class="settings-sub-section">
@@ -224,13 +211,11 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
-import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import PhoneForwardModal from './PhoneForwardModal.vue'
 import api from '../../api/client.js'
 
 const auth = useAuthStore()
 const subStore = useSubscriptionStore()
-const portalStore = usePortalAutomationStore()
 defineEmits(['logout'])
 
 const searchOpen = ref(false)
@@ -314,38 +299,6 @@ const phoneForwardOpen = ref(false)
 function openPhoneForward() {
   phoneForwardOpen.value = true
   settingsOpen.value = false
-}
-
-// ─── Worker install (permanent settings entry) ───
-const workerDownloading = ref(false)
-const workerHint = ref('')
-const workerOnline = computed(() => !!portalStore.workerStatus?.online)
-
-function toggleSettings() {
-  settingsOpen.value = !settingsOpen.value
-  // Refresh the connected/not chip each time the popover opens.
-  if (settingsOpen.value) portalStore.fetchWorkerStatus()
-}
-
-async function downloadWorkerInstaller() {
-  workerDownloading.value = true
-  workerHint.value = ''
-  try {
-    const res = await api.get('/portal-automation/worker/installer', { responseType: 'blob' })
-    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/octet-stream' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'nifraim-worker-setup.bat'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    workerHint.value = 'הקובץ ירד. לחצו עליו פעמיים (Double-click). אם מופיעה אזהרת אבטחה — לחצו Run.'
-  } catch (e) {
-    workerHint.value = 'ההורדה נכשלה. נסו שוב או פנו לתמיכה.'
-  } finally {
-    workerDownloading.value = false
-  }
 }
 const emailProvider = ref(localStorage.getItem('emailProvider') || 'mailto')
 
@@ -562,46 +515,6 @@ onBeforeUnmount(() => {
   border-color: var(--primary);
   color: var(--primary);
   background: rgba(245, 124, 0, 0.04);
-}
-.settings-link-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* Worker connected/not chip inside the settings download button */
-.worker-chip {
-  margin-inline-start: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-}
-.worker-chip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.worker-chip--on {
-  color: var(--green);
-  background: var(--green-light);
-}
-.worker-chip--off {
-  color: var(--text-muted);
-  background: var(--bg);
-}
-
-.settings-hint {
-  margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-secondary);
-  background: var(--bg);
-  border-radius: 6px;
-  padding: 7px 9px;
 }
 
 .settings-label {

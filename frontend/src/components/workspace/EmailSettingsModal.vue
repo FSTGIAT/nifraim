@@ -86,6 +86,31 @@
               </button>
             </section>
 
+            <!-- ── Worker (local PC) — permanent download entry ── -->
+            <section class="es-section">
+              <header class="es-section-head">
+                <span class="es-section-label">חיבור המחשב</span>
+                <span class="es-worker-pill" :class="workerOnline ? 'on' : 'off'">
+                  <span class="es-worker-dot"></span>{{ workerOnline ? 'מחובר' : 'לא מחובר' }}
+                </span>
+              </header>
+              <p class="es-help">
+                ההורדות רצות ישירות מהמחשב שלך (כתובת IP ישראלית) כדי שכל החברות יעבדו.
+                התקנה חד-פעמית — מורידים את הקובץ ולוחצים עליו פעמיים.
+              </p>
+              <button class="es-pf-btn" :disabled="workerDownloading" @click="downloadWorkerInstaller">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M12 7v6M9 10l3 3 3-3"/>
+                </svg>
+                <span>{{ workerDownloading ? 'מוריד…' : 'הורדת תוכנת החיבור' }}</span>
+                <svg v-if="!workerDownloading" class="es-pf-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/>
+                </svg>
+                <span v-else class="es-spinner es-spinner--dark"></span>
+              </button>
+              <p v-if="workerHint" class="es-worker-hint">{{ workerHint }}</p>
+            </section>
+
             <!-- ── Email provider ── -->
             <section class="es-section">
               <header class="es-section-head">
@@ -154,7 +179,9 @@
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
+import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import PhoneForwardModal from './PhoneForwardModal.vue'
+import api from '../../api/client.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -163,6 +190,33 @@ const emit = defineEmits(['update:open'])
 
 const auth = useAuthStore()
 const subStore = useSubscriptionStore()
+const portalStore = usePortalAutomationStore()
+
+// ── Worker install (permanent download entry) ──
+const workerDownloading = ref(false)
+const workerHint = ref('')
+const workerOnline = computed(() => !!portalStore.workerStatus?.online)
+
+async function downloadWorkerInstaller() {
+  workerDownloading.value = true
+  workerHint.value = ''
+  try {
+    const res = await api.get('/portal-automation/worker/installer', { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/octet-stream' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'nifraim-worker-setup.bat'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    workerHint.value = 'הקובץ ירד. לחצו עליו פעמיים (Double-click). אם מופיעה אזהרת אבטחה — לחצו Run.'
+  } catch (e) {
+    workerHint.value = 'ההורדה נכשלה. נסו שוב או פנו לתמיכה.'
+  } finally {
+    workerDownloading.value = false
+  }
+}
 
 // ── Email provider ──
 const options = [
@@ -250,6 +304,7 @@ watch(() => props.open, (now) => {
   provider.value = (typeof window !== 'undefined' && localStorage.getItem('emailProvider')) || 'mailto'
   // Fire-and-forget — show whatever's cached, replace when the API answers.
   subStore.fetchStatus?.()
+  portalStore.fetchWorkerStatus?.()
 })
 </script>
 
@@ -508,6 +563,40 @@ watch(() => props.open, (now) => {
 .es-pf-btn svg:first-of-type { color: #E8720A; flex-shrink: 0; }
 .es-pf-btn span { flex: 1; text-align: right; }
 .es-pf-arrow { color: rgba(45, 37, 34, 0.4); flex-shrink: 0; transform: scaleX(-1); }
+
+/* ── Worker connection status pill + hint ── */
+.es-worker-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.es-worker-pill.on  { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
+.es-worker-pill.off { background: rgba(45, 37, 34, 0.08); color: rgba(45, 37, 34, 0.55); }
+.es-worker-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.es-worker-pill.on .es-worker-dot { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5); animation: es-worker-pulse 1.8s ease-out infinite; }
+@keyframes es-worker-pulse {
+  70%  { box-shadow: 0 0 0 6px rgba(46, 132, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0); }
+}
+.es-worker-hint {
+  margin: 0 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #2E844A;
+  background: rgba(46, 132, 74, 0.08);
+  border-radius: 8px;
+  padding: 8px 11px;
+}
+.es-spinner--dark {
+  border-color: rgba(232, 114, 10, 0.3);
+  border-top-color: #E8720A;
+  flex-shrink: 0;
+}
 
 .es-option-text { display: flex; flex-direction: column; gap: 2px; }
 .es-option-label { font-size: 14px; font-weight: 700; color: #181818; }
