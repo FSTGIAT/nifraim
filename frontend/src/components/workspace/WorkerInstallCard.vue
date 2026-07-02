@@ -67,10 +67,14 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { getUserFlag, setUserFlag } from '../../utils/userFlags.js'
 import api from '../../api/client.js'
 
 const store = usePortalAutomationStore()
-const dismissed = ref(localStorage.getItem('worker_install_dismissed') === 'true')
+// Per-user (not browser-global): on a shared browser, a new account must still
+// see the install card even if an earlier user dismissed it. The permanent
+// entry in the settings gear is the always-available fallback once dismissed.
+const dismissed = ref(getUserFlag('worker_install_dismissed') === 'true')
 const downloading = ref(false)
 const hint = ref('')
 
@@ -109,7 +113,7 @@ async function downloadInstaller() {
 
 function dismiss() {
   dismissed.value = true
-  localStorage.setItem('worker_install_dismissed', 'true')
+  setUserFlag('worker_install_dismissed', 'true')
 }
 </script>
 
