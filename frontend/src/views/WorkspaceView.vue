@@ -156,18 +156,6 @@
           </div>
         </main>
 
-        <NavArrowButton
-          v-if="hasPrev"
-          direction="prev"
-          :label="prevLabel"
-          @navigate="goPrev"
-        />
-        <NavArrowButton
-          v-if="hasNext"
-          direction="next"
-          :label="nextLabel"
-          @navigate="goNext"
-        />
       </div>
     </Transition>
 
@@ -253,7 +241,6 @@ import NotificationBell from '../components/workspace/NotificationBell.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
-import NavArrowButton from '../components/workspace/NavArrowButton.vue'
 import OnboardingTour from '../components/workspace/OnboardingTour.vue'
 import WelcomeOverlay from '../components/workspace/WelcomeOverlay.vue'
 import ProductionTab from '../components/workspace/ProductionTab.vue'
@@ -298,23 +285,13 @@ function onLatestVizs(vizs) {
   if (Array.isArray(vizs) && vizs.length) aiVizOpen.value = true
 }
 
-// Tab order for navigation
+// Tab order for keyboard arrow navigation (the floating on-screen arrow
+// buttons were removed — they covered content; ArrowLeft/ArrowRight remain)
 const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal', 'portal-automation']
-const tabLabels = {
-  'production': 'פרודוקציה',
-  'comparison': 'השוואת נפרעים',
-  'commission-rates': 'טבלת עמלות',
-  'company-emails': 'אימיילים לחברות',
-  'recruits': 'ניהול תיק אישי',
-  'portal': 'פורטל לקוחות',
-  'portal-automation': 'אוטומציה',
-}
 
 const currentIndex = computed(() => tabOrder.indexOf(activeTab.value))
 const hasPrev = computed(() => currentIndex.value > 0)
 const hasNext = computed(() => currentIndex.value < tabOrder.length - 1)
-const prevLabel = computed(() => hasPrev.value ? tabLabels[tabOrder[currentIndex.value - 1]] : '')
-const nextLabel = computed(() => hasNext.value ? tabLabels[tabOrder[currentIndex.value + 1]] : '')
 
 function goNext() {
   if (hasNext.value) {
