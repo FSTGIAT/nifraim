@@ -376,6 +376,10 @@ const props = defineProps({
   categoryLabel: { type: String, default: '' },
   companySource: { type: String, default: '' },
   companySources: { type: Array, default: () => [] },
+  // Company clicked in the cross-company summary — preselects the matching
+  // pill once companySources is populated, then emits initial-company-applied
+  // so the parent clears it (manual pill clicks aren't overridden later).
+  initialCompany: { type: String, default: '' },
   // Period of the production file driving this comparison ("2026-04-01").
   // When set, the period chip displays it next to category, and the
   // "עמלות שהתקבלו" KPI labels itself with the period — so the user can
@@ -385,7 +389,7 @@ const props = defineProps({
   periodFilesExcluded: { type: Number, default: 0 },
 })
 
-const emit = defineEmits(['drill-customer'])
+const emit = defineEmits(['drill-customer', 'initial-company-applied'])
 
 const authStore = useAuthStore()
 const productMetric = ref('count')
@@ -432,12 +436,34 @@ onMounted(async () => {
 
 // ─── Computed data ───
 
-function matchesCompanyFilter(productCompany) {
-  if (!companyFilter.value || !productCompany) return false
-  const lower = productCompany.toLowerCase()
-  const cl = companyFilter.value.toLowerCase()
-  return lower.includes(cl) || cl.includes(lower)
+function fuzzyCompanyMatch(a, b) {
+  if (!a || !b) return false
+  const al = a.toLowerCase()
+  const bl = b.toLowerCase()
+  return al.includes(bl) || bl.includes(al)
 }
+
+function matchesCompanyFilter(productCompany) {
+  if (!companyFilter.value) return false
+  return fuzzyCompanyMatch(productCompany, companyFilter.value)
+}
+
+// Preselect the pill matching initialCompany (drill from the summary table).
+// Waits for companySources to populate; falls back to "הכל" when no pill
+// matches. Emits so the parent clears the one-shot prop.
+watch(
+  [() => props.initialCompany, () => props.companySources],
+  ([company, sources]) => {
+    if (!company || !(sources || []).length) return
+    // The pill bar only renders for >1 sources — never apply a filter the
+    // user can't see or clear.
+    if (sources.length > 1) {
+      companyFilter.value = sources.find((src) => fuzzyCompanyMatch(src, company)) || null
+    }
+    emit('initial-company-applied')
+  },
+  { immediate: true },
+)
 
 const displayCustomers = computed(() => {
   if (!companyFilter.value) return props.customers

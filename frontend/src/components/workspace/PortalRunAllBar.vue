@@ -12,7 +12,7 @@
           :delay="1800"
         />
         <span class="hero-sub">
-          <template v-if="activeCredCount">{{ activeCredCount }} חברות מחוברות · לחיצה אחת מורידה ומשווה הכל</template>
+          <template v-if="activeCredCount">{{ heroSubText }} · לחיצה אחת מורידה ומשווה הכל</template>
           <template v-else>חברו פורטל אחד והדוחות יורדו אוטומטית</template>
         </span>
       </div>
@@ -37,7 +37,7 @@
     </div>
 
     <!-- Live batch progress -->
-    <div v-if="batch && !batchDone" class="batch-progress">
+    <div v-if="batchLive && !batchDone" class="batch-progress">
       <div class="batch-progress__head">
         <span class="batch-spinner" aria-hidden="true"></span>
         <span>מוריד ומאחד נתונים — {{ batch.succeeded + batch.failed }}/{{ batch.total || '…' }}</span>
@@ -73,13 +73,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
-import { useComparisonStore } from '../../stores/comparison.js'
-import { brandFor } from '../../utils/companyBrand.js'
+import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 import Typewriter from '../common/Typewriter.vue'
 
 const emit = defineEmits(['view-results'])
 const store = usePortalAutomationStore()
-const comparisonStore = useComparisonStore()
 
 const taglines = [
   'הורדה אוטומטית מכל החברות',
@@ -87,12 +85,34 @@ const taglines = [
   'הדוחות יורדים לבד',
 ]
 
+const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
 const batch = computed(() => store.activeBatch)
+// activeBatch keeps its terminal payload until the next batch — only show
+// the live-progress strip while the batch is actually running.
+const batchLive = computed(() => !!batch.value && !BATCH_TERMINAL.has(batch.value.status))
 const batchDone = ref(null)
 const anyRunning = computed(() => !!store.activeRunId)
 const activeCredCount = computed(
   () => (store.credentials || []).filter((c) => c.is_active).length,
 )
+// Credentials are report SOURCES (a company can expose several report kinds),
+// so the subtitle counts both: "N דוחות מ־M חברות".
+const activeCompanyCount = computed(() => {
+  const companies = new Set()
+  for (const c of (store.credentials || []).filter((c) => c.is_active)) {
+    const lbl = portalLabel(c.portal_kind)
+    const b = brandForLabel(lbl)
+    companies.add(b.label && b.label !== '?' ? b.label : lbl)
+  }
+  return companies.size
+})
+const heroSubText = computed(() => {
+  const reports = activeCredCount.value
+  const companies = activeCompanyCount.value
+  const reportsPart = reports === 1 ? 'דוח אוטומטי אחד' : `${reports} דוחות אוטומטיים`
+  const companiesPart = companies === 1 ? 'מחברה אחת' : `מ־${companies} חברות`
+  return `${reportsPart} ${companiesPart}`
+})
 const batchDoneTitle = computed(() => {
   const s = batchDone.value?.status
   if (s === 'failed') return 'ההורדה נכשלה'
@@ -132,20 +152,12 @@ function dismissBatchDone() {
   store.batchJustFinished = null
 }
 
-// When the batch finishes, refresh the comparison views so the merged results
-// show up without a manual reload, then surface the "results ready" affordance.
-watch(() => store.batchJustFinished, async (b) => {
-  if (!b) return
-  batchDone.value = b
-  store.activeBatchId = null
-  try {
-    await Promise.all([
-      comparisonStore.fetchLatest('gemel_hishtalmut'),
-      comparisonStore.fetchLatest('insurance'),
-      comparisonStore.fetchCompanySummary(),
-    ])
-  } catch (_) {}
-})
+// The store owns all post-batch side effects (data refresh happens BEFORE
+// batchJustFinished is set) — here we only control the local done banner.
+// immediate: the flag may have been set while this component was unmounted.
+watch(() => store.batchJustFinished, (b) => {
+  batchDone.value = b || null
+}, { immediate: true })
 </script>
 
 <style scoped>

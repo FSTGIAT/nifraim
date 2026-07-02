@@ -32,6 +32,7 @@ from app.api.deps import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models.agent_twilio_number import AgentTwilioNumber
+from app.models.commission_comparison import CommissionComparison
 from app.models.otp_inbox import OtpInbox
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
@@ -486,7 +487,31 @@ async def run_all_portals(
     return BatchStartOut(batch_id=str(batch.id))
 
 
-def _batch_to_out(batch: PortalRunBatch, runs: list[PortalRun]) -> PortalRunBatchOut:
+async def _batch_to_out(
+    db: AsyncSession, batch: PortalRunBatch, runs: list[PortalRun]
+) -> PortalRunBatchOut:
+    # Categories this batch produced a persisted comparison for — one cheap
+    # query on the (user_id, category, computed_at) index. Lets the UI link
+    # straight to the comparison tabs the batch actually populated.
+    comparison_categories: list[str] = []
+    if batch.merged_upload_id is not None or batch.merged_commission_upload_id is not None:
+        # When no production portal produced files, _compare_merged falls back
+        # to the newest pre-existing active production — those comparisons
+        # don't reference merged_upload_id, so match on the batch's time
+        # window instead of the production upload id.
+        filters = [
+            CommissionComparison.user_id == batch.user_id,
+            CommissionComparison.computed_at >= batch.started_at,
+        ]
+        if batch.merged_upload_id is not None:
+            filters.append(CommissionComparison.production_upload_id == batch.merged_upload_id)
+        elif batch.finished_at is not None:
+            # comparisons are persisted before finished_at is stamped
+            filters.append(CommissionComparison.computed_at <= batch.finished_at)
+        cats_q = await db.execute(
+            select(CommissionComparison.category).where(*filters).distinct()
+        )
+        comparison_categories = sorted(c for (c,) in cats_q.all())
     return PortalRunBatchOut(
         id=str(batch.id),
         status=batch.status,
@@ -502,6 +527,7 @@ def _batch_to_out(batch: PortalRunBatch, runs: list[PortalRun]) -> PortalRunBatc
         ),
         period_month=batch.period_month,
         error_message=batch.error_message,
+        comparison_categories=comparison_categories,
         runs=[_run_to_out(r) for r in runs],
     )
 
@@ -529,7 +555,7 @@ async def get_latest_batch(
         .where(PortalRun.batch_id == batch.id)
         .order_by(PortalRun.started_at.asc())
     )
-    return _batch_to_out(batch, list(runs_q.scalars().all()))
+    return await _batch_to_out(db, batch, list(runs_q.scalars().all()))
 
 
 @router.get("/batches/{batch_id}", response_model=PortalRunBatchOut)
@@ -553,7 +579,7 @@ async def get_batch(
         .where(PortalRun.batch_id == batch.id)
         .order_by(PortalRun.started_at.asc())
     )
-    return _batch_to_out(batch, list(runs_q.scalars().all()))
+    return await _batch_to_out(db, batch, list(runs_q.scalars().all()))
 
 
 @router.get("/runs/{run_id}", response_model=PortalRunOut)

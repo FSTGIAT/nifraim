@@ -219,8 +219,10 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   const activeBatch = ref(null)          // PortalRunBatchOut (status, runs[], ...)
   const batchJustFinished = ref(null)    // set to the finished batch for one tick
   const latestBatch = ref(null)          // most recent batch (any status) or null — drives activation checklist step 4
+  const batchToastSeenId = ref(null)     // batch id the global toast already announced (survives component remounts)
   let batchPollHandle = null
   const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
+  const BATCH_MAX_AGE_MS = 2 * 60 * 60 * 1000 // don't re-adopt batches older than 2h — likely orphaned by a dead worker
 
   function _stopBatchPolling() {
     if (batchPollHandle) {
@@ -258,22 +260,106 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   function _startBatchPolling(batchId) {
     _stopBatchPolling()
     let polls = 0
-    const maxPolls = 1200 // generous — a full batch can take many minutes
+    let consecutiveFailures = 0
+    const maxPolls = 2400 // generous — a full batch can take many minutes
+    const maxConsecutiveFailures = 40 // ~1 min of solid errors before giving up
     batchPollHandle = setInterval(async () => {
       polls += 1
       try {
         const data = await fetchBatch(batchId)
-        if (BATCH_TERMINAL.has(data.status) || polls >= maxPolls) {
+        consecutiveFailures = 0
+        if (BATCH_TERMINAL.has(data.status)) {
           _stopBatchPolling()
           activeRun.value = null
           activeRunId.value = null
+          activeBatchId.value = null
+          latestBatch.value = data
           await fetchCredentials()
-          batchJustFinished.value = data
+          // Refresh every consumer store BEFORE announcing completion, so
+          // anything reacting to batchJustFinished already sees fresh data.
+          await _refreshAfterBatch(data)
+          // A newer batch may have started while we were refreshing — never
+          // announce a stale completion over it.
+          if (!activeBatchId.value || activeBatchId.value === batchId) {
+            batchJustFinished.value = data
+          }
+        } else if (polls >= maxPolls) {
+          // Poll budget exhausted while the batch is still non-terminal —
+          // release the UI (button, progress strip) but do NOT announce a
+          // completion that didn't happen.
+          _stopBatchPolling()
+          activeRun.value = null
+          activeRunId.value = null
+          activeBatchId.value = null
+          activeBatch.value = null
         }
       } catch (e) {
-        _stopBatchPolling()
+        // Transient fetch errors (redeploy blip, laptop sleep/resume) must not
+        // kill the poll that owns all post-batch refresh. Give up only after a
+        // sustained outage, and clear state so the UI can recover in-session.
+        consecutiveFailures += 1
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          _stopBatchPolling()
+          activeRun.value = null
+          activeRunId.value = null
+          activeBatchId.value = null
+          activeBatch.value = null
+        }
       }
     }, 1500)
+  }
+
+  // Post-batch side effects live HERE (not in a component) so they run even
+  // if the user navigated away from the automation tab mid-batch. Stores are
+  // imported lazily inside the function to avoid circular imports.
+  async function _refreshAfterBatch(_batchData) {
+    try {
+      const [{ useComparisonStore }, { useProductionStore }, { useUploadsStore }] =
+        await Promise.all([
+          import('./comparison.js'),
+          import('./production.js'),
+          import('./uploads.js'),
+        ])
+      const comparisonStore = useComparisonStore()
+      const productionStore = useProductionStore()
+      const uploadsStore = useUploadsStore()
+      // Tolerate individual failures — a partial refresh is still better
+      // than a stale screen.
+      await Promise.allSettled([
+        comparisonStore.fetchLatest('gemel_hishtalmut'),
+        comparisonStore.fetchLatest('insurance'),
+        comparisonStore.fetchCompanySummary(),
+        productionStore.refreshAll(),
+        uploadsStore.fetchUploads(),
+      ])
+    } catch (e) {
+      console.warn('post-batch refresh failed', e)
+    }
+  }
+
+  /** Resume a run-all batch that's still in-flight on the server — the batch
+   *  analogue of hydrateActiveRun, so a page reload mid-batch keeps polling
+   *  and the post-batch refresh still fires. */
+  async function hydrateBatch() {
+    const latest = await fetchLatestBatch()
+    if (latest && !BATCH_TERMINAL.has(latest.status)) {
+      // Skip batches that are non-terminal only because a worker died mid-run
+      // (the orphan reaper runs on the next POST /batches/run, not on reads) —
+      // adopting one would lock the run-all button for the whole poll budget.
+      // started_at is naive UTC from the backend — anchor it before parsing
+      const rawStart = latest.started_at
+        ? (/[zZ]|[+-]\d\d:?\d\d$/.test(latest.started_at) ? latest.started_at : latest.started_at + 'Z')
+        : null
+      const startedAt = rawStart ? new Date(rawStart).getTime() : 0
+      const tooOld = startedAt && Date.now() - startedAt > BATCH_MAX_AGE_MS
+      const alreadyPolling = activeBatchId.value === latest.id && batchPollHandle
+      if (!tooOld && !alreadyPolling) {
+        activeBatchId.value = latest.id
+        activeBatch.value = latest
+        _startBatchPolling(latest.id)
+      }
+    }
+    return latest
   }
 
   async function runAllPortals() {
@@ -380,13 +466,20 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     }
   }
 
-  function reset() {
+  // keepBatch: soft reset for tab unmount — stops single-run polling/UI state
+  // but leaves an in-flight batch (pending/running) polling in the background
+  // so its completion still refreshes the app. Terminal batches are cleared.
+  function reset({ keepBatch = false } = {}) {
     _stopPolling()
-    _stopBatchPolling()
     activeRunId.value = null
     activeRun.value = null
-    activeBatchId.value = null
-    activeBatch.value = null
+    const batchLive =
+      keepBatch && activeBatch.value && !BATCH_TERMINAL.has(activeBatch.value.status)
+    if (!batchLive) {
+      _stopBatchPolling()
+      activeBatchId.value = null
+      activeBatch.value = null
+    }
   }
 
   return {
@@ -398,8 +491,10 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     activeBatchId,
     activeBatch,
     batchJustFinished,
+    batchToastSeenId,
     latestBatch,
     fetchLatestBatch,
+    hydrateBatch,
     runAllPortals,
     fetchBatch,
     twilioNumber,

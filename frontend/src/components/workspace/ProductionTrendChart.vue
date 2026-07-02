@@ -24,7 +24,7 @@
           <span class="trend-badge-sub">לעומת {{ previousLabel }}</span>
         </span>
       </div>
-      <div v-if="hasTrend" class="trend-current">
+      <div v-if="hasData" class="trend-current">
         <span class="trend-current-label">סה"כ {{ latestLabel }}</span>
         <span class="trend-current-value ltr-number">{{ formatCurrency(latestValue) }}</span>
       </div>
@@ -68,15 +68,20 @@
       </button>
     </div>
 
-    <div v-if="hasTrend" class="trend-chart-wrap">
-      <apexchart
-        type="bar"
-        height="320"
-        width="100%"
-        :options="chartOptions"
-        :series="series"
-      />
-    </div>
+    <template v-if="hasData">
+      <div class="trend-chart-wrap">
+        <apexchart
+          type="bar"
+          height="320"
+          width="100%"
+          :options="chartOptions"
+          :series="series"
+        />
+      </div>
+      <p v-if="isSingleMonth" class="trend-single-caption">
+        חודש ראשון נקלט — המגמה תצטייר אוטומטית עם ההורדה הבאה
+      </p>
+    </template>
 
     <div v-else-if="loading" class="trend-empty">
       <div class="trend-empty-spinner" aria-hidden="true"></div>
@@ -85,42 +90,96 @@
 
     <div v-else class="trend-empty">
       <span class="trend-empty-icon" aria-hidden="true">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg v-if="emptyState.icon === 'production'" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <svg v-else-if="emptyState.icon === 'rates'" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="5" x2="5" y2="19"/>
+          <circle cx="6.5" cy="6.5" r="2.5"/>
+          <circle cx="17.5" cy="17.5" r="2.5"/>
+        </svg>
+        <svg v-else width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       </span>
-      <p class="trend-empty-title">העלה קבצי פרודוקציה מחודשים נוספים כדי לראות מגמה</p>
-      <p class="trend-empty-sub">נצטרך לפחות שני חודשים שונים של פרודוקציה כדי לצייר את הקו</p>
+      <p class="trend-empty-title">{{ emptyState.title }}</p>
+      <p class="trend-empty-sub">{{ emptyState.sub }}</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
+import { useProductionStore } from '../../stores/production.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 defineEmits(['go-to-automation'])
 
+const productionStore = useProductionStore()
 const points = ref([])
+const reason = ref(null)
 const loading = ref(true)
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
   try {
-    // EXPECTED commission per production month — the moment the agent uploads
-    // a new production file the chart updates. Decoupled from when נפרעים
-    // reports actually arrive. Endpoint returns `total_expected` per period.
+    // EXPECTED commission per production month — the moment a production
+    // file lands (upload or automation batch) the chart updates. Decoupled
+    // from when נפרעים reports actually arrive. New shape is
+    // { points: [...], reason }, but legacy deployments may still return a
+    // bare array — handle both defensively.
     const { data } = await api.get('/production/expected-trend')
-    points.value = Array.isArray(data) ? data : []
+    const payload = Array.isArray(data) ? { points: data, reason: null } : (data || {})
+    points.value = Array.isArray(payload.points) ? payload.points : []
+    reason.value = payload.reason || null
   } catch (err) {
     console.error('Failed to load expected commission trend', err)
     points.value = []
+    reason.value = null
   } finally {
     loading.value = false
   }
+}
+
+onMounted(load)
+
+// Re-fetch in place whenever the store signals fresh production data
+// (e.g. after an automation batch). Optional chaining guards builds where
+// trendTick isn't on the store yet.
+watch(() => productionStore?.trendTick, (tick, prev) => {
+  if (tick !== undefined && tick !== prev) load()
 })
 
 const hasTrend = computed(() => points.value.length >= 2)
+const hasData = computed(() => points.value.length >= 1)
+const isSingleMonth = computed(() => points.value.length === 1)
+
+// Honest empty-state copy, keyed by the backend's `reason`. Never tell a
+// hands-free automation user to manually upload files.
+const emptyState = computed(() => {
+  if (reason.value === 'no_production') {
+    return {
+      icon: 'production',
+      title: 'אין עדיין נתוני פרודוקציה',
+      sub: 'הפעל את ההורדה האוטומטית או העלה קובץ — והמגמה תתחיל להיבנות',
+    }
+  }
+  if (reason.value === 'no_rates') {
+    return {
+      icon: 'rates',
+      title: 'חסרים שיעורי עמלה לחישוב הצפי',
+      sub: 'הגדר שיעורים בלשונית טבלת עמלות כדי לראות את המגמה',
+    }
+  }
+  return {
+    icon: 'default',
+    title: 'המגמה עוד לא כאן — אבל היא בדרך',
+    sub: 'ככל שיצטברו חודשי פרודוקציה, הגרף יתמלא ויתעדכן אוטומטית',
+  }
+})
 
 const totals = computed(() => points.value.map(p => Number(p.total_expected) || 0))
 
@@ -271,7 +330,9 @@ const chartOptions = computed(() => ({
   plotOptions: {
     bar: {
       horizontal: false,
-      columnWidth: '55%',
+      // A lone month at 55% renders as one massive slab — slim it so the
+      // single-point state still reads like the start of a series.
+      columnWidth: isSingleMonth.value ? '18%' : '55%',
       borderRadius: 6,
       borderRadiusApplication: 'end',
       borderRadiusWhenStacked: 'last',
@@ -489,6 +550,23 @@ const chartOptions = computed(() => ({
   width: 100%;
   min-height: 300px;
   direction: ltr;
+}
+
+.trend-single-caption {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  animation: trend-caption-in 0.25s ease-out;
+}
+
+@keyframes trend-caption-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trend-single-caption { animation: none; }
 }
 
 .trend-empty {

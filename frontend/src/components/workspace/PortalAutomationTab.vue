@@ -55,48 +55,6 @@
       />
     </div>
 
-    <!-- ─── Debug disclosure ────────────────────────────────── -->
-    <details class="debug-block">
-      <summary>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-        </svg>
-        <span>דיבאג / OTP inbox</span>
-      </summary>
-      <div class="otp-card">
-        <div class="otp-card-head">
-          <strong>OTPs אחרונים</strong>
-          <span class="otp-meta">SMS שהתקבלו (Twilio + העברת SMS)</span>
-          <button class="btn-refresh" @click="refreshOtps" :disabled="otpRefreshing">
-            {{ otpRefreshing ? '⏳' : '↻' }} רענן
-          </button>
-        </div>
-        <div v-if="!store.otpInbox.length" class="otp-empty">לא התקבלו SMS בינתיים.</div>
-        <table v-else class="otp-table">
-          <thead>
-            <tr>
-              <th>זמן</th><th>מאת</th><th>חברה</th><th>קוד</th><th>סטטוס</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="otp in store.otpInbox" :key="otp.id">
-              <td class="otp-time">{{ formatOtpTime(otp.received_at) }}</td>
-              <td><span class="ltr-number">{{ otp.from_number }}</span></td>
-              <td>
-                <span v-if="otp.matched_company" class="otp-company">{{ otp.matched_company }}</span>
-                <span v-else class="otp-company otp-company--none">לא זוהתה</span>
-              </td>
-              <td class="otp-code"><span class="ltr-number">{{ otp.otp_code || '—' }}</span></td>
-              <td>
-                <span v-if="otp.consumed_at" class="status-pill status-success">נוצל</span>
-                <span v-else class="status-pill status-pending">חדש</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
-
     <PortalCredentialModal
       :open="modalOpen"
       :mode="modalMode"
@@ -168,9 +126,6 @@ const props = defineProps({
 })
 const emit = defineEmits(['go-to-comparison', 'opened'])
 const store = usePortalAutomationStore()
-
-const otpRefreshing = ref(false)
-let otpAutoTimer = null
 
 // ─── Modal state ──────────────────────────────────────────
 const modalOpen = ref(false)
@@ -256,27 +211,9 @@ async function closeOtpModal() {
   if (id) await store.cancelRun(id)
 }
 
-// ─── OTP inbox ────────────────────────────────────────────
-async function refreshOtps() {
-  otpRefreshing.value = true
-  try { await store.fetchOtpInbox() } finally { otpRefreshing.value = false }
-}
-function formatOtpTime(iso) {
-  const d = new Date(iso)
-  const now = new Date()
-  const sameDay = d.toDateString() === now.toDateString()
-  if (sameDay) return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  return d.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-watch(() => store.activeRunId, (newVal) => {
-  if (otpAutoTimer) { clearInterval(otpAutoTimer); otpAutoTimer = null }
-  if (newVal) otpAutoTimer = setInterval(() => store.fetchOtpInbox(), 5000)
-})
-
 onMounted(async () => {
   await store.fetchPortalKinds()
   await store.fetchCredentials()
-  await store.fetchOtpInbox()
   store.fetchLatestBatch()
   if (props.autoOpenAdd) {
     openAdd()
@@ -292,8 +229,9 @@ watch(() => props.autoOpenAdd, (v) => {
   }
 })
 onUnmounted(() => {
-  if (otpAutoTimer) clearInterval(otpAutoTimer)
-  store.reset()
+  // Soft reset — an in-flight run-all batch must keep polling in the
+  // background so its completion still refreshes the whole app.
+  store.reset({ keepBatch: true })
 })
 </script>
 
@@ -408,62 +346,6 @@ onUnmounted(() => {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* Debug disclosure */
-.debug-block {
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--bg);
-  padding: 10px 14px;
-}
-.debug-block summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary, var(--text-muted));
-  padding: 4px 2px;
-  list-style: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.debug-block summary::-webkit-details-marker { display: none; }
-.debug-block summary:hover { color: var(--text); }
-.debug-block[open] summary { color: var(--text); }
-
-.otp-card { padding: 8px 0 0; }
-.otp-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.otp-card-head strong { font-size: 13px; color: var(--text); }
-.otp-meta { font-size: 11px; color: var(--text-muted); flex: 1; }
-.btn-refresh {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.btn-refresh:hover:not(:disabled) { color: var(--text); border-color: var(--text-muted); }
-.btn-refresh:disabled { cursor: not-allowed; opacity: 0.6; }
-.otp-empty { padding: 12px; text-align: center; color: var(--text-muted); font-size: 12px; }
-.otp-table { font-size: 12px; width: 100%; border-collapse: collapse; }
-.otp-table th, .otp-table td { padding: 5px 8px; border-bottom: 1px dashed var(--border-subtle); text-align: start; }
-.otp-time { color: var(--text-muted); white-space: nowrap; }
-.otp-code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; letter-spacing: 1px; color: var(--green-deep); }
-.otp-company { font-weight: 600; color: var(--text-default); }
-.otp-company--none { font-weight: 400; color: var(--text-muted); font-style: italic; }
-
-.status-pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.status-success { background: var(--green); color: #fff; box-shadow: 0 1px 4px rgba(46, 132, 74, 0.35); }
-.status-pending { background: var(--primary); color: #fff; box-shadow: 0 1px 4px rgba(245, 124, 0, 0.35); }
 
 /* ─── Error popup modal ────────────────────────────────── */
 .err-overlay {

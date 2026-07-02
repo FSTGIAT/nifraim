@@ -1,7 +1,7 @@
 <template>
   <div class="comparison-tab">
-    <!-- No production file warning -->
-    <div v-if="!productionStore.currentFile && !productionStore.loading" class="no-production">
+    <!-- No production file AND no persisted comparison data → full empty state -->
+    <div v-if="!productionStore.currentFile && !productionStore.loading && !hasPersistedComparison" class="no-production">
       <!-- Floating blur circles -->
       <div class="float-circle fc-1"></div>
       <div class="float-circle fc-2"></div>
@@ -61,11 +61,22 @@
       </div>
     </div>
 
-    <template v-else-if="productionStore.currentFile">
+    <template v-else-if="productionStore.currentFile || hasPersistedComparison">
+      <!-- No active production, but persisted comparison data exists →
+           slim inline notice instead of blocking the whole tab. -->
+      <div v-if="!productionStore.currentFile" class="no-prod-notice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+          <path d="M12 9v4"/>
+          <path d="M12 17h.01"/>
+        </svg>
+        <span>לא נמצא קובץ פרודוקציה פעיל — מוצגת ההשוואה האחרונה שנשמרה</span>
+      </div>
+
       <!-- Toolbar: production badge + category toggle -->
       <div class="comparison-toolbar">
         <div class="toolbar-sources">
-          <div class="toolbar-production">
+          <div v-if="productionStore.currentFile" class="toolbar-production">
             <div class="toolbar-prod-dot"></div>
             <span class="toolbar-prod-name">{{ productionStore.currentFile.filename }}</span>
             <span class="toolbar-prod-count ltr-number">{{ productionStore.currentFile.record_count.toLocaleString() }}</span>
@@ -117,6 +128,7 @@
         <div v-else-if="!comparisonStore.result" :key="'insights-' + comparisonStore.activeCategory" class="insights-stack">
           <ComparisonInsightsDashboard
             @automation-success="onAutomationSuccess"
+            @batch-done="onBatchDone"
             @navigate-to-credentials="$emit('go-to-portal-automation')"
           />
         </div>
@@ -128,9 +140,11 @@
             :categoryLabel="comparisonStore.result?.commission_category_label || ''"
             :companySource="comparisonStore.result?.commission_company_source || ''"
             :companySources="comparisonStore.result?.commission_company_sources || []"
+            :initialCompany="drillCompany || ''"
             :periodMonth="comparisonStore.result?.period_month || productionStore.currentFile?.period_month || ''"
             :periodFilesCount="comparisonStore.result?.period_files_count || 0"
             :periodFilesExcluded="comparisonStore.result?.period_files_excluded || 0"
+            @initial-company-applied="drillCompany = null"
           />
         </div>
       </Transition>
@@ -139,10 +153,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { useUploadsStore } from '../../stores/uploads.js'
+import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
@@ -155,6 +170,15 @@ defineEmits(['go-to-portal-automation'])
 const productionStore = useProductionStore()
 const comparisonStore = useComparisonStore()
 const uploadsStore = useUploadsStore()
+const portalAutomationStore = usePortalAutomationStore()
+
+// Persisted comparison data lets the tab render even without an active
+// production file (e.g. it was deleted after the comparison was computed).
+const hasPersistedComparison = computed(() =>
+  comparisonStore.hasResultFor('gemel_hishtalmut') ||
+  comparisonStore.hasResultFor('insurance') ||
+  (comparisonStore.companySummary?.companies?.length || 0) > 0
+)
 
 // How many companies feed the merged נפרעים side — drives the toolbar badge.
 // Sourced from the cross-company summary (loaded on mount) with a fallback to
@@ -185,12 +209,11 @@ async function onSelectCategory(cat) {
     return
   }
   comparisonStore.selectCategory(cat)
-  // Hydrate the latest persisted comparison for this category — if one
-  // exists (manual run, scheduled portal run, etc.), the dashboard renders
-  // immediately without any additional click.
-  if (!comparisonStore.hasResultFor(cat)) {
-    await comparisonStore.fetchLatest(cat)
-  }
+  // Always hydrate the latest persisted comparison — every compute persists,
+  // so /latest is at least as fresh as the in-memory copy. fetchLatest only
+  // replaces on success, so the existing result stays visible while the
+  // refetch is in flight (no blank flash).
+  await comparisonStore.fetchLatest(cat)
 }
 
 /**
@@ -336,9 +359,12 @@ async function onAutomationSuccess({ run }) {
 }
 
 // Clicking a company row in the summary → open the category that has results
-// for it (prefer one with a persisted comparison) and let the existing
-// per-company filter bar take over inside the dashboard.
-async function onDrillCompany(_company) {
+// for it (prefer one with a persisted comparison) and preselect the matching
+// company pill inside the dashboard (via the initialCompany prop — the
+// dashboard clears the ref once applied so manual pill clicks aren't
+// overridden later).
+const drillCompany = ref(null)
+async function onDrillCompany(company) {
   const order = ['gemel_hishtalmut', 'insurance']
   let target = order.find((c) => comparisonStore.hasResultFor(c))
   if (!target) {
@@ -348,9 +374,25 @@ async function onDrillCompany(_company) {
     }
   }
   if (target) {
+    drillCompany.value = company || null
     comparisonStore.selectCategory(target)
     if (!comparisonStore.hasResultFor(target)) await comparisonStore.fetchLatest(target)
   }
+}
+
+// "צפה בתוצאות" from the run-all bar / dock inside the insights view →
+// jump straight to the freshest comparison. Prefer a category the batch
+// actually persisted (comparison_categories), else the first with a result.
+async function onBatchDone() {
+  const batch = portalAutomationStore.batchJustFinished || portalAutomationStore.latestBatch
+  const batchCats = batch?.comparison_categories || []
+  const order = ['gemel_hishtalmut', 'insurance']
+  const target =
+    order.find((c) => batchCats.includes(c)) ||
+    order.find((c) => comparisonStore.hasResultFor(c)) ||
+    order[0]
+  comparisonStore.selectCategory(target)
+  await comparisonStore.fetchLatest(target)
 }
 
 onMounted(async () => {
@@ -363,9 +405,11 @@ onMounted(async () => {
   if (!comparisonStore.activeCategory) {
     comparisonStore.selectCategory('gemel_hishtalmut')
   }
-  // Hydrate persisted result for the active category on first mount
+  // Hydrate the latest persisted result for the active category on every
+  // mount — persisted /latest is always >= the in-memory copy, and the
+  // existing result stays visible while the refetch resolves.
   const cat = comparisonStore.activeCategory
-  if (cat && !comparisonStore.hasResultFor(cat)) {
+  if (cat) {
     await comparisonStore.fetchLatest(cat)
   }
   // Populate the recent-files strip with whatever's already on the server.
@@ -565,6 +609,25 @@ onMounted(async () => {
 @keyframes waveSlide {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
+}
+
+/* Slim warning strip — persisted comparison shown without an active production */
+.no-prod-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  background: var(--amber-light);
+  border: 1px solid rgba(232, 114, 10, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.no-prod-notice svg {
+  flex-shrink: 0;
 }
 
 /* Toolbar */

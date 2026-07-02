@@ -936,6 +936,11 @@ async def get_expected_commission_trend(
                   gemel/savings: accumulation × rate / 12
                   insurance:     premium × rate
     Re-uploads of the same period dedupe to the latest by uploaded_at.
+
+    Returns {"points": [...], "reason": str|None} where reason explains an
+    empty/thin chart: "no_production" (no period-tagged production uploads),
+    "no_rates" (every period dropped — no record matched a rate > 0),
+    "single_month" (only one point survived), or null.
     """
     from collections import defaultdict
     from app.models.commission_rate import CommissionRate
@@ -961,7 +966,7 @@ async def get_expected_commission_trend(
         if u.period_month not in latest_by_period:
             latest_by_period[u.period_month] = u
     if not latest_by_period:
-        return []
+        return {"points": [], "reason": "no_production"}
 
     # User's agreement rates — same _pick_rate logic as /compare.
     rates_q = await db.execute(
@@ -1029,7 +1034,13 @@ async def get_expected_commission_trend(
             "unique_clients": len(per_period_clients[period]),
             "by_company": by_company,
         })
-    return out
+    if not out:
+        reason = "no_rates"
+    elif len(out) == 1:
+        reason = "single_month"
+    else:
+        reason = None
+    return {"points": out, "reason": reason}
 
 
 class CompareRequest(BaseModel):

@@ -1,4 +1,5 @@
 import { ref, computed, nextTick, onUnmounted } from 'vue'
+import { getUserFlag, setUserFlag } from '../utils/userFlags.js'
 
 const TOUR_STEPS = [
   {
@@ -18,12 +19,20 @@ const TOUR_STEPS = [
     description: 'כאן מעלים את קובץ הפרודוקציה מהסוכנות. פשוט גוררים קובץ Excel לאזור הזה.',
   },
   {
+    id: 'automation',
+    type: 'spotlight',
+    target: '[data-tour="tab-portal-automation"]',
+    placement: 'bottom',
+    title: 'הורדה אוטומטית',
+    description: 'הלב של המערכת: מגדירים פעם אחת שם משתמש וסיסמה לכל פורטל חברה, מחברים את הטלפון להעברת קוד האימות — ומכאן והלאה לחיצה אחת מורידה את כל הדוחות ומשווה אותם.',
+  },
+  {
     id: 'comparison',
     type: 'spotlight',
     target: '[data-tour="tab-comparison"]',
     placement: 'bottom',
     title: 'השוואת נפרעים',
-    description: 'לאחר העלאת פרודוקציה, כאן מעלים דוחות נפרעים מחברות הביטוח ומשווים מול הפרודוקציה.',
+    description: 'לאחר העלאת פרודוקציה, כאן מעלים דוחות נפרעים מחברות הביטוח ומשווים מול הפרודוקציה. ההורדה האוטומטית ממלאת את המסך הזה לבד.',
   },
   {
     id: 'commission-rates',
@@ -74,11 +83,12 @@ export function useOnboardingTour({ activeTab, viewMode }) {
   const totalSteps = TOUR_STEPS.length
 
   function shouldShowTour() {
-    return localStorage.getItem('onboarding_completed') !== 'true'
+    // Per-user flag — a new account on a shared browser still gets the tour.
+    return getUserFlag('onboarding_completed') !== 'true'
   }
 
   function markCompleted() {
-    localStorage.setItem('onboarding_completed', 'true')
+    setUserFlag('onboarding_completed', 'true')
   }
 
   async function findTarget(selector) {

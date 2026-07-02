@@ -23,6 +23,10 @@ export const useProductionStore = defineStore('production', () => {
   const landing = ref(null)
   const landingLoading = ref(false)
 
+  // Bumped on every refreshAll() so components with self-owned fetches
+  // (e.g. the trend chart) know the production data changed underneath them.
+  const trendTick = ref(0)
+
   async function fetchCurrent() {
     loading.value = true
     error.value = null
@@ -201,13 +205,25 @@ export const useProductionStore = defineStore('production', () => {
     comparisonResult.value = null
   }
 
+  // Full refresh after an external ingest (e.g. the run-all portal batch
+  // replaced the active production file). Tolerates individual failures.
+  async function refreshAll() {
+    trendTick.value += 1
+    await Promise.allSettled([
+      fetchCurrent(),
+      fetchAnalytics(),
+      fetchHistory(),
+      fetchLanding(),
+    ])
+  }
+
   return {
     currentFile, loading, uploading, justUploaded, error,
     analytics, analyticsLoading,
     history, comparisonResult, comparing,
-    landing, landingLoading,
+    landing, landingLoading, trendTick,
     fetchCurrent, uploadProduction, uploadProductionZip, removeCurrent,
-    fetchAnalytics, fetchHistory, fetchLanding,
+    fetchAnalytics, fetchHistory, fetchLanding, refreshAll,
     compareProductions, resetComparison,
   }
 })

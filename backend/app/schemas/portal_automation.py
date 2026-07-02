@@ -95,6 +95,9 @@ class PortalRunBatchOut(BaseModel):
     merged_commission_upload_id: str | None = None
     period_month: date | None = None
     error_message: str | None = None
+    # Categories this batch produced a persisted comparison for
+    # (e.g. ["gemel_hishtalmut", "insurance"]).
+    comparison_categories: list[str] = []
     runs: list[PortalRunOut] = []
 
 

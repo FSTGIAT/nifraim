@@ -212,7 +212,7 @@ No test suite or linter is configured. No `pytest`, `eslint`, or `ruff`.
 
 ### Onboarding Tour (First-Time User Guide)
 
-Interactive 7-step guided tour that runs once on first login. No backend changes — uses `localStorage.getItem('onboarding_completed')`.
+Interactive 8-step guided tour that runs once per user on first login. No backend changes — flag `onboarding_completed` is stored in localStorage **scoped per user** via `utils/userFlags.js` (key becomes `onboarding_completed:<jwt-sub>`; same for the activation checklist's `activation_closed`/`activation_completed`). Browser-global keys caused new accounts on a shared browser to silently skip onboarding.
 
 **Architecture: Composable + Component**
 
@@ -221,17 +221,18 @@ Interactive 7-step guided tour that runs once on first login. No backend changes
 | `composables/useOnboardingTour.js` | Step definitions, state machine, spotlight positioning, tab switching, keyboard nav |
 | `components/workspace/OnboardingTour.vue` | Renders overlay, spotlight cutout, tooltip cards, center modals via `<Teleport to="body">` |
 
-**Tour Steps (7 steps)**
+**Tour Steps (8 steps)**
 
 | # | ID | Type | Target | Title |
 |---|----|------|--------|-------|
 | 1 | welcome | center | — | ברוכים הבאים ל-Nifraim |
 | 2 | production | spotlight | `[data-tour="production-uploader"]` | העלאת פרודוקציה |
-| 3 | comparison | spotlight | `[data-tour="tab-comparison"]` | השוואת נפרעים |
-| 4 | commission-rates | spotlight | `[data-tour="tab-commission-rates"]` | טבלת עמלות |
-| 5 | company-emails | spotlight | `[data-tour="tab-company-emails"]` | אימיילים לחברות |
-| 6 | settings | spotlight | `[data-tour="settings-gear"]` | הגדרות |
-| 7 | done | center | — | !הכל מוכן |
+| 3 | automation | spotlight | `[data-tour="tab-portal-automation"]` | הורדה אוטומטית |
+| 4 | comparison | spotlight | `[data-tour="tab-comparison"]` | השוואת נפרעים |
+| 5 | commission-rates | spotlight | `[data-tour="tab-commission-rates"]` | טבלת עמלות |
+| 6 | company-emails | spotlight | `[data-tour="tab-company-emails"]` | אימיילים לחברות |
+| 7 | settings | spotlight | `[data-tour="settings-gear"]` | הגדרות |
+| 8 | done | center | — | !הכל מוכן |
 
 **Spotlight mechanism:** Box-shadow cutout technique — a transparent `<div>` over the target with `box-shadow: 0 0 0 9999px rgba(0,0,0,0.55)`. Pulsing `::after` border draws attention. Overlay stays dimmed (`tour-overlay--dimmed`) until spotlight is ready, preventing visual flash during transitions.
 
@@ -252,8 +253,8 @@ Interactive 7-step guided tour that runs once on first login. No backend changes
 
 **Testing:**
 ```js
-localStorage.removeItem('onboarding_completed')  // Reset tour → reload page
-localStorage.setItem('onboarding_completed', 'true')  // Disable tour
+// Keys are per-user: `onboarding_completed:<jwt-sub>`. Reset for the logged-in user:
+Object.keys(localStorage).filter(k => k.startsWith('onboarding_completed')).forEach(k => localStorage.removeItem(k))  // Reset tour → reload page
 ```
 
 ---

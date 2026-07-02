@@ -17,6 +17,7 @@
     <div class="reload-strip">
       <PortalAutomationDock
         @success="$emit('automation-success', $event)"
+        @batch-done="$emit('batch-done')"
         @navigate-to-credentials="$emit('navigate-to-credentials')"
       />
     </div>
@@ -84,7 +85,7 @@ import { useAuthStore } from '../../stores/auth.js'
 const props = defineProps({
   category: { type: String, default: null },
 })
-defineEmits(['automation-success', 'navigate-to-credentials'])
+defineEmits(['automation-success', 'batch-done', 'navigate-to-credentials'])
 
 const comparisonStore = useComparisonStore()
 const authStore = useAuthStore()

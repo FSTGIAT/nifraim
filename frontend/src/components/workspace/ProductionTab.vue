@@ -336,7 +336,9 @@ const historyByMonth = computed(() => {
   }
   const groups = new Map()
   for (const f of all) {
-    const k = monthKey(f.uploaded_at)
+    // Group by the reporting month the file is FOR (period_month) when the
+    // backend detected one; fall back to when it was uploaded.
+    const k = monthKey(f.period_month || f.uploaded_at)
     if (!groups.has(k)) groups.set(k, [])
     groups.get(k).push(f)
   }

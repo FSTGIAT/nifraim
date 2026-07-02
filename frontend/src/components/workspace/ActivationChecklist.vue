@@ -9,6 +9,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { useNotificationsStore } from '../../stores/notifications.js'
 import { activationState } from '../../utils/activationState.js'
+import { getUserFlag, setUserFlag } from '../../utils/userFlags.js'
 
 const emit = defineEmits(['open-phone-forward', 'open-add-portal', 'run-automation'])
 const store = usePortalAutomationStore()
@@ -57,13 +58,13 @@ function onAction(id) {
 
 function onClose() {
   // Closing before finishing: don't auto-show again, but drop a bell reminder.
-  localStorage.setItem(CLOSED_KEY, 'true')
+  setUserFlag(CLOSED_KEY, 'true')
   if (!allDone.value) pinReminder()
   hide()
 }
 
 function markCompleted() {
-  localStorage.setItem(DONE_KEY, 'true')
+  setUserFlag(DONE_KEY, 'true')
   notifications.unpinAlert(REMINDER_ID)
   hide()
 }
@@ -131,7 +132,7 @@ function hide() {
 }
 
 function show() {
-  if (localStorage.getItem(DONE_KEY) === 'true') return
+  if (getUserFlag(DONE_KEY) === 'true') return
   notifications.unpinAlert(REMINDER_ID)   // card is visible now — no duplicate bell nag
   visible.value = true
   nextTick(render)
@@ -153,7 +154,7 @@ watch(() => activationState.forceShow, (v) => {
 })
 
 onMounted(async () => {
-  if (localStorage.getItem(DONE_KEY) === 'true') return
+  if (getUserFlag(DONE_KEY) === 'true') return
   await Promise.all([
     store.fetchPhoneForward().catch(() => {}),
     store.fetchCredentials().catch(() => {}),
@@ -165,7 +166,7 @@ onMounted(async () => {
   if (activationState.forceShow) { activationState.forceShow = false; show(); return }
   // Show on every login while setup is incomplete — until the user explicitly
   // closes it (✕). Once closed, stay hidden but keep a bell reminder as the way back.
-  if (localStorage.getItem(CLOSED_KEY) !== 'true') show()
+  if (getUserFlag(CLOSED_KEY) !== 'true') show()
   else pinReminder()
 })
 

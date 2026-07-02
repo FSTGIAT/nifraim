@@ -18,7 +18,7 @@ import asyncio
 import logging
 import uuid
 from collections import Counter
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from sqlalchemy import select, update
 
@@ -41,6 +41,9 @@ _HE_MONTHS = {
     1: "ינואר", 2: "פברואר", 3: "מרץ", 4: "אפריל", 5: "מאי", 6: "יוני",
     7: "יולי", 8: "אוגוסט", 9: "ספטמבר", 10: "אוקטובר", 11: "נובמבר", 12: "דצמבר",
 }
+
+# Hebrew labels for the comparison categories (for error_message wording).
+_CATEGORY_LABELS = {"gemel_hishtalmut": "גמל והשתלמות", "insurance": "ביטוח"}
 
 
 def _month_label(period: date | None) -> str:
@@ -321,6 +324,14 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         )
         prod_periods = [p for (p,) in periods_q.all() if p]
     batch_period = Counter(prod_periods).most_common(1)[0][0] if prod_periods else None
+    if batch_period is None:
+        # No period detected on any held production upload. Israeli insurers
+        # report ~30 days late, so the batch almost always describes the
+        # PREVIOUS calendar month. Falling back keeps batch.period_month
+        # non-NULL and — critically — keeps the Hebrew month in the merged
+        # filenames below, so detect_period_month resolves from the filename
+        # instead of drifting to record dates / uploaded_at.
+        batch_period = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1)
     batch.period_month = batch_period
     month_label = _month_label(batch_period)
 
@@ -400,8 +411,15 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             await db.commit()
 
     # ── 4. Per-category comparison (גמל + ביטוח) ──────────────────────────
+    compared_categories: list[str] = []
+    failed_categories: list[str] = []
+    compare_skip_reason: str | None = None
     if merged_comm_upload is not None:
-        await _compare_merged(db, user_id, merged_comm_upload.id)
+        compared_categories, failed_categories, compare_skip_reason = await _compare_merged(
+            db, user_id, merged_comm_upload.id,
+            merged_prod_upload_id=merged_prod_upload.id if merged_prod_upload else None,
+            held_files_count=len(comm_upload_ids),
+        )
 
     # ── 5. Production snapshot/summary hooks ──────────────────────────────
     if merged_prod_upload is not None:
@@ -418,13 +436,48 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         batch.status = "failed"
     else:
         batch.status = "partial"
+
+    # A batch that downloaded commission data but produced no (or only partial)
+    # comparisons must not finish green with empty comparison tabs — downgrade
+    # a would-be success to partial and surface the reason.
+    comparison_missing = bool(comm_upload_ids) and (
+        merged_comm_upload is None or not compared_categories or bool(failed_categories)
+    )
+    if comparison_missing:
+        if batch.status == "success":
+            batch.status = "partial"
+        if failed_categories:
+            labels = [_CATEGORY_LABELS.get(c, c) for c in failed_categories]
+            reason = "השוואת נפרעים נכשלה בקטגוריות: " + ", ".join(labels)
+        elif compare_skip_reason == "no_production":
+            # The נפרעים side succeeded — there was simply nothing to compare
+            # against. Don't blame the commission downloads.
+            reason = "השוואת נפרעים לא הופקה — אין קובץ פרודוקציה להשוואה"
+        else:
+            reason = "השוואת נפרעים לא הופקה — בדוק את הורדות הנפרעים"
+        batch.error_message = (
+            f"{batch.error_message} | {reason}" if batch.error_message else reason
+        )
     batch.finished_at = datetime.utcnow()
     await db.commit()
 
 
-async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UUID) -> None:
-    """Run the comparison once per category against the active production and
-    persist a CommissionComparison row per category (so both tabs populate)."""
+async def _compare_merged(
+    db,
+    user_id: uuid.UUID,
+    merged_comm_upload_id: uuid.UUID,
+    *,
+    merged_prod_upload_id: uuid.UUID | None = None,
+    held_files_count: int = 0,
+) -> tuple[list[str], list[str], str | None]:
+    """Run the comparison once per category against the batch's merged
+    production (falling back to the newest active production) and persist a
+    CommissionComparison row per category (so both tabs populate).
+
+    Returns (persisted_categories, failed_categories, skip_reason) so run_batch
+    can downgrade the batch status when comparisons are missing AND blame the
+    right side — skip_reason is "no_production" when there was nothing to
+    compare against (not a נפרעים problem), else None."""
     from app.models.upload import FileUpload
     from app.models.record import ClientRecord
     from app.models.paying_company import PayingCompany
@@ -435,29 +488,45 @@ async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UU
         NIFRAIM_CATEGORY_GEMEL,
     )
 
-    prod_q = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.is_production.is_(True),
+    # Prefer the batch's just-merged production upload; otherwise the newest
+    # active production. LIMIT 1 so a transient violation of the one-active
+    # invariant can never raise MultipleResultsFound.
+    prod_upload = None
+    if merged_prod_upload_id is not None:
+        prod_q = await db.execute(
+            select(FileUpload).where(
+                FileUpload.id == merged_prod_upload_id,
+                FileUpload.user_id == user_id,
+            )
         )
-    )
-    prod_upload = prod_q.scalar_one_or_none()
+        prod_upload = prod_q.scalar_one_or_none()
+    if prod_upload is None:
+        prod_q = await db.execute(
+            select(FileUpload)
+            .where(
+                FileUpload.user_id == user_id,
+                FileUpload.is_production.is_(True),
+            )
+            .order_by(FileUpload.uploaded_at.desc())
+            .limit(1)
+        )
+        prod_upload = prod_q.scalar_one_or_none()
     if not prod_upload:
-        return
+        return [], [], "no_production"
 
     prod_recs_q = await db.execute(
         select(ClientRecord).where(ClientRecord.upload_id == prod_upload.id)
     )
     prod_dicts = [_record_to_dict(r) for r in prod_recs_q.scalars().all()]
     if not prod_dicts:
-        return
+        return [], [], "no_production"
 
     comm_recs_q = await db.execute(
         select(ClientRecord).where(ClientRecord.upload_id == merged_comm_upload_id)
     )
     comm_dicts = [_record_to_dict(r) for r in comm_recs_q.scalars().all()]
     if not comm_dicts:
-        return
+        return [], [], None
 
     paying_q = await db.execute(
         select(PayingCompany).where(PayingCompany.user_id == user_id)
@@ -473,6 +542,8 @@ async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UU
         else:
             by_cat["insurance"].append(rec)
 
+    persisted: list[str] = []
+    failed: list[str] = []
     for category, recs in by_cat.items():
         if not recs:
             continue
@@ -487,6 +558,10 @@ async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UU
             comparison["commission_company_source"] = sources[0] if len(sources) == 1 else None
             if prod_upload.period_month is not None:
                 comparison["period_month"] = prod_upload.period_month.isoformat()
+            # Parity with compare-with-production (api/comparison.py): how many
+            # held commission files were folded into this comparison.
+            comparison["period_files_count"] = int(held_files_count)
+            comparison["period_files_excluded"] = 0
 
             row = CommissionComparison(
                 user_id=user_id,
@@ -498,6 +573,7 @@ async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UU
             )
             db.add(row)
             await db.commit()
+            persisted.append(category)
 
             # Sync the debts table (drives the insights dashboard + the
             # company-summary "gap" column), mirroring compare_with_production.
@@ -516,3 +592,6 @@ async def _compare_merged(db, user_id: uuid.UUID, merged_comm_upload_id: uuid.UU
         except Exception as e:
             logger.warning("Batch compare (%s) failed: %s", category, e)
             await db.rollback()
+            failed.append(category)
+
+    return persisted, failed, None

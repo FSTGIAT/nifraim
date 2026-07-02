@@ -23,8 +23,23 @@
 
     <!-- ── Cards grouped by company, in framed panels ───────── -->
     <div v-else class="groups">
-      <section v-for="g in groups" :key="g.key" class="company-panel">
-        <header class="panel-head" :style="{ '--brand': g.color, '--brand-tint': groupTint(g.color) }">
+      <section
+        v-for="g in groups"
+        :key="g.key"
+        class="company-panel"
+        :class="{ 'is-open': isOpen(g) }"
+      >
+        <header
+          class="panel-head"
+          role="button"
+          tabindex="0"
+          :aria-expanded="isOpen(g)"
+          :aria-controls="panelId(g)"
+          :style="{ '--brand': g.color, '--brand-tint': groupTint(g.color) }"
+          @click="toggleGroup(g)"
+          @keydown.enter.prevent="toggleGroup(g)"
+          @keydown.space.prevent="toggleGroup(g)"
+        >
           <span class="group-icon" aria-hidden="true">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path :d="g.brand.iconPath" />
@@ -45,33 +60,47 @@
             </span>
             <span class="health-label">{{ g.health.ok }}/{{ g.health.total }} תקינים</span>
           </span>
+
+          <!-- Collapsed summary: when the cards are hidden, keep the freshness signal -->
+          <span v-if="!isOpen(g) && g.lastRunAt" class="panel-when">{{ relativeHebrew(g.lastRunAt) }}</span>
+
+          <span class="panel-chevron" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
         </header>
 
-        <TransitionGroup name="card-flip" tag="div" class="cards-grid">
-          <div v-for="cred in g.creds" :key="cred.id" class="card-slot">
-            <PortalCard
-              :cred="cred"
-              :wash-color="credColor(cred.portal_kind)"
-              :is-running="isRunning(cred.id)"
-              :portal-label="portalLabel(cred.portal_kind)"
-              :active-run="activeRun"
-              @run="$emit('run', cred.id)"
-              @edit="$emit('edit', cred)"
-              @delete="$emit('delete', cred.id)"
-              @view-error="(msg) => $emit('view-error', { cred, message: msg })"
-            />
+        <div :id="panelId(g)" class="panel-body">
+          <div class="panel-body-inner">
+            <TransitionGroup name="card-flip" tag="div" class="cards-grid">
+              <div v-for="cred in g.creds" :key="cred.id" class="card-slot">
+                <PortalCard
+                  :cred="cred"
+                  :wash-color="credColor(cred.portal_kind)"
+                  :is-running="isRunning(cred.id)"
+                  :portal-label="portalLabel(cred.portal_kind)"
+                  :active-run="activeRun"
+                  @run="$emit('run', cred.id)"
+                  @edit="$emit('edit', cred)"
+                  @delete="$emit('delete', cred.id)"
+                  @view-error="(msg) => $emit('view-error', { cred, message: msg })"
+                />
+              </div>
+            </TransitionGroup>
           </div>
-        </TransitionGroup>
+        </div>
       </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import PortalCard from './PortalCard.vue'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 import { nearestChartColor, assignNearestDistinct } from '../../utils/chartPalette.js'
+import { relativeHebrew } from '../../utils/relativeTime.js'
 
 const props = defineProps({
   credentials: { type: Array, required: true },
@@ -128,9 +157,45 @@ const groups = computed(() => {
       if (!s) return 'empty'
       return 'running'
     })
-    return { ...g, health: { ok, total, dots } }
+    // Freshest run in the group — shown in the header while the panel is folded.
+    const lastRunAt = g.creds.reduce((latest, c) => {
+      if (!c.last_run_at) return latest
+      return !latest || c.last_run_at > latest ? c.last_run_at : latest
+    }, null)
+    return { ...g, health: { ok, total, dots }, lastRunAt }
   })
 })
+
+// ─── Fold state — panels are collapsed by default, remembered per browser ──
+const OPEN_STORAGE_KEY = 'portal_panels_open'
+function loadOpenMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OPEN_STORAGE_KEY) || '{}')
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch (_) {
+    return {}
+  }
+}
+const openMap = ref(loadOpenMap())
+
+// Group keys are Hebrew brand labels that may contain spaces — invalid in an
+// IDREF. Collapse whitespace so aria-controls actually references the panel.
+function panelId(g) {
+  return 'panel-body-' + String(g.key).replace(/\s+/g, '-')
+}
+
+function isOpen(g) {
+  // A live run always reveals its panel so progress is never hidden.
+  if (g.creds.some((c) => isRunning(c.id))) return true
+  const explicit = openMap.value[g.key]
+  if (explicit !== undefined) return explicit
+  // Untouched default: folded, unless it's the only company on the board.
+  return groups.value.length === 1
+}
+function toggleGroup(g) {
+  openMap.value = { ...openMap.value, [g.key]: !isOpen(g) }
+  try { localStorage.setItem(OPEN_STORAGE_KEY, JSON.stringify(openMap.value)) } catch (_) {}
+}
 
 function groupTint(hex) {
   const clean = (hex || '#706E6B').replace('#', '')
@@ -190,17 +255,61 @@ function isRunning(credId) {
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 16px);
-  padding: 14px 16px 16px;
+  padding: 12px 16px;
   box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.04);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
+.company-panel.is-open { padding-bottom: 16px; }
+/* Header doubles as the fold toggle — the whole row is one big touch target */
 .panel-head {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  border-bottom: 1px dashed var(--border-subtle);
+  padding: 6px 8px;
+  margin: -4px -8px;
+  border-radius: 10px;
+  border-bottom: 1px dashed transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.2s ease;
 }
+.panel-head:hover { background: var(--brand-tint, rgba(0, 0, 0, 0.03)); }
+.panel-head:focus-visible { outline: 2px solid var(--brand, #1FA88C); outline-offset: 2px; }
+.is-open .panel-head {
+  margin-bottom: 10px;
+  border-radius: 10px 10px 0 0;
+  border-bottom-color: var(--border-subtle);
+}
+/* Collapsed freshness summary */
+.panel-when {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* Fold chevron — rotates open, sits at the inline end */
+.panel-chevron {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s ease;
+}
+.panel-head:hover .panel-chevron { color: var(--brand, var(--text)); }
+.is-open .panel-chevron { transform: rotate(180deg); }
+/* Animated fold — modern 0fr → 1fr grid-row trick (no fixed max-height) */
+.panel-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.is-open .panel-body { grid-template-rows: 1fr; }
+.panel-body-inner { overflow: hidden; min-height: 0; }
+.panel-body-inner > .cards-grid { margin-top: 14px; }
 .group-icon {
   width: 30px;
   height: 30px;
@@ -332,5 +441,6 @@ function isRunning(credId) {
 
 @media (prefers-reduced-motion: reduce) {
   .card-slot { animation: none; transform: none; }
+  .panel-body, .panel-chevron { transition: none; }
 }
 </style>

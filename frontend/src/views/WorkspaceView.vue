@@ -28,6 +28,13 @@
          after 5s; user can dismiss failures manually. -->
     <PortalRunProgressFloat />
 
+    <!-- "Batch results ready" toast — shows when the run-all batch finishes
+         while the user is anywhere but the automation tab. -->
+    <BatchResultsToast
+      :active-tab="viewMode === 'content' ? activeTab : ''"
+      @navigate="onBatchToastNavigate"
+    />
+
     <!-- Notifications bell — always-visible top-right alert center. -->
     <div class="ws-bell-anchor">
       <NotificationBell />
@@ -137,14 +144,14 @@
         <main class="workspace-main" :class="{ 'wide-content': activeTab === 'comparison' && !!comparisonStore.result }">
           <div class="tab-content">
             <Transition name="tab-switch" mode="out-in">
-              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="activeTab = 'comparison'" @go-to-portal-automation="activeTab = 'portal-automation'" />
+              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
-              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="activeTab = 'comparison'" />
+              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="onCardSelect('comparison')" />
             </Transition>
           </div>
         </main>
@@ -227,6 +234,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
 import { useProductionStore } from '../stores/production.js'
+import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useOnboardingTour } from '../composables/useOnboardingTour.js'
 import StockTicker from '../components/workspace/StockTicker.vue'
 import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
@@ -240,6 +248,7 @@ import ActivationChecklist from '../components/workspace/ActivationChecklist.vue
 import WorkerInstallCard from '../components/workspace/WorkerInstallCard.vue'
 import { activationState } from '../utils/activationState.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
+import BatchResultsToast from '../components/workspace/BatchResultsToast.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
@@ -262,6 +271,7 @@ const router = useRouter()
 const auth = useAuthStore()
 const comparisonStore = useComparisonStore()
 const productionStore = useProductionStore()
+const portalAutomationStore = usePortalAutomationStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
 
@@ -356,6 +366,31 @@ function onCardSelect(payload) {
 
 function goHome() {
   viewMode.value = 'home'
+}
+
+// ── Batch results toast → navigation ───────────────────────────────────
+// Prefer a category the batch actually persisted (comparison_categories),
+// else the first category with a cached result.
+function batchTargetCategory() {
+  const batch = portalAutomationStore.batchJustFinished || portalAutomationStore.latestBatch
+  const batchCats = batch?.comparison_categories || []
+  const order = ['gemel_hishtalmut', 'insurance']
+  return (
+    order.find((c) => batchCats.includes(c)) ||
+    order.find((c) => comparisonStore.results[c]) ||
+    null
+  )
+}
+
+function onBatchToastNavigate(tab) {
+  if (tab === 'comparison') {
+    const cat = batchTargetCategory()
+    if (cat) {
+      comparisonStore.selectCategory(cat)
+      comparisonStore.fetchLatest(cat).catch(() => {})
+    }
+  }
+  onCardSelect({ tab })
 }
 
 // Onboarding tour
@@ -463,6 +498,10 @@ function onKeydown(e) {
 
 onMounted(async () => {
   await auth.fetchUser()
+  // Resume a run-all batch that's still in-flight on the server (page reload
+  // mid-batch) — polling + the post-batch store refresh continue even if the
+  // user never opens the automation tab. Fire-and-forget; failures are benign.
+  portalAutomationStore.hydrateBatch()
   document.addEventListener('dragenter', onDragEnter)
   document.addEventListener('dragleave', onDragLeave)
   document.addEventListener('dragover', onDragOver)
