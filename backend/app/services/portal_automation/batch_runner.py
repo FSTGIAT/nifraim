@@ -334,6 +334,13 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         batch_period = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1)
     batch.period_month = batch_period
     month_label = _month_label(batch_period)
+    # Valuation date (נכון ליום) = last day of the period month — matches the
+    # reference production file, which stamps every row with the month-end.
+    if batch_period.month == 12:
+        _next_month = batch_period.replace(year=batch_period.year + 1, month=1, day=1)
+    else:
+        _next_month = batch_period.replace(month=batch_period.month + 1, day=1)
+    batch_as_of = _next_month - timedelta(days=1)
 
     # ── 2. Merge production → ONE active upload ───────────────────────────
     merged_prod_upload = None
@@ -346,7 +353,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         )
         prod_records = [_record_to_dict(r) for r in prod_recs_q.scalars().all()]
         if prod_records:
-            xlsx_bytes = build_unified_workbook_bytes(prod_records)
+            xlsx_bytes = build_unified_workbook_bytes(prod_records, as_of=batch_as_of)
             fname = f"פרודוקציה מאוחד {month_label}.xlsx".replace("  ", " ").strip()
             merged_prod_upload, _ = await ingest_file_bytes(
                 db, user_id=user_id, content=xlsx_bytes, filename=fname,

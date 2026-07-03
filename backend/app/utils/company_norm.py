@@ -9,8 +9,11 @@ This module gives ONE deterministic normalizer used by both the backend
 classifier and the frontend switcher detector — so they always agree on
 "is this the same company?".
 """
+import logging
 import re
 import unicodedata
+
+logger = logging.getLogger(__name__)
 
 
 # Israeli insurance-company name suffixes we strip before comparison.
@@ -84,3 +87,58 @@ def same_company(a: str | None, b: str | None) -> bool:
     Empty strings never match."""
     na, nb = normalize_company(a), normalize_company(b)
     return bool(na) and na == nb
+
+
+# ── Canonical LEGAL entity names ──────────────────────────────────────────
+#
+# `normalize_company` returns a comparable *collapse key* ("הפניקס", "הראל");
+# for the merged production file we instead need the full LEGAL entity name
+# the maslaka clearinghouse uses — and it distinguishes an insurer's savings
+# entity from its insurance entity (הפניקס אקסלנס פנסיה וגמל בע"מ vs הפניקס
+# חברה לביטוח בע"מ). So `canonical_company(name, kind)` maps a raw portal name
+# to the right legal entity for the record's kind.
+#
+# Every value below is copied VERBATIM from the reference file
+# `פרודוקציה אפריל.xlsx` (`יצרן` column) — not invented. Matching is by name
+# stem so raw short-names (הפניקס, הפניקס גמל), variants (הראל גמל, הראל מגוון)
+# and already-legal names all resolve; already-legal inputs are idempotent.
+#
+# (stems, savings-entity, insurance-entity). insurance is None for single-
+# entity insurers (gemel/pension or insurance-only) → same name for both kinds.
+_LEGAL_ENTITIES: list[tuple[tuple[str, ...], str, str | None]] = [
+    (("הפניקס", "פניקס"), 'הפניקס אקסלנס פנסיה וגמל בע"מ', 'הפניקס חברה לביטוח בע"מ'),
+    (("הראל",),           'הראל פנסיה וגמל בע"מ',          'הראל חברה לביטוח בע"מ'),
+    (("מנורה",),          'מנורה מבטחים פנסיה וגמל בע"מ',  'מנורה מבטחים ביטוח בע"מ'),
+    (("מגדל",),           'מגדל מקפת קרנות פנסיה וקופות גמל בע"מ', 'מגדל חברה לביטוח בע"מ'),
+    (("כלל",),            'כלל פנסיה וגמל בע"מ',           'כלל חברה לביטוח בע"מ'),
+    (("אלטשולר",),        'אלטשולר שחם גמל ופנסיה בע"מ',   None),
+    (("מיטב",),           'מיטב גמל ופנסיה בע"מ',          None),
+    (("מור",),            'מור גמל ופנסיה בע"מ',           None),
+    (("ילין",),           'ילין לפידות ניהול קופות גמל בע"מ', None),
+    (("הכשרה",),          'הכשרה חברה לביטוח בע"מ',        None),
+    (("אנליסט",),         'אנליסט קופות גמל בע"מ',         None),
+]
+
+
+def canonical_company(name: str | None, kind: str = "insurance") -> str:
+    """Map a raw portal company name → the full LEGAL entity name used by the
+    reference production file, picking the savings- or insurance-entity by
+    `kind` ("savings" | "insurance").
+
+    Unmapped names are returned unchanged (never blanked) and logged once, so
+    a new insurer degrades gracefully instead of vanishing from the merge.
+    Idempotent: passing an already-legal name returns it unchanged.
+    """
+    if not name:
+        return ""
+    s = re.sub(r'[\'"`׳״|]', "", str(name)).strip()
+    s = re.sub(r"\s+", " ", s)
+    if not s:
+        return ""
+    for stems, savings, insurance in _LEGAL_ENTITIES:
+        if any(s.startswith(stem) for stem in stems):
+            if kind == "insurance" and insurance:
+                return insurance
+            return savings
+    logger.warning("canonical_company: unmapped insurer name %r (kind=%s)", name, kind)
+    return str(name).strip()

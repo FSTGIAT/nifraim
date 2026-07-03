@@ -26,6 +26,7 @@ from app.services.mimshak.xlsx_writer import (
     _format_phone,
 )
 from app.utils.hebrew_mappings import COLUMNS_UNIFIED_NIFRAIM
+from app.utils.company_norm import canonical_company
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -70,10 +71,14 @@ def _row(columns: list[str], values: dict) -> list:
     return [values.get(col, "") for col in columns]
 
 
-def record_to_insurance_product_row(rec: dict, agent_number=None) -> list:
-    """Map a ClientRecord dict → a sheet-5 (מוצרי ביטוח) row."""
+def record_to_insurance_product_row(rec: dict, agent_number=None, as_of=None) -> list:
+    """Map a ClientRecord dict → a sheet-5 (מוצרי ביטוח) row.
+
+    `יצרן` is canonicalized to the reference's full legal INSURANCE-entity name
+    so portal short-names (הפניקס, מנורה, …) don't fragment the merged file.
+    """
     vals = {
-        "יצרן": rec.get("receiving_company") or "",
+        "יצרן": canonical_company(rec.get("receiving_company"), "insurance"),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
         "מס' חשבון/פוליסה": rec.get("fund_policy_number") or "",
@@ -88,17 +93,19 @@ def record_to_insurance_product_row(rec: dict, agent_number=None) -> list:
         "מזהה מעסיק": rec.get("employer_id") or "",
         "שם מעסיק": rec.get("employer_name") or "",
         "מספר סוכן": agent_number or "",
+        "נכון ליום": _d(as_of),
     }
     return _row(COLUMNS_INSURANCE_PRODUCTS, vals)
 
 
-def record_to_savings_row(rec: dict, agent_number=None) -> list:
+def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
     """Map a ClientRecord dict → a sheet-3 (מוצרי חיסכון) row.
 
     The `צבירה` column MUST carry accumulation — `_parse_production` keys off it.
+    `יצרן` is canonicalized to the reference's full legal SAVINGS-entity name.
     """
     vals = {
-        "יצרן": rec.get("receiving_company") or "",
+        "יצרן": canonical_company(rec.get("receiving_company"), "savings"),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
         "מס' חשבון/פוליסה": rec.get("fund_policy_number") or "",
@@ -113,24 +120,26 @@ def record_to_savings_row(rec: dict, agent_number=None) -> list:
         "שם מעסיק": rec.get("employer_name") or "",
         "צבירה": round(_f(rec.get("accumulation")), 2),
         "מספר סוכן": agent_number or "",
+        "נכון ליום": _d(as_of),
     }
     return _row(COLUMNS_SAVINGS_PRODUCTS, vals)
 
 
-def build_unified_workbook_bytes(records: list[dict], agent_number=None) -> bytes:
+def build_unified_workbook_bytes(records: list[dict], agent_number=None, as_of=None) -> bytes:
     """Build ONE 6-sheet production xlsx from all batch production records.
 
     Insurance/premium products → sheet 5; accumulation/gemel → sheet 3.
     Coverages (sheet 6) stay empty — they are a Migdal-only nicety not consumed
-    downstream. Returns xlsx bytes ready for `ingest_file_bytes`.
+    downstream. `as_of` (a date) populates the `נכון ליום` valuation column on
+    every row. Returns xlsx bytes ready for `ingest_file_bytes`.
     """
     insurance_rows: list[list] = []
     savings_rows: list[list] = []
     for rec in records:
         if classify_record(rec) == "savings":
-            savings_rows.append(record_to_savings_row(rec, agent_number))
+            savings_rows.append(record_to_savings_row(rec, agent_number, as_of))
         else:
-            insurance_rows.append(record_to_insurance_product_row(rec, agent_number))
+            insurance_rows.append(record_to_insurance_product_row(rec, agent_number, as_of))
 
     wb = build_workbook(
         insurance_rows,
@@ -169,11 +178,15 @@ def commission_category_token(rec: dict) -> str:
 
 
 def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
+    # Canonicalize יצרן to the same legal-entity names the production merge uses
+    # so the production↔נפרעים compare pairs by company instead of fragmenting.
+    kind = "savings" if commission_category_token(rec) == NIFRAIM_CATEGORY_GEMEL else "insurance"
+    raw_company = rec.get("receiving_company") or rec.get("company_source")
     vals = {
         "מספר ת.ז": _id_number_int(rec.get("id_number")),
         "שם פרטי": rec.get("first_name") or "",
         "שם משפחה": rec.get("last_name") or "",
-        "יצרן": rec.get("receiving_company") or rec.get("company_source") or "",
+        "יצרן": canonical_company(raw_company, kind),
         "קטגוריה": commission_category_token(rec),
         "סוג מוצר": rec.get("fund_type") or "",
         "מוצר": rec.get("product") or "",
