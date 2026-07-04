@@ -67,12 +67,6 @@
         </div>
       </div>
 
-      <!-- Cross-company reconciliation overview (both categories) -->
-      <CompanyReconciliationSummary
-        :summary="comparisonStore.companySummary"
-        @drill="onDrillCompany"
-      />
-
       <!-- Content area -->
       <Transition name="tab-switch" mode="out-in">
         <!-- No category selected → prompt -->
@@ -83,7 +77,7 @@
         <!-- Category selected, no result → always-on insights dashboard
              (the dashboard hosts a slim "load fresh data" strip with the
               automation panel + manual upload behind a disclosure). -->
-        <div v-else-if="!comparisonStore.result" :key="'insights-' + comparisonStore.activeCategory" class="insights-stack">
+        <div v-else-if="!displayResult" :key="'insights-' + comparisonStore.activeCategory" class="insights-stack">
           <ComparisonInsightsDashboard
             @automation-success="onAutomationSuccess"
             @batch-done="onBatchDone"
@@ -92,20 +86,45 @@
         </div>
 
         <!-- Has result → comparison dashboard -->
-        <div v-else :key="'result-' + comparisonStore.activeCategory" class="results-section">
+        <div v-else :key="'result-' + comparisonStore.activeCategory + (comparisonStore.singleFileView ? '-single' : '')" class="results-section">
+          <!-- Ephemeral single-file drill — the merged picture is one click away -->
+          <div v-if="comparisonStore.singleFileView" class="single-file-banner">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+              <path d="M15 2v5h5"/>
+            </svg>
+            <span class="sfb-text">
+              מציג קובץ בודד:
+              <strong>{{ comparisonStore.singleFileView.filename || 'דוח נפרעים' }}</strong>
+            </span>
+            <button class="sfb-back" @click="comparisonStore.clearSingleFileView()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+              </svg>
+              חזרה לתמונה המלאה
+            </button>
+          </div>
+
           <ComparisonDashboard
             :customers="relevantCustomers"
-            :categoryLabel="comparisonStore.result?.commission_category_label || ''"
-            :companySource="comparisonStore.result?.commission_company_source || ''"
-            :companySources="comparisonStore.result?.commission_company_sources || []"
+            :categoryLabel="displayResult?.commission_category_label || ''"
+            :companySource="displayResult?.commission_company_source || ''"
+            :companySources="displayResult?.commission_company_sources || []"
             :initialCompany="drillCompany || ''"
-            :periodMonth="comparisonStore.result?.period_month || productionStore.currentFile?.period_month || ''"
-            :periodFilesCount="comparisonStore.result?.period_files_count || 0"
-            :periodFilesExcluded="comparisonStore.result?.period_files_excluded || 0"
+            :periodMonth="displayResult?.period_month || productionStore.currentFile?.period_month || ''"
+            :periodFilesCount="displayResult?.period_files_count || 0"
+            :periodFilesExcluded="displayResult?.period_files_excluded || 0"
             @initial-company-applied="drillCompany = null"
           />
         </div>
       </Transition>
+
+      <!-- Cross-company reconciliation overview (both categories) — the
+           closing "full picture" summary at the bottom of the tab. -->
+      <CompanyReconciliationSummary
+        :summary="comparisonStore.companySummary"
+        @drill="onDrillCompany"
+      />
     </template>
   </div>
 </template>
@@ -116,12 +135,10 @@ import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { useUploadsStore } from '../../stores/uploads.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
-import CommissionUploader from './CommissionUploader.vue'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
 import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
 import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
-import PortalAutomationPanel from './PortalAutomationPanel.vue'
 import EmptyStateGuide from './EmptyStateGuide.vue'
 
 defineEmits(['go-to-portal-automation'])
@@ -175,6 +192,10 @@ async function onSelectCategory(cat) {
   await comparisonStore.fetchLatest(cat)
 }
 
+// What the dashboard renders: the ephemeral single-file drill when active,
+// otherwise the merged all-companies comparison for the active category.
+const displayResult = computed(() => comparisonStore.singleFileView?.result || comparisonStore.result)
+
 /**
  * Filter customers to only show relevant "not paid" (only_production) entries.
  * When comparing against a specific company's commission file (e.g. הפניקס),
@@ -182,11 +203,11 @@ async function onSelectCategory(cat) {
  * Products from other companies (e.g. אלטשולר) won't be in a הפניקס file — that's expected.
  */
 const relevantCustomers = computed(() => {
-  if (!comparisonStore.result) return []
+  if (!displayResult.value) return []
 
-  const customers = comparisonStore.result.customers
-  const commSources = comparisonStore.result.commission_company_sources || []
-  const commSource = comparisonStore.result.commission_company_source
+  const customers = displayResult.value.customers
+  const commSources = displayResult.value.commission_company_sources || []
+  const commSource = displayResult.value.commission_company_source
   const companies = commSources.length > 0 ? commSources : (commSource ? [commSource] : [])
 
   // If no commission company info, return all customers as-is
@@ -273,7 +294,11 @@ async function onCommissionFileSelect(file) {
     comparisonStore.selectCategory(inferredCategory)
   }
   try {
-    await comparisonStore.compareExisting(productionStore.currentFile.id, file.id)
+    // View-only drill: never persisted, never overwrites the merged picture.
+    await comparisonStore.compareExisting(productionStore.currentFile.id, file.id, {
+      persist: false,
+      filename: file.filename,
+    })
   } catch (_) { /* surfaced via store.error */ }
 }
 
@@ -296,25 +321,16 @@ function inferCategoryFromFile(file) {
 
 async function onAutomationSuccess({ run }) {
   // The portal automation pipeline ingests the commission file as an upload.
-  // Pair it with the current production via the existing compute endpoint.
-  if (!run?.upload_id || !productionStore.currentFile?.id) return
+  if (!run?.upload_id) return
 
-  // Refresh the recent-files strip so the freshly downloaded card appears
-  // (also confirms the upload is in our store before we need its category).
+  // Refresh the recent-files strip so the freshly downloaded card appears.
   try { await uploadsStore.fetchUploads() } catch { /* non-blocking */ }
 
-  // If the file lands in a different category than the toggle is currently
-  // showing, switch — otherwise the dashboard would render the WRONG one.
-  const newUpload = (uploadsStore.uploads || []).find((u) => u.id === run.upload_id)
-  if (newUpload?.file_category === 'commission' && comparisonStore.activeCategory) {
-    // The runner already wrote a commission_comparisons row; pick that up
-    // for the active category. fetchLatest is a no-op if there's nothing.
-    try { await comparisonStore.fetchLatest(comparisonStore.activeCategory) } catch {}
-  }
-
-  try {
-    await comparisonStore.compareExisting(productionStore.currentFile.id, run.upload_id)
-  } catch (_) { /* surfaced via store.error */ }
+  // Recompute the merged all-companies comparison server-side (folds the
+  // fresh upload in as its company's latest source) and rehydrate the
+  // active category + the cross-company summary. Never computes a
+  // single-company comparison — that used to clobber the merged picture.
+  try { await comparisonStore.refreshMerged() } catch { /* non-blocking */ }
 }
 
 // Clicking a company row in the summary → open the category that has results
@@ -324,6 +340,8 @@ async function onAutomationSuccess({ run }) {
 // overridden later).
 const drillCompany = ref(null)
 async function onDrillCompany(company) {
+  // Company drill always targets the merged picture, not a single-file view.
+  comparisonStore.clearSingleFileView()
   const order = ['gemel_hishtalmut', 'insurance']
   let target = order.find((c) => comparisonStore.hasResultFor(c))
   if (!target) {
@@ -352,6 +370,8 @@ async function onBatchDone() {
     order[0]
   comparisonStore.selectCategory(target)
   await comparisonStore.fetchLatest(target)
+  // The batch just rewrote the merged comparisons — refresh the bottom table.
+  comparisonStore.fetchCompanySummary()
 }
 
 onMounted(async () => {
@@ -566,6 +586,52 @@ onMounted(async () => {
 }
 
 .results-section {}
+
+/* Ephemeral single-file drill banner — cool info tint (chart sky-blue) so it
+   reads as "temporary view", clearly distinct from the amber warnings. */
+.single-file-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  margin-bottom: 14px;
+  background: color-mix(in srgb, var(--chart-2, #4E9DD0) 9%, white);
+  border: 1px solid color-mix(in srgb, var(--chart-2, #4E9DD0) 35%, transparent);
+  border-radius: var(--radius-sm);
+  color: color-mix(in srgb, var(--chart-2, #4E9DD0) 70%, black);
+  font-size: 13px;
+}
+
+.single-file-banner svg { flex-shrink: 0; }
+
+.sfb-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sfb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chart-2, #4E9DD0) 88%, black);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s var(--transition);
+}
+
+.sfb-back:hover {
+  background: color-mix(in srgb, var(--chart-2, #4E9DD0) 70%, black);
+}
 
 .empty-stack {
   display: flex;

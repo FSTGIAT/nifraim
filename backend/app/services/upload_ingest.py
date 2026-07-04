@@ -326,110 +326,22 @@ async def _compute_summary_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
 
 
 async def _auto_compare_after_commission_bg(user_id: uuid.UUID, commission_upload_id: uuid.UUID) -> None:
-    """Best-effort comparison after a commission file lands. Mirrors what
-    /api/comparison/compare-with-production does, but DB→memory only (no
-    re-parse). Failure is logged + swallowed; the upload itself is fine."""
+    """Best-effort merged comparison after a commission file lands. Delegates
+    to the shared orchestrator (same full-picture semantics as
+    /api/comparison/compare-with-production and the run-all batch): latest
+    source per company, split per category, persist + debt-sync per category.
+    Failure is logged + swallowed; the upload itself is fine."""
     from app.database import async_session
-    from app.models.paying_company import PayingCompany
-    from app.models.commission_comparison import CommissionComparison
-    from app.services.comparison_service import compute_comparison
+    from app.services.comparison_orchestrator import compute_merged_comparison
 
     try:
         async with async_session() as db:
-            # Production is NO LONGER a singleton — multiple companies' production
-            # uploads coexist as is_production=True (see unified_production_per_month).
-            # scalar_one_or_none() here raised MultipleResultsFound, silently killing
-            # the auto-compare for every commission file. Aggregate them all (like
-            # /current does) and anchor the comparison FK on the newest.
-            prod_q = await db.execute(
-                select(FileUpload)
-                .where(
-                    FileUpload.user_id == user_id,
-                    FileUpload.is_production.is_(True),
+            merged = await compute_merged_comparison(db, user_id)
+            if merged["skip_reason"]:
+                logger.info(
+                    "auto-compare skipped (upload %s): %s",
+                    commission_upload_id, merged["skip_reason"],
                 )
-                .order_by(FileUpload.uploaded_at)
-            )
-            prod_uploads = list(prod_q.scalars().all())
-            if not prod_uploads:
-                return
-            prod_upload_ids = [u.id for u in prod_uploads]
-            prod_upload = prod_uploads[-1]  # newest — FK anchor only
-
-            new_comm_q = await db.execute(
-                select(FileUpload).where(FileUpload.id == commission_upload_id)
-            )
-            new_comm = new_comm_q.scalar_one_or_none()
-            if not new_comm:
-                return
-
-            new_recs_q = await db.execute(
-                select(ClientRecord).where(
-                    ClientRecord.upload_id == new_comm.id,
-                    ClientRecord.user_id == user_id,
-                )
-            )
-            new_records = list(new_recs_q.scalars().all())
-            if not new_records:
-                return
-
-            def _to_dict(r):
-                return {
-                    c.key: getattr(r, c.key)
-                    for c in r.__table__.columns
-                    if c.key not in ("id", "user_id", "upload_id")
-                }
-
-            new_dicts = [_to_dict(r) for r in new_records]
-
-            all_comm_q = await db.execute(
-                select(ClientRecord).where(
-                    ClientRecord.user_id == user_id,
-                    ClientRecord.upload_id.notin_(prod_upload_ids),
-                )
-            )
-            all_comm_records = [_to_dict(r) for r in all_comm_q.scalars().all()]
-            if not all_comm_records:
-                all_comm_records = new_dicts
-
-            prod_q2 = await db.execute(
-                select(ClientRecord).where(
-                    ClientRecord.upload_id.in_(prod_upload_ids),
-                    ClientRecord.user_id == user_id,
-                )
-            )
-            prod_dicts = [_to_dict(r) for r in prod_q2.scalars().all()]
-            if not prod_dicts:
-                return
-
-            paying_q = await db.execute(
-                select(PayingCompany).where(PayingCompany.user_id == user_id)
-            )
-            paying_names = [p.company_name for p in paying_q.scalars().all()]
-
-            comparison = compute_comparison(prod_dicts, all_comm_records, paying_names)
-
-            comm_uploads_q = await db.execute(
-                select(FileUpload).where(
-                    FileUpload.user_id == user_id,
-                    FileUpload.file_category == "commission",
-                )
-            )
-            sources = sorted({
-                u.company_source for u in comm_uploads_q.scalars().all() if u.company_source
-            })
-            comparison["commission_company_sources"] = sources
-            comparison["commission_company_source"] = new_comm.company_source
-
-            row = CommissionComparison(
-                user_id=user_id,
-                category=comparison.get("commission_category") or "unknown",
-                production_upload_id=prod_upload.id,
-                summary_json=to_jsonable(comparison.get("summary") or {}),
-                result_json=to_jsonable(comparison),
-                commission_company_sources=sources,
-            )
-            db.add(row)
-            await db.commit()
     except Exception as e:
         logger.warning("auto-compare bg task failed (upload %s): %s", commission_upload_id, e)
 

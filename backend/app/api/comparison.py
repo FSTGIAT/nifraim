@@ -20,7 +20,6 @@ from app.models.debt import Debt
 from app.models.commission_comparison import CommissionComparison
 from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
-from app.services.debt_service import sync_debts
 
 from app.services.parser_service import parse_excel, CategoryMismatchError
 from app.services.comparison_service import compute_comparison
@@ -197,10 +196,16 @@ async def compute_from_uploads(
     production_upload_id: str = Form(...),
     commission_upload_id: str = Form(...),
     category: str = Form(default=None),
+    persist: bool = Form(default=True),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Compute comparison from two existing uploads."""
+    """Compute comparison from two existing uploads.
+
+    With ``persist=false`` the result is returned but NOT saved as the
+    latest comparison — used for ephemeral single-file inspection so it
+    never clobbers the merged all-companies picture.
+    """
     # Load production records
     prod_result = await db.execute(
         select(ClientRecord).where(
@@ -245,7 +250,8 @@ async def compute_from_uploads(
 
     comparison = compute_comparison(prod_dicts, comm_dicts, paying_names, category_override=category)
     comparison["commission_company_source"] = comm_upload.company_source if comm_upload else None
-    await _persist_comparison(db, user.id, comparison, production_upload_id=uuid.UUID(production_upload_id))
+    if persist:
+        await _persist_comparison(db, user.id, comparison, production_upload_id=uuid.UUID(production_upload_id))
     return comparison
 
 
@@ -257,13 +263,19 @@ async def compare_with_production(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Upload one or more commission files and compare against stored production file."""
-    # Find active production upload
+    """Upload one or more commission files, then recompute the merged
+    all-companies comparison (latest file per company) against production."""
+    # Fail fast when there's no active production. Production is NOT a
+    # singleton (multiple per-company uploads coexist as is_production=True),
+    # so LIMIT 1 — scalar_one_or_none() raised MultipleResultsFound here.
     prod_upload_result = await db.execute(
-        select(FileUpload).where(
+        select(FileUpload)
+        .where(
             FileUpload.user_id == user.id,
             FileUpload.is_production == True,
         )
+        .order_by(desc(FileUpload.uploaded_at))
+        .limit(1)
     )
     prod_upload = prod_upload_result.scalar_one_or_none()
     if not prod_upload:
@@ -350,57 +362,57 @@ async def compare_with_production(
     if not all_commission_records:
         raise HTTPException(400, "לא נמצאו רשומות בקבצי הנפרעים")
 
-    # Load production records from DB
-    prod_result = await db.execute(
-        select(ClientRecord).where(
-            ClientRecord.upload_id == prod_upload.id,
-            ClientRecord.user_id == user.id,
-        )
+    # Recompute the merged all-companies picture (latest source per company
+    # across ALL stored uploads — not just this request's files). The
+    # orchestrator computes + persists + debt-syncs one comparison per
+    # category, exactly like the batch flow.
+    from app.services.comparison_orchestrator import compute_merged_comparison
+    from app.services.portal_automation.aggregate import (
+        commission_category_token,
+        NIFRAIM_CATEGORY_GEMEL,
     )
-    prod_records = prod_result.scalars().all()
 
-    def record_to_dict(r):
-        return {c.key: getattr(r, c.key) for c in r.__table__.columns if c.key not in ("id", "user_id", "upload_id")}
+    merged = await compute_merged_comparison(db, user.id)
+    if merged["skip_reason"] == "no_production":
+        raise HTTPException(404, "לא נמצא קובץ פרודוקציה פעיל. יש להעלות קובץ פרודוקציה קודם.")
+    comparisons = merged["comparisons"]
+    if not comparisons:
+        raise HTTPException(400, "ההשוואה לא הופקה — לא נמצאו רשומות נפרעים תואמות")
 
-    prod_dicts = [record_to_dict(r) for r in prod_records]
-
-    # Load paying companies for this user
-    paying_result = await db.execute(
-        select(PayingCompany).where(PayingCompany.user_id == user.id)
-    )
-    paying_names = [p.company_name for p in paying_result.scalars().all()]
-
-    # Debug: log production and commission stats
-    prod_ids_with_val = [r.get("id_number") for r in prod_dicts if r.get("id_number")]
-    comm_ids_with_val = [r.get("id_number") for r in all_commission_records if r.get("id_number")]
-    print(f"COMPARISON DEBUG: prod_records={len(prod_dicts)} prod_with_id={len(prod_ids_with_val)} comm_records={len(all_commission_records)} comm_with_id={len(comm_ids_with_val)} category={category}", flush=True)
-
-    # Compute comparison with ALL commission records merged
-    comparison = compute_comparison(prod_dicts, all_commission_records, paying_names, category_override=category)
-    print(f"COMPARISON RESULT: {comparison['summary']}", flush=True)
-    comparison["commission_company_source"] = company_sources[0] if len(company_sources) == 1 else None
-    comparison["commission_company_sources"] = sorted(set(company_sources))
-    # Period metadata so the dashboard's KPI header can label the
-    # "עמלות שהתקבלו" amount with the production month. The frontend
-    # falls back to productionStore.currentFile.period_month if missing.
-    if prod_upload.period_month is not None:
-        comparison["period_month"] = prod_upload.period_month.isoformat()
-        comparison["period_files_count"] = len(commission_files)
-
-    # Sync debts from comparison results
-    detected_category = comparison.get("commission_category", "gemel_hishtalmut")
-    try:
-        await sync_debts(
-            db, user.id, comparison,
-            production_upload_id=prod_upload.id,
-            commission_upload_id=comm_upload.id if comm_upload else None,
-            category=detected_category,
+    # Category to return: explicit request wins; otherwise the dominant
+    # category of the files just uploaded; otherwise whatever exists.
+    if category and category not in comparisons:
+        # The requested tab has no commission rows anywhere — tell the user
+        # instead of silently returning the other category's data.
+        raise HTTPException(
+            400,
+            "לא נמצאו רשומות נפרעים בקטגוריה שנבחרה — ייתכן שהקובץ שייך לקטגוריה השנייה",
         )
-    except Exception as e:
-        logger.warning(f"Debt sync failed: {e}")
+    chosen = category
+    if not chosen:
+        gemel = sum(
+            1 for r in all_commission_records
+            if commission_category_token(r) == NIFRAIM_CATEGORY_GEMEL
+        )
+        detected = "gemel_hishtalmut" if gemel * 2 >= len(all_commission_records) else "insurance"
+        chosen = detected if detected in comparisons else next(iter(comparisons))
+    return comparisons[chosen]
 
-    await _persist_comparison(db, user.id, comparison, production_upload_id=prod_upload.id)
-    return comparison
+
+@router.post("/refresh")
+async def refresh_merged_comparison(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Recompute + persist the merged all-companies comparison on demand
+    (latest source per company across all stored uploads, per category)."""
+    from app.services.comparison_orchestrator import compute_merged_comparison
+
+    merged = await compute_merged_comparison(db, user.id)
+    return {
+        "persisted": merged["persisted"],
+        "skip_reason": merged["skip_reason"],
+    }
 
 
 @router.get("/insights")

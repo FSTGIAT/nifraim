@@ -246,9 +246,9 @@ onUnmounted(() => {
 }
 .auto-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .aurora { position: absolute; border-radius: 50%; filter: blur(72px); }
-.aurora--1 { width: 460px; height: 460px; background: rgba(91, 110, 225, 0.16); top: -140px; inset-inline-end: -90px; }
-.aurora--2 { width: 400px; height: 400px; background: rgba(31, 168, 140, 0.14); bottom: -150px; inset-inline-start: -70px; }
-.aurora--3 { width: 320px; height: 320px; background: rgba(142, 111, 214, 0.12); top: 42%; inset-inline-start: 34%; }
+.aurora--1 { width: 460px; height: 460px; background: color-mix(in srgb, var(--chart-9, #2F73C4) 16%, transparent); top: -140px; inset-inline-end: -90px; }
+.aurora--2 { width: 400px; height: 400px; background: color-mix(in srgb, var(--chart-12, #0E8C8A) 14%, transparent); bottom: -150px; inset-inline-start: -70px; }
+.aurora--3 { width: 320px; height: 320px; background: color-mix(in srgb, var(--chart-4, #8E44AD) 12%, transparent); top: 42%; inset-inline-start: 34%; }
 .auto-inner {
   position: relative;
   z-index: 1;
@@ -301,7 +301,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: linear-gradient(135deg, #4E9DD0, #1FA88C);  /* pastel sky → teal */
+  background: linear-gradient(135deg, var(--chart-2, #4E9DD0), var(--chart-12, #0E8C8A));  /* palette sky → teal */
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -311,16 +311,16 @@ onUnmounted(() => {
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;
-  box-shadow: 0 5px 13px rgba(31, 168, 140, 0.26);
+  box-shadow: 0 5px 13px color-mix(in srgb, var(--chart-12, #0E8C8A) 26%, transparent);
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
   flex-shrink: 0;
 }
 .head-add:hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
-  box-shadow: 0 9px 20px rgba(31, 168, 140, 0.34);
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-12, #0E8C8A) 34%, transparent);
 }
-.head-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
+.head-add:focus-visible { outline: 2px solid var(--chart-12, #0E8C8A); outline-offset: 2px; }
 
 /* ─── Dashboard grid: main panels + activity sidebar ────── */
 .dash {

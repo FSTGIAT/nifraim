@@ -344,8 +344,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border-subtle);
-  background:
-    linear-gradient(180deg, rgba(245, 124, 0, 0.05) 0%, #ffffff 100%);
+  background: var(--bg-surface, #ffffff);
 }
 .ai-sheet-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ai-sheet-badge {
@@ -354,9 +353,9 @@ onBeforeUnmount(() => {
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.32);
+  background: var(--bg, #F3F3F3);
+  border: 1px solid var(--border-subtle, #E5E5E5);
+  color: var(--primary, #F57C00);
   flex-shrink: 0;
 }
 .ai-sheet-titles { display: flex; align-items: baseline; gap: 6px; min-width: 0; }

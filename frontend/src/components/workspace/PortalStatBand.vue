@@ -7,9 +7,9 @@
       <svg viewBox="0 0 84 84" class="gauge-svg" aria-hidden="true">
         <defs>
           <linearGradient id="pg-ring" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#5B6EE1" />
-            <stop offset="0.5" stop-color="#4E9DD0" />
-            <stop offset="1" stop-color="#1FA88C" />
+            <stop offset="0" stop-color="var(--chart-9, #2F73C4)" />
+            <stop offset="0.5" stop-color="var(--chart-2, #4E9DD0)" />
+            <stop offset="1" stop-color="var(--chart-12, #0E8C8A)" />
           </linearGradient>
         </defs>
         <circle cx="42" cy="42" r="35" fill="none" stroke="#E9ECF4" stroke-width="7" />
@@ -54,12 +54,14 @@ const ICONS = {
   total: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/></svg>',
   last: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7.5V12l3 2"/></svg>',
 }
+// Tile accents ride the shared CHART_PALETTE (--chart-N tokens); status ink
+// stays on the semantic brand tokens.
 const HUE = {
-  indigo: { soft: '#EEF0FE', deep: '#3A4BC0' },
-  blue: { soft: '#E7F2FA', deep: '#2C6E9E' },
-  purple: { soft: '#EFEAFA', deep: '#5F429F' },
+  indigo: { soft: 'color-mix(in srgb, var(--chart-9, #2F73C4) 10%, white)', deep: 'var(--chart-9, #2F73C4)' },
+  blue: { soft: 'color-mix(in srgb, var(--chart-2, #4E9DD0) 12%, white)', deep: 'var(--chart-14, #2C5F6B)' },
+  purple: { soft: 'color-mix(in srgb, var(--chart-4, #8E44AD) 10%, white)', deep: 'var(--chart-4, #8E44AD)' },
 }
-const STATUS_INK = { green: '#0E7A64', amber: '#9A6B12', red: '#C23934' }
+const STATUS_INK = { green: 'var(--green-deep, #1B5E20)', amber: '#9A6B12', red: 'var(--red-deep, #C23934)' }
 
 const total = computed(() => store.credentials.length)
 const active = computed(() => store.credentials.filter((c) => c.is_active).length)
@@ -128,9 +130,9 @@ const tiles = computed(() => [
   gap: 22px;
   padding: 18px 22px;
   border-radius: 18px;
-  border: 1px solid rgba(91, 110, 225, 0.12);
+  border: 1px solid color-mix(in srgb, var(--chart-9, #2F73C4) 12%, transparent);
   background:
-    radial-gradient(120% 160% at 0% 0%, rgba(31, 168, 140, 0.06) 0%, transparent 55%),
+    radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--chart-12, #0E8C8A) 6%, transparent) 0%, transparent 55%),
     linear-gradient(135deg, #FBFBFE 0%, #F5F8FD 100%);
   box-shadow: 0 10px 28px rgba(46, 60, 130, 0.06);
   flex-wrap: wrap;
@@ -139,7 +141,7 @@ const tiles = computed(() => [
   position: absolute;
   top: -60%; inset-inline-start: -6%;
   width: 40%; height: 200%;
-  background: radial-gradient(circle, rgba(91, 110, 225, 0.08), transparent 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--chart-9, #2F73C4) 8%, transparent), transparent 68%);
   pointer-events: none;
 }
 

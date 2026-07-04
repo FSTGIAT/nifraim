@@ -224,7 +224,7 @@ function isRunning(credId) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #4E9DD0, #1FA88C);  /* pastel sky → teal */
+  background: linear-gradient(135deg, var(--chart-2, #4E9DD0), var(--chart-12, #0E8C8A));  /* palette sky → teal */
   color: #fff;
   border: none;
   border-radius: 9px;
@@ -235,16 +235,16 @@ function isRunning(credId) {
   font-size: 13px;
   letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 5px 12px rgba(31, 168, 140, 0.26);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--chart-12, #0E8C8A) 26%, transparent);
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
   flex-shrink: 0;
 }
 .btn-add:hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
-  box-shadow: 0 9px 20px rgba(31, 168, 140, 0.34);
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-12, #0E8C8A) 34%, transparent);
 }
-.btn-add:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
+.btn-add:focus-visible { outline: 2px solid var(--chart-12, #0E8C8A); outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
 /* ─── Company panels ─────────────────────────────────────── */
@@ -276,7 +276,7 @@ function isRunning(credId) {
   transition: background 0.15s ease, border-color 0.2s ease;
 }
 .panel-head:hover { background: var(--brand-tint, rgba(0, 0, 0, 0.03)); }
-.panel-head:focus-visible { outline: 2px solid var(--brand, #1FA88C); outline-offset: 2px; }
+.panel-head:focus-visible { outline: 2px solid var(--brand, var(--chart-12, #0E8C8A)); outline-offset: 2px; }
 .is-open .panel-head {
   margin-bottom: 10px;
   border-radius: 10px 10px 0 0;
@@ -350,7 +350,7 @@ function isRunning(credId) {
 .health-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0,0,0,0.10); }
 .health-dot--success { background: var(--green); }
 .health-dot--failed  { background: var(--red); }
-.health-dot--running { background: #1FA88C; }
+.health-dot--running { background: var(--chart-12, #0E8C8A); }
 .health-dot--empty   { background: rgba(0,0,0,0.10); }
 .health-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
 
@@ -390,17 +390,17 @@ function isRunning(credId) {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  color: #1FA88C;
+  color: var(--chart-12, #0E8C8A);
   background:
-    radial-gradient(circle at 30% 25%, rgba(78, 157, 208, 0.16), transparent 60%),
-    rgba(143, 217, 198, 0.18);
-  border: 1px solid rgba(31, 168, 140, 0.22);
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--chart-2, #4E9DD0) 16%, transparent), transparent 60%),
+    color-mix(in srgb, var(--chart-15, #8FD9C6) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-12, #0E8C8A) 22%, transparent);
 }
 .empty-art-ring {
   position: absolute;
   inset: -8px;
   border-radius: 50%;
-  border: 1.5px dashed rgba(31, 168, 140, 0.3);
+  border: 1.5px dashed color-mix(in srgb, var(--chart-12, #0E8C8A) 30%, transparent);
 }
 .empty-copy {
   display: flex;

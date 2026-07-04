@@ -191,7 +191,7 @@ const BRAND = {
   'מיטב דש': '#2A9E5C', 'ילין לפידות': '#2D74B8', 'הכשרה': '#3D66B5',
   'אקסלנס': '#78A63F', 'איילון': '#2C6FB5',
 }
-const brand = (c) => BRAND[c] || '#5B6EE1'
+const brand = (c) => BRAND[c] || '#2F73C4'
 function _mix(hex, pct, toward) {
   const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255
   const t = toward === 'white' ? 255 : 0
@@ -350,9 +350,9 @@ async function save() {
 .cred-badge {
   width: 40px; height: 40px; border-radius: 12px;
   display: grid; place-items: center;
-  background: linear-gradient(135deg, #7C8CF0, #5FB0DE);
+  background: linear-gradient(135deg, var(--chart-9, #2F73C4), var(--chart-2, #4E9DD0));
   color: #fff; flex-shrink: 0;
-  box-shadow: 0 8px 18px rgba(91, 110, 225, 0.28);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--chart-9, #2F73C4) 28%, transparent);
 }
 .cred-title { margin: 0; font-size: 18px; font-weight: 800; color: #181818; }
 .cred-sub { margin: 3px 0 0; font-size: 12.5px; color: rgba(24, 24, 24, 0.5); }
@@ -361,7 +361,7 @@ async function save() {
   cursor: pointer; width: 30px; height: 30px; display: grid; place-items: center;
   border-radius: 50%; transition: background 0.15s, color 0.15s; flex-shrink: 0;
 }
-.cred-x:hover { background: rgba(91, 110, 225, 0.12); color: #5B6EE1; }
+.cred-x:hover { background: color-mix(in srgb, var(--chart-9, #2F73C4) 12%, transparent); color: var(--chart-9, #2F73C4); }
 
 .cred-error {
   margin: 14px 24px 0; padding: 9px 12px; font-size: 12.5px; color: #C23934;
@@ -376,7 +376,7 @@ async function save() {
 .cred-step-num {
   flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
   display: grid; place-items: center;
-  background: #EEF0FE; color: #4E5CC7;
+  background: color-mix(in srgb, var(--chart-9, #2F73C4) 10%, white); color: var(--chart-9, #2F73C4);
   font-size: 13px; font-weight: 800;
 }
 .cred-step-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -440,20 +440,20 @@ async function save() {
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
   outline: none; box-sizing: border-box;
 }
-.ctrl:focus { border-color: #5B6EE1; box-shadow: 0 0 0 3px rgba(91, 110, 225, 0.14); background: #fff; }
+.ctrl:focus { border-color: var(--chart-9, #2F73C4); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-9, #2F73C4) 14%, transparent); background: #fff; }
 .ctrl.invalid { border-color: #C23934; box-shadow: 0 0 0 3px rgba(194, 57, 52, 0.12); }
 
 /* OTP card */
 .cred-otp { display: flex; flex-direction: column; gap: 7px; }
 .cred-otp-card { display: flex; align-items: center; gap: 12px; padding: 13px 15px; border-radius: 14px; border: 1.5px solid; }
-.cred-otp-card--ready { background: #F1FAF6; border-color: rgba(31, 168, 140, 0.28); }
+.cred-otp-card--ready { background: color-mix(in srgb, var(--chart-12, #0E8C8A) 6%, white); border-color: color-mix(in srgb, var(--chart-12, #0E8C8A) 28%, transparent); }
 .cred-otp-card--setup { background: #FBF6ED; border-color: rgba(214, 158, 46, 0.32); }
-.cred-otp-ico { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(31, 168, 140, 0.14); color: #0E7A64; }
+.cred-otp-ico { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--chart-12, #0E8C8A) 14%, transparent); color: var(--chart-12, #0E8C8A); }
 .cred-otp-ico--warn { background: rgba(214, 158, 46, 0.18); color: #9A6B12; }
 .cred-otp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cred-otp-txt strong { font-size: 13px; font-weight: 800; color: #181818; }
 .cred-otp-txt small { font-size: 11.5px; color: rgba(24, 24, 24, 0.55); line-height: 1.45; }
-.cred-otp-tick { width: 20px; height: 20px; color: #1FA88C; flex-shrink: 0; }
+.cred-otp-tick { width: 20px; height: 20px; color: var(--chart-12, #0E8C8A); flex-shrink: 0; }
 .cred-otp-btn { flex-shrink: 0; border: none; border-radius: 9px; padding: 8px 15px; background: #9A6B12; color: #fff; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
 .cred-otp-btn:hover { opacity: 0.9; }
 
@@ -464,13 +464,13 @@ async function save() {
 .cred-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 15px 24px 18px; border-top: 1px solid rgba(24, 24, 24, 0.05); }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
-  background: linear-gradient(135deg, #5B6EE1, #4E9DD0); color: #fff; border: none;
+  background: linear-gradient(135deg, var(--chart-9, #2F73C4), var(--chart-2, #4E9DD0)); color: #fff; border: none;
   border-radius: 12px; padding: 11px 24px; font-weight: 800; font-size: 14px;
   cursor: pointer; font-family: inherit;
-  box-shadow: 0 4px 14px rgba(91, 110, 225, 0.32);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--chart-9, #2F73C4) 32%, transparent);
   transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
-.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(91, 110, 225, 0.42); }
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--chart-9, #2F73C4) 42%, transparent); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 .btn-secondary {
   background: transparent; color: rgba(24, 24, 24, 0.6);

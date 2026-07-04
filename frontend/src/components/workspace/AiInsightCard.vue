@@ -1,7 +1,5 @@
 <template>
   <div v-if="viewContext" class="ai-insight-card" :class="{ 'ai-insight-card--entered': entered }">
-    <div class="ai-orb" aria-hidden="true"></div>
-
     <div class="ai-card-row ai-card-row--head">
       <span class="ai-eyebrow">
         <svg class="ai-eyebrow-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -84,16 +82,16 @@ async function copySummary() {
 </script>
 
 <style scoped>
+/* Clean neutral surface — the AI card informs quietly instead of competing
+   with the data charts below it. The tiny sparkle is the single accent. */
 .ai-insight-card {
   position: relative;
   width: 100%;
   border-radius: var(--radius-lg);
   padding: 16px 20px 14px;
-  background:
-    linear-gradient(145deg, rgba(245, 124, 0, 0.05) 0%, #ffffff 55%, rgba(245, 124, 0, 0.02) 100%),
-    #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.16);
-  box-shadow: 0 6px 22px rgba(245, 124, 0, 0.06), 0 1px 2px rgba(17, 12, 6, 0.04);
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-subtle, #E5E5E5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   opacity: 0;
   transform: translateY(10px);
@@ -106,18 +104,6 @@ async function copySummary() {
 .ai-insight-card--entered {
   opacity: 1;
   transform: translateY(0);
-}
-
-.ai-orb {
-  position: absolute;
-  inset-inline-start: -50px;
-  top: -60px;
-  width: 180px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.22), transparent 70%);
-  border-radius: 50%;
-  filter: blur(4px);
-  pointer-events: none;
 }
 
 .ai-card-row {
@@ -137,7 +123,7 @@ async function copySummary() {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  color: var(--primary-deep);
+  color: var(--text-secondary, #3E3E3C);
   text-transform: none;
 }
 
@@ -149,7 +135,6 @@ async function copySummary() {
 }
 .ai-eyebrow-icon {
   color: var(--primary);
-  filter: drop-shadow(0 1px 2px rgba(245, 124, 0, 0.3));
 }
 
 .ai-copy-btn {
@@ -205,27 +190,26 @@ async function copySummary() {
   font-size: 12.5px;
   font-weight: 600;
   line-height: 1.2;
-  color: var(--primary-deep);
-  background: var(--primary-light);
-  border: 1px solid rgba(245, 124, 0, 0.22);
+  color: var(--text-secondary, #3E3E3C);
+  background: var(--bg, #F3F3F3);
+  border: 1px solid var(--border-subtle, #E5E5E5);
   border-radius: 999px;
   cursor: pointer;
   font-family: inherit;
-  transition: transform 0.18s var(--transition), background 0.15s, border-color 0.15s, box-shadow 0.18s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
 .ai-chip:hover {
-  transform: translateY(-2px);
-  background: #ffe1bd;
-  border-color: rgba(245, 124, 0, 0.4);
-  box-shadow: 0 6px 14px rgba(245, 124, 0, 0.18);
+  color: var(--primary-deep);
+  background: var(--primary-light);
+  border-color: rgba(245, 124, 0, 0.3);
 }
 .ai-chip:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.25);
 }
 
-/* Primary CTA — filled, so it reads as the deliberate next step (not orphaned). */
+/* Primary CTA — flat solid, quiet but clearly the next step. */
 .ai-continue {
   display: inline-flex;
   align-items: center;
@@ -234,26 +218,24 @@ async function copySummary() {
   font-size: 12.5px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+  background: var(--text, #181818);
   border: none;
   border-radius: 999px;
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.28);
-  transition: transform 0.18s var(--transition), box-shadow 0.18s, filter 0.15s;
+  transition: background 0.15s, transform 0.18s var(--transition);
   flex-shrink: 0;
 }
 .ai-continue svg { opacity: 0.9; transition: transform 0.18s; }
 .ai-continue:hover {
+  background: #333;
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.36);
-  filter: brightness(1.03);
 }
 .ai-continue:hover svg { transform: translateX(-3px); }
 .ai-continue:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.25);
 }
 
 @media (max-width: 560px) {

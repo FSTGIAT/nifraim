@@ -12,12 +12,24 @@ export const useComparisonStore = defineStore('comparison', () => {
   const filterStatus = ref('')
   const searchQuery = ref('')
 
+  // Ephemeral single-file drill — a comparison of ONE commission file the
+  // user clicked, shown temporarily WITHOUT being persisted server-side and
+  // WITHOUT overwriting results[] — so the merged all-companies "full
+  // picture" always stays the default the dashboard falls back to.
+  const singleFileView = ref(null) // { result, uploadId, filename, category }
+
+  function clearSingleFileView() {
+    singleFileView.value = null
+  }
+
   function selectCategory(cat) {
+    if (activeCategory.value !== cat) clearSingleFileView()
     activeCategory.value = cat
   }
 
   function clearCategory() {
     activeCategory.value = null
+    clearSingleFileView()
   }
 
   function hasResultFor(cat) {
@@ -28,6 +40,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     if (cat) {
       results[cat] = null
     }
+    clearSingleFileView()
   }
 
   async function uploadAndCompare(productionFile, commissionFile, prodPassword, commPassword) {
@@ -56,7 +69,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
-  async function compareExisting(productionUploadId, commissionUploadId) {
+  async function compareExisting(productionUploadId, commissionUploadId, { persist = false, filename = '' } = {}) {
     uploading.value = true
     error.value = null
     try {
@@ -64,9 +77,19 @@ export const useComparisonStore = defineStore('comparison', () => {
       formData.append('production_upload_id', productionUploadId)
       formData.append('commission_upload_id', commissionUploadId)
       if (activeCategory.value) formData.append('category', activeCategory.value)
+      formData.append('persist', persist ? 'true' : 'false')
       const res = await api.post('/comparison/compute', formData)
-      if (activeCategory.value) {
-        results[activeCategory.value] = res.data
+      if (persist) {
+        if (activeCategory.value) {
+          results[activeCategory.value] = res.data
+        }
+      } else {
+        singleFileView.value = {
+          result: res.data,
+          uploadId: commissionUploadId,
+          filename: filename || res.data?.commission_company_source || '',
+          category: activeCategory.value,
+        }
       }
       return res.data
     } catch (e) {
@@ -113,10 +136,17 @@ export const useComparisonStore = defineStore('comparison', () => {
       const formData = new FormData()
       formData.append('production_upload_id', productionUploadId)
       formData.append('commission_upload_id', commissionUploadId)
+      // Navigation drill — ephemeral, never clobbers the merged picture.
+      formData.append('persist', 'false')
       const res = await api.post('/comparison/compute', formData)
       const cat = res.data.commission_category || 'gemel_hishtalmut'
-      results[cat] = res.data
       activeCategory.value = cat
+      singleFileView.value = {
+        result: res.data,
+        uploadId: commissionUploadId,
+        filename: res.data?.commission_company_source || '',
+        category: cat,
+      }
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בחישוב ההשוואה'
@@ -169,6 +199,20 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
+  // Recompute + persist the merged all-companies comparison on the server,
+  // then rehydrate the active category and the cross-company overview.
+  async function refreshMerged() {
+    try {
+      const res = await api.post('/comparison/refresh')
+      if (activeCategory.value) await fetchLatest(activeCategory.value)
+      fetchCompanySummary()
+      return res.data?.persisted || []
+    } catch (e) {
+      console.warn('refreshMerged failed', e)
+      return []
+    }
+  }
+
   function reset() {
     activeCategory.value = null
     results.gemel_hishtalmut = null
@@ -176,6 +220,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     error.value = null
     filterStatus.value = ''
     searchQuery.value = ''
+    clearSingleFileView()
   }
 
   return {
@@ -183,6 +228,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     uploading, error, filterStatus, searchQuery,
     lastComputedAt, fetchingLatest,
     companySummary, fetchingSummary, fetchCompanySummary,
+    singleFileView, clearSingleFileView, refreshMerged,
     selectCategory, clearCategory, hasResultFor, resetCategory,
     uploadAndCompare, compareExisting, compareWithProduction, autoCompare,
     fetchLatest, reset,

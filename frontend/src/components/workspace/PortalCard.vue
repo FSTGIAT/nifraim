@@ -210,14 +210,14 @@ const cardVars = computed(() => {
 /* Status ring tones */
 .pcard--success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); }
 .pcard--failed  { border-color: color-mix(in srgb, var(--red) 38%, var(--border-subtle)); }
-.pcard--running { border-color: rgba(31, 168, 140, 0.5); box-shadow: 0 0 0 3px rgba(31, 168, 140, 0.12), 0 10px 26px rgba(17, 12, 6, 0.08); }
+.pcard--running { border-color: color-mix(in srgb, var(--chart-12, #0E8C8A) 50%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-12, #0E8C8A) 12%, transparent), 0 10px 26px rgba(17, 12, 6, 0.08); }
 
 /* Scanning beam while running */
 .pcard__beam {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent 0%, #1FA88C 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--chart-12, #0E8C8A) 50%, transparent 100%);
   background-size: 50% 100%;
   background-repeat: no-repeat;
   animation: pcScan 1.5s linear infinite;
@@ -285,16 +285,16 @@ const cardVars = computed(() => {
 .pcard__status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .pcard__status--success { background: rgba(46, 132, 74, 0.12); color: var(--green-deep); border-color: rgba(46, 132, 74, 0.24); }
 .pcard__status--failed  { background: rgba(234, 0, 30, 0.10); color: var(--red-deep); border-color: rgba(234, 0, 30, 0.24); }
-.pcard__status--running { background: rgba(31, 168, 140, 0.13); color: #178f78; border-color: rgba(31, 168, 140, 0.30); }
+.pcard__status--running { background: color-mix(in srgb, var(--chart-12, #0E8C8A) 13%, transparent); color: var(--chart-12, #0E8C8A); border-color: color-mix(in srgb, var(--chart-12, #0E8C8A) 30%, transparent); }
 .pcard__status--none    { background: rgba(112, 110, 107, 0.12); color: var(--text-muted); border-color: rgba(112, 110, 107, 0.22); }
 .pcard__status--running .pcard__status-dot {
-  box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--chart-12, #0E8C8A) 50%, transparent);
   animation: pcDot 1.6s ease-out infinite;
 }
 @keyframes pcDot {
-  0%   { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5); }
-  70%  { box-shadow: 0 0 0 6px rgba(31, 168, 140, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--chart-12, #0E8C8A) 50%, transparent); }
+  70%  { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* ───── META ───── */
@@ -317,12 +317,12 @@ const cardVars = computed(() => {
 .pcard__dot--success { background: var(--green); }
 .pcard__dot--failed  { background: var(--red); }
 .pcard__dot--timeout { background: var(--amber); }
-.pcard__dot--running { background: #1FA88C; }
+.pcard__dot--running { background: var(--chart-12, #0E8C8A); }
 .pcard__dot--empty   { background: rgba(0, 0, 0, 0.10); }
 .pcard__dot--pulse { animation: pcDotPulse 1.4s infinite cubic-bezier(0.4, 0, 0.6, 1); }
 @keyframes pcDotPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5); }
-  50%      { box-shadow: 0 0 0 5px rgba(31, 168, 140, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--chart-12, #0E8C8A) 50%, transparent); }
+  50%      { box-shadow: 0 0 0 5px transparent; }
 }
 .pcard__when {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -372,21 +372,21 @@ const cardVars = computed(() => {
   padding: 0;
   border: none;
   border-radius: 11px;
-  background: linear-gradient(135deg, #5BB4DE, #1FA88C);  /* pastel sky → teal */
+  background: linear-gradient(135deg, var(--chart-2, #4E9DD0), var(--chart-12, #0E8C8A));  /* palette sky → teal */
   color: #fff;
   cursor: pointer;
   flex-shrink: 0;
-  box-shadow: 0 5px 13px rgba(31, 168, 140, 0.26);
+  box-shadow: 0 5px 13px color-mix(in srgb, var(--chart-12, #0E8C8A) 26%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 .pcard__run:hover:not(:disabled) {
   transform: translateY(-1px);
   filter: brightness(1.04);
-  box-shadow: 0 10px 22px rgba(31, 168, 140, 0.36);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--chart-12, #0E8C8A) 36%, transparent);
 }
 .pcard__run:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .pcard__run svg { transform: translateX(1px); }
-.pcard__run:focus-visible { outline: 2px solid #1FA88C; outline-offset: 2px; }
+.pcard__run:focus-visible { outline: 2px solid var(--chart-12, #0E8C8A); outline-offset: 2px; }
 
 .pcard__spinner {
   width: 13px; height: 13px;

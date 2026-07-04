@@ -15,10 +15,10 @@
       <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient id="ailwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-            <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+            <stop offset="0%" stop-color="#4E9DD0" stop-opacity="0.10"/>
+            <stop offset="30%" stop-color="#3DB6B0" stop-opacity="0.06"/>
+            <stop offset="60%" stop-color="#8FD9C6" stop-opacity="0.10"/>
+            <stop offset="100%" stop-color="#4E9DD0" stop-opacity="0.05"/>
           </linearGradient>
         </defs>
         <path fill="url(#ailwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -26,10 +26,10 @@
       <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient id="ailwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-            <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-            <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-            <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-            <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            <stop offset="0%" stop-color="#B79CEB" stop-opacity="0.08"/>
+            <stop offset="40%" stop-color="#8E44AD" stop-opacity="0.05"/>
+            <stop offset="70%" stop-color="#B79CEB" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#E84A7F" stop-opacity="0.04"/>
           </linearGradient>
         </defs>
         <path fill="url(#ailwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -37,9 +37,9 @@
       <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient id="ailwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+            <stop offset="0%" stop-color="#F9A937" stop-opacity="0.06"/>
+            <stop offset="50%" stop-color="#8FD9C6" stop-opacity="0.04"/>
+            <stop offset="100%" stop-color="#3DB6B0" stop-opacity="0.07"/>
           </linearGradient>
         </defs>
         <path fill="url(#ailwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -67,6 +67,9 @@
         </svg>
         <span>רענן</span>
       </button>
+      <div v-if="heroImg" class="lib-intro-art" aria-hidden="true">
+        <img :src="heroImg" alt="" width="240" height="140" />
+      </div>
     </header>
 
     <!-- Error banner with retry -->
@@ -159,7 +162,8 @@
           @click="toggleSection('production')"
         >
           <div class="lib-section-icon lib-icon--prod" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <img v-if="sectionArt.production" :src="sectionArt.production" alt="" class="lib-section-art" />
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
               <line x1="16" y1="13" x2="8" y2="13"/>
@@ -253,7 +257,8 @@
           @click="toggleSection('commission')"
         >
           <div class="lib-section-icon lib-icon--comm" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <img v-if="sectionArt.commission" :src="sectionArt.commission" alt="" class="lib-section-art" />
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="8" cy="8" r="6"/>
               <path d="M18.09 10.37A6 6 0 1110.34 18"/>
             </svg>
@@ -328,7 +333,8 @@
           @click="toggleSection('myfile')"
         >
           <div class="lib-section-icon lib-icon--myfile" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <img v-if="sectionArt.myfile" :src="sectionArt.myfile" alt="" class="lib-section-art" />
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
               <path d="M23 21v-2a4 4 0 00-3-3.87"/>
@@ -400,7 +406,8 @@
           @click="toggleSection('rates')"
         >
           <div class="lib-section-icon lib-icon--rates" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <img v-if="sectionArt.rates" :src="sectionArt.rates" alt="" class="lib-section-art" />
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
               <line x1="3" y1="9" x2="21" y2="9"/>
               <line x1="3" y1="15" x2="21" y2="15"/>
@@ -462,6 +469,22 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '../../api/client.js'
+
+// AI-generated artwork (hero + per-section) — resolved via glob so the tab
+// works before/without the images (same pattern as SetupPipelineModal's
+// welcome art). Files: hero.webp, section-<id>.webp under assets/ai-library/.
+const ART = import.meta.glob('../../assets/ai-library/*.webp', { eager: true, import: 'default' })
+function artFor(name) {
+  const hit = Object.entries(ART).find(([p]) => p.endsWith(`/${name}.webp`))
+  return hit ? hit[1] : null
+}
+const heroImg = artFor('hero')
+const sectionArt = {
+  production: artFor('section-production'),
+  commission: artFor('section-commission'),
+  myfile: artFor('section-myfile'),
+  rates: artFor('section-rates'),
+}
 
 const data = ref(null)
 const loading = ref(false)
@@ -711,51 +734,52 @@ function buildScaleMock() {
   pointer-events: none;
   z-index: 0;
 }
+/* Ambient circles — subtle multi-hue palette tints instead of all-orange */
 .fc-1 {
   width: 220px; height: 220px;
   top: 10%; right: -60px;
-  background: rgba(245, 124, 0, 0.045);
-  border: 1px solid rgba(245, 124, 0, 0.06);
+  background: color-mix(in srgb, var(--chart-2, #4E9DD0) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-2, #4E9DD0) 7%, transparent);
   animation: floatBob 8s ease-in-out infinite;
 }
 .fc-2 {
   width: 160px; height: 160px;
   bottom: 25%; left: -40px;
-  background: rgba(245, 124, 0, 0.035);
-  border: 1px solid rgba(245, 124, 0, 0.05);
+  background: color-mix(in srgb, var(--chart-4, #8E44AD) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-4, #8E44AD) 5%, transparent);
   animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 .fc-3 {
   width: 90px; height: 90px;
   top: 30%; left: 8%;
-  background: rgba(245, 124, 0, 0.05);
+  background: color-mix(in srgb, var(--chart-3, #F9A937) 6%, transparent);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 .fc-4 {
   width: 120px; height: 120px;
   top: 55%; right: 6%;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.04);
+  background: color-mix(in srgb, var(--chart-7, #3DB6B0) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-7, #3DB6B0) 5%, transparent);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 .fc-5 {
   width: 50px; height: 50px;
   top: 18%; right: 22%;
-  background: rgba(255, 152, 0, 0.055);
+  background: color-mix(in srgb, var(--chart-6, #E84A7F) 6%, transparent);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 .fc-6 {
   width: 280px; height: 280px;
   bottom: 8%; right: -90px;
-  background: rgba(245, 124, 0, 0.025);
-  border: 1px solid rgba(245, 124, 0, 0.035);
+  background: color-mix(in srgb, var(--chart-2, #4E9DD0) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-2, #4E9DD0) 4%, transparent);
   animation: floatBob 12s ease-in-out infinite 0.5s;
 }
 .fc-7 {
   width: 65px; height: 65px;
   bottom: 35%; left: 18%;
-  background: rgba(255, 183, 77, 0.06);
-  border: 1px solid rgba(255, 183, 77, 0.05);
+  background: color-mix(in srgb, var(--chart-13, #B79CEB) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-13, #B79CEB) 6%, transparent);
   animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
 }
 
@@ -888,6 +912,33 @@ function buildScaleMock() {
 .lib-refresh:disabled { opacity: 0.5; cursor: default; }
 .spinning { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* AI-generated hero art — end-side illustration, bleeds softly into the card */
+.lib-intro-art {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: clamp(150px, 22vw, 240px);
+  margin-block: -20px;
+  margin-inline-end: -22px;
+  align-self: stretch;
+  overflow: hidden;
+  border-start-end-radius: var(--radius-lg);
+  border-end-end-radius: var(--radius-lg);
+}
+.lib-intro-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* the artwork's subject sits on the image's left — keep it in frame */
+  object-position: left center;
+  display: block;
+  -webkit-mask-image: linear-gradient(to left, transparent 0%, black 30%);
+  mask-image: linear-gradient(to left, transparent 0%, black 30%);
+}
+@media (max-width: 720px) {
+  .lib-intro-art { display: none; }
+}
 
 /* ===== Search ===== */
 .lib-search {
@@ -1055,10 +1106,20 @@ function buildScaleMock() {
   place-items: center;
   flex-shrink: 0;
 }
-.lib-icon--prod   { background: rgba(127, 86, 217, 0.12); color: #7F56D9; }
-.lib-icon--comm   { background: rgba(245, 124, 0, 0.12); color: var(--primary-deep); }
-.lib-icon--myfile { background: rgba(227, 6, 106, 0.14); color: #E3066A; }
-.lib-icon--rates  { background: rgba(46, 132, 74, 0.14); color: #2E844A; }
+/* Section accents ride the shared CHART_PALETTE tokens */
+.lib-icon--prod   { background: color-mix(in srgb, var(--chart-4, #8E44AD) 12%, white); color: var(--chart-4, #8E44AD); }
+.lib-icon--comm   { background: color-mix(in srgb, var(--chart-3, #F9A937) 16%, white); color: color-mix(in srgb, var(--chart-3, #F9A937) 65%, black); }
+.lib-icon--myfile { background: color-mix(in srgb, var(--chart-6, #E84A7F) 12%, white); color: var(--chart-6, #E84A7F); }
+.lib-icon--rates  { background: color-mix(in srgb, var(--chart-10, #4A8B2C) 12%, white); color: var(--chart-10, #4A8B2C); }
+
+/* Optional AI-generated tile art fills the icon square */
+.lib-section-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
 
 .lib-section-titles { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .lib-section-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
@@ -1307,10 +1368,10 @@ function buildScaleMock() {
 }
 .lib-cat-chip-label { color: var(--text-secondary); }
 .lib-cat-chip-value { font-size: 14px; font-weight: 800; color: var(--text); }
-.lib-cat-chip--financial { border-color: rgba(127, 86, 217, 0.3); }
-.lib-cat-chip--financial .lib-cat-chip-value { color: #7F56D9; }
-.lib-cat-chip--insurance { border-color: rgba(46, 132, 74, 0.3); }
-.lib-cat-chip--insurance .lib-cat-chip-value { color: var(--accent-emerald); }
+.lib-cat-chip--financial { border-color: color-mix(in srgb, var(--chart-4, #8E44AD) 30%, transparent); }
+.lib-cat-chip--financial .lib-cat-chip-value { color: var(--chart-4, #8E44AD); }
+.lib-cat-chip--insurance { border-color: color-mix(in srgb, var(--chart-10, #4A8B2C) 30%, transparent); }
+.lib-cat-chip--insurance .lib-cat-chip-value { color: var(--chart-10, #4A8B2C); }
 .lib-cat-note {
   font-size: 11px;
   color: var(--text-muted);

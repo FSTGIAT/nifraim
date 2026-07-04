@@ -165,9 +165,9 @@ watch(() => store.batchJustFinished, (b) => {
   font-family: 'Heebo', sans-serif;
   padding: 26px 28px;
   border-radius: 22px;
-  border: 1px solid rgba(91, 110, 225, 0.14);
+  border: 1px solid color-mix(in srgb, var(--chart-9, #2F73C4) 14%, transparent);
   background:
-    radial-gradient(130% 150% at 100% 0%, rgba(142, 111, 214, 0.13) 0%, transparent 52%),
+    radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--chart-4, #8E44AD) 13%, transparent) 0%, transparent 52%),
     linear-gradient(135deg, #F6F7FE 0%, #F3F8FD 48%, #F1FBF7 100%);
   box-shadow: 0 10px 30px rgba(46, 60, 130, 0.07);
 }
@@ -193,7 +193,7 @@ watch(() => store.batchJustFinished, (b) => {
 .hero-kicker {
   align-self: flex-start;
   font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em;
-  color: #0E7A64; background: #E4F5F0;
+  color: var(--chart-12, #0E8C8A); background: color-mix(in srgb, var(--chart-12, #0E8C8A) 10%, white);
   border-radius: 999px; padding: 4px 12px;
 }
 .hero-title {
@@ -210,26 +210,26 @@ watch(() => store.batchJustFinished, (b) => {
 .hero-run {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   height: 50px; padding: 0 26px; border: none; border-radius: 14px;
-  background: linear-gradient(135deg, #5B6EE1 0%, #4E9DD0 55%, #1FA88C 100%);
+  background: linear-gradient(135deg, var(--chart-9, #2F73C4) 0%, var(--chart-2, #4E9DD0) 55%, var(--chart-12, #0E8C8A) 100%);
   color: #fff; font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(78, 157, 208, 0.36);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--chart-2, #4E9DD0) 36%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(78, 157, 208, 0.46); filter: brightness(1.04); }
+.hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px color-mix(in srgb, var(--chart-2, #4E9DD0) 46%, transparent); filter: brightness(1.04); }
 .hero-run:active:not(:disabled) { transform: translateY(0); }
 .hero-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-.hero-run:focus-visible { outline: 2px solid #5B6EE1; outline-offset: 3px; }
+.hero-run:focus-visible { outline: 2px solid var(--chart-9, #2F73C4); outline-offset: 3px; }
 
 .hero-add {
   display: inline-flex; align-items: center; gap: 7px;
   height: 50px; padding: 0 20px; border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72); border: 1.5px solid rgba(91, 110, 225, 0.28);
-  color: #3A4BC0; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  background: rgba(255, 255, 255, 0.72); border: 1.5px solid color-mix(in srgb, var(--chart-9, #2F73C4) 28%, transparent);
+  color: var(--chart-9, #2F73C4); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.hero-add:hover { background: #fff; border-color: #5B6EE1; transform: translateY(-1px); }
-.hero-add:focus-visible { outline: 2px solid #5B6EE1; outline-offset: 2px; }
+.hero-add:hover { background: #fff; border-color: var(--chart-9, #2F73C4); transform: translateY(-1px); }
+.hero-add:focus-visible { outline: 2px solid var(--chart-9, #2F73C4); outline-offset: 2px; }
 
 .hero-art { flex: 0 0 auto; width: min(292px, 38%); line-height: 0; }
 .hero-art img { width: 100%; height: auto; display: block; }
@@ -241,8 +241,8 @@ watch(() => store.batchJustFinished, (b) => {
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  background: rgba(31, 168, 140, 0.06);
-  border: 1px solid rgba(31, 168, 140, 0.2);
+  background: color-mix(in srgb, var(--chart-12, #0E8C8A) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-12, #0E8C8A) 20%, transparent);
   border-radius: 12px;
 }
 .batch-progress__head {
@@ -256,8 +256,8 @@ watch(() => store.batchJustFinished, (b) => {
 .batch-spinner {
   width: 15px;
   height: 15px;
-  border: 2.5px solid rgba(31, 168, 140, 0.25);
-  border-top-color: #1FA88C;
+  border: 2.5px solid color-mix(in srgb, var(--chart-12, #0E8C8A) 25%, transparent);
+  border-top-color: var(--chart-12, #0E8C8A);
   border-radius: 50%;
   animation: batch-spin 0.8s linear infinite;
   flex-shrink: 0;
@@ -277,7 +277,7 @@ watch(() => store.batchJustFinished, (b) => {
 }
 .batch-pill--ok   { background: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16,185,129,0.3); }
 .batch-pill--fail { background: rgba(234, 0, 30, 0.1);   color: var(--red-deep, #b91c1c); border-color: rgba(234,0,30,0.28); }
-.batch-pill--live { background: rgba(78, 157, 208, 0.14); color: #1f6f9e; border-color: rgba(78,157,208,0.34); }
+.batch-pill--live { background: color-mix(in srgb, var(--chart-2, #4E9DD0) 14%, white); color: var(--chart-9, #2F73C4); border-color: color-mix(in srgb, var(--chart-2, #4E9DD0) 34%, transparent); }
 .batch-pill--idle { background: rgba(107,114,128,0.1);  color: #6b7280; border-color: rgba(107,114,128,0.24); }
 
 /* ───── Batch done banner ───── */
@@ -300,14 +300,14 @@ watch(() => store.batchJustFinished, (b) => {
   padding: 8px 16px;
   border: none;
   border-radius: 9px;
-  background: #1FA88C;
+  background: var(--chart-12, #0E8C8A);
   color: #fff;
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
-.batch-done__cta:hover { background: #178f78; }
+.batch-done__cta:hover { background: color-mix(in srgb, var(--chart-12, #0E8C8A) 85%, black); }
 .batch-done__dismiss {
   display: inline-flex;
   border: none;
