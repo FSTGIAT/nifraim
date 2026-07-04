@@ -36,7 +36,7 @@ const innerTab = ref('nifraim')
 
 <style scoped>
 .commission-rates-tab {
-  max-width: 1100px;
+  max-width: 1320px;
   margin: 0 auto;
 }
 
@@ -70,7 +70,7 @@ const innerTab = ref('nifraim')
 .inner-tab:hover { color: var(--text-secondary); }
 
 .inner-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: var(--chart-4);
+  border-bottom-color: var(--chart-4);
 }
 </style>

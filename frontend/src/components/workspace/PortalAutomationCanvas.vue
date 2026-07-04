@@ -224,8 +224,8 @@ function isRunning(credId) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, var(--chart-2, #4E9DD0), var(--chart-12, #0E8C8A));  /* palette sky → teal */
-  color: #fff;
+  background: var(--chart-8, #F4D35E);  /* pastel palette yellow */
+  color: #4a3900;
   border: none;
   border-radius: 9px;
   padding: 8px 14px;
@@ -235,16 +235,16 @@ function isRunning(credId) {
   font-size: 13px;
   letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 5px 12px color-mix(in srgb, var(--chart-12, #0E8C8A) 26%, transparent);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--chart-3, #F9A937) 30%, transparent);
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
   flex-shrink: 0;
 }
 .btn-add:hover {
   transform: translateY(-1px);
-  filter: brightness(1.04);
-  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-12, #0E8C8A) 34%, transparent);
+  filter: brightness(1.03);
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-3, #F9A937) 40%, transparent);
 }
-.btn-add:focus-visible { outline: 2px solid var(--chart-12, #0E8C8A); outline-offset: 2px; }
+.btn-add:focus-visible { outline: 2px solid #b98a00; outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
 /* ─── Company panels ─────────────────────────────────────── */

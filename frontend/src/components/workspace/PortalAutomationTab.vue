@@ -1,13 +1,5 @@
 <template>
   <div class="auto-page">
-    <!-- Aurora backdrop — the app's decorative motif in cool tones, giving the
-         tab depth so it reads premium, not flat. Content layers above it. -->
-    <div class="auto-bg" aria-hidden="true">
-      <span class="aurora aurora--1"></span>
-      <span class="aurora aurora--2"></span>
-      <span class="aurora aurora--3"></span>
-    </div>
-
     <div class="auto-inner">
     <!-- Hero: title + one-click run-all + add portal, aggregating to one
          production + one נפרעים file → compare. -->
@@ -241,14 +233,8 @@ onUnmounted(() => {
   min-height: 100%;
   padding: 26px 20px 48px;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, #F7F8FD 0%, #F4F8FC 55%, #F2FAF8 100%);
+  background: transparent;
 }
-.auto-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.aurora { position: absolute; border-radius: 50%; filter: blur(72px); }
-.aurora--1 { width: 460px; height: 460px; background: color-mix(in srgb, var(--chart-9, #2F73C4) 16%, transparent); top: -140px; inset-inline-end: -90px; }
-.aurora--2 { width: 400px; height: 400px; background: color-mix(in srgb, var(--chart-12, #0E8C8A) 14%, transparent); bottom: -150px; inset-inline-start: -70px; }
-.aurora--3 { width: 320px; height: 320px; background: color-mix(in srgb, var(--chart-4, #8E44AD) 12%, transparent); top: 42%; inset-inline-start: 34%; }
 .auto-inner {
   position: relative;
   z-index: 1;
