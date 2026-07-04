@@ -189,8 +189,10 @@ function isOpen(g) {
   if (g.creds.some((c) => isRunning(c.id))) return true
   const explicit = openMap.value[g.key]
   if (explicit !== undefined) return explicit
-  // Untouched default: folded, unless it's the only company on the board.
-  return groups.value.length === 1
+  // Untouched default: EXPANDED, so a returning user sees their cards instead of
+  // a stack of collapsed headers (the page used to read as empty). Fold is still
+  // available and remembered per browser once toggled.
+  return true
 }
 function toggleGroup(g) {
   openMap.value = { ...openMap.value, [g.key]: !isOpen(g) }

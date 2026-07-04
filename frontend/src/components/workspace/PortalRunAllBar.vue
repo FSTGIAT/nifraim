@@ -1,38 +1,39 @@
 <template>
   <div class="runall">
-    <!-- Run-all-portals bar: one click downloads every active portal, then
-         aggregates into one production + one נפרעים file and runs the compare. -->
-    <div class="runall-bar">
+    <!-- Hero: title + one-click run-all + add, over a cool gradient with Kling art.
+         One click downloads every active portal, aggregates into one production +
+         one נפרעים file, and runs the compare. -->
+    <span class="hero-orb" aria-hidden="true"></span>
+    <div class="hero-main">
       <div class="hero-copy">
-        <Typewriter
-          class="hero-tagline"
-          :text="taglines"
-          :speed="70"
-          :delete-speed="40"
-          :delay="1800"
-        />
-        <span class="hero-sub">
-          <template v-if="activeCredCount">{{ heroSubText }} · לחיצה אחת מורידה ומשווה הכל</template>
-          <template v-else>חברו פורטל אחד והדוחות יורדו אוטומטית</template>
-        </span>
+        <span class="hero-kicker">אוטומציה</span>
+        <h2 class="hero-title">פורטלי חברות הביטוח</h2>
+        <p class="hero-sub">
+          <template v-if="activeCredCount">כל החברות במקום אחד — {{ heroSubText }}, בלחיצה אחת מורידים ומשווים את הכל.</template>
+          <template v-else>מחברים פורטל אחד, וקוד האימות מגיע לבד מהטלפון — מכאן ההורדות רצות בשבילכם.</template>
+        </p>
+        <div class="hero-actions">
+          <button
+            class="hero-run"
+            :disabled="anyRunning || !!store.activeBatchId"
+            @click="onRunAll"
+          >
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
+            </svg>
+            <span>הורדה אוטומטית מכל החברות</span>
+          </button>
+          <button class="hero-add" type="button" @click="$emit('add')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14" /><path d="M12 5v14" />
+            </svg>
+            <span>הוסף פורטל</span>
+          </button>
+        </div>
       </div>
-      <!-- MetalButton — 3-layer metallic CTA (outer edge / inner sheen / face) -->
-      <div class="metal" :class="{ 'metal--disabled': anyRunning || !!store.activeBatchId }">
-        <span class="metal__inner" aria-hidden="true"></span>
-        <button
-          class="metal__btn"
-          :disabled="anyRunning || !!store.activeBatchId"
-          @click="onRunAll"
-        >
-          <span class="metal__shine" aria-hidden="true"></span>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3v12" />
-            <path d="m7 10 5 5 5-5" />
-            <path d="M5 21h14" />
-          </svg>
-          <span>הורדה אוטומטית מכל החברות</span>
-        </button>
+      <div class="hero-art" aria-hidden="true">
+        <img :src="heroImg" alt="" />
       </div>
     </div>
 
@@ -74,16 +75,10 @@
 import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
-import Typewriter from '../common/Typewriter.vue'
+import heroImg from '../../assets/automation/hero.webp'
 
-const emit = defineEmits(['view-results'])
+const emit = defineEmits(['view-results', 'add'])
 const store = usePortalAutomationStore()
-
-const taglines = [
-  'הורדה אוטומטית מכל החברות',
-  'בלי להקליד קוד ידנית',
-  'הדוחות יורדים לבד',
-]
 
 const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
 const batch = computed(() => store.activeBatch)
@@ -162,117 +157,83 @@ watch(() => store.batchJustFinished, (b) => {
 
 <style scoped>
 .runall {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   font-family: 'Heebo', sans-serif;
-  padding: 20px 24px;
-  border-radius: var(--radius-lg, 16px);
-  border: 1px solid var(--border-subtle);
+  padding: 26px 28px;
+  border-radius: 22px;
+  border: 1px solid rgba(91, 110, 225, 0.14);
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(78, 157, 208, 0.10) 0%, transparent 55%),
-    linear-gradient(135deg, rgba(31, 168, 140, 0.08) 0%, var(--primary-light, #FFF3E0) 0%, rgba(255,255,255,0) 60%),
-    var(--card-bg);
-  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 8px 22px rgba(26, 20, 16, 0.05);
+    radial-gradient(130% 150% at 100% 0%, rgba(142, 111, 214, 0.13) 0%, transparent 52%),
+    linear-gradient(135deg, #F6F7FE 0%, #F3F8FD 48%, #F1FBF7 100%);
+  box-shadow: 0 10px 30px rgba(46, 60, 130, 0.07);
+}
+.hero-orb {
+  position: absolute;
+  top: -55%; inset-inline-end: 8%;
+  width: 46%; height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7), transparent 68%);
+  pointer-events: none;
 }
 
-/* ───── Run-all hero bar ───── */
-.runall-bar {
+/* ───── Hero row ───── */
+.hero-main {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 26px;
   flex-wrap: wrap;
 }
-.hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.hero-copy { flex: 1 1 320px; min-width: 260px; display: flex; flex-direction: column; gap: 7px; }
+.hero-kicker {
+  align-self: flex-start;
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em;
+  color: #0E7A64; background: #E4F5F0;
+  border-radius: 999px; padding: 4px 12px;
 }
-.hero-tagline {
-  font-size: clamp(18px, 2.4vw, 26px);
+.hero-title {
+  margin: 2px 0 0;
+  font-size: clamp(22px, 2.6vw, 30px);
   font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.4px;
-  line-height: 1.15;
+  color: #181818;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
 }
-.hero-sub {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-/* ── MetalButton (success/green) — faithful 3-layer metallic CTA ───────── */
-.metal {
-  position: relative;
-  display: inline-flex;
-  padding: 1.25px;                /* the outer metallic edge */
-  border-radius: 13px;
-  background: linear-gradient(to bottom, #005A43, #7CCB9B);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
-  transition: transform 250ms cubic-bezier(0.1, 0.4, 0.2, 1),
-              box-shadow 250ms cubic-bezier(0.1, 0.4, 0.2, 1);
-  transform-origin: center;
-}
-.metal:hover { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16); }
-/* press physics — whole stack sinks (uses :has so no JS needed) */
-.metal:has(.metal__btn:active) {
-  transform: translateY(2.5px) scale(0.99);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
-}
-.metal__inner {
-  position: absolute;
-  inset: 1px;
-  border-radius: 12px;
-  background: linear-gradient(to bottom, #E5F8F0, #00352F 55%, #D1F0E6);
-  transition: filter 250ms cubic-bezier(0.1, 0.4, 0.2, 1);
-  pointer-events: none;
-}
-.metal:hover .metal__inner { filter: brightness(1.06); }
-.metal__btn {
-  position: relative;
-  z-index: 1;
-  margin: 1px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  height: 50px;
-  padding: 0 28px;
-  border: none;
-  border-radius: 11px;
-  background: linear-gradient(to bottom, #9ADBC8, #3E8F7C);
-  color: #FFF7F0;
-  font-family: inherit;
-  font-size: 15.5px;
-  font-weight: 800;
-  letter-spacing: 0.1px;
-  line-height: 1;
+.hero-sub { margin: 0; font-size: 14px; line-height: 1.5; color: rgba(24, 24, 24, 0.55); max-width: 46ch; }
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+
+.hero-run {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 50px; padding: 0 26px; border: none; border-radius: 14px;
+  background: linear-gradient(135deg, #5B6EE1 0%, #4E9DD0 55%, #1FA88C 100%);
+  color: #fff; font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 0.1px;
   cursor: pointer;
-  overflow: hidden;
-  outline: none;
-  text-shadow: 0 -1px 0 rgba(6, 78, 59, 0.9);
-  transition: filter 250ms cubic-bezier(0.1, 0.4, 0.2, 1),
-              transform 250ms cubic-bezier(0.1, 0.4, 0.2, 1);
-  transform-origin: center;
+  box-shadow: 0 8px 22px rgba(78, 157, 208, 0.36);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.metal__btn:hover { filter: brightness(1.03); }
-.metal__btn:active { transform: scale(0.97); }
-.metal__btn svg { filter: drop-shadow(0 -1px 0 rgba(6, 78, 59, 0.55)); }
-/* shine sweep that flashes on press */
-.metal__shine {
-  position: absolute;
-  inset: 0;
-  border-radius: 11px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  opacity: 0;
-  transition: opacity 300ms ease;
-  pointer-events: none;
+.hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(78, 157, 208, 0.46); filter: brightness(1.04); }
+.hero-run:active:not(:disabled) { transform: translateY(0); }
+.hero-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.hero-run:focus-visible { outline: 2px solid #5B6EE1; outline-offset: 3px; }
+
+.hero-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 50px; padding: 0 20px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72); border: 1.5px solid rgba(91, 110, 225, 0.28);
+  color: #3A4BC0; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.metal__btn:active .metal__shine { opacity: 0.25; }
-.metal__btn:focus-visible { outline: 2px solid #1FA88C; outline-offset: 4px; }
-.metal--disabled { opacity: 0.5; box-shadow: none; }
-.metal--disabled .metal__btn { cursor: not-allowed; }
+.hero-add:hover { background: #fff; border-color: #5B6EE1; transform: translateY(-1px); }
+.hero-add:focus-visible { outline: 2px solid #5B6EE1; outline-offset: 2px; }
+
+.hero-art { flex: 0 0 auto; width: min(292px, 38%); line-height: 0; }
+.hero-art img { width: 100%; height: auto; display: block; }
+@media (max-width: 620px) { .hero-art { display: none; } }
 
 /* ───── Batch progress ───── */
 .batch-progress {

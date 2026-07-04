@@ -130,7 +130,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useNotificationsStore } from '../../stores/notifications.js'
-import { reopenActivation } from '../../utils/activationState.js'
+import { reopenActivation } from '../../utils/setupState.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { showMailPreview } from '../../utils/mailPreviewState.js'
 import { brandForLabel } from '../../utils/companyBrand.js'

@@ -11,6 +11,13 @@
     <template v-else>
       <!-- No file: sage hero — manual upload triggered via the hero's icon button -->
       <div v-if="!productionStore.currentFile" class="empty-stack">
+        <EmptyStateGuide
+          variant="inline"
+          title="פרודוקציה"
+          body="כאן מעלים את קובץ הפרודוקציה מהסוכנות — פשוט גוררים קובץ Excel. אפשר גם לתת להורדה האוטומטית להביא אותו בשבילכם."
+          cta-label="הפעל הורדה אוטומטית"
+          cta-step="run"
+        />
         <ProductionHeroPanel
           :landing="productionStore.landing"
           :loading="productionStore.landingLoading"
@@ -268,6 +275,7 @@ import VolumeComparison from './VolumeComparison.vue'
 import ProductionHeroPanel from './ProductionHeroPanel.vue'
 import AiCapabilitiesGridIsland from './AiCapabilitiesGridIsland.vue'
 import ProductionTrendChart from './ProductionTrendChart.vue'
+import EmptyStateGuide from './EmptyStateGuide.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 
 defineEmits(['go-to-comparison', 'go-to-portal-automation'])

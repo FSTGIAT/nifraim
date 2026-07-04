@@ -5,7 +5,7 @@
       <button
         v-for="(tab, idx) in tabs"
         :key="tab.id"
-        :data-tour="'tab-' + tab.id"
+       
         class="card"
         :style="{ '--i': idx, '--accent': tab.accent, '--accent-glow': tab.accentGlow }"
         @click="$emit('select-card', tab.id)"
@@ -74,7 +74,7 @@
       <button
         v-for="tab in tabs"
         :key="tab.id"
-        :data-tour="'tab-' + tab.id"
+       
         class="strip-pill"
         :class="{ active: modelValue === tab.id }"
         :style="{ '--accent': tab.accent }"
@@ -201,8 +201,8 @@ const tabs = [
     id: 'portal-automation',
     label: 'אוטומציה',
     description: 'התחברות אוטומטית לפורטלים והורדת דוחות',
-    accent: '#2E844A',
-    accentGlow: 'rgba(46, 132, 74, 0.18)',
+    accent: '#1FA88C',
+    accentGlow: 'rgba(31, 168, 140, 0.18)',
   },
 ]
 </script>

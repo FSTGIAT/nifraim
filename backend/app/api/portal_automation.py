@@ -197,7 +197,7 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 
 # Note: the dead-end Ericom `phoenix` terminal is intentionally NOT listed — its
 # real production path is `phoenix_terminal`.
-IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "mor"}
+IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "mor", "altshuler", "yelin", "meitav", "hachshara"}
 
 
 @router.get("/portal-kinds")
@@ -1236,6 +1236,20 @@ async def worker_log(token: str, request: Request, db: AsyncSession = Depends(ge
     )).scalar_one_or_none()
     body = (await request.body()).decode("utf-8", "replace")[:4000]
     logger.warning("WORKER-LOG [%s]: %s", user.email if user else "unknown-token", body)
+    # Installer progress ("installer: מוריד רכיבים" / "installer: FATAL: …") is
+    # mirrored into the user's heartbeat row so GET /worker/status can show a
+    # live install indicator in the setup wizard. last_seen stays ancient for a
+    # brand-new row — "online" must only flip once the actual worker heartbeats.
+    if user and body.startswith("installer: "):
+        msg = "install: " + body[len("installer: "):][:180]
+        row = (await db.execute(
+            select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
+        )).scalar_one_or_none()
+        if row is None:
+            db.add(WorkerHeartbeat(user_id=user.id, last_seen=datetime(2000, 1, 1), current_job=msg))
+        else:
+            row.current_job = msg
+        await db.commit()
     return {"status": "ok"}
 
 
@@ -1300,20 +1314,48 @@ $Work = {
     if ($sync) { $sync.status = $m; if ($p) { $sync.pct = $p } }
     try { Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ("installer: " + $m) -TimeoutSec 10 | Out-Null } catch {}
   }
+  function Get-RealPython {
+    # The Microsoft Store ships a fake python.exe alias under WindowsApps that
+    # satisfies Get-Command but CANNOT build a venv (it just opens the Store).
+    # That stub caused the silent "python.exe is not recognized" failure on a
+    # clean machine. Accept a real python on PATH, else the `py` launcher.
+    $g = Get-Command python -ErrorAction SilentlyContinue
+    if ($g -and $g.Source -and ($g.Source -notlike '*WindowsApps*')) { return 'python' }
+    if (Get-Command py -ErrorAction SilentlyContinue) { return 'py' }
+    return $null
+  }
   try {
-    if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw 'Python 3.10+ required (python.org), then run again.' }
+    $pyExe = Get-RealPython
+    if (-not $pyExe) {
+      # Non-technical users won't have Python — install it for them, silently,
+      # from python.org (a Python-Software-Foundation-signed installer). Falls
+      # back to a clear message if the auto-install can't complete.
+      Up 'מתקין Python (חד-פעמי)' 8
+      $pyUrl = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe'
+      $pyInst = Join-Path $env:TEMP 'python-setup.exe'
+      Invoke-WebRequest -Uri $pyUrl -OutFile $pyInst -UseBasicParsing
+      Start-Process $pyInst -ArgumentList '/quiet','InstallAllUsers=0','PrependPath=1','Include_pip=1','Include_launcher=1' -Wait
+      $cand = Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($cand) { $pyExe = $cand.FullName } else { $pyExe = Get-RealPython }
+      if (-not $pyExe) { throw 'התקנת Python נכשלה — התקינו Python 3.10+ מ-python.org (סמנו Add Python to PATH) והריצו שוב.' }
+    }
     New-Item -ItemType Directory -Force -Path $Install | Out-Null
     Up 'מוריד רכיבים' 15
     $zip = Join-Path $Install 'worker.zip'
     Invoke-WebRequest -Uri "$Base/api/portal-automation/worker/bundle/$Token" -OutFile $zip -TimeoutSec 180
     Expand-Archive -Path $zip -DestinationPath $Install -Force
-    Up 'מתקין רכיבים (כמה דקות)' 40
-    & python -m venv (Join-Path $Install 'venv') *>> $Log
+    Up 'מכינים סביבה' 38
+    & $pyExe -m venv (Join-Path $Install 'venv') *>> $Log
     $py = Join-Path $Install 'venv\Scripts\python.exe'
+    if (-not (Test-Path $py)) { throw 'יצירת סביבת Python נכשלה — התקינו Python 3.10+ מ-python.org (סמנו Add Python to PATH) והריצו שוב.' }
+    # Granular progress so the multi-minute deps/browser install doesn't read as
+    # frozen (the previous single 'מתקין רכיבים' status sat unchanged for minutes).
+    Up 'מתקינים ספריות (2-4 דקות — אל תסגרו)' 55
     & $py -m pip install --upgrade pip *>> $Log
     & $py -m pip install -r (Join-Path $Install 'backend\requirements.txt') *>> $Log
+    Up 'מורידים דפדפן (כ-150MB — אל תסגרו)' 72
     & $py -m playwright install chromium *>> $Log
-    Up 'מגדיר' 80
+    Up 'מגדיר' 82
     $lines = @(
       "DATABASE_URL=$DbUrl",
       "DATABASE_URL_SYNC=$($DbUrl -replace '\+asyncpg','')",
@@ -1446,34 +1488,84 @@ async def worker_installer_ps(token: str, request: Request, db: AsyncSession = D
     )).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="not found")
-    base = str(request.base_url).rstrip("/").replace("http://", "https://", 1)
+    base = _external_base(request)
     ps = _worker_installer_ps(
         base, token,
         settings.WORKER_PUBLIC_DATABASE_URL or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
         settings.PORTAL_CRED_FERNET_KEY or "",
         user.email,
     )
-    return PlainTextResponse(ps, media_type="text/plain; charset=utf-8")
+    # UTF-8 BOM is load-bearing: the .bat saves this to a file and runs it with
+    # Windows PowerShell 5.1, which reads BOM-less files as ANSI — the second
+    # byte of Hebrew UTF-8 pairs (e.g. ב = D7 91) then decodes to a curly quote
+    # that PS treats as a string terminator → parse error → silent instant death.
+    from fastapi.responses import Response
+    return Response(
+        content=b"\xef\xbb\xbf" + ps.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
+def _external_base(request: Request) -> str:
+    """Base URL as reachable from the agent's Windows machine. Force https for
+    real deployments (Railway sits behind a proxy that reports http), but keep
+    plain http for local/dev hosts — forcing https there made the installer's
+    very first fetch fail with a TLS error, invisibly."""
+    base = str(request.base_url).rstrip("/")
+    host = request.url.hostname or ""
+    if host in ("localhost", "127.0.0.1") or host.startswith(("192.168.", "10.")):
+        return base
+    return base.replace("http://", "https://", 1)
 
 
 @router.get("/worker/installer")
 async def worker_installer(request: Request, user: User = Depends(get_current_user)):
-    """Download = a .BAT (double-clickable, immune to PS execution policy). It runs
-    PowerShell with -ExecutionPolicy Bypass and pipes the PS installer into memory."""
+    """Download = a .BAT (double-clickable, immune to PS execution policy). It
+    fetches the PS installer and launches it hidden; the green WinForms window
+    is what the user sees. The bootstrap console stays VISIBLE so a failure at
+    this stage (no network, blocked PS, bad URL) is never a silent nothing —
+    it prints the error, reports it to /worker/log (→ wizard telemetry), and
+    waits for Enter."""
     from fastapi.responses import PlainTextResponse
     if not user.phone_forward_token:
         raise HTTPException(status_code=400, detail="הפעל קודם 'העברת SMS אוטומטית' (טוקן טלפון חסר)")
-    base = str(request.base_url).rstrip("/").replace("http://", "https://", 1)
+    base = _external_base(request)
     url = f"{base}/api/portal-automation/worker/installer-ps/{user.phone_forward_token}"
+    log_url = f"{base}/api/portal-automation/worker/log/{user.phone_forward_token}"
     # Download the PS to a temp file and run it as -File (NOT irm|iex): a real
     # script scope is required for the WinForms event handlers to see their
-    # variables. Console hidden; the GUI window is the only thing the user sees.
+    # variables.
+    #
+    # AV false-positive avoidance: the previous .bat matched Defender's generic
+    # dropper heuristic (Wacatac/Sabsik) and was quarantined as a "virus" on a
+    # clean machine. The three biggest triggers were removed here:
+    #   • `-WindowStyle Hidden` launching a downloaded script — the #1 flag;
+    #     the installer already shows its own WinForms window, so the child
+    #     PowerShell now runs in a normal (visible) window.
+    #   • `-ExecutionPolicy Bypass` on the OUTER call — unnecessary, since
+    #     ExecutionPolicy only gates script FILES, not `-Command` text.
+    #   • the `irm` alias — replaced with the full `Invoke-WebRequest … -UseBasicParsing`.
+    # The inner `-File` launch still needs `-ExecutionPolicy Bypass` (the .ps1 is
+    # unsigned); a fully clean pass would require code-signing the installer.
+    ps_cmd = (
+        "$ErrorActionPreference='Stop'; "
+        "try { "
+        f"$p = Join-Path $env:TEMP 'nifraim_setup.ps1'; "
+        f"Invoke-WebRequest -Uri '{url}' -OutFile $p -UseBasicParsing; "
+        "Start-Process powershell -ArgumentList "
+        "'-NoProfile','-ExecutionPolicy','Bypass','-File',$p "
+        "} catch { "
+        f"try {{ Invoke-WebRequest -Uri '{log_url}' -Method Post -Body ('installer: FATAL: ' + $_.Exception.Message) -UseBasicParsing | Out-Null }} catch {{}}; "
+        "Write-Host ''; Write-Host ('SETUP FAILED: ' + $_.Exception.Message) -ForegroundColor Red; "
+        "Write-Host 'Screenshot this window and send it to support / tsalmu masach veshilchu latmicha'; "
+        "Read-Host 'Press Enter to close' "
+        "}"
+    )
     bat = (
         "@echo off\r\n"
-        "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
-        f'"$p = Join-Path $env:TEMP \'nifraim_setup.ps1\'; irm \'{url}\' -OutFile $p; '
-        "Start-Process powershell -WindowStyle Hidden -ArgumentList "
-        "'-NoProfile','-ExecutionPolicy','Bypass','-File',$p\"\r\n"
+        "title Nifraim Setup\r\n"
+        "echo Starting Nifraim setup... a window will open shortly.\r\n"
+        f'powershell -NoProfile -Command "{ps_cmd}"\r\n'
     )
     return PlainTextResponse(
         bat,

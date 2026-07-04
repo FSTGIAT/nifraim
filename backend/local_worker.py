@@ -142,18 +142,40 @@ except OSError:
     log.info("another Nifraim worker is already running — exiting this instance")
     raise SystemExit(0)
 
-USER_EMAIL = os.environ.get("WORKER_USER_EMAIL", "royg@nifraim.com")
+# Worker identity — resolved from the installed .env, NEVER hardcoded. The
+# installer writes WORKER_LOG_TOKEN (the per-user phone-forward token) and
+# WORKER_USER_EMAIL into the .env FILE; the VBS launcher starts python with no
+# env vars, so these MUST be read from _env, not os.environ alone. There is no
+# default account: a worker that can't say whom it serves refuses to start,
+# rather than silently running another user's jobs and writing to their data.
+WORKER_TOKEN = (_env.get("WORKER_LOG_TOKEN", "") or os.environ.get("WORKER_LOG_TOKEN", "")).strip()
+USER_EMAIL = (_env.get("WORKER_USER_EMAIL", "") or os.environ.get("WORKER_USER_EMAIL", "")).strip()
 POLL_S = float(os.environ.get("WORKER_POLL_SECONDS", "5"))
 HEARTBEAT_S = 15
 HOSTNAME = socket.gethostname()[:120]
 
 
 async def _resolve_user_id() -> object:
+    """Resolve exactly which agent this worker serves. Prefer the phone-forward
+    token (unique per user, authoritative), then the configured email. No
+    fallback to a default account — an unidentifiable worker exits."""
+    global USER_EMAIL
     async with async_session() as db:
-        uid = (await db.execute(select(User.id).where(User.email == USER_EMAIL))).scalar_one_or_none()
-    if uid is None:
-        raise SystemExit(f"No user with email {USER_EMAIL!r} in the database")
-    return uid
+        row = None
+        if WORKER_TOKEN:
+            row = (await db.execute(
+                select(User.id, User.email).where(User.phone_forward_token == WORKER_TOKEN)
+            )).first()
+        if row is None and USER_EMAIL:
+            row = (await db.execute(
+                select(User.id, User.email).where(User.email == USER_EMAIL)
+            )).first()
+    if row is None:
+        msg = "Worker identity unresolved — set WORKER_LOG_TOKEN or WORKER_USER_EMAIL in the worker .env"
+        _post_log("FATAL: " + msg)
+        raise SystemExit(msg)
+    USER_EMAIL = row.email  # accurate logs even when resolved by token
+    return row.id
 
 
 async def _beat(uid, current_job: str | None = None, touch_job: bool = False):

@@ -1,28 +1,17 @@
 <template>
   <div class="auto-page">
-    <!-- ─── Header — Monday-style board header ─────────────── -->
-    <header class="page-head">
-      <div class="page-titles">
-        <div class="title-row">
-          <span class="title-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </span>
-          <h2 class="page-title">פורטלי חברות הביטוח</h2>
-        </div>
-      </div>
-      <button v-if="store.credentials.length" class="head-add" type="button" @click="openAdd">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M5 12h14" /><path d="M12 5v14" />
-        </svg>
-        <span>הוסף פורטל</span>
-      </button>
-    </header>
+    <!-- Aurora backdrop — the app's decorative motif in cool tones, giving the
+         tab depth so it reads premium, not flat. Content layers above it. -->
+    <div class="auto-bg" aria-hidden="true">
+      <span class="aurora aurora--1"></span>
+      <span class="aurora aurora--2"></span>
+      <span class="aurora aurora--3"></span>
+    </div>
 
-    <!-- Run all portals → aggregate to one production + one נפרעים file → compare. -->
-    <PortalRunAllBar class="runall-block" @view-results="emit('go-to-comparison')" />
+    <div class="auto-inner">
+    <!-- Hero: title + one-click run-all + add portal, aggregating to one
+         production + one נפרעים file → compare. -->
+    <PortalRunAllBar class="runall-block" @view-results="emit('go-to-comparison')" @add="openAdd" />
 
     <!-- KPI stat band -->
     <PortalStatBand v-if="store.credentials.length" />
@@ -36,6 +25,15 @@
 
     <!-- ─── Dashboard: company panels + activity sidebar ────── -->
     <div v-else class="dash" :class="{ 'dash--empty': !store.credentials.length }">
+      <EmptyStateGuide
+        v-if="!store.credentials.length"
+        class="dash__guide"
+        variant="inline"
+        title="הורדה אוטומטית"
+        body="מגדירים פעם אחת שם משתמש וסיסמה לכל פורטל חברה, מחברים את הטלפון להעברת קוד האימות — ומכאן והלאה לחיצה אחת מורידה את כל הדוחות ומשווה אותם."
+        cta-label="פתח את אשף ההגדרה"
+        cta-step="portal"
+      />
       <PortalAutomationCanvas
         class="dash__main"
         :credentials="store.credentials"
@@ -107,6 +105,7 @@
         </div>
       </Transition>
     </Teleport>
+    </div>
   </div>
 </template>
 
@@ -119,6 +118,7 @@ import PortalOtpModal from './PortalOtpModal.vue'
 import PortalRunAllBar from './PortalRunAllBar.vue'
 import PortalStatBand from './PortalStatBand.vue'
 import PortalActivityPanel from './PortalActivityPanel.vue'
+import EmptyStateGuide from './EmptyStateGuide.vue'
 
 const props = defineProps({
   // When the activation checklist routes here, auto-open the add-credential modal.
@@ -237,9 +237,23 @@ onUnmounted(() => {
 
 <style scoped>
 .auto-page {
+  position: relative;
+  min-height: 100%;
+  padding: 26px 20px 48px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, #F7F8FD 0%, #F4F8FC 55%, #F2FAF8 100%);
+}
+.auto-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.aurora { position: absolute; border-radius: 50%; filter: blur(72px); }
+.aurora--1 { width: 460px; height: 460px; background: rgba(91, 110, 225, 0.16); top: -140px; inset-inline-end: -90px; }
+.aurora--2 { width: 400px; height: 400px; background: rgba(31, 168, 140, 0.14); bottom: -150px; inset-inline-start: -70px; }
+.aurora--3 { width: 320px; height: 320px; background: rgba(142, 111, 214, 0.12); top: 42%; inset-inline-start: 34%; }
+.auto-inner {
+  position: relative;
+  z-index: 1;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px 20px 40px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -320,6 +334,8 @@ onUnmounted(() => {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
 }
+
+.dash__guide { margin-bottom: 0; } /* grid gap already spaces it */
 
 .error-banner {
   background: rgba(234, 0, 30, 0.08);

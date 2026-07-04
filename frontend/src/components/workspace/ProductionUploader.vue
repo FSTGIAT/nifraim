@@ -47,7 +47,7 @@
     </div>
 
     <!-- Content -->
-    <div class="uploader-content" data-tour="production-uploader">
+    <div class="uploader-content">
       <!-- Loading state -->
       <div v-if="productionStore.uploading" class="upload-loading">
         <div class="loading-content">

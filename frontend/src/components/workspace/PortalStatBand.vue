@@ -1,38 +1,65 @@
 <template>
-  <div class="stat-band">
-    <article
-      v-for="s in stats"
-      :key="s.key"
-      class="stat"
-      :class="`stat--${s.tone}`"
-    >
-      <span class="stat__circles" aria-hidden="true">
-        <span class="stat__circle stat__circle--1"></span>
-        <span class="stat__circle stat__circle--2"></span>
-        <span class="stat__circle stat__circle--3"></span>
-      </span>
-      <span class="stat__icon" aria-hidden="true" v-html="s.icon"></span>
-      <div class="stat__body">
-        <span class="stat__value ltr-number">{{ s.value }}</span>
-        <span class="stat__label">{{ s.label }}</span>
+  <div class="cockpit">
+    <span class="cockpit-orb" aria-hidden="true"></span>
+
+    <!-- Section 1 — health gauge -->
+    <div class="gauge">
+      <svg viewBox="0 0 84 84" class="gauge-svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="pg-ring" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#5B6EE1" />
+            <stop offset="0.5" stop-color="#4E9DD0" />
+            <stop offset="1" stop-color="#1FA88C" />
+          </linearGradient>
+        </defs>
+        <circle cx="42" cy="42" r="35" fill="none" stroke="#E9ECF4" stroke-width="7" />
+        <circle
+          class="gauge-fill"
+          cx="42" cy="42" r="35" fill="none"
+          stroke="url(#pg-ring)" stroke-width="7" stroke-linecap="round"
+          :stroke-dasharray="C" :stroke-dashoffset="ringOffset"
+          transform="rotate(-90 42 42)"
+        />
+      </svg>
+      <div class="gauge-center">
+        <span class="gauge-num ltr-number">{{ healthyShown }}<span class="gauge-den">/{{ total }}</span></span>
+        <span class="gauge-lbl">תקינים</span>
       </div>
-    </article>
+    </div>
+
+    <span class="cockpit-sep" aria-hidden="true"></span>
+
+    <!-- Section 2 — stat tiles -->
+    <div class="tiles">
+      <div v-for="t in tiles" :key="t.key" class="tile">
+        <span class="tile-ico" :style="{ background: t.soft, color: t.deep }" v-html="t.icon"></span>
+        <div class="tile-body">
+          <span class="tile-val ltr-number" :style="t.valueColor ? { color: t.valueColor } : null">{{ t.display }}</span>
+          <span class="tile-lbl">{{ t.label }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 
 const store = usePortalAutomationStore()
 
 const ICONS = {
-  total: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
-  active: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-  healthy: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
-  last: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  active: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>',
+  total: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/></svg>',
+  last: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7.5V12l3 2"/></svg>',
 }
+const HUE = {
+  indigo: { soft: '#EEF0FE', deep: '#3A4BC0' },
+  blue: { soft: '#E7F2FA', deep: '#2C6E9E' },
+  purple: { soft: '#EFEAFA', deep: '#5F429F' },
+}
+const STATUS_INK = { green: '#0E7A64', amber: '#9A6B12', red: '#C23934' }
 
 const total = computed(() => store.credentials.length)
 const active = computed(() => store.credentials.filter((c) => c.is_active).length)
@@ -40,81 +67,121 @@ const healthy = computed(() => store.credentials.filter((c) => c.last_run_status
 
 const lastRun = computed(() => {
   const b = store.latestBatch
-  if (!b) return { value: '—', tone: 'muted' }
+  if (!b) return { value: '—', tone: null }
   const when = b.finished_at || b.started_at
   const txt = when ? relativeHebrew(when) : '—'
   const tone = b.status === 'failed' ? 'red' : b.status === 'partial' ? 'amber' : 'green'
   return { value: txt, tone }
 })
 
-const stats = computed(() => [
-  { key: 'total', label: 'סה״כ פורטלים', value: total.value, tone: 'sky', icon: ICONS.total },
-  { key: 'active', label: 'פעילים', value: active.value, tone: 'teal', icon: ICONS.active },
-  { key: 'healthy', label: 'תקינים', value: `${healthy.value}/${total.value}`, tone: 'green', icon: ICONS.healthy },
-  { key: 'last', label: 'ריצה אחרונה', value: lastRun.value.value, tone: lastRun.value.tone === 'muted' ? 'violet' : lastRun.value.tone, icon: ICONS.last },
+// ── Count-up (client rAF; small easing entrance) ──
+let rafs = []
+function useCountUp(source) {
+  const shown = ref(0)
+  watch(source, (to) => {
+    if (typeof to !== 'number') { shown.value = to; return }
+    const from = typeof shown.value === 'number' ? shown.value : 0
+    if (from === to) { shown.value = to; return }
+    const start = performance.now(), dur = 650
+    const step = (t) => {
+      const p = Math.min(1, (t - start) / dur)
+      const e = 1 - Math.pow(1 - p, 3)
+      shown.value = Math.round(from + (to - from) * e)
+      if (p < 1) rafs.push(requestAnimationFrame(step))
+    }
+    rafs.push(requestAnimationFrame(step))
+  }, { immediate: true })
+  return shown
+}
+const totalShown = useCountUp(total)
+const activeShown = useCountUp(active)
+const healthyShown = useCountUp(healthy)
+
+// ── Ring draw ──
+const C = +(2 * Math.PI * 35).toFixed(2)
+const ringOffset = ref(C)
+onMounted(() => {
+  rafs.push(requestAnimationFrame(() => {
+    const pct = total.value ? healthy.value / total.value : 0
+    ringOffset.value = +(C * (1 - pct)).toFixed(2)
+  }))
+})
+watch([healthy, total], () => {
+  const pct = total.value ? healthy.value / total.value : 0
+  ringOffset.value = +(C * (1 - pct)).toFixed(2)
+})
+onBeforeUnmount(() => rafs.forEach(cancelAnimationFrame))
+
+const tiles = computed(() => [
+  { key: 'total', label: 'סה״כ פורטלים', display: totalShown.value, icon: ICONS.total, ...HUE.indigo },
+  { key: 'active', label: 'פעילים', display: activeShown.value, icon: ICONS.active, ...HUE.blue },
+  { key: 'last', label: 'ריצה אחרונה', display: lastRun.value.value, icon: ICONS.last, ...HUE.purple, valueColor: STATUS_INK[lastRun.value.tone] || null },
 ])
 </script>
 
 <style scoped>
-.stat-band {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
-}
-.stat {
+.cockpit {
   position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
-  border-radius: var(--radius-lg, 16px);
-  background: var(--card-bg);
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.04);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  gap: 22px;
+  padding: 18px 22px;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 110, 225, 0.12);
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(31, 168, 140, 0.06) 0%, transparent 55%),
+    linear-gradient(135deg, #FBFBFE 0%, #F5F8FD 100%);
+  box-shadow: 0 10px 28px rgba(46, 60, 130, 0.06);
+  flex-wrap: wrap;
 }
-.stat:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(17, 12, 6, 0.08); }
+.cockpit-orb {
+  position: absolute;
+  top: -60%; inset-inline-start: -6%;
+  width: 40%; height: 200%;
+  background: radial-gradient(circle, rgba(91, 110, 225, 0.08), transparent 68%);
+  pointer-events: none;
+}
 
-/* Decorative pastel blur circles (very low alpha brand tints) */
-.stat__circles { position: absolute; inset: 0; pointer-events: none; }
-.stat__circle { position: absolute; border-radius: 50%; opacity: 0.5; }
-.stat__circle--1 { width: 120px; height: 120px; top: -50px; inset-inline-start: -30px; background: var(--tint-strong); }
-.stat__circle--2 { width: 70px; height: 70px; bottom: -28px; inset-inline-start: 40px; background: var(--tint-soft); }
-.stat__circle--3 { width: 40px; height: 40px; top: 10px; inset-inline-start: 90px; background: var(--tint-soft); }
+/* ── Gauge ── */
+.gauge { position: relative; flex-shrink: 0; width: 92px; height: 92px; }
+.gauge-svg { width: 92px; height: 92px; display: block; }
+.gauge-fill { transition: stroke-dashoffset 1s cubic-bezier(0.22, 1, 0.36, 1); }
+.gauge-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+}
+.gauge-num { font-size: 21px; font-weight: 800; color: #181818; letter-spacing: -0.5px; line-height: 1; }
+.gauge-den { font-size: 13px; font-weight: 700; color: rgba(24, 24, 24, 0.4); }
+.gauge-lbl { font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
 
-.stat__icon {
+.cockpit-sep { width: 1px; align-self: stretch; margin: 6px 0; background: linear-gradient(180deg, transparent, rgba(24,24,24,0.1), transparent); }
+
+/* ── Stat tiles ── */
+.tiles {
   position: relative;
-  width: 44px; height: 44px;
+  flex: 1; min-width: 220px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.tile {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
   border-radius: 13px;
-  display: grid; place-items: center;
-  color: var(--accent);
-  background: var(--tint-strong);
-  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(24, 24, 24, 0.05);
 }
-.stat__body { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.stat__value {
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1.05;
-  color: var(--text);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  letter-spacing: -0.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.stat__label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-
-/* Tones — pastel, mapped to chart palette */
-.stat--sky    { --accent: #2F73C4; --tint-strong: rgba(78,157,208,0.16); --tint-soft: rgba(78,157,208,0.08); }
-.stat--teal   { --accent: #178f78; --tint-strong: rgba(31,168,140,0.16); --tint-soft: rgba(31,168,140,0.08); }
-.stat--green  { --accent: var(--green-deep); --tint-strong: rgba(46,132,74,0.15); --tint-soft: rgba(46,132,74,0.07); }
-.stat--violet { --accent: var(--accent-violet); --tint-strong: rgba(127,86,217,0.15); --tint-soft: rgba(127,86,217,0.07); }
-.stat--amber  { --accent: var(--amber); --tint-strong: rgba(232,114,10,0.15); --tint-soft: rgba(232,114,10,0.07); }
-.stat--red    { --accent: var(--red-deep); --tint-strong: rgba(234,0,30,0.13); --tint-soft: rgba(234,0,30,0.06); }
+.tile-ico { flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; }
+.tile-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile-val { font-size: 21px; font-weight: 800; color: #181818; letter-spacing: -0.5px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-lbl { font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
 
 @media (prefers-reduced-motion: reduce) {
-  .stat:hover { transform: none; }
+  .gauge-fill { transition: none; }
+}
+@media (max-width: 560px) {
+  .cockpit-sep { display: none; }
+  .gauge { margin: 0 auto; }
 }
 </style>

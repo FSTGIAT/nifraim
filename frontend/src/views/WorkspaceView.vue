@@ -108,12 +108,7 @@
         </div>
 
         <div class="home-content">
-          <ActivationChecklist
-            @open-phone-forward="phoneForwardOpen = true"
-            @open-add-portal="onActivationAddPortal"
-            @run-automation="onCardSelect('portal-automation')"
-          />
-          <WorkerInstallCard />
+          <SetupProgressCard />
           <WorkspaceTabs
             v-model="activeTab"
             :view-mode="viewMode"
@@ -151,7 +146,7 @@
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
-              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" data-tour="portal-automation-tab" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="onCardSelect('comparison')" />
+              <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="onCardSelect('comparison')" />
             </Transition>
           </div>
         </main>
@@ -166,19 +161,11 @@
       @done="onWelcomeDone"
     />
 
-    <!-- Onboarding tour -->
-    <OnboardingTour
-      :is-active="tourActive"
-      :current-step="tourCurrentStep"
-      :current-step-index="tourStepIndex"
-      :total-steps="tourTotalSteps"
-      :spotlight-rect="tourSpotlightRect"
-      :tooltip-position="tourTooltipPosition"
-      :spotlight-ready="tourSpotlightReady"
-      @next="tourNext"
-      @prev="tourPrev"
-      @skip="tourSkip"
-      @complete="tourComplete"
+    <!-- Setup wizard (אשף ההפעלה) -->
+    <SetupPipelineModal
+      @open-phone-forward="phoneForwardOpen = true"
+      @open-add-portal="onActivationAddPortal"
+      @run-automation="onCardSelect('portal-automation')"
     />
 
     <!-- Full-page drop overlay -->
@@ -223,7 +210,8 @@ import { useAuthStore } from '../stores/auth.js'
 import { useComparisonStore } from '../stores/comparison.js'
 import { useProductionStore } from '../stores/production.js'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
-import { useOnboardingTour } from '../composables/useOnboardingTour.js'
+import { useSetupPipeline } from '../composables/useSetupPipeline.js'
+import { openSetup } from '../utils/setupState.js'
 import StockTicker from '../components/workspace/StockTicker.vue'
 import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
 import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
@@ -232,16 +220,14 @@ import YieldRecommendationsModal from '../components/workspace/YieldRecommendati
 import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
 import PhoneForwardModal from '../components/workspace/PhoneForwardModal.vue'
-import ActivationChecklist from '../components/workspace/ActivationChecklist.vue'
-import WorkerInstallCard from '../components/workspace/WorkerInstallCard.vue'
-import { activationState } from '../utils/activationState.js'
+import SetupProgressCard from '../components/workspace/SetupProgressCard.vue'
+import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import BatchResultsToast from '../components/workspace/BatchResultsToast.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
-import OnboardingTour from '../components/workspace/OnboardingTour.vue'
 import WelcomeOverlay from '../components/workspace/WelcomeOverlay.vue'
 import ProductionTab from '../components/workspace/ProductionTab.vue'
 import ComparisonTab from '../components/workspace/ComparisonTab.vue'
@@ -262,18 +248,13 @@ const portalAutomationStore = usePortalAutomationStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
 
-// Activation checklist → setup entry points
+// Setup wizard → setup entry points
 const phoneForwardOpen = ref(false)
 const autoOpenAddPortal = ref(false)
 function onActivationAddPortal() {
   autoOpenAddPortal.value = true
   onCardSelect('portal-automation')
 }
-// Bell "המשך הגדרה" reminder → bring the user back to the home view so the
-// (home-only) activation checklist remounts and shows itself.
-watch(() => activationState.forceShow, (v) => {
-  if (v) viewMode.value = 'home'
-})
 
 // AI viz modal — opens whenever the top-level AiChatWidget surfaces viz
 // payload(s) (bar / donut / kpi / fund-track). Multi-viz: synthesis answers
@@ -370,37 +351,25 @@ function onBatchToastNavigate(tab) {
   onCardSelect({ tab })
 }
 
-// Onboarding tour
-const {
-  isActive: tourActive,
-  currentStep: tourCurrentStep,
-  currentStepIndex: tourStepIndex,
-  totalSteps: tourTotalSteps,
-  spotlightRect: tourSpotlightRect,
-  tooltipPosition: tourTooltipPosition,
-  spotlightReady: tourSpotlightReady,
-  shouldShowTour,
-  startTour,
-  nextStep: tourNext,
-  prevStep: tourPrev,
-  skipTour: tourSkip,
-  completeTour: tourComplete,
-  onKeydown: tourKeydown,
-  cleanup: cleanupTour,
-} = useOnboardingTour({ activeTab, viewMode })
+// Setup wizard (אשף ההפעלה) — the single first-run pipeline. Auto-opens after
+// the welcome wipe (and on reloads) while setup is incomplete and the user
+// hasn't ✕-closed the home card.
+const setup = useSetupPipeline()
+
+async function maybeOpenSetup() {
+  if (setup.isCompleted()) return
+  await setup.bootstrap()
+  if (setup.allDone.value) { setup.markCompleted(); return }
+  if (setup.isClosed()) { setup.pinReminder(); return }
+  openSetup()
+}
 
 // Post-login welcome overlay
 const welcomeOpen = ref(false)
 
-function scheduleOnboardingIfNeeded() {
-  if (shouldShowTour()) {
-    setTimeout(() => startTour(), 800)
-  }
-}
-
 function onWelcomeDone() {
   welcomeOpen.value = false
-  scheduleOnboardingIfNeeded()
+  maybeOpenSetup()
 }
 
 // Full-page drag & drop
@@ -459,11 +428,6 @@ function onDocDrop(e) {
 }
 
 function onKeydown(e) {
-  // Let tour handle its own keys first
-  if (tourActive.value) {
-    tourKeydown(e)
-    return
-  }
   // Arrow nav only in content mode
   if (viewMode.value !== 'content') return
   if (e.key === 'ArrowLeft') {
@@ -489,7 +453,7 @@ onMounted(async () => {
     sessionStorage.removeItem('justLoggedIn')
     welcomeOpen.value = true
   } else {
-    scheduleOnboardingIfNeeded()
+    maybeOpenSetup()
   }
 })
 
@@ -499,7 +463,6 @@ onUnmounted(() => {
   document.removeEventListener('dragover', onDragOver)
   document.removeEventListener('drop', onDocDrop)
   document.removeEventListener('keydown', onKeydown)
-  cleanupTour()
 })
 
 function handleLogout() {

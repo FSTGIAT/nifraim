@@ -21,17 +21,28 @@
         v-for="cred in store.credentials"
         :key="cred.id"
         class="cred-card"
+        :style="{ '--brand': brandFor(cred.portal_kind).color }"
       >
         <div class="cred-head">
-          <strong>{{ portalLabel(cred.portal_kind) }}</strong>
+          <span class="cred-ico" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path :d="brandFor(cred.portal_kind).iconPath" />
+            </svg>
+          </span>
+          <div class="cred-head-txt">
+            <strong>{{ portalLabel(cred.portal_kind) }}</strong>
+            <span class="cred-user ltr-number">{{ cred.username }}</span>
+          </div>
         </div>
-        <div class="cred-user">{{ cred.username }}</div>
+
         <button
           class="btn-run"
           :disabled="isRunning(cred.id) || anyRunning"
           @click="runNow(cred.id)"
         >
-          {{ isRunning(cred.id) ? '⏳ רץ...' : '▶ הרץ אוטומציה' }}
+          <span v-if="isRunning(cred.id)" class="btn-run-spin" aria-hidden="true"></span>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20" /></svg>
+          <span>{{ isRunning(cred.id) ? 'רץ…' : 'הרץ אוטומציה' }}</span>
         </button>
 
         <PortalRunProgress
@@ -48,6 +59,7 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { brandFor } from '../../utils/companyBrand.js'
 import PortalRunProgress from './PortalRunProgress.vue'
 
 const props = defineProps({
@@ -152,49 +164,66 @@ h3 {
 }
 
 .cred-card {
-  background: var(--bg);
+  background: #fff;
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 12px;
+  border-radius: 14px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.cred-card:hover { border-color: color-mix(in srgb, var(--brand) 40%, transparent); box-shadow: 0 6px 18px color-mix(in srgb, var(--brand) 12%, transparent); }
 
 .cred-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text);
+  gap: 11px;
+  min-width: 0;
 }
-
+.cred-ico {
+  flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
+}
+.cred-head-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cred-head-txt strong {
+  font-size: 13.5px; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .cred-user {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 12px; color: var(--text-muted);
+  direction: ltr; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .btn-run {
-  background: linear-gradient(135deg, #2E844A, #1B5E20);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  background: var(--brand);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 8px 14px;
+  border-radius: 10px;
+  padding: 9px 14px;
   font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
 }
-
 .btn-run:disabled {
-  background: var(--text-muted);
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.55;
 }
-
 .btn-run:not(:disabled):hover {
-  box-shadow: 0 4px 12px rgba(46, 132, 74, 0.3);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 35%, transparent);
   transform: translateY(-1px);
 }
+.btn-run-spin {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: #fff;
+  animation: btn-run-spin 0.8s linear infinite;
+}
+@keyframes btn-run-spin { to { transform: rotate(360deg); } }
 </style>

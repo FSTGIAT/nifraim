@@ -20,7 +20,6 @@
     "render:walkthrough-webm": "remotion render src/remotion/Root.tsx walkthrough public/walkthrough.webm --codec vp9"
   },
   "dependencies": {
-    "@ark-ui/react": "^5.37.2",
     "@paper-design/shaders-react": "^0.0.76",
     "@remotion/player": "^4.0.451",
     "apexcharts": "^5.3.6",

@@ -1,8 +1,10 @@
 """
-End-to-end test of the new-user activation journey against the LIVE backend
-(no API mocking). Registers a brand-new account, documents the subscription
-gate, walks the compact Ark-UI activation card step-by-step, then verifies
-show-once + bell-reminder reopen. Cleans up its own test user at the end.
+End-to-end test of the new-user setup wizard ("אשף ההפעלה") against the LIVE
+backend (no API mocking). Registers a brand-new account, documents the
+subscription gate, verifies the SetupPipelineModal auto-open + live step
+ticks, the slim SetupProgressCard, the ✕-close → bell-reminder → reopen path,
+the portal deep-link, and the comparison-tab empty-state guide. Cleans up its
+own test user at the end.
 
 Run: source backend/venv/bin/activate && python e2e_new_user.py
 """
@@ -43,6 +45,13 @@ async def text(page, sel):
     return ((await el.text_content()) or "").strip() if el else None
 
 
+async def goto_workspace(page):
+    # Skip the WelcomeOverlay wipe so the wizard opens immediately.
+    await page.evaluate("() => sessionStorage.removeItem('justLoggedIn')")
+    await page.goto(f"{BASE}/workspace", wait_until="networkidle")
+    await page.wait_for_timeout(2500)
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -60,42 +69,79 @@ async def main():
         check("New (unpaid) user redirected to subscription gate",
               "subscription-expired" in page.url, page.url)
 
-        # 2. Grant access and enter the workspace
+        # 2. Grant access and enter the workspace → wizard auto-opens
         check("Grant subscription access via DB", grant_access(EMAIL))
-        await page.evaluate("() => localStorage.setItem('onboarding_completed','true')")
-        await page.goto(f"{BASE}/workspace", wait_until="networkidle")
-        await page.wait_for_timeout(3000)
+        await goto_workspace(page)
 
-        check("Compact activation card visible", await page.query_selector(".actc") is not None)
-        check("Counter starts at 1/4", await text(page, ".actc-counter") == "1/4",
-              await text(page, ".actc-counter"))
-        inds = await page.query_selector_all(".actc-ind")
-        check("Ark UI stepper renders 4 indicators", len(inds) == 4, f"{len(inds)} found")
-        check("Shows current step = connect phone",
-              "טלפון" in (await text(page, ".actc-current-label") or ""),
-              await text(page, ".actc-current-label"))
-        await page.screenshot(path="/home/roygi/test/e2e_v2_step1.png")
+        check("Setup wizard auto-opens for a fresh user",
+              await page.query_selector(".spm-overlay") is not None)
+        steps = await page.query_selector_all(".spm-step")
+        check("Wizard renders 4 steps", len(steps) == 4, f"{len(steps)} found")
+        check("Counter starts at 0/4", await text(page, ".spm-progress-label") == "0/4",
+              await text(page, ".spm-progress-label"))
+        check("First incomplete step = install PC (worker)",
+              "התקינו את המחשב" in (await text(page, ".spm-step--active .spm-step-title") or ""),
+              await text(page, ".spm-step--active .spm-step-title"))
+        await page.screenshot(path="/home/roygi/test/e2e_v3_step1.png")
 
-        # 3. Step phone: generate token via modal → ticks to 2/4
-        await page.click(".actc-cta")
+        # 3. Phone step: open PhoneForwardModal from the wizard → tick to 1/4
+        await page.click(".spm-step:nth-child(2) .spm-step-head")
+        await page.wait_for_timeout(600)
+        await page.click(".spm-step:nth-child(2) .spm-cta")
         await page.wait_for_timeout(1200)
-        check("PhoneForwardModal opens from card", await page.query_selector(".pf-overlay") is not None)
+        check("PhoneForwardModal stacks above the wizard",
+              await page.query_selector(".pf-overlay") is not None)
         gen = await page.query_selector("text=צור כתובת מאובטחת")
         if gen:
             await gen.click(); await page.wait_for_timeout(2000)
         close_btn = await page.query_selector(".pf-overlay .pf-close, .pf-overlay [aria-label='סגור']")
         if close_btn: await close_btn.click()
         else: await page.keyboard.press("Escape")
-        await page.wait_for_timeout(1500)
-        check("Step ticks to 2/4 after phone connected", await text(page, ".actc-counter") == "2/4",
-              await text(page, ".actc-counter"))
-        check("Current step advances to add-portal",
-              "פורטל" in (await text(page, ".actc-current-label") or ""),
-              await text(page, ".actc-current-label"))
-        await page.screenshot(path="/home/roygi/test/e2e_v2_step2.png")
+        await page.wait_for_timeout(1800)
+        check("Step ticks live to 1/4 after phone connected",
+              await text(page, ".spm-progress-label") == "1/4",
+              await text(page, ".spm-progress-label"))
+        done = await page.query_selector_all(".spm-step--done")
+        check("Phone step marked done", len(done) == 1, f"{len(done)} done")
+        await page.screenshot(path="/home/roygi/test/e2e_v3_step2.png")
 
-        # 4. Step portal: add a credential → ticks to 3/4
-        await page.click(".actc-cta")
+        # 4. Close wizard → slim progress card remains on home
+        await page.click(".spm-close")
+        await page.wait_for_timeout(800)
+        check("Slim progress card visible after closing wizard",
+              await page.query_selector(".spc") is not None)
+        check("Card shows 1/4", await text(page, ".spc-ring-label") == "1/4",
+              await text(page, ".spc-ring-label"))
+        check("Card names the next step",
+              "התקינו את המחשב" in (await text(page, ".spc-next") or ""),
+              await text(page, ".spc-next"))
+        await page.screenshot(path="/home/roygi/test/e2e_v3_card.png")
+
+        # 5. Reload → wizard auto-opens again (incomplete + card not closed)
+        await goto_workspace(page)
+        check("Wizard re-opens on next entry while setup incomplete",
+              await page.query_selector(".spm-overlay") is not None)
+        await page.click(".spm-close")
+        await page.wait_for_timeout(600)
+
+        # 6. ✕ the card → bell reminder is the way back, opens the wizard
+        await page.click(".spc-close")
+        await page.wait_for_timeout(800)
+        check("Card hidden after ✕", await page.query_selector(".spc") is None)
+        bell = await page.query_selector(".ws-bell-anchor button, [class*='bell'] button, button[aria-label*='התראות']")
+        if bell:
+            await bell.click(); await page.wait_for_timeout(800)
+        reminder = await page.query_selector("text=השלם את הפעלת האוטומציה")
+        check("Bell reminder present while setup incomplete", reminder is not None)
+        cont = await page.query_selector("text=המשך הגדרה")
+        if cont:
+            await cont.click(); await page.wait_for_timeout(1200)
+        check("Bell reopens the wizard", await page.query_selector(".spm-overlay") is not None)
+
+        # 7. Portal step deep-link: CTA closes wizard → automation tab + add modal
+        await page.click(".spm-step:nth-child(3) .spm-step-head")
+        await page.wait_for_timeout(600)
+        await page.click(".spm-step:nth-child(3) .spm-cta")
         await page.wait_for_timeout(2000)
         check("Add-credential modal auto-opens on automation tab",
               await page.query_selector("select") is not None)
@@ -105,35 +151,52 @@ async def main():
         await page.fill('input[type="password"]', "e2e_pass")
         await page.click("button.btn-primary")
         await page.wait_for_timeout(2000)
-        await page.goto(f"{BASE}/workspace", wait_until="networkidle")
-        await page.wait_for_timeout(2500)
-        # NB: this is the 2nd workspace entry — but the card was NOT closed, only
-        # navigated; show-once means it stays hidden now. Verify via the bell reminder.
-        seen_hidden = await page.query_selector(".actc") is None
-        check("Show-once: card hidden on 2nd entry (not finished)", seen_hidden)
 
-        # 5. Bell reminder exists and reopens the card
+        # 8. Card was ✕-closed earlier → wizard must NOT auto-open anymore;
+        #    the bell reminder is the way back in.
+        await goto_workspace(page)
+        check("Wizard does not auto-open after card was closed",
+              await page.query_selector(".spm-overlay") is None)
         bell = await page.query_selector(".ws-bell-anchor button, [class*='bell'] button, button[aria-label*='התראות']")
         if bell:
             await bell.click(); await page.wait_for_timeout(800)
-        reminder = await page.query_selector("text=השלם את הפעלת האוטומציה")
-        check("Bell reminder present while setup incomplete", reminder is not None)
         cont = await page.query_selector("text=המשך הגדרה")
         if cont:
-            await cont.click(); await page.wait_for_timeout(1500)
-        check("Bell 'המשך הגדרה' reopens the card", await page.query_selector(".actc") is not None)
-        check("Reopened card shows 3/4", await text(page, ".actc-counter") == "3/4",
-              await text(page, ".actc-counter"))
-        check("Current step is run-automation",
-              "הרץ" in (await text(page, ".actc-current-label") or ""),
-              await text(page, ".actc-current-label"))
-        await page.screenshot(path="/home/roygi/test/e2e_v2_step3.png")
+            await cont.click(); await page.wait_for_timeout(1200)
+        await page.wait_for_selector(".spm-overlay", timeout=8000)
+        check("Wizard shows 2/4 after portal added",
+              await text(page, ".spm-progress-label") == "2/4",
+              await text(page, ".spm-progress-label"))
+        await page.screenshot(path="/home/roygi/test/e2e_v3_step3.png")
 
-        # 6. Run step routes to the 1-click run-all bar
-        await page.click(".actc-cta")
+        # 9. Run step CTA routes to the 1-click run-all bar
+        await page.click(".spm-step:nth-child(4) .spm-step-head")
+        await page.wait_for_timeout(600)
+        await page.click(".spm-step:nth-child(4) .spm-cta")
         await page.wait_for_timeout(2000)
         check("Run step routes to the run-all bar",
               await page.query_selector("text=הורדה אוטומטית מכל החברות") is not None)
+
+        # 10. Comparison tab empty state: guide copy + deep-link back into wizard
+        await page.goto(f"{BASE}/workspace", wait_until="networkidle")
+        await page.wait_for_timeout(1500)
+        if await page.query_selector(".spm-overlay"):
+            await page.click(".spm-close")
+            await page.wait_for_timeout(500)
+        tab = await page.query_selector("text=השוואת נפרעים")
+        if tab:
+            await tab.click(); await page.wait_for_timeout(1500)
+        guide = await page.query_selector(".esg--full")
+        check("Comparison empty state shows the guide",
+              guide is not None and "ההורדה האוטומטית ממלאת" in ((await guide.text_content()) or ""))
+        cta = await page.query_selector(".esg--full .esg-cta")
+        if cta:
+            await cta.click(); await page.wait_for_timeout(1000)
+        check("Empty-state CTA opens the wizard at the run step",
+              await page.query_selector(".spm-overlay") is not None and
+              "הריצו" in (await text(page, ".spm-step--active .spm-step-title") or ""),
+              await text(page, ".spm-step--active .spm-step-title"))
+        await page.screenshot(path="/home/roygi/test/e2e_v3_empty_state.png")
 
         check("No console/page errors during journey", len(ERRORS) == 0, "; ".join(ERRORS[:3]))
         await browser.close()

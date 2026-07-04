@@ -3,147 +3,133 @@
     <Transition name="email-modal">
       <div v-if="open" class="es-overlay" @click.self="close" @keydown.escape="close">
         <div class="es-card" role="dialog" aria-labelledby="es-title">
-          <div class="es-head">
-            <div class="es-head-left">
-              <svg class="es-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
-              </svg>
-              <h3 id="es-title">הגדרות חשבון</h3>
+          <button class="es-close" @click="close" aria-label="סגור">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          <!-- ── Account hero ── -->
+          <header class="es-hero">
+            <div class="es-hero-glow" aria-hidden="true"></div>
+            <div class="es-hero-row">
+              <div class="es-avatar" :style="{ background: avatarBg }">{{ avatarLetter }}</div>
+              <div class="es-hero-text" v-if="auth.user">
+                <h3 id="es-title" class="es-hero-name">{{ auth.user.full_name || auth.user.email }}</h3>
+                <span v-if="auth.user.full_name && auth.user.email" class="es-hero-email ltr-number">{{ auth.user.email }}</span>
+                <div class="es-hero-meta">
+                  <span v-if="auth.user.role" class="es-hero-role">{{ roleLabel(auth.user.role) }}</span>
+                  <span v-if="subStore.status" class="es-status-pill" :class="subStatus.cls">{{ subStatus.label }}</span>
+                </div>
+              </div>
             </div>
-            <button class="es-close" @click="close" aria-label="סגור">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
+          </header>
 
-          <div class="es-body">
-            <!-- ── Account / user ── -->
-            <section v-if="auth.user" class="es-section">
-              <div class="es-user-card">
-                <div class="es-avatar" :style="{ background: avatarBg }">{{ avatarLetter }}</div>
-                <div class="es-user-text">
-                  <span class="es-user-name">{{ auth.user.full_name || auth.user.email }}</span>
-                  <span v-if="auth.user.full_name && auth.user.email" class="es-user-email ltr-number">{{ auth.user.email }}</span>
-                  <span v-if="auth.user.role" class="es-user-role">{{ roleLabel(auth.user.role) }}</span>
-                </div>
-              </div>
-            </section>
-
-            <!-- ── Subscription ── -->
-            <section v-if="subStore.status" class="es-section">
-              <header class="es-section-head">
-                <span class="es-section-label">מנוי</span>
-                <span class="es-status-pill" :class="subStore.status.status">{{ subStatusLabel }}</span>
-              </header>
-              <div class="es-sub-card">
-                <div class="es-sub-row">
-                  <span class="es-sub-label">מסלול</span>
-                  <span class="es-sub-value">{{ subStore.status.plan === 'monthly' ? 'חודשי' : 'שנתי' }}</span>
-                </div>
-                <div v-if="subStore.status.next_charge_at" class="es-sub-row">
-                  <span class="es-sub-label">חיוב הבא</span>
-                  <span class="es-sub-value ltr-number">{{ formatDate(subStore.status.next_charge_at) }}</span>
-                </div>
-                <div v-else-if="subStore.status.expires_at" class="es-sub-row">
-                  <span class="es-sub-label">בתוקף עד</span>
-                  <span class="es-sub-value ltr-number">{{ formatDate(subStore.status.expires_at) }}</span>
-                </div>
-                <div v-if="subStore.status.last4_digits" class="es-sub-row">
-                  <span class="es-sub-label">כרטיס</span>
-                  <span class="es-sub-value ltr-number">****{{ subStore.status.last4_digits }}</span>
-                </div>
-                <button
-                  v-if="subStore.status.status === 'active'"
-                  class="es-cancel"
-                  @click="showCancelConfirm = true"
-                >
-                  ביטול מנוי
-                </button>
-              </div>
-            </section>
-
-            <!-- ── Phone-forward OTP automation ── -->
-            <section class="es-section">
-              <header class="es-section-head">
-                <span class="es-section-label">העברת SMS אוטומטית</span>
-              </header>
-              <p class="es-help">
-                כשפורטל ביטוח שולח קוד אימות לטלפון שלך — הטלפון מעביר אותו למערכת אוטומטית
-                והאוטומציה ממשיכה בלי שתצטרך להזין כלום.
-              </p>
-              <button class="es-pf-btn" @click="phoneForwardOpen = true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                  <line x1="12" y1="18" x2="12.01" y2="18"/>
-                </svg>
-                <span>הגדרת העברת SMS</span>
-                <svg class="es-pf-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
+          <!-- ── Tabbed body: rail (right in RTL) + content ── -->
+          <div class="es-shell">
+            <nav class="es-rail" aria-label="הגדרות">
+              <button
+                v-for="t in tabs"
+                :key="t.id"
+                class="es-rail-btn"
+                :class="{ active: activeTab === t.id }"
+                :style="activeTab === t.id ? { '--accent': t.accent, '--deep': t.deep, '--soft': t.soft } : { '--accent': t.accent }"
+                @click="activeTab = t.id"
+              >
+                <span class="es-rail-ico" v-html="t.icon"></span>
+                <span class="es-rail-label">{{ t.label }}</span>
               </button>
-            </section>
+            </nav>
 
-            <!-- ── Worker (local PC) — permanent download entry ── -->
-            <section class="es-section">
-              <header class="es-section-head">
-                <span class="es-section-label">חיבור המחשב</span>
-                <span class="es-worker-pill" :class="workerOnline ? 'on' : 'off'">
-                  <span class="es-worker-dot"></span>{{ workerOnline ? 'מחובר' : 'לא מחובר' }}
-                </span>
-              </header>
-              <p class="es-help">
-                ההורדות רצות ישירות מהמחשב שלך (כתובת IP ישראלית) כדי שכל החברות יעבדו.
-                התקנה חד-פעמית — מורידים את הקובץ ולוחצים עליו פעמיים.
-              </p>
-              <button class="es-pf-btn" :disabled="workerDownloading" @click="downloadWorkerInstaller">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M12 7v6M9 10l3 3 3-3"/>
-                </svg>
-                <span>{{ workerDownloading ? 'מוריד…' : 'הורדת תוכנת החיבור' }}</span>
-                <svg v-if="!workerDownloading" class="es-pf-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 3v12"/><path d="m7 10 5 5 5-5"/>
-                </svg>
-                <span v-else class="es-spinner es-spinner--dark"></span>
-              </button>
-              <p v-if="workerHint" class="es-worker-hint">{{ workerHint }}</p>
-            </section>
+            <div class="es-content" :style="{ '--accent': tab.accent, '--deep': tab.deep, '--soft': tab.soft, '--tint': tab.tint }">
+              <!-- מנוי -->
+              <section v-if="activeTab === 'subscription'" class="es-pane">
+                <h4 class="es-pane-title">מנוי</h4>
+                <div v-if="subStore.status" class="es-panel">
+                  <div class="es-row">
+                    <span class="es-row-label">מסלול</span>
+                    <span class="es-row-value">{{ subStore.status.plan === 'monthly' ? 'חודשי' : subStore.status.plan === 'yearly' ? 'שנתי' : (subStore.status.plan || '—') }}</span>
+                  </div>
+                  <div class="es-row">
+                    <span class="es-row-label">סטטוס</span>
+                    <span class="es-status-pill" :class="subStatus.cls">{{ subStatus.label }}</span>
+                  </div>
+                  <div v-if="subStore.status.next_charge_at" class="es-row">
+                    <span class="es-row-label">חיוב הבא</span>
+                    <span class="es-row-value ltr-number">{{ formatDate(subStore.status.next_charge_at) }}</span>
+                  </div>
+                  <div v-else-if="subStore.status.expires_at" class="es-row">
+                    <span class="es-row-label">בתוקף עד</span>
+                    <span class="es-row-value ltr-number">{{ formatDate(subStore.status.expires_at) }}</span>
+                  </div>
+                  <div v-if="subStore.status.last4_digits" class="es-row">
+                    <span class="es-row-label">כרטיס</span>
+                    <span class="es-row-value ltr-number">****{{ subStore.status.last4_digits }}</span>
+                  </div>
+                  <button v-if="subStore.status.status === 'active'" class="es-cancel" @click="showCancelConfirm = true">ביטול מנוי</button>
+                </div>
+                <div v-else class="es-empty">אין כרגע מידע על מנוי בחשבון הזה.</div>
+              </section>
 
-            <!-- ── Email provider ── -->
-            <section class="es-section">
-              <header class="es-section-head">
-                <span class="es-section-label">ספק דוא"ל</span>
-              </header>
-              <p class="es-help">
-                איפה ייפתח טופס חיבור-מייל כשתשלחו הודעה ללקוח או לחברה.
-                ההגדרה נשמרת על הדפדפן הזה בלבד.
-              </p>
-              <div class="es-options">
-                <label
-                  v-for="opt in options"
-                  :key="opt.value"
-                  class="es-option"
-                  :class="{ selected: provider === opt.value }"
-                >
-                  <input
-                    type="radio"
-                    name="email-provider"
-                    :value="opt.value"
-                    :checked="provider === opt.value"
-                    @change="onChange(opt.value)"
-                  />
-                  <span class="es-option-radio" aria-hidden="true">
-                    <span class="es-option-dot" />
-                  </span>
-                  <span class="es-option-text">
-                    <span class="es-option-label">{{ opt.label }}</span>
-                    <span class="es-option-desc">{{ opt.desc }}</span>
-                  </span>
-                </label>
-              </div>
-            </section>
+              <!-- אוטומציה -->
+              <section v-else-if="activeTab === 'automation'" class="es-pane">
+                <h4 class="es-pane-title">אוטומציה</h4>
+
+                <div class="es-block">
+                  <div class="es-block-head">
+                    <span class="es-block-label">העברת SMS אוטומטית</span>
+                  </div>
+                  <p class="es-help">כשפורטל ביטוח שולח קוד אימות לטלפון שלך — הטלפון מעביר אותו למערכת אוטומטית וההורדות ממשיכות בלי הקלדה.</p>
+                  <button class="es-action" @click="phoneForwardOpen = true">
+                    <span class="es-action-ico">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+                    </span>
+                    <span class="es-action-txt">הגדרת העברת SMS</span>
+                    <svg class="es-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                </div>
+
+                <div class="es-block">
+                  <div class="es-block-head">
+                    <span class="es-block-label">חיבור המחשב</span>
+                    <span class="es-worker-pill" :class="workerOnline ? 'on' : 'off'">
+                      <span class="es-worker-dot"></span>{{ workerOnline ? 'מחובר' : 'לא מחובר' }}
+                    </span>
+                  </div>
+                  <p class="es-help">ההורדות רצות ישירות מהמחשב שלך (כתובת IP ישראלית) כדי שכל החברות יעבדו. התקנה חד-פעמית.</p>
+                  <button class="es-action" :disabled="workerDownloading" @click="downloadWorkerInstaller">
+                    <span class="es-action-ico">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                    </span>
+                    <span class="es-action-txt">{{ workerDownloading ? 'מוריד…' : 'הורדת תוכנת החיבור' }}</span>
+                    <span v-if="workerDownloading" class="es-spinner es-spinner--accent"></span>
+                    <svg v-else class="es-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <p v-if="workerHint" class="es-worker-hint">{{ workerHint }}</p>
+                </div>
+              </section>
+
+              <!-- דוא"ל -->
+              <section v-else class="es-pane">
+                <h4 class="es-pane-title">ספק דוא"ל</h4>
+                <p class="es-help">איפה ייפתח טופס חיבור-מייל כשתשלחו הודעה ללקוח או לחברה. ההגדרה נשמרת על הדפדפן הזה בלבד.</p>
+                <div class="es-options">
+                  <label
+                    v-for="opt in options"
+                    :key="opt.value"
+                    class="es-option"
+                    :class="{ selected: provider === opt.value }"
+                  >
+                    <input type="radio" name="email-provider" :value="opt.value" :checked="provider === opt.value" @change="onChange(opt.value)" />
+                    <span class="es-option-radio" aria-hidden="true"><span class="es-option-dot" /></span>
+                    <span class="es-option-text">
+                      <span class="es-option-label">{{ opt.label }}</span>
+                      <span class="es-option-desc">{{ opt.desc }}</span>
+                    </span>
+                  </label>
+                </div>
+              </section>
+            </div>
           </div>
 
           <div class="es-footer">
@@ -191,6 +177,18 @@ const emit = defineEmits(['update:open'])
 const auth = useAuthStore()
 const subStore = useSubscriptionStore()
 const portalStore = usePortalAutomationStore()
+
+// ── Tabs ──
+const tabs = [
+  { id: 'subscription', label: 'מנוי', accent: '#1FA88C', deep: '#0E7A64', soft: '#E4F5F0', tint: '#F3FBF8',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><line x1="2" y1="10" x2="22" y2="10"/></svg>' },
+  { id: 'automation', label: 'אוטומציה', accent: '#4E9DD0', deep: '#2C6E9E', soft: '#E7F2FA', tint: '#F5FAFD',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>' },
+  { id: 'email', label: 'דוא"ל', accent: '#5B6EE1', deep: '#3A4BC0', soft: '#EAECFB', tint: '#F6F7FE',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="m3 6 9 7 9-7"/></svg>' },
+]
+const activeTab = ref('automation')
+const tab = computed(() => tabs.find((t) => t.id === activeTab.value) || tabs[1])
 
 // ── Worker install (permanent download entry) ──
 const workerDownloading = ref(false)
@@ -250,16 +248,16 @@ const avatarLetter = computed(() => {
   const name = auth.user?.full_name || auth.user?.email || ''
   return name.trim().charAt(0).toUpperCase() || '?'
 })
-// Deterministic warm-palette tint based on the user's name. Stays consistent
+// Deterministic cool-palette tint based on the user's name. Stays consistent
 // across reloads, gives the modal a touch of personality without an upload.
 const avatarBg = computed(() => {
   const seed = (auth.user?.full_name || auth.user?.email || '0').split('')
     .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
   const palette = [
-    'linear-gradient(135deg, #F57C00, #E65100)',
-    'linear-gradient(135deg, #FF9800, #E8720A)',
-    'linear-gradient(135deg, #E8720A, #181818)',
-    'linear-gradient(135deg, #E65100, #181818)',
+    'linear-gradient(135deg, #8E6FD6, #5F429F)',
+    'linear-gradient(135deg, #4E9DD0, #2C6E9E)',
+    'linear-gradient(135deg, #1FA88C, #0E7A64)',
+    'linear-gradient(135deg, #5B6EE1, #3A4BC0)',
   ]
   return palette[seed % palette.length]
 })
@@ -269,13 +267,21 @@ function roleLabel(role) {
   return role
 }
 
-// ── Subscription ──
-const subStatusLabel = computed(() => {
-  const s = subStore.status?.status
-  if (s === 'active') return 'פעיל'
-  if (s === 'cancelled') return 'מבוטל'
-  if (s === 'expired') return 'פג תוקף'
-  return s || ''
+// ── Subscription status → friendly label + pill class (unknown → neutral) ──
+const SUB_STATUS = {
+  active:    { label: 'פעיל',           cls: 'active' },
+  trialing:  { label: 'תקופת ניסיון',   cls: 'trial' },
+  trial:     { label: 'תקופת ניסיון',   cls: 'trial' },
+  past_due:  { label: 'תשלום ממתין',    cls: 'warn' },
+  cancelled: { label: 'מבוטל',          cls: 'ended' },
+  canceled:  { label: 'מבוטל',          cls: 'ended' },
+  expired:   { label: 'פג תוקף',        cls: 'ended' },
+  none:      { label: 'ללא מנוי פעיל',  cls: 'neutral' },
+  inactive:  { label: 'ללא מנוי פעיל',  cls: 'neutral' },
+}
+const subStatus = computed(() => {
+  const key = String(subStore.status?.status || '').toLowerCase()
+  return SUB_STATUS[key] || { label: 'ללא מנוי פעיל', cls: 'neutral' }
 })
 function formatDate(iso) {
   if (!iso) return ''
@@ -313,388 +319,298 @@ watch(() => props.open, (now) => {
   position: fixed;
   inset: 0;
   z-index: 1100;
-  background: rgba(45, 37, 34, 0.45);
+  background: rgba(24, 24, 24, 0.5);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 14vh;
+  padding-top: 11vh;
   font-family: 'Heebo', sans-serif;
   direction: rtl;
 }
 
 .es-card {
-  width: min(480px, 92vw);
+  position: relative;
+  width: min(580px, 94vw);
   background: #FFFFFF;
-  border-radius: 14px;
-  box-shadow:
-    0 28px 56px rgba(45, 37, 34, 0.30),
-    0 4px 12px rgba(45, 37, 34, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 30px 64px rgba(24, 24, 24, 0.32), 0 4px 12px rgba(24, 24, 24, 0.10);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-
-.es-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid rgba(45, 37, 34, 0.06);
-}
-.es-head-left { display: flex; align-items: center; gap: 10px; }
-.es-icon { color: #E8720A; flex-shrink: 0; }
-.es-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: #181818; }
 .es-close {
+  position: absolute;
+  top: 14px; left: 14px;
+  z-index: 3;
   display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px;
+  width: 32px; height: 32px;
   border: none;
-  background: rgba(45, 37, 34, 0.05);
-  color: rgba(45, 37, 34, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
   border-radius: 50%;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.es-close:hover { background: rgba(232, 114, 10, 0.10); color: #E8720A; }
-
-.es-body {
-  padding: 14px 16px 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-.es-section { display: flex; flex-direction: column; gap: 10px; }
-.es-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
-}
-.es-section-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(45, 37, 34, 0.55);
-}
-
-/* ── User card ── */
-.es-user-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  background: linear-gradient(160deg, #FBF4ED 0%, #FFFFFF 100%);
-  border: 1px solid rgba(232, 114, 10, 0.10);
-  border-radius: 12px;
-}
-.es-avatar {
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 19px;
-  font-weight: 800;
-  color: #FFFFFF;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-  box-shadow: 0 6px 18px rgba(232, 114, 10, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.30);
-}
-.es-user-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.es-user-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #181818;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.es-user-email {
-  font-size: 12px;
-  color: rgba(45, 37, 34, 0.55);
-  direction: ltr;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.es-user-role {
-  font-size: 11px;
-  font-weight: 700;
-  color: #E8720A;
-  margin-top: 4px;
-  letter-spacing: 0.02em;
-}
-
-/* ── Subscription card ── */
-.es-sub-card {
-  background: linear-gradient(160deg, #FBF4ED 0%, #FFFFFF 100%);
-  border: 1px solid rgba(232, 114, 10, 0.10);
-  border-radius: 12px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.es-sub-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  padding: 4px 0;
-  border-bottom: 1px dashed rgba(45, 37, 34, 0.06);
-}
-.es-sub-row:last-of-type { border-bottom: none; }
-.es-sub-label { color: rgba(45, 37, 34, 0.55); }
-.es-sub-value { font-weight: 700; color: #181818; }
-
-.es-status-pill {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  letter-spacing: 0.02em;
-}
-.es-status-pill.active    { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
-.es-status-pill.cancelled,
-.es-status-pill.expired   { background: rgba(194, 57, 52, 0.12); color: #C23934; }
-
-.es-cancel {
-  align-self: flex-start;
-  margin-top: 4px;
-  background: transparent;
-  border: 1px solid rgba(194, 57, 52, 0.4);
-  color: #C23934;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 14px;
-  border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.es-cancel:hover { background: rgba(194, 57, 52, 0.10); }
+.es-close:hover { background: rgba(255, 255, 255, 0.32); }
 
-.es-help {
-  margin: 0 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: rgba(45, 37, 34, 0.6);
+/* ── Hero ── */
+.es-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 24px;
+  background: linear-gradient(120deg, #5F429F 0%, #4E6BD0 52%, #2C6E9E 100%);
 }
-
-.es-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0;
-}
-
-.es-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  background: linear-gradient(160deg, #FBF4ED 0%, #FFFFFF 100%);
-  border: 1px solid rgba(45, 37, 34, 0.08);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-.es-option:hover { border-color: rgba(232, 114, 10, 0.30); }
-.es-option.selected {
-  border-color: #E8720A;
-  background: linear-gradient(160deg, #FFF1E5 0%, #FFFFFF 100%);
-  box-shadow: 0 4px 12px rgba(232, 114, 10, 0.10);
-}
-.es-option input[type="radio"] {
+.es-hero-glow {
   position: absolute;
-  opacity: 0;
+  top: -60%; left: -10%;
+  width: 60%; height: 220%;
+  background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 70%);
   pointer-events: none;
 }
-
-.es-option-radio {
-  width: 18px;
-  height: 18px;
+.es-hero-row { position: relative; display: flex; align-items: center; gap: 15px; }
+.es-avatar {
+  width: 56px; height: 56px;
   border-radius: 50%;
-  border: 2px solid rgba(45, 37, 34, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800; color: #fff;
   flex-shrink: 0;
-  margin-top: 2px;
-  transition: border-color 0.15s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.6);
 }
-.es-option.selected .es-option-radio { border-color: #E8720A; }
-
-.es-option-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #E8720A;
-  transform: scale(0);
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+.es-hero-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.es-hero-name { margin: 0; font-size: 18px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; }
+.es-hero-email { font-size: 12.5px; color: rgba(255, 255, 255, 0.82); direction: ltr; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.es-hero-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.es-hero-role {
+  font-size: 11px; font-weight: 700; color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px; padding: 3px 10px;
 }
-.es-option.selected .es-option-dot { transform: scale(1); }
 
-.es-pf-btn {
+/* ── Shell: rail + content ── */
+.es-shell {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  min-height: 292px;
+  max-height: 60vh;
+}
+.es-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 10px;
+  background: #FAFAFB;
+  border-inline-end: 1px solid rgba(24, 24, 24, 0.06);
+}
+.es-rail-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 12px 14px;
-  background: linear-gradient(160deg, #FBF4ED 0%, #FFFFFF 100%);
-  border: 1px solid rgba(232, 114, 10, 0.18);
-  border-radius: 10px;
-  color: #181818;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-secondary, #55524E);
   font-family: inherit;
   font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-.es-pf-btn:hover {
-  border-color: #E8720A;
-  background: linear-gradient(160deg, #FFF1E5 0%, #FFFFFF 100%);
-  box-shadow: 0 4px 12px rgba(232, 114, 10, 0.10);
-}
-.es-pf-btn svg:first-of-type { color: #E8720A; flex-shrink: 0; }
-.es-pf-btn span { flex: 1; text-align: right; }
-.es-pf-arrow { color: rgba(45, 37, 34, 0.4); flex-shrink: 0; transform: scaleX(-1); }
-
-/* ── Worker connection status pill + hint ── */
-.es-worker-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.es-worker-pill.on  { background: rgba(46, 132, 74, 0.12); color: #2E844A; }
-.es-worker-pill.off { background: rgba(45, 37, 34, 0.08); color: rgba(45, 37, 34, 0.55); }
-.es-worker-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.es-worker-pill.on .es-worker-dot { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5); animation: es-worker-pulse 1.8s ease-out infinite; }
-@keyframes es-worker-pulse {
-  70%  { box-shadow: 0 0 0 6px rgba(46, 132, 74, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0); }
+.es-rail-btn:hover { background: rgba(24, 24, 24, 0.04); }
+.es-rail-btn.active {
+  background: var(--soft);
+  color: var(--deep);
 }
-.es-worker-hint {
-  margin: 0 4px;
-  font-size: 12px;
-  line-height: 1.55;
-  color: #2E844A;
-  background: rgba(46, 132, 74, 0.08);
-  border-radius: 8px;
-  padding: 8px 11px;
+.es-rail-ico { display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
+.es-rail-btn:not(.active) .es-rail-ico { color: rgba(24, 24, 24, 0.4); }
+.es-rail-label { flex: 1; text-align: start; }
+
+.es-content {
+  padding: 20px 22px 8px;
+  overflow-y: auto;
 }
-.es-spinner--dark {
-  border-color: rgba(232, 114, 10, 0.3);
-  border-top-color: #E8720A;
-  flex-shrink: 0;
+.es-pane { display: flex; flex-direction: column; gap: 14px; }
+.es-pane-title { margin: 0; font-size: 16px; font-weight: 800; color: #181818; }
+.es-pane-title::before {
+  content: '';
+  display: inline-block;
+  width: 9px; height: 9px;
+  border-radius: 3px;
+  background: var(--accent);
+  margin-inline-end: 8px;
+  vertical-align: middle;
 }
 
+.es-help { margin: 0; font-size: 12.5px; line-height: 1.6; color: rgba(24, 24, 24, 0.58); }
+
+/* Subscription panel */
+.es-panel {
+  background: var(--tint);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 14px;
+  padding: 12px 15px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.es-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; padding: 6px 0;
+  border-bottom: 1px dashed rgba(24, 24, 24, 0.08);
+}
+.es-row:last-of-type { border-bottom: none; }
+.es-row-label { color: rgba(24, 24, 24, 0.5); }
+.es-row-value { font-weight: 700; color: #181818; }
+.es-empty {
+  font-size: 13px; color: rgba(24, 24, 24, 0.5);
+  background: #FAFAFB; border: 1px dashed rgba(24, 24, 24, 0.12);
+  border-radius: 12px; padding: 18px; text-align: center;
+}
+.es-cancel {
+  align-self: flex-start; margin-top: 6px;
+  background: transparent; border: 1px solid rgba(194, 57, 52, 0.4);
+  color: #C23934; font-family: inherit; font-size: 12px; font-weight: 700;
+  padding: 6px 14px; border-radius: 8px; cursor: pointer; transition: background 0.15s ease;
+}
+.es-cancel:hover { background: rgba(194, 57, 52, 0.1); }
+
+/* Status pill */
+.es-status-pill {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.02em;
+}
+.es-status-pill.active  { background: rgba(31, 168, 140, 0.16); color: #0E7A64; }
+.es-status-pill.trial   { background: rgba(78, 157, 208, 0.16); color: #2C6E9E; }
+.es-status-pill.warn    { background: rgba(214, 158, 46, 0.18); color: #9A6B12; }
+.es-status-pill.ended   { background: rgba(194, 57, 52, 0.14); color: #C23934; }
+.es-status-pill.neutral { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.es-panel .es-status-pill.neutral { background: rgba(24, 24, 24, 0.08); color: rgba(24, 24, 24, 0.55); }
+
+/* Automation blocks */
+.es-block { display: flex; flex-direction: column; gap: 9px; }
+.es-block + .es-block { margin-top: 14px; padding-top: 16px; border-top: 1px solid rgba(24, 24, 24, 0.07); }
+.es-block-head { display: flex; align-items: center; gap: 8px; }
+.es-block-label { font-size: 13px; font-weight: 800; color: #181818; }
+.es-block-head .es-worker-pill { margin-inline-start: auto; }
+
+.es-action {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 12px 14px;
+  background: var(--tint);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 13px; color: #181818;
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.es-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 20%, transparent);
+  transform: translateY(-1px);
+}
+.es-action:disabled { opacity: 0.6; cursor: default; }
+.es-action-ico {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: 9px; background: var(--soft); color: var(--deep); flex-shrink: 0;
+}
+.es-action-txt { flex: 1; text-align: right; }
+.es-action-arrow { color: color-mix(in srgb, var(--accent) 65%, #706E6B); flex-shrink: 0; transform: scaleX(-1); }
+
+.es-worker-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.02em;
+}
+.es-worker-pill.on  { background: rgba(31, 168, 140, 0.14); color: #0E7A64; }
+.es-worker-pill.off { background: rgba(24, 24, 24, 0.07); color: rgba(24, 24, 24, 0.5); }
+.es-worker-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.es-worker-pill.on .es-worker-dot { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0.5); animation: es-worker-pulse 1.8s ease-out infinite; }
+@keyframes es-worker-pulse { 70% { box-shadow: 0 0 0 6px rgba(31, 168, 140, 0); } 100% { box-shadow: 0 0 0 0 rgba(31, 168, 140, 0); } }
+.es-worker-hint {
+  margin: 0; font-size: 12px; line-height: 1.55; color: var(--deep);
+  background: var(--soft); border-radius: 9px; padding: 8px 11px;
+}
+.es-spinner--accent { border-color: color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); flex-shrink: 0; }
+
+/* Email options */
+.es-options { display: flex; flex-direction: column; gap: 8px; }
+.es-option {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
+  background: #FBFAFC; border: 1.5px solid rgba(24, 24, 24, 0.08); border-radius: 12px;
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.es-option:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.es-option.selected {
+  border-color: var(--accent);
+  background: var(--tint);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.es-option input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.es-option-radio {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(24, 24, 24, 0.22);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 2px; transition: border-color 0.15s ease;
+}
+.es-option.selected .es-option-radio { border-color: var(--accent); }
+.es-option-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  transform: scale(0); transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.es-option.selected .es-option-dot { transform: scale(1); }
 .es-option-text { display: flex; flex-direction: column; gap: 2px; }
 .es-option-label { font-size: 14px; font-weight: 700; color: #181818; }
-.es-option-desc  { font-size: 12px; color: rgba(45, 37, 34, 0.6); line-height: 1.5; }
+.es-option-desc  { font-size: 12px; color: rgba(24, 24, 24, 0.55); line-height: 1.5; }
 
+/* Footer */
 .es-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px 18px;
-  border-top: 1px solid rgba(45, 37, 34, 0.06);
-  margin-top: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 22px 16px;
+  border-top: 1px solid rgba(24, 24, 24, 0.06);
 }
 .es-saved {
-  font-size: 12px;
-  font-weight: 700;
-  color: #2E844A;
-  padding: 4px 10px;
-  background: rgba(46, 132, 74, 0.10);
-  border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #0E7A64;
+  padding: 4px 10px; background: rgba(31, 168, 140, 0.12); border-radius: 999px;
   animation: es-saved-fade 0.25s ease;
 }
-@keyframes es-saved-fade {
-  from { opacity: 0; transform: translateY(-2px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+@keyframes es-saved-fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
 .es-done {
   margin-inline-start: auto;
-  background: #E8720A;
-  color: #fff;
-  border: none;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 8px 22px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  background: linear-gradient(135deg, #5B6EE1, #4E9DD0);
+  color: #fff; border: none; font-family: inherit; font-size: 14px; font-weight: 700;
+  padding: 9px 26px; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(91, 110, 225, 0.32);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
-.es-done:hover { background: #E65100; transform: translateY(-1px); }
+.es-done:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(91, 110, 225, 0.4); }
 
-.email-modal-enter-active,
-.email-modal-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
-.email-modal-enter-from,
-.email-modal-leave-to { opacity: 0; transform: translateY(-8px); }
+.email-modal-enter-active, .email-modal-leave-active { transition: opacity 0.2s ease; }
+.email-modal-enter-active .es-card, .email-modal-leave-active .es-card { transition: transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.24s ease; }
+.email-modal-enter-from, .email-modal-leave-to { opacity: 0; }
+.email-modal-enter-from .es-card, .email-modal-leave-to .es-card { opacity: 0; transform: scale(0.95) translateY(-10px); }
 
-/* ── Cancel-subscription confirmation ── */
+/* Cancel-subscription confirmation */
 .es-cancel-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(45, 37, 34, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-  padding: 24px;
-  direction: rtl;
+  position: fixed; inset: 0; background: rgba(24, 24, 24, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1200; padding: 24px; direction: rtl;
 }
 .es-cancel-card {
-  background: #FFFFFF;
-  border-radius: 14px;
-  box-shadow: 0 28px 60px rgba(45, 37, 34, 0.35);
-  padding: 22px;
-  width: min(400px, 92vw);
+  background: #fff; border-radius: 16px; box-shadow: 0 28px 60px rgba(24, 24, 24, 0.35);
+  padding: 24px; width: min(400px, 92vw);
 }
 .es-cancel-card h4 { margin: 0 0 8px; font-size: 17px; color: #181818; }
-.es-cancel-card p  { margin: 0 0 18px; font-size: 13px; color: rgba(45, 37, 34, 0.7); line-height: 1.6; }
+.es-cancel-card p  { margin: 0 0 18px; font-size: 13px; color: rgba(24, 24, 24, 0.65); line-height: 1.6; }
 .es-cancel-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.es-btn-cancel,
-.es-btn-confirm {
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 8px 18px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.es-btn-cancel {
-  background: transparent;
-  border: 1px solid rgba(45, 37, 34, 0.18);
-  color: rgba(45, 37, 34, 0.7);
-}
-.es-btn-confirm {
-  background: #C23934;
-  color: #fff;
-  border: none;
-  min-width: 90px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
+.es-btn-cancel, .es-btn-confirm { font-family: inherit; font-size: 13px; font-weight: 700; padding: 8px 18px; border-radius: 9px; cursor: pointer; }
+.es-btn-cancel { background: transparent; border: 1px solid rgba(24, 24, 24, 0.18); color: rgba(24, 24, 24, 0.65); }
+.es-btn-confirm { background: #C23934; color: #fff; border: none; min-width: 90px; display: inline-flex; align-items: center; justify-content: center; }
 .es-btn-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
-.es-spinner {
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-  animation: es-spin 0.8s linear infinite;
-}
+.es-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; animation: es-spin 0.8s linear infinite; }
 @keyframes es-spin { to { transform: rotate(360deg); } }
+
+/* Responsive: rail becomes a top strip */
+@media (max-width: 560px) {
+  .es-shell { grid-template-columns: 1fr; max-height: none; }
+  .es-rail { flex-direction: row; overflow-x: auto; border-inline-end: none; border-bottom: 1px solid rgba(24,24,24,0.06); }
+  .es-rail-label { white-space: nowrap; }
+}
 </style>
