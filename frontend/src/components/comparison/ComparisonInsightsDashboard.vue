@@ -13,15 +13,6 @@
       @tile-click="onHeroTile"
     />
 
-    <!-- Animated dock — primary entry point for automation, full width -->
-    <div class="reload-strip">
-      <PortalAutomationDock
-        @success="$emit('automation-success', $event)"
-        @batch-done="$emit('batch-done')"
-        @navigate-to-credentials="$emit('navigate-to-credentials')"
-      />
-    </div>
-
     <!-- Two-card grid -->
     <div class="card-grid">
       <InsightBarCard
@@ -73,7 +64,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
 import { shortShekel } from '../../utils/monthDeltas.js'
-import PortalAutomationDock from '../workspace/PortalAutomationDock.vue'
 import CommissionUploader from '../workspace/CommissionUploader.vue'
 import HeroStatusPanel from './HeroStatusPanel.vue'
 import InsightBarCard from './InsightBarCard.vue'
@@ -362,7 +352,6 @@ async function onDrillCustomer({ idNumber, item }) {
   overflow: visible;
 }
 
-.reload-strip { display: flex; flex-direction: column; gap: 8px; overflow: visible; }
 .manual-fallback {
   font-size: 13px;
   color: var(--text-muted);
