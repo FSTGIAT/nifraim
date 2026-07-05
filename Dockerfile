@@ -11,7 +11,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc && \
+    libpq-dev gcc \
+    tesseract-ocr tesseract-ocr-heb poppler-utils && \
     rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./backend/

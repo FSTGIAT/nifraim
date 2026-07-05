@@ -15,6 +15,7 @@ import asyncio
 import base64
 import io
 import logging
+import re
 
 import anthropic
 import pdfplumber
@@ -31,14 +32,64 @@ _MIN_TEXT_LAYER_CHARS = 200
 # Cap how much we forward as a text block to keep the call fast.
 _MAX_TEXT_LAYER_CHARS = 60000
 
+# Rate rows whose product / scope / notes match these markers are NOT ongoing
+# נפרעים commissions — they are one-time scope/היקף grants or Clawback/refund
+# percentages. They must never land in commission_rates (they corrupt the
+# expected-commission math and the reconciliation Tier-3 max()). Belt-and-
+# suspenders on top of the prompt, which already tells the model to keep these
+# out of rates[]. See plan section B.
+_NON_COMMISSION_RE = re.compile(
+    r"היקף|מתפוק|יעדים|מענק\s*גיוס|לכל\s*מיליון|clawback|החזר|קנס|עזב",
+    re.IGNORECASE,
+)
+
+
+# OCR settings for scanned PDFs (no embedded text layer). Hebrew via
+# tesseract-ocr-heb; pdf2image rasterization needs poppler-utils. Both are
+# installed in the Docker image; the imports are guarded so local dev without
+# them still runs (it just skips OCR).
+_OCR_MAX_PAGES = 30
+_OCR_DPI = 200
+
+
+def _ocr_pdf(file_bytes: bytes) -> str:
+    """Rasterize a scanned PDF and OCR it in Hebrew. Returns '' on any failure
+    or when the OCR deps aren't installed. Re-enables the literal-value
+    anti-hallucination guard for scanned agreements (Harel/Meitav/Mor/Phoenix
+    gemel were all textlen=0 → guard was disabled)."""
+    try:
+        import pytesseract
+        from pdf2image import convert_from_bytes
+    except ImportError as e:
+        logger.warning("OCR deps unavailable (%s) — skipping OCR fallback", e)
+        return ""
+    try:
+        images = convert_from_bytes(
+            file_bytes, dpi=_OCR_DPI, fmt="png", last_page=_OCR_MAX_PAGES
+        )
+    except Exception as e:
+        logger.warning("pdf2image rasterization failed: %s", e)
+        return ""
+    out: list[str] = []
+    for i, img in enumerate(images, start=1):
+        try:
+            page_text = pytesseract.image_to_string(img, lang="heb").strip()
+        except Exception as e:
+            logger.debug("tesseract page %d failed: %s", i, e)
+            page_text = ""
+        if page_text:
+            out.append(f"--- עמוד {i} (OCR) ---\n{page_text}")
+    return "\n\n".join(out).strip()
+
 
 def extract_text_layer(file_bytes: bytes) -> str:
-    """Pull the embedded text layer from a PDF using pdfplumber.
+    """Pull the text layer from a PDF: pdfplumber first, Hebrew OCR fallback for
+    scanned PDFs.
 
-    Returns an empty string when the PDF is image-only / scanned, or when
-    extraction fails for any reason. Each page is separated with a marker so
-    Claude can cite page numbers in answers.
+    Each page is separated with a marker so Claude can cite page numbers.
+    Returns an empty string only when both pdfplumber and OCR yield nothing.
     """
+    text = ""
     try:
         out: list[str] = []
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
@@ -52,59 +103,87 @@ def extract_text_layer(file_bytes: bytes) -> str:
                 if page_text:
                     out.append(f"--- עמוד {i} ---\n{page_text}")
         text = "\n\n".join(out).strip()
-        if len(text) > _MAX_TEXT_LAYER_CHARS:
-            text = text[:_MAX_TEXT_LAYER_CHARS] + "\n\n[... text layer truncated ...]"
-        return text
     except Exception as e:
         logger.warning(f"pdfplumber extraction failed: {e}")
-        return ""
+        text = ""
+
+    # Scanned / image-only PDF (little or no embedded text) → Hebrew OCR. Only
+    # when the embedded layer is essentially absent, so text-native PDFs stay
+    # fast (no rasterization).
+    if len(text) < _MIN_TEXT_LAYER_CHARS:
+        logger.info(
+            "Embedded text layer %d chars (< %d) — running Hebrew OCR fallback",
+            len(text), _MIN_TEXT_LAYER_CHARS,
+        )
+        ocr = _ocr_pdf(file_bytes)
+        if len(ocr) > len(text):
+            text = ocr
+
+    if len(text) > _MAX_TEXT_LAYER_CHARS:
+        text = text[:_MAX_TEXT_LAYER_CHARS] + "\n\n[... text layer truncated ...]"
+    return text
 
 
 EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות ביטוח (הסכמי עמלות, חוזרים, טבלאות אחוזים) ומחלץ מהם נתונים מובנים.
 
-זוהי הקריאה היחידה שלך למסמך — לאחר מכן ה-AI יענה על שאלות המשתמש על המסמך אך ורק על בסיס הפלט שלך. הקפד למלא את full_content בצורה מקיפה ומדויקת, אבל תמציתית (~2500 מילים מקסימום).
+זוהי הקריאה היחידה שלך למסמך — לאחר מכן ה-AI יענה על שאלות המשתמש על המסמך אך ורק על בסיס הפלט שלך.
 
-**מה חייב להיכלל ב-full_content (אם קיים במסמך):**
+==========================================================================
+חלק 1 — טבלת ה-rates (הכי חשוב — מוזרם ישירות ל-DB; שגיאות כאן משבשות חישובי עמלה):
+==========================================================================
+
+**מהו rate?** אך ורק **עמלת נפרעים שוטפת** — האחוז שהסוכן מקבל שוב ושוב (חודשי/שנתי)
+על הפרמיה או על הצבירה של לקוח קיים. סימני זיהוי: "עמלת נפרעים", "עמלת ספר",
+"שיעור תגמול", "עמלת טיפול", "עמלה מצבירה", "עמלה מפרמיה", "לאורך כל חיי הפוליסה".
+
+**אסור להכניס ל-rates (אלה שייכים ל-full_content בלבד, לא לטבלה):**
+- עמלת **היקף** / **תפוקה** / **יעדים** / "מענק גיוס" / "לכל מיליון" / "% מתפוקה" —
+  עמלות חד-פעמיות על גיוס חדש, לא נפרעים. הכנסתן לטבלה משבשת את חישוב העמלות.
+- **Clawback / החזר עמלה / החזר מענק / ניכוי ביטול / קנס** — אחוזי החזר, לא עמלה.
+- כל שורה שאינה עמלה שוטפת שהסוכן מרוויח על לקוח קיים.
+
+**חוקי חילוץ (אל תפר):**
+1. **שלמות** — אם במסמך יש טבלת נפרעים, חובה להחזיר שורה אחת לכל מוצר/כיסוי בטבלה.
+   אל תסתפק בסיכום הטבלה ב-full_content — כל שורת נפרעים חייבת להופיע גם ב-rates.
+2. **אסור להמציא** — כל מספר ב-components חייב להופיע מילולית במסמך. עדיף שורה אחת
+   נכונה מאשר שלוש מומצאות. אל תוסיף "תוספת" שלא כתובה, ואל תחשב סה״כ בעצמך
+   (השאר total_rate_percent=null כשלא מודפס סה״כ).
+3. **מוצר אחד לכל שורה** — אל תמזג שני סוגי מוצר לשם אחד. אם עמלה חלה רק על
+   גמל/השתלמות, שדה product לא יכלול "פנסיה". פנסיה, גמל והשתלמות — שורות נפרדות.
+4. **ספר + תוספת** — במוצרי ריסק/ביטוח שמוצגות להם גם "עמלת ספר" וגם
+   "שיעור תגמול"/"תוספת" — החזר את שניהם כרכיבים נפרדים (kind=book ו-kind=reward).
+   הנפרע הסופי הוא הסכום שלהם. אל תחזיר רק את התוספת בלי הספר.
+5. **kind** לכל רכיב, מהסט הסגור: `book` (עמלת ספר), `reward` (שיעור תגמול/תוספת),
+   `total` (סה״כ מודפס במסמך — לא חישוב שלך), `single` (מספר יחיד למוצר),
+   `addition` (שורת תוספת נלווית — לא נשמרת כשורה עצמאית).
+6. **טווח שנים** — אם למוצר יש עמודות שנים (1-5 / 6-15 / 16 ומעלה), החזר ערך לכל
+   שנה כרכיב נפרד ורשום את הטווח ב-`scope` (למשל "שנה 1-5"). כך המערכת תוכל בהמשך
+   להחיל את השיעור לפי גיל הפוליסה.
+7. **דוגמה נכונה**: למוצר "השתלות וטיפולים מיוחדים" מוצגות עמלת ספר `15%`/`15%`/`5%`
+   (שנים 1-5 / 6-15 / 16+) ושיעור תגמול `7.2%`/`7.2%` (6-15 / 16+) → החזר בדיוק 5
+   רכיבים, kind=book/reward, scope לכל אחד, product="השתלות וטיפולים מיוחדים".
+   אסור להמציא "תוספת" או "סה״כ" שלא מודפסים.
+8. אם יש טווח אחוזים (למשל "0.4%–0.6%"), החזר את שני הקצוות כשתי רשומות עם הערה ב-`notes`.
+
+**תוקף ההסכם** — על **כל** רשומת rate שים effective_from / effective_to (YYYY-MM-DD).
+חפש ב"תוקף"/"מועדי תוקף" (למשל "01/01/2025 עד 31/12/2026"). זה קובע איזה הסכם חל
+על איזו פוליסה (פוליסה משנת 2018 נשפטת לפי הסכם 2018). אם אין תאריכים — השאר ריק.
+
+==========================================================================
+חלק 2 — full_content (סיכום מובנה בעברית Markdown, עד ~2500 מילים):
+==========================================================================
+כלול (אם קיים במסמך; אם נושא לא קיים — דלג):
 1. פרטי הצדדים (חברות, סוכן, תאריכים, מועדי תוקף).
-2. **טבלאות שיעורי עמלה** — לפי קטגוריות (חיים/ריסק, בריאות, פנסיה/גמל, רכוש/כללי). כלול ספר + תוספת + סה״כ **רק כאשר המסמך מציג אותם בפועל**.
-3. **עמלות היקף** — שיעורים חד-פעמיים על גיוס חדש.
-4. **תנאי החזר עמלה / Clawback / ניכויי ביטולים** — חובה! כמעט בכל הסכם עמלה בישראל יש סעיף כזה. חפש לפי: 'ביטול', 'החזר', 'ניכוי', 'פדיון', 'משיכה', 'ניוד', 'מחיקת תפוקה', 'הפסקת גבייה', 'Clawback'. כלול את כל טבלת אחוזי ההחזר לפי משך זמן, ואת כל הטריגרים.
+2. **טבלאות שיעורי עמלה** לפי קטגוריות (חיים/ריסק, בריאות, פנסיה/גמל, רכוש/כללי).
+3. **עמלות היקף / תפוקה / יעדים** — שיעורים חד-פעמיים על גיוס (כאן בלבד, לא ב-rates).
+4. **תנאי החזר עמלה / Clawback / ניכויי ביטולים** — חובה! כמעט בכל הסכם יש סעיף כזה.
+   חפש: 'ביטול','החזר','ניכוי','פדיון','משיכה','ניוד','מחיקת תפוקה','Clawback'.
+   כלול את כל טבלת אחוזי ההחזר לפי משך זמן ואת הטריגרים (כאן בלבד, לא ב-rates).
 5. **תנאים מיוחדים** — בלעדיות, מינימום תפוקה, יעדים, סנקציות.
-6. **חידוש / הארכה / סיום** — תקופת הסכם וכללי חידוש/ביטול.
+6. **חידוש / הארכה / סיום**.
 7. **חתימות ותאריכים**.
 
-==========================================================================
-חוקים קריטיים לחילוץ rates (אל תפר — שגיאות כאן מוזרמות ישירות לטבלת ה-DB):
-==========================================================================
-
-1. **אסור להמציא עמודות**. אם המסמך מציג בטבלה רק עמודה אחת (לדוגמה: רק "עמלת ספר"), החזר רכיב אחד מסוג `single` או `book`. אל תוסיף "תוספת" שאינה כתובה במפורש, ואל תכפיל שורות.
-
-2. **אסור לחבר ידנית סה״כ**. אם המסמך לא מציג עמודת "סה״כ" שכבר חושבה, השאר את `total_rate_percent` כ-null. אסור להחזיר rate_percent שהוא תוצאה של חיבור שני מספרים מהמסמך אלא אם הסה״כ עצמו מודפס שם.
-
-3. **כל מספר באובייקט components חייב להופיע מילולית במסמך**. אם אתה לא בטוח שמספר מסוים נמצא בטקסט — דלג עליו. עדיף שורה אחת נכונה מאשר שלוש שורות מומצאות.
-
-4. **לכל רכיב חייב להיות `kind`** מתוך הסט הסגור הבא:
-   - `book` — עמלת ספר (שיעור בסיס לקטגוריה)
-   - `reward` — שיעור תגמול / תוספת נפרעים מודפסת בנפרד
-   - `addition` — שורת תוספת נפרדת (לא תיכנס ל-DB כשורה עצמאית — היא נשמרת רק לתיעוד)
-   - `total` — סה״כ המודפס במסמך (לא חישוב שלך)
-   - `single` — כשהמסמך מציג רק מספר אחד לכל מוצר ולא מבדיל בין רכיבים
-
-5. **דוגמה נכונה לפלט**: אם המסמך מראה לטור "השתלות וטיפולים מיוחדים" את הערכים `15%`, `15%`, `5%` תחת "עמלת ספר" עם שלוש עמודות שנים (1-5 / 6-15 / 16+), והערכים `7.2%`, `7.2%` תחת "שיעור תגמול" לעמודות 6-15 / 16+ — החזר אך ורק את 5 הערכים האלה, כל אחד כרשומה נפרדת ב-`components`, עם `kind=book` / `kind=reward` ו-`product="השתלות וטיפולים מיוחדים"`. אסור להמציא עמודת "תוספת 10.4%" או "סה״כ 25.4%" — אלה לא קיימים במסמך.
-
-6. אם יש טווח (לדוגמה "0.4%–0.6%"), החזר את שני קצוות הטווח כשתי רשומות עם הערה ב-`notes`.
-
-7. `companies`: שמות חברות עיקריות בלבד.
-8. `summary`: 2–3 משפטים בעברית.
-9. אם נושא לא קיים במסמך — דלג עליו. אבל אם הוא כן קיים — חובה לכלול.
-
-**תקופת תוקף ההסכם — חשוב מאוד:**
-חפש בהקדמה / סעיפי "תוקף" / "מועדי תוקף" את התאריכים שמגדירים מתי ההסכם בתוקף
-(לדוגמה: "תוקף הנספח: 01/01/2025 עד 31/12/2026"). חלץ אותם פעם אחת ושים אותם
-ב-**כל** רשומת rate שאתה מחזיר, ב-effective_from / effective_to (בפורמט YYYY-MM-DD).
-אם המסמך לא מציין תאריכים — השאר את השדות ריקים. הקפדה על השדות האלה חיונית
-כדי שהמערכת תדע איזה הסכם להחיל על איזו פוליסה (פוליסה משנת 2018 צריכה להישפט
-לפי הסכם 2018, לא לפי הסכם 2025).
+`companies`: שמות חברות עיקריות בלבד. `summary`: 2–3 משפטים בעברית.
 """
 
 
@@ -139,10 +218,13 @@ EXTRACT_TOOL = {
                         "components": {
                             "type": "array",
                             "description": (
-                                "ONE row PER rate cell PRINTED in the document. "
-                                "Each component is a single number (kind+rate_percent) "
-                                "that appears literally in the doc. NEVER add "
-                                "fabricated rows."
+                                "ONE row PER ongoing נפרעים rate cell PRINTED in the "
+                                "document. Each component is a single number "
+                                "(kind+rate_percent) that appears literally in the doc. "
+                                "NEVER add fabricated rows. NEVER put one-time "
+                                "scope/היקף/תפוקה/יעדים/מענק-גיוס rates or "
+                                "Clawback/החזר/refund percentages here — those belong "
+                                "in full_content only."
                             ),
                             "items": {
                                 "type": "object",
@@ -155,7 +237,11 @@ EXTRACT_TOOL = {
                                     "rate_percent": {"type": "number"},
                                     "scope": {
                                         "type": ["string", "null"],
-                                        "description": "Optional context, e.g. 'years 1-5' / 'years 16+'.",
+                                        "description": (
+                                            "Policy-year band this rate applies to, "
+                                            "e.g. 'שנה 1-5' / 'שנה 6-15' / 'שנה 16+'. "
+                                            "Fill it whenever the table has year columns."
+                                        ),
                                     },
                                 },
                             },
@@ -192,6 +278,37 @@ EXTRACT_TOOL = {
         },
     },
 }
+
+
+# Focused rates-only extraction — used as a fallback when the main pass returns
+# an empty rates[] but the text layer clearly holds a rate table (the מנורה
+# failure: the whole ~40-product table was captured into full_content while
+# rates[] came back empty). Reuses the exact rates sub-schema from EXTRACT_TOOL.
+RATES_ONLY_TOOL = {
+    "name": "save_rates",
+    "description": "שמירת שורות עמלת הנפרעים שחולצו מטבלת הסכם עמלות.",
+    "input_schema": {
+        "type": "object",
+        "required": ["rates"],
+        "properties": {"rates": EXTRACT_TOOL["input_schema"]["properties"]["rates"]},
+    },
+}
+
+RATES_ONLY_SYSTEM_PROMPT = """אתה מחלץ אך ורק את שורות **עמלת הנפרעים** מטבלת הסכם עמלות. אל תסכם — החזר שורות מובנות.
+
+**מהו rate?** רק עמלת נפרעים שוטפת — האחוז שהסוכן מקבל שוב ושוב על הפרמיה או הצבירה
+של לקוח קיים ("עמלת נפרעים", "עמלת ספר", "שיעור תגמול", "עמלת טיפול", "עמלה מצבירה",
+"לאורך כל חיי הפוליסה").
+
+**אסור להחזיר**: עמלת היקף/תפוקה/יעדים/מענק גיוס/"לכל מיליון"/"% מתפוקה" (חד-פעמי),
+ו-Clawback/החזר/ניכוי ביטול/קנס (החזרים). אלה אינם נפרעים.
+
+חוקים: (1) שורה אחת לכל מוצר/כיסוי בטבלה — שלמות מלאה. (2) כל מספר חייב להופיע
+מילולית בטקסט; אל תמציא. (3) מוצר אחד לכל שורה — אל תמזג גמל+פנסיה. (4) כשמוצג גם
+עמלת ספר וגם שיעור תגמול/תוספת — החזר את שניהם (kind=book ו-kind=reward), הנפרע הוא
+הסכום. (5) עמודות שנים (1-5/6-15/16+) → רכיב לכל שנה עם הטווח ב-scope. (6) שים
+effective_from/effective_to (YYYY-MM-DD) אם כתובים.
+"""
 
 
 def _value_appears_in_text(value: float, text: str) -> bool:
@@ -233,6 +350,19 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
     for r in rates:
         if not isinstance(r, dict):
             continue
+
+        # Guard: drop rows that are one-time scope/היקף grants or Clawback/refund
+        # percentages, not ongoing נפרעים commissions. Identified by markers in
+        # the product name or notes (e.g. "מענק גיוס חדש — עמלת היקף", "Clawback").
+        row_marker_text = f"{r.get('product') or ''} {r.get('notes') or ''}"
+        if _NON_COMMISSION_RE.search(row_marker_text):
+            logger.warning(
+                "viz_extraction.non_commission_rate_dropped company=%s product=%s "
+                "(scope/היקף or clawback — not a נפרעים rate)",
+                r.get("company"), r.get("product"),
+            )
+            continue
+
         components_raw = r.get("components")
         components: list[dict] = []
         if isinstance(components_raw, list):
@@ -247,6 +377,16 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
                 except (TypeError, ValueError):
                     continue
                 if rp <= 0 or rp > 100:
+                    continue
+                # Drop components whose scope marks them as scope/היקף/clawback
+                # (the year-band scope like "שנה 1-5" never matches these markers).
+                scope_raw = c.get("scope")
+                if scope_raw and _NON_COMMISSION_RE.search(str(scope_raw)):
+                    logger.warning(
+                        "viz_extraction.non_commission_rate_dropped company=%s product=%s "
+                        "scope=%s value=%s (scope/clawback component)",
+                        r.get("company"), r.get("product"), scope_raw, rp,
+                    )
                     continue
                 if not _value_appears_in_text(rp, text_layer):
                     logger.warning(
@@ -316,6 +456,47 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
             "effective_to": r.get("effective_to"),
         })
     return normalized
+
+
+def _looks_like_rate_table(text_layer: str) -> bool:
+    """Heuristic: does the text layer clearly contain a rate table? Used to
+    decide whether an empty rates[] is a real absence or an extraction miss."""
+    return bool(text_layer) and text_layer.count("%") >= 15
+
+
+async def _extract_rates_only(
+    client: "anthropic.AsyncAnthropic", text_layer: str, filename: str
+) -> list[dict]:
+    """Second, focused pass: extract ONLY נפרעים rate rows from the text layer.
+
+    Runs on the pdfplumber/OCR text alone (no PDF images → fast) with a tight
+    rates-only schema. Returns the RAW rates list (caller normalizes)."""
+    resp = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=16384,
+        system=RATES_ONLY_SYSTEM_PROMPT,
+        tools=[RATES_ONLY_TOOL],
+        tool_choice={"type": "tool", "name": "save_rates"},
+        messages=[{
+            "role": "user",
+            "content": [{
+                "type": "text",
+                "text": (
+                    f"שם הקובץ: {filename}\n\n"
+                    "טקסט מלא של ההסכם:\n\n"
+                    f"{text_layer}\n\n"
+                    "חלץ כל שורת עמלת נפרעים מהטבלאות שלמעלה."
+                ),
+            }],
+        }],
+    )
+    for block in resp.content:
+        if getattr(block, "type", None) == "tool_use" and getattr(block, "name", "") == "save_rates":
+            raw = getattr(block, "input", None)
+            if isinstance(raw, dict):
+                rates = raw.get("rates") or []
+                return rates if isinstance(rates, list) else []
+    return []
 
 
 async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
@@ -407,6 +588,32 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
                 rates = []
 
             normalized = _normalize_and_validate_rates(rates, text_layer if has_text_layer else "")
+
+            # Fallback: main pass returned no rates but the text layer clearly
+            # holds a rate table (the מנורה miss). Run one focused rates-only
+            # pass over the text to recover the table.
+            if not normalized and has_text_layer and _looks_like_rate_table(text_layer):
+                logger.warning(
+                    "viz_extraction.empty_rates_fallback file=%s — main pass returned 0 "
+                    "rates but text layer has a rate table; running rates-only pass",
+                    filename,
+                )
+                try:
+                    fb_rates = await _extract_rates_only(client, text_layer, filename)
+                    normalized = _normalize_and_validate_rates(fb_rates, text_layer)
+                    logger.info(
+                        "viz_extraction.empty_rates_fallback file=%s recovered=%d rows",
+                        filename, len(normalized),
+                    )
+                except (ValueError, anthropic.APIError, anthropic.APIStatusError) as e:
+                    logger.warning("viz_extraction.empty_rates_fallback failed file=%s: %s", filename, e)
+
+            if not normalized and _looks_like_rate_table(text_layer):
+                logger.warning(
+                    "viz_extraction.zero_rates_after_fallback file=%s — a rate table "
+                    "appears present but no נפרעים rows were extracted; needs review",
+                    filename,
+                )
 
             return {
                 "doc_type": tool_input.get("doc_type") or "other",

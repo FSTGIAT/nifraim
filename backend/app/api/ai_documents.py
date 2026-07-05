@@ -65,29 +65,31 @@ def _upsert_rates_from_doc(
     user_id: UUID,
     doc_id: UUID,
     rates: list[dict],
-    existing_rates_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None], CommissionRate],
+    existing_rates_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None, str | None], CommissionRate],
 ) -> int:
     """Insert/update commission_rates rows for the extracted entries.
 
     Each extracted `rate` row now carries a `components[]` array (book /
-    reward / addition / total / single). We unfold each row into one
-    DB row PER component, tagged with `rate_kind`, plus an optional `total`
-    row when the document literally printed a סה״כ value. `addition`
+    reward / addition / total / single), each optionally tagged with a
+    policy-year `scope` (e.g. "שנה 1-5"). We unfold each row into one DB row
+    PER component, tagged with `rate_kind` + `rate_scope`, plus an optional
+    `total` row when the document literally printed a סה״כ value. `addition`
     components are intentionally NOT inserted as standalone DB rows — they
     only make sense alongside a `book`.
 
     Upsert key matches the DB-level uniqueness index `uq_commission_rates_keys`:
-    (user_id, company_name, product, frequency, rate, effective_from).
+    (user_id, company_name, product, frequency, rate, effective_from, rate_scope).
     `rate_kind` is NOT part of the key so re-extracting the same rate as a
-    different kind is treated as the same row (the new label wins).
+    different kind is treated as the same row (the new label wins). `rate_scope`
+    IS part of the key so same-value year tiers of a product don't collapse.
     """
     touched = 0
-    seen_keys: set[tuple[str, str | None, str | None, Decimal, date | None]] = set()
+    seen_keys: set[tuple[str, str | None, str | None, Decimal, date | None, str | None]] = set()
 
-    def _flat_components(r: dict) -> list[tuple[str, Decimal]]:
-        """Yield (kind, rate_decimal) pairs from the extracted row.
+    def _flat_components(r: dict) -> list[tuple[str, Decimal, str | None]]:
+        """Yield (kind, rate_decimal, scope) tuples from the extracted row.
         Falls back to the legacy rate_percent when components[] is empty."""
-        out: list[tuple[str, Decimal]] = []
+        out: list[tuple[str, Decimal, str | None]] = []
         comps = r.get("components")
         if isinstance(comps, list) and comps:
             for c in comps:
@@ -103,14 +105,16 @@ def _upsert_rates_from_doc(
                     continue
                 if p <= 0 or p > 100:
                     continue
-                out.append((kind, p))
+                scope_raw = c.get("scope")
+                scope = (str(scope_raw).strip()[:40] or None) if scope_raw else None
+                out.append((kind, p, scope))
         # `total` is its own row if literally printed in the doc
         total = r.get("total_rate_percent")
         if total is not None:
             try:
                 t = Decimal(str(total))
                 if 0 < t <= 100:
-                    out.append(("total", t))
+                    out.append(("total", t, None))
             except (InvalidOperation, TypeError):
                 pass
         # Legacy single-number fallback
@@ -118,7 +122,7 @@ def _upsert_rates_from_doc(
             try:
                 p = Decimal(str(r.get("rate_percent")))
                 if 0 < p <= 100:
-                    out.append(("single", p))
+                    out.append(("single", p, None))
             except (InvalidOperation, TypeError):
                 pass
         return out
@@ -134,9 +138,9 @@ def _upsert_rates_from_doc(
         eff_from = _parse_iso_date(r.get("effective_from"))
         eff_to = _parse_iso_date(r.get("effective_to"))
 
-        for kind, percent in _flat_components(r):
+        for kind, percent, scope in _flat_components(r):
             rate_val = (percent / Decimal(100)).quantize(Decimal("0.0001"))
-            key = (company[:100], product, frequency, rate_val, eff_from)
+            key = (company[:100], product, frequency, rate_val, eff_from, scope)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
@@ -157,6 +161,7 @@ def _upsert_rates_from_doc(
                     product=product,
                     rate=rate_val,
                     rate_kind=kind,
+                    rate_scope=scope,
                     payment_frequency=frequency,
                     effective_from=eff_from,
                     effective_to=eff_to,
@@ -218,8 +223,14 @@ async def upload_document(
             not cached_rates
             or any(r.get("effective_from") or r.get("effective_to") for r in cached_rates)
         )
+        # A ready doc with NO extracted rates but a rate-table-looking text
+        # layer is an extraction miss (the מנורה case: ~40 products captured
+        # into full_content, rates[] empty). Force a fresh run so the improved
+        # prompt + rates-only fallback recover them.
+        rates_missing = (not cached_rates) and (existing.extracted_text or "").count("%") >= 15
         if (existing.status == "ready" and cached_full and has_file
-                and looks_complete and has_text_layer and rates_have_dates):
+                and looks_complete and has_text_layer and rates_have_dates
+                and not rates_missing):
             return existing
         try:
             extracted = await extract_pdf(file_bytes, file.filename)
@@ -308,8 +319,8 @@ async def upload_document(
                     CommissionRate.company_name.in_(companies_in_doc),
                 )
             )
-            existing_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None], CommissionRate] = {
-                (r.company_name, r.product, r.payment_frequency, r.rate, r.effective_from): r
+            existing_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None, str | None], CommissionRate] = {
+                (r.company_name, r.product, r.payment_frequency, r.rate, r.effective_from, r.rate_scope): r
                 for r in existing_rates_q.scalars().all()
             }
             _upsert_rates_from_doc(db, user.id, doc.id, extracted["rates"], existing_by_key)

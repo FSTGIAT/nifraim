@@ -20,6 +20,11 @@ class CommissionRate(Base):
     # don't insert those — they're informational only in ai_documents).
     # Drives _rate_for() priority — total/single first, then book.
     rate_kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="single")
+    # Policy-year band this rate applies to, e.g. "שנה 1-5" / "שנה 16+".
+    # Extracted from the agreement's year columns and part of the upsert key so
+    # same-value tiers don't collapse. The matcher that picks a rate BY policy
+    # age is phase 2 — for now this is captured data only.
+    rate_scope: Mapped[str | None] = mapped_column(String(40))
     payment_frequency: Mapped[str | None] = mapped_column(String(20))
     paid_to: Mapped[str | None] = mapped_column(String(50))
     company_email: Mapped[str | None] = mapped_column(String(100))

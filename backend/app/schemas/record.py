@@ -71,6 +71,7 @@ class CommissionRateOut(BaseModel):
     company_name: str
     product: str | None = None
     rate: float
+    rate_scope: str | None = None
     payment_frequency: str | None
     paid_to: str | None
     company_email: str | None = None
