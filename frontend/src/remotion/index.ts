@@ -8,6 +8,7 @@ export { BarComposition, KpiComposition, DonutComposition, FundTrackComposition 
 export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
 export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
+export { AutomationHeroLoop, AUTOMATION_HERO_LOOP_FRAMES } from './AutomationHeroLoop'
 export { NotificationsEmpty, NOTIFICATIONS_EMPTY_DURATION } from './NotificationsEmpty'
 export {
   MonthlyCommissionComposition,

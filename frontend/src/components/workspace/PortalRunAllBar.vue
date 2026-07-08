@@ -4,7 +4,7 @@
          One click downloads every active portal, aggregates into one production +
          one נפרעים file, and runs the compare. -->
     <span class="hero-orb" aria-hidden="true"></span>
-    <img class="hero-art" :src="automationArt" alt="" aria-hidden="true" />
+    <AutomationHeroLoopIsland class="hero-art" />
     <div class="hero-main">
       <div class="hero-copy">
         <span class="hero-kicker">אוטומציה</span>
@@ -71,7 +71,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import automationArt from '../../assets/kling/automation.webp'
+import AutomationHeroLoopIsland from './AutomationHeroLoopIsland.vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 
@@ -175,20 +175,14 @@ watch(() => store.batchJustFinished, (b) => {
   pointer-events: none;
 }
 
-/* ───── Hero art: full-bleed panel on the card's inline-end (left in RTL),
-   fading into the white so it reads as part of the card, not a pasted image. */
+/* ───── Hero art: animated Remotion loop bleeding from the card's
+   inline-end (left in RTL). Transparent scene — merges with the white card. */
 .hero-art {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  inset-inline-end: 0;
-  height: 100%;
-  width: min(400px, 38%);
-  object-fit: cover;
-  object-position: center;
-  -webkit-mask-image: linear-gradient(to right, black 45%, transparent 96%);
-  mask-image: linear-gradient(to right, black 45%, transparent 96%);
-  opacity: 0.92;
+  top: 12px;
+  bottom: 12px;
+  inset-inline-end: 4px;
+  width: min(420px, 40%);
   pointer-events: none;
   z-index: 0;
 }
