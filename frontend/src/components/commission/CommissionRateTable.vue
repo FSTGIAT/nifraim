@@ -30,6 +30,7 @@
         </Transition>
         <Transition name="fade"><p v-if="uploadError" class="hero-upload-error">שגיאה בהעלאה: {{ uploadError }}</p></Transition>
       </div>
+      <TabHeroLoop scene="commission-shelf" class="shelf-art" />
     </header>
 
     <div v-if="rates.length" class="shelf-toolbar">
@@ -154,6 +155,7 @@ import { storeToRefs } from 'pinia'
 import api from '../../api/client.js'
 import { chartColor } from '../../utils/chartPalette.js'
 import { useChatStore } from '../../stores/chat.js'
+import TabHeroLoop from '../workspace/TabHeroLoop.vue'
 
 const emit = defineEmits(['rates-changed'])
 
@@ -319,7 +321,10 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 /* ══ מדף ההסכמים — horizontal picture accordion (your reference), RTL, pastel. ══ */
 .rate-shelf { position: relative; }
 
-.shelf-hero { background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl, 24px); padding: 22px 26px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.shelf-hero { position: relative; overflow: hidden; background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl, 24px); padding: 22px 26px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.shelf-hero .hero-copy { position: relative; z-index: 1; max-width: 62%; }
+.shelf-art { position: absolute; inset-inline-end: 8px; top: 50%; transform: translateY(-50%); width: min(300px, 34%); aspect-ratio: 420 / 300; pointer-events: none; z-index: 0; }
+@media (max-width: 720px) { .shelf-hero .hero-copy { max-width: 100%; } .shelf-art { display: none; } }
 .hero-copy { display: flex; flex-direction: column; gap: 7px; }
 .hero-eyebrow { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--chart-9); background: color-mix(in srgb, var(--chart-2) 12%, white); border: 1px solid color-mix(in srgb, var(--chart-2) 28%, white); padding: 4px 11px; border-radius: 999px; }
 .hero-title { margin: 2px 0 0; font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }

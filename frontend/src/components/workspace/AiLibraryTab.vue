@@ -67,8 +67,8 @@
         </svg>
         <span>רענן</span>
       </button>
-      <div v-if="heroImg" class="lib-intro-art" aria-hidden="true">
-        <img :src="heroImg" alt="" width="240" height="140" />
+      <div class="lib-intro-art" aria-hidden="true">
+        <TabHeroLoop scene="ai-library" />
       </div>
     </header>
 
@@ -469,6 +469,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '../../api/client.js'
+import TabHeroLoop from './TabHeroLoop.vue'
 
 // AI-generated artwork (hero + per-section) — resolved via glob so the tab
 // works before/without the images (same pattern as SetupPipelineModal's

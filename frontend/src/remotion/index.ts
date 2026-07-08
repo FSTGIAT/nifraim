@@ -9,6 +9,15 @@ export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
 export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
 export { AutomationHeroLoop, AUTOMATION_HERO_LOOP_FRAMES } from './AutomationHeroLoop'
+export {
+  TAB_HERO_SCENES,
+  TAB_HERO_LOOP_FRAMES,
+  AiKnowledgeLoop,
+  PortalShareLoop,
+  MailFlowLoop,
+  PortfolioLoop,
+  ShelfLoop,
+} from './TabHeroLoops'
 export { NotificationsEmpty, NOTIFICATIONS_EMPTY_DURATION } from './NotificationsEmpty'
 export {
   MonthlyCommissionComposition,

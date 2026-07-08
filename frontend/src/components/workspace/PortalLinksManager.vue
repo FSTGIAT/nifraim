@@ -72,7 +72,7 @@
 
       <!-- Empty: no links at all -->
       <div v-else-if="!portalStore.links.length" class="empty-state">
-        <img class="empty-art-img" :src="portalArt" alt="" aria-hidden="true" />
+        <TabHeroLoop scene="portal" class="empty-art-loop" />
         <h3>עדיין לא יצרתם קישור פורטל</h3>
         <p>קישור הפורטל מאפשר ללקוחות שלכם לראות את תיק הביטוח האישי שלהם — עם הגנה בסיסמה.</p>
         <button class="btn-generate large" @click="showGenerateModal = true">
@@ -220,7 +220,7 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
-import portalArt from '../../assets/kling/portal.webp'
+import TabHeroLoop from './TabHeroLoop.vue'
 import { usePortalStore } from '../../stores/portal.js'
 import PortalGenerateModal from './PortalGenerateModal.vue'
 
@@ -750,13 +750,12 @@ td.muted {
   padding: 56px 24px;
 }
 
-.empty-art-img {
+.empty-art-loop {
   display: block;
-  width: min(360px, 100%);
-  margin: 0 auto 20px;
-  border-radius: 14px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
+  width: min(320px, 90%);
+  aspect-ratio: 420 / 300;
+  margin: 0 auto 12px;
+  pointer-events: none;
 }
 
 .empty-icon {

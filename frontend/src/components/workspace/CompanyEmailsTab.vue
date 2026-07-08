@@ -5,6 +5,7 @@
         <h3>אימיילים לחברות</h3>
         <span class="emails-sub">אנשי קשר במחלקות העמלות של החברות</span>
       </div>
+      <TabHeroLoop scene="company-emails" class="emails-art" />
     </div>
 
     <div v-if="loading" class="loading">
@@ -120,6 +121,7 @@
 import { ref, onMounted, reactive, computed } from 'vue'
 import api from '../../api/client.js'
 import EmptyStateGuide from './EmptyStateGuide.vue'
+import TabHeroLoop from './TabHeroLoop.vue'
 import { brandForLabel } from '../../utils/companyBrand.js'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
@@ -235,6 +237,14 @@ async function deleteContact(id) {
   margin: 0 auto;
   box-shadow: var(--shadow-sm);
 }
+
+.emails-art {
+  flex: none;
+  width: 200px;
+  height: 84px;
+  pointer-events: none;
+}
+@media (max-width: 640px) { .emails-art { display: none; } }
 
 .emails-header {
   display: flex;

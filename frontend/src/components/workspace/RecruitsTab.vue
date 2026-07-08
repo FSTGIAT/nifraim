@@ -58,6 +58,9 @@
         </svg>
       </div>
 
+      <!-- Animated hero art (turquoise portfolio motif) -->
+      <TabHeroLoop scene="recruits" class="recruit-hero-art" />
+
       <!-- Loading state -->
       <div v-if="recruitsStore.uploading" class="upload-loading">
         <div class="loading-content">
@@ -436,6 +439,7 @@ import { ref, computed, inject, watch, onMounted } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useRecruitsStore } from '../../stores/recruits.js'
 import RecruitForm from './RecruitForm.vue'
+import TabHeroLoop from './TabHeroLoop.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
 import api from '../../api/client.js'
 
@@ -647,6 +651,15 @@ watch(() => innerTab.value, (tab) => {
   max-width: 560px;
   margin: 0 auto;
   position: relative;
+}
+.recruit-hero-art {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: min(300px, 70%);
+  aspect-ratio: 420 / 300;
+  margin: 0 auto 4px;
+  pointer-events: none;
 }
 
 /* Floating blur circles */
