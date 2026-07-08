@@ -77,8 +77,26 @@ class PhoenixNifraimPortal(PhoenixPortal):
         self.report_password = None
         download_dir.mkdir(parents=True, exist_ok=True)
 
-        from app.services.portal_automation.runner import SCREENSHOT_ROOT
+        from app.services.portal_automation.runner import SCREENSHOT_ROOT, PROJECT_ROOT
         run_id = download_dir.name
+
+        # ── Hand the authenticated Phoenix session to phoenix_terminal ──
+        # F5 allows ONE session/OTP per user, so phoenix_terminal's separate
+        # native-Edge login can NEVER get its own OTP while this session is live
+        # (QA 2026-07-07). Save this already-authenticated session's cookies so
+        # the terminal flow REUSES it → in run-all, no second OTP ever. Path is
+        # per-worker (PHOENIX_SESSION_FILE override), never a hardcoded user dir.
+        try:
+            import os as _os
+            from pathlib import Path as _P
+            sf = _os.environ.get("PHOENIX_SESSION_FILE") or str(
+                PROJECT_ROOT / "data" / "phoenix_session.json"
+            )
+            _P(sf).parent.mkdir(parents=True, exist_ok=True)
+            await page.context.storage_state(path=sf)
+            print(f">> saved Phoenix session for terminal reuse: {sf}", flush=True)
+        except Exception as _e:
+            print(f">> phoenix session save skipped: {_e}", flush=True)
 
         # Step 0: settle + dismiss any post-login modal — once, for both reports.
         await page.wait_for_timeout(2000)

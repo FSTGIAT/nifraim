@@ -99,12 +99,67 @@ class HarelPortal(BasePortalAutomation):
             return first.strip(), second.strip()
         return raw, raw
 
+    async def _frame_with(self, page: "Page", selector: str, *, visible: bool = False):
+        """Return the first frame — main OR nested iframe — whose `selector`
+        matches. Harel renders the F5 'התחברות נכשלה … לחץ כאן' error page (and
+        sometimes the login form itself) INSIDE an iframe, so main-frame-only
+        selectors find nothing (proven live: kiko's page dump listed ZERO
+        interactive elements on a page that has the לחץ כאן link). page.frames[0]
+        is the main frame, so this stays main-frame-first — no behaviour change
+        when the element is top-level (royg's path)."""
+        for fr in page.frames:
+            try:
+                loc = fr.locator(selector)
+                if await loc.count():
+                    if visible and not await loc.first.is_visible():
+                        continue
+                    return fr
+            except Exception:
+                continue
+        return None
+
+    async def _wait_field_frame(self, page: "Page", selector: str, timeout: int):
+        """Poll every frame for a VISIBLE `selector` until found; return its
+        frame. Raises on timeout (mirrors _wait_visible, but frame-aware)."""
+        import asyncio as _a
+        deadline = _a.get_event_loop().time() + timeout / 1000
+        while _a.get_event_loop().time() < deadline:
+            fr = await self._frame_with(page, selector, visible=True)
+            if fr:
+                return fr
+            await page.wait_for_timeout(300)
+        raise RuntimeError(f"harel: no frame with visible '{selector}' within {timeout}ms")
+
     async def login(self, page: "Page", username: str, password: str) -> None:
         # Stage 1: F5 APM auth at agents.harel-group.co.il/my.policy with
         # the agents-tier password. F5 then SMS-OTPs to the agent's phone.
         # Stage 2 (safe form fill) happens in download_reports after OTP.
         self._agents_password, self._safe_password = self._split_passwords(password)
 
+        # F5 APM allows ONE session per user. A prior run that authenticated but
+        # died before finishing OTP — or a lingering manual login — leaves a stale
+        # session. The 'התחברות נכשלה … לחץ כאן' bounce links to href="/", which
+        # only RECONNECTS into that broken session (it does NOT log out), so the
+        # re-login never gets a fresh OTP. It works for an agent with no stale
+        # session (royg) and dead-ends at the otpass wait for one that has it
+        # (kiko, whose failed runs each left a session). So hit the F5 logout
+        # FIRST — harmless when there's nothing to clear — so every login starts
+        # from a clean session. Best-effort: tolerate any logout-URL failure.
+        async def _f5_logout() -> None:
+            """Best-effort F5 APM logout to clear a stale one-per-user session (the
+            'התחברות נכשלה … לחץ כאן' href='/' link only RECONNECTS, never logs
+            out). Tolerates any logout-URL failure."""
+            for _logout_url in (
+                "https://agents.harel-group.co.il/vdesk/hangup.php3?hangup_error=1",
+                "https://agents.harel-group.co.il/my.logout.php3",
+            ):
+                try:
+                    await page.goto(_logout_url, wait_until="domcontentloaded", timeout=15000)
+                    await page.wait_for_timeout(700)
+                except Exception:
+                    continue
+
+        await _f5_logout()
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
 
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
@@ -131,56 +186,143 @@ class HarelPortal(BasePortalAutomation):
             "a[href*='redirectURI']",
             "a[href^='javascript:document.location']",
         )
-        for attempt in range(4):
-            if await page.locator("input[name='username']").count():
-                break
-            clicked = False
+        async def _click_reset_until_form(tag: str) -> bool:
+            """Click whichever F5 reset link ('לחץ כאן' / redirectURI) is present —
+            IN WHATEVER FRAME it lives — until the username field appears. The
+            error page and its link render inside an iframe, so this searches all
+            frames (main-frame-first), not just the top document."""
+            for attempt in range(4):
+                if await self._frame_with(page, "input[name='username']"):
+                    return True
+                clicked = False
+                for sel in reset_selectors:
+                    fr = await self._frame_with(page, sel)
+                    if fr:
+                        try:
+                            await fr.locator(sel).first.click(timeout=4000)
+                            await page.wait_for_timeout(900)
+                            clicked = True
+                            break
+                        except Exception:
+                            continue
+                recovery = SCREENSHOT_ROOT / f"harel_apm_recovery_{safe_user}_{tag}_{attempt}.png"
+                await self._safe_screenshot(page, recovery)
+                await self._dump_page_state(page, recovery)
+                if not clicked:
+                    break
+            return bool(await self._frame_with(page, "input[name='username']"))
+
+        async def _reset_link_present() -> bool:
             for sel in reset_selectors:
-                try:
-                    link = page.locator(sel).first
-                    if await link.count():
-                        await link.click(timeout=4000)
-                        await page.wait_for_load_state("domcontentloaded", timeout=10000)
-                        clicked = True
-                        break
-                except Exception:
-                    continue
-            recovery = SCREENSHOT_ROOT / f"harel_apm_recovery_{safe_user}_{attempt}.png"
-            await self._safe_screenshot(page, recovery)
-            await self._dump_page_state(page, recovery)
-            if not clicked:
-                break
+                if await self._frame_with(page, sel):
+                    return True
+            return False
 
-        # Inline APM form fill — explicit waits, since the shared helper's
-        # selector iteration races with Harel's form re-render after the
-        # recovery click.
-        await self._wait_visible(page, "input[name='username']", timeout=15000)
-        await page.fill("input[name='username']", username)
-        await self._wait_visible(page, "input[name='password']", timeout=5000)
-        await page.fill("input[name='password']", self._agents_password)
-        await self._wait_visible(page, "input.credentials_input_submit, input[type='submit']", timeout=5000)
-        await page.click("input.credentials_input_submit, input[type='submit']")
-
-        post = SCREENSHOT_ROOT / f"harel_apm_post_submit_{safe_user}.png"
-        await self._safe_screenshot(page, post)
-        await self._dump_page_state(page, post)
-
-        # F5 APM SMS OTP — same selectors the other APM portals use.
-        await self._wait_visible(
-            page,
+        otp_selector = (
             "input[name='otpass'], input[name='otp'], "
             "input[autocomplete='one-time-code'], "
-            "input[name='code'], input[name='answer']",
-            timeout=20000,
+            "input[name='code'], input[name='answer']"
         )
+
+        # F5 can bounce to the 'התחברות נכשלה … לחץ כאן' error page at login start
+        # OR right AFTER the credentials submit — a stale one-per-user F5 session
+        # (e.g. a lingering manual login, or a prior run that didn't reach OTP).
+        # The reset link kills the old session and returns the real login form, so
+        # run the whole fill→submit→OTP sequence in a retry loop, re-clicking the
+        # reset link whenever the OTP screen fails to appear. Previously the reset
+        # click ran ONLY pre-fill, so a post-submit bounce dead-ended at the otpass
+        # timeout (kiko: reproducible when a manual Harel session was still open).
+        last_exc: Exception | None = None
+        for login_attempt in range(3):
+            if login_attempt > 0:
+                # A bounced submit may have created its OWN broken session; the
+                # href='/' reconnect can't clear it, so do a real logout before
+                # retrying instead of just re-clicking לחץ כאן.
+                await _f5_logout()
+                await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+            await _click_reset_until_form(f"pre{login_attempt}")
+
+            # Inline APM form fill — IN WHATEVER FRAME the form rendered (the F5
+            # login can live inside an iframe, same as the error page).
+            uf = await self._wait_field_frame(page, "input[name='username']", 15000)
+            await uf.locator("input[name='username']").fill(username)
+            await uf.locator("input[name='password']").fill(self._agents_password)
+            await uf.locator(
+                "input.credentials_input_submit, input[type='submit']"
+            ).first.click(timeout=5000)
+
+            post = SCREENSHOT_ROOT / f"harel_apm_post_submit_{safe_user}.png"
+            await self._safe_screenshot(page, post)
+            await self._dump_page_state(page, post)
+
+            # Self-report the post-submit page to Railway logs (WORKER-LOG …) so we
+            # can see WHAT F5 rendered — its URL, every input's name/id/type, and a
+            # snippet of visible text — without needing a screenshot off the worker.
+            # This is the ground truth for why the OTP box isn't appearing.
+            try:
+                from app.services.portal_automation.runner import _worker_note
+                await page.wait_for_timeout(1500)  # let the page settle
+                # Frame-aware: report inputs across ALL frames (the OTP/error
+                # content may be inside an iframe, invisible to the top document).
+                names, clicks = [], []
+                for fr in page.frames:
+                    try:
+                        fnames = await fr.eval_on_selector_all(
+                            "input", "els => els.map(e => (e.name||e.id||'?')+':'+e.type)"
+                        )
+                        if fnames:
+                            names.append((fr.url[-40:], fnames[:12]))
+                    except Exception:
+                        pass
+                    try:
+                        # clickables + their href/onclick — so a 'terminate session /
+                        # continue' link or button on the F5 choice page is visible
+                        # to us (its href/onclick tells us how to proceed).
+                        cl = await fr.eval_on_selector_all(
+                            "a, button, input[type=submit], input[type=button]",
+                            "els => els.map(e => ((e.innerText||e.value||'').trim().slice(0,20))"
+                            "+'|'+((e.getAttribute&&(e.getAttribute('href')||e.getAttribute('onclick')))||'').slice(0,40))"
+                        )
+                        if cl:
+                            clicks.append(cl[:10])
+                    except Exception:
+                        pass
+                try:
+                    body_txt = " ".join((await page.inner_text("body", timeout=2500)).split())[:150]
+                except Exception:
+                    body_txt = ""
+                _worker_note(
+                    f"harel post-submit a{login_attempt}: url={page.url} "
+                    f"frames={len(page.frames)} inputs={names} clicks={clicks} text={body_txt}"
+                )
+            except Exception:
+                pass
+
+            # F5 APM SMS OTP — in whatever frame it rendered.
+            try:
+                await self._wait_field_frame(page, otp_selector, 20000)
+                return  # OTP screen reached — login done.
+            except Exception as exc:
+                last_exc = exc
+                # Bounced to the error page? If a reset link is present, loop to
+                # click it and retry the whole login. Otherwise it's a genuine
+                # failure (wrong password, changed selector) — re-raise.
+                if login_attempt < 2 and await _reset_link_present():
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
-        await page.fill(
+        otp_selector = (
             "input[name='otpass'], input[name='otp'], "
             "input[autocomplete='one-time-code'], "
-            "input[name='code'], input[name='answer']",
-            otp,
+            "input[name='code'], input[name='answer']"
         )
+        # The OTP field can be inside an iframe (same as the login form/error
+        # page), so fill it in whatever frame holds it — not just the top document.
+        otp_frame = await self._frame_with(page, otp_selector, visible=True) or page
+        await otp_frame.locator(otp_selector).first.fill(otp)
         for sel in (
             "input[type='submit']",
             "button[type='submit']",
@@ -190,7 +332,7 @@ class HarelPortal(BasePortalAutomation):
             "button:has-text('Logon')",
         ):
             try:
-                await page.click(sel, timeout=2500)
+                await otp_frame.locator(sel).first.click(timeout=2500)
                 break
             except Exception:
                 continue

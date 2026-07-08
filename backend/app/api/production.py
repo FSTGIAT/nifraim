@@ -309,6 +309,17 @@ async def export_unified_production(
     if not uploads:
         raise HTTPException(status_code=404, detail="אין קובץ פרודוקציה פעיל")
 
+    # A merged 'מאוחד' upload is DERIVED (batch fold of per-company files, which
+    # the batch then deletes). When a SINGLE-company run happens after a batch,
+    # fresh per-company uploads coexist with the older מאוחד — including both
+    # would double-count and mask the new data. Exclude the stale merge.
+    non_merged = [u for u in uploads if (u.company_source or "") != "מאוחד"]
+    merged = [u for u in uploads if (u.company_source or "") == "מאוחד"]
+    if merged and non_merged:
+        newest_merged_at = max(m.uploaded_at for m in merged)
+        if any(u.uploaded_at > newest_merged_at for u in non_merged):
+            uploads = non_merged
+
     # Scope to the LATEST period only — strips historical noise so the file
     # reflects "this month's automation output from each company".
     periods_present = [u.period_month for u in uploads if u.period_month]
@@ -352,6 +363,7 @@ async def export_unified_production(
                 ClientRecord.is_active,
                 ClientRecord.processing_date,
                 ClientRecord.sign_date,
+                ClientRecord.lead_source,
             )
             .where(ClientRecord.upload_id == u.id)
             .order_by(ClientRecord.id_number)
@@ -363,6 +375,8 @@ async def export_unified_production(
                 "שם פרטי": r.first_name,
                 "שם משפחה": r.last_name,
                 "חברה מקבלת": r.receiving_company,
+                # Source account (Harel agency logins have 2+) — blank otherwise.
+                "מספר חשבון": r.lead_source or "",
                 "מוצר": r.product,
                 "סוג מוצר": r.product_type,
                 "מספר פוליסה": r.fund_policy_number,
@@ -418,6 +432,184 @@ async def export_unified_production(
     fname = f"פרודוקציה מאוחדת{' ' + label if label else ''}.xlsx"
     from urllib.parse import quote
     cd = f"attachment; filename=production_merged.xlsx; filename*=UTF-8''{quote(fname)}"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": cd},
+    )
+
+
+@router.get("/commission-export.xlsx")
+async def export_unified_commission(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a unified monthly **נפרעים** (commission) xlsx — the sibling of
+    /export.xlsx but for commission uploads (file_category='commission',
+    is_production=False) instead of production. One sheet per company source +
+    a summary. Lets a נפרעים portal card download its own data (the נפרעים rows)
+    rather than the production file.
+    """
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    import pandas as pd
+
+    result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.is_production == False,
+            FileUpload.file_category == "commission",
+        ).order_by(FileUpload.uploaded_at.desc())
+    )
+    uploads = list(result.scalars().all())
+    if not uploads:
+        raise HTTPException(status_code=404, detail="אין קובץ נפרעים פעיל")
+
+    # Selection semantics — "latest harvest", NOT latest period_month:
+    # 1. A merged 'מאוחד' upload is DERIVED (batch fold of the others). When any
+    #    per-company upload is NEWER, the merged file is stale — exclude it, or
+    #    it both masks the fresh downloads and double-counts their rows.
+    # 2. Per company, keep uploads from that company's newest harvest window
+    #    (24h of its latest upload). A Harel run yields one file PER ACCOUNT in
+    #    the same minute — all must survive; older months uploaded weeks ago drop.
+    # 3. Dedupe by FILENAME (the upload replace-key), newest wins — NOT by
+    #    company_source, which would silently drop all but one account's file.
+    # period_month is deliberately not trusted here: portal-downloaded נפרעים
+    # filenames carry no month, so detection can land on record-data months
+    # (live: two fresh Harel files got 2026-02/03 while the stale מאוחד had
+    # 2026-05 → the old latest-period filter served ONLY the stale file).
+    non_merged = [u for u in uploads if (u.company_source or "") != "מאוחד"]
+    merged = [u for u in uploads if (u.company_source or "") == "מאוחד"]
+    if merged and non_merged:
+        newest_merged_at = max(m.uploaded_at for m in merged)
+        if any(u.uploaded_at > newest_merged_at for u in non_merged):
+            uploads = non_merged
+    by_company: dict[str, list[FileUpload]] = {}
+    for u in uploads:
+        by_company.setdefault(u.company_source or "ללא חברה", []).append(u)
+    picked: list[FileUpload] = []
+    for us in by_company.values():
+        newest = max(u.uploaded_at for u in us)
+        picked.extend(
+            u for u in us
+            if (newest - u.uploaded_at).total_seconds() <= 86400
+        )
+    seen: dict[str, FileUpload] = {}
+    for u in sorted(picked, key=lambda u: u.uploaded_at, reverse=True):
+        if u.filename not in seen:
+            seen[u.filename] = u
+    latest_per_company = list(seen.values())
+
+    HEBREW_MONTHS = ["", "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+                     "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"]
+    periods = [u.period_month for u in latest_per_company if u.period_month]
+    period = max(periods) if periods else None
+
+    company_dfs: list[tuple[str, pd.DataFrame, int]] = []
+    grand_records = 0
+    grand_paid = 0.0
+    grand_payment = 0.0
+
+    for u in latest_per_company:
+        rows_res = await db.execute(
+            select(
+                ClientRecord.id_number,
+                ClientRecord.first_name,
+                ClientRecord.last_name,
+                ClientRecord.receiving_company,
+                ClientRecord.product,
+                ClientRecord.product_type,
+                ClientRecord.fund_policy_number,
+                ClientRecord.total_premium,
+                ClientRecord.commission_paid,
+                ClientRecord.commission_before_fee,
+                ClientRecord.management_fee_amount,
+                ClientRecord.commission_expected,
+                ClientRecord.reported_commission_pct,
+                ClientRecord.processing_date,
+                ClientRecord.lead_source,
+            )
+            .where(ClientRecord.upload_id == u.id)
+            .order_by(ClientRecord.id_number)
+        )
+        rows = rows_res.all()
+        # NOTE column semantics (Harel): the portal's headline נפרעים number is
+        # the "סכום תשלום" column → commission_before_fee; "עמלה" (the agent
+        # commission component) → commission_paid. Both are exported so the
+        # workbook totals reconcile against the portal drill numbers.
+        df = pd.DataFrame([
+            {
+                "ת.ז": r.id_number,
+                "שם פרטי": r.first_name,
+                "שם משפחה": r.last_name,
+                "חברה מקבלת": r.receiving_company,
+                "מספר חשבון": r.lead_source or "",
+                "מוצר": r.product,
+                "סוג מוצר": r.product_type,
+                "מספר פוליסה": r.fund_policy_number,
+                "פרמיה": float(r.total_premium) if r.total_premium else None,
+                "סכום תשלום": float(r.commission_before_fee) if r.commission_before_fee else None,
+                "עמלה ששולמה": float(r.commission_paid) if r.commission_paid else None,
+                "דמי גביה": float(r.management_fee_amount) if r.management_fee_amount else None,
+                "עמלה צפויה": float(r.commission_expected) if r.commission_expected else None,
+                "אחוז עמלה": float(r.reported_commission_pct) if r.reported_commission_pct else None,
+                "תאריך עיבוד": r.processing_date,
+            }
+            for r in rows
+        ])
+        safe_name = (u.company_source or "—")[:31]
+        for bad in r":\/?*[]":
+            safe_name = safe_name.replace(bad, " ")
+        # Two files can share a company (one per portal account) — uniquify the
+        # sheet name with the account digits from the filename, else a counter.
+        existing = {n for n, _, _ in company_dfs}
+        if safe_name in existing:
+            import re as _re
+            m = _re.search(r"(\d{4,})", u.filename or "")
+            if m:
+                suffix = f" {m.group(1)[-6:]}"
+                safe_name = safe_name[: 31 - len(suffix)] + suffix
+            i, base = 2, safe_name
+            while safe_name in existing:
+                safe_name = f"{base[:27]} ({i})"
+                i += 1
+        company_dfs.append((safe_name, df, len(rows)))
+        grand_records += len(rows)
+        grand_paid += df["עמלה ששולמה"].fillna(0).sum() if not df.empty else 0
+        grand_payment += df["סכום תשלום"].fillna(0).sum() if not df.empty else 0
+
+    summary_df = pd.DataFrame([
+        {
+            "חברה": u.company_source or "—",
+            "מספר רשומות": cnt,
+            "סך סכום תשלום": float(df["סכום תשלום"].fillna(0).sum()) if not df.empty else 0.0,
+            "סך עמלה ששולמה": float(df["עמלה ששולמה"].fillna(0).sum()) if not df.empty else 0.0,
+            "תקופה": u.period_month.strftime("%Y-%m") if u.period_month else "",
+            "קובץ מקור": u.filename,
+        }
+        for u, (_, df, cnt) in zip(latest_per_company, company_dfs)
+    ] + [
+        {
+            "חברה": "סה״כ",
+            "מספר רשומות": grand_records,
+            "סך סכום תשלום": float(grand_payment),
+            "סך עמלה ששולמה": float(grand_paid),
+            "תקופה": period.strftime("%Y-%m") if period else "",
+            "קובץ מקור": f"{len(latest_per_company)} חברות",
+        }
+    ])
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        summary_df.to_excel(writer, sheet_name="סיכום", index=False)
+        for name, df, _ in company_dfs:
+            df.to_excel(writer, sheet_name=name, index=False)
+    buf.seek(0)
+
+    label = f"{HEBREW_MONTHS[period.month]} {period.year}" if period else ""
+    fname = f"נפרעים מאוחד{' ' + label if label else ''}.xlsx"
+    from urllib.parse import quote
+    cd = f"attachment; filename=commission_merged.xlsx; filename*=UTF-8''{quote(fname)}"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -86,6 +86,9 @@ PRODUCTION_FILE_COLUMNS = {
     "שם מסלול": "track",
     "צבירה במסלול": "accumulation",
     "צבירה במוצר": "accumulation",
+    # Source-portal account (Harel מספר-חשבון) — stored in lead_source so it
+    # survives the batch merge round-trip and shows in the download export.
+    "מספר חשבון": "lead_source",
 }
 
 # Column mappings for Commission Report (דוח נפרעים — Mor)
@@ -373,6 +376,8 @@ UNIFIED_NIFRAIM_COLUMNS = {
     "סכום בפועל": "actual_amount",
     "שיעור עמלה שנתי": "annual_commission_pct",
     "שיעור עמלה חודשי": "monthly_commission_pct",
+    # Source-portal account (Harel מספר-חשבון) → lead_source (survives merge).
+    "מספר חשבון": "lead_source",
 }
 
 # Ordered header row the aggregator writes (includes display-only קטגוריה/חודש).
@@ -380,6 +385,8 @@ COLUMNS_UNIFIED_NIFRAIM = [
     "מספר ת.ז", "שם פרטי", "שם משפחה", "יצרן", "קטגוריה", "סוג מוצר", "מוצר",
     "מס' פוליסה/חשבון", "פרמיה", "צבירה", "עמלה ששולמה", 'עמלה לפני מע"מ',
     "סכום בפועל", "שיעור עמלה שנתי", "שיעור עמלה חודשי", "חודש",
+    # Source-portal account (Harel מספר-חשבון) — trailing, blank for single-account companies.
+    "מספר חשבון",
 ]
 
 UNIFIED_NIFRAIM_SIGNATURE = {"קטגוריה", "עמלה ששולמה"}

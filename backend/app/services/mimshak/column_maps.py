@@ -33,6 +33,8 @@ COLUMNS_INSURANCE_PRODUCTS: list[str] = [
     "מיופה כוח אחרון",
     'מת"ל',
     "נכון ליום",
+    # Source-portal account (trailing — see COLUMNS_SAVINGS_PRODUCTS note).
+    "מספר חשבון",
 ]
 
 
@@ -111,6 +113,9 @@ COLUMNS_SAVINGS_PRODUCTS: list[str] = [
     "תאריך הפקדה אחרונה", "דמי ניהול מהפקדה", "דמי ניהול מצבירה",
     "מקדם מובטח לפרישה", "מסלול ביטוח (פנסיה)", "מספר סוכן",
     "תיאור מספר סוכן", "מיופה כוח אחרון", 'מת"ל', "נכון ליום", "קידוד אחיד",
+    # Source-portal account (הראל מספר-חשבון etc.) — trailing so positional
+    # index() lookups above are unaffected; blank for companies with one account.
+    "מספר חשבון",
 ]
 
 

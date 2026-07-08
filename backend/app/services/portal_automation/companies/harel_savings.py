@@ -59,6 +59,24 @@ _POLICY_CANDIDATES = [
 ]
 
 
+def _company_label_from_row(row_text: str) -> str | None:
+    """Extract the חברה-מנהלת label from a modal-2 row (`גמל 6 6`,
+    `קרן השתלמות 74 74`). Returns None for non-company rows: the agent rows
+    still visible behind modal 2 (`61826 סוכן 1,824 …`), totals (`1,824 1,824`
+    — no Hebrew token), and סה"כ rows."""
+    toks = (row_text or "").split()
+    label_toks: list[str] = []
+    for t in toks:
+        if any("֐" <= ch <= "׿" for ch in t):
+            label_toks.append(t)
+        elif label_toks:
+            break
+    label = " ".join(label_toks).strip()
+    if not label or "סוכן" in label or label.startswith("סה"):
+        return None
+    return label
+
+
 def _pick(columns, candidates):
     cset = {str(c).strip(): c for c in columns}
     for cand in candidates:
@@ -129,8 +147,13 @@ def _period_from_df(df) -> str | None:
     return None
 
 
-def _extract_production_rows(raw_path: Path, company_source: str, run_id: str, scr_root: Path):
-    """Read a downloaded צבירה export and return normalized production-row dicts."""
+def _extract_production_rows(raw_path: Path, company_source: str, run_id: str, scr_root: Path,
+                             account: str = ""):
+    """Read a downloaded צבירה export and return normalized production-row dicts.
+
+    `account` is the source מספר-חשבון for these rows (an agency login has 2+);
+    it's stamped per-row so the merged production file / download export can show
+    WHICH account each client came from (QA 2026-07-07 — 'did 061826 download?')."""
     header_row = _find_header_row(raw_path)
     df = pd.read_excel(raw_path, header=header_row, dtype=object)
     df.columns = [str(c).strip() for c in df.columns]
@@ -160,7 +183,8 @@ def _extract_production_rows(raw_path: Path, company_source: str, run_id: str, s
             f"(see {run_id}_{company_source}_columns.txt) — extend _ID_CANDIDATES"
         )
 
-    default_prod = "גמל" if "גמל" in company_source else "מגוון"
+    # company_source is "הראל <label>" with a dynamic label (גמל/מגוון/פנסיה/…).
+    default_prod = company_source.replace("הראל", "").strip() or "מגוון"
     rows = []
     for i in range(len(df)):
         idv = df[id_col].iloc[i]
@@ -183,6 +207,7 @@ def _extract_production_rows(raw_path: Path, company_source: str, run_id: str, s
             "סטטוס מוצר": "פעיל",
             "תאריך הצטרפות למוצר": None,
             "מספר סוכן": None,
+            "מספר חשבון": account or None,
         })
     return rows
 
@@ -191,7 +216,7 @@ def _write_production_xlsx(rows, company_source: str, period_label: str, downloa
     out_df = pd.DataFrame(rows, columns=[
         "יצרן", "סוג מוצר", "מוצר", "מס' חשבון/פוליסה", "מספר ת.ז",
         "שם פרטי לקוח", "שם משפחה לקוח", 'סה"כ פרמיה', "צבירה",
-        "סטטוס מוצר", "תאריך הצטרפות למוצר", "מספר סוכן",
+        "סטטוס מוצר", "תאריך הצטרפות למוצר", "מספר סוכן", "מספר חשבון",
     ])
     out_path = download_dir / f"{company_source} - פרודוקציה ({period_label}).xlsx"
     out_df.to_excel(out_path, index=False)
@@ -214,7 +239,11 @@ class HarelSavingsPortal(_HarelReportPortal):
         username: str | None = None,
     ) -> list[Path]:
         self.report_password = None
-        from app.services.portal_automation.runner import SCREENSHOT_ROOT, logger as _logger
+        from app.services.portal_automation.runner import (
+            SCREENSHOT_ROOT,
+            _worker_note,
+            logger as _logger,
+        )
 
         run_id = download_dir.name
         download_dir.mkdir(parents=True, exist_ok=True)
@@ -234,42 +263,23 @@ class HarelSavingsPortal(_HarelReportPortal):
 
         for ai, acct in enumerate(accounts):
             if acct:
-                await self._select_account(page, frame, acct)
+                if not await self._select_account(page, frame, acct):
+                    # A failed switch means the report still shows the PREVIOUS
+                    # account — drilling now would double-count its rows into
+                    # this account's slot. Skip loudly instead.
+                    _logger.warning("harel_savings: acct %s — account select failed, skipping", acct)
+                    try:
+                        _worker_note(f"harel_savings: acct {acct} SELECT FAILED — skipped")
+                    except Exception:
+                        pass
+                    frame = await self._open_report(page, run_id)
+                    continue
             frame = await self._run_filter(page, frame)
             await self._dump_frame(page, run_id, f"sv_2_filtered_{ai}", frame)
 
-            # Drill 0 — latest-month מוצרי צבירה cell (top row = latest month).
-            if not await self._vis_click_first(
-                frame.locator('td[data_colid="Schum_Mutzarim_Finnasim"].cell_action')
-            ):
-                _logger.warning("harel_savings: acct %s — מוצרי צבירה cell not found", acct)
-                await self._dump_frame(page, run_id, f"sv_3_no_drill0_{ai}", frame)
-                continue
-            await page.wait_for_timeout(2500)
-            frame = await self._get_frame(page) or frame
-            await self._dump_frame(page, run_id, f"sv_3_modal1_{ai}", frame)
-
-            # Drill 1 — latest-month column in modal 1 (_M2_Schum_2). The period
-            # is the DRILLED month (the _M2 column's data-title, e.g. "05/2026"),
-            # captured from the actual company cell below — NOT חודש עיבוד (the
-            # lagging processing month) and NOT m2.first (a hidden cell).
-            m2 = frame.locator('td[data_colid="_M2_Schum_2"].cell_action')
-            if not await self._vis_click_first(m2):
-                _logger.warning("harel_savings: acct %s — _M2_Schum_2 (modal1) not found", acct)
-                await self._dump_frame(page, run_id, f"sv_4_no_drill1_{ai}", frame)
-                continue
-            await page.wait_for_timeout(2500)
-            frame = await self._get_frame(page) or frame
-            await self._dump_frame(page, run_id, f"sv_5_modal2_{ai}", frame)
-
-            # Modal 2 — per managing-company rows (גמל / מגוון). Each company's
-            # value cell is `_inset_10__M2_Schum_2` (the `_inset_7__M2_Schum_2`
-            # cell is the TOTAL — skip it). Clicking a company value opens a NEW
-            # TAB whose Intellisys report (loaded async into a frame) carries the
-            # bar-excel export.
             ctx = page.context
 
-            async def _export_from_popup(popup, comp_label: str):
+            async def _export_from_popup(popup, comp_label: str, uniq: str):
                 """Poll the popup's frames for a visible bar-excel (the report
                 loads async), then expect_download on the click. Dumps all frames
                 on failure. Returns the saved raw path or None."""
@@ -297,14 +307,14 @@ class HarelSavingsPortal(_HarelReportPortal):
                 if not found:
                     try:
                         await self._dump_all_frames(
-                            popup, SCREENSHOT_ROOT / f"{run_id}_sv_6_no_excel_{comp_label}.png"
+                            popup, SCREENSHOT_ROOT / f"{run_id}_sv_6_no_excel_{comp_label}_{uniq}.png"
                         )
                     except Exception:
                         pass
                     _logger.warning("harel_savings: no bar-excel in popup for הראל %s", comp_label)
                     return None
                 fr, loc = found
-                raw_path = download_dir / f"_raw_{comp_label}.xls"
+                raw_path = download_dir / f"_raw_{comp_label}_{uniq}.xls"
                 try:
                     async with popup.expect_download(timeout=30000) as dl:
                         if not await self._vis_click_last(loc):
@@ -319,48 +329,149 @@ class HarelSavingsPortal(_HarelReportPortal):
                     _logger.warning("harel_savings: download failed for הראל %s: %s", comp_label, e)
                     return None
 
-            for comp_label in ("גמל", "מגוון"):
-                company_source = f"הראל {comp_label}"
-                cell = frame.locator(
-                    f'tr:has(td[data_colid="_M2_Schum_2"].cell_action):has-text("{comp_label}") '
-                    f'td[data_colid="_M2_Schum_2"].cell_action'
-                ).first
+            async def _drill0_savings(fr, tag: str):
+                """Click the latest-month מוצרי צבירה cell → agent-breakdown
+                modal 1. Returns the re-acquired frame or None."""
+                if not await self._vis_click_first(
+                    fr.locator('td[data_colid="Schum_Mutzarim_Finnasim"].cell_action')
+                ):
+                    await self._dump_frame(page, run_id, f"sv_3_no_drill0_{tag}", fr)
+                    return None
+                await page.wait_for_timeout(2500)
+                fr = await self._get_frame(page) or fr
+                await self._dump_frame(page, run_id, f"sv_3_modal1_{tag}", fr)
+                return fr
+
+            def _agent_rows(cells: list[dict]) -> list[dict]:
+                """Modal-1 rows are one per AGENT (`61826 סוכן 1,824 …`); an
+                agency account lists several. The bottom total row has no
+                'סוכן' token. Falls back to the first visible cell when the
+                shape drifts, preserving the legacy single-drill behavior."""
+                agents = [c for c in cells if "סוכן" in (c.get("row") or "")]
+                return agents or cells[:1]
+
+            _before = {k: len(v) for k, v in company_rows.items()}
+
+            f0 = await _drill0_savings(frame, str(ai))
+            if f0 is None:
+                _logger.warning("harel_savings: acct %s — מוצרי צבירה cell not found", acct)
                 try:
-                    if await cell.count() == 0 or not await cell.is_visible():
-                        _logger.info("harel_savings: %s row absent for acct %s", company_source, acct)
-                        continue
-                except Exception:
-                    continue
-                # Period = the drilled latest month (the _M2 column's data-title,
-                # e.g. "05/2026") — NOT the lagging חודש עיבוד processing month.
-                if period_label is None:
-                    try:
-                        dt = await cell.get_attribute("data-title")
-                        if dt:
-                            period_label = _period_label(dt)
-                    except Exception:
-                        pass
-                popup = None
-                try:
-                    async with ctx.expect_page(timeout=8000) as pp:
-                        await cell.click(timeout=5000, force=True)
-                    popup = await pp.value
-                except Exception:
-                    _logger.warning("harel_savings: no popup for %s", company_source)
-                    continue
-                raw_path = await _export_from_popup(popup, comp_label)
-                if raw_path:
-                    try:
-                        rows = _extract_production_rows(raw_path, company_source, run_id, SCREENSHOT_ROOT)
-                        company_rows.setdefault(company_source, []).extend(rows)
-                        _logger.info("harel_savings: %s acct %s → +%d rows", company_source, acct, len(rows))
-                    except Exception as e:
-                        _logger.warning("harel_savings: reshape failed for %s: %s", company_source, e)
-                try:
-                    await popup.close()
+                    _worker_note(f"harel_savings: acct {acct or 'default'} drill0 FAILED (מוצרי צבירה cell)")
                 except Exception:
                     pass
+                frame = await self._open_report(page, run_id)
+                continue
+            frame = f0
+
+            # Modal 1 — enumerate ALL agent rows (never just .first: an agency
+            # account has several agents; QA measured the missing share).
+            agent_cells = _agent_rows(await self._visible_drill_cells(frame, "_M2_Schum_2"))
+            if not agent_cells:
+                _logger.warning("harel_savings: acct %s — _M2_Schum_2 (modal1) not found", acct)
+                try:
+                    _worker_note(f"harel_savings: acct {acct or 'default'} drill1 FAILED (_M2_Schum_2)")
+                except Exception:
+                    pass
+                await self._dump_frame(page, run_id, f"sv_4_no_drill1_{ai}", frame)
+                frame = await self._open_report(page, run_id)
+                continue
+            try:
+                _worker_note(f"harel_savings: acct {acct or 'default'} agents={len(agent_cells)}")
+            except Exception:
+                pass
+
+            for gi in range(len(agent_cells)):
+                if gi > 0:
+                    # Fresh drill for the next agent — modal state after the
+                    # previous agent's popups is unreliable.
+                    frame = await self._open_report(page, run_id)
+                    if acct and not await self._select_account(page, frame, acct):
+                        _logger.warning("harel_savings: acct %s — reselect failed (agent %d)", acct, gi)
+                        break
+                    frame = await self._run_filter(page, frame)
+                    f0 = await _drill0_savings(frame, f"{ai}_{gi}")
+                    if f0 is None:
+                        continue
+                    frame = f0
+                    cur = _agent_rows(await self._visible_drill_cells(frame, "_M2_Schum_2"))
+                    if gi < len(cur):
+                        agent_cells[gi] = cur[gi]
+
+                # Drill 1 — THIS agent's latest-month cell → modal 2. The period
+                # is the DRILLED month (the _M2 column's data-title, e.g.
+                # "05/2026") — NOT the lagging חודש עיבוד processing month.
+                acell = frame.locator('td[data_colid="_M2_Schum_2"].cell_action').nth(
+                    agent_cells[gi]["nth"]
+                )
+                try:
+                    await acell.click(timeout=5000, force=True)
+                except Exception as e:
+                    _logger.warning("harel_savings: acct %s agent %d — modal1 click failed: %s", acct, gi, e)
+                    continue
+                await page.wait_for_timeout(2500)
                 frame = await self._get_frame(page) or frame
+                await self._dump_frame(page, run_id, f"sv_5_modal2_{ai}_{gi}", frame)
+
+                # Modal 2 — enumerate ALL חברה-מנהלת rows dynamically (גמל,
+                # מגוון, פנסיה, …) instead of a hardcoded pair; the label filter
+                # drops the total row and the modal-1 agent rows behind it.
+                comps: list[tuple[str, dict]] = []
+                for c in await self._visible_drill_cells(frame, "_M2_Schum_2"):
+                    label = _company_label_from_row(c.get("row") or "")
+                    if label:
+                        comps.append((label, c))
+                if not comps:
+                    _logger.warning("harel_savings: acct %s agent %d — no company rows in modal2", acct, gi)
+                    try:
+                        _worker_note(f"harel_savings: acct {acct or 'default'} agent {gi} — modal2 empty")
+                    except Exception:
+                        pass
+                    continue
+
+                for comp_label, cinfo in comps:
+                    company_source = f"הראל {comp_label}"
+                    if period_label is None and cinfo.get("title"):
+                        if re.search(r"\d{1,2}\s*[/\-.]\s*\d{2,4}", cinfo["title"]):
+                            period_label = _period_label(cinfo["title"])
+                    cell = frame.locator('td[data_colid="_M2_Schum_2"].cell_action').nth(
+                        cinfo["nth"]
+                    )
+                    popup = None
+                    try:
+                        async with ctx.expect_page(timeout=8000) as pp:
+                            await cell.click(timeout=5000, force=True)
+                        popup = await pp.value
+                    except Exception:
+                        _logger.warning("harel_savings: no popup for %s", company_source)
+                        continue
+                    raw_path = await _export_from_popup(popup, comp_label, f"{ai}_{gi}")
+                    if raw_path:
+                        try:
+                            rows = _extract_production_rows(raw_path, company_source, run_id, SCREENSHOT_ROOT, account=acct or "")
+                            company_rows.setdefault(company_source, []).extend(rows)
+                            _logger.info("harel_savings: %s acct %s → +%d rows", company_source, acct, len(rows))
+                        except Exception as e:
+                            _logger.warning("harel_savings: reshape failed for %s: %s", company_source, e)
+                    try:
+                        await popup.close()
+                    except Exception:
+                        pass
+                    frame = await self._get_frame(page) or frame
+
+            # Per-account coverage note → Railway WORKER-LOG, so a silently
+            # missing account/company is visible without pulling worker dumps.
+            try:
+                added = {
+                    k: len(v) - _before.get(k, 0)
+                    for k, v in company_rows.items()
+                    if len(v) - _before.get(k, 0)
+                }
+                _worker_note(
+                    f"harel_savings: acct {acct or 'default'} → "
+                    + (", ".join(f"{k} +{n}" for k, n in added.items()) or "no rows")
+                )
+            except Exception:
+                pass
 
             # Return to the report params for the next account.
             frame = await self._open_report(page, run_id)

@@ -29,6 +29,7 @@ verify on the agent's machine.
 import os
 import re
 import sys
+import json
 import time
 import glob
 import asyncio
@@ -82,8 +83,26 @@ def _detect_win_py() -> str:
     return sys.executable
 
 
-_DEF_MBT = ("/mnt/c/Users/roygi/Downloads" if sys.platform != "win32"
-            else str(Path(os.environ.get("USERPROFILE", "")) / "Downloads"))
+def _default_mbt_dir() -> str:
+    """Downloads dir where the .MBT set lands — DERIVED, never a hardcoded user.
+    Native Windows: %USERPROFILE%\\Downloads. WSL: the real Windows user's
+    Downloads under /mnt/c/Users (skip Public/Default/All Users), so it works for
+    ANY agent's box, not one named account. Override with PHOENIX_MBT_DIR."""
+    if sys.platform == "win32":
+        return str(Path(os.environ.get("USERPROFILE", "")) / "Downloads")
+    users = Path("/mnt/c/Users")
+    skip = {"public", "default", "default user", "all users", "defaultuser0"}
+    if users.exists():
+        cands = [d for d in users.iterdir()
+                 if d.is_dir() and d.name.lower() not in skip and (d / "Downloads").exists()]
+        # Prefer the most-recently-used profile (the logged-in agent).
+        cands.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        if cands:
+            return str(cands[0] / "Downloads")
+    return "/mnt/c/Users/Public/Downloads"
+
+
+_DEF_MBT = _default_mbt_dir()
 FNXBOX = _wsl(os.environ.get("PHOENIX_FNXBOX", r"C:\fnxbox"))
 MBT_DIR = _wsl(os.environ.get("PHOENIX_MBT_DIR") or _DEF_MBT)
 CONVERTER = os.environ.get("PHOENIX_MU_CONVERTER", "").strip()
@@ -96,8 +115,38 @@ WINDIR = str(_HERE.parent)
 MBT_NAMES = ("LIFE.MBT", "COVRLIFE.MBT", "LIFEHLTH.MBT", "COMPANY.MBT", "PERSON.MBT")
 
 
+_WORKER_TOKEN = ""  # set in main() once the credential's token is known
+
+
 def _log(m):
     print(f"[phoenix_terminal_run] {m}", flush=True)
+
+
+def _post_log(msg: str) -> None:
+    """Best-effort POST to the backend worker-log so phoenix_terminal progress /
+    failures show up in Railway (WORKER-LOG …) exactly like the Playwright
+    plugins. batch_runner runs this orchestrator as a subprocess WITHOUT
+    capturing its stdout, so print() alone is invisible server-side — the black
+    box that made 'login script exit 1' undiagnosable."""
+    if not _WORKER_TOKEN:
+        return
+    try:
+        import urllib.request
+        body = f"phoenix_terminal: {msg}"[:3500].encode("utf-8")
+        req = urllib.request.Request(
+            f"{BASE}/api/portal-automation/worker/log/{_WORKER_TOKEN}",
+            data=body, method="POST",
+        )
+        urllib.request.urlopen(req, timeout=6)
+    except Exception:
+        pass
+
+
+def _tail(text: str, n: int = 900) -> str:
+    """Last n chars of captured child output, blank-line-trimmed — the part that
+    actually names the failure (a '!!' marker or a traceback)."""
+    t = (text or "").strip()
+    return t[-n:] if len(t) > n else t
 
 
 def _close_stale_terminals():
@@ -124,22 +173,46 @@ def _mbt_snapshot():
     return out
 
 
-def _run_login(username, password, token):
-    # Run on WINDOWS Python (WIN_PY) with cwd=WINDIR so the relative script name
-    # resolves over the \\wsl.localhost UNC cwd that the Windows interpreter
-    # inherits when launched from WSL.
-    _log(f"step 2: phoenix_browser_win login (hands-free OTP) [py={WIN_PY}]…")
-    r = subprocess.run([WIN_PY, "phoenix_browser_win.py",
-                        username, password, token, BASE], cwd=WINDIR, timeout=420)
+def _run_child(label: str, argv: list, timeout: int) -> None:
+    """Run a GUI sub-step on WINDOWS Python (WIN_PY), CAPTURING its output so a
+    failure names itself instead of a bare 'exit N'. cwd=WINDIR so the relative
+    script resolves over the \\wsl.localhost UNC cwd the Windows interpreter
+    inherits when launched from WSL. On non-zero (or timeout) the child's output
+    tail is raised AND posted to WORKER-LOG."""
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    # Leave PHOENIX_DEBUG_DIR unset unless the operator set it — the child then
+    # drops failure screenshots into the Windows user's Downloads (findable),
+    # not this bundle folder.
+    try:
+        r = subprocess.run(
+            [WIN_PY, *argv], cwd=WINDIR, timeout=timeout, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
+        )
+    except subprocess.TimeoutExpired as e:
+        out = _tail((e.output or "") if isinstance(e.output, str) else "")
+        _log(f"{label} TIMEOUT after {timeout}s. tail:\n{out}")
+        _post_log(f"{label} TIMEOUT {timeout}s :: {out[-500:]}")
+        raise RuntimeError(f"{label} timed out after {timeout}s: {out[-300:] or 'no output'}")
+    tail = _tail(r.stdout or "")
+    # Surface the child's progress/failure markers to the worker log regardless.
+    _log(f"{label} exit={r.returncode}. tail:\n{tail}")
+    _post_log(f"{label} exit={r.returncode} :: {tail[-600:]}")
     if r.returncode != 0:
-        raise RuntimeError(f"login script exit {r.returncode}")
+        # Prefer the last '!!' marker the child printed (its own diagnosis).
+        markers = [ln for ln in (r.stdout or "").splitlines() if ln.strip().startswith("!!")]
+        why = markers[-1].strip() if markers else (tail[-300:] or "no output")
+        raise RuntimeError(f"{label} exit {r.returncode}: {why}")
+
+
+def _run_login(username, password, token):
+    _log(f"step 2: phoenix_browser_win login (hands-free OTP) [py={WIN_PY}]…")
+    _run_child("login", ["phoenix_browser_win.py", username, password, token, BASE], 420)
 
 
 def _run_export():
     _log(f"step 3: phoenix_win_terminal export (KERMIT MU_NK_HAYV) [py={WIN_PY}]…")
-    r = subprocess.run([WIN_PY, "phoenix_win_terminal.py", "export"], cwd=WINDIR, timeout=420)
-    if r.returncode != 0:
-        raise RuntimeError(f"export script exit {r.returncode}")
+    _run_child("export", ["phoenix_win_terminal.py", "export"], 420)
 
 
 def _newest_mu():
@@ -236,6 +309,10 @@ async def main():
     if not token:
         raise RuntimeError("user has no phone_forward_token — OTP cannot be fetched")
 
+    global _WORKER_TOKEN
+    _WORKER_TOKEN = token
+    _post_log(f"start run {str(run_id)[:8]} user={getattr(user, 'email', '?')} win_py={WIN_PY}")
+
     try:
         _close_stale_terminals()
         _run_login(username, password, token)
@@ -245,6 +322,7 @@ async def main():
         await _parse_and_ingest(run_id)
     except Exception as e:
         _log(f"FAILED: {e}")
+        _post_log(f"FAILED: {str(e)[:600]}")
         from sqlalchemy import select as _sel
         from app.database import async_session as _s
         async with _s() as db:

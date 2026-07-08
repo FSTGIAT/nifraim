@@ -73,6 +73,21 @@
           <polygon points="6 4 20 12 6 20" />
         </svg>
       </button>
+      <button
+        class="pcard__ic pcard__ic--dl"
+        type="button"
+        :disabled="downloading"
+        :title="downloading ? 'מוריד…' : dlTitle"
+        :aria-label="downloading ? 'מוריד אקסל' : dlTitle"
+        @click="exportData"
+      >
+        <span v-if="downloading" class="pcard__spinner pcard__spinner--dark" aria-hidden="true"></span>
+        <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      </button>
       <button class="pcard__ic" type="button" title="עריכה" aria-label="עריכה" @click="$emit('edit')">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -90,11 +105,13 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import PortalRunProgress from './PortalRunProgress.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 import { brandFor } from '../../utils/companyBrand.js'
 import { nearestChartColor } from '../../utils/chartPalette.js'
+import api from '../../api/client.js'
+import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 
 const props = defineProps({
   cred: { type: Object, required: true },
@@ -105,6 +122,64 @@ const props = defineProps({
   washColor: { type: String, default: '' },
 })
 defineEmits(['run', 'edit', 'delete', 'view-error'])
+
+// Download the unified monthly xlsx (summary sheet + one sheet per company) for
+// THIS card's data type. A production card (מוצרי צבירה) downloads production;
+// a נפרעים card (ריכוז תשלומי עמלות) downloads the נפרעים workbook — otherwise
+// every card would hand back the production file regardless of what it's for.
+// Category comes from the portal-kinds catalog (backend PORTAL_META), with a
+// portal_kind name fallback so it still works before the catalog loads.
+// Anchor-with-`download` would drop the Bearer token, so fetch as a blob via
+// axios and trigger a temporary object URL — same pattern as installer/report.
+const paStore = usePortalAutomationStore()
+const isNifraim = computed(() => {
+  const meta = paStore.portalKinds?.find((k) => k.id === props.cred.portal_kind)
+  const cat = meta?.category || ''
+  if (cat) return cat.includes('נפרעים') || cat.includes('עמלות')
+  return /commission|nifraim|amalot/i.test(props.cred.portal_kind || '')
+})
+const dlTitle = computed(() =>
+  isNifraim.value
+    ? 'הורד אקסל נפרעים מלא (כל החברות)'
+    : 'הורד אקסל פרודוקציה מלא (כל החברות)')
+
+const downloading = ref(false)
+async function exportData() {
+  if (downloading.value) return
+  downloading.value = true
+  const nifraim = isNifraim.value
+  try {
+    const path = nifraim
+      ? '/production/commission-export.xlsx'
+      : '/production/export.xlsx'
+    const res = await api.get(path, { responseType: 'blob' })
+    // Prefer the server-suggested Hebrew filename from Content-Disposition.
+    let fname = nifraim ? 'נפרעים מאוחד.xlsx' : 'פרודוקציה מאוחדת.xlsx'
+    const cd = res.headers?.['content-disposition'] || ''
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
+    if (m) {
+      try { fname = decodeURIComponent(m[1]) } catch { /* keep default */ }
+    }
+    const url = window.URL.createObjectURL(new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fname
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => window.URL.revokeObjectURL(url), 0)
+  } catch (e) {
+    const kind = nifraim ? 'נפרעים' : 'פרודוקציה'
+    const msg = e.response?.status === 404
+      ? `אין עדיין קובץ ${kind} פעיל להורדה. הריצו הורדת חברה תחילה.`
+      : 'הורדת האקסל נכשלה. נסו שוב.'
+    alert(msg)
+  } finally {
+    downloading.value = false
+  }
+}
 
 const STATUS_LABELS = {
   success: 'הצליח',
@@ -414,6 +489,28 @@ const cardVars = computed(() => {
   color: var(--red-deep);
   border-color: rgba(234, 0, 30, 0.4);
   background: rgba(234, 0, 30, 0.06);
+}
+
+/* Download-production button — brand-tinted so it reads as a "get file" action
+   without competing with the primary play button. */
+.pcard__ic--dl {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 30%, var(--border-subtle));
+  background: var(--brand-soft2);
+}
+.pcard__ic--dl:hover:not(:disabled) {
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+  transform: translateY(-1px);
+}
+.pcard__ic--dl:disabled { opacity: 0.6; cursor: not-allowed; }
+.pcard__ic--dl:focus-visible { outline: 2px solid var(--brand-line); outline-offset: 2px; }
+
+/* Dark spinner variant for light icon-button backgrounds. */
+.pcard__spinner--dark {
+  border: 1.6px solid color-mix(in srgb, var(--brand) 30%, transparent);
+  border-top-color: var(--brand);
 }
 
 @media (prefers-reduced-motion: reduce) {

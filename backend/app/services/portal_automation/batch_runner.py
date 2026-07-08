@@ -78,6 +78,35 @@ def _jsonable(obj):
     return obj
 
 
+async def _tag_source_accounts_from_filename(db, upload_ids: list[uuid.UUID]) -> None:
+    """Set lead_source = source-portal account (from the filename) on the records
+    of uploads whose filename carries one. Harel agency logins download one file
+    PER מספר-חשבון named `… - 113061826 …`; without this the account is lost when
+    the per-account files merge into one נפרעים workbook. Only fills a NULL
+    lead_source (never clobbers a real value). Best-effort per upload."""
+    if not upload_ids:
+        return
+    import re as _re
+    from sqlalchemy import update as sql_update
+    from app.models.upload import FileUpload
+    rows = (await db.execute(
+        select(FileUpload).where(FileUpload.id.in_(upload_ids))
+    )).scalars().all()
+    for u in rows:
+        m = _re.search(r"-\s*(\d{6,})", u.filename or "")
+        if not m:
+            continue
+        await db.execute(
+            sql_update(ClientRecord)
+            .where(
+                ClientRecord.upload_id == u.id,
+                ClientRecord.lead_source.is_(None),
+            )
+            .values(lead_source=m.group(1))
+        )
+    await db.flush()
+
+
 async def _delete_uploads(db, upload_ids: list[uuid.UUID]) -> None:
     """Delete held per-company uploads after their data has been folded into a
     merged file. Cascade removes their ClientRecord rows; NULL any
@@ -397,6 +426,12 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     if comm_upload_ids:
         from app.services.portal_automation.aggregate import build_unified_nifraim_bytes
         from app.services.upload_ingest import ingest_file_bytes
+
+        # Stamp the source account (Harel agency logins download one נפרעים file
+        # PER account — the account is in the filename) onto each record's
+        # lead_source, so the merged file / download export shows which account
+        # each row came from. Production already carries it via a per-row column.
+        await _tag_source_accounts_from_filename(db, comm_upload_ids)
 
         comm_recs_q = await db.execute(
             select(ClientRecord).where(ClientRecord.upload_id.in_(comm_upload_ids))

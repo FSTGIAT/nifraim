@@ -208,6 +208,7 @@ class _HarelReportPortal(HarelPortal):
         """Recover hangup, navigate to the report, return the loaded intellisys
         frame (params/filter rendered). Raises if the frame never appears."""
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
+        self._run_id_for_dumps = run_id  # used by _list_accounts artifact dump
         await self._recover_hangup(page)
         parsed = urlparse(page.url)
         report_url = f"{parsed.scheme}://{parsed.netloc}{REPORT_PATH}"
@@ -278,19 +279,78 @@ class _HarelReportPortal(HarelPortal):
     # ── account dropdown (מספר - חשבון, #_ctrlParam__2) ─────────────────────────
 
     async def _list_accounts(self, page: "Page", frame: "Frame") -> list[str]:
-        """Open the מספר-חשבון dropdown and return the account-id strings (leading
-        number of each option). Falls back to the currently-selected account if
-        enumeration fails (single-account behaviour)."""
+        """Open the מספר-חשבון dropdown and return ALL account-id strings (leading
+        number of each option), dynamically — users have 1..N accounts with
+        arbitrary numbers, so nothing here may assume a count or a literal id.
+
+        The original selector list (`.cbo_list .ctrlText, …`) silently missed the
+        real Intellisys option DOM, so enumeration fell back to the currently-
+        selected account and the per-account loops only ever saw ONE account
+        (live: kikohib's second account was never drilled — QA doc 2026-07-06).
+        A generic visible-leaf text walk is added as the robust pass, plus a
+        dropdown-state artifact dump so future DOM drift is diagnosable offline.
+        """
+        from app.services.portal_automation.runner import SCREENSHOT_ROOT, _worker_note
+
         accounts: list[str] = []
+
+        # The currently-selected account is always part of the set (and the
+        # guaranteed fallback for single-account users / enumeration failure).
+        current: str | None = None
+        try:
+            cur = await frame.locator("#ctrlParam__2").inner_text(timeout=3000)
+            m = re.search(r"(\d{4,})", cur or "")
+            if m:
+                current = m.group(1)
+        except Exception:
+            pass
+
         try:
             await frame.click("#_ctrlParam__2", timeout=4000)
             await page.wait_for_timeout(800)
+
+            # Pass 1 — known option-container selectors (kept from the original).
             opts = await frame.eval_on_selector_all(
                 ".cbo_list .ctrlText, .cbo-list .ctrlText, ul li .ctrlText, "
                 "div.ctrlText, li[role='option'], .param-value-container .ctrlText",
                 "els => els.filter(e => e.offsetParent !== null)"
                 ".map(e => (e.getAttribute('title') || e.innerText || '').trim())",
             )
+
+            # Pass 2 — generic: any VISIBLE leaf element whose text looks like an
+            # account option (`<digits> - <name>`), regardless of container class.
+            # This is what actually matches the live dropdown (options render as
+            # plain rows like `113049345 - היב כהן משה`).
+            try:
+                generic = await frame.evaluate(
+                    """() => {
+                        const out = [];
+                        for (const el of document.querySelectorAll('*')) {
+                            if (el.children.length) continue;          // leaves only
+                            if (!el.offsetParent) continue;            // visible only
+                            const t = (el.getAttribute('title') || el.textContent || '').trim();
+                            if (t.length > 80) continue;
+                            if (/^\\d{4,}\\s*-/.test(t)) out.push(t);
+                        }
+                        return out;
+                    }"""
+                )
+                opts = list(opts) + list(generic or [])
+            except Exception:
+                pass
+
+            # Artifact dump of the OPEN dropdown — screenshot + the option texts —
+            # so a DOM change can be diagnosed without a re-run.
+            try:
+                run_id = getattr(self, "_run_id_for_dumps", None) or "accounts"
+                shot = SCREENSHOT_ROOT / f"{run_id}_accounts_dropdown.png"
+                await self._safe_screenshot(page, shot)
+                shot.with_suffix(".txt").write_text(
+                    "\n".join(str(t) for t in opts), encoding="utf-8"
+                )
+            except Exception:
+                pass
+
             for t in opts:
                 m = re.match(r"\s*(\d{4,})", t or "")
                 if m and m.group(1) not in accounts:
@@ -299,24 +359,31 @@ class _HarelReportPortal(HarelPortal):
             await page.wait_for_timeout(300)
         except Exception:
             pass
-        if not accounts:
-            try:
-                cur = await frame.locator("#ctrlParam__2").inner_text(timeout=3000)
-                m = re.search(r"(\d{4,})", cur or "")
-                if m:
-                    accounts = [m.group(1)]
-            except Exception:
-                pass
+
+        # Never lose the current/default account, never return empty when one is known.
+        if current and current not in accounts:
+            accounts.insert(0, current)
+
+        try:
+            _worker_note(f"harel: accounts={accounts}")
+        except Exception:
+            pass
         return accounts
 
-    async def _select_account(self, page: "Page", frame: "Frame", account: str) -> None:
-        """Select a specific account in the dropdown (no-op if already current)."""
+    async def _select_account(self, page: "Page", frame: "Frame", account: str) -> bool:
+        """Select a specific account in the dropdown. Returns True when the
+        param control actually shows the requested account afterwards (no-op
+        True if already current) — callers loop accounts and must know whether
+        the switch really happened before drilling, or they'd silently re-drill
+        the previous account."""
+        from app.services.portal_automation.runner import _worker_note
+
         try:
             cur = await frame.locator("#ctrlParam__2").inner_text(timeout=3000)
         except Exception:
             cur = ""
         if account in (cur or ""):
-            return
+            return True
         try:
             await frame.click("#_ctrlParam__2", timeout=4000)
             await page.wait_for_timeout(800)
@@ -324,15 +391,70 @@ class _HarelReportPortal(HarelPortal):
                 f'div.ctrlText:has-text("{account}")',
                 f'[title*="{account}"]',
                 f'li:has-text("{account}")',
+                # Generic visible option row (`<digits> - <name>`) — matches the
+                # live Intellisys dropdown when the class-based selectors miss.
+                f'text=/{account}\\s*-/',
             ):
                 try:
-                    await frame.click(sel, timeout=3000)
-                    break
+                    loc = frame.locator(sel)
+                    if await self._vis_click_first(loc, require_text=False):
+                        break
                 except Exception:
                     continue
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(700)
         except Exception:
             pass
+        # Verify the switch took.
+        try:
+            cur = await frame.locator("#ctrlParam__2").inner_text(timeout=3000)
+        except Exception:
+            cur = ""
+        ok = account in (cur or "")
+        if not ok:
+            try:
+                _worker_note(f"harel: account select FAILED for {account} (still {cur!r})")
+            except Exception:
+                pass
+        return ok
+
+    async def _visible_drill_cells(self, frame: "Frame", colid: str) -> list[dict]:
+        """Enumerate VISIBLE, non-empty drillable cells of a data_colid inside the
+        current modal, with row context. Returns [{nth, text, title, row}] where
+        `nth` is the absolute locator index (click via locator.nth(nth)).
+
+        Drill modals list one row per AGENT (modal 1) or per חברה מנהלת
+        (modal 2) — clicking only `.first` silently drops every other row
+        (live: an agency account's second agent's נפרעים never exported; QA
+        measured the gap). Hidden background insets repeat the same cells, so
+        offsetParent filtering is essential."""
+        try:
+            data = await frame.eval_on_selector_all(
+                f'td[data_colid="{colid}"].cell_action',
+                """els => els.map((e, i) => ({
+                    i,
+                    vis: !!e.offsetParent,
+                    txt: (e.innerText || '').trim(),
+                    title: e.getAttribute('data-title') || '',
+                    row: ((e.closest('tr') || {}).innerText || '')
+                        .replace(/\\s+/g, ' ').trim().slice(0, 160),
+                }))""",
+            )
+        except Exception:
+            return []
+        out: list[dict] = []
+        for d in data or []:
+            if not d.get("vis"):
+                continue
+            t = (d.get("txt") or "").strip()
+            if not t or t in ("0", "-"):
+                continue
+            out.append({
+                "nth": d["i"],
+                "text": t,
+                "title": d.get("title") or "",
+                "row": d.get("row") or "",
+            })
+        return out
 
     async def _run_filter(self, page: "Page", frame: "Frame"):
         """Click "סנן מידע" and return the (re-acquired) frame after the report runs."""

@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -68,6 +68,87 @@ SCREENSHOT_ROOT = PROJECT_ROOT / "data" / "portal_screenshots"
 # cookies/reputation survive across runs (e.g. Mor). See base.py flags.
 BROWSER_PROFILE_ROOT = PROJECT_ROOT / "data" / "browser_profiles"
 
+
+def _worker_note(msg: str) -> None:
+    """Best-effort one-line note to the worker-log endpoint so launch/browser
+    diagnostics show up in Railway logs (WORKER-LOG …). No-op off-worker.
+
+    WORKER_LOG_BASE/TOKEN may live only in the worker's .env (the VBS launcher
+    starts python with no env vars), so fall back to reading that file."""
+    import os
+    import urllib.request
+
+    base = (os.environ.get("WORKER_LOG_BASE", "") or "").rstrip("/")
+    token = os.environ.get("WORKER_LOG_TOKEN", "") or ""
+    if not (base and token):
+        try:
+            envf = PROJECT_ROOT / ".env"
+            if envf.exists():
+                for line in envf.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    s = line.strip()
+                    if s.startswith("#") or "=" not in s:
+                        continue
+                    k, v = s.split("=", 1)
+                    if k.strip() == "WORKER_LOG_BASE":
+                        base = base or v.strip().rstrip("/")
+                    elif k.strip() == "WORKER_LOG_TOKEN":
+                        token = token or v.strip()
+        except Exception:
+            pass
+    if not (base and token):
+        return
+    try:
+        urllib.request.urlopen(
+            urllib.request.Request(
+                f"{base}/api/portal-automation/worker/log/{token}",
+                data=msg.encode("utf-8"), method="POST",
+            ),
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+# Standard Windows install locations for REAL Google Chrome — checked when the
+# `channel="chrome"` lookup misses (e.g. a per-user install the worker's service
+# account can't see via the registry). Harel's F5 edge rejects bundled Chromium,
+# so finding a real browser matters.
+import os as _os
+
+_WIN_CHROME_EXES = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    _os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+    _os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
+]
+
+
+async def _launch_real_browser(pw, headless: bool, launch_args: list):
+    """Launch preferring a REAL browser fingerprint. Order: Chrome channel →
+    Chrome .exe (system + per-user) → Edge channel → bundled Chromium (last
+    resort). Bundled Chromium is a known dead-end for Harel's F5 (errorcode
+    19/22), so Edge (always present on Windows, real fingerprint) is tried first.
+    Returns (browser, label)."""
+    attempts = [("chrome", dict(channel="chrome"))]
+    seen_exe = set()
+    for p in _WIN_CHROME_EXES:
+        if p and p not in seen_exe and _os.path.exists(p):
+            seen_exe.add(p)
+            attempts.append(("chrome-exe", dict(executable_path=p)))
+    attempts.append(("msedge", dict(channel="msedge")))
+    attempts.append(("chromium", dict()))
+    last_exc = None
+    for label, kw in attempts:
+        try:
+            browser = await pw.chromium.launch(
+                headless=headless, args=launch_args, **kw
+            )
+            return browser, label
+        except Exception as exc:
+            last_exc = exc
+            continue
+    raise last_exc or RuntimeError("no browser could be launched")
+
 OTP_WAIT_TIMEOUT_S = 300   # 5 minutes — the phone forwarder (Doze/battery-opt) often
 # batches SMS so codes land at ~250-260s; 240s was clipping them by seconds (e.g. the
 # 2026-06-30 batch: meitav's code arrived 17s after a 240s timeout). The real fix is the
@@ -99,6 +180,26 @@ async def _set_status(db: AsyncSession, run: PortalRun, *, status: str | None = 
     if finished:
         run.finished_at = datetime.utcnow()
     await db.commit()
+
+
+async def _db_utc_now(db: AsyncSession) -> datetime:
+    """Return 'now' from the DATABASE clock as naive UTC.
+
+    The OTP window is `otp_inbox.received_at >= otp_since`. `received_at` is
+    stamped by the phone-forward webhook running on the SERVER (Railway) with
+    `datetime.utcnow()`. `otp_since`, however, is captured in the WORKER process
+    — which for most users is their own Windows PC in Israel, whose wall clock
+    is NOT guaranteed to be NTP-synced. A worker clock running even a minute
+    fast makes `otp_since` land in the future relative to every incoming code,
+    so `received_at >= otp_since` discards the real OTP and the run waits the
+    full timeout for a code that already arrived (live: kikohib's worker ran
+    ~5 min fast → Harel code 019182 arrived +11s but was filtered out).
+
+    Anchoring `otp_since` to the DB clock (same authority as `received_at`)
+    removes the worker's local clock from the comparison entirely, so OTP
+    matching is correct regardless of the worker machine's time settings.
+    """
+    return await db.scalar(select(func.timezone("UTC", func.now())))
 
 
 async def _wait_for_otp(
@@ -304,14 +405,18 @@ async def _run_inner(
                     args=launch_args, **context_kwargs,
                 )
         else:
-            try:
-                browser = await pw.chromium.launch(
-                    channel="chrome", headless=not headed, args=launch_args,
-                )
-            except Exception:
-                browser = await pw.chromium.launch(
-                    headless=not headed, args=launch_args,
-                )
+            browser, _blabel = await _launch_real_browser(
+                pw, not headed, launch_args
+            )
+            logger.info(
+                "Run %s (%s): launched browser=%s", run.id, cred.portal_kind, _blabel
+            )
+            # Surface the real browser choice to Railway logs — a Harel run on
+            # bundled 'chromium' will get bounced by F5, so this tells us at a
+            # glance whether the worker found real Chrome/Edge.
+            _worker_note(
+                f"run {str(run.id)[:8]} {cred.portal_kind}: browser={_blabel}"
+            )
             context = await browser.new_context(**context_kwargs)
 
         # Hide `navigator.webdriver` for the override path. Skipped for a native
@@ -338,7 +443,7 @@ async def _run_inner(
             # 028997 arrived 6s into the run, never consumed). Capturing here
             # includes the whole login window; cross-company theft is still
             # prevented by per-company SMS-template tagging in _wait_for_otp.
-            otp_since = datetime.utcnow()
+            otp_since = await _db_utc_now(db)
             await plugin.login(page, cred.username, password)
 
             if plugin.requires_otp:
@@ -358,7 +463,7 @@ async def _run_inner(
                 # the 1-2s before this callback runs. Safe — the first code is
                 # already consumed (consumed_at set) and matching is company-
                 # routed, so the only unconsumed code in the window is this one.
-                otp_since2 = datetime.utcnow() - timedelta(seconds=30)
+                otp_since2 = (await _db_utc_now(db)) - timedelta(seconds=30)
                 await _set_status(db, run, status="awaiting_otp", stage="otp_2")
                 code = await _wait_for_otp(
                     db, run, cred.user_id, otp_since2, portal_kind=cred.portal_kind
@@ -468,7 +573,7 @@ async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) 
             await _set_status(db, run, status="running", stage="login")
             await plugin.login(page, cred.username, password)
 
-            otp1_since = datetime.utcnow()
+            otp1_since = await _db_utc_now(db)
             await _set_status(db, run, status="awaiting_otp", stage="otp")
             otp1 = await _wait_for_otp(
                 db, run, cred.user_id, otp1_since, portal_kind=cred.portal_kind
@@ -480,7 +585,7 @@ async def _phone_change_inner(db: AsyncSession, run: PortalRun, new_phone: str) 
             await plugin.change_contact_phone(page, new_phone)
 
             # Step 3: wait for OTP #2 and confirm.
-            otp2_since = datetime.utcnow()
+            otp2_since = await _db_utc_now(db)
             await _set_status(db, run, status="awaiting_otp", stage="phone_confirm")
             otp2 = await _wait_for_otp(
                 db, run, cred.user_id, otp2_since, portal_kind=cred.portal_kind

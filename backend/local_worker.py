@@ -110,7 +110,7 @@ def _excepthook(et, ev, tb):
 _sys.excepthook = _excepthook
 _post_log("worker process starting (importing app…)")
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import async_session
@@ -183,8 +183,14 @@ async def _beat(uid, current_job: str | None = None, touch_job: bool = False):
     concurrently with a job without clobbering current_job); pass touch_job=True
     to also set current_job."""
     async with async_session() as db:
-        values = {"user_id": uid, "last_seen": datetime.utcnow(), "hostname": HOSTNAME}
-        set_ = {"last_seen": values["last_seen"], "hostname": HOSTNAME}
+        # Stamp last_seen with the DATABASE clock, not this PC's — the server's
+        # online/orphan checks compare it against DB-side utcnow, and a worker
+        # machine with a fast clock (live: +5 min) looked "online" minutes after
+        # being powered off, delaying stuck-batch recovery. Same clock-authority
+        # principle as the OTP `otp_since` fix.
+        now_sql = func.timezone("UTC", func.now())
+        values = {"user_id": uid, "last_seen": now_sql, "hostname": HOSTNAME}
+        set_ = {"last_seen": now_sql, "hostname": HOSTNAME}
         if touch_job:
             values["current_job"] = current_job
             set_["current_job"] = current_job

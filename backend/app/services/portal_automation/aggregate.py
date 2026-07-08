@@ -94,6 +94,8 @@ def record_to_insurance_product_row(rec: dict, agent_number=None, as_of=None) ->
         "שם מעסיק": rec.get("employer_name") or "",
         "מספר סוכן": agent_number or "",
         "נכון ליום": _d(as_of),
+        # Source-portal account carried per-row (Harel stores it in lead_source).
+        "מספר חשבון": rec.get("lead_source") or "",
     }
     return _row(COLUMNS_INSURANCE_PRODUCTS, vals)
 
@@ -121,6 +123,8 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
         "צבירה": round(_f(rec.get("accumulation")), 2),
         "מספר סוכן": agent_number or "",
         "נכון ליום": _d(as_of),
+        # Source-portal account carried per-row (Harel stores it in lead_source).
+        "מספר חשבון": rec.get("lead_source") or "",
     }
     return _row(COLUMNS_SAVINGS_PRODUCTS, vals)
 
@@ -199,6 +203,8 @@ def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
         "שיעור עמלה שנתי": rec.get("annual_commission_pct") or "",
         "שיעור עמלה חודשי": rec.get("monthly_commission_pct") or "",
         "חודש": period_label or "",
+        # Source-portal account carried per-row (Harel stores it in lead_source).
+        "מספר חשבון": rec.get("lead_source") or "",
     }
     return _row(COLUMNS_UNIFIED_NIFRAIM, vals)
 

@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
-PORTAL_RUN_TIMEOUT_S = 300  # per credential
+# Per credential. Matches runner.RUN_HARD_TIMEOUT_S — the Harel consolidated run
+# now loops ALL accounts in the מספר-חשבון dropdown (production + נפרעים drills
+# per account), so a multi-account user legitimately exceeds the old 300s.
+PORTAL_RUN_TIMEOUT_S = 720
 
 # A credential is "due" when its last run was at least this many hours ago.
 # Slightly under the natural cadence so a daily job at 09:00 still fires the

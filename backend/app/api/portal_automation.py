@@ -105,6 +105,11 @@ async def _should_defer_to_worker(db: AsyncSession, user_id: uuid.UUID) -> bool:
 MAX_BATCH_AGE_S = 60 * 90          # 90 min (11 portals × up to ~5min OTP + run/aggregate)
 # If the worker is offline, an "active" batch older than this is dead, not running.
 ORPHAN_OFFLINE_GRACE_S = 60 * 3    # 3 min
+# A single RUN can't legitimately execute longer than this even on a LIVE worker
+# (hard runner timeout is 12 min + subprocess guard 5.5 min). Past it, the worker
+# is hung-but-heartbeating (live: phoenix_terminal GUI flow froze the worker loop
+# 2026-07-06) and the run must be reaped without waiting the full batch age.
+MAX_RUN_AGE_S = 60 * 30            # 30 min
 
 
 async def _recover_orphan_batches(db: AsyncSession, user_id: uuid.UUID) -> int:
@@ -131,21 +136,69 @@ async def _recover_orphan_batches(db: AsyncSession, user_id: uuid.UUID) -> int:
     )
     reaped = [r[0] for r in res.fetchall()]
     # Fail any non-terminal runs of the reaped batches AND any orphaned standalone
-    # runs (older than the same cutoff) so the per-run guard is consistent.
-    await db.execute(
+    # runs. Runs get their OWN, tighter age cap (MAX_RUN_AGE_S on a live worker):
+    # a hung-but-heartbeating worker keeps the batch "young" for 90 min, but no
+    # single run can legitimately exceed ~18 min of guards.
+    run_cutoff = now - timedelta(
+        seconds=(MAX_RUN_AGE_S if worker_live else ORPHAN_OFFLINE_GRACE_S)
+    )
+    runs_res = await db.execute(
         update(PortalRun)
         .where(
             PortalRun.user_id == user_id,
             PortalRun.status.in_(ACTIVE_RUN_STATUSES),
-            ((PortalRun.batch_id.in_(reaped)) | (PortalRun.started_at < cutoff)),
+            ((PortalRun.batch_id.in_(reaped)) | (PortalRun.started_at < run_cutoff)),
         )
         .values(status="failed", finished_at=now,
                 error_message="בוטל אוטומטית — ההרצה לא הסתיימה (העובד כנראה נותק)")
+        .returning(PortalRun.id, PortalRun.batch_id)
     )
+    reaped_run_rows = runs_res.fetchall()
+    reaped_runs = [r[0] for r in reaped_run_rows]
+    reaped_run_batch_ids = {r[1] for r in reaped_run_rows if r[1]}
+
+    # Finalize active batches whose runs are now ALL terminal (the worker died
+    # between the last run and the aggregation step — or its stuck run was just
+    # reaped above). Without this, the batch stays "running" with nobody left to
+    # finish it and the UI shows הריצה ממשיכה ברקע forever.
+    batch_conds = [
+        PortalRunBatch.user_id == user_id,
+        PortalRunBatch.status.in_(ACTIVE_BATCH_STATUSES),
+    ]
     if reaped:
+        batch_conds.append(PortalRunBatch.id.notin_(reaped))
+    stale_batches_q = await db.execute(select(PortalRunBatch).where(*batch_conds))
+    finalized = 0
+    for b in stale_batches_q.scalars().all():
+        counts = await db.execute(
+            select(
+                func.count(PortalRun.id),
+                func.count(PortalRun.id).filter(PortalRun.status == "success"),
+                func.count(PortalRun.id).filter(PortalRun.status.in_(ACTIVE_RUN_STATUSES)),
+            ).where(PortalRun.batch_id == b.id)
+        )
+        total, ok, active = counts.one()
+        # Finalize only when THIS batch's own stuck run was just reaped (its
+        # worker is provably hung/dead), or the batch exceeded the age cutoff.
+        # A live batch legitimately in its aggregation step (all runs terminal,
+        # young, no reap) is left alone.
+        just_reaped_here = b.id in reaped_run_batch_ids and active == 0
+        if total and active == 0 and (just_reaped_here or b.started_at < cutoff):
+            b.status = "partial" if ok else "failed"
+            b.succeeded = ok
+            b.failed = total - ok
+            b.current_run_id = None
+            b.finished_at = now
+            b.error_message = "הסתיים אוטומטית — העובד הפסיק להגיב באמצע הריצה"
+            finalized += 1
+
+    if reaped or reaped_runs or finalized:
         await db.commit()
-        logger.warning("Auto-recovered %d orphaned batch(es) for user %s", len(reaped), user_id)
-    return len(reaped)
+        logger.warning(
+            "Auto-recovered user %s: %d batch(es) reaped, %d run(s) failed, %d batch(es) finalized",
+            user_id, len(reaped), len(reaped_runs), finalized,
+        )
+    return len(reaped) + finalized
 
 
 def _cred_to_out(c: PortalCredential, recent: list[str] | None = None) -> PortalCredentialOut:
@@ -540,6 +593,11 @@ async def get_latest_batch(
     """The user's most recent "run all portals" batch, or null if they've never
     run one. Drives the new-user activation checklist (step 4 = first successful
     run). Declared before /batches/{batch_id} so "latest" isn't read as an id."""
+    # The UI polls THIS endpoint while showing "הריצה ממשיכה ברקע" — reap here,
+    # not only on new-batch start, or a worker that died/powered-off mid-batch
+    # (live: phoenix_terminal 2026-07-06) leaves the batch stuck "running"
+    # forever with nobody to finalize it.
+    await _recover_orphan_batches(db, user.id)
     result = await db.execute(
         select(PortalRunBatch)
         .where(PortalRunBatch.user_id == user.id)
@@ -564,6 +622,8 @@ async def get_batch(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Same reap-on-poll as /batches/latest — see comment there.
+    await _recover_orphan_batches(db, user.id)
     result = await db.execute(
         select(PortalRunBatch).where(
             PortalRunBatch.id == uuid.UUID(batch_id),
@@ -1355,6 +1415,14 @@ $Work = {
     & $py -m pip install -r (Join-Path $Install 'backend\requirements.txt') *>> $Log
     Up 'מורידים דפדפן (כ-150MB — אל תסגרו)' 72
     & $py -m playwright install chromium *>> $Log
+    # Harel's F5 edge bounces bundled Chromium (errorcode 19/22) — its login only
+    # renders the OTP screen for REAL Google Chrome (channel="chrome"). Without
+    # this, a fresh worker silently falls back to Chromium and Harel never OTPs.
+    # `playwright install chrome` pulls Google Chrome Stable; tolerate failure so a
+    # blocked/elevation-gated download doesn't abort the whole install (non-Harel
+    # portals still work on Chromium).
+    Up 'מתקינים Google Chrome (לחברת הראל — אל תסגרו)' 78
+    try { & $py -m playwright install chrome *>> $Log } catch { }
     Up 'מגדיר' 82
     $lines = @(
       "DATABASE_URL=$DbUrl",
