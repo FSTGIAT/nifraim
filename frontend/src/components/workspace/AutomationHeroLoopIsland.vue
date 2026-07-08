@@ -78,10 +78,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.hero-loop,
+.hero-loop {
+  width: 100%;
+  height: 100%;
+}
+
 .hero-loop-mount {
   width: 100%;
   height: 100%;
+  /* Remotion Player centers its composition with LTR-assuming math —
+     under the app's RTL root it drifts ~half a scene off-box. Keep the
+     LTR scope INSIDE the island so the host's logical insets stay RTL. */
+  direction: ltr;
 }
 
 .hero-loop-fallback {
