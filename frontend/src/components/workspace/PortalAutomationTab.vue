@@ -245,69 +245,6 @@ onUnmounted(() => {
   gap: 20px;
 }
 
-/* Header — Monday-style board header */
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.page-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.title-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.32),
-              inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  flex-shrink: 0;
-}
-.page-title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.4px;
-  line-height: 1.1;
-}
-
-/* Add-portal button — sits at the inline-end of the page header */
-.head-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: linear-gradient(135deg, var(--chart-2, #4E9DD0), var(--chart-12, #0E8C8A));  /* palette sky → teal */
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  padding: 10px 18px;
-  height: 40px;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 13.5px;
-  cursor: pointer;
-  box-shadow: 0 5px 13px color-mix(in srgb, var(--chart-12, #0E8C8A) 26%, transparent);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
-  flex-shrink: 0;
-}
-.head-add:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.04);
-  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-12, #0E8C8A) 34%, transparent);
-}
-.head-add:focus-visible { outline: 2px solid var(--chart-12, #0E8C8A); outline-offset: 2px; }
-
 /* ─── Dashboard grid: main panels + activity sidebar ────── */
 .dash {
   display: grid;

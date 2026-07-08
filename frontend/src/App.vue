@@ -104,6 +104,35 @@ const navTabs = [
   --chart-14: #2C5F6B;  /* deep teal */
   --chart-15: #8FD9C6;  /* mint */
 
+  /* ── Tab identities (accent / wash / ink) ─────────────────────────
+     Each workspace tab owns ONE CHART_PALETTE color. Orange (--primary)
+     is the GLOBAL brand-action color (uploads, CTAs) — never a tab
+     identity. Ink = text-safe darkened accent where the accent itself
+     fails 4.5:1 on white; tabs without an ink use the accent as ink. */
+  --tab-production: var(--chart-9);
+  --tab-production-wash: rgba(47, 115, 196, 0.10);
+  --tab-comparison: var(--green);
+  --tab-comparison-wash: rgba(46, 132, 74, 0.10);
+  --tab-commission: var(--chart-4);
+  --tab-commission-wash: rgba(142, 68, 173, 0.10);
+  --tab-emails: var(--chart-6);
+  --tab-emails-wash: rgba(232, 74, 127, 0.10);
+  --tab-emails-ink: #C42B60;
+  --tab-recruits: var(--chart-7);
+  --tab-recruits-wash: rgba(61, 182, 176, 0.12);
+  --tab-recruits-ink: #1E7D78;
+  --tab-portal: var(--chart-2);
+  --tab-portal-wash: rgba(78, 157, 208, 0.12);
+  --tab-portal-ink: #35719A;
+  --tab-ai: var(--chart-13);
+  --tab-ai-wash: rgba(183, 156, 235, 0.14);
+  --tab-ai-ink: #6A48C9;
+  --tab-automation: var(--chart-12);
+  --tab-automation-wash: rgba(14, 140, 138, 0.10);
+  /* Text-safe inks for the pastel-yellow (chart-8) CTA surfaces */
+  --chart-8-ink: #4A3900;
+  --chart-8-deep: #8A6300;
+
   /* Schedule cadence accents — bright-bold so the automation tab pops:
      daily=sky-blue, weekly=gold, monthly=purple. */
   --cadence-daily: var(--chart-2);          /* sky blue */

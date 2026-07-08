@@ -355,7 +355,7 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   background: var(--bg, #F3F3F3);
   border: 1px solid var(--border-subtle, #E5E5E5);
-  color: var(--primary, #F57C00);
+  color: var(--tab-ai-ink);
   flex-shrink: 0;
 }
 .ai-sheet-titles { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
@@ -376,9 +376,9 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .ai-sheet-icon-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-deep);
-  border-color: rgba(245, 124, 0, 0.18);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
+  border-color: rgba(106, 72, 201, 0.18);
 }
 
 .ai-sheet-error {
@@ -417,8 +417,8 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   border-radius: 14px;
-  background: var(--primary-light);
-  color: var(--primary-deep);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
   margin-bottom: 4px;
 }
 .ai-sheet-empty-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
@@ -442,9 +442,9 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3px;
 }
 .ai-msg-avatar.user {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
-  box-shadow: 0 3px 8px rgba(245, 124, 0, 0.28);
+  box-shadow: 0 3px 8px rgba(106, 72, 201, 0.28);
 }
 .ai-msg-avatar.assistant {
   background: var(--bg);
@@ -460,7 +460,7 @@ onBeforeUnmount(() => {
   word-wrap: break-word;
 }
 .ai-msg.user .ai-msg-bubble {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
   border-bottom-right-radius: 4px;
 }
@@ -472,7 +472,7 @@ onBeforeUnmount(() => {
 }
 .ai-msg-content :deep(p) { margin: 0 0 6px; }
 .ai-msg-content :deep(p:last-child) { margin-bottom: 0; }
-.ai-msg-content :deep(strong) { font-weight: 700; color: var(--primary-deep); }
+.ai-msg-content :deep(strong) { font-weight: 700; color: var(--tab-ai-ink); }
 .ai-msg.user .ai-msg-content :deep(strong) { color: #ffffff; }
 .ai-msg-content :deep(.chat-table-wrap) {
   margin: 6px 0;
@@ -557,8 +557,8 @@ onBeforeUnmount(() => {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ai-sheet-input:focus {
-  border-color: rgba(245, 124, 0, 0.45);
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
+  border-color: rgba(106, 72, 201, 0.45);
+  box-shadow: 0 0 0 3px rgba(106, 72, 201, 0.12);
   background: #ffffff;
 }
 .ai-sheet-send {
@@ -568,16 +568,16 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
   border: none;
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(106, 72, 201, 0.3);
 }
 .ai-sheet-send:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.38);
+  box-shadow: 0 6px 16px rgba(106, 72, 201, 0.38);
 }
 .ai-sheet-send:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
 
@@ -596,17 +596,17 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
 }
 .ai-sheet-attach:hover:not(:disabled) {
-  background: var(--primary-light);
-  color: var(--primary-deep);
-  border-color: rgba(245, 124, 0, 0.32);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
+  border-color: rgba(106, 72, 201, 0.32);
 }
 .ai-sheet-attach:disabled { opacity: 0.55; cursor: default; }
 .ai-sheet-attach-spinner {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid rgba(245, 124, 0, 0.25);
-  border-top-color: var(--primary-deep, #F57C00);
+  border: 2px solid rgba(106, 72, 201, 0.25);
+  border-top-color: var(--tab-ai-ink);
   animation: aiAttachSpin 0.8s linear infinite;
 }
 @keyframes aiAttachSpin {
@@ -626,9 +626,9 @@ onBeforeUnmount(() => {
   padding: 4px 6px 4px 10px;
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--primary-deep);
-  background: var(--primary-light);
-  border: 1px solid rgba(245, 124, 0, 0.24);
+  color: var(--tab-ai-ink);
+  background: var(--tab-ai-wash);
+  border: 1px solid rgba(106, 72, 201, 0.24);
   border-radius: 999px;
   max-width: 100%;
 }

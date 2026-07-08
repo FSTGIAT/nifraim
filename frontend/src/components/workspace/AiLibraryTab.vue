@@ -849,10 +849,10 @@ function buildScaleMock() {
   padding: 20px 22px;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(145deg, rgba(245, 124, 0, 0.07) 0%, rgba(245, 124, 0, 0.02) 45%, #ffffff 100%),
+    linear-gradient(145deg, rgba(106, 72, 201, 0.07) 0%, rgba(106, 72, 201, 0.02) 45%, #ffffff 100%),
     #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.18);
-  box-shadow: 0 6px 22px rgba(245, 124, 0, 0.07), 0 1px 2px rgba(17, 12, 6, 0.04);
+  border: 1px solid rgba(106, 72, 201, 0.18);
+  box-shadow: 0 6px 22px rgba(106, 72, 201, 0.07), 0 1px 2px rgba(17, 12, 6, 0.04);
   overflow: hidden;
 }
 .lib-intro::before {
@@ -862,7 +862,7 @@ function buildScaleMock() {
   top: -60px;
   width: 220px;
   height: 220px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.22), transparent 70%);
+  background: radial-gradient(circle, rgba(106, 72, 201, 0.22), transparent 70%);
   border-radius: 50%;
   filter: blur(4px);
   pointer-events: none;
@@ -875,9 +875,9 @@ function buildScaleMock() {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
-  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 6px 16px rgba(106, 72, 201, 0.32);
   flex-shrink: 0;
 }
 .lib-intro-text { position: relative; z-index: 1; flex: 1; min-width: 0; }
@@ -893,8 +893,8 @@ function buildScaleMock() {
   padding: 7px 12px;
   border-radius: 999px;
   background: #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.32);
-  color: var(--primary-deep);
+  border: 1px solid rgba(106, 72, 201, 0.32);
+  color: var(--tab-ai-ink);
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -903,11 +903,11 @@ function buildScaleMock() {
   flex-shrink: 0;
 }
 .lib-refresh:hover:not(:disabled) {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
   border-color: transparent;
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(245, 124, 0, 0.28);
+  box-shadow: 0 6px 14px rgba(106, 72, 201, 0.28);
 }
 .lib-refresh:disabled { opacity: 0.5; cursor: default; }
 .spinning { animation: spin 0.9s linear infinite; }
@@ -954,8 +954,8 @@ function buildScaleMock() {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .lib-search:focus-within {
-  border-color: rgba(245, 124, 0, 0.4);
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
+  border-color: rgba(106, 72, 201, 0.4);
+  box-shadow: 0 0 0 3px rgba(106, 72, 201, 0.12);
 }
 .lib-search svg { color: var(--text-muted); flex-shrink: 0; }
 .lib-search-input {
@@ -981,7 +981,7 @@ function buildScaleMock() {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.lib-search-clear:hover { background: var(--primary-light); color: var(--primary-deep); }
+.lib-search-clear:hover { background: var(--tab-ai-wash); color: var(--tab-ai-ink); }
 
 /* ===== Summary chips ===== */
 .lib-summary-strip {
@@ -1047,18 +1047,18 @@ function buildScaleMock() {
   cursor: pointer;
   transition: background 0.15s;
 }
-.lib-section-head-btn:hover { background: rgba(245, 124, 0, 0.03); }
+.lib-section-head-btn:hover { background: rgba(106, 72, 201, 0.03); }
 .lib-section-head-btn:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px rgba(245, 124, 0, 0.32);
+  box-shadow: inset 0 0 0 2px rgba(106, 72, 201, 0.32);
 }
 .lib-section-chevron {
   flex-shrink: 0;
   color: var(--text-muted);
   transition: transform 0.22s var(--transition), color 0.15s;
 }
-.lib-section-chevron.is-closed { transform: rotate(-90deg); color: var(--primary-deep); }
-.lib-section-head-btn:hover .lib-section-chevron { color: var(--primary-deep); }
+.lib-section-chevron.is-closed { transform: rotate(-90deg); color: var(--tab-ai-ink); }
+.lib-section-head-btn:hover .lib-section-chevron { color: var(--tab-ai-ink); }
 
 /* Section body — wrapper that holds content under the collapsible head */
 .lib-section-body {
@@ -1090,9 +1090,9 @@ function buildScaleMock() {
   transition: all 0.15s var(--transition);
 }
 .lib-toolbar-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-deep);
-  border-color: rgba(245, 124, 0, 0.22);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
+  border-color: rgba(106, 72, 201, 0.22);
 }
 .lib-toolbar-btn svg {
   transition: transform 0.22s var(--transition);
@@ -1136,8 +1136,8 @@ function buildScaleMock() {
   align-items: center;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--primary-light);
-  color: var(--primary-deep);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
@@ -1168,8 +1168,8 @@ function buildScaleMock() {
 }
 .lib-item:hover { background: #ffffff; border-color: var(--border-subtle); }
 .lib-item.is-active {
-  background: rgba(245, 124, 0, 0.06);
-  border-color: rgba(245, 124, 0, 0.2);
+  background: rgba(106, 72, 201, 0.06);
+  border-color: rgba(106, 72, 201, 0.2);
 }
 .lib-item-mark {
   width: 3px;
@@ -1177,7 +1177,7 @@ function buildScaleMock() {
   background: var(--border);
   flex-shrink: 0;
 }
-.lib-item.is-active .lib-item-mark { background: linear-gradient(180deg, #F57C00, #FF9800); }
+.lib-item.is-active .lib-item-mark { background: linear-gradient(180deg, var(--tab-ai), var(--tab-ai-ink)); }
 
 .lib-item-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .lib-item-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1203,9 +1203,9 @@ function buildScaleMock() {
   flex-shrink: 0;
 }
 .lib-pill--active {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
   color: #ffffff;
-  box-shadow: 0 2px 6px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 2px 6px rgba(106, 72, 201, 0.3);
 }
 .lib-pill--historic { background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border-subtle); }
 
@@ -1232,7 +1232,7 @@ function buildScaleMock() {
   border-radius: 999px;
   background: #ffffff;
   border: 1px solid var(--border-subtle);
-  color: var(--primary-deep);
+  color: var(--tab-ai-ink);
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -1240,8 +1240,8 @@ function buildScaleMock() {
   transition: all 0.18s var(--transition);
 }
 .lib-show-more:hover {
-  background: var(--primary-light);
-  border-color: rgba(245, 124, 0, 0.32);
+  background: var(--tab-ai-wash);
+  border-color: rgba(106, 72, 201, 0.32);
   transform: translateY(-1px);
 }
 .lib-show-more--collapse { color: var(--text-muted); }
@@ -1273,7 +1273,7 @@ function buildScaleMock() {
 .lib-group-head:hover { background: #ffffff; }
 .lib-group-head:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px rgba(245, 124, 0, 0.3);
+  box-shadow: inset 0 0 0 2px rgba(106, 72, 201, 0.3);
 }
 .lib-group-chevron {
   color: var(--text-muted);
@@ -1281,7 +1281,7 @@ function buildScaleMock() {
   transition: transform 0.2s var(--transition);
 }
 /* In RTL, a closed-right chevron points to the start; rotate down when open */
-.lib-group-chevron.is-open { transform: rotate(90deg); color: var(--primary-deep); }
+.lib-group-chevron.is-open { transform: rotate(90deg); color: var(--tab-ai-ink); }
 
 .lib-group-name {
   font-size: 13.5px;
@@ -1351,8 +1351,8 @@ function buildScaleMock() {
   flex-wrap: wrap;
   margin-bottom: 10px;
   padding: 10px 12px;
-  background: rgba(245, 124, 0, 0.04);
-  border: 1px solid rgba(245, 124, 0, 0.14);
+  background: rgba(106, 72, 201, 0.04);
+  border: 1px solid rgba(106, 72, 201, 0.14);
   border-radius: var(--radius-md);
 }
 .lib-cat-chip {
@@ -1426,7 +1426,7 @@ function buildScaleMock() {
   border-radius: var(--radius-lg);
   border: 1px dashed var(--border);
 }
-.lib-empty-all svg { color: var(--primary); opacity: 0.6; }
+.lib-empty-all svg { color: var(--tab-ai-ink); opacity: 0.6; }
 .lib-empty-all p { margin: 0; font-size: 13px; max-width: 400px; line-height: 1.55; }
 
 /* Error */
@@ -1436,7 +1436,7 @@ function buildScaleMock() {
   gap: 8px;
   padding: 10px 14px;
   font-size: 12.5px;
-  color: #C23934;
+  color: var(--red-deep);
   background: rgba(234, 0, 30, 0.06);
   border: 1px solid rgba(234, 0, 30, 0.2);
   border-radius: var(--radius-md);
@@ -1447,7 +1447,7 @@ function buildScaleMock() {
   border-radius: 999px;
   background: #ffffff;
   border: 1px solid rgba(234, 0, 30, 0.35);
-  color: #C23934;
+  color: var(--red-deep);
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 700;
@@ -1455,14 +1455,14 @@ function buildScaleMock() {
   transition: background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
-.lib-error-retry:hover { background: #C23934; color: #ffffff; }
+.lib-error-retry:hover { background: var(--red-deep); color: #ffffff; }
 
 /* ===== Skeleton ===== */
 .lib-skeleton { display: flex; flex-direction: column; gap: 20px; }
 .sk-intro {
   height: 86px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(90deg, rgba(245, 124, 0, 0.08), rgba(245, 124, 0, 0.03), rgba(245, 124, 0, 0.08));
+  background: linear-gradient(90deg, rgba(106, 72, 201, 0.08), rgba(106, 72, 201, 0.03), rgba(106, 72, 201, 0.08));
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
 }

@@ -225,7 +225,7 @@ function isRunning(credId) {
   align-items: center;
   gap: 6px;
   background: var(--chart-8, #F4D35E);  /* pastel palette yellow */
-  color: #4a3900;
+  color: var(--chart-8-ink);
   border: none;
   border-radius: 9px;
   padding: 8px 14px;
@@ -244,7 +244,7 @@ function isRunning(credId) {
   filter: brightness(1.03);
   box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-3, #F9A937) 40%, transparent);
 }
-.btn-add:focus-visible { outline: 2px solid #b98a00; outline-offset: 2px; }
+.btn-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
 /* ─── Company panels ─────────────────────────────────────── */

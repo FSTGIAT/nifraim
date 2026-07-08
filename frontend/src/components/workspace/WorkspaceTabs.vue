@@ -7,7 +7,7 @@
         :key="tab.id"
        
         class="card"
-        :style="{ '--i': idx, '--accent': tab.accent, '--accent-glow': tab.accentGlow }"
+        :style="{ '--i': idx, '--accent': tab.accent, '--accent-glow': tab.accentGlow, '--accent-ink': tab.ink }"
         @click="$emit('select-card', tab.id)"
       >
         <!-- Noise texture overlay -->
@@ -53,6 +53,9 @@
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
               <path d="M13 7l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
             </svg>
+            <svg v-else-if="tab.id === 'portal-automation'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
           </span>
           <span class="card-label">{{ tab.label }}</span>
           <span class="card-desc">{{ tab.description }}</span>
@@ -77,7 +80,7 @@
        
         class="strip-pill"
         :class="{ active: modelValue === tab.id }"
-        :style="{ '--accent': tab.accent }"
+        :style="{ '--accent': tab.accent, '--accent-wash': tab.accentGlow, '--accent-ink': tab.ink }"
         @click="$emit('update:modelValue', tab.id)"
       >
         <span class="strip-icon">
@@ -117,6 +120,9 @@
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
             <path d="M13 7l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
           </svg>
+          <svg v-else-if="tab.id === 'portal-automation'" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
         </span>
         <span class="strip-label">{{ tab.label }}</span>
       </button>
@@ -147,62 +153,73 @@ const props = defineProps({
 })
 defineEmits(['update:modelValue', 'select-card', 'go-home'])
 
+/* Tab identity system — every tab owns ONE CHART_PALETTE color (tokens in
+   App.vue :root). accent = identity, accentGlow = wash for tinted surfaces,
+   ink = text-safe accent (only where the accent fails 4.5:1 on white). */
 const tabs = [
   {
     id: 'production',
     label: 'פרודוקציה',
     description: 'העלאה וניתוח קבצי פרודוקציה',
-    accent: '#7F56D9',
-    accentGlow: 'rgba(127, 86, 217, 0.15)',
+    accent: 'var(--tab-production)',
+    accentGlow: 'var(--tab-production-wash)',
+    ink: 'var(--tab-production)',
   },
   {
     id: 'comparison',
     label: 'השוואת נפרעים',
     description: 'השוואת נפרעים מול פרודוקציה',
-    accent: '#2E844A',
-    accentGlow: 'rgba(46, 132, 74, 0.15)',
+    accent: 'var(--tab-comparison)',
+    accentGlow: 'var(--tab-comparison-wash)',
+    ink: 'var(--tab-comparison)',
   },
   {
     id: 'commission-rates',
     label: 'טבלת עמלות',
     description: 'ניהול שיעורי עמלות',
-    accent: '#E8720A',
-    accentGlow: 'rgba(232, 114, 10, 0.15)',
+    accent: 'var(--tab-commission)',
+    accentGlow: 'var(--tab-commission-wash)',
+    ink: 'var(--tab-commission)',
   },
   {
     id: 'company-emails',
     label: 'אימיילים לחברות',
     description: 'אנשי קשר בחברות ביטוח',
-    accent: '#E3066A',
-    accentGlow: 'rgba(227, 6, 106, 0.15)',
+    accent: 'var(--tab-emails)',
+    accentGlow: 'var(--tab-emails-wash)',
+    ink: 'var(--tab-emails-ink)',
   },
   {
     id: 'recruits',
     label: 'ניהול תיק אישי',
     description: 'מעקב וניהול לקוחות מגויסים',
-    accent: '#1B5E20',
-    accentGlow: 'rgba(27, 94, 32, 0.15)',
+    accent: 'var(--tab-recruits)',
+    accentGlow: 'var(--tab-recruits-wash)',
+    ink: 'var(--tab-recruits-ink)',
   },
   {
     id: 'portal',
     label: 'פורטל לקוחות',
     description: 'יצירת ושיתוף פורטלים ללקוחות',
-    accent: '#7F56D9',
-    accentGlow: 'rgba(127, 86, 217, 0.15)',
+    accent: 'var(--tab-portal)',
+    accentGlow: 'var(--tab-portal-wash)',
+    ink: 'var(--tab-portal-ink)',
   },
   {
     id: 'ai-library',
     label: 'ספריית AI',
     description: 'הקבצים והנתונים שה-AI מכיר',
-    accent: '#F57C00',
-    accentGlow: 'rgba(245, 124, 0, 0.18)',
+    accent: 'var(--tab-ai)',
+    accentGlow: 'var(--tab-ai-wash)',
+    ink: 'var(--tab-ai-ink)',
   },
   {
     id: 'portal-automation',
     label: 'אוטומציה',
     description: 'התחברות אוטומטית לפורטלים והורדת דוחות',
-    accent: '#1FA88C',
-    accentGlow: 'rgba(31, 168, 140, 0.18)',
+    accent: 'var(--tab-automation)',
+    accentGlow: 'var(--tab-automation-wash)',
+    ink: 'var(--tab-automation)',
   },
 ]
 </script>
@@ -253,11 +270,11 @@ const tabs = [
 
 .card:hover {
   transform: translateY(-6px) scale(1.03);
-  border-color: var(--primary);
+  border-color: var(--accent);
   background: #fff;
   box-shadow:
-    0 16px 48px rgba(245, 124, 0, 0.10),
-    0 0 0 1px rgba(245, 124, 0, 0.15),
+    0 16px 48px var(--accent-glow),
+    0 0 0 1px var(--accent-glow),
     0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
@@ -282,7 +299,7 @@ const tabs = [
 .card-accent-line {
   height: 3px;
   width: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+  background: var(--accent);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -305,20 +322,20 @@ const tabs = [
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: var(--primary-light);
-  border: 1px solid rgba(245, 124, 0, 0.1);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-glow);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 14px;
-  color: var(--primary);
+  color: var(--accent-ink, var(--accent));
   transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .card:hover .card-icon-wrap {
-  background: var(--primary);
+  background: var(--accent);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 4px 16px var(--accent-glow);
   transform: scale(1.05);
 }
 
@@ -363,8 +380,8 @@ const tabs = [
 .card:hover .card-arrow {
   opacity: 1;
   transform: translateX(0);
-  color: var(--primary);
-  background: var(--primary-light);
+  color: var(--accent-ink, var(--accent));
+  background: var(--accent-glow);
 }
 
 
@@ -420,10 +437,10 @@ const tabs = [
 }
 
 .strip-pill.active {
-  background: var(--text);
-  color: #fff;
+  background: var(--accent-wash);
+  color: var(--accent-ink, var(--accent));
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .strip-icon {

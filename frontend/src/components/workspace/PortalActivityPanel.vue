@@ -160,14 +160,14 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
   flex-shrink: 0;
 }
 .worker--on .worker__dot {
-  background: #10b981;
-  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  background: var(--green);
+  box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5);
   animation: worker-pulse 1.8s ease-out infinite;
 }
 @keyframes worker-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
-  70%  { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(46, 132, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0); }
 }
 .worker__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .worker__state { font-size: 14px; font-weight: 800; color: var(--text); }
@@ -227,7 +227,7 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
 .batch__pill--ok      { background: rgba(46,132,74,0.12); color: var(--green-deep); border-color: rgba(46,132,74,0.24); }
 .batch__pill--partial { background: rgba(232,114,10,0.13); color: var(--amber); border-color: rgba(232,114,10,0.26); }
 .batch__pill--fail    { background: rgba(234,0,30,0.10); color: var(--red-deep); border-color: rgba(234,0,30,0.24); }
-.batch__pill--live    { background: rgba(31,168,140,0.13); color: #178f78; border-color: rgba(31,168,140,0.3); }
+.batch__pill--live    { background: var(--tab-automation-wash); color: var(--tab-automation); border-color: rgba(14, 140, 138, 0.3); }
 
 .batch__counts { display: flex; gap: 14px; }
 .batch__count { font-size: 12.5px; font-weight: 600; color: var(--text-secondary, var(--text-muted)); }

@@ -205,7 +205,7 @@ watch(() => store.batchJustFinished, (b) => {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   height: 50px; padding: 0 26px; border: none; border-radius: 14px;
   background: var(--chart-8, #F4D35E);
-  color: #4a3900; font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 0.1px;
+  color: var(--chart-8-ink); font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 0.1px;
   cursor: pointer;
   box-shadow: 0 8px 22px color-mix(in srgb, var(--chart-3, #F9A937) 34%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
@@ -213,17 +213,17 @@ watch(() => store.batchJustFinished, (b) => {
 .hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px color-mix(in srgb, var(--chart-3, #F9A937) 46%, transparent); filter: brightness(1.03); }
 .hero-run:active:not(:disabled) { transform: translateY(0); }
 .hero-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-.hero-run:focus-visible { outline: 2px solid #b98a00; outline-offset: 3px; }
+.hero-run:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 3px; }
 
 .hero-add {
   display: inline-flex; align-items: center; gap: 7px;
   height: 50px; padding: 0 20px; border-radius: 14px;
   background: rgba(255, 255, 255, 0.72); border: 1.5px solid color-mix(in srgb, var(--chart-3, #F9A937) 40%, transparent);
-  color: #8a6300; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  color: var(--chart-8-deep); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 .hero-add:hover { background: #fff; border-color: var(--chart-3, #F9A937); transform: translateY(-1px); }
-.hero-add:focus-visible { outline: 2px solid #b98a00; outline-offset: 2px; }
+.hero-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
 
 /* ───── Batch progress ───── */
 .batch-progress {
@@ -265,9 +265,9 @@ watch(() => store.batchJustFinished, (b) => {
   font-weight: 600;
   border: 1px solid transparent;
 }
-.batch-pill--ok   { background: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16,185,129,0.3); }
+.batch-pill--ok   { background: rgba(46, 132, 74, 0.12); color: var(--green); border-color: rgba(46, 132, 74, 0.3); }
 .batch-pill--fail { background: rgba(234, 0, 30, 0.1);   color: var(--red-deep, #b91c1c); border-color: rgba(234,0,30,0.28); }
-.batch-pill--live { background: color-mix(in srgb, var(--chart-8, #F4D35E) 22%, white); color: #8a6300; border-color: color-mix(in srgb, var(--chart-3, #F9A937) 42%, transparent); }
+.batch-pill--live { background: color-mix(in srgb, var(--chart-8, #F4D35E) 22%, white); color: var(--chart-8-deep); border-color: color-mix(in srgb, var(--chart-3, #F9A937) 42%, transparent); }
 .batch-pill--idle { background: rgba(107,114,128,0.1);  color: #6b7280; border-color: rgba(107,114,128,0.24); }
 
 /* ───── Batch done banner ───── */
@@ -277,8 +277,8 @@ watch(() => store.batchJustFinished, (b) => {
   gap: 14px;
   padding: 13px 16px;
   border-radius: 12px;
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: rgba(46, 132, 74, 0.08);
+  border: 1px solid rgba(46, 132, 74, 0.28);
 }
 .batch-done--failed  { background: rgba(234,0,30,0.07); border-color: rgba(234,0,30,0.26); }
 .batch-done--partial { background: rgba(244,211,94,0.14); border-color: rgba(216,168,0,0.32); }
@@ -291,7 +291,7 @@ watch(() => store.batchJustFinished, (b) => {
   border: none;
   border-radius: 9px;
   background: var(--chart-3, #F9A937);
-  color: #4a3900;
+  color: var(--chart-8-ink);
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;

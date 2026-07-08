@@ -5,9 +5,6 @@
         <h3>אימיילים לחברות</h3>
         <span class="emails-sub">אנשי קשר במחלקות העמלות של החברות</span>
       </div>
-      <button v-if="contacts.length === 0 && !loading" class="btn-seed" @click="seedContacts" :disabled="seeding">
-        {{ seeding ? 'טוען...' : 'טען ברירת מחדל' }}
-      </button>
     </div>
 
     <div v-if="loading" class="loading">
@@ -236,7 +233,7 @@ async function deleteContact(id) {
   padding: 18px 20px;
   max-width: 940px;
   margin: 0 auto;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .emails-header {
@@ -267,28 +264,6 @@ h3 {
   white-space: nowrap;
 }
 
-.btn-seed {
-  background: linear-gradient(135deg, var(--primary-deep), var(--primary));
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-family: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s;
-}
-
-.btn-seed:hover:not(:disabled) {
-  box-shadow: 0 4px 16px var(--primary-light);
-  transform: translateY(-1px);
-}
-
-.btn-seed:disabled {
-  opacity: 0.5;
-}
-
 table {
   width: 100%;
   border-collapse: collapse;
@@ -307,7 +282,7 @@ th {
 
 td {
   padding: 9px 8px;
-  border-bottom: 1px solid #f1f1f3;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text);
 }
 
@@ -400,8 +375,8 @@ td.t-company {
   width: 76px;
 }
 
-/* Hover-revealed actions (always visible while editing / keyboard focus) */
-.actions .icon-btn { opacity: 0; }
+/* Row actions rest at low emphasis (visible affordance), full on hover/edit/focus */
+.actions .icon-btn { opacity: 0.45; }
 .contact-row:hover .actions .icon-btn,
 .actions--editing .icon-btn,
 .actions .icon-btn:focus-visible { opacity: 1; }
@@ -421,11 +396,11 @@ td.t-company {
 }
 
 .icon-btn:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--tab-emails);
   outline-offset: 1px;
 }
 
-.icon-btn--edit:hover { background: var(--primary-light); color: var(--primary-deep); border-color: rgba(245, 124, 0, 0.25); }
+.icon-btn--edit:hover { background: var(--tab-emails-wash); color: var(--tab-emails-ink); border-color: rgba(232, 74, 127, 0.3); }
 .icon-btn--del:hover { background: var(--red-light); color: var(--red-deep); border-color: rgba(194, 57, 52, 0.25); }
 .icon-btn--save:hover { background: var(--green-light); color: var(--green-deep); border-color: rgba(46, 132, 74, 0.25); }
 .icon-btn--cancel:hover { background: var(--red-light); color: var(--red-deep); border-color: rgba(194, 57, 52, 0.25); }
@@ -443,8 +418,8 @@ td.t-company {
 
 .edit-input:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
+  border-color: var(--tab-emails);
+  box-shadow: 0 0 0 3px var(--tab-emails-wash);
 }
 
 .email-input {
@@ -496,9 +471,9 @@ td.t-company {
 }
 
 .btn-add:hover {
-  border-color: var(--primary);
-  color: var(--primary-deep);
-  background: var(--primary-light);
+  border-color: var(--tab-emails);
+  color: var(--tab-emails-ink);
+  background: var(--tab-emails-wash);
 }
 
 /* Icon for the empty-state guide (slotted into EmptyStateGuide) */
@@ -506,12 +481,12 @@ td.t-company {
   width: 56px;
   height: 56px;
   margin: 0 auto;
-  background: var(--primary-light, #FFF3E0);
+  background: var(--tab-emails-wash);
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary, #F57C00);
+  color: var(--tab-emails-ink);
 }
 
 .loading {

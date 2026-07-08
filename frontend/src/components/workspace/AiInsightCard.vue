@@ -134,7 +134,7 @@ async function copySummary() {
   flex-shrink: 0;
 }
 .ai-eyebrow-icon {
-  color: var(--primary);
+  color: var(--tab-ai-ink);
 }
 
 .ai-copy-btn {
@@ -153,9 +153,9 @@ async function copySummary() {
 .ai-insight-card:hover .ai-copy-btn,
 .ai-copy-btn:focus-visible { opacity: 1; }
 .ai-copy-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-deep);
-  border-color: rgba(245, 124, 0, 0.22);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
+  border-color: rgba(106, 72, 201, 0.22);
 }
 .ai-copy-btn--done {
   opacity: 1 !important;
@@ -200,13 +200,13 @@ async function copySummary() {
   white-space: nowrap;
 }
 .ai-chip:hover {
-  color: var(--primary-deep);
-  background: var(--primary-light);
-  border-color: rgba(245, 124, 0, 0.3);
+  color: var(--tab-ai-ink);
+  background: var(--tab-ai-wash);
+  border-color: rgba(106, 72, 201, 0.3);
 }
 .ai-chip:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 0 0 3px rgba(106, 72, 201, 0.25);
 }
 
 /* Primary CTA — flat solid, quiet but clearly the next step. */
