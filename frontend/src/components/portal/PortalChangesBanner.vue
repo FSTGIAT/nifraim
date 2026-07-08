@@ -19,11 +19,7 @@
           <polyline :points="expanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'"/>
         </svg>
       </button>
-      <button class="dismiss-btn" @click.stop="dismiss" title="סגור">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
+      <PortalCloseButton @click.stop="dismiss" />
     </div>
 
     <Transition name="slide">
@@ -69,6 +65,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import PortalCloseButton from './PortalCloseButton.vue'
 
 const props = defineProps({
   changes: { type: Object, required: true },
@@ -101,8 +98,8 @@ function formatVal(val) {
 <style scoped>
 .changes-banner {
   background: var(--card-bg);
-  border: 1px solid #f59e0b;
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   margin-bottom: 20px;
   overflow: hidden;
   animation: fadeInUp 0.4s var(--transition);
@@ -119,20 +116,20 @@ function formatVal(val) {
   gap: 10px;
   padding: 12px 16px;
   cursor: pointer;
-  background: rgba(245, 158, 11, 0.06);
+  background: rgba(232, 114, 10, 0.06);
   transition: background 0.2s ease;
 }
 
 .banner-header:hover {
-  background: rgba(245, 158, 11, 0.1);
+  background: rgba(232, 114, 10, 0.1);
 }
 
 .banner-icon {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: var(--amber-light);
+  color: var(--amber);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -151,11 +148,10 @@ function formatVal(val) {
 
 .banner-summary strong {
   font-weight: 700;
-  color: #d97706;
+  color: var(--amber);
 }
 
-.expand-btn,
-.dismiss-btn {
+.expand-btn {
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -169,8 +165,7 @@ function formatVal(val) {
   transition: all 0.15s ease;
 }
 
-.expand-btn:hover,
-.dismiss-btn:hover {
+.expand-btn:hover {
   background: var(--border-subtle);
   color: var(--text);
 }
@@ -200,14 +195,12 @@ function formatVal(val) {
 .change-group h4 {
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
   margin: 0 0 8px;
 }
 
-.change-group.added h4 { color: #16a34a; }
-.change-group.removed h4 { color: #dc2626; }
-.change-group.changed h4 { color: #d97706; }
+.change-group.added h4 { color: var(--green); }
+.change-group.removed h4 { color: var(--red-deep); }
+.change-group.changed h4 { color: var(--amber); }
 
 .change-card {
   display: flex;
@@ -220,9 +213,9 @@ function formatVal(val) {
   margin-bottom: 4px;
 }
 
-.added .change-card { background: rgba(22, 163, 74, 0.06); border-right: 3px solid #16a34a; }
-.removed .change-card { background: rgba(220, 38, 38, 0.06); border-right: 3px solid #dc2626; }
-.changed .change-card { background: rgba(217, 119, 6, 0.06); border-right: 3px solid #d97706; }
+.added .change-card { background: var(--green-light); border-right: 3px solid var(--green); }
+.removed .change-card { background: var(--red-light); border-right: 3px solid var(--red); }
+.changed .change-card { background: var(--amber-light); border-right: 3px solid var(--amber); }
 
 .change-product {
   font-weight: 600;
@@ -249,7 +242,7 @@ function formatVal(val) {
 }
 
 .diff-old {
-  color: #dc2626;
+  color: var(--red-deep);
   text-decoration: line-through;
 }
 
@@ -259,7 +252,7 @@ function formatVal(val) {
 }
 
 .diff-new {
-  color: #16a34a;
+  color: var(--green);
   font-weight: 600;
 }
 

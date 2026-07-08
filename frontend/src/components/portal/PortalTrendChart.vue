@@ -50,7 +50,7 @@ const chartOptions = computed(() => ({
       speed: 600,
     },
   },
-  colors: ['var(--primary, #E8660A)', '#A8703A'],
+  colors: ['#4E9DD0', '#2C5F6B'],
   fill: {
     type: 'gradient',
     gradient: {
@@ -71,7 +71,7 @@ const chartOptions = computed(() => ({
       style: {
         fontFamily: 'Heebo, sans-serif',
         fontSize: '11px',
-        colors: 'var(--text-muted, #94a3b8)',
+        colors: '#5B6B7A',
       },
     },
   },
@@ -81,7 +81,7 @@ const chartOptions = computed(() => ({
       style: {
         fontFamily: 'Heebo, sans-serif',
         fontSize: '11px',
-        colors: 'var(--text-muted, #94a3b8)',
+        colors: '#5B6B7A',
       },
     },
   },
@@ -95,10 +95,10 @@ const chartOptions = computed(() => ({
     horizontalAlign: 'right',
     fontFamily: 'Heebo, sans-serif',
     fontSize: '12px',
-    labels: { colors: 'var(--text-secondary, #64748b)' },
+    labels: { colors: '#5B6B7A' },
   },
   grid: {
-    borderColor: 'var(--border-subtle, #e2e8f0)',
+    borderColor: 'rgba(26,39,51,0.08)',
     strokeDashArray: 3,
   },
 }))
@@ -108,7 +108,7 @@ const chartOptions = computed(() => ({
 .trend-chart-card {
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   padding: 20px;
   margin-bottom: 20px;

@@ -1,25 +1,49 @@
 <template>
   <div class="rate-card">
-    <div class="rate-header">
-      <h3>טבלת עמלות היקף</h3>
-      <div class="header-actions">
-        <button v-if="rates.length === 0" class="btn-seed" @click="seedRates" :disabled="seeding">
+    <!-- ── Compact hero (shelf-language, purple tab identity) ── -->
+    <header class="rate-hero">
+      <div class="hero-copy">
+        <span class="hero-eyebrow">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+          עמלות היקף
+        </span>
+        <h2 class="hero-title">טבלת עמלות היקף</h2>
+        <p class="hero-sub">שיעורי ההיקף, הצבירות וההמרה לקצבה לפי חברה — הבסיס לחישוב הבונוס.</p>
+      </div>
+      <div class="hero-actions">
+        <button v-if="rates.length === 0" class="btn-accent" @click="seedRates" :disabled="seeding">
+          <span v-if="seeding" class="btn-spin" aria-hidden="true"></span>
           {{ seeding ? 'טוען...' : 'טען ברירת מחדל' }}
         </button>
-        <button v-if="rates.length > 0 && !addingNew" class="btn-seed" @click="startNew">+ הוסף שורה</button>
-        <label class="btn-upload">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button v-if="rates.length > 0 && !addingNew" class="btn-ghost" @click="startNew">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          הוסף שורה
+        </button>
+        <label class="btn-ghost">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
           העלה מקובץ
-          <input type="file" accept=".xlsx,.xls" @change="onFileUpload" style="display:none" />
+          <input type="file" accept=".xlsx,.xls" @change="onFileUpload" class="hidden-file" />
         </label>
       </div>
-    </div>
+    </header>
+
+    <Transition name="fade">
+      <div v-if="uploadError" class="hero-upload-error" role="alert">
+        <span>{{ uploadError }}</span>
+        <button class="error-dismiss" @click="uploadError = null" title="סגור" aria-label="סגור">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </Transition>
 
     <div v-if="rates.length === 0 && !loading" class="empty">
+      <span class="empty-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+      </span>
       לא הוגדרו עמלות היקף. לחץ "טען ברירת מחדל" או "העלה מקובץ".
     </div>
 
@@ -70,8 +94,8 @@
               </td>
               <td><input v-model="editForm.notes" class="edit-input" /></td>
               <td class="actions">
-                <button class="btn-save" @click="saveEdit(rate.id)">&#10003;</button>
-                <button class="btn-cancel" @click="editingId = null">&#10005;</button>
+                <button class="icon-btn icon-btn--save" @click="saveEdit(rate.id)" title="שמור"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+                <button class="icon-btn icon-btn--cancel" @click="editingId = null" title="ביטול"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
               </td>
             </template>
             <template v-else>
@@ -85,8 +109,8 @@
               <td>{{ rate.paid_to || '—' }}</td>
               <td class="notes-cell">{{ rate.notes || '—' }}</td>
               <td class="actions">
-                <button class="btn-edit" @click="startEdit(rate)">&#9998;</button>
-                <button class="btn-del" @click="deleteRate(rate.id)">&#10005;</button>
+                <button class="icon-btn icon-btn--edit" @click="startEdit(rate)" title="ערוך"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                <button class="icon-btn icon-btn--del" @click="deleteRate(rate.id)" title="מחק"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
               </td>
             </template>
           </tr>
@@ -115,8 +139,8 @@
             </td>
             <td><input v-model="newForm.notes" class="edit-input" placeholder="הערות" /></td>
             <td class="actions">
-              <button class="btn-save" @click="saveNew">&#10003;</button>
-              <button class="btn-cancel" @click="cancelNew">&#10005;</button>
+              <button class="icon-btn icon-btn--save" @click="saveNew" title="שמור"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+              <button class="icon-btn icon-btn--cancel" @click="cancelNew" title="ביטול"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </td>
           </tr>
         </tbody>
@@ -132,6 +156,7 @@ import api from '../../api/client.js'
 const rates = ref([])
 const loading = ref(false)
 const seeding = ref(false)
+const uploadError = ref(null)
 const editingId = ref(null)
 const editForm = reactive({
   company_name: '',
@@ -236,6 +261,7 @@ async function onFileUpload(e) {
   const file = e.target.files?.[0]
   if (!file) return
   e.target.value = ''
+  uploadError.value = null
   loading.value = true
   try {
     const formData = new FormData()
@@ -245,7 +271,7 @@ async function onFileUpload(e) {
     })
     await fetchRates()
   } catch (err) {
-    alert(err.response?.data?.detail || 'שגיאה בהעלאת קובץ')
+    uploadError.value = err.response?.data?.detail || 'שגיאה בהעלאת קובץ'
   } finally {
     loading.value = false
   }
@@ -255,68 +281,157 @@ async function onFileUpload(e) {
 <style scoped>
 .rate-card {
   background: var(--card-bg);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 16px);
   padding: 20px;
+  box-shadow: var(--shadow-sm);
 }
 
-.rate-header {
+/* ── Compact hero (shelf language, purple identity) ── */
+.rate-hero {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-.header-actions {
+.hero-copy {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 5px;
 }
 
-h3 {
-  font-size: 16px;
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--tab-commission);
+  background: var(--tab-commission-wash);
+  border: 1px solid color-mix(in srgb, var(--tab-commission) 28%, transparent);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.hero-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 
-.btn-seed {
-  background: linear-gradient(135deg, var(--primary-deep), var(--primary));
+.hero-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.btn-accent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--tab-commission);
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 6px 14px;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.2s var(--transition), background 0.2s var(--transition);
+}
+
+.btn-accent:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--tab-commission) 88%, black);
+}
+
+.btn-accent:disabled { opacity: 0.7; cursor: default; }
+
+.btn-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: white;
+  animation: spin 0.7s linear infinite;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 14px;
   font-size: 13px;
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.25s;
+  transition: all 0.18s var(--transition);
 }
 
-.btn-seed:hover:not(:disabled) {
-  box-shadow: 0 4px 16px var(--primary-light);
-  transform: translateY(-1px);
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--tab-commission);
+  color: var(--tab-commission);
 }
 
-.btn-upload {
+.btn-ghost:disabled { opacity: 0.5; cursor: default; }
+
+.hidden-file { display: none; }
+
+/* ── Inline upload error (dismissible strip) ── */
+.hero-upload-error {
   display: flex;
   align-items: center;
-  gap: 5px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-family: inherit;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--red);
   font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.25s;
+  background: var(--red-light);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  border-radius: 10px;
 }
 
-.btn-upload:hover {
-  background: var(--bg);
-  color: var(--text);
+.error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--red);
+  cursor: pointer;
+  transition: background 0.18s var(--transition);
 }
+
+.error-dismiss:hover { background: color-mix(in srgb, var(--red) 14%, transparent); }
 
 .table-scroll { overflow-x: auto; }
 
@@ -346,6 +461,9 @@ td {
   color: var(--text);
 }
 
+tbody tr { transition: background 0.15s; }
+tbody tr:hover { background: rgba(0, 0, 0, 0.02); }
+
 .ltr-number {
   direction: ltr;
   unicode-bidi: isolate;
@@ -360,46 +478,80 @@ td {
   white-space: nowrap;
 }
 
-.actions { white-space: nowrap; }
-
-.actions button {
-  background: none;
-  border: none;
-  font-size: 13px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--text-muted);
+.actions {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+  justify-content: flex-end;
 }
 
-.btn-edit:hover { background: var(--primary-light); color: var(--primary); }
-.btn-del:hover { background: var(--red-light); color: var(--red); }
-.btn-save:hover { background: var(--green-light); color: var(--green); }
-.btn-cancel:hover { background: var(--red-light); color: var(--red); }
+.icon-btn {
+  width: 27px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.18s var(--transition);
+}
+
+.icon-btn--edit:hover {
+  background: var(--tab-commission-wash);
+  color: var(--tab-commission);
+  border-color: color-mix(in srgb, var(--tab-commission) 40%, transparent);
+}
+.icon-btn--del:hover { background: var(--red-light); color: var(--red); border-color: var(--red); }
+.icon-btn--save:hover { background: var(--green-light); color: var(--green-deep, var(--green)); border-color: var(--green); }
+.icon-btn--cancel:hover { background: var(--red-light); color: var(--red); border-color: var(--red); }
 
 .edit-input {
   width: 100%;
   padding: 4px 6px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   font-size: 12px;
   font-family: 'Heebo', sans-serif;
   background: var(--bg-surface);
   color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.edit-input:focus { outline: none; border-color: var(--primary); }
+.edit-input:focus {
+  outline: none;
+  border-color: var(--tab-commission);
+  box-shadow: 0 0 0 3px var(--tab-commission-wash);
+}
 
 .edit-input option { background: var(--bg); color: var(--text-secondary); }
 
 .num-input { width: 80px; }
 
 .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   text-align: center;
   color: var(--text-muted);
   font-size: 13px;
-  padding: 16px;
+  padding: 24px 16px;
+  line-height: 1.7;
+}
+
+.empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--tab-commission-wash);
+  color: var(--tab-commission);
 }
 
 .loading {
@@ -411,10 +563,17 @@ td {
 .spinner {
   width: 24px; height: 24px;
   border: 3px solid var(--border-subtle);
-  border-top-color: var(--primary);
+  border-top-color: var(--tab-commission);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s var(--transition); }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-accent, .btn-ghost, .icon-btn, .btn-spin, .spinner { transition: none !important; animation: none !important; }
+}
 </style>

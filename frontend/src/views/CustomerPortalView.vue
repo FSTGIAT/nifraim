@@ -1,12 +1,5 @@
 <template>
   <div class="portal-page">
-    <!-- Cream-DNA background orbs -->
-    <div class="portal-orbs" aria-hidden="true">
-      <div class="orb orb-1"></div>
-      <div class="orb orb-2"></div>
-      <div class="orb orb-3"></div>
-    </div>
-
     <header class="portal-header">
       <div class="portal-brand">
         <div class="brand-icon">
@@ -89,97 +82,55 @@ function onLogout() {
 </script>
 
 <style scoped>
-/* ── Cream DNA: scope marketing tokens AND override app tokens on .portal-page ──
+/* ── Flat sky theme: override app tokens on .portal-page ──
  * All portal/*.vue children use --primary / --bg / --card-bg / --text / --text-muted / --border
  * Redefining them here cascades to every child without touching each file.
  */
 .portal-page {
-  /* Landing tokens */
-  --land-orange: #E8660A;
-  --land-orange-bright: #F57C00;
-  --land-orange-deep: #C85A00;
-  --land-orange-glow: rgba(232, 102, 10, 0.1);
-  --cream-bg: #F5F0EB;
-  --cream-surface: #EDE8E1;
-  --cream-surface-3: #F9F6F2;
-  --cream-text: #2D2522;
-  --cream-text-muted: rgba(45, 37, 34, 0.6);
-  --cream-text-dim: rgba(45, 37, 34, 0.35);
-
-  /* Override app tokens so children inherit cream theme */
-  --primary: #E8660A;
-  --primary-deep: #C85A00;
-  --primary-light: rgba(232, 102, 10, 0.08);
-  --primary-glow: rgba(232, 102, 10, 0.1);
-  --amber: #C85A00;
-  --bg: #F5F0EB;
-  --bg-surface: #F9F6F2;
+  --primary: #4E9DD0;
+  --primary-deep: #35719A;
+  --primary-light: rgba(78, 157, 208, 0.12);
+  --primary-glow: rgba(78, 157, 208, 0.14);
+  --bg: #F5F8FB;
+  --bg-surface: #FFFFFF;
   --card-bg: #FFFFFF;
-  --text: #2D2522;
-  --text-secondary: rgba(45, 37, 34, 0.75);
-  --text-muted: rgba(45, 37, 34, 0.55);
-  --border: rgba(45, 37, 34, 0.1);
-  --border-subtle: rgba(45, 37, 34, 0.06);
-  --shadow-sm: 0 1px 3px rgba(45, 37, 34, 0.05);
-  --shadow-md: 0 2px 8px rgba(45, 37, 34, 0.06);
-  --shadow-lg: 0 12px 32px -8px rgba(45, 37, 34, 0.12);
-  --shadow-glow: 0 0 0 3px rgba(232, 102, 10, 0.15);
+  --text: #1A2733;
+  --text-secondary: rgba(26, 39, 51, 0.78);
+  --text-muted: rgba(26, 39, 51, 0.55);
+  --border: rgba(26, 39, 51, 0.10);
+  --border-subtle: rgba(26, 39, 51, 0.06);
+  --green: #2E844A;
+  --green-light: #EBF7EE;
+  --green-deep: #1B5E20;
+  --red: #EA001E;
+  --red-deep: #C23934;
+  --red-light: #FEF1EE;
+  --amber: #E8720A;
+  --amber-light: #FFF3E0;
+  --shadow-sm: 0 1px 3px rgba(26, 39, 51, 0.06);
+  --shadow-md: 0 2px 8px rgba(26, 39, 51, 0.07);
+  --shadow-lg: 0 12px 32px -8px rgba(26, 39, 51, 0.14);
+  --shadow-glow: 0 0 0 3px rgba(78, 157, 208, 0.18);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 
   min-height: 100vh;
-  background: var(--cream-bg);
-  color: var(--cream-text);
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Heebo', sans-serif;
   direction: rtl;
   position: relative;
   overflow-x: hidden;
 }
 
-/* ── Background orbs ── */
-.portal-orbs {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.portal-orbs .orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(120px);
-}
-
-.portal-orbs .orb-1 {
-  width: 600px;
-  height: 600px;
-  background: rgba(232, 102, 10, 0.18);
-  top: -15%;
-  left: -10%;
-}
-
-.portal-orbs .orb-2 {
-  width: 460px;
-  height: 460px;
-  background: rgba(232, 102, 10, 0.12);
-  bottom: -10%;
-  right: -5%;
-}
-
-.portal-orbs .orb-3 {
-  width: 380px;
-  height: 380px;
-  background: rgba(245, 124, 0, 0.1);
-  top: 40%;
-  left: 50%;
-}
-
-/* ── Branded header (mirrors landing nav--light) ── */
+/* ── Branded header ── */
 .portal-header {
   position: relative;
   z-index: 2;
   padding: 18px 32px;
-  background: rgba(245, 240, 235, 0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(45, 37, 34, 0.06);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
   text-align: center;
 }
 
@@ -192,9 +143,9 @@ function onLogout() {
 .brand-icon {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: var(--cream-text);
-  color: var(--cream-bg);
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -208,7 +159,7 @@ function onLogout() {
 .brand-name {
   font-size: 22px;
   font-weight: 800;
-  color: var(--cream-text);
+  color: var(--text);
   letter-spacing: -0.3px;
 }
 
@@ -223,15 +174,15 @@ function onLogout() {
 .portal-loading {
   text-align: center;
   padding: 100px 0;
-  color: var(--cream-text-muted);
+  color: var(--text-muted);
   font-size: 14px;
 }
 
 .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid rgba(45, 37, 34, 0.08);
-  border-top-color: var(--land-orange);
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 18px;
@@ -245,7 +196,7 @@ function onLogout() {
 }
 
 .portal-error p {
-  color: var(--cream-text);
+  color: var(--text);
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 20px;
@@ -253,39 +204,35 @@ function onLogout() {
 
 .portal-error button {
   padding: 14px 32px;
-  background: var(--land-orange);
+  background: var(--primary);
   color: #fff;
   border: none;
-  border-radius: 40px;
+  border-radius: var(--radius-md);
   font-size: 15px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .portal-error button:hover {
-  background: var(--land-orange-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(232, 102, 10, 0.32);
+  background: var(--primary-deep);
+  box-shadow: var(--shadow-md);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* ── Print: white bg, hide orbs ── */
+/* ── Print: white bg ── */
 @media print {
   .portal-page {
     background: #fff !important;
   }
-  .portal-orbs {
-    display: none !important;
-  }
   .portal-header {
     background: #fff !important;
-    border-bottom: 1px solid #E5E5E5 !important;
+    border-bottom: 1px solid var(--border) !important;
   }
 }
 </style>

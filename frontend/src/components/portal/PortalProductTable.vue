@@ -4,9 +4,10 @@
 
     <!-- Company cards grid -->
     <div class="company-grid">
-      <div
+      <button
         v-for="group in companyGroups"
         :key="group.company"
+        type="button"
         class="company-card"
         @click="openModal(group)"
       >
@@ -33,7 +34,7 @@
             <polyline points="15 18 9 12 15 6"/>
           </svg>
         </div>
-      </div>
+      </button>
     </div>
 
     <!-- Product detail modal -->
@@ -50,12 +51,7 @@
                   צבירה: <span class="ltr-number">{{ formatNum(selectedGroup.totalAccumulation) }}</span> &#8362;
                 </p>
               </div>
-              <button class="close-btn" @click="closeModal">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+              <PortalCloseButton @click="closeModal" />
             </div>
 
             <div class="modal-body">
@@ -103,6 +99,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import PortalCloseButton from './PortalCloseButton.vue'
 
 const props = defineProps({
   products: Array,
@@ -220,17 +217,22 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
   padding: 14px 16px;
   background: var(--bg);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: right;
   cursor: pointer;
   transition: all 0.2s var(--transition);
 }
 
 .company-card:hover {
   border-color: var(--primary);
-  box-shadow: var(--shadow-glow);
+  box-shadow: var(--shadow-sm);
   background: var(--card-bg);
 }
 
@@ -267,14 +269,13 @@ h3 {
   font-size: 10px;
   color: var(--text-muted);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
 }
 
 .metric-value {
   font-size: 14px;
   font-weight: 800;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .card-statuses {
@@ -295,7 +296,7 @@ h3 {
 }
 
 .mini-badge.inactive {
-  background: #f0f0f0;
+  background: rgba(26, 39, 51, 0.06);
   color: var(--text-muted);
 }
 
@@ -362,26 +363,6 @@ h3 {
 .modal-subtitle .sep {
   margin: 0 4px;
   opacity: 0.4;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background: var(--bg);
-  color: var(--text);
 }
 
 .modal-body {
@@ -463,7 +444,7 @@ h3 {
 }
 
 .status-badge.inactive {
-  background: #f0f0f0;
+  background: rgba(26, 39, 51, 0.06);
   color: var(--text-muted);
 }
 
@@ -475,6 +456,7 @@ h3 {
 .ltr-number {
   direction: ltr;
   unicode-bidi: embed;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Transitions */

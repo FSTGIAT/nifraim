@@ -19,11 +19,7 @@
           </div>
           <span class="chat-title">עוזר תיק ביטוחי</span>
           <span class="msg-counter">{{ msgCount }}/{{ maxMessages }}</span>
-          <button class="chat-close" @click="open = false">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <PortalCloseButton @click="open = false" />
         </div>
 
         <!-- Messages -->
@@ -94,6 +90,7 @@
 
 <script setup>
 import { ref, nextTick, watch } from 'vue'
+import PortalCloseButton from './PortalCloseButton.vue'
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -267,25 +264,27 @@ watch(
   padding: 12px 20px;
   border-radius: 28px;
   border: none;
-  background: linear-gradient(135deg, var(--primary, #f57c00), #ff9800);
-  color: white;
+  background: var(--primary-deep);
+  color: #fff;
   font-size: 14px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 20px rgba(245, 124, 0, 0.35);
-  transition: all 0.3s var(--transition);
-  animation: bubblePulse 3s ease-in-out infinite;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .chat-bubble:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 28px rgba(245, 124, 0, 0.45);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
-@keyframes bubblePulse {
-  0%, 100% { box-shadow: 0 4px 20px rgba(245, 124, 0, 0.35); }
-  50% { box-shadow: 0 4px 28px rgba(245, 124, 0, 0.5); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble,
+  .chat-bubble:hover {
+    transition: none;
+    transform: none;
+  }
 }
 
 .bubble-label {
@@ -301,7 +300,7 @@ watch(
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -344,25 +343,6 @@ watch(
   color: var(--text-muted);
   font-weight: 600;
   direction: ltr;
-}
-
-.chat-close {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.chat-close:hover {
-  background: var(--border-subtle);
-  color: var(--text);
 }
 
 /* Messages */
@@ -408,7 +388,7 @@ watch(
 }
 
 .message-avatar.assistant {
-  background: linear-gradient(135deg, #E8660A 0%, #F57C00 100%);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -429,7 +409,7 @@ watch(
 }
 
 .chat-message.assistant .message-bubble {
-  background: var(--bg);
+  background: rgba(26, 39, 51, 0.04);
   color: var(--text);
   border: 1px solid var(--border-subtle);
   border-top-right-radius: 4px;
@@ -478,7 +458,7 @@ watch(
 }
 
 .message-content.rendered :deep(.chat-table th) {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(26, 39, 51, 0.04);
   font-weight: 700;
   font-size: 10.5px;
   color: var(--text-muted);
@@ -491,7 +471,7 @@ watch(
 .message-content.rendered :deep(.chat-table td) {
   padding: 5px 10px;
   text-align: right;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid rgba(26, 39, 51, 0.04);
   white-space: nowrap;
 }
 
@@ -515,7 +495,7 @@ watch(
 .suggestion-chip {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text-secondary);
   font-size: 12.5px;
@@ -527,7 +507,7 @@ watch(
 
 .suggestion-chip:hover {
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-deep);
   background: var(--primary-light);
 }
 

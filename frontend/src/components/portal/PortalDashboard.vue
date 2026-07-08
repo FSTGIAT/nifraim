@@ -114,7 +114,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .customer-info h2 {
@@ -156,28 +156,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.print-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--text-muted);
-  background: var(--card-bg);
-  transition: all 0.2s var(--transition);
-  cursor: pointer;
-}
-
-.print-btn:hover {
-  color: var(--primary);
-  border-color: var(--primary-light);
-  background: var(--primary-light);
-}
-
+.print-btn,
 .logout-btn {
   display: flex;
   align-items: center;
@@ -188,16 +167,16 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
-  color: var(--text-muted);
-  background: var(--card-bg);
+  color: var(--text-secondary);
+  background: transparent;
   transition: all 0.2s var(--transition);
   cursor: pointer;
 }
 
+.print-btn:hover,
 .logout-btn:hover {
-  color: var(--red);
-  border-color: var(--red-light);
-  background: var(--red-light);
+  color: var(--primary-deep);
+  background: var(--primary-light);
 }
 
 .section-grid {

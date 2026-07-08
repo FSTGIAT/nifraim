@@ -41,12 +41,13 @@
 
 <script setup>
 import { computed } from 'vue'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 const props = defineProps({
   breakdown: Array,
 })
 
-const colors = ['#E8660A', '#F57C00', '#C85A00', '#A8703A', '#D68B4A', '#8C4A00', '#FFB74D', '#6B3A0A']
+const colors = CHART_PALETTE
 
 const circumference = 2 * Math.PI * 80 // ~502.65
 

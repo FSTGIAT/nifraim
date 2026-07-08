@@ -78,27 +78,14 @@ function onSubmit() {
 .password-card {
   max-width: 420px;
   margin: 60px auto 0;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(45, 37, 34, 0.08);
-  border-radius: 24px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   padding: 40px 32px;
   text-align: center;
-  box-shadow:
-    0 40px 80px -20px rgba(45, 37, 34, 0.15),
-    0 0 0 1px rgba(232, 102, 10, 0.05);
+  box-shadow: var(--shadow-md);
   position: relative;
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.password-card::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 26px;
-  background: linear-gradient(135deg, rgba(232, 102, 10, 0.16), transparent 60%);
-  z-index: -1;
-  pointer-events: none;
 }
 
 @keyframes fadeInUp {
@@ -109,9 +96,9 @@ function onSubmit() {
 .card-icon {
   width: 68px;
   height: 68px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, rgba(232, 102, 10, 0.12), rgba(232, 102, 10, 0.04));
-  color: var(--primary);
+  border-radius: var(--radius-md);
+  background: var(--primary-light);
+  color: var(--primary-deep);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -188,19 +175,18 @@ form { display: flex; flex-direction: column; gap: 16px; }
   background: var(--primary);
   color: white;
   border: none;
-  border-radius: 40px;
+  border-radius: var(--radius-md);
   font-size: 16px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: var(--shadow-sm);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .submit-btn:hover:not(:disabled) {
   background: var(--primary-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(232, 102, 10, 0.32);
+  box-shadow: var(--shadow-md);
 }
 
 .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
