@@ -72,12 +72,7 @@
 
       <!-- Empty: no links at all -->
       <div v-else-if="!portalStore.links.length" class="empty-state">
-        <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-          </svg>
-        </div>
+        <img class="empty-art-img" :src="portalArt" alt="" aria-hidden="true" />
         <h3>עדיין לא יצרתם קישור פורטל</h3>
         <p>קישור הפורטל מאפשר ללקוחות שלכם לראות את תיק הביטוח האישי שלהם — עם הגנה בסיסמה.</p>
         <button class="btn-generate large" @click="showGenerateModal = true">
@@ -225,6 +220,7 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue'
+import portalArt from '../../assets/kling/portal.webp'
 import { usePortalStore } from '../../stores/portal.js'
 import PortalGenerateModal from './PortalGenerateModal.vue'
 
@@ -754,12 +750,21 @@ td.muted {
   padding: 56px 24px;
 }
 
+.empty-art-img {
+  display: block;
+  width: min(360px, 100%);
+  margin: 0 auto 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+
 .empty-icon {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: var(--primary-glow, rgba(245, 124, 0, 0.1));
-  color: var(--primary, #F57C00);
+  background: var(--tab-portal-wash);
+  color: var(--tab-portal-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;

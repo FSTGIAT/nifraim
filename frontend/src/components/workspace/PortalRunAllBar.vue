@@ -31,6 +31,7 @@
             <span>הוסף פורטל</span>
           </button>
         </div>
+        <img class="hero-art" :src="automationArt" alt="" aria-hidden="true" />
       </div>
     </div>
 
@@ -70,6 +71,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import automationArt from '../../assets/kling/automation.webp'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 
@@ -184,6 +186,18 @@ watch(() => store.batchJustFinished, (b) => {
   flex-wrap: wrap;
 }
 .hero-copy { flex: 1 1 320px; min-width: 260px; display: flex; flex-direction: column; gap: 7px; }
+.hero-art {
+  flex: 0 1 300px;
+  min-width: 200px;
+  max-width: 320px;
+  width: 100%;
+  align-self: center;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle, #E5E7EB);
+  box-shadow: var(--shadow-sm);
+  display: block;
+}
+@media (max-width: 760px) { .hero-art { display: none; } }
 .hero-kicker {
   align-self: flex-start;
   font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em;

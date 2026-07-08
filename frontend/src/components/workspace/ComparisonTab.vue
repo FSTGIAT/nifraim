@@ -10,12 +10,7 @@
       cta-step="run"
     >
       <template #illustration>
-        <div class="esg-cmp-icon">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/>
-            <path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7-7"/><path d="M3 21l7-7"/>
-          </svg>
-        </div>
+        <img class="esg-cmp-art" :src="comparisonArt" alt="" aria-hidden="true" />
       </template>
     </EmptyStateGuide>
 
@@ -131,6 +126,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import comparisonArt from '../../assets/kling/hero.webp'
 import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { useUploadsStore } from '../../stores/uploads.js'
@@ -405,16 +401,13 @@ onMounted(async () => {
 }
 
 /* Icon for the empty-state guide (slotted into EmptyStateGuide) */
-.esg-cmp-icon {
-  width: 56px;
-  height: 56px;
+.esg-cmp-art {
+  display: block;
+  width: min(380px, 86%);
   margin: 0 auto;
-  background: var(--primary-light, #FFF3E0);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary, #F57C00);
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Slim warning strip — persisted comparison shown without an active production */
