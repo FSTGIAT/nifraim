@@ -175,29 +175,29 @@ watch(() => store.batchJustFinished, (b) => {
   pointer-events: none;
 }
 
-/* ───── Hero row ───── */
+/* ───── Hero row: copy (inline-start) | illustration (inline-end) ───── */
 .hero-main {
   position: relative;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 26px;
-  flex-wrap: wrap;
+  gap: 28px;
 }
-.hero-copy { flex: 1 1 320px; min-width: 260px; display: flex; flex-direction: column; gap: 7px; }
+.hero-copy { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .hero-art {
-  flex: 0 1 300px;
-  min-width: 200px;
-  max-width: 320px;
-  width: 100%;
-  align-self: center;
+  width: clamp(220px, 26vw, 320px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: 14px;
   border: 1px solid var(--border-subtle, #E5E7EB);
   box-shadow: var(--shadow-sm);
   display: block;
 }
-@media (max-width: 760px) { .hero-art { display: none; } }
+@media (max-width: 860px) {
+  .hero-main { grid-template-columns: 1fr; }
+  .hero-art { display: none; }
+}
 .hero-kicker {
   align-self: flex-start;
   font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em;
