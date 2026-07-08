@@ -83,24 +83,29 @@ export function AutomationHeroLoop() {
   // Treads: one 38px step every 30 frames (8 steps/loop).
   const treadShift = ((frame % 30) / 30) * 38
 
-  // Falling document: 2 cycles per loop.
+  // Falling document: 2 cycles per loop — drops INTO the tray (lands on the
+  // paper stack at y≈+150), settles, then fades where it lies.
   const FALL_CYCLE = 120
   const fallFrame = frame % FALL_CYCLE
-  const fallY = interpolate(fallFrame, [12, 86], [0, 112], {
+  const fallY = interpolate(fallFrame, [10, 78], [0, 150], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
-    easing: Easing.bezier(0.5, 0, 0.9, 0.6),
+    easing: Easing.bezier(0.45, 0, 0.85, 0.7),
+  })
+  const fallTilt = interpolate(fallFrame, [10, 78], [0, -8], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   })
   const fallOpacity = interpolate(
     fallFrame,
-    [0, 12, 20, 80, 92],
+    [0, 10, 18, 92, 108],
     [0, 0, 1, 1, 0],
     { extrapolateRight: 'clamp' },
   )
 
   return (
     <AbsoluteFill style={{ backgroundColor: 'transparent' }}>
-      <svg viewBox="0 0 880 460" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="20 15 848 420" width="100%" height="100%" preserveAspectRatio="xMinYMid meet">
         {/* pipes (static) */}
         <path d="M 640 120 h 90 q 18 0 18 18 v 40" stroke={MINT} strokeWidth={13} strokeLinecap="round" fill="none" />
         <path d="M 560 330 h 96 q 16 0 16 -16 v -20" stroke={DEEP} strokeWidth={13} strokeLinecap="round" fill="none" />
@@ -138,7 +143,7 @@ export function AutomationHeroLoop() {
         <Gear cx={662} cy={306} r={40} teeth={8} toothW={16} toothH={15} holeR={15} fill={DEEP} angle={smallAngle} />
 
         {/* falling document into the archive */}
-        <g transform={`translate(776 ${150 + fallY})`} opacity={fallOpacity}>
+        <g transform={`translate(776 ${140 + fallY}) rotate(${fallTilt})`} opacity={fallOpacity}>
           <Doc w={35} h={49} fill={TURQUOISE} line={PAPER} />
         </g>
 

@@ -175,14 +175,17 @@ watch(() => store.batchJustFinished, (b) => {
   pointer-events: none;
 }
 
-/* ───── Hero art: animated Remotion loop bleeding from the card's
-   inline-end (left in RTL). Transparent scene — merges with the white card. */
+/* ───── Hero art: animated Remotion loop anchored to the card's
+   inline-end (left in RTL). aspect-ratio matches the composition exactly so
+   the Player never letterboxes/centers it — the scene sits flush left. */
 .hero-art {
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  inset-inline-end: 4px;
-  width: min(420px, 40%);
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(470px, 42%);
+  max-height: calc(100% - 16px);
+  aspect-ratio: 848 / 420;
   pointer-events: none;
   z-index: 0;
 }
