@@ -4,6 +4,7 @@
          One click downloads every active portal, aggregates into one production +
          one נפרעים file, and runs the compare. -->
     <span class="hero-orb" aria-hidden="true"></span>
+    <img class="hero-art" :src="automationArt" alt="" aria-hidden="true" />
     <div class="hero-main">
       <div class="hero-copy">
         <span class="hero-kicker">אוטומציה</span>
@@ -31,7 +32,6 @@
             <span>הוסף פורטל</span>
           </button>
         </div>
-        <img class="hero-art" :src="automationArt" alt="" aria-hidden="true" />
       </div>
     </div>
 
@@ -175,29 +175,38 @@ watch(() => store.batchJustFinished, (b) => {
   pointer-events: none;
 }
 
-/* ───── Hero row: copy (inline-start) | illustration (inline-end) ───── */
+/* ───── Hero art: full-bleed panel on the card's inline-end (left in RTL),
+   fading into the white so it reads as part of the card, not a pasted image. */
+.hero-art {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: 0;
+  height: 100%;
+  width: min(400px, 38%);
+  object-fit: cover;
+  object-position: center;
+  -webkit-mask-image: linear-gradient(to right, black 45%, transparent 96%);
+  mask-image: linear-gradient(to right, black 45%, transparent 96%);
+  opacity: 0.92;
+  pointer-events: none;
+  z-index: 0;
+}
+@media (max-width: 860px) { .hero-art { display: none; } }
+
+/* ───── Hero row ───── */
 .hero-main {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 28px;
 }
-.hero-copy { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
-.hero-art {
-  width: clamp(220px, 26vw, 320px);
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 14px;
-  border: 1px solid var(--border-subtle, #E5E7EB);
-  box-shadow: var(--shadow-sm);
-  display: block;
+.hero-copy {
+  min-width: 0;
+  max-width: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
-@media (max-width: 860px) {
-  .hero-main { grid-template-columns: 1fr; }
-  .hero-art { display: none; }
-}
+@media (max-width: 860px) { .hero-copy { max-width: none; } }
 .hero-kicker {
   align-self: flex-start;
   font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em;
@@ -241,6 +250,8 @@ watch(() => store.batchJustFinished, (b) => {
 
 /* ───── Batch progress ───── */
 .batch-progress {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -286,6 +297,8 @@ watch(() => store.batchJustFinished, (b) => {
 
 /* ───── Batch done banner ───── */
 .batch-done {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 14px;
