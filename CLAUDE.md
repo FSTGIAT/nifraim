@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read `.xlsx` files, parse Hebrew columns, reconcile production vs. commission records, and present insights through a Hebrew RTL interface. Before writing code, plan the architecture and document it in `.claude/plans/`.
 
+> **🗺️ Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first.** It is the machine-readable
+> map of how the app is wired — the two-plane cloud/worker topology, Mermaid data-flow graphs,
+> a "where do I look for X" navigation index, and the OTP / comparison / AI **invariants you must
+> not break**. This CLAUDE.md covers conventions and how-tos; that file covers the graph.
+
 ---
 
 ## Architecture Overview
@@ -654,6 +659,7 @@ The standard sheet (אקסלנס format) has `רמת גורם` column. Rows are 
 
 ## Agent Instructions
 
+- **Read `docs/ARCHITECTURE.md` first** for the wiring map, data-flow graphs, and the invariants you must not break.
 - **Read before writing.** Never modify a file you haven't read first.
 - **Check `hebrew_mappings.py`** before touching any parser code. Check `App.vue` for CSS variables before styling.
 - **Preserve patterns.** Every parser, modal, and store follows the same structure. Don't break it.
