@@ -89,9 +89,9 @@ onBeforeUnmount(() => {
   /* Remotion Player centers its composition with LTR-assuming math —
      under the app's RTL root it drifts ~half a scene off-box. Keep the
      LTR scope INSIDE the island so the host's logical insets stay RTL.
-     scaleX(-1): mirror so the conveyor→gears→archive flow reads right-to-left. */
+     NOT mirrored: the conveyor→gears→archive pipeline reads left-to-right
+     by design (source → process → output). */
   direction: ltr;
-  transform: scaleX(-1);
 }
 
 .hero-loop-fallback {
