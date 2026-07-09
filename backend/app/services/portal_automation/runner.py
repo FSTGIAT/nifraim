@@ -160,6 +160,42 @@ OTP_POLL_INTERVAL_S = 1.0
 # logins — never hangs longer.
 RUN_HARD_TIMEOUT_S = 720
 
+# A HEADED browser needs an interactive desktop. When the worker PC sleeps, locks,
+# or its session is disconnected mid-run, Chrome exits a second or two after the
+# page loads and Playwright reports "Target page, context or browser has been
+# closed" — never a net::ERR_*, which is what a network drop looks like. Observed
+# only ever on headed plugins (hachshara, meitav, mor), never a headless one.
+# One clean relaunch recovers a transient loss; a genuinely absent desktop still
+# fails, loudly, on the second attempt.
+BROWSER_DEATH_RETRIES = 1
+BROWSER_SETTLE_S = 7
+
+# Files a force-killed / crashed Chromium strands in a persistent profile. The
+# NEXT launch exits immediately when it finds one, so a single crash makes every
+# later run of that portal fail identically until the lock is cleared by hand.
+_PROFILE_SINGLETONS = ("SingletonLock", "SingletonCookie", "SingletonSocket")
+
+
+def _browser_died(exc: Exception) -> bool:
+    """True when the browser PROCESS is gone, as opposed to the network being
+    down (net::ERR_*) or a locator timing out. Only this class of failure is
+    worth relaunching for."""
+    s = str(exc)
+    return ("has been closed" in s or "Target closed" in s
+            or "Browser closed" in s or "Target page, context or browser" in s)
+
+
+def _clear_profile_singletons(profile_dir) -> None:
+    """Drop stale Singleton* locks before reusing a persistent profile."""
+    for name in _PROFILE_SINGLETONS:
+        try:
+            (profile_dir / name).unlink()
+            logger.info("cleared stale %s in %s", name, profile_dir)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logger.warning("could not clear %s: %s", name, e)
+
 
 class OtpTimeout(TimeoutError):
     """Raised when no OTP arrives within OTP_WAIT_TIMEOUT_S. Distinct from
@@ -394,6 +430,9 @@ async def _run_inner(
             # IS the context (no separate browser object).
             profile_dir = BROWSER_PROFILE_ROOT / cred.portal_kind
             profile_dir.mkdir(parents=True, exist_ok=True)
+            # A crashed Chrome strands SingletonLock here; without this, every
+            # subsequent run of this portal dies on arrival, forever.
+            _clear_profile_singletons(profile_dir)
             try:
                 context = await pw.chromium.launch_persistent_context(
                     str(profile_dir), channel="chrome", headless=not headed,
@@ -647,6 +686,31 @@ async def run_phone_change(run_id: uuid.UUID, new_phone: str) -> None:
             await db.commit()
 
 
+async def _run_inner_with_relaunch(db: AsyncSession, run: PortalRun) -> None:
+    """Run the portal, relaunching ONCE if the browser process dies during login.
+
+    Gated on `stage == "login"` deliberately. `_wait_for_otp` only runs after
+    login() returns, so a death at this stage means no OTP was consumed and no
+    file was downloaded — the run is safely repeatable. A death at `otp`,
+    `download` or `parse` is NOT retried: it could burn a second OTP (insurers
+    like Phoenix issue exactly one per session) or double-ingest a file.
+    """
+    for attempt in range(BROWSER_DEATH_RETRIES + 1):
+        try:
+            await _run_inner(db, run)
+            return
+        except Exception as e:
+            exhausted = attempt >= BROWSER_DEATH_RETRIES
+            if exhausted or not _browser_died(e) or (run.stage or "") != "login":
+                raise
+            note = (f"run {str(run.id)[:8]}: browser died during login ({e}) — "
+                    f"relaunching once (attempt {attempt + 2})")
+            logger.warning(note)
+            _worker_note(note)
+            await _set_status(db, run, status="running", stage="login")
+            await asyncio.sleep(BROWSER_SETTLE_S)
+
+
 async def run_automation(run_id: uuid.UUID) -> None:
     """Top-level entry point. Owns its own DB session and never raises."""
     async with async_session() as db:
@@ -662,7 +726,8 @@ async def run_automation(run_id: uuid.UUID) -> None:
         cred = cred_result.scalar_one()
 
         try:
-            await asyncio.wait_for(_run_inner(db, run), timeout=RUN_HARD_TIMEOUT_S)
+            await asyncio.wait_for(_run_inner_with_relaunch(db, run),
+                                   timeout=RUN_HARD_TIMEOUT_S)
             cred.last_run_status = "success"
             cred.last_error = None
         except OtpTimeout as e:
