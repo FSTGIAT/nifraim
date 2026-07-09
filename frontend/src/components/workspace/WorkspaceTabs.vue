@@ -219,18 +219,23 @@ const tabs = [
               border-color 0.3s ease,
               box-shadow 0.35s ease,
               background 0.3s ease;
-  animation: cardEnter 0.45s var(--transition) both;
+  /* `backwards` (not `both`): keep the staggered entrance hidden during the
+     delay, but DON'T retain the end keyframe — its `transform: scale(1)` would
+     otherwise override `.card:hover`'s scale (animations outrank normal rules),
+     silently cancelling the hover resize. */
+  animation: cardEnter 0.45s var(--transition) backwards;
   animation-delay: calc(var(--i) * 70ms);
 }
 
 .card:hover {
-  transform: translateY(-8px) scale(1.06);
+  transform: translateY(-10px) scale(1.14);
+  z-index: 5; /* grow OVER neighbouring cards, not behind them */
   border-color: var(--accent);
   background: #fff;
   box-shadow:
-    0 20px 56px var(--accent-glow),
+    0 28px 64px var(--accent-glow),
     0 0 0 1px var(--accent-glow),
-    0 6px 20px rgba(0, 0, 0, 0.07);
+    0 8px 24px rgba(0, 0, 0, 0.09);
 }
 
 /* Ambient loop layer: fills the card, sits above the noise/accent-line but
