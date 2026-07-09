@@ -210,7 +210,14 @@
             </p>
 
             <ul v-else class="msgr-rows">
-              <li v-for="c in store.listedContacts" :key="c.id">
+              <li v-for="c in store.listedContacts" :key="c.id" class="msgr-row-wrap">
+                <!-- Confirm before destroying anything: never delete on one click. -->
+                <div v-if="confirmingId === c.id" class="msgr-confirm">
+                  <span class="msgr-confirm-text">למחוק את השיחה?</span>
+                  <button class="msgr-confirm-no" @click.stop="confirmingId = null">ביטול</button>
+                  <button class="msgr-confirm-yes" @click.stop="doDelete(c)">מחיקה</button>
+                </div>
+
                 <button class="msgr-row" :class="{ 'is-unread': c.unread > 0 }" @click="store.openThread(c)">
                   <Avatar :name="c.full_name" :username="c.username" :avatar-seed="c.avatar_seed || ''" :initial="c.initial" :online="c.online" :size="46" />
 
@@ -229,6 +236,19 @@
                     <span v-if="c.last_message_at" class="msgr-row-time ltr-number">{{ shortTime(c.last_message_at) }}</span>
                     <span v-if="c.unread" class="msgr-row-badge ltr-number">{{ c.unread }}</span>
                   </span>
+                </button>
+
+                <!-- Sibling, not nested: a <button> inside a <button> is invalid
+                     and swallows the click. Only for real conversations. -->
+                <button
+                  v-if="!store.showingSearch"
+                  class="msgr-row-del"
+                  :aria-label="'מחיקת השיחה עם ' + (c.full_name || c.username)"
+                  @click.stop="confirmingId = c.id"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+                  </svg>
                 </button>
               </li>
             </ul>
@@ -300,6 +320,18 @@ async function pickAvatar (seed) {
   }
 }
 
+// Deleting a conversation only clears MY copy — the other person keeps theirs.
+const confirmingId = ref(null)
+async function doDelete (contact) {
+  const id = contact.id
+  confirmingId.value = null
+  try {
+    await store.deleteThread(id)
+  } catch {
+    store.error = 'מחיקת השיחה נכשלה'
+  }
+}
+
 const settingsOpen = ref(false)
 const handleDraft = ref('')
 const handleError = ref('')
@@ -335,7 +367,8 @@ async function saveUsername () {
 watch(() => store.openContact, (c) => { if (c) settingsOpen.value = false })
 
 function onEsc () {
-  if (settingsOpen.value) settingsOpen.value = false
+  if (confirmingId.value) confirmingId.value = null
+  else if (settingsOpen.value) settingsOpen.value = false
   else if (store.openContact) store.closeThread()
   else store.closeDock()
 }
@@ -552,6 +585,7 @@ function onEsc () {
 
 /* -------------------------------------------------------------- row list */
 .msgr-rows { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 10px 0 6px; }
+.msgr-row-wrap { position: relative; }
 .msgr-row {
   width: 100%;
   display: flex; align-items: center; gap: 11px;
@@ -560,6 +594,46 @@ function onEsc () {
   text-align: start; font: inherit;
 }
 .msgr-row:hover { background: var(--bg); }
+
+/* Trash sits over the row's inline-end edge; revealed on hover/focus, and
+   always visible on touch where there is no hover. */
+.msgr-row-del {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 6px;
+  transform: translateY(-50%);
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s var(--transition), color 0.14s var(--transition);
+}
+.msgr-row-del svg { width: 15px; height: 15px; }
+.msgr-row-wrap:hover .msgr-row-del,
+.msgr-row-del:focus-visible { opacity: 1; }
+.msgr-row-del:hover { color: #B3261E; background: #FDECEA; }
+@media (hover: none) { .msgr-row-del { opacity: 1; } }
+
+.msgr-confirm {
+  position: absolute; inset: 0;
+  z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 14px;
+  background: var(--bg-surface);
+  border-block: 1px solid var(--border-subtle);
+}
+.msgr-confirm-text { flex: 1; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.msgr-confirm-no, .msgr-confirm-yes {
+  flex-shrink: 0;
+  border: none; border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.msgr-confirm-no { background: var(--bg); color: var(--text-secondary); }
+.msgr-confirm-yes { background: #B3261E; color: #fff; }
 
 .msgr-row-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .msgr-row-name {

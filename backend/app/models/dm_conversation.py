@@ -40,6 +40,12 @@ class DmConversation(Base):
     a_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     b_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # "Delete conversation" is per-side: the row is shared, so dropping it would
+    # erase the other person's history. Messages at or before MY cleared_at are
+    # hidden from ME only. A newer message revives the thread naturally.
+    a_cleared_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    b_cleared_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

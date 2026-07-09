@@ -91,8 +91,19 @@ def _my_unread_col(me: uuid.UUID):
     )
 
 
+def _my_cleared_col(me: uuid.UUID):
+    return case(
+        (DmConversation.user_a_id == me, DmConversation.a_cleared_at),
+        else_=DmConversation.b_cleared_at,
+    )
+
+
 def _mine(me: uuid.UUID):
     return or_(DmConversation.user_a_id == me, DmConversation.user_b_id == me)
+
+
+def _my_cleared_at(conv: DmConversation, me: uuid.UUID) -> datetime | None:
+    return conv.a_cleared_at if conv.user_a_id == me else conv.b_cleared_at
 
 
 async def _total_unread(db: AsyncSession, me: uuid.UUID) -> int:
@@ -200,7 +211,14 @@ async def contacts(
         .select_from(DmConversation)
         .join(User, User.id == other_id)
         .outerjoin(DmPresence, DmPresence.user_id == User.id)
-        .where(_mine(me.id))
+        .where(
+            _mine(me.id),
+            # Hide conversations I cleared, until a newer message revives them.
+            or_(
+                _my_cleared_col(me.id).is_(None),
+                DmConversation.last_message_at > _my_cleared_col(me.id),
+            ),
+        )
         .order_by(DmConversation.last_message_at.desc().nullslast())
     )
     rows = (await db.execute(stmt)).all()
@@ -322,6 +340,12 @@ async def thread_messages(
         return ThreadPage(messages=[], has_more=False)
 
     stmt = select(DmMessage).where(DmMessage.conversation_id == conv.id)
+
+    # Anything from before I cleared this conversation is gone — for me.
+    cleared = _my_cleared_at(conv, me.id)
+    if cleared is not None:
+        stmt = stmt.where(DmMessage.created_at > cleared)
+
     if before is not None:
         stmt = stmt.where(DmMessage.seq < before)
     stmt = stmt.order_by(DmMessage.seq.desc()).limit(limit + 1)
@@ -405,6 +429,39 @@ async def poll(
         cursor=cursor,
         total_unread=await _total_unread(db, me.id),
     )
+
+
+@router.delete("/threads/{other_id}")
+async def delete_thread(
+    other_id: str,
+    me: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete this conversation — FOR ME ONLY.
+
+    The `dm_conversations` row and its messages are shared with the other person,
+    so we never drop them: that would silently erase their history from under
+    them. Instead we stamp MY side's `cleared_at`. Everything at or before it
+    disappears from my contacts list and my thread; their view is untouched. If
+    they message me again, the thread comes back with just the new message.
+    """
+    other = await _resolve_other(db, me, other_id)
+    conv = await _get_conversation(db, me.id, other.id)
+    if conv is None:
+        return {"ok": True}
+
+    now = datetime.utcnow()
+    if conv.user_a_id == me.id:
+        conv.a_cleared_at = now
+        conv.a_unread_count = 0
+        conv.a_last_read_at = now
+    else:
+        conv.b_cleared_at = now
+        conv.b_unread_count = 0
+        conv.b_last_read_at = now
+    await db.commit()
+
+    return {"ok": True, "total_unread": await _total_unread(db, me.id)}
 
 
 @router.post("/threads/{other_id}/read")

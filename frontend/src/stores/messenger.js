@@ -148,6 +148,17 @@ export const useMessengerStore = defineStore('messenger', () => {
     messages.value = []
   }
 
+  /**
+   * Delete a conversation for me. The server keeps the other person's copy —
+   * this only stamps my side's cleared_at.
+   */
+  async function deleteThread (contactId) {
+    const { data } = await api.delete(`/messenger/threads/${contactId}`)
+    contacts.value = contacts.value.filter((c) => c.id !== contactId)
+    if (openContact.value?.id === contactId) closeThread()
+    if (typeof data?.total_unread === 'number') totalUnread.value = data.total_unread
+  }
+
   async function markRead (contactId) {
     try {
       await api.post(`/messenger/threads/${contactId}/read`)
@@ -348,7 +359,7 @@ export const useMessengerStore = defineStore('messenger', () => {
     openContact, messages, loadingThread, hasMore,
     dockOpen, totalUnread, error, myId,
     fetchContacts, fetchOnline, changeUsername, changeAvatar, setSearch, clearSearch,
-    openThread, closeThread, loadOlder, sendMessage, retry, markRead,
+    openThread, closeThread, loadOlder, sendMessage, retry, markRead, deleteThread,
     startPresence, stopPresence, openDock, closeDock,
   }
 })
