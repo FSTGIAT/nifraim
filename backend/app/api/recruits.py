@@ -356,6 +356,22 @@ async def update_recruit(
     )
 
 
+@router.delete("/category/{category}")
+async def clear_recruits_category(
+    category: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Close/clear the uploaded recruit file: delete every recruit for this user
+    in the given category so a fresh file can be uploaded. Scoped to one
+    category (financial|insurance) — the other category is untouched."""
+    result = await db.execute(
+        delete(Recruit).where(Recruit.user_id == user.id, Recruit.category == category)
+    )
+    await db.commit()
+    return {"status": "cleared", "count": result.rowcount or 0}
+
+
 @router.delete("/{recruit_id}")
 async def delete_recruit(
     recruit_id: str,

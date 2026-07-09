@@ -187,6 +187,20 @@
         @change="onFileSelected"
         style="display: none"
       />
+      <!-- Close / clear the uploaded recruit file (current category) -->
+      <button
+        v-if="hasRecruits && !recruitsStore.uploading && innerTab === 'list'"
+        class="clear-file-btn"
+        @click="showClearConfirm = true"
+        title="מחק את קובץ המגויסים הנוכחי"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Tab: List -->
@@ -393,6 +407,32 @@
     <Transition name="fade">
       <p class="error-msg" v-if="recruitsStore.error">{{ recruitsStore.error }}</p>
     </Transition>
+
+    <!-- Clear-file confirmation -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showClearConfirm" class="clear-overlay" @click.self="showClearConfirm = false">
+          <div class="clear-modal">
+            <div class="clear-modal-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </div>
+            <h4>למחוק את קובץ המגויסים?</h4>
+            <p>כל {{ recruitsStore.recruits.length }} המגויסים ברשימת «{{ activeCatLabel }}» יימחקו. אפשר להעלות קובץ חדש לאחר מכן. הקטגוריה השנייה לא תיפגע.</p>
+            <div class="clear-modal-actions">
+              <button class="clear-cancel" @click="showClearConfirm = false" :disabled="clearing">ביטול</button>
+              <button class="clear-confirm" @click="confirmClearFile" :disabled="clearing">
+                <span v-if="clearing" class="btn-spinner"></span>
+                <span>{{ clearing ? 'מוחק...' : 'מחק קובץ' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -416,6 +456,11 @@ const needPassword = ref(false)
 const showFormatGuide = ref(false)
 const password = ref('')
 const innerTab = ref('list')
+const showClearConfirm = ref(false)
+const clearing = ref(false)
+const activeCatLabel = computed(() =>
+  recruitsStore.activeCategory === 'insurance' ? 'מגויסים ביטוח' : 'מגויסים פיננסים'
+)
 const commDragging = ref(false)
 const commUploading = ref(false)
 const commUploadedFiles = ref([])
@@ -527,6 +572,24 @@ async function runProductionComparison() {
 function switchCategory(cat) {
   recruitsStore.setCategory(cat)
   innerTab.value = 'list'
+}
+
+async function confirmClearFile() {
+  clearing.value = true
+  try {
+    await recruitsStore.clearCategory()
+    // Re-check whether ANY recruits remain (the other category may still have data)
+    try {
+      const res = await api.get('/recruits')
+      hasAnyRecruits.value = res.data.length > 0
+    } catch { hasAnyRecruits.value = false }
+    innerTab.value = 'list'
+    showClearConfirm.value = false
+  } catch {
+    // error surfaced via store
+  } finally {
+    clearing.value = false
+  }
 }
 
 async function runCommissionComparison(company = null) {
@@ -1295,6 +1358,107 @@ watch(() => innerTab.value, (tab) => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(61, 182, 176, 0.22);
 }
+
+/* ── Clear (close) file button + confirm modal ── */
+.clear-file-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--red-light);
+  color: var(--red);
+  border: 1.5px solid rgba(194, 57, 52, 0.15);
+  cursor: pointer;
+  transition: all 0.25s var(--transition);
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+}
+.clear-file-btn:hover {
+  background: var(--red);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(194, 57, 52, 0.22);
+}
+
+.clear-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 20, 18, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 20px;
+}
+.clear-modal {
+  width: min(400px, 100%);
+  background: var(--card-bg);
+  border-radius: var(--radius-lg, 16px);
+  padding: 26px 24px 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  text-align: center;
+}
+.clear-modal-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--red-light);
+  color: var(--red);
+}
+.clear-modal h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+.clear-modal p {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.clear-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.clear-modal-actions button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: var(--radius-sm, 10px);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s var(--transition);
+}
+.clear-cancel {
+  background: var(--bg-surface, #F3F3F3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.clear-cancel:hover:not(:disabled) { background: var(--border-subtle); }
+.clear-confirm {
+  background: var(--red);
+  color: #fff;
+  border: none;
+}
+.clear-confirm:hover:not(:disabled) { background: #A62F2A; box-shadow: 0 4px 14px rgba(194, 57, 52, 0.3); }
+.clear-modal-actions button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-active .clear-modal, .modal-leave-active .clear-modal { transition: transform 0.2s ease; }
+.modal-enter-from .clear-modal, .modal-leave-to .clear-modal { transform: scale(0.94); }
 
 /* ── Compare ── */
 .compare-section {

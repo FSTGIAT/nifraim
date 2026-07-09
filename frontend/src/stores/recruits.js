@@ -133,6 +133,20 @@ export const useRecruitsStore = defineStore('recruits', () => {
     }
   }
 
+  // Close/clear the uploaded file for the active category, then reset local state.
+  async function clearCategory() {
+    error.value = null
+    try {
+      await api.delete(`/recruits/category/${activeCategory.value}`)
+      recruits.value = []
+      comparisonResult.value = null
+      commissionComparisonResult.value = null
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה במחיקת קובץ המגויסים'
+      throw e
+    }
+  }
+
   function resetComparison() {
     comparisonResult.value = null
   }
@@ -154,7 +168,7 @@ export const useRecruitsStore = defineStore('recruits', () => {
     comparingCommission, commissionComparisonResult, commissionFilterCompany,
     uploading, error, activeCategory,
     fetchRecruits, createRecruit, createBulk, uploadRecruits,
-    updateRecruit, deleteRecruit,
+    updateRecruit, deleteRecruit, clearCategory,
     compareRecruits, resetComparison,
     compareRecruitsCommission, resetCommissionComparison,
     setCategory,
