@@ -252,13 +252,19 @@ async def main(username, password, token, base):
     _WORKER_TOKEN, _BACKEND_BASE = token, base
 
     profile = _profile_dir()
-    async with async_playwright() as pw:
-        for attempt in (1, 2):
-            print(f">> [start] launching Edge attempt {attempt}/2 "
-                  f"(persistent profile: {profile})…", flush=True)
-            _kill_stale_automation_edge(profile)
-            os.makedirs(profile, exist_ok=True)
+    for attempt in (1, 2):
+        print(f">> [start] launching Edge attempt {attempt}/2 "
+              f"(persistent profile: {profile})…", flush=True)
 
+        # MUST run BEFORE async_playwright() starts our own driver: the cleanup
+        # kills every playwright node.exe, and our driver is one of them. Killing
+        # it mid-launch surfaced as `Connection closed while reading from the
+        # driver` + BrokenPipeError — i.e. we shot ourselves. Each attempt
+        # therefore gets a fresh driver, started after the machine is clean.
+        _kill_stale_automation_edge(profile)
+        os.makedirs(profile, exist_ok=True)
+
+        async with async_playwright() as pw:
             try:
                 ctx, label = await _launch_persistent(pw, profile)
             except Exception as e:
@@ -299,7 +305,7 @@ async def main(username, password, token, base):
                         await ctx.close()
                     except Exception:
                         pass
-                    continue
+                    continue        # leaves `async with`, stopping this driver
 
                 import traceback
                 print(f"!! login failed at step '{step}': {e}", flush=True)
