@@ -129,7 +129,7 @@
           <template #strip-end>
             <CircleMenuIsland
               :items="circleMenuItems"
-              layout="across"
+              layout="down-left"
               class="strip-circle-menu"
               @select="onMenuSelect"
             />

@@ -109,7 +109,8 @@ onBeforeUnmount(() => {
 }
 
 .cm-island--across,
-.cm-island--down {
+.cm-island--down,
+.cm-island--down-left {
   width: 48px;
   height: 48px;
 }

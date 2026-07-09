@@ -47,7 +47,16 @@ const pointInColumn = (i: number, itemSize: number, gap: number) => ({
   y: (i + 1) * (itemSize + gap),
 })
 
-type LayoutMode = 'circle' | 'across' | 'down'
+// Diagonal "down-left" layout — items cascade DOWNWARD and toward the LEFT.
+// Used for the in-strip trigger: it drops the icons below the tab strip (so they
+// never fan across / cover the tabs) while opening leftward. Full vertical step,
+// gentler horizontal step so the fan stays compact.
+const pointInDiagonalDownLeft = (i: number, itemSize: number, gap: number) => ({
+  x: -((i + 1) * (itemSize + gap) * 0.55),
+  y: (i + 1) * (itemSize + gap),
+})
+
+type LayoutMode = 'circle' | 'across' | 'down' | 'down-left'
 
 export interface CircleMenuItem {
   key: string
@@ -73,6 +82,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const { x, y } =
     layout === 'across' ? pointInRow(index, CONSTANTS.itemSize, itemGap)
     : layout === 'down' ? pointInColumn(index, CONSTANTS.itemSize, itemGap)
+    : layout === 'down-left' ? pointInDiagonalDownLeft(index, CONSTANTS.itemSize, itemGap)
     : pointOnCircle(index, totalItems, CONSTANTS.containerSize / 2)
   const [hovering, setHovering] = useState(false)
 
