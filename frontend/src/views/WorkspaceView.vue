@@ -1,7 +1,5 @@
 <template>
   <div class="workspace">
-    <StockTicker @track-click="openFundDetail" />
-
     <!-- Floating action menu (React island). Visible only in home view,
          where there's no tabs strip to dock it inside. Items fan DOWN from
          the trigger here — fanning left/across would push items off the
@@ -212,7 +210,6 @@ import { useProductionStore } from '../stores/production.js'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useSetupPipeline } from '../composables/useSetupPipeline.js'
 import { openSetup } from '../utils/setupState.js'
-import StockTicker from '../components/workspace/StockTicker.vue'
 import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
 import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
 import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionModal.vue'
@@ -509,6 +506,8 @@ function onRadialSelect(id) {
   else if (id === RADIAL_YIELD) yieldOpen.value = true
 }
 
+// No trigger since the StockTicker strip was removed — kept, with FundTrackVizPanel
+// and stores/fundTicker.js, so a future entry point can re-wire it in one line.
 async function openFundDetail(trackId) {
   if (!trackId) return
   // Open immediately so the modal's loading spinner is visible while the fetch resolves.
@@ -539,7 +538,6 @@ async function openFundDetail(trackId) {
 }
 
 /* Notifications bell — always-visible top-right alert center.
- * Sits BELOW the StockTicker (32px sticky, z-index 101) so they don't overlap.
  * Above modals (1000+) is still allowed for the dropdown panel (which is
  * teleported to body with its own z-index 1500). */
 .ws-bell-anchor {
@@ -551,15 +549,12 @@ async function openFundDetail(trackId) {
 @media (max-width: 720px) {
   .ws-bell-anchor { top: 40px; inset-inline-start: 10px; }
 }
-/* When the StockTicker is hidden (≤640px in StockTicker.vue), tuck the
- * bell up against the very top of the viewport. */
 @media (max-width: 640px) {
   .ws-bell-anchor { top: 8px; }
 }
 
 /* Floating CircleMenu island — top-LEFT corner with breathing room so the
-   orbital items don't clip when they sweep outward. z-index sits above the
-   StockTicker (101) so items can pass over the strip if needed; still below
+   orbital items don't clip when they sweep outward. z-index stays below
    modals (1000+) and onboarding (5000+). */
 .ws-floating-menu {
   position: fixed;
@@ -587,9 +582,9 @@ async function openFundDetail(trackId) {
 }
 
 /* Insights hub launcher — bottom-LEFT in viewport pixels (not RTL-flipped).
-   Above the waves (z:0) and the StockTicker (101), below modals (1010+),
-   onboarding (5000+), and the dropzone overlay (9999). Hidden in print so
-   it doesn't show up on the dashboard PDF the agent prints for customers. */
+   Above the waves (z:0), below modals (1010+), onboarding (5000+), and the
+   dropzone overlay (9999). Hidden in print so it doesn't show up on the
+   dashboard PDF the agent prints for customers. */
 .ws-insights-launcher {
   position: fixed;
   bottom: 24px;

@@ -190,6 +190,9 @@
         <div class="footer-links">
           <router-link to="/pricing">תמחור</router-link>
           <router-link to="/login">התחברות</router-link>
+          <!-- Plain <a>: /privacy is served by the backend (api/legal.py), not the
+               Vue router. A <router-link> would navigate client-side and render blank. -->
+          <a href="/privacy">מדיניות פרטיות</a>
         </div>
         <p class="footer-copy ltr-number">&copy; 2026 Nifraim. כל הזכויות שמורות.</p>
       </div>
