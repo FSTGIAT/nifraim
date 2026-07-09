@@ -3,16 +3,34 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister, UserLogin, Token, UserOut, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas.user import (
+    UserRegister, UserLogin, Token, UserOut, UsernameUpdate, AvatarUpdate,
+    ForgotPasswordRequest, ResetPasswordRequest,
+)
 from app.services.auth_service import hash_password, verify_password, create_access_token
 from app.services.email_service import send_reset_password_email, FRONTEND_URL
+from app.services.username_service import normalize_username, is_valid_username
 from app.api.deps import get_current_user
 
 router = APIRouter()
+
+
+def _user_out(user: User) -> UserOut:
+    return UserOut(
+        id=str(user.id),
+        email=user.email,
+        username=user.username,
+        avatar_seed=user.avatar_seed,
+        full_name=user.full_name,
+        phone=user.phone,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+    )
 
 
 @router.post("/register", response_model=Token)
@@ -21,17 +39,73 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    username = normalize_username(data.username)
+    if not is_valid_username(username):
+        raise HTTPException(status_code=422, detail="שם משתמש לא תקין")
+
+    taken = await db.execute(select(User.id).where(User.username == username))
+    if taken.first():
+        raise HTTPException(status_code=409, detail="שם המשתמש תפוס")
+
     user = User(
         email=data.email,
+        username=username,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Two concurrent signups can both pass the check above; the unique index
+        # is the real guard.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="שם המשתמש תפוס")
     await db.refresh(user)
 
     token = create_access_token(str(user.id))
     return Token(access_token=token)
+
+
+@router.patch("/me/username", response_model=UserOut)
+async def change_username(
+    data: UsernameUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename your handle.
+
+    This is the escape hatch for users whose handle was auto-derived from their
+    email local-part by the backfill migration.
+    """
+    username = normalize_username(data.username)
+    if not is_valid_username(username):
+        raise HTTPException(status_code=422, detail="שם משתמש לא תקין")
+
+    if username != user.username:
+        taken = await db.execute(select(User.id).where(User.username == username))
+        if taken.first():
+            raise HTTPException(status_code=409, detail="שם המשתמש תפוס")
+        user.username = username
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="שם המשתמש תפוס")
+
+    return _user_out(user)
+
+
+@router.patch("/me/avatar", response_model=UserOut)
+async def change_avatar(
+    data: AvatarUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pick the seed for your generated avatar (chosen from the chat settings)."""
+    user.avatar_seed = data.avatar_seed.strip()[:64]
+    await db.commit()
+    return _user_out(user)
 
 
 @router.post("/login", response_model=Token)
@@ -96,11 +170,4 @@ async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(
 
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
-    return UserOut(
-        id=str(user.id),
-        email=user.email,
-        full_name=user.full_name,
-        phone=user.phone,
-        is_active=user.is_active,
-        is_admin=user.is_admin,
-    )
+    return _user_out(user)

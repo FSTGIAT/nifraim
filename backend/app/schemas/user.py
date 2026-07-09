@@ -1,10 +1,22 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+
+USERNAME_PATTERN = r'^[a-z0-9_]{3,32}$'
 
 
 class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str | None = None
+    username: str = Field(pattern=USERNAME_PATTERN)
+
+
+class UsernameUpdate(BaseModel):
+    username: str = Field(pattern=USERNAME_PATTERN)
+
+
+class AvatarUpdate(BaseModel):
+    # Free-form seed string chosen from the picker; the renderer hashes it.
+    avatar_seed: str = Field(min_length=1, max_length=64)
 
 
 class UserLogin(BaseModel):
@@ -20,6 +32,8 @@ class Token(BaseModel):
 class UserOut(BaseModel):
     id: str
     email: str
+    username: str
+    avatar_seed: str | None = None
     full_name: str | None
     phone: str | None = None
     is_active: bool = False

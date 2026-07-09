@@ -27,5 +27,8 @@ from app.models.pension_holding import PensionHolding
 from app.models.pension_audit import PensionAuditLog, PensionRawPayload
 from app.models.sms_otp_template import SmsOtpTemplate
 from app.models.worker_heartbeat import WorkerHeartbeat
+from app.models.dm_conversation import DmConversation
+from app.models.dm_message import DmMessage
+from app.models.dm_presence import DmPresence
 
-__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "SmsOtpTemplate", "WorkerHeartbeat"]
+__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence"]

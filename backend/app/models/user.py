@@ -13,6 +13,12 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    # Unique public handle — the messenger's search key. Lowercase, ^[a-z0-9_]{3,32}$.
+    # Unlike `full_name` (nullable, non-unique) this can identify a person unambiguously
+    # without exposing their email. See services/username_service.py.
+    username: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    # Seed for the generated avatar. NULL = derive it from `username`.
+    avatar_seed: Mapped[str | None] = mapped_column(String(64), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=True)
     phone: Mapped[str] = mapped_column(String(20), nullable=True)

@@ -15,6 +15,7 @@ from app.models.commission_comparison import CommissionComparison
 from app.models.worker_heartbeat import WorkerHeartbeat
 from app.schemas.user import UserAdminOut, UserAdminUpdate, UserAdminCreate, AgentStatusOut
 from app.services.auth_service import hash_password
+from app.services.username_service import generate_unique_username
 
 router = APIRouter()
 
@@ -57,8 +58,11 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    # `username` is NOT NULL — admin-created accounts don't choose one, so derive
+    # it from the email. The user can rename via PATCH /api/auth/me/username.
     user = User(
         email=email,
+        username=await generate_unique_username(db, email),
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         phone=body.phone,

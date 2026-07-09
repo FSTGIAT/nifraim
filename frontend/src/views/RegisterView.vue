@@ -88,6 +88,29 @@
           </div>
 
           <div class="field">
+            <label for="username">שם משתמש</label>
+            <div class="control">
+              <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
+              </svg>
+              <input
+                id="username"
+                v-model="username"
+                type="text"
+                placeholder="kiko"
+                dir="ltr"
+                required
+                minlength="3"
+                maxlength="32"
+                autocomplete="username"
+                @input="usernameTouched = true"
+              />
+            </div>
+            <p class="hint">3–32 תווים · אותיות קטנות, ספרות וקו תחתון · כך יחפשו אתכם בצ'אט</p>
+          </div>
+
+          <div class="field">
             <label for="password">סיסמה</label>
             <div class="control">
               <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -145,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
 
@@ -154,16 +177,34 @@ const auth = useAuthStore()
 
 const fullName = ref('')
 const email = ref('')
+const username = ref('')
+const usernameTouched = ref(false)
 const password = ref('')
 const showPassword = ref(false)
 const error = ref('')
 const loading = ref(false)
 
+function suggestUsername (mail) {
+  const local = (mail || '').split('@')[0].toLowerCase()
+  const base = local.replace(/[^a-z0-9_]/g, '')
+  return base.length < 3 ? `user${base}` : base.slice(0, 32)
+}
+
+// Suggest a handle from the email until the user edits the field themselves.
+watch(email, (mail) => {
+  if (!usernameTouched.value) username.value = suggestUsername(mail)
+})
+
 async function handleSubmit() {
   error.value = ''
+  const handle = username.value.trim().replace(/^@/, '').toLowerCase()
+  if (!/^[a-z0-9_]{3,32}$/.test(handle)) {
+    error.value = 'שם משתמש יכול להכיל רק אותיות אנגליות קטנות, ספרות וקו תחתון (3–32 תווים)'
+    return
+  }
   loading.value = true
   try {
-    await auth.register(email.value, password.value, fullName.value || null)
+    await auth.register(email.value, password.value, fullName.value || null, handle)
     router.push('/workspace')
   } catch (e) {
     error.value = e.response?.data?.detail || 'שגיאה בהרשמה'

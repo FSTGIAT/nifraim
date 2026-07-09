@@ -111,6 +111,9 @@ user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch st
 | **Tab icons (duotone) — single source of truth** | `frontend/src/components/icons/{AppIcon.vue, tabIcons.js}` |
 | **Per-tab colour identity tokens** | `App.vue` `:root` (`--tab-*` accent/wash/ink) |
 | **Card ambient hover animation (Remotion)** | `remotion/CardAmbientLoop.tsx`, `components/workspace/CardAmbientIsland.vue` |
+| **User-to-user chat (messenger)** | `api/messenger.py`, `models/dm_*.py`, `stores/messenger.js`, `components/workspace/MessengerDock.vue` |
+| **Who is online (a PERSON, not a worker PC)** | `models/dm_presence.py` (50s) — contrast `worker_heartbeat.py` (90s) |
+| **A user's public handle / directory search** | `users.username`, `services/username_service.py` |
 
 ---
 
@@ -206,8 +209,25 @@ These look arbitrary; each encodes a fixed production incident.
 | `worker_heartbeats` | One row/user; DB-clock `last_seen`, `update_requested_at` | `models/worker_heartbeat.py` |
 | `portal_runs` / `portal_run_batches` | Automation run state machine | `models/portal_run*.py` |
 | `portal_links` | Shareable customer-portal tokens | `models/portal_link.py` |
+| `dm_conversations` | One row per user PAIR; ordered-pair invariant + denormalized unread/preview | `models/dm_conversation.py` |
+| `dm_messages` | Direct messages; `seq` identity column is the poll/page cursor | `models/dm_message.py` |
+| `dm_presence` | PERSON liveness (browser open, 50s window) — **not** `worker_heartbeats` | `models/dm_presence.py` |
 
 **Universal rule:** every query filters by `user_id` (strict multi-tenancy).
+
+**The one sanctioned exception:** `api/messenger.py` (`/contacts`, `/search`). A
+user-to-user messenger must let one user see that another exists, so those two
+queries join `users` without a `user_id` filter. Do not "fix" them. The exposure
+is bounded by three things, all load-bearing:
+1. `ContactOut` is a strict whitelist — `id`, `username`, `full_name`, `initial`,
+   `online`. **Never** `email` / `phone` / `company_name`.
+2. `/search` requires ≥2 chars and matches a **prefix** (`LIKE 'q%'`, never a
+   leading `%`), so the directory can't be enumerated or read as a substring oracle.
+3. `/contacts` returns only people you already have a conversation with.
+
+`users.username` (NOT NULL UNIQUE, `^[a-z0-9_]{3,32}$`) exists to make people
+identifiable in that directory *without* exposing an email — `full_name` is
+nullable and non-unique, so it can't do the job.
 
 ---
 
@@ -265,6 +285,40 @@ and drifts ~half a scene off-box under the app's RTL root. Directional scenes ad
 `transform: scaleX(-1)` to flow right-to-left; `CardAmbientLoop` is
 non-directional so it doesn't. See `remotion/TabHeroLoops.tsx`,
 `AutomationHeroLoopIsland.vue`.
+
+---
+
+---
+
+## 9. Messenger — invariants
+
+A floating dock (bottom-right, the only free corner) lets any user DM any other.
+It is **deliberately isolated from the worker/portal-automation plane**: it never
+imports `api/portal_automation.py`, never reads `worker_heartbeats`, and ships its
+own pulse keyframes rather than borrowing the worker chip's CSS.
+
+1. **Ordered-pair invariant.** `dm_conversations` always stores
+   `user_a_id = min(uuid)`, `user_b_id = max(uuid)`, under a unique index. That
+   collapses (a,b) and (b,a) onto one row without a hash column. Always build the
+   tuple via `ordered_pair()` — never by hand. — `models/dm_conversation.py`
+2. **`seq`, not `created_at`, is the cursor.** UUIDv4 has no time order and
+   `created_at` ties at microsecond precision under concurrent inserts, so
+   `WHERE created_at > :since` can skip or double-deliver. `seq` is a Postgres
+   identity column giving a gap-tolerant total order. — `models/dm_message.py`
+3. **`/poll` returns INCOMING messages only.** Your own sends never echo back, so
+   the client never has to dedupe a polled message against its optimistic bubble.
+4. **The presence heartbeat returns `total_unread`.** The always-on 20s beat
+   doubles as the low-frequency unread poll, so the collapsed pill's badge stays
+   live with zero extra requests. There is deliberately no closed-dock message poll.
+5. **Message bodies render as TEXT.** `{{ msg.body }}`, never `v-html`, never
+   `renderMarkdown` — that util is safe in the AI sheet only because it is applied
+   solely to the trusted `assistant` role. User-authored text through it is stored XSS.
+6. **Rate limiting counts rows in the DB**, not an in-process bucket: Railway runs
+   multiple uvicorn workers, so a per-process counter would multiply the real limit.
+
+Under the RTL root, `inset-inline-start` is the physical **right** edge — that is
+how the dock pins bottom-right. `inset-inline-end` would put it bottom-left, on top
+of `BatchResultsToast`.
 
 ---
 

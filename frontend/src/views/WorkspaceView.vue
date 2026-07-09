@@ -38,6 +38,11 @@
       <NotificationBell />
     </div>
 
+    <!-- User-to-user messenger — collapsed pill in the BOTTOM-RIGHT (the only
+         free corner). Self-contained: it never touches the worker/automation
+         plane, and its presence heartbeat is a person, not a Windows PC. -->
+    <MessengerDock />
+
     <!-- Insights hub: floating radial-orbital launcher in the BOTTOM-LEFT.
          Two nodes: 3-month commission comparison + yield/track recommendations.
          HOME view only — inside the tab content it would overlap the working
@@ -222,6 +227,8 @@ import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import BatchResultsToast from '../components/workspace/BatchResultsToast.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
+import MessengerDock from '../components/workspace/MessengerDock.vue'
+import { useMessengerStore } from '../stores/messenger.js'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
 import { useFundTickerStore } from '../stores/fundTicker.js'
 import WorkspaceTabs from '../components/workspace/WorkspaceTabs.vue'
@@ -242,6 +249,7 @@ const auth = useAuthStore()
 const comparisonStore = useComparisonStore()
 const productionStore = useProductionStore()
 const portalAutomationStore = usePortalAutomationStore()
+const messengerStore = useMessengerStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
 
@@ -436,6 +444,10 @@ function onKeydown(e) {
 
 onMounted(async () => {
   await auth.fetchUser()
+  // Person-presence beat (20s). Started here rather than in MessengerDock so it
+  // keeps running — and keeps the unread badge current — while the dock is
+  // closed. Awaited fetchUser above means myId is set before the first poll.
+  messengerStore.startPresence()
   // Resume a run-all batch that's still in-flight on the server (page reload
   // mid-batch) — polling + the post-batch store refresh continue even if the
   // user never opens the automation tab. Fire-and-forget; failures are benign.
@@ -460,6 +472,7 @@ onUnmounted(() => {
   document.removeEventListener('dragover', onDragOver)
   document.removeEventListener('drop', onDocDrop)
   document.removeEventListener('keydown', onKeydown)
+  messengerStore.stopPresence()
 })
 
 function handleLogout() {

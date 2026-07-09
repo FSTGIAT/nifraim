@@ -16,11 +16,12 @@ export const useAuthStore = defineStore('auth', () => {
     sessionStorage.setItem('justLoggedIn', '1')
   }
 
-  async function register(email, password, fullName) {
+  async function register(email, password, fullName, username) {
     const res = await api.post('/auth/register', {
       email,
       password,
       full_name: fullName,
+      username,
     })
     token.value = res.data.access_token
     localStorage.setItem('token', token.value)
