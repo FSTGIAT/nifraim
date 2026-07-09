@@ -136,7 +136,7 @@
           </template>
         </WorkspaceTabs>
 
-        <main class="workspace-main" :class="{ 'wide-content': activeTab === 'comparison' && !!comparisonStore.result }">
+        <main class="workspace-main">
           <div class="tab-content">
             <Transition name="tab-switch" mode="out-in">
               <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" />
@@ -768,11 +768,6 @@ async function openFundDetail(trackId) {
   transition: max-width 0.5s cubic-bezier(0.16, 1, 0.3, 1), padding 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.workspace-main.wide-content {
-  max-width: 100%;
-  padding: 20px 32px 60px;
-}
-
 .tab-content {
   min-height: 400px;
 }
@@ -906,10 +901,6 @@ async function openFundDetail(trackId) {
 @media (max-width: 768px) {
   .workspace-main {
     padding: 24px 16px 40px;
-  }
-
-  .workspace-main.wide-content {
-    padding: 16px 12px 40px;
   }
 }
 </style>
