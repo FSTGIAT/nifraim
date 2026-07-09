@@ -107,6 +107,10 @@ user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch st
 | **CSS design tokens / RTL root** | `frontend/src/App.vue` (`:root`) |
 | **Main workspace UI (5 tabs)** | `frontend/src/views/WorkspaceView.vue` |
 | **Comparison dashboard UI** | `frontend/src/components/comparison/ComparisonDashboard.vue` |
+| **Workspace tab bar (home cards + strip) + hover FX** | `frontend/src/components/workspace/WorkspaceTabs.vue` |
+| **Tab icons (duotone) — single source of truth** | `frontend/src/components/icons/{AppIcon.vue, tabIcons.js}` |
+| **Per-tab colour identity tokens** | `App.vue` `:root` (`--tab-*` accent/wash/ink) |
+| **Card ambient hover animation (Remotion)** | `remotion/CardAmbientLoop.tsx`, `components/workspace/CardAmbientIsland.vue` |
 
 ---
 
@@ -204,6 +208,63 @@ These look arbitrary; each encodes a fixed production incident.
 | `portal_links` | Shareable customer-portal tokens | `models/portal_link.py` |
 
 **Universal rule:** every query filters by `user_id` (strict multi-tenancy).
+
+---
+
+## 8. Frontend — workspace nav chrome & icon system
+
+The top chrome a user sees, top→bottom, is `StockTicker` → `WorkspaceTabs`
+(the tab bar) → `CircleMenuIsland` (a React-island radial menu holding
+settings/logout, lucide-react by name). **The legacy `WorkspaceHeader.vue` is
+dead code — not mounted.**
+
+### `WorkspaceTabs.vue` — two render modes, one tab list
+
+One `tabs[]` array drives both:
+- **Home mode** — a grid of premium `.card` "cubes" (icon chip + label + desc).
+- **Content mode** — a compact sticky `.strip` of pills (active pill tinted).
+
+Each tab owns a **colour identity** via three CSS vars bound inline
+(`--accent`, `--accent-glow` wash, `--accent-ink` text-safe): `production`=cobalt,
+`comparison`=green, `commission`=purple, `emails`=magenta, `recruits`=turquoise,
+`portal`=sky, `ai`=lavender, `automation`=teal. Tokens live in `App.vue :root`
+as `--tab-*` → `CHART_PALETTE`. **Orange (`--primary`) is the brand-action colour
+only — never a tab identity.**
+
+Home-card **hover** = grow + ambient loop (both were subtle traps):
+- **Resize**: `.card:hover` scales to `1.14` + `z-index:5` (grows *over*
+  neighbours). ⚠️ `@keyframes cardEnter` ends on `scale(1)`; the card MUST use
+  `animation-fill-mode: backwards` (not `both`) or the retained end keyframe
+  overrides `:hover`'s transform (animations outrank normal rules) and the card
+  silently never resizes.
+- **Ambient glow**: `<CardAmbientIsland>` mounts a Remotion loop
+  (`CardAmbientLoop`) behind the content, tinted to the card's accent, **only
+  while hovered** (`v-if="hoveredCard === id"`) → at most one Player alive.
+
+### Icon system — `components/icons/`
+
+Tab glyphs are a **duotone** set, defined **once** (they used to be inline
+Lucide strokes duplicated per size per tab):
+- `tabIcons.js` — registry of inner SVG markup, id → glyph. Geometry vendored
+  from **Phosphor Duotone (MIT)**; each glyph is two `fill="currentColor"`
+  layers, the tint at `opacity≈0.2`.
+- `AppIcon.vue` — renders `<svg viewBox="0 0 256 256" fill="currentColor"
+  v-html=…>` at a `size` prop.
+
+**Why `currentColor`+opacity matters:** colour flows entirely through the
+surrounding `--tab-*` token — accent-ink at rest, white on card-hover, grey on
+inactive strip pills — with **zero icon-side colour logic**. Recolour a glyph by
+changing its wrapper's colour, never the SVG. The registry is reusable for any
+future surface (KPI cards etc.) that still uses ad-hoc inline strokes.
+
+### Remotion-in-Vue (RTL gotcha)
+
+Every Remotion Player mounted here needs `direction: ltr` on its **inner** mount
+div only (never the positioned root) — the Player centres with LTR-assuming math
+and drifts ~half a scene off-box under the app's RTL root. Directional scenes add
+`transform: scaleX(-1)` to flow right-to-left; `CardAmbientLoop` is
+non-directional so it doesn't. See `remotion/TabHeroLoops.tsx`,
+`AutomationHeroLoopIsland.vue`.
 
 ---
 
