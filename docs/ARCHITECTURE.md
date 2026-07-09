@@ -114,6 +114,8 @@ user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch st
 | **User-to-user chat (messenger)** | `api/messenger.py`, `models/dm_*.py`, `stores/messenger.js`, `components/workspace/MessengerDock.vue` |
 | **Who is online (a PERSON, not a worker PC)** | `models/dm_presence.py` (50s) — contrast `worker_heartbeat.py` (90s) |
 | **A user's public handle / directory search** | `users.username`, `services/username_service.py` |
+| **Generated avatar (seed → palette + character)** | `utils/avatarSeed.js`, `utils/avatarFace.js` — shared by `Avatar.vue` **and** `remotion/AvatarLoop.tsx` |
+| **Delete a conversation (per-side)** | `api/messenger.py::delete_thread`, `dm_conversations.*_cleared_at` |
 
 ---
 
@@ -209,7 +211,7 @@ These look arbitrary; each encodes a fixed production incident.
 | `worker_heartbeats` | One row/user; DB-clock `last_seen`, `update_requested_at` | `models/worker_heartbeat.py` |
 | `portal_runs` / `portal_run_batches` | Automation run state machine | `models/portal_run*.py` |
 | `portal_links` | Shareable customer-portal tokens | `models/portal_link.py` |
-| `dm_conversations` | One row per user PAIR; ordered-pair invariant + denormalized unread/preview | `models/dm_conversation.py` |
+| `dm_conversations` | One row per user PAIR; ordered-pair invariant, denormalized unread/preview, per-side `*_cleared_at` (delete-for-me) | `models/dm_conversation.py` |
 | `dm_messages` | Direct messages; `seq` identity column is the poll/page cursor | `models/dm_message.py` |
 | `dm_presence` | PERSON liveness (browser open, 50s window) — **not** `worker_heartbeats` | `models/dm_presence.py` |
 
@@ -227,7 +229,8 @@ is bounded by three things, all load-bearing:
 
 `users.username` (NOT NULL UNIQUE, `^[a-z0-9_]{3,32}$`) exists to make people
 identifiable in that directory *without* exposing an email — `full_name` is
-nullable and non-unique, so it can't do the job.
+nullable and non-unique, so it can't do the job. `users.avatar_seed` (nullable,
+NULL ⇒ derive from `username`) is the seed for a person's generated face.
 
 ---
 
@@ -297,6 +300,22 @@ It is **deliberately isolated from the worker/portal-automation plane**: it neve
 imports `api/portal_automation.py`, never reads `worker_heartbeats`, and ships its
 own pulse keyframes rather than borrowing the worker chip's CSS.
 
+All under `/api/messenger`, all `Depends(get_current_user)` — **not** `get_paid_user`:
+`is_active` means "subscription paid", and a lapsed agent must still be able to
+receive and reply or every thread they're in becomes a dead end.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/presence/heartbeat` | mark me online (50s window); returns `total_unread` |
+| `GET` | `/contacts` | people I've already messaged (+ presence, unread, preview) |
+| `GET` | `/online` | anyone with the app open right now |
+| `GET` | `/search?q=` | prefix lookup, ≥2 chars, ≤20 results |
+| `GET` | `/poll?since=<seq>` | new INCOMING messages since a cursor |
+| `GET` | `/threads/{id}/messages?before=<seq>` | history, newest-first paging |
+| `POST` | `/threads/{id}/messages` | send (self-DM 400, 5 per 10s, body ≤4000) |
+| `POST` | `/threads/{id}/read` | zero my unread counter |
+| `DELETE` | `/threads/{id}` | clear the conversation **for me only** |
+
 1. **Ordered-pair invariant.** `dm_conversations` always stores
    `user_a_id = min(uuid)`, `user_b_id = max(uuid)`, under a unique index. That
    collapses (a,b) and (b,a) onto one row without a hash column. Always build the
@@ -315,6 +334,25 @@ own pulse keyframes rather than borrowing the worker chip's CSS.
    solely to the trusted `assistant` role. User-authored text through it is stored XSS.
 6. **Rate limiting counts rows in the DB**, not an in-process bucket: Railway runs
    multiple uvicorn workers, so a per-process counter would multiply the real limit.
+7. **Delete is PER-SIDE.** A `dm_conversations` row is shared by two people, so
+   `DELETE /threads/{id}` never drops it — that would erase the other person's
+   history. It stamps *my* `a_cleared_at`/`b_cleared_at`; messages at or before it
+   vanish from my contacts + thread only. A newer message revives the thread with
+   just that message. — `api/messenger.py::delete_thread`
+8. **`/contacts` ≠ `/online` ≠ `/search`.** `/contacts` = people I've messaged
+   (inner join, bounded). `/online` = anyone with the app open right now, so you
+   can discover someone you've never talked to. `/search` = prefix lookup. All
+   three are cross-user reads under the same `ContactOut` whitelist.
+
+**Generated avatars.** A person's face is derived from a seed (`users.avatar_seed`,
+NULL ⇒ derive from `username`), never uploaded — no storage, no moderation, 64
+bytes per user. `utils/avatarSeed.js` (palette) + `utils/avatarFace.js` (character)
+are the **single source of truth**, consumed by *both* the static `Avatar.vue` and
+the animated `remotion/AvatarLoop.tsx`. If they ever hash separately, the picker's
+swatch stops matching the avatar it produces — the preview becomes a lie.
+Each feature draws from its own hashed sub-stream (`seed:hair`, `seed:glasses`…):
+sharing one stream correlated features with the palette (glasses on 6 faces in 8)
+and made the draw *order* load-bearing, so adding a feature rerolled every face.
 
 Under the RTL root, `inset-inline-start` is the physical **right** edge — that is
 how the dock pins bottom-right. `inset-inline-end` would put it bottom-left, on top
