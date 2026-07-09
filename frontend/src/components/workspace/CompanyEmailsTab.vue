@@ -5,7 +5,7 @@
         <h3>אימיילים לחברות</h3>
         <span class="emails-sub">אנשי קשר במחלקות העמלות של החברות</span>
       </div>
-      <TabHeroLoop scene="company-emails" class="emails-art" />
+      <TabHeroLoop scene="company-emails" flow="ltr" class="emails-art" />
     </div>
 
     <div v-if="loading" class="loading">

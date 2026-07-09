@@ -4,7 +4,11 @@
        'recruits' | 'commission-shelf'). Decorative only; hidden entirely
        for prefers-reduced-motion or if the React stack fails to load. -->
   <div v-if="!hidden" class="tab-hero-loop" aria-hidden="true">
-    <div ref="mountEl" class="tab-hero-mount"></div>
+    <div
+      ref="mountEl"
+      class="tab-hero-mount"
+      :class="{ 'tab-hero-mount--ltr': flow === 'ltr' }"
+    ></div>
   </div>
 </template>
 
@@ -13,6 +17,9 @@ import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 const props = defineProps({
   scene: { type: String, required: true },
+  // 'rtl' (default) mirrors the scene so directional motion flows right-to-left
+  // for the Hebrew UI; 'ltr' leaves it in its native left-to-right flow.
+  flow: { type: String, default: 'rtl' },
 })
 
 const mountEl = ref(null)
@@ -101,5 +108,11 @@ onBeforeUnmount(() => {
   height: 100%;
   direction: ltr;
   transform: scaleX(-1);
+}
+
+/* Opt out of the RTL mirror — scene keeps its native left-to-right flow.
+   `direction: ltr` stays (it's the Player-centering fix, not the flip). */
+.tab-hero-mount--ltr {
+  transform: none;
 }
 </style>

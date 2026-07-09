@@ -43,7 +43,7 @@
         </button>
       </div>
       </div>
-      <TabHeroLoop scene="portal" class="toolbar-art" />
+      <TabHeroLoop scene="portal" flow="ltr" class="toolbar-art" />
     </div>
 
     <!-- Status filter pills -->
@@ -75,7 +75,7 @@
 
       <!-- Empty: no links at all -->
       <div v-else-if="!portalStore.links.length" class="empty-state">
-        <TabHeroLoop scene="portal" class="empty-art-loop" />
+        <TabHeroLoop scene="portal" flow="ltr" class="empty-art-loop" />
         <h3>עדיין לא יצרתם קישור פורטל</h3>
         <p>קישור הפורטל מאפשר ללקוחות שלכם לראות את תיק הביטוח האישי שלהם — עם הגנה בסיסמה.</p>
         <button class="btn-generate large" @click="showGenerateModal = true">
