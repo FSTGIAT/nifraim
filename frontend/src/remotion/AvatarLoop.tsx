@@ -1,8 +1,9 @@
 import React from 'react'
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
-// One source of truth for seed → palette, shared with Avatar.vue so the picker's
-// swatches match the avatar you actually get. See utils/avatarSeed.js.
+// One source of truth for seed → palette + character, shared with Avatar.vue so
+// the picker's swatches match the avatar you actually get.
 import { avatarPalette } from '../utils/avatarSeed'
+import { faceSvg, isBlinkFrame } from '../utils/avatarFace'
 
 /**
  * Generative animated avatar for a single person.
@@ -31,6 +32,11 @@ export const AvatarLoop: React.FC<Props> = ({ seed = 'nifraim', initial = '?' })
   // `next` is the SAME rng stream the palette consumed, handed back mid-flight —
   // the orbs below continue it, so this face matches the picker's swatch.
   const { bgA, bgB, angle, next } = avatarPalette(seed)
+
+  // faceSvg re-derives from the seed independently (its own fresh stream), so it
+  // stays identical to what Avatar.vue draws for the same seed.
+  const face = faceSvg(seed, { blink: isBlinkFrame(frame, AVATAR_LOOP_FRAMES) })
+  const bob = Math.sin(t * TAU) * 1.2
 
   // 3 orbs, each with its own orbit radius, phase and size — this is what makes
   // two users with similar hues still read as different faces.
@@ -86,19 +92,17 @@ export const AvatarLoop: React.FC<Props> = ({ seed = 'nifraim', initial = '?' })
         }}
       />
 
-      <AbsoluteFill
-        style={{
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          fontFamily: 'Heebo, sans-serif',
-          fontWeight: 800,
-          fontSize: 46,
-          textShadow: '0 2px 8px rgba(0,0,0,0.28)',
-          lineHeight: 1,
-        }}
-      >
-        {initial}
+      {/* The character. Same seed, same face as the static Avatar.vue — it just
+          blinks and breathes here. `bob` is a sub-pixel rise, deliberately tiny:
+          a big bounce reads as a toy, not a person. */}
+      <AbsoluteFill style={{ transform: `translateY(${bob}px)` }}>
+        <svg
+          viewBox="0 0 100 100"
+          width="100%"
+          height="100%"
+          style={{ display: 'block' }}
+          dangerouslySetInnerHTML={{ __html: face }}
+        />
       </AbsoluteFill>
     </AbsoluteFill>
   )

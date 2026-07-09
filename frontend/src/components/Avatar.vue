@@ -1,12 +1,15 @@
 <template>
-  <span class="avatar" :class="{ 'avatar--online': online }" :style="style" :title="title">
-    <span class="avatar-initial">{{ initial }}</span>
+  <span class="avatar" :class="{ 'avatar--online': online }" :style="style" :title="title || name || username">
+    <!-- Generated character. Markup is built by faceSvg() from a seed we control —
+         never user input — so v-html has no injection surface here. -->
+    <svg class="avatar-face" viewBox="0 0 100 100" role="img" :aria-label="name || username" v-html="face"></svg>
   </span>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { avatarGradient } from '../utils/avatarSeed.js'
+import { faceSvg } from '../utils/avatarFace.js'
 
 const props = defineProps({
   name: { type: String, default: '' },       // full name, preferred source of the initial
@@ -18,19 +21,16 @@ const props = defineProps({
   title: { type: String, default: '' },
 })
 
-const initial = computed(() => {
-  if (props.initial) return props.initial
-  const src = (props.name || '').trim() || props.username || ''
-  return src ? src.charAt(0).toUpperCase() : '?'
-})
+const seed = computed(() => props.avatarSeed || props.username || props.name || '?')
 
-// Same seed → same face as the animated Remotion avatar. Shared math, so a
+// Same seed → same character as the animated Remotion avatar. Shared math, so a
 // picker swatch and the real avatar can never disagree.
+const face = computed(() => faceSvg(seed.value))
+
 const style = computed(() => ({
   width: `${props.size}px`,
   height: `${props.size}px`,
-  fontSize: `${Math.round(props.size * 0.4)}px`,
-  background: avatarGradient(props.avatarSeed || props.username || props.name || '?'),
+  background: avatarGradient(seed.value),
 }))
 </script>
 
@@ -41,12 +41,16 @@ const style = computed(() => ({
   border-radius: 50%;
   display: grid;
   place-items: center;
-  color: #fff;
-  font-weight: 800;
-  line-height: 1;
   user-select: none;
+  /* NOT overflow:hidden — that would clip the online dot below. The face clips
+     itself instead: the character's shoulders reach the square's corners, which
+     fall outside the circle. */
 }
-.avatar-initial { transform: translateY(1px); }
+.avatar-face {
+  width: 100%; height: 100%; display: block;
+  border-radius: 50%;
+  overflow: hidden;
+}
 
 /* Presence ring. Drawn on the avatar itself so a contact row, the presence rail
    and the pill all read the same way without each re-implementing the dot. */
