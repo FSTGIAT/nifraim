@@ -19,6 +19,7 @@ Run (Windows Python):
 backend_base defaults to http://127.0.0.1:8000
 """
 
+import os
 import sys
 import json
 import time
@@ -28,6 +29,44 @@ import urllib.request
 from datetime import datetime, timedelta
 
 URL = "https://agent.fnx.co.il/my.policy"
+
+# Steps before the session is established. A browser that dies here died on
+# arrival (stranded profile lock / half-dead relaunch), so ONE clean relaunch is
+# worth trying. Later steps mean a real portal problem — never retry those.
+_EARLY_STEPS = ("launch-edge", "open-portal", "check-session")
+
+# Files a force-killed Chromium strands in a persistent profile. A stale one
+# makes the next launch exit before Playwright ever attaches.
+_SINGLETON_FILES = ("SingletonLock", "SingletonCookie", "SingletonSocket")
+
+_RELAUNCH_SETTLE_S = 7   # PHOENIX_SKILL.md: settle ~7s before relaunching
+
+_WORKER_TOKEN = ""
+_BACKEND_BASE = ""
+
+
+def _post_log(msg: str) -> None:
+    """Best-effort POST to the worker log, so this shows up in Railway as
+    WORKER-LOG. The parent only forwards the LAST ~600 chars of our stdout, so
+    facts printed early — above all which browser actually launched — would
+    otherwise never leave the agent's machine."""
+    if not _WORKER_TOKEN or not _BACKEND_BASE:
+        return
+    try:
+        req = urllib.request.Request(
+            f"{_BACKEND_BASE}/api/portal-automation/worker/log/{_WORKER_TOKEN}",
+            data=f"phoenix_browser: {msg}"[:3500].encode("utf-8"), method="POST",
+        )
+        urllib.request.urlopen(req, timeout=6)
+    except Exception:
+        pass
+
+
+def _browser_died(e) -> bool:
+    """Playwright's wording for 'the browser process is gone'. Distinct from a
+    network failure, which surfaces as net::ERR_* or a goto timeout."""
+    s = str(e)
+    return "has been closed" in s or "Target closed" in s or "Browser closed" in s
 
 
 def fetch_otp(base, token, company, after_iso, timeout_s=300):
@@ -130,62 +169,148 @@ def _profile_dir():
 
 
 def _kill_stale_automation_edge(profile: str) -> None:
-    """Kill ONLY a prior automation-Edge that still holds OUR profile dir (matched
-    by command line), never the user's own Edge. A leftover Edge locking the
-    persistent profile makes the next launch hang (the documented relaunch race)."""
+    """Clear everything that makes the NEXT persistent launch die on arrival.
+
+    PHOENIX_SKILL.md prescribes the full cure: kill the orphaned playwright
+    `node.exe` AND the automation `msedge.exe`, then settle ~7s. We used to do
+    only the msedge half, with no settle, and launched on the very next line —
+    so `phoenix_terminal`, which the run-all batch starts one second after
+    `phoenix_nifraim` finishes, launched straight into a half-dead browser.
+
+    Two further traps this closes:
+      * In PowerShell `-like`, a backslash is LITERAL, not an escape. The old
+        pattern doubled them, so it matched nothing and this function had in
+        fact never killed a single process.
+      * Force-killing Chromium strands `SingletonLock` in the profile dir, and
+        the next launch exits immediately when it finds one.
+
+    Never touches the user's OWN Edge — processes are matched by our profile
+    path appearing on their command line.
+    """
+    import subprocess
+
+    killed = False
     try:
-        import subprocess
-        # PowerShell: match msedge processes whose CommandLine contains our profile.
+        # `-like` wildcards are * ? [ ]; a path needs no backslash escaping, but a
+        # quote would break out of the single-quoted string.
+        pat = profile.replace("'", "''")
         ps = (
             "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | "
-            "Where-Object { $_.CommandLine -like '*" + profile.replace("\\", "\\\\") + "*' } | "
+            f"Where-Object {{ $_.CommandLine -like '*{pat}*' }} | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue };"
+            "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | "
+            f"Where-Object {{ $_.CommandLine -like '*playwright*' }} | "
             "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
         )
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=20)
+        subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=25)
+        killed = True
     except Exception as e:
         print(f">> stale-edge cleanup skipped: {e}", flush=True)
+
+    for name in _SINGLETON_FILES:
+        try:
+            os.remove(os.path.join(profile, name))
+            print(f">> removed stale {name}", flush=True)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f">> could not remove {name}: {e}", flush=True)
+
+    if killed:
+        time.sleep(_RELAUNCH_SETTLE_S)
+
+
+async def _launch_persistent(pw, profile):
+    """Launch the persistent context; return (ctx, label).
+
+    Prefer REAL Edge. Phoenix sits behind an F5 WAF that bounces bundled
+    Chromium — and a bounce looks exactly like "the browser died by itself" a
+    couple of seconds after goto() returns. Falling back silently turned a
+    machine-provisioning problem into an unattributable browser death, so the
+    fallback now announces itself.
+    """
+    launch_kw = dict(user_data_dir=profile, headless=False, no_viewport=True,
+                     locale="he-IL", args=["--start-maximized"])
+    try:
+        ctx = await pw.chromium.launch_persistent_context(channel="msedge", **launch_kw)
+        return ctx, "msedge"
+    except Exception as e:
+        print(f"!! Edge (msedge) persistent launch failed: {e}", flush=True)
+        ctx = await pw.chromium.launch_persistent_context(**launch_kw)
+        return ctx, "chromium-bundled"
 
 
 async def main(username, password, token, base):
     from playwright.async_api import async_playwright
+
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
-    page = None
+    global _WORKER_TOKEN, _BACKEND_BASE
+    _WORKER_TOKEN, _BACKEND_BASE = token, base
+
     profile = _profile_dir()
-    print(f">> [start] launching Edge (persistent profile: {profile})…", flush=True)
-    _kill_stale_automation_edge(profile)
-    import os as _os
-    _os.makedirs(profile, exist_ok=True)
     async with async_playwright() as pw:
-        launch_kw = dict(user_data_dir=profile, headless=False, no_viewport=True,
-                         locale="he-IL", args=["--start-maximized"])
-        try:
-            ctx = await pw.chromium.launch_persistent_context(channel="msedge", **launch_kw)
-        except Exception as e:
-            # msedge channel needs Microsoft Edge installed; fall back to bundled
-            # Chromium (also persistent, same profile) rather than dying opaquely.
-            print(f"!! Edge (msedge) persistent launch failed: {e}; falling back to Chromium", flush=True)
-            ctx = await pw.chromium.launch_persistent_context(**launch_kw)
-        print(">> [edge launched persistent]…", flush=True)
-        await _load_shared_phoenix_session(ctx)
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        try:
-            await _run_login_flow(page, username, password, token, base)
-        except SystemExit:
-            raise
-        except Exception as e:
-            import traceback
-            print(f"!! login failed at step '{_CUR_STEP[0]}': {e}", flush=True)
-            print(traceback.format_exc(), flush=True)
-            await _shot(page, _CUR_STEP[0])
+        for attempt in (1, 2):
+            print(f">> [start] launching Edge attempt {attempt}/2 "
+                  f"(persistent profile: {profile})…", flush=True)
+            _kill_stale_automation_edge(profile)
+            os.makedirs(profile, exist_ok=True)
+
             try:
-                await ctx.close()
-            except Exception:
-                pass
-            raise SystemExit(1)
+                ctx, label = await _launch_persistent(pw, profile)
+            except Exception as e:
+                # Neither real Edge nor bundled Chromium could start: a worker
+                # provisioning problem, not a portal one. Say so out loud —
+                # otherwise it escapes as a bare traceback and exit 1.
+                msg = f"NO BROWSER: neither msedge nor bundled chromium launched: {e}"
+                print(f"!! {msg}", flush=True)
+                _post_log(msg)
+                raise SystemExit(1)
+
+            if label == "msedge":
+                print(">> browser=msedge (real Edge)", flush=True)
+                _post_log("browser=msedge")
+            else:
+                warn = (f"browser={label} — real Microsoft Edge NOT found on this "
+                        "worker. Phoenix's F5 WAF bounces bundled Chromium, which "
+                        "presents as the browser closing on its own. Install Edge.")
+                print(f"!! {warn}", flush=True)
+                _post_log(warn)
+
+            await _load_shared_phoenix_session(ctx)
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            try:
+                await _run_login_flow(page, username, password, token, base)
+                return
+            except SystemExit:
+                raise
+            except Exception as e:
+                step = _CUR_STEP[0]
+                # A browser that died before the session was established gets ONE
+                # clean relaunch. Anything later is a real portal failure.
+                if attempt == 1 and step in _EARLY_STEPS and _browser_died(e):
+                    msg = f"browser died at '{step}' ({e}) — full cleanup, relaunching once"
+                    print(f">> {msg}", flush=True)
+                    _post_log(msg)
+                    try:
+                        await ctx.close()
+                    except Exception:
+                        pass
+                    continue
+
+                import traceback
+                print(f"!! login failed at step '{step}': {e}", flush=True)
+                print(traceback.format_exc(), flush=True)
+                await _shot(page, step)
+                _post_log(f"login failed at step '{step}' (browser={label}): {e}")
+                try:
+                    await ctx.close()
+                except Exception:
+                    pass
+                raise SystemExit(1)
 
 
 # Module-level current-step marker so the outer handler can name the failure.
@@ -217,9 +342,16 @@ async def _run_login_flow(page, username, password, token, base):
     except Exception:
         logged_in = False
 
+    # Warm vs cold decides whether we need an OTP at all. Phoenix issues ONE per
+    # session and phoenix_nifraim consumes it seconds earlier in the run-all
+    # batch, so a cold profile here is precisely the `no OTP forwarded within
+    # 300s` failure. Surface it: it is a fact about the machine, not the code.
+    _post_log(f"profile={'warm' if logged_in else 'COLD'} (otp_needed={not logged_in})")
+
     if logged_in:
         print(">> already authenticated (warm Phoenix session) — skipping login+OTP", flush=True)
     else:
+        print(">> COLD profile — full login + OTP required", flush=True)
         _step("errorcode-recovery")
         for _ in range(4):
             if "errorcode" not in page.url and "logout" not in page.url:

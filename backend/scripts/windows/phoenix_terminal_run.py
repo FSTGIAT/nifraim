@@ -149,6 +149,24 @@ def _tail(text: str, n: int = 900) -> str:
     return t[-n:] if len(t) > n else t
 
 
+# Every child's full stdout, kept so the failure handler can recover the
+# screenshot path and the step trail. Previously we stored only the child's
+# single '!!' line — a 123-character error_message that named the failing step
+# but never the cause, which is what left phoenix_terminal undiagnosable.
+_CHILD_OUT: dict = {}
+
+
+def _last_screenshot() -> str:
+    """Path of the failure screenshot the child reported, if any. The child
+    prints '>> saved failure capture: <path>.png  (url=…)' from _shot()."""
+    for out in reversed(list(_CHILD_OUT.values())):
+        for line in reversed((out or "").splitlines()):
+            m = re.search(r"saved failure capture:\s*(\S+\.png)", line)
+            if m:
+                return m.group(1)
+    return ""
+
+
 def _close_stale_terminals():
     """Close any pre-existing PowerTerm TERM windows so the export drives the
     FRESH login's terminal, not a zombie (the documented false-success bug)."""
@@ -190,19 +208,28 @@ def _run_child(label: str, argv: list, timeout: int) -> None:
             text=True, encoding="utf-8", errors="replace",
         )
     except subprocess.TimeoutExpired as e:
-        out = _tail((e.output or "") if isinstance(e.output, str) else "")
+        raw = (e.output or "") if isinstance(e.output, str) else ""
+        _CHILD_OUT[label] = raw
+        out = _tail(raw)
         _log(f"{label} TIMEOUT after {timeout}s. tail:\n{out}")
         _post_log(f"{label} TIMEOUT {timeout}s :: {out[-500:]}")
         raise RuntimeError(f"{label} timed out after {timeout}s: {out[-300:] or 'no output'}")
+    _CHILD_OUT[label] = r.stdout or ""
     tail = _tail(r.stdout or "")
     # Surface the child's progress/failure markers to the worker log regardless.
     _log(f"{label} exit={r.returncode}. tail:\n{tail}")
     _post_log(f"{label} exit={r.returncode} :: {tail[-600:]}")
     if r.returncode != 0:
-        # Prefer the last '!!' marker the child printed (its own diagnosis).
+        # The child's own '!!' diagnosis names the STEP; the tail carries the
+        # traceback that names the CAUSE. Keep both — one line alone is what made
+        # the last eight failures unreadable.
         markers = [ln for ln in (r.stdout or "").splitlines() if ln.strip().startswith("!!")]
-        why = markers[-1].strip() if markers else (tail[-300:] or "no output")
-        raise RuntimeError(f"{label} exit {r.returncode}: {why}")
+        why = markers[-1].strip() if markers else ""
+        detail = _tail(r.stdout or "", 1500)
+        raise RuntimeError(
+            f"{label} exit {r.returncode}: {why or 'no !! marker'}\n--- child output tail ---\n"
+            f"{detail or 'no output'}"
+        )
 
 
 def _run_login(username, password, token):
@@ -323,12 +350,20 @@ async def main():
     except Exception as e:
         _log(f"FAILED: {e}")
         _post_log(f"FAILED: {str(e)[:600]}")
+        shot = _last_screenshot()
+        if shot:
+            _log(f"failure screenshot: {shot}")
+            _post_log(f"screenshot: {shot}")
         from sqlalchemy import select as _sel
         from app.database import async_session as _s
         async with _s() as db:
             run = (await db.execute(_sel(PortalRun).where(PortalRun.id == run_id))).scalar_one()
             run.status = "failed"
-            run.error_message = str(e)[:500]
+            # error_message is TEXT — keep the child's traceback, not just its
+            # first line. The old [:500] truncation discarded every cause.
+            run.error_message = str(e)[:4000]
+            if shot:
+                run.screenshot_path = shot[:255]
             run.finished_at = datetime.utcnow()
             await db.commit()
         sys.exit(1)
