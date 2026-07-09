@@ -229,6 +229,8 @@ async function deleteContact(id) {
 
 <style scoped>
 .emails-card {
+  position: relative;
+  overflow: hidden;
   background: var(--card-bg);
   border: 1px solid var(--border-subtle, #E5E5E5);
   border-radius: var(--radius-md, 14px);
@@ -239,39 +241,49 @@ async function deleteContact(id) {
 }
 
 .emails-art {
-  flex: none;
-  width: 200px;
-  height: 84px;
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(230px, 34%);
+  aspect-ratio: 420 / 300;
   pointer-events: none;
+  z-index: 0;
 }
 @media (max-width: 640px) { .emails-art { display: none; } }
 
 .emails-header {
+  position: relative;
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
+  min-height: 150px;
   margin-bottom: 14px;
 }
 
 .emails-titles {
+  position: relative;
+  z-index: 1;
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
+  max-width: 62%;
+  text-align: start;
 }
 
-h3 {
+.emails-titles h3 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
 .emails-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
 table {

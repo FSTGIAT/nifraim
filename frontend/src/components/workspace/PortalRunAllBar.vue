@@ -180,10 +180,10 @@ watch(() => store.batchJustFinished, (b) => {
    the Player never letterboxes/centers it — the scene sits flush left. */
 .hero-art {
   position: absolute;
-  inset-inline-end: 24px;
+  inset-inline-end: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: min(470px, 42%);
+  width: min(360px, 34%);
   aspect-ratio: 848 / 420;
   pointer-events: none;
   z-index: 0;

@@ -1,7 +1,8 @@
 <template>
   <div class="portal-tab-root">
-    <!-- Toolbar -->
+    <!-- Toolbar (hero: title + actions on the inline-start, animation on the inline-end) -->
     <div class="toolbar">
+      <div class="toolbar-main">
       <div class="toolbar-title">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
@@ -41,6 +42,8 @@
           צור קישור חדש
         </button>
       </div>
+      </div>
+      <TabHeroLoop scene="portal" class="toolbar-art" />
     </div>
 
     <!-- Status filter pills -->
@@ -354,14 +357,38 @@ function onGenerated() {
 
 /* ── Toolbar ── */
 .toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+  position: relative;
+  overflow: hidden;
+  display: block;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border-subtle, #E5E5E5);
   margin-bottom: 16px;
-  flex-wrap: wrap;
+}
+
+.toolbar-main {
+  position: relative;
+  z-index: 1;
+  max-width: 66%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.toolbar-art {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(240px, 30%);
+  aspect-ratio: 420 / 300;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (max-width: 760px) {
+  .toolbar-main { max-width: 100%; }
+  .toolbar-art { display: none; }
 }
 
 .toolbar-title {
