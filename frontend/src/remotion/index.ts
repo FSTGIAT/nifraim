@@ -9,6 +9,7 @@ export { WelcomeComposition } from './WelcomeComposition'
 export type { WelcomeCompositionProps } from './WelcomeComposition'
 export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
 export { AutomationHeroLoop, AUTOMATION_HERO_LOOP_FRAMES } from './AutomationHeroLoop'
+export { CardAmbientLoop, CARD_AMBIENT_LOOP_FRAMES } from './CardAmbientLoop'
 export {
   TAB_HERO_SCENES,
   TAB_HERO_LOOP_FRAMES,

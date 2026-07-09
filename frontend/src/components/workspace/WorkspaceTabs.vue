@@ -9,11 +9,21 @@
         class="card"
         :style="{ '--i': idx, '--accent': tab.accent, '--accent-glow': tab.accentGlow, '--accent-ink': tab.ink }"
         @click="$emit('select-card', tab.id)"
+        @mouseenter="hoveredCard = tab.id"
+        @mouseleave="hoveredCard = null"
       >
         <!-- Noise texture overlay -->
         <div class="card-noise"></div>
         <!-- Subtle gradient accent at top -->
         <div class="card-accent-line"></div>
+        <!-- Ambient color-matched Remotion loop — only while hovered -->
+        <Transition name="cardfade">
+          <CardAmbientIsland
+            v-if="hoveredCard === tab.id"
+            class="card-anim-bg"
+            :color="ANIM_COLORS[tab.id]"
+          />
+        </Transition>
         <!-- Content -->
         <div class="card-body">
           <span class="card-icon-wrap">
@@ -71,13 +81,32 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import AppIcon from '../icons/AppIcon.vue'
+import CardAmbientIsland from './CardAmbientIsland.vue'
 
 const props = defineProps({
   modelValue: { type: String, required: true },
   viewMode: { type: String, default: 'home' },
 })
 defineEmits(['update:modelValue', 'select-card', 'go-home'])
+
+/* Which home card is hovered → mounts ONE ambient Remotion loop at a time. */
+const hoveredCard = ref(null)
+
+/* Resolved --tab-* accent hex per card, handed to the ambient loop so it tints
+   itself (Remotion runs in its own React tree and can't read the CSS var). Keep
+   in sync with App.vue :root --tab-* tokens. */
+const ANIM_COLORS = {
+  production: '#2F73C4',
+  comparison: '#2E844A',
+  'commission-rates': '#8E44AD',
+  'company-emails': '#E84A7F',
+  recruits: '#3DB6B0',
+  portal: '#4E9DD0',
+  'ai-library': '#B79CEB',
+  'portal-automation': '#0E8C8A',
+}
 
 /* Tab identity system — every tab owns ONE CHART_PALETTE color (tokens in
    App.vue :root). accent = identity, accentGlow = wash for tinted surfaces,
@@ -195,13 +224,34 @@ const tabs = [
 }
 
 .card:hover {
-  transform: translateY(-6px) scale(1.03);
+  transform: translateY(-8px) scale(1.06);
   border-color: var(--accent);
   background: #fff;
   box-shadow:
-    0 16px 48px var(--accent-glow),
+    0 20px 56px var(--accent-glow),
     0 0 0 1px var(--accent-glow),
-    0 4px 16px rgba(0, 0, 0, 0.06);
+    0 6px 20px rgba(0, 0, 0, 0.07);
+}
+
+/* Ambient loop layer: fills the card, sits above the noise/accent-line but
+   below the content (card-body is z-index:1). Clipped by the card's overflow. */
+.card-anim-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Fade the loop in/out as the card is entered/left. */
+.cardfade-enter-active,
+.cardfade-leave-active {
+  transition: opacity 0.35s ease;
+}
+.cardfade-enter-from,
+.cardfade-leave-to {
+  opacity: 0;
 }
 
 .card:active {
@@ -223,6 +273,8 @@ const tabs = [
 
 /* Top accent line */
 .card-accent-line {
+  position: relative;
+  z-index: 1; /* stay above the ambient loop layer */
   height: 3px;
   width: 100%;
   background: var(--accent);
