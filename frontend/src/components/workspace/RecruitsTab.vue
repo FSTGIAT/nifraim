@@ -1,5 +1,14 @@
 <template>
   <div class="recruits-tab">
+    <!-- Identity header — matches the other tabs (title right, turquoise hero left) -->
+    <div class="recruits-hero">
+      <div class="recruits-hero-titles">
+        <h3>ניהול תיק אישי</h3>
+        <span class="recruits-hero-sub">מעקב וניהול לקוחות מגויסים מול פרודוקציה ונפרעים</span>
+      </div>
+      <TabHeroLoop scene="recruits" class="recruits-hero-art" />
+    </div>
+
     <!-- No production file warning -->
     <div v-if="!productionStore.currentFile && !productionStore.loading" class="hint-banner">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -10,57 +19,9 @@
       <span>העלה קובץ פרודוקציה בלשונית "פרודוקציה" כדי לבדוק מגויסים מולו</span>
     </div>
 
-    <!-- Upload button — big centered only on first use (no recruits in any category) -->
+    <!-- First-use upload — clean turquoise card (matches the other tabs) -->
     <div class="recruit-uploader" v-if="!hasRecruits && !hasAnyRecruits">
-      <!-- Floating blur circles -->
-      <div class="float-circle fc-1"></div>
-      <div class="float-circle fc-2"></div>
-      <div class="float-circle fc-3"></div>
-      <div class="float-circle fc-4"></div>
-      <div class="float-circle fc-5"></div>
-      <div class="float-circle fc-6"></div>
-      <div class="float-circle fc-7"></div>
-
-      <!-- Animated waves at bottom -->
-      <div class="wave-bg">
-        <div class="shimmer"></div>
-        <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="rwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-              <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-              <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
-            </linearGradient>
-          </defs>
-          <path fill="url(#rwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
-        </svg>
-        <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="rwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-              <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-              <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-              <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-              <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
-            </linearGradient>
-          </defs>
-          <path fill="url(#rwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
-        </svg>
-        <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="rwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-              <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
-            </linearGradient>
-          </defs>
-          <path fill="url(#rwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
-        </svg>
-      </div>
-
-      <!-- Animated hero art (turquoise portfolio motif) -->
-      <TabHeroLoop scene="recruits" class="recruit-hero-art" />
-
+      <div class="upload-card">
       <!-- Loading state -->
       <div v-if="recruitsStore.uploading" class="upload-loading">
         <div class="loading-content">
@@ -139,6 +100,7 @@
             <p class="guide-hint">סדר העמודות לא חשוב — המערכת מזהה אותן אוטומטית</p>
           </div>
         </Transition>
+      </div>
       </div>
     </div>
 
@@ -646,20 +608,71 @@ watch(() => innerTab.value, (tab) => {
   color: var(--amber);
 }
 
+/* ── Identity header (mirrors emails/portal/shelf: title right, hero left) ── */
+.recruits-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 150px;
+  padding: 18px 22px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 14px);
+  box-shadow: var(--shadow-sm);
+}
+.recruits-hero-titles {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  max-width: 62%;
+  text-align: start;
+}
+.recruits-hero-titles h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.recruits-hero-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.recruits-hero-art {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(240px, 34%);
+  aspect-ratio: 420 / 300;
+  pointer-events: none;
+  z-index: 0;
+}
+@media (max-width: 640px) { .recruits-hero-art { display: none; } }
+
 /* ── Upload ── */
 .recruit-uploader {
   max-width: 560px;
   margin: 0 auto;
   position: relative;
 }
-.recruit-hero-art {
+.upload-card {
   position: relative;
   z-index: 1;
-  display: block;
-  width: min(300px, 70%);
-  aspect-ratio: 420 / 300;
-  margin: 0 auto 4px;
-  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 14px);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Floating blur circles */
@@ -817,7 +830,7 @@ watch(() => innerTab.value, (tab) => {
   padding: 16px 24px;
   border: none;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: linear-gradient(135deg, var(--tab-recruits-ink, #1E7D78), var(--tab-recruits, #3DB6B0));
   color: #fff;
   font-size: 15px;
   font-weight: 700;
@@ -829,9 +842,9 @@ watch(() => innerTab.value, (tab) => {
 .upload-btn svg { color: #fff; flex-shrink: 0; }
 
 .upload-btn:hover {
-  background: linear-gradient(135deg, #E65100, #F57C00);
+  background: linear-gradient(135deg, #17635F, var(--tab-recruits-ink, #1E7D78));
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 8px 24px rgba(61, 182, 176, 0.28);
 }
 
 .upload-btn:active { transform: translateY(0); }
@@ -1135,9 +1148,9 @@ watch(() => innerTab.value, (tab) => {
 }
 
 .col-chip.required {
-  background: var(--primary-light);
-  border-color: rgba(245, 124, 0, 0.2);
-  color: var(--primary-deep);
+  background: var(--tab-recruits-wash);
+  border-color: rgba(61, 182, 176, 0.28);
+  color: var(--tab-recruits-ink);
 }
 
 .guide-hint {
@@ -1176,12 +1189,12 @@ watch(() => innerTab.value, (tab) => {
 .inner-tab:hover { color: var(--text-secondary); }
 
 .inner-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: var(--tab-recruits-ink);
+  border-bottom-color: var(--tab-recruits);
 }
 
 .inner-tab svg { opacity: 0.5; }
-.inner-tab.active svg { opacity: 1; color: var(--primary); }
+.inner-tab.active svg { opacity: 1; color: var(--tab-recruits-ink); }
 
 .tab-chevron { opacity: 0.4; margin-right: -4px; }
 
@@ -1217,7 +1230,7 @@ watch(() => innerTab.value, (tab) => {
   color: var(--text-secondary); cursor: pointer; border-radius: 8px;
 }
 .tab-dropdown-menu button:hover { background: var(--bg-alt, #F3F3F3); }
-.tab-dropdown-menu button.selected { color: var(--primary); background: rgba(245,124,0,0.06); }
+.tab-dropdown-menu button.selected { color: var(--tab-recruits-ink); background: var(--tab-recruits-wash); }
 
 .empty-category {
   text-align: center; padding: 48px 24px;
@@ -1248,8 +1261,8 @@ watch(() => innerTab.value, (tab) => {
   font-weight: 700;
   padding: 1px 7px;
   border-radius: 10px;
-  background: rgba(127, 86, 217, 0.08);
-  color: var(--accent-violet);
+  background: var(--tab-recruits-wash);
+  color: var(--tab-recruits-ink);
 }
 
 .tab-dot {
@@ -1269,18 +1282,18 @@ watch(() => innerTab.value, (tab) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--green-light);
-  color: var(--accent-emerald);
-  border: 1.5px solid rgba(46, 132, 74, 0.15);
+  background: var(--tab-recruits-wash);
+  color: var(--tab-recruits-ink);
+  border: 1.5px solid rgba(61, 182, 176, 0.22);
   cursor: pointer;
   transition: all 0.25s var(--transition);
   flex-shrink: 0;
 }
 .upload-icon-btn:hover {
-  background: var(--accent-emerald);
+  background: var(--tab-recruits);
   color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(46, 132, 74, 0.2);
+  box-shadow: 0 4px 12px rgba(61, 182, 176, 0.22);
 }
 
 /* ── Compare ── */
@@ -1294,7 +1307,7 @@ watch(() => innerTab.value, (tab) => {
   align-items: center;
   gap: 10px;
   padding: 14px 36px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-deep));
+  background: linear-gradient(135deg, var(--tab-recruits, #3DB6B0), var(--tab-recruits-ink, #1E7D78));
   color: white;
   border-radius: 14px;
   font-size: 15px;
@@ -1315,7 +1328,7 @@ watch(() => innerTab.value, (tab) => {
 }
 
 .btn-compare:hover:not(:disabled) {
-  box-shadow: 0 8px 32px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(61, 182, 176, 0.22);
   transform: translateY(-2px);
 }
 
@@ -1344,9 +1357,9 @@ watch(() => innerTab.value, (tab) => {
   font-size: 11px; border: 1px solid transparent;
   cursor: pointer; font-family: inherit; transition: all 0.15s;
 }
-.commission-file-tag:hover { border-color: var(--primary); color: var(--primary); }
+.commission-file-tag:hover { border-color: var(--tab-recruits); color: var(--tab-recruits-ink); }
 .commission-file-tag.active {
-  background: var(--primary); color: white; border-color: var(--primary);
+  background: var(--tab-recruits); color: white; border-color: var(--tab-recruits);
 }
 
 .comm-uploaded-list {
