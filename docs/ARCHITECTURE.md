@@ -15,7 +15,9 @@
 
 Nifraim reconciles **production** (what the agent sold — premium/accumulation)
 against **נפרעים / commission** (what each insurer actually paid). Files arrive
-two ways: manual upload, or **hands-free portal automation**. Because Israeli
+three ways: manual upload, **hands-free portal automation**, or — for the one
+insurer that emails instead of publishing (הכשרה production) — **mail intake**
+(§10). Because Israeli
 insurer WAFs geo-block the cloud IP, automation runs on **two planes**: the
 **cloud** (Railway — UI, DB, Claude, analytics) is the brain; a **local worker**
 on the agent's Windows PC in Israel is the hands. They never call each other
@@ -35,11 +37,14 @@ graph TB
         DB[("PostgreSQL 16<br/>single source of truth")]
         SCHED["scheduler.py<br/>APScheduler cron"]
         CLAUDE["Claude API<br/>document_extraction.py"]
+        MAIL["mail_intake/*.py<br/>Graph · IMAP · Resend"]
         FE -->|/api Bearer| API
         API --> SVC
         SVC --> DB
         SCHED --> SVC
+        SCHED --> MAIL
         SVC --> CLAUDE
+        MAIL -->|"ingest_mail_attachment"| DB
     end
 
     subgraph LOCAL["🖥️ LOCAL WORKER · agent's Windows PC in Israel (real IL IP)"]
@@ -52,6 +57,7 @@ graph TB
 
     PHONE["📱 Android app<br/>android/ · OtpFilter.kt"]
     INS["🏢 Insurer portals<br/>Harel·Menora·Phoenix·Mor…"]
+    BOX["📧 Agent's mailbox<br/>M365 · Gmail · other"]
 
     WK -.->|"heartbeat / claim pending<br/>(DB is the rendezvous)"| DB
     RUN -->|"ingest_file_bytes"| DB
@@ -61,13 +67,21 @@ graph TB
     API -->|"otp_inbox row"| DB
     RUN -.->|"_wait_for_otp polls"| DB
 
+    MAIL <-->|"poll (Graph/IMAP)"| BOX
+    BOX -.->|"forwarded mail → webhook"| API
+
     classDef cloud fill:#E7EEFB,stroke:#2D6FE0,color:#111;
     classDef local fill:#ECE7FA,stroke:#6D4FD0,color:#111;
     classDef ext fill:#F3F4F6,stroke:#8A909C,color:#111;
-    class FE,API,SVC,SCHED,CLAUDE cloud;
+    class FE,API,SVC,SCHED,CLAUDE,MAIL cloud;
     class WK,RUN,BATCH,PLUG local;
-    class PHONE,INS,DB ext;
+    class PHONE,INS,BOX,DB ext;
 ```
+
+**Not everything comes from a portal.** הכשרה never publishes production in its agent
+portal — it **emails** a `Ild_prod_*.zip`. That harvest runs on the **cloud**, not
+the worker: mail hosts aren't geo-blocked, so none of the two-plane machinery
+applies. See §10.
 
 **Dispatch rule** (`api/portal_automation.py::_should_defer_to_worker`): if the
 user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch stays
@@ -91,6 +105,10 @@ user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch st
 | **"Run all companies" batch** | `services/portal_automation/batch_runner.py::_run_batch_inner` |
 | **A specific insurer's automation** | `services/portal_automation/companies/<name>.py` |
 | **Merge per-company files into one workbook** | `services/portal_automation/aggregate.py` |
+| **הכשרה production (emailed zip, no portal)** | `services/hachshara_prod/` + §10 |
+| **Which mail path an agent gets (M365/Gmail/other)** | `services/mail_intake/detect.py::detect_mail_host` |
+| **The one seam mail uses to reach ingest** | `services/mail_intake/__init__.py::ingest_mail_attachment` |
+| **Microsoft consent / Gmail IMAP / Resend webhook** | `services/mail_intake/{graph,gmail,resend}.py`, `api/mailbox.py` |
 | **Local worker lifecycle / self-update** | `backend/local_worker.py` |
 | **Worker endpoints (bundle, heartbeat, update, log)** | `api/portal_automation.py` (`/worker/*`) |
 | **OTP webhook / templates / next-otp** | `api/portal_automation.py` (`/phone-forward/*`) |
@@ -211,6 +229,8 @@ These look arbitrary; each encodes a fixed production incident.
 | `worker_heartbeats` | One row/user; DB-clock `last_seen`, `update_requested_at` | `models/worker_heartbeat.py` |
 | `portal_runs` / `portal_run_batches` | Automation run state machine | `models/portal_run*.py` |
 | `portal_links` | Shareable customer-portal tokens | `models/portal_link.py` |
+| `mailbox_configs` | One per user: `mail_host`, encrypted refresh-token / app-password, `forward_token`, `last_received_at` | `models/mailbox_config.py` |
+| `mailbox_processed_messages` | Mail dedup ledger, unique on `(mailbox_id, external_id)` | `models/mailbox_message.py` |
 | `dm_conversations` | One row per user PAIR; ordered-pair invariant, denormalized unread/preview, per-side `*_cleared_at` (delete-for-me) | `models/dm_conversation.py` |
 | `dm_messages` | Direct messages; `seq` identity column is the poll/page cursor | `models/dm_message.py` |
 | `dm_presence` | PERSON liveness (browser open, 50s window) — **not** `worker_heartbeats` | `models/dm_presence.py` |
@@ -360,6 +380,74 @@ of `BatchResultsToast`.
 
 ---
 
-*Regenerate this map when the two-plane topology, the OTP routing, or the
-comparison/merge selection logic changes — those are the parts a new session
-cannot safely infer from reading one file.*
+## 10. Mail intake — הכשרה production arrives by email
+
+הכשרה's portal plugin (`companies/hachshara.py`) downloads **נפרעים only**. Production
+is emailed as `Ild_prod_<n>_<agent>_<DDMMYYYY>.zip` — CP862, visual-order Hebrew,
+2000-char fixed-width `SP`/`SB`/`RM` members, parsed by `services/hachshara_prod/`.
+There is no production portal to add, and there never will be.
+
+```mermaid
+graph LR
+    A["agent types ONE thing:<br/>their email address"] --> B{"detect_mail_host<br/>MX over DNS-over-HTTPS"}
+    B -->|"*.mail.protection.outlook.com"| M["Graph OAuth<br/>Mail.Read + offline_access"]
+    B -->|"gmail.com / googlemail.com"| G["IMAP + app password<br/>EXAMINE, read-only"]
+    B -->|"anything else / unsure"| R["forward to<br/>hachshara+&lt;token&gt;@…<br/>Resend webhook"]
+    M --> S["ingest_mail_attachment"]
+    G --> S
+    R --> S
+    S --> I["ingest_file_bytes → production"]
+```
+
+### Invariants
+
+1. **Never ask the user who hosts their mail.** With custom domains the mail *client*
+   they name says nothing: an agent reading mail in the Outlook app may sit on M365,
+   on Workspace, or on cPanel. Route on the MX record. Detection is a **hint** —
+   split delivery, vanity MX and security gateways (Mimecast/Proofpoint) all mislead
+   it — so the UI always offers a manual override and `other` is the safe default.
+2. **The three paths are forced by the providers, not chosen.**
+   *M365*: Exchange Online basic auth is permanently disabled and app passwords are
+   blocked with it → OAuth is the only door (free Azure app, **no** CASA).
+   *Personal Gmail*: app passwords still work; the OAuth alternative `gmail.readonly`
+   is a Google **restricted** scope → annual security assessment, and an unverified
+   app's refresh tokens die after **7 days**.
+   *Google Workspace*: refuses app passwords entirely → routed to forwarding. Personal
+   Gmail is told apart by the **domain**, not the MX (both use `aspmx.l.google.com`).
+3. **One seam touches ingest.** All three paths converge on `ingest_mail_attachment`,
+   which guards the filename (`^Ild_prod_\d+_\d{4,6}_\d{8}\.zip$`) and size *before*
+   parsing, then writes a dedup-ledger row — including for rejects and parse errors, so
+   one permanently-bad attachment can't wedge the poller. Swapping a transport (Gmail
+   app-password → XOAUTH2) never reaches the parse pipeline.
+4. **`external_id` is per-path and must carry its epoch.** Graph message id, Resend
+   `email_id`, or `f"{uidvalidity}:{uid}"` — an IMAP uid is unique only *within* one
+   UIDVALIDITY, so a server renumber must reset the cursor, not silently skip mail.
+5. **Never fold the recipient's local part.** `secrets.token_urlsafe` emits mixed case;
+   lowercasing `hachshara+<token>@…` breaks the tenant lookup, and the webhook then 200s
+   as "unknown token" and drops the mail **with no error anywhere**. Log unknown-token
+   deliveries at WARNING, not INFO. (This shipped once.)
+6. **The Resend webhook is the app's first unauthenticated write path.** Verify the Svix
+   signature (stdlib `hmac`, replay-windowed) *before* the tenant lookup and before any
+   outbound fetch. An unknown token returns **200**, never 404 — mirroring
+   `/phone-forward/{token}` so responses can't be used to enumerate tokens.
+7. **Errors are CODES, never provider strings.** `AADSTS65001` means nothing to an
+   agent, and `imaplib` error text can echo the failed `LOGIN` line *with the password*.
+   The backend stores a code in `last_error`; `utils/mailboxCopy.js` maps it to Hebrew.
+   `connected_no_mail_yet` is the **normal** state 29 days a month and must not render
+   as an error.
+8. **Every path fails silently.** Revoked consent, a rotated app password and a wrong
+   forwarding rule all look identical to "הכשרה sent nothing this month". The
+   `last_received_at` chip is the only thing that distinguishes them — treat it as
+   required, not polish.
+
+**Deployment gates**: `HACHSHARA_MAIL_ENABLED` (scheduler), `MAILBOX_ENCRYPTION_KEY`
+(separate Fernet key from `PORTAL_CRED_FERNET_KEY`), `MS_OAUTH_*`, `RESEND_*`. The API
+reports `microsoft_available` / `forwarding_available` so the UI never shows a button
+that 503s. Local end-to-end without any provider account:
+`backend/scripts/simulate_hachshara_mail.py`.
+
+---
+
+*Regenerate this map when the two-plane topology, the OTP routing, the mail-intake
+routing, or the comparison/merge selection logic changes — those are the parts a new
+session cannot safely infer from reading one file.*

@@ -444,6 +444,14 @@ function onKeydown(e) {
 
 onMounted(async () => {
   await auth.fetchUser()
+  // Microsoft sends the browser back here after the consent screen. Reopen the
+  // settings panel so the agent sees the result instead of a bare workspace, and
+  // strip the query so a refresh doesn't reopen it forever.
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('mailbox')) {
+    emailSettingsOpen.value = true
+    window.history.replaceState({}, '', window.location.pathname)
+  }
   // Person-presence beat (20s). Started here rather than in MessengerDock so it
   // keeps running — and keeps the unread badge current — while the dock is
   // closed. Awaited fetchUser above means myId is set before the first poll.

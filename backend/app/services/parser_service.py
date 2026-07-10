@@ -92,6 +92,13 @@ _RE_MONTH_ONLY = _re_month_helper.compile(
 _RE_NUM_MONTH = _re_month_helper.compile(
     r"(?:^|[^\d])(?P<month>0?[1-9]|1[0-2])[/\-_.](?P<year>20\d{2}|\d{2})(?=$|[^\d])"
 )
+# Separator-less DDMMYYYY data-date tail, as Hachshara's emailed production zip
+# uses: "Ild_prod_1_09344_30042026.zip" → 2026-04. _RE_NUM_MONTH cannot see it
+# (it requires a / - _ . between month and year). Anchored to the end of the
+# stem so a policy/agency code mid-filename can't be read as a date.
+_RE_DDMMYYYY_TAIL = _re_month_helper.compile(
+    r"_(?P<day>[0-3]\d)(?P<month>0[1-9]|1[0-2])(?P<year>20\d{2})(?=\.|$)"
+)
 
 
 def detect_period_month(filename: str | None, records: list[dict] | None = None, uploaded_at=None):
@@ -139,6 +146,12 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
                 )
                 if not too_old:
                     return cand
+        m = _RE_DDMMYYYY_TAIL.search(filename)
+        if m:
+            try:
+                return _date(int(m.group("year")), int(m.group("month")), 1)
+            except ValueError:
+                pass
         m = _RE_NUM_MONTH.search(filename)
         if m:
             month = int(m.group("month"))

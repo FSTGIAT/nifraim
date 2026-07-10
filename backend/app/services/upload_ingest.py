@@ -98,6 +98,10 @@ def _parse_zip_bundle(content: bytes, filename: str) -> dict:
         is_menora_amalot_zip,
         parse_menora_amalot_zip,
     )
+    from app.services.hachshara_prod import (
+        is_hachshara_prod_zip,
+        parse_hachshara_prod_zip,
+    )
 
     if is_mimshak_zip(content):
         return parse_mimshak_zip(content)
@@ -114,10 +118,17 @@ def _parse_zip_bundle(content: bytes, filename: str) -> dict:
     if is_menora_amalot_zip(content):
         return parse_menora_amalot_zip(content)
 
+    # Hachshara emails production as `Ild_prod_<n>_<agent>_<DDMMYYYY>.zip` —
+    # CP862 fixed-width SP/SB/RM members. The filename carries the authoritative
+    # data-date (the records don't), so it must be threaded through.
+    if is_hachshara_prod_zip(content):
+        return parse_hachshara_prod_zip(content, filename)
+
     raise ValueError(
         "Unsupported ZIP bundle. Expected a Migdal Mimshak bundle "
         "(DAT + MBT files), a Menora legacy bundle (inner .ARJ ZIPs "
-        "with P.TXT/G.TXT), or a Menora amalot/נפרעים CSV ZIP. "
+        "with P.TXT/G.TXT), a Menora amalot/נפרעים CSV ZIP, or a "
+        "Hachshara production bundle (SP/SB/RM fixed-width members). "
         "Filename: " + filename
     )
 
@@ -156,10 +167,12 @@ async def ingest_file_bytes(
         from app.services.mimshak import is_mimshak_zip
         from app.services.menora_legacy import is_menora_legacy_zip
         from app.services.menora_amalot import is_menora_amalot_zip
+        from app.services.hachshara_prod import is_hachshara_prod_zip
         if (
             is_mimshak_zip(content)
             or is_menora_legacy_zip(content)
             or is_menora_amalot_zip(content)
+            or is_hachshara_prod_zip(content)
         ):
             ext = "zip"
 

@@ -53,6 +53,40 @@
               </div>
             </section>
 
+            <!-- Hachshara publishes נפרעים to its portal but NOT production — that
+                 file arrives by email. One compact row: the mailbox we listen on,
+                 and a button to actually exercise it. -->
+            <section v-if="selectedCompany === 'הכשרה'" class="cred-section">
+              <div class="cred-mail-row">
+                <span class="cred-mail-ico" :class="{ ok: mailbox.config?.connected }">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m2 7 10 6 10-6" />
+                  </svg>
+                </span>
+
+                <button
+                  v-if="mailbox.config"
+                  type="button"
+                  class="cred-mail-addr ltr-number"
+                  dir="ltr"
+                  title="הגדרות תיבת המייל"
+                  @click="hachsharaMailOpen = true"
+                >{{ mailbox.config.email_address }}</button>
+                <span v-else class="cred-mail-addr cred-mail-addr--empty">לא חוברה תיבת מייל</span>
+
+                <button
+                  v-if="mailbox.config"
+                  type="button"
+                  class="cred-mail-btn"
+                  :disabled="mailbox.polling"
+                  @click="testMailbox"
+                >{{ mailbox.polling ? 'בודק…' : 'בדיקה' }}</button>
+                <button v-else type="button" class="cred-mail-btn" @click="hachsharaMailOpen = true">חיבור</button>
+              </div>
+
+              <p v-if="mailTestMsg" class="cred-mail-result" :class="{ bad: mailTestBad }">{{ mailTestMsg }}</p>
+            </section>
+
             <!-- ── Step 2 · report type (only when the company has more than one) ── -->
             <section v-if="selectedCompany && companyKinds.length > 1" class="cred-section">
               <div class="cred-step-head">
@@ -150,12 +184,16 @@
         </div>
       </div>
     </Transition>
+    <HachsharaMailModal :open="hachsharaMailOpen" @close="hachsharaMailOpen = false" />
   </Teleport>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { useMailboxStore } from '../../stores/mailbox.js'
+import { errorCopy, lastReceivedLabel } from '../../utils/mailboxCopy.js'
+import HachsharaMailModal from './HachsharaMailModal.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -166,6 +204,38 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved', 'setup-phone'])
 
 const store = usePortalAutomationStore()
+const mailbox = useMailboxStore()
+
+// Hachshara's production file arrives by email, not from the portal.
+const hachsharaMailOpen = ref(false)
+const mailTestMsg = ref('')
+const mailTestBad = ref(false)
+onMounted(() => { mailbox.fetchConfig?.() })
+
+/** Actually hit the mailbox and say what came back — not just "looks fine". */
+async function testMailbox() {
+  mailTestMsg.value = ''
+  mailTestBad.value = false
+  try {
+    const r = await mailbox.pollNow()
+    if (r?.error) {
+      mailTestBad.value = true
+      mailTestMsg.value = errorCopy(r.error)?.title || 'החיבור לתיבה נכשל'
+    } else if (r?.ingested > 0) {
+      mailTestMsg.value = `נטענו ${r.ingested} קבצים מהתיבה`
+    } else if (mailbox.config?.mail_host === 'other') {
+      // A forwarding mailbox is PUSH-only (poller.py: "nothing to poll"), so a
+      // poll proves nothing. Saying "החיבור תקין" here would be a comforting lie.
+      mailTestMsg.value = `תיבה בהעברה — אין מה למשוך מהשרת. ${lastReceivedLabel(mailbox.config.last_received_at)}`
+    } else {
+      // A quiet polled mailbox is a healthy one: we reached it, nothing was new.
+      mailTestMsg.value = 'החיבור תקין. אין הודעות חדשות מהכשרה.'
+    }
+  } catch (e) {
+    mailTestBad.value = true
+    mailTestMsg.value = e.response?.data?.detail || 'הבדיקה נכשלה'
+  }
+}
 
 // OTP is always the personal-phone forward path — manual entry was removed on
 // purpose (the app is fully hands-free; a manual fallback trains users to babysit
@@ -419,6 +489,57 @@ async function save() {
 .cred-tile-check svg { width: 11px; height: 11px; }
 
 /* Report-type chips */
+/* Hachshara mail intake — a single row: which mailbox we watch, and a button to
+   exercise it. Informational surface, not a warning: this isn't a fault, it's
+   just the road Hachshara's production file takes. */
+.cred-mail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.cred-mail-ico {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+.cred-mail-ico.ok { color: var(--green); border-color: rgba(46, 132, 74, 0.35); }
+
+.cred-mail-addr {
+  flex: 1; min-width: 0;
+  text-align: start;
+  border: none; background: none; padding: 0;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cred-mail-addr:hover { color: var(--primary-deep); text-decoration: underline; }
+.cred-mail-addr--empty { color: var(--text-muted); font-weight: 500; cursor: default; }
+.cred-mail-addr--empty:hover { color: var(--text-muted); text-decoration: none; }
+
+.cred-mail-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit; font-size: 12px; font-weight: 700;
+  cursor: pointer;
+}
+.cred-mail-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary-deep); }
+.cred-mail-btn:disabled { opacity: 0.55; cursor: default; }
+
+.cred-mail-result { margin: 7px 2px 0; font-size: 11.5px; color: var(--green); }
+.cred-mail-result.bad { color: #B3261E; }
+
 .cred-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .cred-chip {
   padding: 8px 15px; border: 1.5px solid rgba(24, 24, 24, 0.12);

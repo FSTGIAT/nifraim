@@ -395,6 +395,26 @@ must be re-uploaded.
 
 ---
 
+## Mail Intake — הכשרה production arrives by EMAIL, not a portal
+
+`companies/hachshara.py` downloads **נפרעים only**. הכשרה emails production as
+`Ild_prod_<n>_<agent>_<DDMMYYYY>.zip`. Don't look for (or add) a Hachshara production
+portal — there isn't one. **See `docs/ARCHITECTURE.md` §10 for the invariants.**
+
+- **Parser**: `services/hachshara_prod/` — CP862 visual Hebrew, 2000-char fixed-width
+  `SP`/`SB`/`RM`. Traps: ID is at `[6:15]` (SP/SB) / `[0:9]` (RM); **never gate on the TZ
+  check digit** (half the real IDs fail it); the visual-Hebrew reverse must protect numeric
+  runs or `בסט פרט 02/16` becomes `61/20`; SP accumulation is **whole shekels**, RM funds are
+  agorot. `premium` and `fund_policy_number` do not exist in the file — leave them `None`.
+- **Intake**: `services/mail_intake/` — the agent types only their email; `detect.py` resolves
+  the MX and routes to Graph OAuth (M365) / IMAP app-password (personal Gmail only) /
+  forwarding via Resend (everything else, incl. Google Workspace). All three converge on
+  `ingest_mail_attachment`, the only seam onto `upload_ingest`.
+- **Local e2e without any provider account**: `backend/scripts/simulate_hachshara_mail.py`.
+- Tests: `tests/test_hachshara_prod_parser.py`, `tests/test_mail_intake.py`.
+
+---
+
 ## Windows-Native Terminal Production (Phoenix `phoenix_terminal`)
 
 Most portals are Playwright plugins (`services/portal_automation/companies/`), but Phoenix

@@ -10,9 +10,11 @@ from sqlalchemy import func, select
 from app.config import settings
 from app.database import async_session
 from app.models.fund_track import FundTrack
+from app.models.mailbox_config import MailboxConfig
 from app.models.portal_credential import PortalCredential
 from app.models.portal_run import PortalRun
 from app.services.fund_scraper import update_fund_tracks
+from app.services.mail_intake.poller import poll_mailbox
 from app.services.subscription_service import process_renewals
 from app.services.portal_automation.runner import run_automation
 from app.services.maslaka import orchestration as maslaka_orchestration
@@ -134,6 +136,45 @@ async def run_maslaka_poll() -> None:
         logger.error("maslaka.poll job failed: %s", e)
 
 
+async def run_hachshara_mail_poll() -> None:
+    """Pull the emailed Hachshara production zip from every connected mailbox.
+
+    Gated by `HACHSHARA_MAIL_ENABLED` so a fresh deploy never polls an
+    unconfigured mailbox. Each mailbox gets its own session and its own `try`:
+    one locked Google account must not starve the other tenants. `poll_mailbox`
+    itself never raises and applies its own backoff.
+
+    Only microsoft/google are polled — an `other` (forwarding) mailbox is pushed
+    to us by Resend and has nothing to pull.
+    """
+    if not settings.HACHSHARA_MAIL_ENABLED:
+        return
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                select(MailboxConfig).where(
+                    MailboxConfig.is_active.is_(True),
+                    MailboxConfig.mail_host.in_(("microsoft", "google")),
+                )
+            )
+            configs = result.scalars().all()
+    except Exception as e:
+        logger.error("hachshara_mail.poll: could not list mailboxes: %s", e)
+        return
+
+    total = 0
+    for cfg in configs:
+        try:
+            async with async_session() as db:
+                fresh = await db.get(MailboxConfig, cfg.id)
+                if fresh:
+                    total += await poll_mailbox(db, fresh)
+        except Exception as e:
+            logger.error("hachshara_mail.poll: mailbox %s failed: %s", cfg.id, e)
+    if total:
+        logger.info("hachshara_mail.poll: ingested %d file(s)", total)
+
+
 async def run_maslaka_retention() -> None:
     """Daily retention sweep — null out `pension_raw_payloads.ciphertext` past
     `MASLAKA_RETENTION_DAYS`. Audit + lifecycle rows are preserved."""
@@ -224,6 +265,14 @@ def start_scheduler():
         run_maslaka_retention,
         CronTrigger(hour=3, minute=0, timezone="Asia/Jerusalem"),
         id="maslaka_retention",
+        replace_existing=True,
+    )
+    # Hachshara production-by-email — only fires when HACHSHARA_MAIL_ENABLED is
+    # on, so safe to register unconditionally.
+    scheduler.add_job(
+        run_hachshara_mail_poll,
+        IntervalTrigger(minutes=settings.HACHSHARA_MAIL_POLL_INTERVAL_MINUTES),
+        id="hachshara_mail_poll",
         replace_existing=True,
     )
     scheduler.start()

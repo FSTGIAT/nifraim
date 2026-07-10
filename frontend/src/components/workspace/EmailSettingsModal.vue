@@ -107,6 +107,24 @@
                   </button>
                   <p v-if="workerHint" class="es-worker-hint">{{ workerHint }}</p>
                 </div>
+
+                <div class="es-block">
+                  <div class="es-block-head">
+                    <span class="es-block-label">קובץ הפרודוקציה של הכשרה</span>
+                    <span v-if="mailbox.config" class="es-worker-pill" :class="mailboxOk ? 'on' : 'off'">
+                      <span class="es-worker-dot"></span>{{ mailboxOk ? 'מחובר' : 'דרוש טיפול' }}
+                    </span>
+                  </div>
+                  <p class="es-help">הכשרה לא מפרסמת פרודוקציה בפורטל — היא שולחת את הקובץ למייל. חבר את התיבה פעם אחת, ונטען אותו לבד בכל חודש.</p>
+                  <button class="es-action" @click="hachsharaMailOpen = true">
+                    <span class="es-action-ico">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+                    </span>
+                    <span class="es-action-txt">{{ mailbox.config ? 'הגדרות תיבת המייל' : 'חיבור תיבת המייל' }}</span>
+                    <svg class="es-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <p v-if="mailbox.config" class="es-worker-hint">{{ lastReceivedLabel(mailbox.config.last_received_at) }}</p>
+                </div>
               </section>
 
               <!-- דוא"ל -->
@@ -138,6 +156,8 @@
           </div>
         </div>
 
+        <HachsharaMailModal :open="hachsharaMailOpen" @close="hachsharaMailOpen = false" />
+
         <!-- Cancel-subscription confirmation -->
         <Transition name="email-modal">
           <div v-if="showCancelConfirm" class="es-cancel-overlay" @click.self="showCancelConfirm = false">
@@ -166,7 +186,10 @@ import { ref, computed, watch } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { useMailboxStore } from '../../stores/mailbox.js'
+import { lastReceivedLabel } from '../../utils/mailboxCopy.js'
 import PhoneForwardModal from './PhoneForwardModal.vue'
+import HachsharaMailModal from './HachsharaMailModal.vue'
 import api from '../../api/client.js'
 
 const props = defineProps({
@@ -177,6 +200,12 @@ const emit = defineEmits(['update:open'])
 const auth = useAuthStore()
 const subStore = useSubscriptionStore()
 const portalStore = usePortalAutomationStore()
+const mailbox = useMailboxStore()
+
+const hachsharaMailOpen = ref(false)
+// "Connected" here means the credential/address is in place AND nothing has
+// broken. A quiet month is fine; a revoked consent is not.
+const mailboxOk = computed(() => !!mailbox.config?.connected && !mailbox.config?.last_error)
 
 // ── Tabs ──
 const tabs = [
@@ -311,6 +340,7 @@ watch(() => props.open, (now) => {
   // Fire-and-forget — show whatever's cached, replace when the API answers.
   subStore.fetchStatus?.()
   portalStore.fetchWorkerStatus?.()
+  mailbox.fetchConfig?.()
 })
 </script>
 

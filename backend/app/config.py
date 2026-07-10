@@ -107,6 +107,34 @@ class Settings(BaseSettings):
     MASLAKA_INQUIRY_TIMEOUT_DAYS: int = 7
     MASLAKA_POLL_INTERVAL_MINUTES: int = 15
 
+    # ── Hachshara production-by-email intake ────────────────────────────────
+    # Hachshara doesn't expose production in its agent portal — it emails a
+    # `Ild_prod_*.zip`. We fetch it from the agent's mailbox, routed by the MX
+    # record of their address (see services/mail_intake/detect.py).
+    HACHSHARA_MAIL_ENABLED: bool = False           # gates the scheduler poll
+    HACHSHARA_MAIL_POLL_INTERVAL_MINUTES: int = 15
+    # Separate Fernet key from PORTAL_CRED_FERNET_KEY — blast-radius isolation.
+    # A mailbox credential is far more dangerous than a portal password: it can
+    # read password-reset links for every other service the agent uses.
+    MAILBOX_ENCRYPTION_KEY: str = ""
+
+    # Path A — Microsoft 365 (Exchange Online basic auth is permanently disabled,
+    # so OAuth is the only door). One multi-tenant Azure app registration; free,
+    # and with no CASA-style assessment (that is a Google requirement only).
+    MS_OAUTH_CLIENT_ID: str = ""
+    MS_OAUTH_CLIENT_SECRET: str = ""
+    MS_OAUTH_REDIRECT_URI: str = ""
+
+    # Path C — forwarding fallback. Resend already carries our outbound SMTP;
+    # its inbound side parses a forwarded mail and POSTs `email.received`.
+    RESEND_API_KEY: str = ""
+    RESEND_INBOUND_DOMAIN: str = ""
+    RESEND_WEBHOOK_SECRET: str = ""                # Svix signing secret ("whsec_…")
+    # Overridable only so `scripts/simulate_hachshara_mail.py` can stand a local
+    # stub in front of the attachments API and exercise the real inbound path
+    # without a Resend account. Never point this anywhere but Resend in prod.
+    RESEND_API_BASE: str = "https://api.resend.com"
+
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
 
