@@ -88,6 +88,26 @@ user's worker heartbeated ≤ **90 s** ago (or global `WORKER_MODE`), a batch st
 `pending` for the worker to claim; otherwise it runs **inline on the cloud**
 (where IL portals fail). Installing + running the worker is the only switch.
 
+**Worker identity is a TOKEN, not a machine — and machines are not interchangeable.**
+`local_worker.py` resolves *whose* worker it is from `WORKER_LOG_TOKEN` in its local
+`.env` (= `users.phone_forward_token`). Run one agent's installer link on a second PC
+and that PC becomes a full copy of their worker: it heartbeats as them, claims their
+batches, logs into the insurers with their credentials, and writes their clients'
+files to its own disk. Atomic claims stop double *execution*; they say nothing about
+*which machine* executes — and only a machine with the Ericom PowerTerm client can
+open Phoenix's green terminal (§ Windows-native terminal). Shipped incident: an
+agent's token was installed on a colleague's laptop, `worker_heartbeats.hostname`
+flipped with whichever PC was on, and Phoenix "randomly" worked or didn't for weeks.
+Invariants:
+1. **`worker_heartbeats.approved_hostname` pins an account to one machine.** Any other
+   machine refuses to beat and refuses to claim. `NULL` = unpinned = original
+   behaviour, so nobody can be locked out.
+2. **One owner at a time.** The `ON CONFLICT … WHERE` guard in `_beat` decides
+   ownership atomically (take the row if it's ours, or its owner went stale >90 s), so
+   two PCs cannot flip-flop the hostname. The loser stands by; it never claims.
+3. **Only the owner self-updates** — `_maybe_self_update` *clears* the flag, so a
+   standby consuming it would strand the working machine on stale code.
+
 ---
 
 ## 2. Navigation index — "where do I look for X"
@@ -445,6 +465,70 @@ graph LR
 reports `microsoft_available` / `forwarding_available` so the UI never shows a button
 that 503s. Local end-to-end without any provider account:
 `backend/scripts/simulate_hachshara_mail.py`.
+
+---
+
+## 11. Windows-native terminal — Phoenix production is a green screen, not a DOM
+
+Phoenix production lives in an Ericom **PowerTerm** terminal, so there is nothing to
+select and nothing to click: `scripts/windows/phoenix_win_terminal.py` **injects
+keystrokes** (SendInput) at a host that answers only in painted characters. Everything
+below exists because a keystroke that misses is *silent* — the run still "succeeds".
+
+```mermaid
+graph TD
+    A["TERM window exists<br/>(PowerTerm created it)"] --> B{"has the HOST painted<br/>the main menu?"}
+    B -->|"black screen<br/>green ≈ 0.3%"| B2["WAIT — keys sent now are SWALLOWED"]
+    B2 --> B
+    B -->|"painted + stable<br/>green ≥ 5% (menu ≈ 11%)"| C["type 13"]
+    C --> D["Enter (submits the 13)"]
+    D --> E{"did the menu screen<br/>advance?"}
+    E -->|"unchanged = 13 was lost"| E2["retype once → else SystemExit(4)"]
+    E -->|"advanced"| F["Enter ×4"]
+    F --> G["Down-arrow ×1 (newer month row)"]
+    G --> H["Hebrew layout → 'כ' (scancode 0x21) → Enter"]
+    H --> I{"did an MU file appear<br/>and stop growing?"}
+    I -->|"no"| I2["SystemExit(4) — do NOT ingest"]
+    I -->|"yes"| J["parse MU → production"]
+```
+
+### Invariants
+
+1. **Never type into a screen the host has not painted.** The `TERM` window exists the
+   moment PowerTerm creates it, but the host paints the menu seconds later, and every key
+   sent into that gap is swallowed. `wait_for_menu()` polls the **pixels** — painted menu
+   ≈ 21% ink / 11% green, the black pre-menu gap ≈ 2% / 0.3%, a 10× margin — and requires
+   two identical samples (a half-drawn screen loses keys too). A fixed sleep is a *guess at
+   a race*: it won some days and lost others, and an 8s guess is what let the `13` vanish.
+2. **Prove the `13` registered; never fire Enters blindly.** Selecting option 13 must
+   replace the menu screen. If the screen is unchanged the keys went nowhere — retype once,
+   then fail. The digits and the Enter that submits them are typed as **separate** steps so
+   `export_1_typed13.png` answers "did the 13 land?" on its own.
+3. **The keystroke sequence is exactly:** `13` → Enter → **Enter ×4** → Down-arrow ×1 →
+   Hebrew `כ` → Enter. Five Enters, not six. The Down-arrow must be the **extended** arrow
+   (`_press_arrow_down()`); a naive VK_DOWN is read as numpad-`2` under NumLock and the
+   highlight never moves. `כ` is the raw scancode `0x21` and needs the layout set
+   **deterministically** (`_ensure_hebrew`) — a blind `Alt+Shift` flips the already-Hebrew
+   screen to English and types `f`. `כ` does nothing until **Enter** submits it.
+4. **`grab()` is forbidden between the `כ` and its Enter, and during the transfer.** It
+   force-foregrounds and toggles topmost + PrintWindow, which steals the command-field focus
+   (the Enter then misses) and stalls the KERMIT receive at block 6 / 0 B/s. Use the
+   **passive** `_shot()` (reads screen pixels; touches neither focus nor z-order) when you
+   need evidence there. During the transfer, poll the **filesystem** only, and re-assert
+   `SetForegroundWindow` every few seconds — Windows throttles a backgrounded window's
+   message loop and starves the receive.
+5. **"Success" is not evidence of freshness — this is the dangerous one.** When the
+   keystrokes silently do nothing, no MU file is written, and the naive next step ingests the
+   *newest MU file on disk* — which is **last run's**. Live 2026-07-14: two runs reported
+   green while serving **yesterday's 261 records as today's production**. So: no file change
+   → `SystemExit(4)`, never exit 0; `_parse_and_ingest` refuses any MU file older than
+   `_MU_MAX_AGE_S` (45 min); and every run logs the chosen file's real mtime and age, because
+   a stale re-ingest and a real download are otherwise indistinguishable from outside.
+6. **Two interpreters, one flow.** The orchestrator runs on the **WSL/app venv** (DB +
+   ingest); the GUI sub-steps are shelled to **Windows Python** (`WIN_PY`), which needs
+   `pywin32` + `Pillow` — they were never in `requirements.txt`, so the terminal opened and
+   just sat there on every machine but the dev box. `_ensure_win_deps()` installs them
+   **before** the login, so a missing dep never costs an OTP.
 
 ---
 

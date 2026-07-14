@@ -422,8 +422,18 @@ production lives in a native Ericom **PowerTerm** green-screen, not the DOM. It 
 `WORKER_ONLY_PORTALS` entry (not in `REGISTRY`); the local worker subprocesses
 `backend/scripts/windows/phoenix_terminal_run.py` to run it. Flow: close stale TERM windows →
 `phoenix_browser_win.py` (Edge login + hands-free OTP) → `phoenix_win_terminal.py export`
-(SendInput: option-13 → down-arrow×1 to pick the month → Hebrew `כ` + **Enter** → KERMIT
-download to `C:\fnxbox`) → `phoenix_mu.parse_phoenix_mu` → ingest as production/הפניקס.
+(SendInput: **wait for the menu to PAINT** → `13` → Enter → Enter×4 → down-arrow×1 to pick the
+month → Hebrew `כ` + **Enter** → KERMIT download to `C:\fnxbox`) → `phoenix_mu.parse_phoenix_mu`
+→ ingest as production/הפניקס.
+
+- **Never type into a screen the host hasn't painted.** The `TERM` window exists before the host
+  paints the menu, and keys sent into that gap are swallowed — the `13` is lost and nothing
+  downloads. `wait_for_menu()` gates on the pixels (menu ≈ 11% green, blank gap ≈ 0.3%), then the
+  code *verifies* the `13` advanced the screen. A fixed sleep is a guess at a race.
+- **A silent no-op must never look like a download.** With no transfer, the naive next step ingests
+  the newest MU on disk = **last run's** (live: yesterday's 261 records served as today's). No file
+  change → `SystemExit(4)`; MU older than 45 min → refuse to ingest. **See `docs/ARCHITECTURE.md`
+  §11 for the full invariants.**
 
 - **Two-Python split (WSL box).** The orchestrator runs on the **WSL venv** (app/DB deps) and
   shells the GUI sub-steps to **Windows Python** (`PHOENIX_WIN_PYTHON`, auto-detected
