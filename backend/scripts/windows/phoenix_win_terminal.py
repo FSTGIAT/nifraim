@@ -644,9 +644,20 @@ def main():
         # we've set Hebrew.
         force_foreground(hwnd); time.sleep(0.15)
         _press_scancode(0x21); time.sleep(0.5)
-        # Enter to submit the 'כ' command → starts the KERMIT transfer. Do NOT
-        # snap between כ and Enter — grab() toggles topmost and can steal the
-        # command-field focus so Enter misses. Re-assert foreground, then Enter.
+        # DID the 'כ' actually land? QA watched a run and swore it never appeared, while
+        # the log reported a completed transfer — and we had no artifact to settle it,
+        # because grab() must not be used here (topmost + PrintWindow steal the
+        # command-field focus and the Enter then misses — that was the original bug).
+        # _shot() is PASSIVE: it reads screen pixels and touches neither focus nor
+        # z-order, so it is safe in the one place grab() isn't. Save the frame that
+        # shows the command field with 'כ' in it, still un-submitted.
+        try:
+            _shot(hwnd).save(os.path.join(FNXBOX, "export_3_kaf_typed.png"))
+            _log("  captured export_3_kaf_typed.png (the 'כ' in the command field, pre-Enter)")
+        except Exception as e:
+            _log(f"  passive kaf capture failed: {e}")
+        # Enter to submit the 'כ' command → starts the KERMIT transfer. Re-assert
+        # foreground (passive capture cannot have moved it, but be certain), then Enter.
         windll_u = __import__("ctypes").windll.user32
         try:
             windll_u.SetForegroundWindow(hwnd)

@@ -452,32 +452,8 @@ async def _run_login_flow(page, username, password, token, base):
 
     print(">> navigating my-systems → ביטוח חיים → התחבר…")
     await page.wait_for_timeout(1500)
-    # Post-login Angular overlays (welcome/notification dialogs) drop a
-    # `cdk-overlay-backdrop` that intercepts clicks on the my-systems icon.
-    # Dismiss any open overlay (close button → Escape → click backdrop).
     _step("dismiss-overlays")
-    for _ in range(5):
-        backdrop = page.locator(".cdk-overlay-backdrop-showing")
-        if await backdrop.count() == 0:
-            break
-        print(">> dismissing post-login overlay…")
-        closed = False
-        for sel in ("button[aria-label*='סגור']", "button.close",
-                    "[mat-dialog-close]", "button:has-text('סגור')",
-                    "button:has-text('אישור')", "button:has-text('הבנתי')"):
-            loc = page.locator(sel)
-            try:
-                if await loc.count() and await loc.first.is_visible():
-                    await loc.first.click(timeout=2000); closed = True; break
-            except Exception:
-                continue
-        if not closed:
-            try:
-                await page.keyboard.press("Escape"); await page.wait_for_timeout(300)
-                await backdrop.first.click(timeout=2000, force=True)
-            except Exception:
-                pass
-        await page.wait_for_timeout(800)
+    await _dismiss_overlays(page)
 
     # my-systems icon → ביטוח חיים menuitem → התחבר. Each is a hard UI dependency;
     # wrap so a failure names the exact click that broke (not a bare exit 1) and
@@ -487,58 +463,361 @@ async def _run_login_flow(page, username, password, token, base):
     # RETRY: re-open my-systems and try several selectors for the menu item before
     # giving up. Each attempt dumps the menu state so a miss is diagnosable.
     _step("click-my-systems")
-    ms = page.locator("img[src*='my-systems.svg'], img[src*='my-systems']").first
+    # "המערכות שלי" is a BUTTON (button.btn-secondary-thicker.ng-star-inserted) that
+    # happens to contain an icon — keying only off the <img> was brittle. Match the
+    # button by text/class first and fall back to the icon.
+    ms = page.locator(
+        "button:has-text('המערכות שלי'), "
+        "button.btn-secondary-thicker:has-text('המערכות'), "
+        "img[src*='my-systems.svg'], img[src*='my-systems']"
+    ).first
     await ms.wait_for(state="visible", timeout=20000)
 
     _step("click-ביטוח-חיים")
+    # SCOPED to the open my-systems dropdown — never page-wide. "ביטוח חיים" also
+    # appears as a NAVIGATION LINK in the site chrome, and a page-wide
+    # `a:has-text(...)` / `*:has-text(...):visible` happily matched it: the run
+    # navigated to /digital-services/ביטוח-חיים (a marketing page with no התחבר) and
+    # then timed out waiting for a button that was never going to exist there. The
+    # menu item we want lives inside the dropdown panel; look only there.
+    # The REAL markup (confirmed against the live portal):
+    #     <div class="flex justify-between w-full"> ביטוח חיים
+    #         <fnx-nx-ui-standalone-icon><img src=".../left.svg"></fnx-nx-ui-standalone-icon>
+    #     </div>
+    # It is a DIV — not a button, not an anchor, no role=menuitem. Every selector we
+    # tried missed it, and the page-wide `a:has-text('ביטוח חיים')` fallback then
+    # matched a NAVIGATION LINK elsewhere on the page: the run left for
+    # /digital-services/ and waited forever for a התחבר that cannot exist there.
+    # Match the row by its class + its left-chevron icon, and never by <a> — so a
+    # link can no longer impersonate the menu item.
     _life_sels = [
-        "button[role='menuitem']:has-text('ביטוח חיים')",
+        "div.justify-between:has-text('ביטוח חיים'):has(img[src*='left.svg'])",
+        "div.justify-between:has-text('ביטוח חיים')",
+        "li:has(div.justify-between:has-text('ביטוח חיים'))",
         "[role='menuitem']:has-text('ביטוח חיים')",
-        "a:has-text('ביטוח חיים')",
-        "li:has-text('ביטוח חיים')",
-        "*:has-text('ביטוח חיים'):visible",
-        "button:has-text('חיים')",
     ]
+
+    async def _find_life():
+        for sel in _life_sels:
+            loc = page.locator(sel).first
+            try:
+                if await loc.count() and await loc.is_visible():
+                    print(f">> ביטוח חיים matched by: {sel}")
+                    return loc
+            except Exception:
+                continue
+        return None
+
     life = None
     for attempt in range(4):
+        # The ביטוח-חיים submenu may ALREADY be open — clicking my-systems can land us
+        # straight inside the section, and its fly-out then renders OVER the parent
+        # item (RTL). The parent is still "visible" to a selector but is no longer
+        # hittable, so hovering it can never succeed: live, this burned the full 30s
+        # actionability timeout and killed the run ("element intercepts pointer
+        # events") — we were fighting our own successful click. If התחבר is already
+        # on screen, the menu has done its job; don't touch the parent at all.
+        if await _connect_button(page).count() and await _connect_button(page).first.is_visible():
+            print(">> ביטוח חיים submenu is already open (התחבר is on screen) — skipping the menu click")
+            life = None
+            break
+
         try:
             await ms.click()
         except Exception:
             pass
         await page.wait_for_timeout(1500)
-        for sel in _life_sels:
-            try:
-                loc = page.locator(sel).first
-                if await loc.count() and await loc.is_visible():
-                    life = loc; break
-            except Exception:
-                continue
-        if life:
+
+        if await _connect_button(page).count() and await _connect_button(page).first.is_visible():
+            print(">> my-systems click opened ביטוח חיים directly — skipping the menu click")
+            life = None
             break
-        # Not found yet — dump the open-menu state and retry (re-open my-systems).
+
+        # Capture the OPEN MENU while it is still on screen. (This shot used to be
+        # taken at the bottom of the loop — i.e. AFTER go_back() — so every capture
+        # was a blank page mid-navigation. Useless exactly when it mattered.)
         await _shot(page, f"menu-attempt{attempt}")
-        print(f">> ביטוח חיים not visible yet (attempt {attempt+1}/4) — reopening my-systems", flush=True)
+        await _dump_menu_candidates(page)
+
+        life = await _find_life()
+        if life:
+            # HOVER FIRST — do not click. On this portal the category is a LINK: a
+            # click navigates to /digital-services/… (a marketing page with no התחבר),
+            # while hovering expands the fly-out that actually holds the systems and
+            # their התחבר buttons. Click only if hovering produced nothing.
+            try:
+                await life.hover(timeout=5000)
+                await page.wait_for_timeout(1500)
+            except Exception as e:
+                print(f">> hover on ביטוח חיים failed ({str(e).splitlines()[0][:70]})")
+
+            if await _connect_button(page).count() and await _connect_button(page).first.is_visible():
+                print(">> hover opened the ביטוח חיים fly-out — התחבר is on screen")
+                _post_log("ביטוח חיים fly-out opened by HOVER (no click needed)")
+                life = None
+                break
+
+            await _click_through(page, life, "ביטוח חיים")
+            await page.wait_for_timeout(1500)
+
+            if await _connect_button(page).count() and await _connect_button(page).first.is_visible():
+                print(">> ביטוח חיים is open — התחבר is on screen")
+                life = None
+                break
+
+            # Or did it NAVIGATE us off the portal home? (live: /digital-services/…)
+            # Go back and retry — the menu item is not whatever we just clicked.
+            if "digital-services" in (page.url or ""):
+                print(f"!! that click navigated to {page.url} — going back and retrying the MENU item")
+                _post_log(f"ביטוח חיים click navigated to {page.url} (wrong element) — retrying")
+                try:
+                    await page.go_back(wait_until="domcontentloaded", timeout=20000)
+                    await page.wait_for_timeout(2500)
+                except Exception:
+                    await page.goto(URL, timeout=40000)
+                    await page.wait_for_timeout(2500)
+            life = None
+        print(f">> ביטוח חיים not usable yet (attempt {attempt+1}/4) — reopening my-systems", flush=True)
         await page.wait_for_timeout(1200)
-    if not life:
-        raise RuntimeError("ביטוח חיים menu item not found after 4 attempts (see menu-attempt*.png)")
-    await life.hover(); await page.wait_for_timeout(600); await life.click()
+    else:
+        raise RuntimeError("could not open ביטוח חיים after 4 attempts "
+                           "(see the 'menu candidates' lines in the worker log)")
     await page.wait_for_timeout(1200)
 
     _step("click-התחבר")
-    connect = page.locator(
-        "button.btn-primary-sm:has-text('התחבר'), "
-        "button:has-text('התחבר'):not(:has-text('מחדש'))"
-    ).first
+    # NO _dismiss_overlays() here. An Angular Material menu opens WITH a
+    # `cdk-overlay-backdrop`, so the dismisser cannot tell our own open fly-out from
+    # a nuisance dialog — it pressed Escape and CLOSED the menu we had just opened,
+    # then we waited 15s for a התחבר we had personally dismissed. (Live: the run
+    # logged "fly-out opened by HOVER" and died at click-התחבר one step later.)
+    connect = _connect_button(page).first
     await connect.wait_for(state="visible", timeout=15000)
-    await connect.click()
+    if not await _click_through(page, connect, "התחבר"):
+        await _shot(page, "connect-blocked")
+        raise RuntimeError("התחבר is visible but every click was blocked (see connect-blocked.png)")
     print(">> clicked התחבר — PowerTerm terminal should now open (own window).")
 
     # The terminal is a separate native window and PERSISTS after the browser
-    # closes. Keep the browser briefly so the client finishes launching.
+    # closes. Keep the browser open until the PowerTerm client has actually put
+    # a TERM window on screen — see _wait_for_term_window for why we verify.
     _step("await-terminal-launch")
-    await page.wait_for_timeout(20000)
+    opened = await _wait_for_term_window(page, timeout_s=45)
     await page.context.close()
-    print(">> browser closed; terminal stays open for the export driver.")
+    if opened:
+        print(">> browser closed; terminal stays open for the export driver.")
+    else:
+        # Do NOT fail the run here: the export driver waits for the TERM window too
+        # and may still catch a slow launch. But say so LOUDLY and now, attributed to
+        # the step that caused it.
+        print("!! terminal did NOT appear while the browser was open — the export "
+              "driver will keep waiting, but this is the step that failed.")
+        _post_log("terminal did NOT open after clicking התחבר (no TERM window within 45s)")
+
+
+async def _dismiss_overlays(page, passes: int = 5) -> None:
+    """Close anything covering the page: post-login Angular dialogs (which drop a
+    `cdk-overlay-backdrop`) AND the F5 VPN error dialog.
+
+    The F5 one is the reason this is a reusable helper rather than a one-shot pass.
+    Phoenix's portal is an F5 BIG-IP APM gateway, and it can throw
+    "F5 VPN — Failed to establish VPN connection … the previous request is still in
+    progress" at ANY point, including after we've already dismissed the welcome
+    dialogs. Live, it landed on top of the my-systems menu and Playwright's hover
+    died with "element intercepts pointer events" — 30s of waiting for a menu item
+    that was visible but buried.
+    """
+    for _ in range(passes):
+        # NEVER dismiss our own open menu. A mat-menu fly-out ships its own
+        # cdk-overlay-backdrop, so "there is a backdrop" does NOT mean "there is a
+        # nuisance dialog". If התחבר is on screen the menu is open and doing exactly
+        # what we want — leave it alone.
+        try:
+            if await _connect_button(page).count() and await _connect_button(page).first.is_visible():
+                return
+        except Exception:
+            pass
+
+        backdrop = page.locator(".cdk-overlay-backdrop-showing")
+        f5 = page.locator(
+            "*:has-text('Failed to establish VPN connection'), "
+            "*:has-text('previous request is still in progress')"
+        )
+        has_backdrop = await backdrop.count() > 0
+        try:
+            has_f5 = await f5.count() > 0
+        except Exception:
+            has_f5 = False
+        if not (has_backdrop or has_f5):
+            return
+        if has_f5:
+            print("!! F5 VPN dialog is on screen — dismissing it")
+            _post_log("F5 VPN dialog on screen ('previous request still in progress') — dismissing")
+        closed = False
+        for sel in ("button:has-text('אישור')", "button[aria-label*='סגור']",
+                    "button.close", "[mat-dialog-close]", "button:has-text('סגור')",
+                    "button:has-text('הבנתי')", "button:has-text('OK')"):
+            loc = page.locator(sel)
+            try:
+                if await loc.count() and await loc.first.is_visible():
+                    await loc.first.click(timeout=2000)
+                    closed = True
+                    break
+            except Exception:
+                continue
+        if not closed:
+            try:
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(300)
+                if has_backdrop:
+                    await backdrop.first.click(timeout=2000, force=True)
+            except Exception:
+                pass
+        await page.wait_for_timeout(800)
+
+
+async def _dump_menu_candidates(page) -> list:
+    """Report every visible 'ביטוח חיים' element to WORKER-LOG — tag/role/class/href.
+
+    The failure screenshots were useless (blank: they were taken mid-navigation), and
+    we cannot read files off an agent's PC. So the run itself must tell us what the
+    menu is actually made of. Without this we are guessing selectors blind, and each
+    guess costs a deploy + a worker update + a live run.
+    """
+    try:
+        cands = await page.evaluate(
+            """() => {
+                const out = [];
+                for (const el of document.querySelectorAll('a,button,li,div,span,[role]')) {
+                    const t = (el.innerText || '').trim();
+                    if (!t.includes('ביטוח חיים') || t.length > 60) continue;   // skip wrappers
+                    const r = el.getBoundingClientRect();
+                    if (!r.width || !r.height) continue;                        // skip hidden
+                    out.push({
+                        tag: el.tagName,
+                        role: el.getAttribute('role') || '',
+                        cls: String(el.className || '').slice(0, 70),
+                        href: el.getAttribute('href') || '',
+                        text: t.slice(0, 25),
+                        pos: Math.round(r.x) + ',' + Math.round(r.y),
+                    });
+                    if (out.length >= 10) break;
+                }
+                return out;
+            }"""
+        )
+    except Exception as e:
+        print(f">> menu dump failed: {e}")
+        return []
+    import json as _json
+    msg = f"menu candidates ({len(cands)}): " + _json.dumps(cands, ensure_ascii=False)
+    print(">> " + msg, flush=True)
+    _post_log(msg[:3800])
+    return cands
+
+
+def _connect_button(page):
+    """The התחבר button inside the ביטוח-חיים fly-out — the thing that launches
+    PowerTerm. Its presence is also our proof that the submenu is open, which is why
+    it's a named locator rather than an inline string in two places."""
+    return page.locator(
+        "button.btn-primary-sm:has-text('התחבר'), "
+        "button:has-text('התחבר'):not(:has-text('מחדש'))"
+    )
+
+
+async def _click_through(page, loc, label: str) -> bool:
+    """Click an element even if an overlay is sitting on top of it.
+
+    A plain `hover()` + `click()` defers to Playwright's actionability check, so ANY
+    covering element (see _dismiss_overlays) turns it into a 30s timeout and a dead
+    run. Escalate instead: normal → dismiss overlays and force → dispatch the click
+    in the page. Short timeouts, because the whole point is to fail fast to the next
+    strategy rather than burn the run's budget on one blocked hover.
+    """
+    try:
+        await loc.hover(timeout=5000)
+        await page.wait_for_timeout(400)
+        await loc.click(timeout=5000)
+        return True
+    except Exception as e:
+        print(f"!! {label}: normal click blocked ({str(e).splitlines()[0][:90]}) — clearing overlays")
+
+    await _dismiss_overlays(page, passes=3)
+    try:
+        await loc.click(timeout=5000, force=True)
+        print(f">> {label}: clicked (force) after clearing overlays")
+        return True
+    except Exception as e:
+        print(f"!! {label}: force click failed ({str(e).splitlines()[0][:90]}) — dispatching in-page")
+
+    try:
+        await loc.evaluate("el => el.click()")
+        print(f">> {label}: clicked (in-page dispatch)")
+        return True
+    except Exception as e:
+        print(f"!! {label}: in-page click failed: {str(e).splitlines()[0][:120]}")
+        return False
+
+
+def _find_term_hwnds() -> list:
+    """Visible native PowerTerm windows, by window CLASS. Mirrors
+    phoenix_win_terminal.find_term — the export driver's own detector."""
+    try:
+        import win32gui
+    except Exception:
+        return []                                  # no pywin32 (WSL) — can't tell
+    hits = []
+
+    def _cb(h, _):
+        if not win32gui.IsWindowVisible(h):
+            return
+        try:
+            if win32gui.GetClassName(h) == "TERM":
+                hits.append(h)
+        except Exception:
+            pass
+
+    try:
+        win32gui.EnumWindows(_cb, None)
+    except Exception:
+        return []
+    return hits
+
+
+async def _wait_for_term_window(page, timeout_s: int = 45) -> bool:
+    """Poll for the green-screen TERM window after clicking התחבר.
+
+    Why this exists: clicking התחבר does NOT open the terminal directly. The portal
+    page writes a `<PtConnect>…</PtConnect>` payload into the BROWSER WINDOW TITLE
+    (and/or fires the `epsShare:` protocol); a locally-installed Ericom helper polls
+    for it and spawns PowerTerm. That handoff can silently not happen — the browser
+    is perfectly happy either way.
+
+    We used to just `wait_for_timeout(20000)` and declare success. The failure then
+    surfaced 300s later, inside the *export* driver, as "no TERM window appeared" —
+    blaming the step that was merely the first to notice. Detect it here, where it
+    actually happens, and while the browser is still alive to be screenshotted.
+
+    Returns False on WSL/no-pywin32 rather than pretending — the export driver is
+    then the only detector, exactly as before.
+    """
+    try:
+        import win32gui  # noqa: F401
+    except Exception:
+        print(">> (no pywin32 here — cannot verify the terminal window; "
+              "leaving detection to the export driver)")
+        await page.wait_for_timeout(20000)
+        return True                                # unknown → don't cry wolf
+    for i in range(timeout_s):
+        hwnds = _find_term_hwnds()
+        if hwnds:
+            print(f">> terminal window is up (TERM hwnd={hwnds[0]}) after ~{i}s.")
+            _post_log(f"terminal opened after ~{i}s (TERM hwnd={hwnds[0]})")
+            await page.wait_for_timeout(2000)      # let it finish painting
+            return True
+        await page.wait_for_timeout(1000)
+    await _shot(page, "no-terminal")               # what was on screen when it didn't open
+    return False
 
 
 if __name__ == "__main__":

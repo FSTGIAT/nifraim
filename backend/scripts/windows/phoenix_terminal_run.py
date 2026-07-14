@@ -362,6 +362,15 @@ async def _parse_and_ingest(run_id):
         )
     period = _period_from_mu(os.path.basename(mu))
     out = Path(FNXBOX) / f"הפניקס פרודוקציה {period}.xlsx"
+    # Say WHICH file we are about to ingest and HOW OLD it is, on every run — not just
+    # when the guard trips. "success" is not evidence of freshness unless the numbers
+    # are on the record: a stale ingest and a real one look identical from the outside.
+    st = os.stat(mu)
+    _post_log(
+        f"MU file: {os.path.basename(mu)} — {st.st_size:,} bytes, written "
+        f"{datetime.fromtimestamp(st.st_mtime):%Y-%m-%d %H:%M:%S} ({age/60:.1f} min ago) "
+        f"→ period {period}"
+    )
     _log(f"step 5: parsing MU file {os.path.basename(mu)} → {out.name}")
     build_phoenix_mu_production_xlsx(Path(mu), out)
     content = out.read_bytes()
