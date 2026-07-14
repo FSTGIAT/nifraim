@@ -168,14 +168,31 @@ def _last_screenshot() -> str:
 
 
 def _close_stale_terminals():
-    """Close any pre-existing PowerTerm TERM windows so the export drives the
-    FRESH login's terminal, not a zombie (the documented false-success bug)."""
+    """Close pre-existing PowerTerm TERM windows AND leftover F5 VPN dialogs.
+
+    TERM: so the export drives the FRESH login's terminal, not a zombie (the
+    documented false-success bug).
+
+    F5 VPN: Phoenix's portal is an F5 BIG-IP APM gateway and the terminal only opens
+    once F5 brings up its tunnel to the internal host. A leftover dialog —
+    "Failed to establish VPN connection … the previous request is still in progress"
+    — both blocks the page (live: it buried the ביטוח-חיים menu item and Playwright's
+    hover timed out) and signals a half-open F5 session that will refuse the next
+    one. Clear it before we start rather than inherit it.
+    """
     try:
         import win32gui, win32con
         def cb(hwnd, _):
+            if not win32gui.IsWindowVisible(hwnd):
+                return
             t = win32gui.GetWindowText(hwnd) or ""
-            if "TERM" in t.upper() and win32gui.IsWindowVisible(hwnd):
+            up = t.upper()
+            if "TERM" in up:
                 _log(f"closing stale terminal hwnd={hwnd} title={t!r}")
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            elif "F5 VPN" in up or "VPN CONNECTION" in up:
+                _log(f"closing stale F5 VPN dialog hwnd={hwnd} title={t!r}")
+                _post_log(f"closed a leftover F5 VPN dialog before starting: {t!r}")
                 win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
         win32gui.EnumWindows(cb, None)
         time.sleep(3)
@@ -232,14 +249,57 @@ def _run_child(label: str, argv: list, timeout: int) -> None:
         )
 
 
+def _ensure_win_deps():
+    """Make sure the WINDOWS interpreter can actually drive the terminal.
+
+    `pywin32` + `Pillow` were never in requirements.txt — they happened to exist on
+    the dev machine, so this worked there and nowhere else. On a real agent's worker
+    the green screen opened and then just SAT there: phoenix_win_terminal died on
+    `import win32gui` before sending a single keystroke, and _close_stale_terminals
+    (which imports it under try/except) had been silently doing nothing all along.
+
+    A self-update only re-downloads code — it does not run pip — so declaring the
+    dependency is not enough to heal the workers that are already out there. Install
+    it on demand, once, and say so.
+    """
+    probe = subprocess.run([WIN_PY, "-c", "import win32gui, PIL"],
+                           capture_output=True, text=True)
+    if probe.returncode == 0:
+        return
+    _log("pywin32/Pillow missing on the Windows interpreter — installing…")
+    _post_log("installing missing pywin32/Pillow on the worker (one-off)")
+    inst = subprocess.run([WIN_PY, "-m", "pip", "install", "--quiet", "pywin32>=306", "Pillow>=10"],
+                          capture_output=True, text=True, timeout=600)
+    recheck = subprocess.run([WIN_PY, "-c", "import win32gui, PIL"],
+                             capture_output=True, text=True)
+    if recheck.returncode != 0:
+        tail = _tail((inst.stdout or "") + (inst.stderr or ""), 600)
+        _post_log(f"FAILED to install pywin32/Pillow — the terminal cannot be driven: {tail[:300]}")
+        raise RuntimeError(
+            "pywin32/Pillow are missing and could not be installed — the PowerTerm "
+            f"terminal opens but no keystrokes can be sent.\n{tail}"
+        )
+    _log("pywin32/Pillow installed OK")
+    _post_log("pywin32/Pillow installed OK — the terminal can now be driven")
+
+
 def _run_login(username, password, token):
     _log(f"step 2: phoenix_browser_win login (hands-free OTP) [py={WIN_PY}]…")
     _run_child("login", ["phoenix_browser_win.py", username, password, token, BASE], 420)
 
 
 def _run_export():
+    # 700s, not 420s: the export now WAITS for the host to paint the main menu (up to
+    # 150s) instead of typing into a blank screen, and the KERMIT receive itself can
+    # take ~150s. Killing the child mid-transfer would look exactly like the failure
+    # we're fixing.
     _log(f"step 3: phoenix_win_terminal export (KERMIT MU_NK_HAYV) [py={WIN_PY}]…")
-    _run_child("export", ["phoenix_win_terminal.py", "export"], 420)
+    _run_child("export", ["phoenix_win_terminal.py", "export"], 700)
+
+
+# An MU file older than this was not produced by the current run. The whole flow
+# (login → terminal → KERMIT) fits well inside it; anything older is last run's file.
+_MU_MAX_AGE_S = int(os.environ.get("PHOENIX_MU_MAX_AGE_S", str(45 * 60)))
 
 
 def _newest_mu():
@@ -287,6 +347,19 @@ async def _parse_and_ingest(run_id):
     mu = _newest_mu()
     if not mu:
         raise RuntimeError(f"no MU_NK_HAYV file found in {FNXBOX}")
+
+    # The newest file on disk is NOT necessarily the one we just downloaded. If the
+    # terminal keystrokes silently did nothing (a lost '13' → no KERMIT transfer), the
+    # newest MU file is LAST RUN'S — and ingesting it reports a green success built on
+    # yesterday's production. Live: 261 stale records re-ingested as today's. Require
+    # the file to have been written by THIS run.
+    age = time.time() - os.path.getmtime(mu)
+    if age > _MU_MAX_AGE_S:
+        raise RuntimeError(
+            f"{os.path.basename(mu)} is {age/3600:.1f}h old — the terminal did not "
+            f"download a fresh file this run (the keystrokes went nowhere). "
+            f"Refusing to ingest stale production."
+        )
     period = _period_from_mu(os.path.basename(mu))
     out = Path(FNXBOX) / f"הפניקס פרודוקציה {period}.xlsx"
     _log(f"step 5: parsing MU file {os.path.basename(mu)} → {out.name}")
@@ -341,6 +414,10 @@ async def main():
     _post_log(f"start run {str(run_id)[:8]} user={getattr(user, 'email', '?')} win_py={WIN_PY}")
 
     try:
+        # BEFORE the login: if the terminal can't be driven, fail now rather than
+        # after burning an OTP and leaving an orphaned green screen on the agent's
+        # desktop (which is exactly what happened — terminal open, nothing typed).
+        _ensure_win_deps()
         _close_stale_terminals()
         _run_login(username, password, token)
         _run_export()

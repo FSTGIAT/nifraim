@@ -14,6 +14,7 @@ PNG out: C:\fnxbox\phoenix_term.png  (override with --out PATH)
 Run via:  /mnt/c/Python313/python.exe scripts/windows/phoenix_win_terminal.py wait-grab 180
 """
 
+import os
 import sys
 import time
 import ctypes
@@ -31,6 +32,24 @@ except Exception:
         pass
 
 TARGET_CLASS = "TERM"
+# The TERM window exists the moment PowerTerm creates it, but the host has not yet
+# painted the MAIN MENU — and every key sent into that gap is SWALLOWED. That is how
+# the '13' gets lost: nothing is selected, no KERMIT transfer starts, and the run then
+# ingests the newest MU file on disk (last run's) as a green success. A fixed sleep is
+# a guess at a race, so it worked one day and not the next; we now WAIT FOR THE PIXELS.
+#
+# Measured on real captures of this exact terminal (content band, excluding the
+# toolbar and the F-key bar):
+#     painted main menu   ≈ 21% ink, 11% bright green   (the big green menu box)
+#     black pre-menu gap  ≈  2% ink,  0.3% bright green
+# A 10x separation, so the threshold is not delicate.
+MENU_GREEN_MIN = float(os.environ.get("PHOENIX_MENU_GREEN_MIN", "5.0"))   # percent
+MENU_WAIT_S = float(os.environ.get("PHOENIX_MENU_WAIT_S", "150"))
+# Fallback only — used when Pillow can't capture (then we cannot see the screen and
+# have no choice but to guess).
+MENU_SETTLE_S = float(os.environ.get("PHOENIX_MENU_SETTLE_S", "8"))
+# From the MAIN MENU: "13" + Enter, then this many more Enters (operator's sequence).
+MENU_EXTRA_ENTERS = int(os.environ.get("PHOENIX_MENU_EXTRA_ENTERS", "4"))
 TITLE_NEEDLE = "powerterm"
 DEFAULT_OUT = r"C:\fnxbox\phoenix_term.png"
 
@@ -143,6 +162,88 @@ def grab(hwnd, out):
     img.save(out)
     restore_window(hwnd)
     return w, h
+
+
+def _shot(hwnd):
+    """Capture the TERM window WITHOUT touching its z-order or focus.
+
+    grab() force_foregrounds and toggles topmost on every call — fine for the odd
+    milestone screenshot, but we poll this once a second while waiting for the menu,
+    and thrashing the z-order that hard is exactly the sort of thing that steals the
+    command-field focus. Here we only read pixels."""
+    import win32gui
+    from PIL import ImageGrab
+    left, top, right, bot = win32gui.GetWindowRect(hwnd)
+    return ImageGrab.grab(bbox=(left, top, right, bot), all_screens=True)
+
+
+def _screen_stats(img):
+    """(ink%, green%, signature) for the terminal's CONTENT band.
+
+    The band excludes the title bar/toolbar at the top and the F-key strip at the
+    bottom — those are painted by PowerTerm itself and are ALWAYS there, so counting
+    them would blind us to the only thing we care about: whether the HOST has painted
+    a screen yet. 'green' is the host's phosphor green; a painted screen has a lot of
+    it, the pre-menu gap has effectively none.
+
+    The signature is a coarse 64x32 luminance grid — enough to answer "did the screen
+    change?" without caring about a blinking cursor."""
+    W, H = img.size
+    band = img.convert("RGB").crop((0, int(H * 0.11), W, int(H * 0.94)))
+    px = band.load()
+    w, h = band.size
+    ink = green = n = 0
+    for y in range(0, h, 3):          # sample every 3rd pixel — 9x cheaper, same answer
+        for x in range(0, w, 3):
+            r, g, b = px[x, y]
+            n += 1
+            if r + g + b > 90:
+                ink += 1
+            if g > 150 and r < 120 and b < 120:
+                green += 1
+    n = n or 1
+    sig = band.convert("L").resize((64, 32)).point(lambda v: 255 if v > 40 else 0).tobytes()
+    return ink * 100.0 / n, green * 100.0 / n, sig
+
+
+def _sig_differs(a, b, min_cells=12):
+    """True if two signatures differ in more than a blinking cursor's worth of cells."""
+    if a is None or b is None:
+        return True
+    return sum(1 for x, y in zip(a, b) if x != y) > min_cells
+
+
+def wait_for_menu(hwnd, timeout=None):
+    """Block until the host has actually PAINTED a screen, then return its signature.
+
+    Returns None if we couldn't see the screen at all (no Pillow / capture failed) —
+    the caller then falls back to a blind sleep, which is what we used to do always."""
+    timeout = MENU_WAIT_S if timeout is None else timeout
+    deadline = time.time() + timeout
+    prev_sig = None
+    last_log = 0.0
+    while time.time() < deadline:
+        try:
+            ink, green, sig = _screen_stats(_shot(hwnd))
+        except Exception as e:
+            _log(f"  cannot read the screen ({type(e).__name__}: {e}) — "
+                 f"falling back to a blind {MENU_SETTLE_S}s settle")
+            time.sleep(MENU_SETTLE_S)
+            return None
+        if time.time() - last_log > 4:
+            _log(f"  waiting for the main menu to paint… ink={ink:.1f}% green={green:.1f}% "
+                 f"(need green≥{MENU_GREEN_MIN}%)")
+            last_log = time.time()
+        # Painted AND stable: a screen that is still being drawn changes between
+        # samples, and typing into a half-drawn screen loses keys just as surely.
+        if green >= MENU_GREEN_MIN and not _sig_differs(sig, prev_sig):
+            _log(f"  main menu is up (ink={ink:.1f}% green={green:.1f}%) — safe to type")
+            return sig
+        prev_sig = sig
+        time.sleep(1.0)
+    _log(f"!! the main menu never painted within {timeout:.0f}s — the terminal is up but "
+         f"the host screen stayed blank. Not typing into a dead screen.")
+    return False
 
 
 # ── Real input injection via SendInput (terminals read the focus queue, not
@@ -468,7 +569,7 @@ def main():
         # Operator's EXACT sequence from the MAIN MENU (file-list screen shows
         # MU_NK_HAYV_MOSHE_2026_05 highlighted on row 1, _2026_06 on row 2;
         # bottom hint "(F3/F4)לדפדוף  הקש 'כ'-הורדת קובץ"):
-        #   [ENGLISH] "13" + Enter  ->  Enter x5 more  ->  Down-arrow x1
+        #   [ENGLISH] "13" -> Enter  ->  Enter x4 more  ->  Down-arrow x1
         #   -> [HEBREW] 'כ'  ->  Enter  (download the selected file to C:\fnxbox)
         # Two fixes over the earlier broken run (live-observed 2026-06-29):
         #   • The row highlight moves with the real DOWN-ARROW, not F4 (F4/F3
@@ -482,11 +583,49 @@ def main():
             send_keys(hwnd, keys); time.sleep(settle)
             if tag: snap(tag)
 
+        # WAIT for the host to PAINT the main menu before sending a single key. Keys
+        # sent into the black pre-menu gap are swallowed: the '13' is lost, nothing is
+        # selected, no KERMIT transfer starts — and the run then ingests the newest MU
+        # file on disk, which is LAST RUN'S. Live 2026-07-14: two runs "succeeded" that
+        # way and served yesterday's 261 records as today's production.
+        force_foreground(hwnd)
+        menu_sig = wait_for_menu(hwnd)
         snap("0_menu")
-        # ENGLISH: 13 + Enter, then 5 more Enters (6 total).
-        _log("  [EN] '13' + Enter"); tap("13\n", settle=1.3, tag="1_after13")
-        for n in range(1, 6):
-            _log(f"  Enter #{n}"); tap("\n", settle=1.3, tag=f"2_enter{n}")
+        if menu_sig is False:
+            snap("0_no_menu")
+            raise SystemExit(3)
+
+        # ENGLISH, from the MAIN MENU: "13", Enter, then 4 more Enters. The digits are
+        # typed and captured SEPARATELY from the Enter that submits them, so
+        # export_1_typed13.png answers "did the 13 land?" on its own.
+        _log("  [EN] typing '13'"); tap("13", settle=1.2, tag="1_typed13")
+        _log("  [EN] Enter (submit '13')"); tap("\n", settle=1.6, tag="1b_after13")
+
+        # PROOF the '13' was consumed: picking option 13 replaces the menu screen. If the
+        # screen is byte-for-byte the menu we just measured, the keys went nowhere —
+        # retype once, then fail loudly rather than fire Enters into a screen we don't
+        # understand (which is how a lost '13' used to turn into a stale green success).
+        if menu_sig:
+            for attempt in (1, 2):
+                try:
+                    _, _, now_sig = _screen_stats(_shot(hwnd))
+                except Exception:
+                    break
+                if _sig_differs(now_sig, menu_sig):
+                    _log("  '13' registered — the menu screen advanced")
+                    break
+                if attempt == 1:
+                    _log("  '13' did NOT register (screen unchanged) — retyping once…")
+                    tap("13", settle=1.2, tag="1c_retype13")
+                    tap("\n", settle=1.6, tag="1d_after_retype")
+                else:
+                    _log("!! '13' never registered — the menu is painted but the host is "
+                         "not taking our keystrokes. Refusing to press Enter blindly.")
+                    snap("1e_13_lost")
+                    raise SystemExit(4)
+
+        for n in range(1, MENU_EXTRA_ENTERS + 1):
+            _log(f"  Enter #{n}/{MENU_EXTRA_ENTERS}"); tap("\n", settle=1.3, tag=f"2_enter{n}")
         # Down-arrow x1 = move the highlighted row from _05 (row 1) to _06 (row 2,
         # the June file = the one we want). EXTENDED arrow (NumLock-independent).
         _log("  Down-arrow x1 (select _06 / June row)")
@@ -551,7 +690,17 @@ def main():
                 last_sizes = cur_sizes
             time.sleep(1.0)
         else:
+            # NO transfer happened. This used to just log and exit 0 — so the
+            # orchestrator went on to ingest the NEWEST MU file on disk, which is
+            # LAST RUN'S file, and reported a green "success" with stale data. That is
+            # worse than a failure: the agent is shown yesterday's production as
+            # today's. Live: before == now, byte-for-byte, and 261 stale records were
+            # re-ingested. Fail loudly instead.
             _log(f"  no completed file change. before={before} now={files_state()}")
+            _log("!! export: the keystrokes did not start a KERMIT transfer — "
+                 "no MU file was written. Refusing to report success.")
+            snap("4_no_transfer")
+            raise SystemExit(4)
         snap("4_after")
         snap("4_done")
         _log("export: done")
