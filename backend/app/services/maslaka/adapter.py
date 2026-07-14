@@ -24,6 +24,12 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+class MaslakaIdentityNotConfigured(RuntimeError):
+    """Raised when an outbound request is built without MASLAKA_AGENT_NUMBER /
+    MASLAKA_AGENT_ID. Fail loudly here rather than ship an unidentified — or
+    worse, a placeholder-stamped — request into the clearinghouse vault."""
+
+
 # ─── Dataclasses returned from the parse functions ─────────────────────────
 @dataclass
 class HoldingItem:
@@ -109,13 +115,23 @@ def build_events_request(
     if request_reference is None:
         request_reference = uuid.uuid4().hex
 
+    # Our identity is what the clearinghouse authorises the request against.
+    # Unset, the tree below used to emit a literal "TODO(XSD)" — and did, into
+    # a real outbox file. A regulator's vault is the wrong place to discover
+    # that the deployment was never configured, so refuse to build the request.
+    if not settings.MASLAKA_AGENT_NUMBER or not settings.MASLAKA_AGENT_ID:
+        raise MaslakaIdentityNotConfigured(
+            "MASLAKA_AGENT_NUMBER and MASLAKA_AGENT_ID must be set before an "
+            "inquiry can be built — refusing to send an unidentified request."
+        )
+
     customer_id_normalized = (customer_id_number or "").lstrip("0") or "0"
 
     root = ET.Element("EventsRequest", attrib={"version": "v007"})
     ET.SubElement(root, "RequestReference").text = request_reference
     ET.SubElement(root, "Timestamp").text = datetime.utcnow().isoformat()
-    ET.SubElement(root, "AgentNumber").text = settings.MASLAKA_AGENT_NUMBER or "TODO(XSD)"
-    ET.SubElement(root, "AgentId").text = settings.MASLAKA_AGENT_ID or "TODO(XSD)"
+    ET.SubElement(root, "AgentNumber").text = settings.MASLAKA_AGENT_NUMBER
+    ET.SubElement(root, "AgentId").text = settings.MASLAKA_AGENT_ID
     ET.SubElement(root, "CustomerIdNumber").text = customer_id_normalized
     ET.SubElement(root, "RequestType").text = "INFO"  # TODO(XSD): real code
 

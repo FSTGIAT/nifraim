@@ -110,6 +110,17 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         inquiry.submitted_at = datetime.utcnow()
         await db.commit()
         logger.info("maslaka.submit_inquiry: %s → submitted (vault file %s)", inquiry.id, filename)
+    except adapter.MaslakaIdentityNotConfigured as e:
+        # Not a transport problem — the deployment has no clearinghouse identity.
+        # Label it as itself so the operator fixes the env instead of chasing SFTP.
+        logger.error("maslaka.submit_inquiry: %s — identity not configured", inquiry_id)
+        inquiry.error_code = "identity_not_configured"
+        inquiry.error_detail = str(e)[:500]
+        await _advance_status(
+            db, inquiry, to_status="failed", actor="system",
+            event_type="identity_not_configured", detail=str(e)[:500],
+        )
+        await db.commit()
     except Exception as e:
         logger.exception("maslaka.submit_inquiry: failed for %s", inquiry_id)
         inquiry.error_code = "transport_error"
@@ -150,7 +161,7 @@ async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None)
             stats["errors"] += 1
             logger.exception("maslaka.poll: error ingesting %s", vf.name)
             await audit.log_event(
-                db, user_id=user_id or uuid.UUID(int=0),
+                db, user_id=user_id,
                 event_type="ingest_error", actor="system",
                 detail=f"{vf.name}: {str(e)[:400]}",
             )

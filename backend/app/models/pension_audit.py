@@ -26,7 +26,13 @@ class PensionAuditLog(Base):
     __tablename__ = "pension_audit_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # Nullable: the system-wide poll (`poll_and_ingest(user_id=None)`) can fail
+    # on a file before it has been matched to an inquiry, so there is no user to
+    # attribute the error to. It used to pass uuid.UUID(int=0), which violates
+    # this FK and poisons the session on the way out.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
 
     # No FK cascade — if an inquiry is deleted we keep the audit row pointing
     # to a dead id (the event still happened). FK is nullable for system-wide

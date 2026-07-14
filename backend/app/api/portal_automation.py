@@ -1370,7 +1370,7 @@ async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
 # token) straight into memory (irm|iex). The PS installer downloads the worker
 # bundle, builds a venv, installs deps + Chromium, writes a BOM-free .env,
 # registers the Scheduled Task, and REPORTS each step + errors to /worker/log.
-def _worker_installer_ps(base: str, token: str, db_url: str, fernet: str, email: str) -> str:
+def _worker_installer_ps(base: str, token: str, db_url: str, fernet: str, email: str, maslaka_key: str = "") -> str:
     """PowerShell installer with a clean pastel WinForms progress window. The
     console is hidden (the .bat runs -WindowStyle Hidden); pip/Chromium output
     goes to a temp log, not the screen; the window auto-closes on success (no
@@ -1381,6 +1381,7 @@ $Base   = '__BASE__'
 $Token  = '__TOKEN__'
 $DbUrl  = '__DBURL__'
 $Fernet = '__FERNET__'
+$Maslaka = '__MASLAKAKEY__'
 $Email  = '__EMAIL__'
 $Install = Join-Path $env:LOCALAPPDATA 'Nifraim'
 $Log = Join-Path $env:TEMP 'nifraim_install.log'
@@ -1444,6 +1445,10 @@ $Work = {
       "DATABASE_URL=$DbUrl",
       "DATABASE_URL_SYNC=$($DbUrl -replace '\+asyncpg','')",
       "PORTAL_CRED_FERNET_KEY=$Fernet",
+      # Maslaka ingest Fernet-encrypts every raw payload at rest and raises if
+      # this is unset — the Gateway worker cannot ingest a single vault file
+      # without it. Empty on workers that don't run the clearinghouse loop.
+      "MASLAKA_ENCRYPTION_KEY=$Maslaka",
       "JWT_SECRET=local-worker",
       "WORKER_USER_EMAIL=$Email",
       "WORKER_LOG_BASE=$Base",
@@ -1559,6 +1564,7 @@ try {
 """
     return (tpl.replace("__BASE__", base).replace("__TOKEN__", token)
                .replace("__DBURL__", db_url).replace("__FERNET__", fernet)
+               .replace("__MASLAKAKEY__", maslaka_key)
                .replace("__EMAIL__", email))
 
 
@@ -1578,6 +1584,7 @@ async def worker_installer_ps(token: str, request: Request, db: AsyncSession = D
         settings.WORKER_PUBLIC_DATABASE_URL or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
         settings.PORTAL_CRED_FERNET_KEY or "",
         user.email,
+        settings.MASLAKA_ENCRYPTION_KEY or "",
     )
     # UTF-8 BOM is load-bearing: the .bat saves this to a file and runs it with
     # Windows PowerShell 5.1, which reads BOM-less files as ANSI — the second

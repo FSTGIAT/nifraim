@@ -27,13 +27,33 @@ from app.schemas.maslaka import (
     InquiryOut,
     PollStatsOut,
 )
+from app.config import settings
 from app.services.maslaka import orchestration
 
 router = APIRouter()
 
 
+def require_maslaka_enabled() -> None:
+    """Master gate: the clearinghouse is OFF until they open our vaults.
+
+    `MASLAKA_ENABLED` is the Y/N switch (see config.py). While it is False the
+    vault does not exist, `MASLAKA_AGENT_*` are unset, and the XML adapter still
+    has open TODO(XSD) questions — so a request built now would be a guess sent
+    to a regulator. Read-only routes stay open (they only touch our own DB);
+    only the two routes that TRANSPORT anything are gated.
+    """
+    if not settings.MASLAKA_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "המסלקה הפנסיונית עדיין לא פעילה — הכספת טרם נפתחה. "
+                "(MASLAKA_ENABLED=false)"
+            ),
+        )
+
+
 # ─── Inquiry creation ──────────────────────────────────────────────────────
-@router.post("/inquiry", response_model=InquiryOut)
+@router.post("/inquiry", response_model=InquiryOut, dependencies=[Depends(require_maslaka_enabled)])
 async def create_inquiry_endpoint(
     payload: InquiryCreateRequest,
     background_tasks: BackgroundTasks,
@@ -128,7 +148,7 @@ async def enriched_picture(
 
 
 # ─── Manual poll (for dev / on-demand refresh) ─────────────────────────────
-@router.post("/poll", response_model=PollStatsOut)
+@router.post("/poll", response_model=PollStatsOut, dependencies=[Depends(require_maslaka_enabled)])
 async def manual_poll(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),

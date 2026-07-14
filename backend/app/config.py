@@ -83,7 +83,13 @@ class Settings(BaseSettings):
     # Pension clearinghouse (המסלקה הפנסיונית / ממשק אחיד) — asynchronous SFTP vault exchange.
     # See .claude/plans/based-on-our-hashed-twilight.md for the design.
     MASLAKA_TRANSPORT: str = "local"               # "local" (file-system mock) | "sftp" (real vault)
-    MASLAKA_ENABLED: bool = False                  # gate scheduler poll + retention jobs
+    # THE MASTER ON/OFF SWITCH for the clearinghouse. False (=N) until the מסלקה
+    # actually opens our vaults and hands over the XSDs + code tables. While it is
+    # False: the scheduler's poll/retention jobs never fire, AND the two routes that
+    # would talk to the vault (POST /inquiry, POST /poll) return 503 instead of
+    # shipping a half-specified request at a regulator. Flip to True ONLY when the
+    # vault is live and MASLAKA_AGENT_NUMBER / MASLAKA_AGENT_ID are set.
+    MASLAKA_ENABLED: bool = False                  # N → Y when the מסלקה grants access
     # Separate Fernet key from PORTAL_CRED_FERNET_KEY — blast-radius isolation.
     MASLAKA_ENCRYPTION_KEY: str = ""
     # Local-filesystem mock vault dirs (used when MASLAKA_TRANSPORT="local").

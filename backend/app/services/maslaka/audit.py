@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 async def log_event(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
     event_type: str,
     inquiry_id: uuid.UUID | None = None,
     customer_id_number: str | None = None,

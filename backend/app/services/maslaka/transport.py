@@ -90,6 +90,17 @@ class LocalVaultTransport(VaultTransport):
         self.outbox_dir = Path(outbox)
         self.inbox_dir = Path(inbox)
         self.archive_dir = Path(archive)
+        # A relative path resolves against the process CWD, so a worker started
+        # from a different directory silently gets a *different, empty* vault and
+        # looks healthy while exchanging nothing. Fine in dev; on the Gateway the
+        # Transporter owns fixed absolute folders, so say so out loud.
+        for p in (self.outbox_dir, self.inbox_dir, self.archive_dir):
+            if not p.is_absolute():
+                logger.warning(
+                    "maslaka.transport.local: %s is relative — it resolves against the "
+                    "current working directory (%s). Set MASLAKA_LOCAL_* to absolute paths.",
+                    p, Path.cwd(),
+                )
         # mkdir on construction — keeps the first call from blowing up on
         # a fresh checkout without a setup step.
         for p in (self.outbox_dir, self.inbox_dir, self.archive_dir):
@@ -97,9 +108,15 @@ class LocalVaultTransport(VaultTransport):
 
     async def send(self, filename: str, payload: bytes) -> None:
         path = self.outbox_dir / filename
+        tmp = path.with_suffix(path.suffix + ".tmp")
 
         def _write() -> None:
-            path.write_bytes(payload)
+            # Write-then-rename: the מסלקה Transporter syncs this folder on its
+            # own schedule and would happily ship a half-written XML. Rename is
+            # atomic within a filesystem, so the Transporter only ever observes
+            # a complete file. Same reason SftpVaultTransport.send does this.
+            tmp.write_bytes(payload)
+            tmp.replace(path)
 
         await asyncio.to_thread(_write)
         logger.info("maslaka.transport.local: wrote %d bytes → %s", len(payload), path)

@@ -592,6 +592,99 @@ graph TD
 
 ---
 
+## 12. Maslaka Gateway — the clearinghouse is a THIRD plane, and it is OFF
+
+The מסלקה הפנסיונית is **not a REST API**. It is an asynchronous, file-based vault
+exchange: we drop an XML request into an `OUT` folder, their **Transporter** agent syncs it
+to the clearinghouse, and their answer lands in an `IN` folder minutes-to-days later. There
+is nothing to `await`.
+
+That forces a **third plane**. Railway has a foreign IP and no static egress; the מסלקה
+whitelists **one fixed IP** and installs onto **Windows Server**. So the vault cannot live
+in the cloud plane — the same wall that already pushed the portal automation onto an
+Israeli worker (§1).
+
+```mermaid
+graph LR
+    subgraph cloud["☁️ Railway (foreign IP)"]
+        API["POST /api/maslaka/inquiry<br/>→ row: status=pending"]
+        DB[("Postgres<br/>pension_inquiries")]
+        API --> DB
+    end
+    subgraph gw["🇮🇱 Maslaka Gateway VM — 51.58.32.28 (STATIC)"]
+        W["Nifraim worker<br/>submit + poll_and_ingest"]
+        F["C:\\Nifraim\\Maslaka\\{TST,PRD}\\{IN,OUT}"]
+        T["מסלקה Transporter<br/>(their agent)"]
+        W -->|"writes events XML"| F
+        F --> T
+        T -->|"feedback / holdings XML"| F
+        F -->|"reads"| W
+    end
+    W <-->|"claims pending, writes holdings"| DB
+    T <-->|"whitelisted IP"| M["מסלקה vault"]
+```
+
+### The Y/N switch — `MASLAKA_ENABLED`
+
+**Today it is `False` (= N), and that is deliberate.** The vaults are not open yet, the XSDs
+have not arrived, and `MASLAKA_AGENT_NUMBER` / `MASLAKA_AGENT_ID` are unset. While it is
+False:
+
+- the scheduler's poll + retention jobs never fire (`scheduler.py`), **and**
+- the two routes that would *transport* anything — `POST /api/maslaka/inquiry` and
+  `POST /api/maslaka/poll` — return **503** (`require_maslaka_enabled` in `api/maslaka.py`).
+  Read-only routes stay open; they only touch our own DB.
+
+**Flip it to `True` (= Y) only when all three are true:** the מסלקה has opened the vault,
+the Transporter is syncing the folders, and `MASLAKA_AGENT_*` are set. Turning it on early
+means shipping a guessed XML tree at a regulator.
+
+### Invariants
+
+1. **Never send an unidentified request.** With `MASLAKA_AGENT_*` unset the adapter used to
+   emit a literal `TODO(XSD)` as our agent number — and *did*, into a real outbox file.
+   `build_events_request` now raises `MaslakaIdentityNotConfigured`. A regulator's vault is
+   the wrong place to discover the deployment was never configured.
+2. **The outbox write must be atomic.** The Transporter syncs that folder on **its** schedule,
+   not ours; a bare `write_bytes` lets it ship a half-written XML. `LocalVaultTransport.send`
+   writes `.tmp` then renames (as the SFTP path always did). Inbound is safe already —
+   `list_inbox` skips `.tmp` and dotfiles.
+3. **The API host is NOT the vault host.** `submit_inquiry` writing the outbox from Railway
+   writes to a container disk the Transporter cannot see. The outbound leg belongs on the
+   Gateway worker (claim `pending` inquiries, mirroring the `PortalRun` claim loop).
+4. **Vault paths must be ABSOLUTE.** `MASLAKA_LOCAL_*` resolve against the process CWD — a
+   worker started from a different directory silently gets a *different, empty* vault and
+   looks healthy while exchanging nothing.
+5. **Transporter = Yes is what makes the code free.** `LocalVaultTransport` is pure
+   drop-a-file / read-a-file, and inbound is classified by **XML root element, not filename**
+   — so an external folder-syncing agent needs zero changes inside `services/maslaka/`.
+
+### The static IP is load-bearing — what to do when it changes
+
+`51.58.32.28` (Azure, Israel Central, **Standard SKU + Static assignment**) is whitelisted by
+the מסלקה. **It must never change.** Static assignment survives reboot *and* deallocation —
+but it is destroyed if the resource is deleted.
+
+**If the Gateway's public IP ever changes, the vault stops working silently** — no error, no
+alert, just files that never arrive. That failure looks exactly like a code bug, so check the
+IP first, before you debug anything.
+
+| Situation | What to do |
+|---|---|
+| VM restarted / resized | **Nothing.** Static survives both. Resizing (e.g. B2s_v2 → B2s once quota clears) keeps the IP. |
+| Public IP resource deleted / recreated | You get a **new** address. Email the מסלקה the new IP and wait for them to re-whitelist. Nothing works until they do. |
+| Rebuilding the VM | **Do not delete the public IP.** Detach it, delete the VM, attach the same IP to the new one. `Delete public IP when VM is deleted` is intentionally **unchecked**. |
+| Region change | You cannot move a VM between regions. New VM = new IP = re-whitelist. |
+| **Your own home IP changed** (RDP broken) | Irrelevant to the מסלקה — they never talk to your laptop. Only *your* RDP rule breaks. Update the NSG rule `Allow-RDP-Roy` source to your new `x.x.x.x/32`. This happens often; it is not an outage. |
+
+**Do not confuse the two addresses.** The Gateway's IP (`51.58.32.28`) is what the מסלקה
+whitelists and must be static. Your home IP is dynamic, changes constantly, and gates only
+your own RDP access.
+
+Full setup + IP-change runbook: **`maslaka-gateway` skill**.
+
+---
+
 *Regenerate this map when the two-plane topology, the OTP routing, the mail-intake
 routing, or the comparison/merge selection logic changes — those are the parts a new
 session cannot safely infer from reading one file.*
