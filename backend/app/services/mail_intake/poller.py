@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mailbox_config import MailboxConfig
 from app.services.mail_intake import (
+    ERR_ADMIN_CONSENT,
+    ERR_CONSENT_DECLINED,
     ERR_NOT_CONFIGURED,
     STATUS_OK,
     MailIntakeError,
@@ -85,10 +87,19 @@ async def poll_mailbox(db: AsyncSession, cfg: MailboxConfig, *, force: bool = Fa
     return ingested
 
 
+# The consent screen already said WHY there is no token. Both of these are answers
+# an agent can act on ("approve it", "ask your admin"); ERR_NOT_CONFIGURED is not.
+_KEEP_OVER_NOT_CONFIGURED = (ERR_CONSENT_DECLINED, ERR_ADMIN_CONSENT)
+
+
 def _mark_failure(cfg: MailboxConfig, code: str, now: datetime) -> None:
     cfg.last_polled_at = now
     cfg.last_status = "error"
-    cfg.last_error = code            # a CODE, never a provider message
+    # A poll of a token-less microsoft mailbox always yields not_configured. Letting
+    # that overwrite a consent refusal downgrades a specific, actionable reason into
+    # "החיבור עדיין לא הושלם" — which is what an agent saw after pressing בדיקה.
+    if not (code == ERR_NOT_CONFIGURED and cfg.last_error in _KEEP_OVER_NOT_CONFIGURED):
+        cfg.last_error = code        # a CODE, never a provider message
     cfg.consecutive_failures = (cfg.consecutive_failures or 0) + 1
 
 

@@ -277,6 +277,20 @@ class MenoraPortal(BasePortalAutomation):
             # progress") whose only control is a "here" reset link. Click it to
             # drop the old session and let the authenticated session continue —
             # the same recovery the Harel plugin uses. Retry a few times.
+            #
+            # FIRST, though, give the SPA time to redirect. The loop below reads
+            # page.url IMMEDIATELY, so a healthy-but-slow post-OTP redirect was
+            # indistinguishable from a failure: with no BIG-IP reset link on the
+            # page there is nothing to click, so it fell straight through to the
+            # raise. Live: a VALID code was accepted and the run still died on
+            # "נשארנו על https://menoranet.menora.co.il/" — we simply never waited.
+            try:
+                await page.wait_for_url(
+                    lambda u: "/agents-site" in (u or ""), timeout=30000
+                )
+            except Exception:
+                pass
+
             for _attempt in range(3):
                 if "/agents-site" in page.url:
                     break
@@ -526,6 +540,9 @@ class MenoraPortal(BasePortalAutomation):
                 _logger.warning(
                     "Menora: נפרעים grab failed (production still returned): %s", e
                 )
+                # Folded leg — menora_nifraim never runs standalone in a batch,
+                # so a silent miss here means no Menora rows in the merged נפרעים.
+                self.partial_errors.append(f"נפרעים: {str(e)[:120]}")
             return results
         finally:
             try:

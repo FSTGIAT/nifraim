@@ -124,6 +124,7 @@ Invariants:
 | **A single portal run (login→OTP→export)** | `services/portal_automation/runner.py::_run_inner` |
 | **"Run all companies" batch** | `services/portal_automation/batch_runner.py::_run_batch_inner` |
 | **A specific insurer's automation** | `services/portal_automation/companies/<name>.py` |
+| **Which fields the "הוסף פורטל" form shows** | `companies/__init__.py::PORTAL_LOGIN_FIELDS` → `/portal-kinds` → `PortalCredentialModal.vue` |
 | **Merge per-company files into one workbook** | `services/portal_automation/aggregate.py` |
 | **הכשרה production (emailed zip, no portal)** | `services/hachshara_prod/` + §10 |
 | **Which mail path an agent gets (M365/Gmail/other)** | `services/mail_intake/detect.py::detect_mail_host` |
@@ -208,6 +209,52 @@ These look arbitrary; each encodes a fixed production incident.
 4. **Fail-open on the phone.** Any unlisted-company SMS with a 4–8 digit code is
    still forwarded, so a new insurer never silently drops. BLOCK templates are
    the privacy lever for personal 2FA.
+
+## 4b. Credentials — the login form is DECLARED, not assumed
+
+`portal_credentials` has exactly two value columns (`username` +
+`encrypted_password`). Real insurer login forms don't agree with that shape: **מור
+asks for THREE fields** — מס' רשיון + ת"ז + טלפון — and `mor.py::_split` reads them
+back out of a *packed* `username="<license>|<id>"` and `password="<phone>"`.
+
+The packing used to be invisible to the UI: "הוסף פורטל" rendered a hardcoded שם
+משתמש + סיסמה, so a user adding מור had **no field for the phone** — the number Mor
+SMS-OTPs. The credential was unenterable, and only rows hand-packed for the dev
+account worked. Invariants:
+
+1. **A portal that needs non-default fields declares them** in
+   `companies/__init__.py::PORTAL_LOGIN_FIELDS`; `/portal-kinds` ships the spec and
+   `PortalCredentialModal.vue` renders it. No portal-specific branching in the Vue.
+2. **`target` + list order ARE the packing convention.** Fields sharing a `target`
+   are joined with `"|"` in spec order — precisely what the plugin's `_split()`
+   parses. Reorder the spec and you silently swap רשיון with ת"ז.
+3. **`secret: True` never round-trips.** The password column is encrypted, so those
+   fields render blank on edit and blank means *leave unchanged* — never overwrite a
+   stored secret with an empty string.
+
+## 4c. reCAPTCHA Enterprise — a COLD profile is why it works for you and not for them
+
+Mor and Meitav are score-gated by reCAPTCHA **Enterprise**, which scores *the profile
+making the request*. Persistent profiles are per-portal
+(`data/browser_profiles/<portal_kind>`), so a portal's **first-ever run on an agent's PC**
+starts with zero cookies and zero reputation and is rejected instantly — with Mor's generic
+`אירעה שגיאה`, which looks exactly like a bad password. Shipped incident (2026-07-14): Mor
+"worked on the dev box" (profile warm from months of runs) and failed for a brand-new user
+on a healthy worker with correct credentials. Invariants:
+
+1. **Warm a cold profile BEFORE its one submit** (`mor.py::_warm_cold_profile`), never by
+   retrying a submit — every rejected submit lowers the score further.
+2. **Cold means "no run has succeeded yet"**, not "the directory is missing". A failed first
+   attempt *creates* the dir, so dir-existence would call the coldest profile warm and skip
+   the warm-up on exactly the retry that needs it. → `WARM_MARKER` in `runner.py`.
+3. **Log which browser binary actually launched.** `_launch_real_persistent` tries
+   chrome → chrome.exe → **msedge** → chromium. It used to fall back to bundled Chromium
+   *silently* — the one fingerprint Enterprise punishes — so an Edge-only PC failed forever
+   and invisibly. `WORKER-LOG … persistent browser=chrome COLD-PROFILE` is the first thing
+   to read on any score failure.
+4. **Never assert a cause you didn't measure.** `אירעה שגיאה` is returned for BOTH a low score
+   and wrong credentials. `mor.py::_classify` reads the POST response body; only the server's
+   own words decide which message the user gets.
 
 ## 5. Comparison / merge invariants
 
@@ -459,6 +506,19 @@ graph LR
    forwarding rule all look identical to "הכשרה sent nothing this month". The
    `last_received_at` chip is the only thing that distinguishes them — treat it as
    required, not polish.
+9. **A refused consent is not an unreachable mailbox, and `error` alone can't tell them
+   apart.** Microsoft returns `access_denied` both when the agent presses Cancel
+   (`AADSTS65004`) and when the tenant never offered an Approve button at all
+   (`AADSTS65001`, user consent restricted to verified publishers). Classify on `error`
+   **and** `error_description` (`graph.classify_redirect_error`) — reading only `error`
+   labelled every refusal `mailbox_unreachable`, whose copy promises an automatic retry
+   for a flow that is waiting on a human to click Approve. (This shipped once: an agent
+   declined twice, saw nothing, and every בדיקה answered "החיבור עדיין לא הושלם".)
+10. **The consent outcome must be PERSISTED, not just redirected.** The reason lives on
+   `mailbox_configs.last_error`, or it dies in a query string nobody reads. And the
+   poller must not clobber it: polling a token-less microsoft mailbox always yields
+   `not_configured`, which downgrades an actionable reason ("approve it" / "ask your
+   admin") into "you never started" — see `_KEEP_OVER_NOT_CONFIGURED` in `poller.py`.
 
 **Deployment gates**: `HACHSHARA_MAIL_ENABLED` (scheduler), `MAILBOX_ENCRYPTION_KEY`
 (separate Fernet key from `PORTAL_CRED_FERNET_KEY`), `MS_OAUTH_*`, `RESEND_*`. The API

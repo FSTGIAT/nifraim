@@ -46,17 +46,17 @@ class MigdalApmPortal(BasePortalAutomation):
     # for this נפרעים report. Still runnable as a manual single run.
     include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
 
-    async def login(self, page: "Page", username: str, password: str) -> None:
-        await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_timeout(2000)
+    async def _restart_if_bounced(self, page: "Page") -> bool:
+        """F5 APM bot gate: a hit can bounce to my.logout.php3?errorcode=19.
 
-        # F5 APM bot gate: the first hit bounces to my.logout.php3?errorcode=19.
-        # The recovery link's href is a (literal, server-templated) session token
-        # "https://apmaccess.migdal.co.il/[SESSION_RESTART_URL]"; navigating to it
-        # restarts the session and serves the real logon form. We navigate by href
-        # rather than click because the page has TWO "לחץ כאן" links — the other is
-        # a remote-support link to lpsplatformp.migdal.co.il. Loop in case it
-        # bounces more than once.
+        The recovery link's href is a (literal, server-templated) session token
+        "https://apmaccess.migdal.co.il/[SESSION_RESTART_URL]"; navigating to it
+        restarts the session and serves the real logon form. We navigate by href
+        rather than click because the page has TWO "לחץ כאן" links — the other is
+        a remote-support link to lpsplatformp.migdal.co.il. Loop in case it bounces
+        more than once. Returns True if we followed a restart link.
+        """
+        recovered = False
         for _ in range(4):
             if "errorcode" not in page.url and "logout" not in page.url:
                 break
@@ -74,6 +74,13 @@ class MigdalApmPortal(BasePortalAutomation):
                 break
             await page.goto(restart, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(2000)
+            recovered = True
+        return recovered
+
+    async def login(self, page: "Page", username: str, password: str) -> None:
+        await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2000)
+        await self._restart_if_bounced(page)
 
         await apm_login_submit(page, username, password)
         try:
@@ -89,7 +96,26 @@ class MigdalApmPortal(BasePortalAutomation):
         await self._dump_page_state(page, dump)
         # F5 reuses the same form id (input_2) for the OTP step; cover that plus
         # the generic one-time-code names.
-        await self._wait_visible(page, self.OTP_FIELD, timeout=20000)
+        try:
+            await self._wait_visible(page, self.OTP_FIELD, timeout=20000)
+        except Exception:
+            # The gate can also bounce us AFTER the credentials — we land back on
+            # my.logout.php3?errorcode=19 and there IS no OTP field to wait for.
+            # Recovery only ran before the submit, so this died on a bare 20s
+            # timeout. It bites hardest in a batch: the sibling `migdal` credential
+            # logs into this same F5 seconds earlier (and retries), so by the time
+            # apmaccess is hit the gateway is hostile. Restart the session and log
+            # in once more rather than failing the company for the whole batch.
+            from app.services.portal_automation.runner import _worker_note
+            _worker_note(f"migdal_apm: no OTP field (url={page.url}) — F5 restart + retry login")
+            if not await self._restart_if_bounced(page):
+                await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(2000)
+                await self._restart_if_bounced(page)
+            await apm_login_submit(page, username, password)
+            await page.wait_for_timeout(2000)
+            await self._wait_visible(page, self.OTP_FIELD, timeout=30000)
+            _worker_note("migdal_apm: recovered — OTP field is up after the F5 restart")
 
     # F5 APM OTP field — input_2 is reused for the code; placeholder/name variants
     # cover the other portals' markup.

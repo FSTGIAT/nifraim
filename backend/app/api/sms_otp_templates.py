@@ -64,6 +64,15 @@ DEFAULT_SMS_OTP_TEMPLATES = [
     # Code may precede or follow the "מור" token — match either order (still
     # boundary-guarded so it won't fire inside a longer word). Live SMS unverified.
     {"company_name": "מור", "portal_kind": "mor", "pattern": r"(מור[\s\-:.,].*\d{4,8}|\d{4,8}.*מור[\s\-:.,]|more.?invest.*\d{4,8}|morefund.*\d{4,8})"},
+    # Mor's REAL OTP text carries NO brand at all — live-captured 2026-07-14:
+    #   "קוד אימות לאתר 514129"
+    # so the brand-anchored rule above never fires and the code fell through to the
+    # generic "כללי" catch-all → portal_kind NULL. An untagged code shares the bucket
+    # with junk SMS and other companies' codes (newest wins), which is exactly how a
+    # run-all batch consumes the wrong OTP. Anchor on the real wording — same fix as
+    # Phoenix's brand-less "הסיסמה:NNNNNN" above.
+    {"company_name": "מור", "portal_kind": "mor", "pattern": r"קוד\s*אימות\s*לאתר\s*\d{4,8}",
+     "example": "קוד אימות לאתר 514129"},
     # Privacy block: personal bank 2FA — DROP even though it carries a code.
     {"company_name": "בנק", "portal_kind": None, "is_block": True, "pattern": r"בנק.*\d{4,8}"},
     # Generic OTP-context catch-all (company sent from a bare short code).

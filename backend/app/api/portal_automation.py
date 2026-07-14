@@ -54,7 +54,13 @@ from app.schemas.portal_automation import (
     TwilioNumberOut,
 )
 from app.services import twilio_provisioning
-from app.services.portal_automation.companies import PORTAL_LABELS, PORTAL_META, REGISTRY, WORKER_ONLY_PORTALS
+from app.services.portal_automation.companies import (
+    PORTAL_LABELS,
+    PORTAL_META,
+    REGISTRY,
+    WORKER_ONLY_PORTALS,
+    login_fields_for,
+)
 from app.services.portal_automation.runner import run_automation, run_phone_change
 from app.services.portal_automation.batch_runner import run_batch
 from app.utils.crypto import encrypt
@@ -266,6 +272,9 @@ async def list_portal_kinds(user: User = Depends(get_current_user)):
             "category": category,           # "פרודוקציה" / "נפרעים" / …
             "url": url,
             "implemented": kind in IMPLEMENTED_PORTALS,
+            # Which fields the portal's own login form asks for. Mor wants three
+            # (רשיון + ת"ז + טלפון); everyone else the plain username+password.
+            "login_fields": login_fields_for(kind),
         })
     # Implemented first, then grouped by company, then category.
     out.sort(key=lambda o: (not o["implemented"], o["company"], o["category"]))
@@ -1158,7 +1167,12 @@ async def phone_forward_webhook(
         body_text = raw.decode("utf-8", "replace").strip()
         extracted_from = "text/plain"
 
-    body_text = body_text.strip()
+    # Postgres text columns cannot hold a NUL byte, and `decode(..., "replace")`
+    # passes 0x00 through untouched (it is valid UTF-8). A single NUL in an SMS
+    # therefore raised CharacterNotInRepertoireError, 500'd this webhook, and the
+    # code was LOST — the portal run then sat waiting 300s for an OTP that had
+    # already arrived. Seen live: POST /phone-forward/… → 500.
+    body_text = body_text.replace("\x00", "").strip()
     logger.info(
         "phone-forward: ct=%s len=%s extracted_from=%s preview=%r",
         content_type, len(raw), extracted_from, body_text[:80],
@@ -1294,7 +1308,9 @@ async def worker_log(token: str, request: Request, db: AsyncSession = Depends(ge
     user = (await db.execute(
         select(User).where(User.phone_forward_token == _clean_token(token))
     )).scalar_one_or_none()
-    body = (await request.body()).decode("utf-8", "replace")[:4000]
+    # Strip NUL: this body can reach a text column via current_job below, and
+    # Postgres rejects 0x00 (same class of bug as the phone-forward webhook).
+    body = (await request.body()).decode("utf-8", "replace").replace("\x00", "")[:4000]
     logger.warning("WORKER-LOG [%s]: %s", user.email if user else "unknown-token", body)
     # Installer progress ("installer: מוריד רכיבים" / "installer: FATAL: …") is
     # mirrored into the user's heartbeat row so GET /worker/status can show a

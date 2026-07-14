@@ -37,6 +37,11 @@ from app.services.portal_automation.runner import (
     OtpTimeout,
 )
 
+# Wall-clock cap for a WORKER_ONLY portal (phoenix_terminal). Must exceed the
+# orchestrator's own budget — 420s login (incl. up to 300s OTP wait) + 420s export
+# + parse — or we kill it from outside before it can say what went wrong.
+WORKER_ONLY_TIMEOUT_S = 1500
+
 _HE_MONTHS = {
     1: "ינואר", 2: "פברואר", 3: "מרץ", 4: "אפריל", 5: "מאי", 6: "יוני",
     7: "יולי", 8: "אוגוסט", 9: "ספטמבר", 10: "אוקטובר", 11: "נובמבר", 12: "דצמבר",
@@ -89,6 +94,7 @@ async def _tag_source_accounts_from_filename(db, upload_ids: list[uuid.UUID]) ->
     import re as _re
     from sqlalchemy import update as sql_update
     from app.models.upload import FileUpload
+    from app.models.record import ClientRecord
     rows = (await db.execute(
         select(FileUpload).where(FileUpload.id.in_(upload_ids))
     )).scalars().all()
@@ -137,11 +143,32 @@ async def _run_worker_only_portal(db, run, cred):
     if not script or not script.exists():
         await _set_status(db, run, status="failed", error="orchestrator not found", finished=True)
         return False, None
-    env = {**os.environ, "PHOENIX_MBT_WAIT_S": os.environ.get("PHOENIX_MBT_WAIT_S", "150")}
+    # PYTHONIOENCODING is NOT optional here. We capture the child's output, so its
+    # stdout is a PIPE — and on Windows Python then encodes stdout with the locale
+    # codepage (cp1255), not UTF-8. The first '→' it printed raised
+    # UnicodeEncodeError and killed a run that had already opened the terminal and
+    # downloaded the file. A standalone run never hit this because it inherits a
+    # console instead of a pipe. (phoenix_terminal_run._run_child guards its own
+    # children the same way.)
+    env = {
+        **os.environ,
+        "PHOENIX_MBT_WAIT_S": os.environ.get("PHOENIX_MBT_WAIT_S", "150"),
+        "PYTHONIOENCODING": "utf-8",
+    }
     loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(None, lambda: subprocess.run(
-            [sys.executable, str(script), str(run.id)], timeout=330, env=env))
+        # The orchestrator's own budget is 420s login + 420s export + parse — and the
+        # login alone can spend 300s waiting for an OTP. A 330s cap here killed it
+        # from OUTSIDE, mid-flight, before it could report why (live: "timed out after
+        # 330.0 seconds"). Stay above the sum, and keep the child's output: it is the
+        # only account of what the green-screen actually did.
+        proc = await loop.run_in_executor(None, lambda: subprocess.run(
+            [sys.executable, str(script), str(run.id)], timeout=WORKER_ONLY_TIMEOUT_S,
+            env=env, capture_output=True, text=True, errors="replace"))
+        if proc.returncode != 0:
+            tail = ((proc.stdout or "") + (proc.stderr or ""))[-1500:]
+            logger.warning("worker-only portal %s exited %s: %s",
+                           cred.portal_kind, proc.returncode, tail)
     except Exception as e:
         logger.exception("worker-only portal %s failed", cred.portal_kind)
         await _set_status(db, run, status="failed", error=str(e)[:300], finished=True)
@@ -224,6 +251,13 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # not re-attempted, so we never burn extra OTPs on a guaranteed failure.
     otp_failed: list[PortalCredential] = []
 
+    # Data-loss notes from runs that finished "success" but lost rows on the
+    # way (a folded נפרעים leg failed, or a file ingested with an unrecognized
+    # format and was excluded from the merge). _run_inner records them on
+    # run.error_message; collecting them here downgrades the batch to partial
+    # so the loss is visible instead of shipping a quietly-thin merged file.
+    partial_notes: list[str] = []
+
     # ── 1. Run every credential sequentially ─────────────────────────────
     for cred in creds:
         run = PortalRun(
@@ -264,6 +298,8 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                     prod_upload_ids.append(upload_id)
                 elif file_category == "commission":
                     comm_upload_ids.append(upload_id)
+            if run.error_message:  # success-with-losses (see partial_notes above)
+                partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
         except OtpTimeout as e:
             await _set_status(db, run, status="failed", error=str(e), finished=True)
             cred.last_run_status = "failed"
@@ -327,6 +363,8 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                         prod_upload_ids.append(upload_id)
                     elif file_category == "commission":
                         comm_upload_ids.append(upload_id)
+                if run.error_message:  # success-with-losses (see partial_notes above)
+                    partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
             except OtpTimeout as e:
                 # Still no OTP — leave the pass-1 failed tally as-is.
                 await _set_status(db, run, status="failed", error=str(e), finished=True)
@@ -500,6 +538,19 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         batch.error_message = (
             f"{batch.error_message} | {reason}" if batch.error_message else reason
         )
+
+    # Success-with-losses: some run downloaded data that never reached the
+    # merged files (failed fold leg / unrecognized format). The merged נפרעים
+    # LOOKS fine but is missing whole companies — that must read as partial,
+    # with the per-portal notes in the batch error (surfaced by the results
+    # toast), not as a green batch.
+    if partial_notes:
+        if batch.status == "success":
+            batch.status = "partial"
+        note = "חברות עם נתונים חסרים באיחוד: " + " ; ".join(partial_notes)
+        batch.error_message = (
+            f"{batch.error_message} | {note}" if batch.error_message else note
+        )[:2000]
     batch.finished_at = datetime.utcnow()
     await db.commit()
 

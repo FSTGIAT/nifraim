@@ -304,6 +304,10 @@ class AltshulerPortal(BasePortalAutomation):
             )
         if errors:
             logger.warning("אלטשולר: חלק מהדוחות נכשלו: %s", " | ".join(errors))
+            # Surface on the run/batch — the נפרעים-גמל leg is the only altshuler
+            # file with a parser, so losing it means zero altshuler rows in the
+            # merged נפרעים while the run still shows success.
+            self.partial_errors.extend(f"דוח {e}" for e in errors)
         return saved
 
     async def _nav_amlot_link(self, page: "Page", aria: str) -> None:

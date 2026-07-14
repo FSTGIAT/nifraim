@@ -43,16 +43,104 @@ class MorPortal(BasePortalAutomation):
 
     def _split(self, username: str, password: str) -> tuple[str, str, str]:
         """username='<license>|<id>', password='<phone>'. Falls back to
-        license==id when no pipe (operator often has them equal)."""
+        license==id when no pipe (operator often has them equal).
+
+        Every value is reduced to DIGITS. The user types the phone into a form
+        field, so it can arrive as 050-4302306 or with spaces; Angular would then
+        reject it (or Mor's server would) for a reason no log would explain. Yelin
+        and Meitav already strip this way — Mor only did `.strip()`."""
         parts = (username or "").split("|")
-        license_no = parts[0].strip()
-        id_no = parts[1].strip() if len(parts) > 1 else license_no
-        phone = (password or "").strip()
+        license_no = re.sub(r"\D", "", parts[0])
+        id_no = re.sub(r"\D", "", parts[1]) if len(parts) > 1 else license_no
+        phone = re.sub(r"\D", "", password or "")
         return license_no, id_no, phone
+
+    # Set by runner.py when this portal's persistent profile dir did not exist —
+    # i.e. the first-ever Mor run on this machine.
+    profile_was_cold = False
+
+    @staticmethod
+    def _classify(status: int | None, body: str) -> str:
+        """What did Mor's server ACTUALLY say? 'credentials' | 'recaptcha' | 'unknown'.
+
+        The on-screen toast is the same generic "אירעה שגיאה" for a low bot score and
+        for wrong פרטים, so the toast alone cannot tell them apart — yet the old error
+        message asserted "ציון reCAPTCHA נמוך" every time. That guess sends a user with
+        a typo'd phone into a pointless 30-minute cooldown. Judge the response body."""
+        b = (body or "").lower()
+        if any(k in b for k in ("recaptcha", "captcha", "score", "robot", "suspicious")):
+            return "recaptcha"
+        if any(k in body for k in ("פרטים שגויים", "פרטים לא", "שגוי", "לא נמצא", "לא קיים")) or \
+           any(k in b for k in ("invalid", "unauthorized", "not found", "incorrect")):
+            return "credentials"
+        if status in (401, 403):
+            return "credentials"
+        return "unknown"
+
+    async def _warm_cold_profile(self, page: "Page") -> None:
+        """Give a brand-new profile something to be scored ON, before the one submit.
+
+        reCAPTCHA Enterprise scores the profile making the request: its Google
+        cookies, its site history, and the human-ness of the interaction. A
+        first-ever profile has none of that and gets rejected instantly — which is
+        why Mor works on a dev box that's run it for months and fails on a new
+        agent's PC. Warming is strictly NON-SUBMITTING (a rejected submit lowers the
+        score further, so this must happen before the first attempt, never as a
+        retry): let Google set its cookies, then dwell on Mor's page with real
+        pointer movement while the Enterprise script collects signals."""
+        from app.services.portal_automation.runner import logger as _llog
+        _llog.info("Mor: COLD profile — warming up before first submit")
+        try:
+            await page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(4000)
+            for x, y in ((320, 240), (520, 380), (700, 300)):
+                await page.mouse.move(x, y)
+                await page.wait_for_timeout(350)
+        except Exception as e:
+            _llog.warning("Mor: warm-up google step failed (continuing): %s", e)
+        try:
+            await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=40000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+            # Dwell on the login page with human-ish pointer movement + a scroll.
+            for i in range(12):
+                await page.mouse.move(260 + i * 28, 200 + (i % 4) * 45)
+                await page.wait_for_timeout(1200)
+            await page.mouse.wheel(0, 220)
+            await page.wait_for_timeout(2500)
+            await page.mouse.wheel(0, -220)
+        except Exception as e:
+            _llog.warning("Mor: warm-up dwell failed (continuing): %s", e)
+        _llog.info("Mor: warm-up done")
 
     async def login(self, page: "Page", username: str, password: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
         license_no, id_no, phone = self._split(username, password)
+
+        # Record what Mor's SERVER says when it rejects, so the failure message is a
+        # measurement instead of a guess. Registered before any navigation.
+        srv: dict = {"status": None, "body": "", "url": ""}
+
+        async def _on_resp(resp):
+            try:
+                if resp.request.method != "POST" or "more.co.il" not in resp.url:
+                    return
+                body = ""
+                try:
+                    body = (await resp.text())[:600]
+                except Exception:
+                    pass
+                if resp.status >= 400 or "שגיא" in body:
+                    srv["status"], srv["body"], srv["url"] = resp.status, body, resp.url
+            except Exception:
+                pass
+
+        page.on("response", _on_resp)
+
+        if self.profile_was_cold:
+            await self._warm_cold_profile(page)
 
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=40000)
         try:
@@ -217,14 +305,31 @@ class MorPortal(BasePortalAutomation):
                 await page.wait_for_timeout(500)
 
             if _rejected:
-                # Mor's reCAPTCHA-Enterprise returns "אירעה שגיאה" post-submit when it
-                # scores the session low. DO NOT spam re-clicks or re-navigate — each
-                # extra submit lowers the score further (a rapid test loop today drove
-                # it low enough that even manual clicks bounced). Instead: ONE gentle
-                # re-click, then PATIENTLY wait for the OTP modal (up to ~2 min) so a
-                # transient recovery — or an operator clicking התחבר on the headed
-                # worker — carries it through, WITHOUT burning the score.
+                # "אירעה שגיאה" post-submit means EITHER a low reCAPTCHA-Enterprise
+                # score OR wrong פרטים — the toast is identical, so ask the SERVER
+                # which it was (srv[] was captured off the POST response).
                 from app.services.portal_automation.runner import logger as _llog
+                cause = self._classify(srv.get("status"), srv.get("body", ""))
+                _llog.info(
+                    "Mor login rejected: cause=%s http=%s body=%.200s",
+                    cause, srv.get("status"), srv.get("body", ""),
+                )
+
+                # Wrong credentials will NEVER heal by waiting or re-clicking, and each
+                # extra submit costs reCAPTCHA score. Fail straight away and tell the
+                # user which field to check.
+                if cause == "credentials":
+                    raise RuntimeError(
+                        "Mor: הפרטים נדחו על ידי מור (לא ציון reCAPTCHA — השרת החזיר שגיאת פרטים). "
+                        "בדוק מספר רשיון / תעודת זהות / טלפון. "
+                        f"תשובת השרת: {srv.get('status')} {srv.get('body', '')[:160]}"
+                    )
+
+                # Otherwise: DO NOT spam re-clicks or re-navigate — each extra submit
+                # lowers the score further (a rapid test loop once drove it low enough
+                # that even manual clicks bounced). ONE gentle re-click, then PATIENTLY
+                # wait for the OTP modal (~2 min) so a transient recovery — or an
+                # operator clicking התחבר on the headed worker — carries it through.
                 try:
                     btn = page.locator(
                         "button[type='submit']:not([disabled]), "
@@ -236,17 +341,26 @@ class MorPortal(BasePortalAutomation):
                 except Exception:
                     pass
                 _llog.info(
-                    "Mor login: 'אירעה שגיאה' (low reCAPTCHA score) — waiting up to 120s "
-                    "for OTP modal (operator may click התחבר on the headed worker)"
+                    "Mor login: waiting up to 120s for OTP modal "
+                    "(operator may click התחבר on the headed worker)"
                 )
                 for _i in range(60):  # 60 × 2s = 120s
                     if await page.locator(otp_sel).count() and await page.locator(otp_sel).first.is_visible():
                         _llog.info("Mor login: OTP modal opened (recovered) after ~%ds", _i * 2)
                         return
                     await page.wait_for_timeout(2000)
+
+                # Report the evidence, not a theory. `cold` matters: a first-ever
+                # profile on a new agent's PC is the classic low-score case.
+                _cold = " (פרופיל חדש במחשב הזה — ניקוד reCAPTCHA נמוך אופייני)" if self.profile_was_cold else ""
+                _srv_txt = (
+                    f" תשובת השרת: {srv.get('status')} {srv.get('body', '')[:160]}"
+                    if srv.get("status") or srv.get("body") else " (השרת לא החזיר גוף שגיאה)"
+                )
                 raise RuntimeError(
-                    "Mor: הכניסה נדחתה (אירעה שגיאה) — ציון reCAPTCHA נמוך מריצות חוזרות. "
-                    "המתן ~20-30 דקות ונסה שוב (ריצה בודדת עוברת); בבאטצ' מור רץ פעם אחת."
+                    f"Mor: הכניסה נדחתה (אירעה שגיאה){_cold}. סיבה משוערת: "
+                    f"{'ציון reCAPTCHA נמוך' if cause == 'recaptcha' else 'לא ודאית'}."
+                    f"{_srv_txt} המתן ~20-30 דקות ונסה שוב."
                 )
             raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 

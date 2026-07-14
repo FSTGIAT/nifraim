@@ -9,6 +9,14 @@ data/
 maslaka_vault/
 backend/maslaka_vault/
 
+# Remotion RENDER OUTPUTS that got committed into public/ (31MB). They are build
+# artifacts — `npm run render:walkthrough` PRODUCES walkthrough.mp4 — and nothing in
+# the app references either file. They pushed the upload past the Railway CLI's fixed
+# 30s request timeout, so `railway up` failed 100% of the time at ~2MB/s uplink while
+# the API and the app were perfectly healthy. Keep them out of the deploy context.
+frontend/public/walkthrough.mp4
+frontend/public/videos/nifraim-commercial.mp4
+
 # Dependency / build dirs (rebuilt in the image)
 node_modules/
 frontend/node_modules/

@@ -32,6 +32,7 @@ import httpx
 from app.config import settings
 from app.services.mail_intake import (
     ERR_ADMIN_CONSENT,
+    ERR_CONSENT_DECLINED,
     ERR_CONSENT_REVOKED,
     ERR_MAILBOX_UNREACHABLE,
     FetchedAttachment,
@@ -50,11 +51,17 @@ SCOPES = "offline_access Mail.Read"
 
 _HTTP_TIMEOUT_S = 20.0
 _STATE_TTL_S = 600
+# The admin-consent link is sent to a human by email/WhatsApp and approved on their
+# own schedule — days, not minutes.
+ADMIN_STATE_TTL_S = 14 * 24 * 3600
 
 # AADSTS65001 = user/admin has not consented. AADSTS650057/AADSTS900971 and the
 # admin-consent-required family all mean "an admin must approve this app once".
 _ADMIN_CONSENT_CODES = ("aadsts65001", "aadsts900971", "aadsts650057", "consent_required")
 _REVOKED_CODES = ("invalid_grant", "aadsts50173", "aadsts700082")
+# AADSTS65004 = "user declined to consent". Checked LAST: a tenant that blocks user
+# consent ALSO returns bare `access_denied` here, and its AADSTS number must win.
+_DECLINED_CODES = ("aadsts65004", "access_denied")
 
 
 def is_configured() -> bool:
@@ -77,8 +84,13 @@ def make_state(user_id: str) -> str:
     return f"{body}.{sig}"
 
 
-def parse_state(state: str) -> str:
-    """Return the user_id, or raise. Rejects forged signatures and stale replays."""
+def parse_state(state: str, max_age_s: int = _STATE_TTL_S) -> str:
+    """Return the user_id, or raise. Rejects forged signatures and stale replays.
+
+    `max_age_s` is looser for the admin-consent leg: the agent sends that link to
+    their IT admin, who may act on it days later. A 10-minute window would expire
+    every real approval and lose the attribution back to the agent.
+    """
     try:
         body, sig = (state or "").rsplit(".", 1)
     except ValueError:
@@ -88,7 +100,7 @@ def parse_state(state: str) -> str:
         raise MailIntakeError(ERR_MAILBOX_UNREACHABLE, "bad state signature")
     padded = body + "=" * (-len(body) % 4)
     data = json.loads(base64.urlsafe_b64decode(padded))
-    if time.time() - int(data["t"]) > _STATE_TTL_S:
+    if time.time() - int(data["t"]) > max_age_s:
         raise MailIntakeError(ERR_MAILBOX_UNREACHABLE, "state expired")
     return data["u"]
 
@@ -107,9 +119,16 @@ def consent_url(user_id: str, login_hint: str | None = None) -> str:
     return f"{_AUTH_URL}?{urlencode(params)}"
 
 
-def admin_consent_url() -> str:
-    """What the agent forwards to their IT admin when the tenant blocks user consent."""
+def admin_consent_url(user_id: str | None = None) -> str:
+    """What the agent forwards to their IT admin when the tenant blocks user consent.
+
+    Carries the agent's signed state so the approval can be tied back to the mailbox
+    that is waiting on it — the admin approves in THEIR browser, with no session of
+    ours, so the state is the only thread back to the agent.
+    """
     params = {"client_id": settings.MS_OAUTH_CLIENT_ID, "redirect_uri": settings.MS_OAUTH_REDIRECT_URI}
+    if user_id:
+        params["state"] = make_state(user_id)
     return f"{AUTHORITY}/adminconsent?{urlencode(params)}"
 
 
@@ -124,7 +143,21 @@ def _classify_token_error(payload: dict) -> str:
         return ERR_ADMIN_CONSENT
     if any(c in blob for c in _REVOKED_CODES):
         return ERR_CONSENT_REVOKED
+    if any(c in blob for c in _DECLINED_CODES):
+        return ERR_CONSENT_DECLINED
     return ERR_MAILBOX_UNREACHABLE
+
+
+def classify_redirect_error(error: str | None, description: str | None) -> str:
+    """Classify the error Microsoft hands back on the CALLBACK, not on /token.
+
+    `error` alone is not enough to act on: a user pressing Cancel and a tenant that
+    forbids user consent both arrive as `access_denied`, and only the AADSTS number
+    in `error_description` separates them. Reading just `error` classified every
+    refusal as "unreachable" — copy that promises an automatic retry that never
+    comes, for a flow that is waiting on a human to click Approve.
+    """
+    return _classify_token_error({"error": error, "error_description": description})
 
 
 async def _post_token(form: dict) -> dict:

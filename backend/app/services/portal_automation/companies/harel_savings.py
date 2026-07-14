@@ -488,10 +488,12 @@ class HarelSavingsPortal(_HarelReportPortal):
                 _logger.info("harel_savings: wrote %s (%d rows)", p.name, len(rows))
             except Exception as e:
                 _logger.warning("harel_savings: write failed for %s: %s", company_source, e)
+                self.partial_errors.append(f"פרודוקציה {company_source}: {str(e)[:120]}")
 
         results = list(out_paths)
         if not out_paths:
             _logger.warning("harel: no production files produced; continuing to נפרעים")
+            self.partial_errors.append("פרודוקציה: לא הופקו קבצים")
 
         # ── Also grab נפרעים from the SAME authenticated agents-portal session ──
         # One Harel login → both production (מוצרי צבירה) AND נפרעים (ריכוז תשלומי
@@ -512,6 +514,9 @@ class HarelSavingsPortal(_HarelReportPortal):
             )
         except Exception as e:
             _logger.warning("harel: נפרעים grab failed (production still returned): %s", e)
+            # Folded leg — losing it silently drops ALL Harel נפרעים from the
+            # merged file (harel_commissions never runs standalone in a batch).
+            self.partial_errors.append(f"נפרעים: {str(e)[:120]}")
 
         if not results:
             raise RuntimeError(

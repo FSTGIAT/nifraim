@@ -586,6 +586,7 @@ class ClalPortal(BasePortalAutomation):
         results: list[Path] = list(saved)
         if not saved:
             logger.warning("Clal: no production files downloaded; continuing to נפרעים")
+            self.partial_errors.append("פרודוקציה: לא ירדו קבצים")
 
         # ── Also grab נפרעים from the SAME APM session (one Clal login) ──
         # clal_nifraim opens the commissions tab via the "לפירוט עמלות" link on
@@ -607,6 +608,9 @@ class ClalPortal(BasePortalAutomation):
             logger.info("Clal: also downloaded נפרעים → %s", [p.name for p in (nif_files or [])])
         except Exception as e:
             logger.warning("Clal: נפרעים grab failed (production still returned): %s", e)
+            # Folded leg — without this the batch merges a נפרעים file with no
+            # כלל rows while the clal run shows success.
+            self.partial_errors.append(f"נפרעים: {str(e)[:120]}")
 
         if not results:
             hint = (SCREENSHOT_ROOT / f"{run_id}_paylink.txt").name

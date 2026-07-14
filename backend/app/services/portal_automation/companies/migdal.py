@@ -500,6 +500,10 @@ class MigdalPortal(BasePortalAutomation):
                 _logger.warning(
                     "migdal: apmaccess נפרעים grab failed (production still returned): %s", e
                 )
+                # Folded leg — surface on the run/batch so the merged נפרעים
+                # isn't quietly missing Migdal (the standalone migdal_apm cred
+                # may not exist for every user).
+                self.partial_errors.append(f"נפרעים (apmaccess): {str(e)[:120]}")
             finally:
                 if apm_page is not None:
                     try:

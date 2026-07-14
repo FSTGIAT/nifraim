@@ -129,6 +129,10 @@ class PhoenixNifraimPortal(PhoenixPortal):
             )
         except Exception as e:
             logger.warning("phoenix_nifraim: חא\"ט/בריאות report failed: %s", e)
+            # Best-effort legs must surface on the run/batch, not just the
+            # worker log — a missed leg means a whole Phoenix slice is absent
+            # from the merged נפרעים while the run shows success.
+            self.partial_errors.append(f"נפרעים חא\"ט/בריאות: {str(e)[:120]}")
 
         # נפרעים 2: גמל → commission (הפניקס). Lazy import avoids a circular dep.
         try:
@@ -142,6 +146,7 @@ class PhoenixNifraimPortal(PhoenixPortal):
             )
         except Exception as e:
             logger.warning("phoenix_nifraim: גמל report failed: %s", e)
+            self.partial_errors.append(f"נפרעים גמל: {str(e)[:120]}")
 
         # PRODUCTION: the no-OTP SFE כספת vault (same creds, separate site). Open
         # it in a fresh page so the agentportal session is untouched. Needs the
@@ -165,6 +170,7 @@ class PhoenixNifraimPortal(PhoenixPortal):
                 )
             except Exception as e:
                 logger.warning("phoenix_nifraim: SFE production grab failed: %s", e)
+                self.partial_errors.append(f"פרודוקציה (SFE): {str(e)[:120]}")
             finally:
                 if sfe_page is not None:
                     try:

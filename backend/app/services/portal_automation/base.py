@@ -82,6 +82,15 @@ class BasePortalAutomation(ABC):
     native_fingerprint: bool = False
     use_persistent_profile: bool = False
 
+    def __init__(self) -> None:
+        # Best-effort legs (a folded נפרעים grab, a secondary report) that fail
+        # inside download_reports must NOT stay only in the worker's local log —
+        # that's how batch 93a796ac shipped a merged נפרעים file with whole
+        # companies missing while every run showed "success". Plugins append a
+        # short Hebrew note per failed leg; the runner writes them onto
+        # PortalRun.error_message so the batch can surface + downgrade to partial.
+        self.partial_errors: list[str] = []
+
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:
         """Navigate to the portal and submit username + password.

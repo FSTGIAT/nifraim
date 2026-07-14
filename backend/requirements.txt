@@ -28,3 +28,11 @@ playwright>=1.48
 cryptography>=43
 twilio>=9
 paramiko==3.5.0
+
+# Windows-only: the Phoenix green-screen driver (scripts/windows/*) drives a native
+# PowerTerm window via win32gui/win32api SendInput and grabs it via PIL. These were
+# never declared — they only existed on the dev machine, so every OTHER worker's venv
+# lacked them and phoenix_win_terminal died on `import win32gui` the moment the
+# terminal opened. Markers keep them off the Linux/Railway build.
+pywin32>=306; sys_platform == "win32"
+Pillow>=10; sys_platform == "win32"

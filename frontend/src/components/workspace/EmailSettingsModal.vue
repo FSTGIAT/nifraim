@@ -194,6 +194,9 @@ import api from '../../api/client.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  // The browser just came back from Microsoft's consent screen — jump straight to
+  // the mailbox card, which is where the outcome is shown.
+  openMailbox: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:open'])
 
@@ -341,6 +344,10 @@ watch(() => props.open, (now) => {
   subStore.fetchStatus?.()
   portalStore.fetchWorkerStatus?.()
   mailbox.fetchConfig?.()
+  if (props.openMailbox) {
+    activeTab.value = 'automation'
+    hachsharaMailOpen.value = true
+  }
 })
 </script>
 

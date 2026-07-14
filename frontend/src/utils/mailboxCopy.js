@@ -24,6 +24,18 @@ export const MAILBOX_ERRORS = {
     action: 'חבר מחדש',
     tone: 'warn',
   },
+  // Microsoft returns the SAME error whether the agent pressed "ביטול" or the
+  // organisation never showed them an "אישור" button at all. We cannot tell which
+  // from the outside, so the copy names both and gives an action for each — never
+  // "try again" alone, which is a trap for the agent whose tenant simply forbids it.
+  consent_declined: {
+    title: 'ההרשאה לא אושרה — החיבור לא נוצר',
+    body: 'במסך של Microsoft לא ניתן אישור. נסה שוב ולחץ "אישור" / "Accept". אם המסך אומר שנדרש אישור של מנהל המערכת — אין לך אפשרות לאשר בעצמך, ומנהל המערכת צריך לאשר פעם אחת.',
+    action: 'נסה שוב',
+    adminAction: 'העתקת קישור למנהל',
+    escape: 'אין לך מנהל מערכת? אפשר במקום זה להעביר אלינו את המייל אוטומטית.',
+    tone: 'warn',
+  },
   bad_app_password: {
     title: 'הסיסמה לא התקבלה',
     body: 'ודא שהעתקת את סיסמת האפליקציה בת 16 התווים שיצרת בהגדרות Google, ולא את הסיסמה הרגילה של Gmail.',

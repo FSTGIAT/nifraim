@@ -118,3 +118,51 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
     "meitav":               ("מיטב דש", "נפרעים", "https://customers.meitav.co.il/v2/login/LoginAgent"),
     "ayalon":               ("איילון", "פרודוקציה", ""),
 }
+
+# ──────────────────────────────────────────────────────────────────────────
+# What the LOGIN FORM actually asks for, per portal
+# ──────────────────────────────────────────────────────────────────────────
+# The DB has exactly two credential columns (username + encrypted_password), but
+# Mor's login form has THREE fields: מס' רשיון + ת"ז + טלפון. `mor.py::_split`
+# therefore reads them back out of a PACKED username="<license>|<id>" plus
+# password="<phone>".
+#
+# That packing was invisible to the UI: the "הוסף פורטל" modal only ever rendered a
+# generic שם משתמש + סיסמה, so a user adding מור had no way to supply the phone —
+# and since Mor SMS-OTPs that number, the run could never even start.
+#
+# So Mor DECLARES its fields here and the modal renders them. `target` says which DB
+# column the value lands in; multiple fields on the same target are joined with "|"
+# in list order — exactly the convention `_split` already parses. Every other portal
+# has no entry and falls back to the plain username + password pair, so this map
+# holds only the exception.
+#
+#   secret=True  → stored encrypted, never echoed back to the UI; blank on edit
+#                  means "leave unchanged".
+#
+# INVARIANT: the field order here must match `mor.py::_split`. Change one, change
+# the other.
+PORTAL_LOGIN_FIELDS: dict[str, list[dict]] = {
+    "mor": [
+        {"key": "license", "label": "מספר רשיון", "placeholder": "מספר רשיון הסוכן",
+         "type": "text", "target": "username", "secret": False, "required": True},
+        {"key": "identity", "label": "תעודת זהות", "placeholder": "9 ספרות",
+         "type": "text", "target": "username", "secret": False, "required": True},
+        {"key": "phone", "label": "טלפון נייד", "placeholder": "הטלפון שאליו מגיע קוד ה-SMS",
+         "type": "tel", "target": "password", "secret": True, "required": True,
+         "hint": "מור שולחת את קוד האימות ב-SMS למספר הזה"},
+    ],
+}
+
+# The pair every other portal uses.
+DEFAULT_LOGIN_FIELDS: list[dict] = [
+    {"key": "username", "label": "שם משתמש", "placeholder": "שם המשתמש בפורטל",
+     "type": "text", "target": "username", "secret": False, "required": True},
+    {"key": "password", "label": "סיסמה", "placeholder": "",
+     "type": "password", "target": "password", "secret": True, "required": True},
+]
+
+
+def login_fields_for(portal_kind: str) -> list[dict]:
+    """The login-form spec the UI should render for this portal."""
+    return PORTAL_LOGIN_FIELDS.get(portal_kind, DEFAULT_LOGIN_FIELDS)

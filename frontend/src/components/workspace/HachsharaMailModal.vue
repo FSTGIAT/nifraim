@@ -126,13 +126,24 @@
           <div v-if="problem" class="hm-problem" :class="'hm-problem--' + problem.tone">
             <strong class="hm-problem-title">{{ problem.title }}</strong>
             <p class="hm-problem-body">{{ problem.body }}</p>
-            <div v-if="problem.action && cfg?.last_error === 'admin_consent_required'" class="hm-problem-actions">
-              <button class="hm-link" @click="copyAdminLink">{{ adminCopied ? 'הקישור הועתק' : problem.action }}</button>
+            <div v-if="problem.action || problem.adminAction" class="hm-problem-actions">
+              <button v-if="problem.action" class="hm-link" @click="onProblemAction">
+                {{ isAdminOnly && adminCopied ? 'הקישור הועתק' : problem.action }}
+              </button>
+              <!-- A second, distinct action: Microsoft's refusal can't tell us whether
+                   retrying is even permitted in this organisation, so we offer both. -->
+              <button v-if="problem.adminAction" class="hm-link" @click="copyAdminLink">
+                {{ adminCopied ? 'הקישור הועתק' : problem.adminAction }}
+              </button>
             </div>
-            <button v-else-if="problem.action" class="hm-link" @click="connectMicrosoft">{{ problem.action }}</button>
-            <p v-if="problem.escape" class="hm-escape">
+            <!-- Only offer the escape we can actually honour: without inbound mail
+                 configured, "עבור להעברה" walks the agent into "לא זמין כאן". -->
+            <p v-if="problem.escape && store.capabilities.forwarding" class="hm-escape">
               {{ problem.escape }}
               <button class="hm-link" @click="switchToForwarding">עבור להעברה</button>
+            </p>
+            <p v-else-if="problem.escape" class="hm-escape">
+              עד שהחיבור יאושר — אפשר לגרור את הקובץ מהכשרה ישירות ללשונית הפרודוקציה, והוא ייקלט מיד.
             </p>
           </div>
 
@@ -201,6 +212,15 @@ const statusTone = computed(() => {
   if (cfg.value?.last_error) return 'hm-status--warn'
   return cfg.value?.last_received_at ? 'hm-status--ok' : 'hm-status--idle'
 })
+
+// admin_consent_required has ONE move (the admin approves); its primary button is
+// the copy-link, not a retry that will fail the same way.
+const isAdminOnly = computed(() => cfg.value?.last_error === 'admin_consent_required')
+
+function onProblemAction() {
+  if (isAdminOnly.value) return copyAdminLink()
+  return connectMicrosoft()
+}
 
 watch(() => props.open, async (isOpen) => {
   if (!isOpen) return

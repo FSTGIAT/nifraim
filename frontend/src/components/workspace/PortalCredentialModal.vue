@@ -124,25 +124,25 @@
                 </div>
 
                 <div class="cred-creds">
-                  <label class="cred-field">
-                    <span class="cred-flabel">שם משתמש <span class="req">*</span></span>
-                    <input v-model="form.username" class="ctrl" :class="{ invalid: formError && !form.username }" placeholder="שם המשתמש בפורטל" />
-                  </label>
-
-                  <label class="cred-field">
+                  <!-- Fields are declared by the portal itself (login_fields on the
+                       portal-kind). Most portals ask for a plain שם משתמש + סיסמה;
+                       מור's own form asks for three (רשיון + ת"ז + טלפון). -->
+                  <label v-for="f in loginFields" :key="f.key" class="cred-field">
                     <span class="cred-flabel">
-                      סיסמה
-                      <span v-if="mode === 'add'" class="req">*</span>
-                      <small v-else class="cred-flabel-sub"> (ריק = ללא שינוי)</small>
+                      {{ f.label }}
+                      <span v-if="f.required && !(mode === 'edit' && f.secret)" class="req">*</span>
+                      <small v-else-if="mode === 'edit' && f.secret" class="cred-flabel-sub"> (ריק = ללא שינוי)</small>
                     </span>
                     <input
-                      v-model="form.password"
-                      type="password"
+                      v-model="fieldValues[f.key]"
+                      :type="f.type === 'password' ? 'password' : 'text'"
+                      :inputmode="f.type === 'tel' ? 'numeric' : undefined"
                       class="ctrl"
-                      :class="{ invalid: formError && mode === 'add' && !form.password }"
-                      :placeholder="mode === 'edit' ? 'חדשה (אופציונלי)' : ''"
-                      autocomplete="new-password"
+                      :class="{ invalid: formError && isMissing(f) }"
+                      :placeholder="mode === 'edit' && f.secret ? 'חדש (אופציונלי)' : f.placeholder"
+                      :autocomplete="f.secret ? 'new-password' : 'off'"
                     />
+                    <small v-if="f.hint" class="cred-fhint">{{ f.hint }}</small>
                   </label>
 
                   <!-- OTP delivery — personal phone only (no manual entry) -->
@@ -242,10 +242,62 @@ async function testMailbox() {
 // the phone). If the phone isn't connected yet we nudge them to set it up.
 const form = reactive({
   portal_kind: '',
-  username: '',
-  password: '',
   otp_method: 'phone_forward',
 })
+
+// Credential values keyed by the field spec the portal declares (login_fields).
+// The DB only has username + encrypted_password, so a portal whose real form has
+// more fields — מור: מספר רשיון + תעודת זהות + טלפון — packs them: fields sharing a
+// `target` are joined with "|" in spec order, which is exactly what the plugin's
+// _split() reads back. Portals with no spec get the plain username/password pair.
+const fieldValues = reactive({})
+
+const DEFAULT_FIELDS = [
+  { key: 'username', label: 'שם משתמש', placeholder: 'שם המשתמש בפורטל', type: 'text', target: 'username', secret: false, required: true },
+  { key: 'password', label: 'סיסמה', placeholder: '', type: 'password', target: 'password', secret: true, required: true },
+]
+const loginFields = computed(() => {
+  const k = store.portalKinds.find((x) => x.id === form.portal_kind)
+  return k?.login_fields?.length ? k.login_fields : DEFAULT_FIELDS
+})
+
+/** Pack the spec'd fields back into the two DB columns. */
+function packTarget(target) {
+  return loginFields.value
+    .filter((f) => f.target === target)
+    .map((f) => (fieldValues[f.key] || '').trim())
+    .join('|')
+}
+
+/** A secret field left blank in edit mode means "keep the stored one". */
+function isMissing(f) {
+  if (!f.required) return false
+  if (props.mode === 'edit' && f.secret) return false
+  return !(fieldValues[f.key] || '').trim()
+}
+
+/** Spread a stored username back across the fields that were packed into it. */
+function unpackInto(target, stored) {
+  const targeted = loginFields.value.filter((f) => f.target === target)
+  const parts = String(stored || '').split('|')
+  targeted.forEach((f, i) => {
+    // A single stored part across several fields (Mor's operator had license == ת"ז,
+    // so an old row may hold just "40336281") → mirror it into each, rather than
+    // silently blanking a required field the user then can't see is empty.
+    fieldValues[f.key] = parts.length === targeted.length ? (parts[i] || '') : (parts[0] || '')
+  })
+}
+
+function resetFields() {
+  Object.keys(fieldValues).forEach((k) => delete fieldValues[k])
+}
+
+// The spec only exists once a portal_kind is chosen, and it changes when the user
+// picks a different company — seed every declared field so v-model has a home.
+watch(loginFields, (fields) => {
+  for (const f of fields) if (!(f.key in fieldValues)) fieldValues[f.key] = ''
+}, { immediate: true })
+
 const formError = ref('')
 const saving = ref(false)
 const title = ref('')
@@ -316,18 +368,18 @@ watch(
     formError.value = ''
     saving.value = false
     form.otp_method = 'phone_forward'
+    resetFields()
     if (mode === 'edit' && cred) {
       title.value = `עריכה — ${portalLabel(cred.portal_kind)}`
       form.portal_kind = cred.portal_kind
-      form.username = cred.username
-      form.password = ''
       selectedCompany.value = companyOf(cred.portal_kind)
+      // Only the username round-trips — the password is stored encrypted and is
+      // never sent back, so its fields stay blank ("ריק = ללא שינוי").
+      unpackInto('username', cred.username)
     } else {
       const pre = props.defaultPortalKind || ''
       title.value = 'הוספת פורטל חדש'
       form.portal_kind = pre
-      form.username = ''
-      form.password = ''
       selectedCompany.value = pre ? companyOf(pre) : ''
     }
     store.fetchPhoneForward().catch(() => {})
@@ -349,28 +401,34 @@ function close() {
 
 async function save() {
   formError.value = ''
-  const missing = []
-  if (props.mode === 'add' && !form.portal_kind) missing.push('חברה')
-  if (!form.username) missing.push('שם משתמש')
-  if (props.mode === 'add' && !form.password) missing.push('סיסמה')
+  const missing = loginFields.value.filter(isMissing).map((f) => f.label)
+  if (props.mode === 'add' && !form.portal_kind) missing.unshift('חברה')
   if (missing.length) {
     formError.value = 'חסרים שדות חובה: ' + missing.join(', ')
     return
   }
+
+  const username = packTarget('username')
+  const password = packTarget('password')
 
   saving.value = true
   try {
     if (props.mode === 'add') {
       const created = await store.createCredential({
         portal_kind: form.portal_kind,
-        username: form.username,
-        password: form.password,
+        username,
+        password,
         otp_method: form.otp_method,
       })
       emit('saved', created)
     } else {
-      const payload = { username: form.username, otp_method: form.otp_method }
-      if (form.password) payload.password = form.password
+      const payload = { username, otp_method: form.otp_method }
+      // Every secret field blank ⇒ don't touch the stored password. If any was
+      // filled, the packed value replaces it whole (Mor packs only the phone).
+      const touched = loginFields.value.some(
+        (f) => f.target === 'password' && (fieldValues[f.key] || '').trim(),
+      )
+      if (touched) payload.password = password
       const updated = await store.updateCredential(props.credential.id, payload)
       emit('saved', updated)
     }
@@ -554,6 +612,7 @@ async function save() {
 .cred-field { display: flex; flex-direction: column; gap: 6px; }
 .cred-flabel { font-size: 12.5px; font-weight: 700; color: #181818; }
 .cred-flabel-sub { font-weight: 400; color: rgba(24, 24, 24, 0.45); }
+.cred-fhint { font-size: 11.5px; color: rgba(24, 24, 24, 0.48); line-height: 1.45; }
 .ctrl {
   width: 100%; padding: 11px 13px;
   border: 1.5px solid rgba(24, 24, 24, 0.12); border-radius: 12px;

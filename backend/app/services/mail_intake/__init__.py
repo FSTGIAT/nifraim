@@ -48,6 +48,11 @@ MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 # ── Error codes (the frontend maps these to Hebrew; see api/mailbox.py) ──────
 ERR_ADMIN_CONSENT = "admin_consent_required"
 ERR_CONSENT_REVOKED = "consent_revoked"
+# The agent reached Microsoft's consent screen and came back WITHOUT approving —
+# they cancelled, or the tenant showed "needs admin approval" and Cancel was the
+# only button. Distinct from ERR_NOT_CONFIGURED ("you never started"), because the
+# next step is different: retry and approve, or get an admin to approve once.
+ERR_CONSENT_DECLINED = "consent_declined"
 ERR_BAD_APP_PASSWORD = "bad_app_password"
 ERR_MAILBOX_UNREACHABLE = "mailbox_unreachable"
 ERR_ATTACHMENT_UNREADABLE = "attachment_unreadable"

@@ -269,8 +269,14 @@ class ClalNifraimPortal(ClalPortal):
                         "a[ng-click*='loadSelectedSystem']:not(.ng-hide)",
                         has_text=label,
                     ).first.click(timeout=8000)
-                except Exception:
-                    _logger.warning("Clal נפרעים: could not click type '%s'", label)
+                except Exception as e:
+                    # A skipped type used to vanish into a worker-local warning: the
+                    # run went green while contributing only the types that happened
+                    # to work. Live: EVERY one of kiko's six Clal runs downloaded חיים
+                    # and nothing else — בריאות (24 real per-client rows) never landed,
+                    # and no one could see why. Report it.
+                    _logger.warning("Clal נפרעים: could not click type '%s': %s", label, e)
+                    self.partial_errors.append(f"כלל {label}: לא נפתח ({str(e)[:60]})")
                     continue
                 await page.wait_for_timeout(2500)
                 new_pages = [p for p in page.context.pages if p not in pages_before]
@@ -420,6 +426,11 @@ class ClalNifraimPortal(ClalPortal):
                     _logger.info(
                         "Clal נפרעים: saved %s (%d bytes)", got.name, got.stat().st_size
                     )
+                else:
+                    # The type opened but produced no export — just as invisible as a
+                    # failed click, and just as costly (a whole report missing from
+                    # the merged נפרעים while the run reports success).
+                    self.partial_errors.append(f"כלל {label}: נפתח אך לא ירד קובץ")
 
                 # C.4 — return to the grid for the next type.
                 if ti < len(type_labels) - 1:
@@ -453,6 +464,16 @@ class ClalNifraimPortal(ClalPortal):
                     f"זוהו {len(type_labels)} סוגי עמלה אך לא ירדו קבצים. "
                     f"בדוק/י {run_id}_commission_rows.txt ו-{run_id}_C_no_downloads.txt"
                 )
+
+            # Say — on EVERY run, success or not — which types the portal offered and
+            # which actually produced a file. The screenshots that carry this live on
+            # the agent's own PC and cannot be read remotely, so the reconciliation has
+            # to reach the server. This one line is what would have shown, six runs
+            # ago, that Clal was only ever bringing back חיים.
+            from app.services.portal_automation.runner import _worker_note
+            _worker_note(
+                f"clal_nifraim: offered={type_labels} → downloaded={[p.name for p in saved]}"
+            )
 
             return saved
         finally:

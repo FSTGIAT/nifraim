@@ -1,9 +1,12 @@
 import io
+import logging
 import tempfile
 from datetime import datetime, date
 
 import msoffcrypto
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from app.utils.hebrew_mappings import (
     AGENT_TRACKING_COLUMNS,
@@ -99,6 +102,11 @@ _RE_NUM_MONTH = _re_month_helper.compile(
 _RE_DDMMYYYY_TAIL = _re_month_helper.compile(
     r"_(?P<day>[0-3]\d)(?P<month>0[1-9]|1[0-2])(?P<year>20\d{2})(?=\.|$)"
 )
+
+# How far back a DATA-derived period may sit before the upload before we stop
+# believing it. Production rows carry the policy's INCEPTION date, so an old book
+# would otherwise date the whole file to the year its oldest policy was sold.
+_MAX_DATA_PERIOD_AGE_MONTHS = 18
 
 
 def detect_period_month(filename: str | None, records: list[dict] | None = None, uploaded_at=None):
@@ -204,10 +212,35 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
                         break
                     except ValueError:
                         continue
-        if dates:
-            return max(dates)
-        if proc_dates:
-            return max(proc_dates)
+        # A data-derived period that lands FAR before the upload is not a reporting
+        # month — it's a policy INCEPTION date. Production files carry the client's
+        # join date (`sign_date`), so a book whose only row is a policy sold in 2021
+        # produced `period_month = 2021-01` and the agent saw a "פרודוקציה 2021"
+        # sitting in their production tab (live: a 1-record clearinghouse file whose
+        # opaque numeric filename — 2010005...HOLDNGPNN... — offered no month, so
+        # this fallback ran and believed it). No insurer reports 5 years late; treat
+        # anything older than ~18 months as "no signal" and fall through to
+        # uploaded_at rather than inventing a period the agent never uploaded.
+        def _plausible(cands: list[_date]) -> _date | None:
+            if not cands:
+                return None
+            best = max(cands)
+            if uploaded_at and hasattr(uploaded_at, "year"):
+                months_back = ((uploaded_at.year - best.year) * 12
+                               + (uploaded_at.month - best.month))
+                if months_back > _MAX_DATA_PERIOD_AGE_MONTHS:
+                    logger.info(
+                        "detect_period_month: ignoring data-date period %s — %d months "
+                        "before upload (policy inception date, not a reporting month)",
+                        best, months_back,
+                    )
+                    return None
+            return best
+
+        best = _plausible(dates) or _plausible(proc_dates)
+        if best:
+            return best
+        # else: fall through to the uploaded_at fallback below
     if uploaded_at and hasattr(uploaded_at, "year"):
         # Last-resort fallback (no month/year in filename, no data dates).
         # Commission files arrive ~30 days late, so a file uploaded in May with

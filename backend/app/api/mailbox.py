@@ -12,7 +12,7 @@ import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,12 @@ from app.config import settings
 from app.database import get_db
 from app.models.mailbox_config import MailboxConfig
 from app.models.user import User
-from app.services.mail_intake import MailIntakeError, ingest_mail_attachment
+from app.services.mail_intake import (
+    ERR_ADMIN_CONSENT,
+    ERR_CONSENT_DECLINED,
+    MailIntakeError,
+    ingest_mail_attachment,
+)
 from app.services.mail_intake import graph as graph_path
 from app.services.mail_intake import resend as resend_path
 from app.services.mail_intake.detect import detect_mail_host
@@ -97,6 +102,81 @@ async def _get_cfg(db: AsyncSession, user_id: uuid.UUID) -> MailboxConfig | None
     return res.scalar_one_or_none()
 
 
+async def _clear_consent_block(db: AsyncSession, state: str | None) -> None:
+    """The tenant admin approved: the agent is no longer blocked, just not connected yet.
+
+    Attribution is best-effort — an admin may open the link from a forwarded message
+    long after it was minted, so the state gets the long TTL. If it can't be tied to
+    a mailbox we still report success to the admin: the org-wide grant is real either
+    way, and the agent's next "התחברות עם Microsoft" will simply work.
+    """
+    if not state:
+        return
+    try:
+        user_id = graph_path.parse_state(state, max_age_s=graph_path.ADMIN_STATE_TTL_S)
+        cfg = await _get_cfg(db, uuid.UUID(user_id))
+    except (MailIntakeError, ValueError):
+        return
+    if not cfg or cfg.last_error not in (ERR_ADMIN_CONSENT, ERR_CONSENT_DECLINED):
+        return
+    cfg.last_error = None
+    cfg.last_status = None
+    await db.commit()
+
+
+def _admin_consent_page(granted: bool) -> str:
+    """A page for the ADMIN — who has no Nifraim account and reads no Hebrew UI of ours.
+
+    Redirecting them into the SPA would bounce them to a login screen they can never
+    pass, which reads as "the approval broke something".
+    """
+    title = "האישור נקלט" if granted else "האישור לא הושלם"
+    body = (
+        "ההרשאה אושרה עבור הארגון. הסוכן יכול לחזור למערכת וללחוץ "
+        "&quot;התחברות עם Microsoft&quot; — ומשם הכול אוטומטי."
+        if granted
+        else "לא בוצע אישור. אפשר לסגור את החלון ולנסות שוב מהקישור שקיבלת."
+    )
+    accent = "#1FA88C" if granted else "#8A6D3B"
+    return f"""<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nifraim — {title}</title></head>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#F7F7F7;
+             font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#181818">
+  <main style="max-width:420px;padding:32px;background:#fff;border-radius:20px;
+               box-shadow:0 18px 50px rgba(24,24,24,.12);text-align:center">
+    <div style="width:44px;height:44px;margin:0 auto 14px;border-radius:14px;
+                background:{accent}1F;color:{accent};display:grid;place-items:center;
+                font-size:22px;font-weight:700">{'&#10003;' if granted else '!'}</div>
+    <h1 style="margin:0 0 8px;font-size:19px">{title}</h1>
+    <p style="margin:0;font-size:14px;line-height:1.7;color:rgba(24,24,24,.62)">{body}</p>
+  </main>
+</body></html>"""
+
+
+async def _mark_consent_failure(db: AsyncSession, state: str | None, code: str) -> None:
+    """Record WHY consent didn't complete, on the agent's own mailbox row.
+
+    Best-effort: a forged or expired `state` can't be attributed to anyone, and an
+    unattributable refusal must not turn the redirect into a 500 — the agent would
+    land on a stack trace instead of an explanation.
+    `consecutive_failures` is deliberately untouched: it drives the *poll* backoff,
+    and a human not clicking Approve is not a mailbox that needs backing off.
+    """
+    if not state:
+        return
+    try:
+        cfg = await _get_cfg(db, uuid.UUID(graph_path.parse_state(state)))
+    except (MailIntakeError, ValueError):
+        return
+    if not cfg:
+        return
+    cfg.last_status = "error"
+    cfg.last_error = code
+    await db.commit()
+
+
 # ── Public webhook — declared FIRST, and unauthenticated by design ───────────
 
 
@@ -165,6 +245,7 @@ async def microsoft_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
+    error_description: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Exchange the auth code and store ONLY the refresh token.
@@ -174,12 +255,30 @@ async def microsoft_callback(
     """
     redirect = "/?mailbox=connected"
 
+    # ── The IT admin's return leg, not the agent's ──────────────────────────
+    # /adminconsent sends back `admin_consent=True&tenant=…` with NO code and NO
+    # auth code to exchange. Falling through to the checks below answered a
+    # successful org-wide approval with "mailbox_unreachable" — telling the one
+    # person who can unblock the agent that their approval failed.
+    if request.query_params.get("admin_consent") is not None:
+        granted = str(request.query_params.get("admin_consent")).lower() in ("true", "1")
+        if granted:
+            # Clear the agent's blocked state so their next visit isn't still
+            # telling them to go find an admin who has already approved.
+            await _clear_consent_block(db, state)
+        logger.info("mailbox: admin consent %s", "granted" if granted else "refused")
+        return HTMLResponse(_admin_consent_page(granted), status_code=200)
+
     if error:
-        code_out = (
-            "admin_consent_required"
-            if "consent" in (error or "").lower()
-            else "mailbox_unreachable"
-        )
+        # Both halves matter: `error` says access_denied, the AADSTS number in
+        # `error_description` says WHY. See graph.classify_redirect_error.
+        code_out = graph_path.classify_redirect_error(error, error_description)
+        logger.warning("mailbox: consent failed -> %s (%s)", code_out, error)
+        # Persist it. Without this the reason lives only in the redirect URL, the
+        # row keeps whatever the poller last wrote, and the agent's next "בדיקה"
+        # answers "החיבור עדיין לא הושלם" — true, but not the reason, and not
+        # something they can act on.
+        await _mark_consent_failure(db, state, code_out)
         return RedirectResponse(f"/?mailbox=error&code={code_out}")
 
     if not code or not state:
@@ -194,6 +293,7 @@ async def microsoft_callback(
     try:
         tokens = await graph_path.exchange_code(code)
     except MailIntakeError as e:
+        await _mark_consent_failure(db, state, e.code)
         return RedirectResponse(f"/?mailbox=error&code={e.code}")
 
     cfg = await _get_cfg(db, uuid.UUID(user_id))
@@ -291,7 +391,7 @@ async def microsoft_start(user: User = Depends(get_current_user), db: AsyncSessi
     login_hint = cfg.email_address if cfg else None
     return {
         "url": graph_path.consent_url(str(user.id), login_hint=login_hint),
-        "admin_consent_url": graph_path.admin_consent_url(),
+        "admin_consent_url": graph_path.admin_consent_url(str(user.id)),
     }
 
 

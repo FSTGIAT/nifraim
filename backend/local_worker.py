@@ -28,6 +28,7 @@ import socket
 import asyncio
 import logging
 import subprocess
+import time as _time
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +39,9 @@ _STARTED_AT = datetime.utcnow()
 # (os.execv re-exec) must NOT fire mid-run — that tears down the live browser and
 # fails every in-flight portal. We defer the update until the run finishes.
 _BUSY = False
+# True only while THIS machine owns the account's heartbeat row. A second PC installed
+# for the same login stands by instead of claiming jobs (see _beat / _stand_by).
+_OWNS = False
 # Deploy branch fallback if the checkout is on a detached HEAD.
 _DEPLOY_BRANCH = "claude/automate-otp-login-fCKdi"
 
@@ -110,7 +114,7 @@ def _excepthook(et, ev, tb):
 _sys.excepthook = _excepthook
 _post_log("worker process starting (importing app…)")
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import async_session
@@ -153,6 +157,10 @@ USER_EMAIL = (_env.get("WORKER_USER_EMAIL", "") or os.environ.get("WORKER_USER_E
 POLL_S = float(os.environ.get("WORKER_POLL_SECONDS", "5"))
 HEARTBEAT_S = 15
 HOSTNAME = socket.gethostname()[:120]
+# After this long without a beat, the heartbeat's owner is presumed dead and another
+# machine may take the row. Must be ≥ the server's WORKER_LIVE_WINDOW_S (90s), or a
+# second PC could seize a heartbeat the server still considers online.
+OWNER_STALE_S = 90
 
 
 async def _resolve_user_id() -> object:
@@ -178,10 +186,59 @@ async def _resolve_user_id() -> object:
     return row.id
 
 
-async def _beat(uid, current_job: str | None = None, touch_job: bool = False):
-    """Upsert the heartbeat row. By default only bumps last_seen (so it can run
-    concurrently with a job without clobbering current_job); pass touch_job=True
-    to also set current_job."""
+async def _resolve_user_id_resilient() -> object:
+    """Resolve identity, retrying THROUGH transient network failures.
+
+    A DNS hiccup or an unreachable DB must never be fatal here. Nothing supervises
+    this process — the installer launches it once from the Startup folder — so an
+    exit is unrecoverable: the agent is silently offline until their next logon, and
+    the worker can't even report why (its log channel needs DNS too). This shipped:
+    a `socket.gaierror` on the DB host during a self-update re-exec left an agent
+    disconnected with no diagnostics.
+
+    Only an IDENTITY failure (the user genuinely isn't in the DB) refuses to start —
+    that's a config error, and retrying it forever would spin.
+    """
+    delay = 5
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            uid = await _resolve_user_id()
+            if attempt > 1:
+                log.info("DB reachable again after %d attempts — starting", attempt)
+                _post_log(f"recovered: DB reachable after {attempt} attempts — worker starting")
+            return uid
+        except SystemExit:
+            raise                       # identity unresolved — config, not a blip
+        except Exception as e:
+            # Report the first failure and then only occasionally, so a long outage
+            # doesn't flood the log channel (which may itself be down).
+            if attempt == 1 or attempt % 10 == 0:
+                _post_log(f"startup: DB unreachable ({type(e).__name__}: {e}) — retrying, attempt {attempt}")
+            log.warning("startup: DB unreachable (%s: %s) — retry in %ss", type(e).__name__, e, delay)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 60)
+
+
+async def _beat(uid, current_job: str | None = None, touch_job: bool = False) -> bool:
+    """Upsert the heartbeat row, but ONLY if this machine owns it.
+
+    Returns True if we hold the heartbeat, False if a DIFFERENT machine is live on
+    this account (we are a rival and must stand by — see _stand_by).
+
+    `worker_heartbeats` is UNIQUE on user_id: one row per USER, not per machine. So
+    an agent who installed the worker on two PCs had both of them upserting the same
+    row, and `hostname` simply flipped to whoever beat last (live: LAPTOP-1SS1D8M8 ↔
+    DESKTOP-M443DUC). That is not cosmetic — both machines then poll and CAS-claim
+    jobs, so a run can land on the PC that has no PowerTerm client or isn't elevated,
+    and the "עדכן עובד" flag is consumed (and CLEARED) by whichever worker sees it
+    first, leaving the other permanently on stale code.
+
+    The guard is the ON CONFLICT ... WHERE clause, so ownership is decided atomically
+    by Postgres rather than by a read-then-write race between two machines:
+    take the row if it is already ours, or if its owner has gone stale (dead/off).
+    """
     async with async_session() as db:
         # Stamp last_seen with the DATABASE clock, not this PC's — the server's
         # online/orphan checks compare it against DB-side utcnow, and a worker
@@ -194,11 +251,89 @@ async def _beat(uid, current_job: str | None = None, touch_job: bool = False):
         if touch_job:
             values["current_job"] = current_job
             set_["current_job"] = current_job
-        stmt = pg_insert(WorkerHeartbeat).values(
-            id=__import__("uuid").uuid4(), **values
-        ).on_conflict_do_update(index_elements=["user_id"], set_=set_)
-        await db.execute(stmt)
+        mine_or_dead = or_(
+            WorkerHeartbeat.hostname == HOSTNAME,
+            WorkerHeartbeat.hostname.is_(None),
+            WorkerHeartbeat.last_seen < now_sql - text(f"interval '{OWNER_STALE_S} seconds'"),
+        )
+        stmt = (
+            pg_insert(WorkerHeartbeat)
+            .values(id=__import__("uuid").uuid4(), **values)
+            .on_conflict_do_update(index_elements=["user_id"], set_=set_, where=mine_or_dead)
+            .returning(WorkerHeartbeat.hostname)
+        )
+        owned = (await db.execute(stmt)).first() is not None
         await db.commit()
+        return owned
+
+
+async def _approved_hostname(uid) -> str | None:
+    """The machine this account is PINNED to, or None when unpinned."""
+    try:
+        async with async_session() as db:
+            return (await db.execute(
+                select(WorkerHeartbeat.approved_hostname).where(WorkerHeartbeat.user_id == uid)
+            )).scalar_one_or_none()
+    except Exception:
+        return None
+
+
+async def _park_wrong_machine(uid, approved: str) -> None:
+    """This PC is not the account's approved machine — do nothing, forever.
+
+    Never beat (that would claim the heartbeat row and make the site show THIS
+    machine as the agent's worker) and never claim a job. An unpinned account is
+    unaffected; only a pinned one refuses strangers. Keep re-checking so the pin can
+    be moved from the UI without touching this PC.
+    """
+    said = False
+    while True:
+        if not said:
+            log.error("this machine (%s) is not the approved worker for this account "
+                      "(approved: %s) — refusing to run", HOSTNAME, approved)
+            _post_log(
+                f"REFUSING TO RUN: '{HOSTNAME}' is not this account's approved worker "
+                f"('{approved}'). This PC holds someone else's token — uninstall the "
+                f"worker here, or change the approved machine."
+            )
+            said = True
+        await asyncio.sleep(60)
+        current = await _approved_hostname(uid)
+        if not current or current == HOSTNAME:
+            _post_log(f"approved machine is now '{current or 'any'}' — resuming on {HOSTNAME}")
+            return
+
+
+async def _rival_hostname(uid) -> str:
+    """Who currently holds this account's heartbeat (when it isn't us)."""
+    try:
+        async with async_session() as db:
+            return (await db.execute(
+                select(WorkerHeartbeat.hostname).where(WorkerHeartbeat.user_id == uid)
+            )).scalar_one_or_none() or "?"
+    except Exception:
+        return "?"
+
+
+async def _stand_by(uid) -> None:
+    """Another machine is live on this account. Wait — do NOT beat and do NOT claim.
+
+    Beating would steal the row back and start a flip-flop; claiming would let two
+    machines run the same agent's portals at once (double downloads, and one stealing
+    the other's OTP out of the shared inbox). We simply idle until the incumbent goes
+    stale (powered off / crashed), then take over on the next beat.
+    """
+    rival = await _rival_hostname(uid)
+    log.warning("another worker (%s) is live for this account — standing by", rival)
+    _post_log(f"STANDBY: worker '{rival}' is already live for this account; "
+              f"'{HOSTNAME}' will not claim jobs while it is up. "
+              f"Two machines are installed for one login — uninstall the one you don't use.")
+    while True:
+        await asyncio.sleep(30)
+        if await _beat(uid):                       # incumbent went stale → we own it now
+            log.info("previous worker went offline — taking over")
+            _post_log(f"took over from '{rival}' (it went offline) — {HOSTNAME} is now the worker")
+            return
 
 
 def _download_and_extract_bundle() -> bool:
@@ -272,10 +407,24 @@ async def _maybe_self_update(uid):
 
 
 async def _heartbeat_loop(uid):
+    global _OWNS
     while True:
         try:
-            await _beat(uid)
-            await _maybe_self_update(uid)
+            # Re-check the pin every beat: setting it from the server must stop a
+            # wrong machine that is ALREADY running, without anyone touching that PC.
+            approved = await _approved_hostname(uid)
+            if approved and approved != HOSTNAME:
+                _OWNS = False
+                await _park_wrong_machine(uid, approved)
+            _OWNS = await _beat(uid)
+            if _OWNS:
+                # Only the OWNING worker self-updates: _maybe_self_update CLEARS the
+                # update flag, so letting a standby machine consume it would leave the
+                # machine that actually runs the jobs on stale code — silently.
+                await _maybe_self_update(uid)
+            else:
+                await _stand_by(uid)                # blocks until the incumbent dies
+                _OWNS = True
         except Exception as e:
             log.warning("heartbeat failed: %s", e)
         await asyncio.sleep(HEARTBEAT_S)
@@ -291,9 +440,24 @@ async def _reconcile_orphans(uid):
     now = datetime.utcnow()
     try:
         async with async_session() as db:
+            # A run that already produced an upload SUCCEEDED — its subprocess did the
+            # work and simply hadn't stamped the row before we re-exec'd. Reaping it as
+            # "failed" reports a lie about data that is sitting in the DB. Live: the
+            # Phoenix terminal downloaded + ingested 261 production records, then the
+            # agent's deferred "עדכן עובד" restarted the worker and this reaper marked
+            # the run failed. Close it out as the success it was.
             await db.execute(
                 update(PortalRun)
                 .where(PortalRun.user_id == uid,
+                       PortalRun.upload_id.is_not(None),
+                       PortalRun.status.in_(["pending", "running", "awaiting_otp",
+                                             "downloading", "parsing"]))
+                .values(status="success", stage="parse", finished_at=now)
+            )
+            await db.execute(
+                update(PortalRun)
+                .where(PortalRun.user_id == uid,
+                       PortalRun.upload_id.is_(None),
                        PortalRun.status.in_(["pending", "running", "awaiting_otp",
                                              "downloading", "parsing"]))
                 .values(status="failed", error_message=msg, finished_at=now)
@@ -360,27 +524,81 @@ async def _claim_pending_run(uid):
 
 async def _run_phoenix_terminal(rid):
     """Phoenix terminal production is a Windows-native flow (Edge + PowerTerm +
-    KERMIT), not a Playwright plugin — drive it via the orchestrator subprocess."""
+    KERMIT), not a Playwright plugin — drive it via the orchestrator subprocess.
+
+    Runs in a THREAD: `subprocess.run` blocks, and this coroutine shares the event
+    loop with `_heartbeat_loop`. Blocking it froze the heartbeat for the whole run
+    (minutes), so the site showed the worker OFFLINE mid-download and the server's
+    orphan reaper — fired by the agent's own UI polling after 3 min — failed the
+    batch out from under a run that was working fine.
+    """
     import subprocess, sys
     from pathlib import Path
     script = Path(__file__).resolve().parent / "scripts" / "windows" / "phoenix_terminal_run.py"
     log.info("dispatching phoenix_terminal orchestrator for run %s", rid)
-    subprocess.run([sys.executable, str(script), str(rid)], timeout=1800)
+    # utf-8 stdout regardless of how we're launched: under the hidden VBS launcher
+    # (or any pipe) Windows would otherwise encode stdout as cp1255 and a single '→'
+    # would abort the run with UnicodeEncodeError.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    await asyncio.get_running_loop().run_in_executor(
+        None, lambda: subprocess.run([sys.executable, str(script), str(rid)],
+                                     timeout=1800, env=env)
+    )
 
 
 async def main():
-    uid = await _resolve_user_id()
+    global _BUSY, _OWNS
+    uid = await _resolve_user_id_resilient()
     log.info("Nifraim worker started — host=%s user=%s poll=%ss", HOSTNAME, USER_EMAIL, POLL_S)
-    await _beat(uid, current_job=None, touch_job=True)
-    _post_log(f"worker ONLINE — user={USER_EMAIL} poll={POLL_S}s (DB heartbeat ok)")
+
+    # Announce a MACHINE FLIP. One login, two installed PCs — whichever is powered on
+    # silently takes the batch, and they are NOT interchangeable: Phoenix's green
+    # terminal needs the PowerTerm client, so a run that works on one machine dies on
+    # the other for reasons no log ever mentioned. Live: kiko's runs alternated between
+    # DESKTOP-M443DUC (works) and LAPTOP-1SS1D8M8 (no PowerTerm → terminal never opens)
+    # and it read as flaky automation. Name it, loudly, at startup.
+    # Is this account pinned to a specific machine? If so and it isn't us, stand down
+    # BEFORE beating or claiming anything — a wrong machine must not even appear as
+    # the agent's worker in the UI.
+    approved = await _approved_hostname(uid)
+    if approved and approved != HOSTNAME:
+        await _park_wrong_machine(uid, approved)
+
+    try:
+        previous = await _rival_hostname(uid)
+        if previous not in ("?", HOSTNAME):
+            log.warning("worker machine changed: %s → %s", previous, HOSTNAME)
+            _post_log(
+                f"MACHINE CHANGED: this account's worker last ran on '{previous}', now "
+                f"'{HOSTNAME}'. Two PCs are installed for one login — they are not "
+                f"equivalent (Phoenix's terminal only works where PowerTerm is installed)."
+            )
+    except Exception:
+        pass
+
+    try:
+        _OWNS = await _beat(uid, current_job=None, touch_job=True)
+        if _OWNS:
+            _post_log(f"worker ONLINE — user={USER_EMAIL} host={HOSTNAME} poll={POLL_S}s (DB heartbeat ok)")
+        else:
+            await _stand_by(uid)                   # a second PC on this login — wait our turn
+            _OWNS = True
+    except Exception as e:
+        # The heartbeat loop retries forever; a blip on the FIRST beat must not
+        # take the process down before that loop even starts.
+        log.warning("first heartbeat failed (%s) — the heartbeat loop will retry", e)
     # Clear any batch/run a prior worker left mid-flight (crash/re-exec) so it can't
     # block new downloads or show a phantom "running".
     await _reconcile_orphans(uid)
     asyncio.create_task(_heartbeat_loop(uid))
 
-    global _BUSY
     while True:
         try:
+            if not _OWNS:
+                # Another machine owns this account right now — never claim alongside
+                # it, or both PCs run the same agent's portals and fight over the OTP.
+                await asyncio.sleep(POLL_S)
+                continue
             bid = await _claim_pending_batch(uid)
             if bid is not None:
                 log.info("▶ claimed batch %s — running all portals locally", bid)
@@ -417,7 +635,23 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        log.info("worker stopped")
+    # Supervisor. NOTHING else restarts this process — the installer launches it
+    # once from the Startup folder (NifraimWorker.vbs), so any escape from main()
+    # means the agent is silently offline until their next logon. Restart on every
+    # unexpected error; only a deliberate SystemExit (identity unresolved, or another
+    # worker already holds the singleton port) is allowed to end the process.
+    _restart_delay = 5
+    while True:
+        try:
+            asyncio.run(main())
+            break                                   # main() returned — nothing to do
+        except KeyboardInterrupt:
+            log.info("worker stopped")
+            break
+        except SystemExit:
+            raise                                   # config error — do not spin on it
+        except Exception as e:
+            log.exception("worker crashed — restarting in %ss", _restart_delay)
+            _post_log(f"crashed ({type(e).__name__}: {e}) — restarting in {_restart_delay}s")
+            _time.sleep(_restart_delay)
+            _restart_delay = min(_restart_delay * 2, 60)

@@ -16,7 +16,7 @@
     <ClientSearchModal v-model:open="searchOpen" />
 
     <!-- Email-provider settings — opens from the menu's Settings item. -->
-    <EmailSettingsModal v-model:open="emailSettingsOpen" />
+    <EmailSettingsModal v-model:open="emailSettingsOpen" :open-mailbox="backFromConsent" />
 
     <!-- Phone-forward setup — lifted here so the activation checklist can open it. -->
     <PhoneForwardModal :open="phoneForwardOpen" @close="phoneForwardOpen = false" />
@@ -446,10 +446,13 @@ onMounted(async () => {
   await auth.fetchUser()
   // Microsoft sends the browser back here after the consent screen. Reopen the
   // settings panel so the agent sees the result instead of a bare workspace, and
-  // strip the query so a refresh doesn't reopen it forever.
+  // strip the query so a refresh doesn't reopen it forever. Go all the way to the
+  // mailbox card: the outcome — including a refused permission — is written there,
+  // and settings alone still leaves the agent hunting for it.
   const params = new URLSearchParams(window.location.search)
   if (params.get('mailbox')) {
     emailSettingsOpen.value = true
+    backFromConsent.value = true
     window.history.replaceState({}, '', window.location.pathname)
   }
   // Person-presence beat (20s). Started here rather than in MessengerDock so it
@@ -499,6 +502,8 @@ const circleMenuItems = [
 // Modals owned by WorkspaceView so they overlay everything (above ticker + menu).
 const searchOpen = ref(false)
 const emailSettingsOpen = ref(false)
+// Set only on the return leg from Microsoft's consent screen.
+const backFromConsent = ref(false)
 const fundDetailOpen = ref(false)
 const fundDetailViz = ref(null)
 const fundTickerStore = useFundTickerStore()

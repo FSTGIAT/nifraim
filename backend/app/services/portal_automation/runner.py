@@ -67,6 +67,11 @@ SCREENSHOT_ROOT = PROJECT_ROOT / "data" / "portal_screenshots"
 # `use_persistent_profile` — a real on-disk profile so reCAPTCHA Enterprise
 # cookies/reputation survive across runs (e.g. Mor). See base.py flags.
 BROWSER_PROFILE_ROOT = PROJECT_ROOT / "data" / "browser_profiles"
+# Dropped inside a persistent profile once a run has SUCCEEDED with it. Its absence
+# — not the absence of the directory — is what makes a profile "cold": a failed
+# first attempt creates the dir, and treating that as warm would skip the warm-up on
+# exactly the retry that needs it.
+WARM_MARKER = ".nifraim_warm"
 
 
 def _worker_note(msg: str) -> None:
@@ -148,6 +153,39 @@ async def _launch_real_browser(pw, headless: bool, launch_args: list):
             last_exc = exc
             continue
     raise last_exc or RuntimeError("no browser could be launched")
+
+
+async def _launch_real_persistent(pw, profile_dir, headless: bool, launch_args: list, context_kwargs: dict):
+    """Persistent-profile twin of `_launch_real_browser` — same real-browser ladder.
+
+    This used to be a bare `channel="chrome"` with a silent `except: → bundled
+    Chromium` fallback. On a worker PC without Google Chrome (Edge-only Windows is
+    common) EVERY persistent run therefore used bundled Chromium — whose UA-CH brand
+    list says "Chromium" — and nothing in any log said so. That is precisely the
+    fingerprint reCAPTCHA Enterprise punishes, and Mor/Meitav are the two portals
+    gated by it. Try Edge (a real browser, always present on Windows) BEFORE falling
+    back to Chromium, and return the label so the caller can log what actually ran.
+    Returns (context, label)."""
+    attempts = [("chrome", dict(channel="chrome"))]
+    seen_exe = set()
+    for p in _WIN_CHROME_EXES:
+        if p and p not in seen_exe and _os.path.exists(p):
+            seen_exe.add(p)
+            attempts.append(("chrome-exe", dict(executable_path=p)))
+    attempts.append(("msedge", dict(channel="msedge")))
+    attempts.append(("chromium", dict()))
+    last_exc = None
+    for label, kw in attempts:
+        try:
+            context = await pw.chromium.launch_persistent_context(
+                str(profile_dir), headless=headless, args=launch_args,
+                **kw, **context_kwargs,
+            )
+            return context, label
+        except Exception as exc:
+            last_exc = exc
+            continue
+    raise last_exc or RuntimeError("no persistent browser could be launched")
 
 OTP_WAIT_TIMEOUT_S = 300   # 5 minutes — the phone forwarder (Doze/battery-opt) often
 # batches SMS so codes land at ~250-260s; 240s was clipping them by seconds (e.g. the
@@ -429,20 +467,39 @@ async def _run_inner(
             # Enterprise cookies/reputation survive across runs. launch_persistent_context
             # IS the context (no separate browser object).
             profile_dir = BROWSER_PROFILE_ROOT / cred.portal_kind
+            # Is this profile UNPROVEN with the portal? A profile with no Google
+            # cookies and no site reputation is what reCAPTCHA Enterprise scores
+            # hardest, and the plugin can warm it before its one submit (a rejected
+            # submit lowers the score, so warming must happen BEFORE the first one,
+            # never as a retry).
+            #
+            # "Warm" is defined as A RUN HAS SUCCEEDED on this profile — not as "the
+            # directory exists". A failed first attempt creates the directory, so
+            # existence would declare the profile warm precisely when it is at its
+            # coldest, and the second attempt would skip the warm-up and fail the
+            # same way.
+            warm_marker = profile_dir / WARM_MARKER
+            profile_was_cold = not warm_marker.exists()
             profile_dir.mkdir(parents=True, exist_ok=True)
             # A crashed Chrome strands SingletonLock here; without this, every
             # subsequent run of this portal dies on arrival, forever.
             _clear_profile_singletons(profile_dir)
-            try:
-                context = await pw.chromium.launch_persistent_context(
-                    str(profile_dir), channel="chrome", headless=not headed,
-                    args=launch_args, **context_kwargs,
-                )
-            except Exception:
-                context = await pw.chromium.launch_persistent_context(
-                    str(profile_dir), headless=not headed,
-                    args=launch_args, **context_kwargs,
-                )
+            context, _blabel = await _launch_real_persistent(
+                pw, profile_dir, not headed, launch_args, context_kwargs
+            )
+            plugin.profile_was_cold = profile_was_cold
+            logger.info(
+                "Run %s (%s): persistent browser=%s cold_profile=%s",
+                run.id, cred.portal_kind, _blabel, profile_was_cold,
+            )
+            # Surface it to Railway logs. 'chromium' on a reCAPTCHA-gated portal
+            # (Mor/Meitav) means the PC has no real Chrome/Edge and the run is
+            # fighting the bot score with the worst possible fingerprint — that is
+            # a machine-setup fault, not a code fault, and it must be visible.
+            _worker_note(
+                f"run {str(run.id)[:8]} {cred.portal_kind}: persistent browser={_blabel}"
+                f"{' COLD-PROFILE' if profile_was_cold else ''}"
+            )
         else:
             browser, _blabel = await _launch_real_browser(
                 pw, not headed, launch_args
@@ -533,6 +590,15 @@ async def _run_inner(
             first_upload_id: uuid.UUID | None = None
             # (upload_id, file_category, company_source)
             ingested: list[tuple] = []
+            # A "successful" run can still lose data three silent ways: a
+            # best-effort leg failed inside the plugin (partial_errors), a
+            # downloaded file failed to ingest, or it ingested with an
+            # unrecognized format (category "general" — which the batch merge
+            # ignores entirely). Collect all three onto the run so they surface
+            # in the activity log / batch summary instead of vanishing (live:
+            # batch 93a796ac merged a נפרעים file missing אלטשולר + כלל גמל
+            # while every run showed green).
+            issues: list[str] = list(getattr(plugin, "partial_errors", None) or [])
             for path in files:
                 content = path.read_bytes()
                 try:
@@ -552,15 +618,57 @@ async def _run_inner(
                     logger.warning(
                         "Ingest failed for %s (run %s): %s", path.name, run.id, ingest_err
                     )
+                    issues.append(f"{path.name}: הקליטה נכשלה — {str(ingest_err)[:120]}")
                     continue
+                if upload.file_category not in ("production", "commission"):
+                    # Downloaded fine, but no parser signature matched (fmt
+                    # "unknown" → category "general"). The rows are junk NULLs
+                    # and the batch merge skips the category — without this note
+                    # the data is simply gone.
+                    issues.append(
+                        f"{path.name}: הפורמט לא זוהה ({_fmt}) — לא ייכלל בקבצים המאוחדים"
+                    )
+                    # Ship the file's first raw rows to Railway (WORKER-LOG) —
+                    # the file exists only on the worker's disk, and the real
+                    # header row is exactly what's needed to add the missing
+                    # parser signature without asking the user for the file.
+                    try:
+                        import io as _io
+                        import pandas as _pd
+                        _head = _pd.read_excel(
+                            _io.BytesIO(content), header=None, nrows=3
+                        ).astype(str).values.tolist()
+                    except Exception:
+                        _head = []
+                    _worker_note(
+                        f"run {str(run.id)[:8]} {cred.portal_kind}: UNPARSED "
+                        f"{path.name} fmt={_fmt} head={_head}"[:1800]
+                    )
                 if first_upload_id is None:
                     first_upload_id = upload.id
                     first_filename = path.name
                 ingested.append((upload.id, upload.file_category, upload.company_source))
 
+            if files and not ingested:
+                # Files were downloaded but NONE persisted — that's a failed
+                # run, not a quiet success with an empty upload list.
+                raise RuntimeError("אף קובץ שהורד לא נקלט: " + " | ".join(issues)[:300])
+
             run.downloaded_filename = first_filename
             run.upload_id = first_upload_id
-            await _set_status(db, run, status="success", finished=True)
+            await _set_status(
+                db, run, status="success",
+                error=("הושלם חלקית: " + " | ".join(issues))[:500] if issues else None,
+                finished=True,
+            )
+
+            # This profile has now carried a real login through to a download, so it
+            # has the cookies/reputation the next run inherits — stop warming it.
+            if getattr(plugin, "use_persistent_profile", False):
+                try:
+                    (BROWSER_PROFILE_ROOT / cred.portal_kind / WARM_MARKER).write_text("ok")
+                except Exception as exc:
+                    logger.warning("could not mark %s profile warm: %s", cred.portal_kind, exc)
 
             # Fire downstream hooks per file:
             #   production → portal snapshots + production summary
