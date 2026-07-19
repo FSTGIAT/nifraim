@@ -272,7 +272,30 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # itself is proven fine; batch-induced score pressure is the best-supported
     # explanation. A stable sort keeps every other portal's relative (alphabetical)
     # order — this only moves the 1-2 Enterprise-gated creds to the front.
-    creds.sort(key=lambda c: 0 if getattr(REGISTRY.get(c.portal_kind), "use_persistent_profile", False) else 1)
+    # `mor` gets its OWN rank ahead of the other persistent-profile portals, so
+    # it runs with NOTHING before it in the worker process. Every Mor run ever
+    # recorded, with the gap from the preceding run in the same batch:
+    #   2026-07-14 12:48  STANDALONE  prev=none        n/a     SUCCESS
+    #   2026-07-14 15:50  BATCH pos 9 prev=migdal_apm  0.9s    failed
+    #   2026-07-19 16:30  BATCH pos 2 prev=meitav      1.0s    failed
+    #   2026-07-19 20:00  BATCH pos 2 prev=meitav     13.0s    failed   <- settle gap DID apply
+    # The 13.0s run proves RECAPTCHA_SETTLE_S does not help: the gap is not the
+    # variable. What tracks perfectly is whether ANY portal ran before Mor in
+    # this worker process — the one condition never yet tested in a batch,
+    # because meitav is also persistent-profile and sorts alphabetically first
+    # under the previous binary key.
+    #
+    # If Mor still fails at position 1 with no predecessor, then batch-vs-
+    # standalone is NOT about preceding browsers at all, and the next thing to
+    # examine is what the batch path itself holds open (DB transaction, otp_since
+    # anchoring) rather than anything browser-related. Do not add a third timing
+    # hypothesis — that well is dry.
+    def _rank(c) -> int:
+        if c.portal_kind == "mor":
+            return 0
+        return 1 if getattr(REGISTRY.get(c.portal_kind), "use_persistent_profile", False) else 2
+
+    creds.sort(key=_rank)
 
     batch.total = len(creds)
     batch.status = "running"
