@@ -47,6 +47,32 @@ _HE_MONTHS = {
     7: "יולי", 8: "אוגוסט", 9: "ספטמבר", 10: "אוקטובר", 11: "נובמבר", 12: "דצמבר",
 }
 
+# Minimum wall-clock gap (seconds) between the PRECEDING run's browser process
+# closing and a reCAPTCHA-Enterprise-gated portal (mor/meitav, `use_persistent_
+# profile=True`) launching its own. Measured, not guessed: reordering mor/meitav
+# to the FRONT of the batch (see the `creds.sort` below, fixed 2026-07-14) did
+# NOT fix mor — batch 9e708cbc (2026-07-19) still failed with the IDENTICAL
+# `400 {"resultCode":"Bad Request"}` with mor running 2nd, right after meitav.
+# Queried `portal_runs.started_at`/`finished_at` for BOTH live failures:
+#   2026-07-14 189f68cb: migdal_apm finished 15:50:36.278 → mor started 15:50:37.191 (0.91s gap)
+#   2026-07-19 9e708cbc: meitav     finished 16:30:00.481 → mor started 16:30:01.506 (1.02s gap)
+# Both failures started ~1s after another portal's Chrome/Edge process had JUST
+# closed; the one live STANDALONE success (2026-07-14 12:48, batch_id=NULL) had
+# no adjacent automated browser at all. That ~1s adjacency — not cumulative
+# batch position/volume (already disproven above) — is the one variable a
+# batch run has that a standalone run structurally cannot: `_run_batch_inner`'s
+# loop launches the next credential's browser within ~1s of the previous one's
+# `context.close()`/`browser.close()`, which is exactly the DB-commit overhead
+# between iterations, with no deliberate settle time.
+# This does not prove the mechanism (candidate: the outgoing browser process is
+# still tearing down — CPU/network/GPU-process contention — while the incoming
+# one runs its client-side reCAPTCHA Enterprise risk script, so the token it
+# submits is short-changed and the server 400s on a malformed field rather than
+# scoring a complete one). It only removes the one measured, reproduced-twice
+# variable that IS unique to batch mode. See mor.py's request-payload
+# instrumentation for the decisive evidence if this alone doesn't fix it.
+RECAPTCHA_SETTLE_S = 12
+
 # Hebrew labels for the comparison categories (for error_message wording).
 _CATEGORY_LABELS = {"gemel_hishtalmut": "גמל והשתלמות", "insurance": "ביטוח"}
 
@@ -271,8 +297,31 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # so the loss is visible instead of shipping a quietly-thin merged file.
     partial_notes: list[str] = []
 
+    # See RECAPTCHA_SETTLE_S above — tracks when the last Playwright browser in
+    # THIS loop closed, so a reCAPTCHA-Enterprise-gated portal never launches
+    # within that gap of the previous one's teardown. Monotonic clock (loop.time())
+    # since only elapsed duration matters, not wall time.
+    _loop = asyncio.get_event_loop()
+    _last_browser_close_mono: float | None = None
+
     # ── 1. Run every credential sequentially ─────────────────────────────
     for cred in creds:
+        # reCAPTCHA-Enterprise settle gap (measured — see RECAPTCHA_SETTLE_S).
+        # Only applies to persistent-profile portals (mor, meitav); every other
+        # portal keeps running back-to-back exactly as before.
+        if _last_browser_close_mono is not None and getattr(
+            REGISTRY.get(cred.portal_kind), "use_persistent_profile", False
+        ):
+            _elapsed = _loop.time() - _last_browser_close_mono
+            _wait_s = RECAPTCHA_SETTLE_S - _elapsed
+            if _wait_s > 0:
+                logger.info(
+                    "Batch %s: settling %.1fs before %s (reCAPTCHA-gated; "
+                    "previous browser closed %.1fs ago)",
+                    batch.id, _wait_s, cred.portal_kind, _elapsed,
+                )
+                await asyncio.sleep(_wait_s)
+
         run = PortalRun(
             user_id=user_id,
             credential_id=cred.id,
@@ -335,6 +384,10 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         finally:
             cred.last_run_at = datetime.utcnow()
             await db.commit()
+            # This credential's Playwright browser/context is now closed
+            # (`_run_inner`'s own `finally` already ran) — start the settle
+            # clock for whichever portal runs next.
+            _last_browser_close_mono = _loop.time()
 
     batch.current_run_id = None
     await db.commit()
@@ -350,6 +403,17 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             batch.id, len(otp_failed), [c.portal_kind for c in otp_failed],
         )
         for cred in otp_failed:
+            # Same reCAPTCHA settle gap as the main pass (RECAPTCHA_SETTLE_S) —
+            # a retried persistent-profile portal must not launch right on the
+            # heels of the previous retry's browser closing either.
+            if _last_browser_close_mono is not None and getattr(
+                REGISTRY.get(cred.portal_kind), "use_persistent_profile", False
+            ):
+                _elapsed = _loop.time() - _last_browser_close_mono
+                _wait_s = RECAPTCHA_SETTLE_S - _elapsed
+                if _wait_s > 0:
+                    await asyncio.sleep(_wait_s)
+
             run = PortalRun(
                 user_id=user_id,
                 credential_id=cred.id,
@@ -393,6 +457,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             finally:
                 cred.last_run_at = datetime.utcnow()
                 await db.commit()
+                _last_browser_close_mono = _loop.time()
 
         batch.current_run_id = None
         await db.commit()

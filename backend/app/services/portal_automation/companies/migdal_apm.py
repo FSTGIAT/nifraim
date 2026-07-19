@@ -44,7 +44,17 @@ class MigdalApmPortal(BasePortalAutomation):
     # Folded into the consolidated `migdal` plugin, which downloads the mfte
     # production then logs into apmaccess (2nd OTP via the runner's otp_provider)
     # for this נפרעים report. Still runnable as a manual single run.
-    include_in_batch = True  # enabled: batch downloads production+נפרעים for all companies
+    # FALSE, like every other folded leg (clal_nifraim, menora_nifraim,
+    # harel_commissions, phoenix_nifraim_gemel). This used to be True, which
+    # contradicted the comment directly above it and made the batch fetch this
+    # report TWICE: `migdal` downloads mfte production and then folds apmaccess
+    # here (2nd OTP), after which the standalone entry logged in AGAIN and asked
+    # for a THIRD code. Live 2026-07-19 (batch 9e708cbc): the folded leg produced
+    # `מגדל נפרעים יוני 2026.xlsx` (180 records) at 16:45, then the duplicate run
+    # failed `stage=otp, Timeout 20000ms` at 16:46 — a red card for a company
+    # that had in fact succeeded, plus a wasted login, ~2 minutes and an OTP that
+    # a later portal in the same batch might have needed.
+    include_in_batch = False
 
     async def _restart_if_bounced(self, page: "Page") -> bool:
         """F5 APM bot gate: a hit can bounce to my.logout.php3?errorcode=19.

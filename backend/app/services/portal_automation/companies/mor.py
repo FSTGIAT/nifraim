@@ -121,7 +121,41 @@ class MorPortal(BasePortalAutomation):
 
         # Record what Mor's SERVER says when it rejects, so the failure message is a
         # measurement instead of a guess. Registered before any navigation.
-        srv: dict = {"status": None, "body": "", "url": ""}
+        #
+        # A bare `400 {"resultCode":"Bad Request"}` — no "score"/"captcha" wording,
+        # no HTTP 401/403 — reads like a PAYLOAD-SHAPE rejection (a malformed/empty
+        # field failing schema validation), not the usual score-based gate (which
+        # returns 200 + a friendly rejection body). Capture the REQUEST body too
+        # (field NAMES + lengths only — never the raw token/value) so a future
+        # failure can show whether e.g. the reCAPTCHA token field was empty/short,
+        # instead of only ever seeing the response. Also keep every POST to
+        # more.co.il seen during the window (`all_posts`), not just the one that
+        # first looked like a rejection — a background telemetry/health call
+        # returning its own 400 could otherwise get misattributed as the login
+        # response.
+        srv: dict = {"status": None, "body": "", "url": "", "req": ""}
+        all_posts: list[str] = []
+
+        def _describe_req_body(raw: str) -> str:
+            """Field names + lengths only — a reCAPTCHA Enterprise token is a
+            long opaque string, so an EMPTY or unusually short value here is the
+            decisive signal, without logging the token/credentials themselves."""
+            if not raw:
+                return "EMPTY"
+            try:
+                import json as _json
+                obj = _json.loads(raw)
+                if isinstance(obj, dict):
+                    parts = []
+                    for k, v in obj.items():
+                        if isinstance(v, str):
+                            parts.append(f"{k}=len{len(v)}")
+                        else:
+                            parts.append(f"{k}={v!r}")
+                    return "{" + ", ".join(parts) + "}"
+            except Exception:
+                pass
+            return f"len{len(raw)} raw={raw[:120]!r}"
 
         async def _on_resp(resp):
             try:
@@ -132,8 +166,15 @@ class MorPortal(BasePortalAutomation):
                     body = (await resp.text())[:600]
                 except Exception:
                     pass
+                req_body = ""
+                try:
+                    req_body = resp.request.post_data or ""
+                except Exception:
+                    pass
+                all_posts.append(f"{resp.status} {resp.url} req={_describe_req_body(req_body)}")
                 if resp.status >= 400 or "שגיא" in body:
                     srv["status"], srv["body"], srv["url"] = resp.status, body, resp.url
+                    srv["req"] = req_body
             except Exception:
                 pass
 
@@ -308,11 +349,18 @@ class MorPortal(BasePortalAutomation):
                 # "אירעה שגיאה" post-submit means EITHER a low reCAPTCHA-Enterprise
                 # score OR wrong פרטים — the toast is identical, so ask the SERVER
                 # which it was (srv[] was captured off the POST response).
-                from app.services.portal_automation.runner import logger as _llog
+                #
+                # Ship this via `_worker_note` (reaches Railway logs), NOT
+                # `logger.info` — a prior fix here used `_logger.info` and was
+                # undiagnosable because that only writes the WORKER's local log
+                # file, which we never see. See memory `mor_batch_recaptcha_score`.
+                from app.services.portal_automation.runner import _worker_note, logger as _llog
                 cause = self._classify(srv.get("status"), srv.get("body", ""))
-                _llog.info(
-                    "Mor login rejected: cause=%s http=%s body=%.200s",
-                    cause, srv.get("status"), srv.get("body", ""),
+                _worker_note(
+                    f"mor login rejected: cause={cause} http={srv.get('status')} "
+                    f"url={srv.get('url')} resp_body={srv.get('body', '')[:300]!r} "
+                    f"req_body={_describe_req_body(srv.get('req', ''))} "
+                    f"all_posts({len(all_posts)})={' || '.join(all_posts[:8])}"[:1800]
                 )
 
                 # Wrong credentials will NEVER heal by waiting or re-clicking, and each
@@ -386,10 +434,16 @@ class MorPortal(BasePortalAutomation):
                             "אותו באטצ'), לא בעיית פרטים."
                         )
 
+                # Compact request-payload summary (field names + lengths only) so
+                # the DECISIVE evidence — was the reCAPTCHA token field empty/short? —
+                # lands in run.error_message itself, not only in the Railway
+                # worker-log (which needs a separate `railway logs` grep to see).
+                _req_txt = f" req={_describe_req_body(srv.get('req', ''))[:200]}"
+
                 raise RuntimeError(
                     f"Mor: הכניסה נדחתה (אירעה שגיאה){_cold}. סיבה משוערת: "
                     f"{'ציון reCAPTCHA נמוך' if cause == 'recaptcha' else 'לא ודאית'}."
-                    f"{_recent_note}{_srv_txt} המתן ~20-30 דקות ונסה שוב."
+                    f"{_recent_note}{_srv_txt}{_req_txt} המתן ~20-30 דקות ונסה שוב."
                 )
             raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 
