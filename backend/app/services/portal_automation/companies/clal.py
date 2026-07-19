@@ -26,12 +26,20 @@ checkpoint dumps + an XHR fallback. Refine from `<run_id>_*.txt` artifacts under
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.services.portal_automation.base import BasePortalAutomation
 from app.services.portal_automation._apm_helpers import apm_login_submit
+
+# Module-level, deliberately. `_logger` used to be imported INSIDE
+# `_grab_report`; a caller added elsewhere in the file then raised
+# `name '_logger' is not defined` and took the whole Clal run down at
+# stage=download (live 2026-07-19 batch a1f30dd6). A logger must not be
+# scoped to one function in a module that logs from several.
+_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
