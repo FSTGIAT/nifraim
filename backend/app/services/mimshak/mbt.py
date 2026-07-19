@@ -37,16 +37,57 @@ def _read_text(path: Path) -> str:
     return raw.decode("latin-1", errors="replace")
 
 
+# Hebrew final forms. In LOGICAL order they can only END a word; in VISUAL
+# (display-order) storage the word is reversed, so they LEAD one instead. That
+# positional asymmetry is the only reliable in-band signal of which convention
+# a given field uses — the encoding does not distinguish them.
+_FINAL_FORMS = frozenset("ךםןףץ")
+
+
+def looks_logical_hebrew(s: str) -> bool | None:
+    """True = demonstrably logical order, False = demonstrably visual, None = no evidence.
+
+    Counts Hebrew words whose final-form letter sits at the end (logical) versus
+    at the start (visual). Words containing no final form are silent — many
+    strings are genuinely undecidable, hence the tri-state rather than a bool.
+    """
+    words = [
+        w for w in s.replace("-", " ").split()
+        if any("֐" <= c <= "׿" for c in w)
+    ]
+    if not words:
+        return None
+    leading = sum(1 for w in words if w[0] in _FINAL_FORMS)
+    trailing = sum(1 for w in words if w[-1] in _FINAL_FORMS)
+    if trailing > leading:
+        return True
+    if leading > trailing:
+        return False
+    return None
+
+
 def _maybe_reverse_hebrew(s: str) -> str:
     """Some MBT fields are in visual order — if a string consists entirely of
     Hebrew letters and ASCII, reverse just the Hebrew runs.
 
-    This is a best-effort heuristic. We keep the original alongside in parsers."""
+    This is a best-effort heuristic. We keep the original alongside in parsers.
+
+    A field that is DEMONSTRABLY already logical is returned untouched, whatever
+    the caller believed. Migdal's MBT set mixes both conventions inside one
+    bundle: the name columns (PERSON col 24, LIFE/LIFEHLTH col 14) are visual,
+    but COVRLIFE's coverage-name column 19 is logical. Reversing that one shipped
+    '\u05D1\u05D9\u05D8\u05D5\u05D7 \u05DE\u05E2\u05D5\u05E8\u05D1 - \u05DE\u05E1\u05D5\u05DC\u05E7' into the merged production file as '\u05D1\u05E8\u05D5\u05E2\u05DE \u05D7\u05D5\u05D8\u05D9\u05D1-\u05E7\u05DC\u05D5\u05E1\u05DE'.
+    Verified across 8 separate Migdal downloads: COVRLIFE col19 = 191-211 logical
+    rows and 0 visual; the name columns = 100% visual. Encoding cannot tell them
+    apart \u2014 every one of these files is UTF-8 \u2014 so the guard must read the text.
+    """
     if not s:
         return s
     # If no Hebrew characters, leave as-is.
     if not any("\u0590" <= c <= "\u05FF" for c in s):
         return s
+    if looks_logical_hebrew(s) is True:
+        return s.strip()
     # Reverse runs of Hebrew+space; leave ASCII untouched.
     out = []
     buf = []

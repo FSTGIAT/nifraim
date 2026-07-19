@@ -235,6 +235,19 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     if skipped:
         logger.info("Batch %s: skipping non-batch portals: %s", batch.id, skipped)
 
+    # Run reCAPTCHA-Enterprise-gated portals (mor, meitav — `use_persistent_profile`)
+    # FIRST, before the batch's OTHER automated logins add session/IP volume that
+    # can sink Enterprise's bot score for them. Proven live 2026-07-14 (batch
+    # 189f68cb): the same Mor credential that succeeded standalone at 12:48 (490
+    # records) failed at 15:50 with a bare `400 {"resultCode":"Bad Request"}` —
+    # ONLY after 9 other portal logins had already run from the same worker/IP in
+    # the preceding ~14 minutes (altshuler→migdal_apm). No other variable changed
+    # (same creds, same warm persistent profile, same machine) — the credential
+    # itself is proven fine; batch-induced score pressure is the best-supported
+    # explanation. A stable sort keeps every other portal's relative (alphabetical)
+    # order — this only moves the 1-2 Enterprise-gated creds to the front.
+    creds.sort(key=lambda c: 0 if getattr(REGISTRY.get(c.portal_kind), "use_persistent_profile", False) else 1)
+
     batch.total = len(creds)
     batch.status = "running"
     await db.commit()

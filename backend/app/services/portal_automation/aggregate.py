@@ -15,7 +15,11 @@ from __future__ import annotations
 import io
 from datetime import date, datetime
 
-from app.services.rate_select import accumulation_based
+from app.services.rate_select import (
+    accumulation_based,
+    pure_risk_insurance,
+    savings_product_type,
+)
 from app.services.mimshak.column_maps import (
     COLUMNS_INSURANCE_PRODUCTS,
     COLUMNS_SAVINGS_PRODUCTS,
@@ -54,11 +58,29 @@ def classify_record(rec: dict) -> str:
 
     Reuses `accumulation_based` (gemel/השתלמות/חיסכון = savings; pension &
     pure-risk = insurance), plus an accumulation-without-premium heuristic.
+
+    A KNOWN pure-risk product type beats that heuristic. The heuristic exists
+    for rows whose product type is empty/unrecognised; letting it also override
+    an explicit בריאות/חיים/סיעודי/משכנתא put every Phoenix MU life row on the
+    savings sheet under the PENSION legal entity, because that parser stores an
+    accumulation and deliberately leaves premium None (it refuses to fabricate a
+    premium from an unverified column — see phoenix_mu.py). "No premium" is a
+    statement about the source file, not evidence the policy is a savings one.
     """
     accum = _f(rec.get("accumulation"))
     premium = _f(rec.get("total_premium"))
-    if accumulation_based(rec.get("product_type"), accum):
+    product_type = rec.get("product_type")
+    if accumulation_based(product_type, accum):
         return "savings"
+    # A known product type decides the sheet on its own — BOTH directions. A
+    # גמל/השתלמות row whose accumulation column arrived empty is still savings
+    # (14 Harel rows were filed as insurance under the INSURANCE legal entity
+    # for exactly this reason), and a בריאות/חיים row carrying an accumulation
+    # is still insurance. Amounts only break the tie when the type is unknown.
+    if savings_product_type(product_type):
+        return "savings"
+    if pure_risk_insurance(product_type):
+        return "insurance"
     if accum > 0 and premium <= 0:
         return "savings"
     return "insurance"
@@ -168,10 +190,22 @@ _GEMEL_KW = ("גמל", "השתלמות", "תגמולים", "פנסיה", "חיס
 def commission_category_token(rec: dict) -> str:
     """'גמל' / 'ביטוח' for the קטגוריה column, from product/fund_type keywords
     plus an accumulation fallback. Pension is treated as gemel-family here for
-    file labelling; the comparison engine still excludes pension on its own."""
+    file labelling; the comparison engine still excludes pension on its own.
+
+    Delegates the known-type decision to the SAME `savings_product_type` /
+    `pure_risk_insurance` helpers `classify_record` (production side) uses,
+    checked in the same order (known type first, amount heuristic last) —
+    a bare `_GEMEL_KW` keyword list previously drifted from `_ACCUM_TOKENS`
+    (missing 'מנהלים') and disagreed with `pure_risk_insurance` entirely (no
+    override for חיים/בריאות/סיעודי/משכנתא/ריסק/תאונ before the amount
+    heuristic). That let a commission row and its matching production row for
+    the SAME product land under different company legal entities (savings vs
+    insurance) in the merged batch files, breaking production↔נפרעים pairing."""
     text = f"{rec.get('fund_type') or ''} {rec.get('product') or ''}"
-    if any(kw in text for kw in _GEMEL_KW):
+    if any(kw in text for kw in _GEMEL_KW) or savings_product_type(text):
         return NIFRAIM_CATEGORY_GEMEL
+    if pure_risk_insurance(text):
+        return NIFRAIM_CATEGORY_INSURANCE
     # Gemel records carry a balance/accumulation but no premium.
     # Use balance as a fallback for parsers that store the AUM in 'balance'
     # rather than 'accumulation' (e.g. Hachshara, Altshuler, Phoenix gemel).

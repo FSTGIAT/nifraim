@@ -469,18 +469,26 @@ def build_covrlife_product_row(
         col  8 — annual premium
         col  9 — monthly premium
         col 18 — short customer id (9 digits)
-        col 19 — coverage name (visual Hebrew — used as product label and
-                 keyword-classified into ביטוח חיים / בריאות / משכנתא)
+        col 19 — coverage name (LOGICAL Hebrew, already readable — used as
+                 product label and keyword-classified into ביטוח חיים /
+                 בריאות / משכנתא)
     """
-    from app.services.mimshak.mbt import _maybe_reverse_hebrew
-
     def _safe(idx):
         return cells[idx] if len(cells) > idx else ""
 
     policy_id = _strip_zeros(_safe(1)) or _safe(1)
     customer_short = _strip_zeros(_safe(18)) or _safe(18)
     id_int = _id_number_int(_safe(18))
-    coverage_name = _maybe_reverse_hebrew(_safe(19)).strip()
+    # NOT reversed. This column is stored in LOGICAL order, unlike the name
+    # columns in the same bundle (PERSON col 24, LIFE/LIFEHLTH col 14) which
+    # genuinely are visual. It used to go through `_maybe_reverse_hebrew`, which
+    # turned 'ביטוח מעורב - מסולק' into 'ברועמ חוטיב-קלוסמ' and shipped that as
+    # the product name in the merged production file. Measured over 8 separate
+    # Migdal downloads: 191-211 logical rows per file, zero visual. Do not add a
+    # reverse back here without re-measuring — and note the keyword classifier
+    # below only works on logical text, so a reversed value also silently
+    # defaulted every coverage to ביטוח חיים.
+    coverage_name = _safe(19).strip()
 
     # Classify product type from coverage name keywords. Order matters —
     # match the more specific terms first.

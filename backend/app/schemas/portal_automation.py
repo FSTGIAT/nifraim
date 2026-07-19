@@ -9,7 +9,7 @@ PortalKind = Literal[
     "clal", "clal_nifraim",
     "menora", "menora_nifraim", "altshuler", "hachshara", "excellence", "mor",
     "ayalon", "clal_health", "harel", "harel_commissions", "harel_savings",
-    "yelin", "meitav",
+    "yelin", "meitav", "analyst",
     "phoenix_terminal",
 ]
 

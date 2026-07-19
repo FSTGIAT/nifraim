@@ -388,26 +388,71 @@ class ClalPortal(BasePortalAutomation):
             except Exception:
                 return None
 
+        async def _excel_permitted(p) -> bool | None:
+            """Read InfoBay's own server-set Excel permission flag.
+
+            `HidPermissionForExcel == "1"` is what un-disables the cmdExcel
+            toolbar button. Returns None when the field isn't on the page (an
+            InfoBay build that predates it), so callers can still *try* Excel.
+            """
+            try:
+                return await p.evaluate(
+                    """() => {
+                        const el = document.querySelector("input[id$='HidPermissionForExcel']");
+                        return el ? el.value === '1' : null;
+                    }"""
+                )
+            except Exception:
+                return None
+
         async def _grab_report(p, row, base_name: str, dump_stem: str | None) -> "Path | None":
-            """Double-click a report row (ShowReport → window.open) and capture
-            the file across all behaviours: native download (PDF), popup viewer
-            (PDF or HTML report), or same-tab navigation. ShowReport is the
-            universal trigger — it fires for every report type, unlike the
-            cmdReportProp toolbar button (a no-op for .htm)."""
+            """Trigger a report row and capture the file across all behaviours:
+            native download (xlsx/PDF), popup viewer (PDF or HTML report), or
+            same-tab navigation.
+
+            EXCEL FIRST. InfoBay's trigger is `ShowReport(isExcel, ...)` and the
+            row markup hardcodes `ondblclick="ShowReport('0')"` — `'0'` means
+            PDF. Double-clicking the row therefore always asked for PDF, which
+            is why every `כלל - פרודוקציה *.pdf` was then rejected by
+            `upload_ingest` ("Unsupported file extension 'pdf'") and Clal's
+            production silently contributed nothing to the merged file. The
+            portal's own Excel path is `ShowReport('1')` (what the cmdExcel
+            toolbar button calls), gated server-side on `HidPermissionForExcel`.
+
+            So: select the row, and if Excel isn't explicitly forbidden call
+            `ShowReport('1')`. Fall back to the original dblclick on any
+            failure — a PDF we can't parse still beats no download at all, and
+            `.htm` reports only ever come through the dblclick path.
+            """
             holder: dict = {}
             url_before = p.url
             xhr_before = len(xhr_captures)
             p.once("download", lambda d: holder.setdefault("dl", d))
             p.context.once("page", lambda pg: holder.setdefault("pg", pg))
-            try:
-                await row.dblclick(timeout=6000)
-            except Exception:
-                # Fallback: select row + click the toolbar action button.
+
+            triggered = False
+            if await _excel_permitted(p) is not False:
                 try:
+                    # Row click runs SelectMe(...), which is what tells the page
+                    # WHICH report ShowReport should render. Without it Excel
+                    # would render whatever row was previously selected.
                     await row.click(timeout=4000)
-                    await p.click(VIEW_BTN, timeout=4000)
+                    await p.wait_for_timeout(200)
+                    await p.evaluate("() => ShowReport('1')")
+                    triggered = True
+                except Exception as e:
+                    _logger.info("clal: Excel trigger unavailable (%s) — falling back to PDF", e)
+
+            if not triggered:
+                try:
+                    await row.dblclick(timeout=6000)
                 except Exception:
-                    return None
+                    # Fallback: select row + click the toolbar action button.
+                    try:
+                        await row.click(timeout=4000)
+                        await p.click(VIEW_BTN, timeout=4000)
+                    except Exception:
+                        return None
             for _ in range(25):
                 if (holder.get("dl") or holder.get("pg") or p.url != url_before
                         or len(xhr_captures) > xhr_before):

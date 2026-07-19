@@ -26,6 +26,7 @@ from app.services.portal_automation.companies.harel_commissions import HarelComm
 from app.services.portal_automation.companies.harel_savings import HarelSavingsPortal
 from app.services.portal_automation.companies.yelin import YelinPortal
 from app.services.portal_automation.companies.meitav import MeitavPortal
+from app.services.portal_automation.companies.analyst import AnalystPortal
 
 
 REGISTRY: dict[str, type[BasePortalAutomation]] = {
@@ -50,6 +51,7 @@ REGISTRY: dict[str, type[BasePortalAutomation]] = {
     "harel_savings": HarelSavingsPortal,
     "yelin": YelinPortal,
     "meitav": MeitavPortal,
+    "analyst": AnalystPortal,
 }
 
 
@@ -79,6 +81,7 @@ PORTAL_LABELS: dict[str, str] = {
     "harel_savings": "הראל — מוצרי צבירה (פרודוקציה)",
     "yelin": "ילין לפידות — עמלות (נפרעים)",
     "meitav": "מיטב דש — דוח עמלות לסוכן (נפרעים)",
+    "analyst": "אנליסט — עמלות סוכנים (נפרעים)",
     "phoenix_terminal": "הפניקס — טרמינל (פרודוקציה)",
 }
 
@@ -116,6 +119,7 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
     "mor":                  ("מור", "נפרעים", "https://join.more.co.il/agentsportal/agents/login"),
     "yelin":                ("ילין לפידות", "נפרעים", "https://online.yl-invest.co.il/agents/"),
     "meitav":               ("מיטב דש", "נפרעים", "https://customers.meitav.co.il/v2/login/LoginAgent"),
+    "analyst":              ("אנליסט", "נפרעים", "https://agent.analyst.co.il/auth/login"),
     "ayalon":               ("איילון", "פרודוקציה", ""),
 }
 
@@ -151,6 +155,15 @@ PORTAL_LOGIN_FIELDS: dict[str, list[dict]] = {
         {"key": "phone", "label": "טלפון נייד", "placeholder": "הטלפון שאליו מגיע קוד ה-SMS",
          "type": "tel", "target": "password", "secret": True, "required": True,
          "hint": "מור שולחת את קוד האימות ב-SMS למספר הזה"},
+    ],
+    # analyst.py::_split → username="<id>", password="<phone>". The login form is
+    # ת"ז + טלפון (NOT "שם משתמש"/"סיסמה"), and analyst SMS-OTPs the phone.
+    "analyst": [
+        {"key": "identity", "label": "תעודת זהות", "placeholder": "9 ספרות",
+         "type": "text", "target": "username", "secret": False, "required": True},
+        {"key": "phone", "label": "טלפון נייד", "placeholder": "הטלפון שאליו מגיע קוד ה-SMS",
+         "type": "tel", "target": "password", "secret": True, "required": True,
+         "hint": "אנליסט שולחת את קוד האימות ב-SMS למספר הזה"},
     ],
 }
 

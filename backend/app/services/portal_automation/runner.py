@@ -370,6 +370,14 @@ async def _run_inner(
     if plugin_cls is None:
         raise RuntimeError(f"Unknown portal_kind: {cred.portal_kind}")
     plugin = plugin_cls()
+    # Give a rejected-login plugin a MEASURED fact instead of a guess: when did
+    # THIS SAME credential last succeed? A recent success rules out "wrong
+    # פרטים" outright (a stale/typo'd credential doesn't intermittently start
+    # working), which matters for score-based gates like Mor's reCAPTCHA
+    # Enterprise where the server's own error body is a generic 400 that can't
+    # itself distinguish cause. See mor.py::_classify and memory `portal_mor`.
+    plugin.cred_last_run_status = cred.last_run_status
+    plugin.cred_last_run_at = cred.last_run_at
 
     password = decrypt(cred.encrypted_password)
 

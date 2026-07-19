@@ -82,6 +82,14 @@ class BasePortalAutomation(ABC):
     native_fingerprint: bool = False
     use_persistent_profile: bool = False
 
+    # Set by runner.py (`_run_inner`) before login() from this credential's own
+    # last recorded outcome — a MEASURED fact a plugin can use to rule out
+    # "wrong credentials" on a rejection instead of guessing. A credential that
+    # succeeded recently didn't silently become wrong; a same-body rejection
+    # right after is far better explained by a score/rate gate than by a typo.
+    cred_last_run_status: str | None = None
+    cred_last_run_at = None  # datetime | None — typed loosely to avoid an import here
+
     def __init__(self) -> None:
         # Best-effort legs (a folded נפרעים grab, a secondary report) that fail
         # inside download_reports must NOT stay only in the worker's local log —

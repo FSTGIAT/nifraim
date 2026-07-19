@@ -357,10 +357,39 @@ class MorPortal(BasePortalAutomation):
                     f" תשובת השרת: {srv.get('status')} {srv.get('body', '')[:160]}"
                     if srv.get("status") or srv.get("body") else " (השרת לא החזיר גוף שגיאה)"
                 )
+
+                # `cause == "unknown"` means the body itself is silent (Mor's own
+                # generic 400 — see _classify). But this credential's OWN run
+                # history is a MEASURED fact the plugin does have: if the exact
+                # same license/id/phone succeeded recently, that already RULES
+                # OUT a typo'd/rotated credential (those don't intermittently
+                # start working again) without asserting reCAPTCHA as a guess.
+                # Proven live 2026-07-14: this exact username succeeded at 12:48
+                # (490 records) and was rejected with this exact body at 15:50,
+                # inside a batch that had just run 9 other portal logins from the
+                # same worker/IP in the preceding ~14 minutes.
+                _recent_note = ""
+                if cause == "unknown" and self.cred_last_run_status == "success" and self.cred_last_run_at:
+                    from datetime import datetime as _dt
+                    _last = self.cred_last_run_at
+                    _now = _dt.now(_last.tzinfo) if _last.tzinfo else _dt.utcnow()
+                    _hrs = (_now - _last).total_seconds() / 3600
+                    # 0 <= _hrs, not just < 24: `last_run_at` is written from the
+                    # WORKER's clock while this compares against local now, and a
+                    # worker PC running fast/slow is a shipped failure mode here
+                    # (see memory otp_worker_clock_skew). A negative delta would
+                    # render "לפני כ--2.0 שעות" and read as a bug to the agent.
+                    if 0 <= _hrs < 24:
+                        _recent_note = (
+                            f" הפרטים תקינים (אותם פרטים הצליחו לפני כ-{_hrs:.1f} שעות) — "
+                            "כנראה ניקוד reCAPTCHA שירד עקב ריצות אוטומטיות רבות ברצף (למשל בתוך "
+                            "אותו באטצ'), לא בעיית פרטים."
+                        )
+
                 raise RuntimeError(
                     f"Mor: הכניסה נדחתה (אירעה שגיאה){_cold}. סיבה משוערת: "
                     f"{'ציון reCAPTCHA נמוך' if cause == 'recaptcha' else 'לא ודאית'}."
-                    f"{_srv_txt} המתן ~20-30 דקות ונסה שוב."
+                    f"{_recent_note}{_srv_txt} המתן ~20-30 דקות ונסה שוב."
                 )
             raise RuntimeError("Mor: מודאל ה-OTP לא נפתח תוך 30 שניות")
 

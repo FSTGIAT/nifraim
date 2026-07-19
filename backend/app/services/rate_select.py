@@ -35,6 +35,47 @@ INSURANCE_RATE_CEILING = 0.20  # 20% — excludes 28–60% scope/ריסק rates
 _INS_CATEGORY_KEYS = ("בריאות", "חיים", "משכנתא", "סיעודי", "מנהלים", "ריסק", "תאונ")
 
 
+# Product-type tokens that decide the commission basis. Checked in this order:
+# the accumulation family wins over the pure-risk family so that "ביטוח מנהלים"
+# and "מנהלים חיסכון טהור" — which contain the pure-risk token חיים/מנהלים but
+# are savings vehicles — are not misread as pure risk.
+_ACCUM_TOKENS = ("חיסכון", "מנהלים", "גמל", "השתלמות", "תגמולים", "קופ")
+_PURE_RISK_TOKENS = ("בריאות", "סיעודי", "משכנתא", "חיים", "ריסק", "תאונ")
+
+
+def pure_risk_insurance(product_type: str | None) -> bool:
+    """True for pure-risk insurance product types (בריאות/חיים/סיעודי/משכנתא).
+
+    These are premium-based even when the record happens to carry an
+    accumulation value, and they belong on the insurance sheet under the
+    insurer's INSURANCE legal entity — never the pension/gemel one.
+    """
+    if not product_type:
+        return False
+    if "פנסיה" in product_type:
+        return False
+    if any(tok in product_type for tok in _ACCUM_TOKENS):
+        return False
+    return any(tok in product_type for tok in _PURE_RISK_TOKENS)
+
+
+def savings_product_type(product_type: str | None) -> bool:
+    """True for product types that are savings/pension vehicles by NAME —
+    גמל / השתלמות / תגמולים / חיסכון / מנהלים / קרן פנסיה.
+
+    Deliberately independent of any amount: a גמל row whose accumulation column
+    came through empty is still a גמל row. Use for SHEET/ENTITY routing only,
+    never for the commission basis — `accumulation_based` correctly needs a
+    positive accumulation there, since a zero-accumulation gemel row must
+    contribute 0 expected commission rather than a rate against nothing.
+    """
+    if not product_type:
+        return False
+    if "פנסיה" in product_type:
+        return True
+    return any(tok in product_type for tok in _ACCUM_TOKENS)
+
+
 def accumulation_based(product_type: str | None, accum: float) -> bool:
     """Whether a production record's EXPECTED commission is accumulation-based
     (accum × rate / 12) vs premium-based (premium × rate).
@@ -45,10 +86,21 @@ def accumulation_based(product_type: str | None, accum: float) -> bool:
         the accumulated balance; production carries no pension premium, so it
         correctly contributes 0 rather than an inflated accum × rate.
       • pure-risk insurance (בריאות/חיים/סיעודי/משכנתא) — premium-based.
+
+    The pure-risk exclusion is load-bearing and was missing for a long time:
+    only `פנסיה` was excluded, so ANY insurance row carrying an accumulation
+    value (Phoenix's MU life book stores one and deliberately leaves premium
+    None) was billed as gemel — `accum × rate / 12` against a gemel rate — and,
+    via `aggregate.classify_record`, was filed on the savings sheet under the
+    insurer's PENSION legal entity. Live 2026-07-14: all 259 Phoenix MU rows
+    landed under 'הפניקס אקסלנס פנסיה וגמל בע"מ' although 49% of those clients
+    are הפניקס חברה לביטוח בריאות/סיעודי/חיים policies in the real portfolio.
     """
     if accum <= 0:
         return False
     if product_type and "פנסיה" in product_type:
+        return False
+    if pure_risk_insurance(product_type):
         return False
     return True
 
