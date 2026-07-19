@@ -44,6 +44,20 @@ PORTAL_URL = "https://www.clalnet.co.il/my.policy"
 # slipping in (they'd be misrouted by the ingest dispatcher).
 _NON_PRODUCTION = ("עמלות", "נפרעים", "commission")
 
+# The drawer that actually holds production. Confirmed by QA against the live
+# portal (2026-07-19): InfoBay → drawer `קבצי פרודוקציה` → "הצגה"
+# (`cmdReports`) → its report list holds the `תיבה_<box>_כלל_חיים_מתאריך_…` /
+# `תיבה_<box>_בריאות_חיים_מתאריך_…` files, newest first.
+#
+# Selecting drawers by _NON_PRODUCTION alone is a BLACKLIST: every drawer that
+# isn't obviously commission got treated as production, so the run walked into a
+# payments drawer whose reports really are PDFs — which `upload_ingest` then
+# rejected ("Unsupported file extension 'pdf'"), and Clal contributed nothing to
+# the merged file for weeks. The PDFs were never a format problem; they were the
+# wrong drawer. Prefer this name when present, and only fall back to the
+# blacklist when it isn't (a renamed drawer must not silently download nothing).
+_PRODUCTION_DRAWERS = ("קבצי פרודוקציה", "קבצי פרודקציה")
+
 
 def _sanitize_label(text: str) -> str:
     """Collapse whitespace + strip filesystem-hostile chars for a filename."""
@@ -388,41 +402,21 @@ class ClalPortal(BasePortalAutomation):
             except Exception:
                 return None
 
-        async def _excel_permitted(p) -> bool | None:
-            """Read InfoBay's own server-set Excel permission flag.
-
-            `HidPermissionForExcel == "1"` is what un-disables the cmdExcel
-            toolbar button. Returns None when the field isn't on the page (an
-            InfoBay build that predates it), so callers can still *try* Excel.
-            """
-            try:
-                return await p.evaluate(
-                    """() => {
-                        const el = document.querySelector("input[id$='HidPermissionForExcel']");
-                        return el ? el.value === '1' : null;
-                    }"""
-                )
-            except Exception:
-                return None
-
         async def _grab_report(p, row, base_name: str, dump_stem: str | None) -> "Path | None":
-            """Trigger a report row and capture the file across all behaviours:
-            native download (xlsx/PDF), popup viewer (PDF or HTML report), or
-            same-tab navigation.
+            """Double-click a report row (ShowReport → window.open) and capture
+            the file across all behaviours: native download, popup viewer, or
+            same-tab navigation. ShowReport is the universal trigger — it fires
+            for every report type, unlike the cmdReportProp toolbar button
+            (a no-op for .htm).
 
-            EXCEL FIRST. InfoBay's trigger is `ShowReport(isExcel, ...)` and the
-            row markup hardcodes `ondblclick="ShowReport('0')"` — `'0'` means
-            PDF. Double-clicking the row therefore always asked for PDF, which
-            is why every `כלל - פרודוקציה *.pdf` was then rejected by
-            `upload_ingest` ("Unsupported file extension 'pdf'") and Clal's
-            production silently contributed nothing to the merged file. The
-            portal's own Excel path is `ShowReport('1')` (what the cmdExcel
-            toolbar button calls), gated server-side on `HidPermissionForExcel`.
-
-            So: select the row, and if Excel isn't explicitly forbidden call
-            `ShowReport('1')`. Fall back to the original dblclick on any
-            failure — a PDF we can't parse still beats no download at all, and
-            `.htm` reports only ever come through the dblclick path.
+            NOTE: an earlier attempt forced `ShowReport('1')` (InfoBay's Excel
+            path) here, on the theory that the PDFs we kept getting were a
+            format choice. That was the wrong diagnosis — the PDFs came from
+            opening the WRONG DRAWER (see _PRODUCTION_DRAWERS above). The real
+            production drawer holds `תיבה_*` vault files, which are data, not
+            spreadsheets, so forcing an Excel render would corrupt them. The
+            manual flow QA documented uses a plain select + "הצגה"
+            (cmdReportProp), which is exactly the fallback below.
             """
             holder: dict = {}
             url_before = p.url
@@ -430,29 +424,16 @@ class ClalPortal(BasePortalAutomation):
             p.once("download", lambda d: holder.setdefault("dl", d))
             p.context.once("page", lambda pg: holder.setdefault("pg", pg))
 
-            triggered = False
-            if await _excel_permitted(p) is not False:
+            try:
+                await row.dblclick(timeout=6000)
+            except Exception:
+                # Fallback: select row + click the toolbar action button
+                # ("הצגה" / cmdReportProp) — this is exactly the manual flow.
                 try:
-                    # Row click runs SelectMe(...), which is what tells the page
-                    # WHICH report ShowReport should render. Without it Excel
-                    # would render whatever row was previously selected.
                     await row.click(timeout=4000)
-                    await p.wait_for_timeout(200)
-                    await p.evaluate("() => ShowReport('1')")
-                    triggered = True
-                except Exception as e:
-                    _logger.info("clal: Excel trigger unavailable (%s) — falling back to PDF", e)
-
-            if not triggered:
-                try:
-                    await row.dblclick(timeout=6000)
+                    await p.click(VIEW_BTN, timeout=4000)
                 except Exception:
-                    # Fallback: select row + click the toolbar action button.
-                    try:
-                        await row.click(timeout=4000)
-                        await p.click(VIEW_BTN, timeout=4000)
-                    except Exception:
-                        return None
+                    return None
             for _ in range(25):
                 if (holder.get("dl") or holder.get("pg") or p.url != url_before
                         or len(xhr_captures) > xhr_before):
@@ -536,10 +517,28 @@ class ClalPortal(BasePortalAutomation):
                 return out;
             }"""
         ) or []
-        targets = [
+        # WHITELIST first: the drawer QA confirmed by name. Only if it is absent
+        # (renamed / different tenant) fall back to the old blacklist, so a name
+        # change degrades to the previous behaviour instead of downloading zero.
+        named = [
             r for r in rows
-            if r.get("label") and not any(b in r["label"] for b in _NON_PRODUCTION)
+            if r.get("label") and any(w in r["label"] for w in _PRODUCTION_DRAWERS)
         ]
+        if named:
+            targets = named
+            _logger.info(
+                "clal: production drawer matched by name → %s",
+                [r["label"] for r in named],
+            )
+        else:
+            targets = [
+                r for r in rows
+                if r.get("label") and not any(b in r["label"] for b in _NON_PRODUCTION)
+            ]
+            self.partial_errors.append(
+                "מגירת 'קבצי פרודוקציה' לא נמצאה — נעשה שימוש בסינון הישן. "
+                f"מגירות שנמצאו: {[r.get('label') for r in rows][:8]}"
+            )
 
         (SCREENSHOT_ROOT / f"{run_id}_grid_rows.txt").write_text(
             "URL: " + page.url + "\n\nALL ROWS:\n"
