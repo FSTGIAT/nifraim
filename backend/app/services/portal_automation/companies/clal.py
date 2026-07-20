@@ -293,7 +293,23 @@ class ClalPortal(BasePortalAutomation):
                         or any(ext in cd for ext in exts)
                         or any(("/" + url.rsplit("/", 1)[-1]).find(ext) > -1 for ext in exts)
                     )
-                    if is_file:
+                    # EXCLUDE static assets. The URL test below matches any
+                    # segment containing ".htm", and InfoBay serves stylesheets
+                    # from .htm endpoints — live 2026-07-20 the capture that
+                    # reached ingest was 1789 bytes of jQuery UI CSS
+                    # (magic 2f2a2054 = "/* Theme", "ThemeRoller override").
+                    # A report is never text/css, javascript, an image or a font.
+                    is_asset = (
+                        "text/css" in ct
+                        or "javascript" in ct
+                        or ct.startswith("image/")
+                        or ct.startswith("font/")
+                        or "font-woff" in ct
+                        or url.rsplit("?", 1)[0].endswith((".css", ".js", ".png",
+                                                           ".jpg", ".gif", ".svg",
+                                                           ".woff", ".woff2", ".ico"))
+                    )
+                    if is_file and not is_asset:
                         body = await resp.body()
                         if body and len(body) > 1024:
                             xhr_captures.append({
@@ -553,7 +569,16 @@ class ClalPortal(BasePortalAutomation):
             # Migdal-style fallback: if no download/popup yielded a file, take any
             # bytes the response listener captured during this report.
             if got is None and len(xhr_captures) > xhr_before:
-                cap = xhr_captures[-1]
+                # Pick the BEST capture, not the most recent one. `[-1]` returns
+                # whatever the page happened to load last, which on 2026-07-20
+                # was a stylesheet rather than the report. Prefer an explicit
+                # Content-Disposition: attachment; otherwise the largest body —
+                # a real report dwarfs any stray asset that slips the filter.
+                cands = xhr_captures[xhr_before:]
+                cap = next(
+                    (c for c in reversed(cands) if "attachment" in (c.get("cd") or "")),
+                    max(cands, key=lambda c: len(c.get("bytes") or b"")),
+                )
                 blob = (cap.get("cd") or "") + " " + (cap.get("ct") or "") + " " + (cap.get("url") or "").lower()
                 ext = _sniff_ext(cap.get("bytes") or b"", blob)
                 if ext == ".htm":
