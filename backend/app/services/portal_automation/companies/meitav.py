@@ -71,49 +71,73 @@ class MeitavPortal(BasePortalAutomation):
 
 
     async def _probe_recaptcha(self, page, label: str) -> str:
-        """Is Google's reCAPTCHA script actually alive on THIS machine?
+        """Is Google's reCAPTCHA ENTERPRISE script alive on THIS machine?
 
-        Both this portal and Mor submit a `g-recaptcha-response` token they never
-        verify. When the page mints it in time the login works; when it does not,
-        the server answers with its own generic rejection (meitav "נסה שנית",
-        Mor `400 Bad Request`) and nothing says why. Mor waited 25s for that
-        field and it stayed EMPTY — which is not a race, it is the script never
-        producing a token. The most basic cause is the worker being unable to
-        reach google.com/recaptcha at all (proxy/AV/DNS/firewall), which would
-        take BOTH Enterprise-gated portals down together while leaving every
-        other portal untouched — exactly the pattern seen 2026-07-20.
+        Meitav loads `recaptcha/enterprise.js?render=6LehTw…` (sitekey also in the
+        page as `globalParam.reCaptchaClient`). Enterprise puts its API at
+        **`grecaptcha.enterprise.*`** — `grecaptcha.execute` is NOT defined.
 
-        Reports script presence, grecaptcha readiness, and token length. Never
-        fails the run: this is evidence-gathering, not a gate.
+        The previous version of this method checked `window.grecaptcha.execute`
+        and read a `g-recaptcha-response` element, i.e. Mor's v3/v2 shape. Both
+        readings are wrong here, and measurably so: reproduced locally against
+        the real page on 2026-07-20 —
+
+            has_grecaptcha=True  has_enterprise=True  plain_execute=False  tok=2148
+
+        so the old probe reported `execute_ready=False` on a perfectly healthy
+        page and then appended a user-facing line telling the agent their
+        antivirus was blocking Google. That message was never once true. A
+        diagnostic that manufactures its own false finding is worse than none —
+        it sent real debugging effort at an imaginary firewall.
+
+        Deliberately does NOT call `execute()`. Minting a token here would add a
+        second 'login' assessment moments before the page's own on a
+        SCORE-GATED portal — the diagnostic would be perturbing what it
+        measures. Readiness alone answers "can this machine reach Google", which
+        is the only question worth asking before the submit.
+
+        Also reports `navigator.webdriver`: runner.py now clears it for every
+        plugin, so anything other than False means the launch flags did not take
+        effect on this machine. Never fails the run.
         """
         try:
             info = await page.evaluate(
                 """() => {
-                    const s = [...document.querySelectorAll('script[src]')]
+                    const srcs = [...document.querySelectorAll('script[src]')]
                         .map(e => e.src).filter(u => u.includes('recaptcha'));
-                    const el = document.querySelector("[id^='g-recaptcha-response']");
+                    let key = '';
+                    for (const u of srcs) {
+                        const m = u.match(/[?&]render=([^&]+)/);
+                        if (m && m[1] !== 'explicit') { key = m[1]; break; }
+                    }
                     return {
-                        scripts: s.length,
+                        scripts: srcs.length,
                         loaded: typeof window.grecaptcha !== 'undefined',
-                        ready: !!(window.grecaptcha && window.grecaptcha.execute),
-                        tok: el ? (el.value || '').length : -1,
+                        // Enterprise API surface — the one this portal uses.
+                        ready: !!(window.grecaptcha && window.grecaptcha.enterprise
+                                  && window.grecaptcha.enterprise.execute),
+                        key: key,
+                        wd: navigator.webdriver,
                     };
                 }"""
             )
         except Exception as e:
             return f"probe failed: {e}"
-        msg = (f"{label}: recaptcha scripts={info['scripts']} "
-               f"grecaptcha_loaded={info['loaded']} execute_ready={info['ready']} "
-               f"token_len={info['tok']}")
+        msg = (f"{label}: recaptcha ENTERPRISE scripts={info['scripts']} "
+               f"loaded={info['loaded']} enterprise_ready={info['ready']} "
+               f"sitekey={info['key'][:12] or 'NONE'} webdriver={info.get('wd')}")
         try:
             from app.services.portal_automation.runner import _worker_note
             _worker_note(msg)
         except Exception:
             pass
-        if not info["loaded"]:
+        # Claim a blocked machine ONLY when the script genuinely is not there.
+        # `ready == False` alone must never trigger this: that is exactly the
+        # false positive the old probe shipped.
+        if not info["loaded"] and info["scripts"] == 0:
             self.partial_errors.append(
                 f"{label}: סקריפט reCAPTCHA לא נטען כלל — ייתכן חסימה של google.com/recaptcha "
-                "במחשב (אנטי-וירוס/פיירוול/DNS). זו הסיבה הסבירה לדחיית ההתחברות."
+                "במחשב (אנטי-וירוס/פיירוול/DNS)."
             )
         return msg
 

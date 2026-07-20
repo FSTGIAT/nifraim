@@ -307,19 +307,44 @@ resolves, i.e. after the submit click. Waiting on it beforehand can never succee
 6. **Do not retry a rejected submit.** Every extra submit lowers the score; recovery needs
    ~20–30 min of quiet. `_MAX_SUBMIT_ATT = 1`.
 
-### Meitav — same gate, same fixes, but its failure is NOT the same
+### Meitav — same gate class, DIFFERENT mechanism (measured 2026-07-20)
 
 Meitav sets the identical three flags, so it inherits every runner-level fix above
 automatically (flag, viewport, profile recycling). It has **no** warm-up call, so that change
-does not apply to it. Two caveats before assuming Mor's cure transfers:
+does not apply. Beyond that it is genuinely a different portal, and reproducing it locally
+(real Windows Edge, our exact flow) settled three things:
 
-- Its last failure was `לא נמצאו שדות`, raised **before any POST** — a form-hydration problem,
-  not a score rejection. A different bug that happens to share a portal class.
-- `meitav.py::_probe_recaptcha` is still the **old** version, built on the refuted "v2 element"
-  model, and it appends a user-facing `partial_errors` line blaming the agent's antivirus. It
-  should be corrected or dropped; it can only mislead.
-- Meitav loads `enterprise.js` with its own sitekey — do not assume Mor's v3 mechanism applies
-  without reading Meitav's bundle the same way.
+**1. The login WORKS — it is not score-blocked.** Reproduced green:
+```
+login form painted = True
+submit button: {'disabled': False, 'text': 'אישור'}
+OTP field visible  = True
+POST /v2/api/Login/LoginWithPhoneAgent -> 200 {"actionTarget":"LoginCode","isFailed":false}
+```
+So `לא נמצאו שדות ת"ז/טלפון` is **not** a DOM change and not a rejection — it is the
+hydration race, addressed by the 30 s `_FORM_READY` wait. Meitav runs ~19% flaky; treat a
+recurrence as a race to widen, not a login bug to hunt.
+
+**2. reCAPTCHA ENTERPRISE, not v3.** `enterprise.js?render=6LehTw…` (sitekey also at
+`globalParam.reCaptchaClient`). The API is **`grecaptcha.enterprise.*`**; `grecaptcha.execute`
+is undefined. Measured on the live page:
+```
+has_grecaptcha=True   has_enterprise=True   plain_execute=False   tok=2148
+```
+`_probe_recaptcha` used to check `window.grecaptcha.execute` (Mor's shape), so it reported
+`execute_ready=False` on a healthy page and told the agent their **antivirus** was blocking
+Google — a finding that was never once true. Fixed to read the Enterprise surface, and it now
+claims a block only when the script is genuinely absent. **A diagnostic that manufactures its
+own false finding is worse than no diagnostic**; this one sent real effort at an imaginary
+firewall.
+
+**3. Akamai Bot Manager sits in front of it.** The page loads an obfuscated sensor from a
+random path whose filename is the **hex of the page path**
+(`76322f6c6f67696e2f6c6f67696e6167656e74` = `v2/login/loginagent`), plus a `<noscript>`
+tracking pixel and a `POST /qwacKJ/` telemetry beacon. That is a second, independent bot layer
+Mor does not have. It did not block a real-Edge run — but if Meitav ever starts failing at the
+network level rather than the form level, look here first, and do not attribute it to
+reCAPTCHA.
 
 ## 5. Comparison / merge invariants
 

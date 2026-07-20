@@ -472,9 +472,12 @@ agent's worker: 490 records):
 - **Debug by reproducing locally first**: Windows Python (`/mnt/c/Python313`) driving real
   Edge/Chrome runs the same flow in minutes, and `curl` the portal's own JS bundle to see what
   it really sends. Both beat live-run guessing — that is what finally cracked Mor.
-- **Meitav inherits the runner-level fixes automatically** (same three flags) but its last
-  failure was `לא נמצאו שדות` *before any POST* — a hydration bug, not a score rejection.
-  Its `_probe_recaptcha` is still the old, refuted version and should be corrected.
+- **Meitav inherits the runner-level fixes automatically** (same three flags) but is a
+  DIFFERENT mechanism: reCAPTCHA **Enterprise** (`grecaptcha.enterprise.*`, not
+  `grecaptcha.execute`) plus an **Akamai Bot Manager** sensor. Reproduced green locally
+  (form paints, submit enables, OTP screen reached), so `לא נמצאו שדות` is the ~19% hydration
+  race — not a login bug. Its probe read Mor's API surface and therefore blamed the agent's
+  antivirus on a healthy page; corrected.
 
 ---
 
