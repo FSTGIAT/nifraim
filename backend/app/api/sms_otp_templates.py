@@ -67,11 +67,6 @@ DEFAULT_SMS_OTP_TEMPLATES = [
      "example": "שלום, 565109 הינו קוד אימות זמני לחשבונך באנליסט. תוקף הקוד ל-20 דקות. @agent.analyst.co.il #565109"},
     # מיטב דש — bidirectional (Israeli OTP SMS are often code-first); anchor on
     # מיטב/meitav. Live OTP wording unverified (refine example after first run).
-    # אנליסט — brand-anchored best guess (bidirectional: brand↔code). Refine or add a
-    # brand-less variant once the real live SMS wording is captured (the Mor lesson —
-    # some insurers' OTP text omits the brand entirely).
-    {"company_name": "אנליסט", "portal_kind": "analyst",
-     "pattern": r"(אנליסט|analyst).*\d{4,8}|\d{4,8}.*(אנליסט|analyst)"},
     {"company_name": "מיטב דש", "portal_kind": "meitav",
      "pattern": r"(מיטב|meitav|meitavdash).*\d{4,8}|\d{4,8}.*(מיטב|meitav)"},
     {"company_name": "הכשרה", "portal_kind": "hachshara", "pattern": r"(הכשרה|hachshara).*\d{4,8}"},
