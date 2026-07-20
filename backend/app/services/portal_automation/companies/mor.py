@@ -359,13 +359,23 @@ class MorPortal(BasePortalAutomation):
                 pass
 
             if not token_ok:
-                # DO NOT submit without it. A rejected submit lowers this
-                # profile's reCAPTCHA score for every later attempt — and the
-                # damage is not contained to Mor: meitav (the other Enterprise-
-                # gated portal on the same machine/IP) started failing on
-                # 2026-07-20 after six Mor retries in two hours, having succeeded
-                # 2/2 the day before. Failing fast here is strictly better than
-                # sending a request we already know the server will refuse.
+                # DO NOT submit without it: the server has already refused this
+                # exact shape six times, so sending it again only wastes a run.
+                #
+                # CORRECTION (do not restore the earlier wording): this comment
+                # used to claim the tokenless submits also degraded meitav via a
+                # "shared reCAPTCHA score". That is REFUTED, and by this very
+                # fix. If no token was transmitted, Mor's backend never called
+                # createAssessment, so Google never scored those attempts —
+                # there was no assessment to fail and no reputation to degrade.
+                # The two claims cannot both be true. Independently: profiles are
+                # per-portal (`BROWSER_PROFILE_ROOT / portal_kind`, runner.py) so
+                # the cookie jars are separate, the site keys differ (mor
+                # 6Letqt… via api.js, meitav 6LehTw… via enterprise.js), and
+                # meitav's `לא נמצאו שדות` failure is raised at meitav.py:137
+                # BEFORE any POST — a score cannot delete form fields. meitav
+                # runs at ~19% flake across every position (see batch_runner.py);
+                # its failures are its own.
                 tok_len = await page.evaluate(
                     """() => {
                         const el = document.querySelector("[id^='g-recaptcha-response']");
