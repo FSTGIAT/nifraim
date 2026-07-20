@@ -285,16 +285,60 @@ class AnalystPortal(BasePortalAutomation):
         # Segmented single-char boxes. `:visible` EXCLUDES the hidden
         # autocomplete="one-time-code" maxlength=6 catcher (it isn't maxlength=1
         # and isn't visible), so we type only into the six real boxes.
+        #
+        # TYPE THE WHOLE CODE INTO THE FIRST BOX and let the component's own
+        # auto-advance place the digits — the way a person enters it.
+        #
+        # The previous version clicked EACH box and typed one digit into it. That
+        # desynchronises against auto-advance: the component moves focus after a
+        # character, so the next click/fill lands on a box the component has
+        # already moved past, and digits shift or vanish. Measured live
+        # 2026-07-20 — code 775439 produced boxes `0 0 4 3 9 _`, with the last
+        # box still `ng-pristine` (never typed into). The run then sat on
+        # /auth/otp while download_reports scraped the OTP page, and reported a
+        # date-picker problem that did not exist.
+        async def _read_boxes(loc) -> str:
+            try:
+                return "".join([(await loc.nth(i).input_value()) or ""
+                                for i in range(await loc.count())])
+            except Exception:
+                return ""
+
         try:
             boxes = page.locator("input[maxlength='1']:visible")
             n = await boxes.count()
             if 0 < n <= len(digits) + 2:
-                for i in range(min(n, len(digits))):
-                    b = boxes.nth(i)
-                    await b.click()
-                    await b.fill("")
-                    await page.keyboard.type(digits[i], delay=60)
+                await boxes.first.click()
+                try:
+                    await boxes.first.fill("")
+                except Exception:
+                    pass
+                await page.keyboard.type(digits, delay=90)
+                await page.wait_for_timeout(300)
+                got = await _read_boxes(boxes)
+                if got != digits:
+                    # Fallback: set each box directly, no clicking and no
+                    # keystrokes, so focus movement cannot reorder anything.
+                    logger.warning("אנליסט: OTP autotype gave %r, retrying per-box", got)
+                    for i in range(min(n, len(digits))):
+                        try:
+                            await boxes.nth(i).fill(digits[i])
+                        except Exception:
+                            pass
+                    await page.wait_for_timeout(300)
+                    got = await _read_boxes(boxes)
+                # NEVER submit a code we can see is wrong — a rejected OTP can
+                # burn the one the insurer issued.
+                if got != digits:
+                    raise RuntimeError(
+                        f"אנליסט: לא ניתן להזין את קוד ה-OTP בתיבות "
+                        f"(התקבל {len(got)} ספרות במקום {len(digits)}) — "
+                        "ייתכן שינוי ברכיב ה-OTP."
+                    )
+                logger.info("אנליסט: OTP entered into %d boxes, verified", n)
                 filled = True
+        except RuntimeError:
+            raise
         except Exception:
             pass
         # Fallback: a single OTP input (e.g. the hidden one-time-code catcher).
@@ -332,13 +376,23 @@ class AnalystPortal(BasePortalAutomation):
             except Exception:
                 pass
 
-        # Accepted ⇒ leaves /auth/login (SPA may keep a base path). VERIFY the
-        # transition — a rejected/expired code otherwise returns silently and the
-        # failure surfaces later as a confusing "nav link not found".
+        # Accepted ⇒ leaves the whole AUTH flow. Test for that, not for "login".
+        #
+        # This used to wait for `"login" not in url` — but the OTP screen lives at
+        # **/auth/otp**, which contains no "login", so the predicate was already
+        # true the moment it was evaluated. `left_login` came back True on a code
+        # that had not been accepted, and the run walked into download_reports
+        # still sitting on the OTP page. Measured live 2026-07-20: the failure
+        # surfaced as "לא ירד קובץ נפרעים תקין — check nav_3_dates.txt", pointing
+        # at a date picker that had never been reached, while the DOM snapshot
+        # showed `url: /auth/otp` and six OTP boxes.
+        #
+        # Anything under /auth/ is still the login flow: /auth/login, /auth/otp,
+        # and any future step. Leaving that subtree is the real success signal.
         left_login = False
         try:
             await page.wait_for_url(
-                lambda u: "login" not in (u or "").lower(), timeout=25000
+                lambda u: "/auth/" not in (u or "").lower(), timeout=25000
             )
             left_login = True
         except Exception:
