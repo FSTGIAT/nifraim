@@ -603,7 +603,45 @@ async def _run_inner(
             # record (Mor twice, meitav's repro) used a brand-new profile, so a
             # fresh profile is not a penalty. Keeping a rotten one demonstrably
             # costs everything.
-            _last_failed = (getattr(cred, "last_run_status", None) == "failed")
+            # WHICH STAGE failed decides this, not whether the run succeeded.
+            #
+            # A profile is recycled to shed a POISONED captcha reputation. That
+            # only makes sense when the captcha is what rejected us — i.e. the
+            # run died at LOGIN. A run that logged in fine and then failed at
+            # download/parse has a profile that just PROVED itself against the
+            # gate; deleting it throws away the one thing we were trying to
+            # build, and the next run starts cold and gets rejected.
+            #
+            # Live proof that this matters (analyst, 2026-07-20):
+            #     18:06  failed  stage=download   <- login OK, profile earned trust
+            #     18:21  failed  stage=login      <- recycled to cold, captcha refused
+            # The first rule ("last run failed") deleted a good profile and
+            # created a deadlock: analyst cannot bank reputation until a full run
+            # succeeds, and a full run cannot succeed until the download stage is
+            # fixed — which needs getting past login. Stage-aware breaks it.
+            _last_stage = None
+            try:
+                _lr = (await db.execute(
+                    select(PortalRun.status, PortalRun.stage)
+                    .where(PortalRun.credential_id == cred.id,
+                           PortalRun.id != run.id,
+                           PortalRun.finished_at.is_not(None))
+                    .order_by(PortalRun.started_at.desc()).limit(1)
+                )).first()
+                if _lr:
+                    _last_stage = (_lr[0], _lr[1])      # (status, stage)
+            except Exception as _e:
+                logger.warning("could not read last run stage for %s: %s",
+                               cred.portal_kind, _e)
+
+            # Recycle when the captcha/login is what we failed on. An unknown
+            # history is treated as login-suspect (the old behaviour) so a
+            # genuinely cold machine still gets a clean start.
+            if _last_stage is None:
+                _last_failed = (getattr(cred, "last_run_status", None) == "failed")
+            else:
+                _st, _stage = _last_stage
+                _last_failed = (_st == "failed" and (_stage or "login") == "login")
             if (profile_was_cold or _last_failed) and profile_dir.exists():
                 import shutil as _sh
                 _why = ("no success ever recorded on it" if profile_was_cold
@@ -696,6 +734,32 @@ async def _run_inner(
             # prevented by per-company SMS-template tagging in _wait_for_otp.
             otp_since = await _db_utc_now(db)
             await plugin.login(page, cred.username, password)
+
+            # LOGIN SUCCEEDED -> this profile passes the portal's gate. Mark it
+            # warm HERE, not at the end of the run.
+            #
+            # The marker used to be written only after a full download+ingest,
+            # so its meaning was "this run succeeded" — but it is READ as "is
+            # this profile trusted". For a captcha-gated portal those differ, and
+            # the gap deadlocks: analyst's 18:06 run logged in fine and failed at
+            # DOWNLOAD, so no marker was written, so the next run treated the
+            # profile as cold, recycled the very profile that had just passed the
+            # captcha, and was rejected at login. It could never bank the
+            # reputation it needed, because banking it required a stage it could
+            # not reach.
+            #
+            # Getting through login IS the evidence the profile is good. Anything
+            # after that is a report/DOM problem and says nothing about the gate.
+            if getattr(plugin, "use_persistent_profile", False):
+                try:
+                    _wm = BROWSER_PROFILE_ROOT / cred.portal_kind / WARM_MARKER
+                    if not _wm.exists():
+                        _wm.write_text("ok")
+                        logger.info("%s: profile marked warm (login passed)",
+                                    cred.portal_kind)
+                except Exception as _e:
+                    logger.warning("could not mark %s profile warm: %s",
+                                   cred.portal_kind, _e)
 
             if plugin.requires_otp:
                 await _set_status(db, run, status="awaiting_otp", stage="otp")
