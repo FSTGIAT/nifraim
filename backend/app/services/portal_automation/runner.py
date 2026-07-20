@@ -421,9 +421,37 @@ async def _run_inner(
                     run.id, cred.portal_kind, context_proxy.get("server"),
                 )
 
-        # `--disable-blink-features=AutomationControlled` is itself a bot tell to
-        # reCAPTCHA Enterprise — drop it for native-fingerprint plugins.
+        # `--disable-blink-features=AutomationControlled` is applied to EVERY
+        # plugin, native-fingerprint included.
+        #
+        # It used to be dropped for native plugins, on the theory that the flag
+        # "is itself a bot tell to reCAPTCHA Enterprise". That conflated two very
+        # different mechanisms:
+        #   • THE FLAG tells Chrome not to set `navigator.webdriver` in the first
+        #     place. The result is a browser that genuinely reports
+        #     webdriver=false — indistinguishable from any normal Chrome,
+        #     because there is nothing left over to detect.
+        #   • THE JS PATCH below (defineProperty on navigator.webdriver) fakes
+        #     the same value after the fact and IS detectable — the property
+        #     descriptor and getter.toString() both give it away.
+        # Only the second is a tell. Dropping both left Mor and meitav — the two
+        # native plugins, and the only two reCAPTCHA-score-gated portals —
+        # advertising `navigator.webdriver === true`, the single most heavily
+        # weighted automation signal there is.
+        #
+        # Measured on kikohib's worker 2026-07-20, Mor login rejected:
+        #     probe_token_len=1316  webdriver=True
+        #     recaptcha_hdr=len1316  req={licenseId=len8, identity=len9, phoneNumber=len10}
+        #     -> 400 {"resultCode":"Bad Request"}
+        # i.e. Google minted a full token and we sent it; a complete, correctly
+        # shaped request was refused. Nothing about the payload was left to fix,
+        # which puts the score itself in the frame — and webdriver=true is the
+        # one automation signal still being broadcast.
+        #
+        # Blast radius is exactly mor + meitav: every other plugin is non-native
+        # and was already getting this flag.
         launch_args = [
+            "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
             # Containers default to a tiny 64MB /dev/shm; Chrome fills it and the
             # tab/renderer crashes (Railway "Crashed!" during a batch). Write
@@ -431,8 +459,6 @@ async def _run_inner(
             "--disable-dev-shm-usage",
             "--disable-gpu",
         ]
-        if not native:
-            launch_args.insert(0, "--disable-blink-features=AutomationControlled")
 
         # Context kwargs shared by both launch paths. A native-fingerprint plugin
         # lets real Chrome send its own UA + Client-Hints — a pinned UA that
