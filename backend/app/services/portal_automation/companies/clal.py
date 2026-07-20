@@ -80,7 +80,24 @@ def _sniff_ext(body: bytes, content_type: str = "", fallback: str = ".htm") -> s
     Magic first, header second, fallback last.
     """
     head = bytes(body or b"")[:8]
-    if head[:2] == b"PK":                      # zip container (also .xlsx/.docx)
+    if head[:2] == b"PK":
+        # A .xlsx IS a zip, so PK alone is NOT enough — look inside. Getting this
+        # wrong is not cosmetic: `upload_ingest` dispatches on the extension, and
+        # `ext == "zip"` goes to `_parse_zip_bundle`, which only recognises the
+        # Mimshak / Menora-legacy / Menora-amalot bundles. An xlsx labelled .zip
+        # would be rejected there instead of parsed as a spreadsheet — turning a
+        # perfectly good download into a silent loss.
+        try:
+            import io as _io
+            import zipfile as _zf
+            with _zf.ZipFile(_io.BytesIO(bytes(body))) as z:
+                names = set(z.namelist())
+            if "[Content_Types].xml" in names or any(n.startswith("xl/") for n in names):
+                return ".xlsx"
+            if any(n.startswith("word/") or n.startswith("ppt/") for n in names):
+                return ".zip"          # OOXML but not a workbook — not ingestible
+        except Exception:
+            pass                        # truncated/corrupt archive → fall through
         return ".zip"
     if head[:4] == b"%PDF":
         return ".pdf"
