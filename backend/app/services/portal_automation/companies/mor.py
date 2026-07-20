@@ -328,6 +328,64 @@ class MorPortal(BasePortalAutomation):
                     ".map(e => e.innerText.trim()).filter(Boolean).join(' | ')"
                 )
                 raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
+
+            # ── The FOURTH field: the reCAPTCHA token ────────────────────────
+            # Mor's login page loads INVISIBLE reCAPTCHA:
+            #   recaptcha/api.js?onload=reCaptchaOnloadCallback&render=6Letqt…
+            # and the rendered form carries `id="g-recaptcha-response-100000"`.
+            # The page's own JS mints a token into that element; the login POST
+            # is supposed to carry it alongside licenseId/identity/phoneNumber.
+            #
+            # We were clicking submit as soon as Angular enabled the button —
+            # BEFORE the token existed — so the request went out with only three
+            # fields and Mor answered `400 {"resultCode":"Bad Request"}`. That is
+            # a malformed-payload rejection, not a score rejection (a low score
+            # returns 200 + a rejection body), which is why six timing/ordering/
+            # credential hypotheses all failed: none of them could conjure a
+            # token that was never being produced. Confirmed from the saved page
+            # dumps (data/portal_screenshots/mor_login_*.html) plus the request
+            # instrumentation, which showed exactly 3 fields and no token.
+            token_ok = False
+            try:
+                await page.wait_for_function(
+                    """() => {
+                        const el = document.querySelector("[id^='g-recaptcha-response']");
+                        return !!(el && (el.value || '').length > 20);
+                    }""",
+                    timeout=25000,
+                )
+                token_ok = True
+            except Exception:
+                pass
+
+            if not token_ok:
+                # DO NOT submit without it. A rejected submit lowers this
+                # profile's reCAPTCHA score for every later attempt — and the
+                # damage is not contained to Mor: meitav (the other Enterprise-
+                # gated portal on the same machine/IP) started failing on
+                # 2026-07-20 after six Mor retries in two hours, having succeeded
+                # 2/2 the day before. Failing fast here is strictly better than
+                # sending a request we already know the server will refuse.
+                tok_len = await page.evaluate(
+                    """() => {
+                        const el = document.querySelector("[id^='g-recaptcha-response']");
+                        return el ? (el.value || '').length : -1;
+                    }"""
+                )
+                state = "השדה לא קיים בדף" if tok_len == -1 else f"נשאר ריק (len={tok_len})"
+                try:
+                    from app.services.portal_automation.runner import _worker_note
+                    _worker_note(
+                        f"mor: recaptcha token not minted ({state}) — refusing to submit"
+                    )
+                except Exception:
+                    pass
+                raise RuntimeError(
+                    "Mor: אסימון reCAPTCHA לא נוצר בדף ההתחברות "
+                    f"({state}) — לא נשלחה בקשה כדי לא להוריד עוד את ניקוד ה-reCAPTCHA. "
+                    "בדוק/י שהדף נטען במלואו ושאין חסימה של google.com/recaptcha."
+                )
+
             await page.click("button[type='submit']:not([disabled])")
 
             try:
