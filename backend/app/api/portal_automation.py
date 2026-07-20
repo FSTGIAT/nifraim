@@ -467,6 +467,36 @@ async def trigger_run(
     if active_result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="A run is already in progress for this credential")
 
+    defer = await _should_defer_to_worker(db, user.id)
+
+    # A portal that needs a REAL DESKTOP cannot run on Railway — the container is
+    # headless Linux with no XServer, so a headed launch dies instantly with
+    # "Target page, context or browser has been closed / Looks like you launched a
+    # headed browser without having a XServer running". Refuse up front instead of
+    # burning the attempt on a guaranteed failure and showing the agent a stack
+    # trace they cannot act on. Live 2026-07-20: kiko pressed עדכן עובד, the worker
+    # restarted, and a Mor run fired 349s after the last heartbeat — dispatched
+    # inline and failed on XServer, which looked like a Mor bug and told us nothing
+    # about the fix we were actually testing. mor.py's own docstring already says
+    # it must "never" run on the headless Railway container; this enforces it.
+    if not defer:
+        from app.services.portal_automation.companies import REGISTRY, WORKER_ONLY_PORTALS
+        plugin_cls = REGISTRY.get(cred.portal_kind)
+        needs_desktop = (
+            cred.portal_kind in WORKER_ONLY_PORTALS
+            or getattr(plugin_cls, "headed", False)
+            or getattr(plugin_cls, "use_persistent_profile", False)
+        )
+        if needs_desktop:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"‏{cred.portal_kind} חייב לרוץ מהמחשב שלך (דפדפן אמיתי + כתובת "
+                    "ישראלית), והמחשב לא מחובר כרגע. הפעל/י את המחשב, המתן/י עד "
+                    "שמופיע 'מחובר ופעיל', ואז נסה/י שוב."
+                ),
+            )
+
     run = PortalRun(
         user_id=user.id,
         credential_id=cred.id,
@@ -480,7 +510,7 @@ async def trigger_run(
     # If the agent's local worker is live, leave the run "pending" for it to
     # claim and execute from an Israeli IP (no geo-block / no Bright Data POST
     # block). Otherwise Railway executes inline. Auto-detected — no manual flag.
-    if not await _should_defer_to_worker(db, user.id):
+    if not defer:
         asyncio.create_task(run_automation(run.id))
 
     return RunStartOut(run_id=str(run.id))
