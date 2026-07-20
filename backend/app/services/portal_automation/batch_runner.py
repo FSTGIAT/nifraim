@@ -290,12 +290,22 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # examine is what the batch path itself holds open (DB transaction, otp_since
     # anchoring) rather than anything browser-related. Do not add a third timing
     # hypothesis — that well is dry.
-    def _rank(c) -> int:
-        if c.portal_kind == "mor":
-            return 0
-        return 1 if getattr(REGISTRY.get(c.portal_kind), "use_persistent_profile", False) else 2
-
-    creds.sort(key=_rank)
+    # REVERTED to the known-good order (meitav → mor → rest). Running mor first
+    # was tested live on 2026-07-20 (batch 439b46ce) and it FAILED on both counts:
+    #   • mor still failed with the identical 400 at position 1, nothing before it
+    #     — so "a preceding portal poisons it" is disproven, like the reorder and
+    #     the 13s settle gap before it.
+    #   • meitav, which had succeeded 3/3 while running FIRST, failed at position 2
+    #     with `לא נמצאו שדות ת"ז/טלפון בטופס ההתחברות` — and Railway logged
+    #     `persistent browser=chrome` for that run, so it was NOT the bundled-
+    #     Chromium fallback either.
+    # Net: no gain on mor, a regression on meitav. Restore what worked.
+    # Do not re-try a positional/timing fix here — four have now been disproven
+    # by measurement. The open lead is the CREDENTIAL SHAPE: royg's working mor
+    # username is 8-digit ('40336281|40336281', 4 live successes) while kiko's
+    # failing one is 9-digit with a leading zero ('040336281|040336281'), and the
+    # instrumentation confirms the wire payload differs (licenseId=len8 vs len9).
+    creds.sort(key=lambda c: 0 if getattr(REGISTRY.get(c.portal_kind), "use_persistent_profile", False) else 1)
 
     batch.total = len(creds)
     batch.status = "running"
