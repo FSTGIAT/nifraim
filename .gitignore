@@ -47,3 +47,6 @@ nifraim-vid/
 # Local worker runtime logs
 worker.log
 worker/worker_console.log
+
+# graphify — generated knowledge graph (machine-specific, regenerable)
+graphify-out/

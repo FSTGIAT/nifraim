@@ -1,0 +1,28 @@
+# Root-level one-off scripts excluded from the knowledge graph.
+#
+# WHY: these are throwaway drivers, not architecture. They define generic
+# helpers (main, login, log, check, text, results) whose names collide with
+# real symbols across the codebase -- `def main` appears in 88 files, `def
+# login` in 23. Sitting at the repo root, they became false bridges between
+# unrelated subsystems: e2e_new_user.py scored 0.441 betweenness centrality,
+# ~10x the highest legitimate hub (User, 0.047), and manufactured a bogus
+# 10-hop path from ComparisonDashboard.vue to compute_comparison() across the
+# HTTP boundary that no AST can actually see.
+#
+# DELIBERATELY NOT IGNORED:
+#   backend/local_worker.py  -- production code (heartbeat, CAS batch claim)
+#   backend/tests/**         -- the real test suite; its OTP/parser/mail-intake
+#                               tests are referenced by CLAUDE.md and form
+#                               meaningful graph communities
+
+e2e_new_user.py
+create-pptx.js
+
+backend/inject_otp.py
+backend/livetest_harel_savings.py
+backend/local_batch_run.py
+backend/test_ai_chat.py
+backend/test_mor_live.py
+backend/test_single_run.py
+backend/test_yelin_live.py
+backend/upsert_altshuler_cred.py
