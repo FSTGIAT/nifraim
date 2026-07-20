@@ -455,8 +455,10 @@ perfectly formed login. **See `docs/ARCHITECTURE.md` §4c for the proven configu
 disproven list, and the invariants** — that section was rewritten 2026-07-20 after ~9
 hypotheses died, and the version it replaced asserted a cause that is now refuted.
 
-The short version, all measured (Mor reproduced green twice from a dev box, then live on the
-agent's worker: 490 records):
+**BOTH CONFIRMED WORKING LIVE on the agent's worker 2026-07-20** — מור `success` 490 records
+(`מור נפרעים 05-2026.xlsx`), מיטב `success` 9 records (`מיטב דש עמלות לסוכן.xlsx`). Both deliver
+**נפרעים**, not production: they are gemel/pension houses, so their production is מסלקה
+territory. The short version, all measured:
 
 - **Config that passes**: headed · real Chrome/Edge (never bundled Chromium) ·
   `--disable-blink-features=AutomationControlled` always · **no** `navigator.webdriver` JS
@@ -472,12 +474,25 @@ agent's worker: 490 records):
 - **Debug by reproducing locally first**: Windows Python (`/mnt/c/Python313`) driving real
   Edge/Chrome runs the same flow in minutes, and `curl` the portal's own JS bundle to see what
   it really sends. Both beat live-run guessing — that is what finally cracked Mor.
-- **Meitav inherits the runner-level fixes automatically** (same three flags) but is a
-  DIFFERENT mechanism: reCAPTCHA **Enterprise** (`grecaptcha.enterprise.*`, not
-  `grecaptcha.execute`) plus an **Akamai Bot Manager** sensor. Reproduced green locally
-  (form paints, submit enables, OTP screen reached), so `לא נמצאו שדות` is the ~19% hydration
-  race — not a login bug. Its probe read Mor's API surface and therefore blamed the agent's
-  antivirus on a healthy page; corrected.
+- **⚠️ THE BROWSER BRAND IS PART OF THE SCORE — try the other real browser FIRST.** Meitav
+  refuses automated **Chrome** and accepts automated **Edge**. Measured twice each, same
+  machine, same minute, same fresh profile, same flow:
+  `msedge → 200 {"actionTarget":"LoginCode"}` + OTP screen · `chrome → 401 {"message":"gCaptcha
+  error"}` → the agent sees `נסה שנית`. The server names the cause itself. The worker had been
+  picking Chrome only because it heads the default `chrome→chrome-exe→msedge→chromium` ladder.
+  **Mor accepts BOTH**, so this is per-portal: `browser_channel = "msedge"` on the plugin
+  (`base.py`) moves Edge to the front; the rest of the ladder still runs behind it. One run,
+  decisive — this would have been found in minutes instead of a day.
+- **Meitav is a DIFFERENT mechanism from Mor**: reCAPTCHA **Enterprise**
+  (`grecaptcha.enterprise.*`, NOT `grecaptcha.execute`) plus an **Akamai Bot Manager** sensor
+  (obfuscated script at a random path named with the hex of the page path). Its probe read
+  Mor's API surface and so reported `execute_ready=False` on a healthy page and blamed the
+  agent's **antivirus** — never once true. Corrected. A diagnostic that manufactures its own
+  false finding is worse than none.
+- **Recycle a profile that has GONE bad, not only one that never worked.** The warm marker is
+  written once and never expires, so a profile that worked for weeks and then started being
+  rejected stayed "proven" forever (meitav: success 07-19, then four `נסה שנית` on 07-20).
+  Rule is now *did not succeed LAST time* — `runner.py`.
 
 ---
 

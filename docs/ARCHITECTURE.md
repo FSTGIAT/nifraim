@@ -240,6 +240,15 @@ generic `אירעה שגיאה` — to a perfectly formed login. Everything here
 measurement on 2026-07-20, after ~9 hypotheses died; the section it replaces asserted a cause
 (cold profiles) that is now **refuted**, and that wrong entry is what cost most of the day.
 
+### Status: BOTH PORTALS CONFIRMED WORKING (2026-07-20, agent's worker)
+
+```
+מור     success  490 records  מור נפרעים 05-2026.xlsx      period 2026-05
+מיטב    success    9 records  מיטב דש עמלות לסוכן.xlsx     period 2026-05
+```
+Both deliver **נפרעים**, not production — they are gemel/pension houses, so their production
+belongs to מסלקה (§12). Fixing them does not move the production totals.
+
 ### The configuration that PASSES — do not drift from it
 
 Reproduced green twice from a dev box (`201 {"resultCode":"Success"}` + OTP modal), with real
