@@ -265,6 +265,14 @@ Windows **Edge** and real Windows **Chrome**, driving our own login flow:
   reputation, so every rejection makes the next attempt start worse. It spirals, and correct
   fixes underneath become invisible — webdriver/payload/token fixes that day each changed
   nothing observable until the fingerprint was also corrected.
+
+  → `runner.py` therefore recycles a profile when it has **never succeeded OR its last run was
+  rejected**. The rule is *not* "never succeeded": the warm marker is written once and never
+  expires, so a profile that worked for weeks and then rotted stays "proven" forever. That is
+  exactly what happened to **meitav** — success 2026-07-19, then four `נסה שנית` rejections on
+  07-20 on the same kept profile, while the identical flow on a FRESH profile reached the OTP
+  screen. Discarding costs nothing measurable (every green run on record used a brand-new
+  profile); keeping a rotten one costs everything.
 - **The payload.** `{licenseId=len8, identity=len9, phoneNumber=len10}` is byte-identical to
   what Mor's own Angular form submits. Padding, field order and typing delays are all fine.
   (The licence is **8 digits, NOT zero-padded**; only ת"ז→9 and phone→10 are padded.)

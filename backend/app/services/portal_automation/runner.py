@@ -553,19 +553,48 @@ async def _run_inner(
             # profile is then kept for good, which preserves the reason
             # persistence exists. Self-healing by construction — nobody has to
             # log into the agent's PC to delete a directory.
-            if profile_was_cold and profile_dir.exists():
+            # ...and equally, RECYCLE A PROFILE THAT HAS GONE BAD. The warm
+            # marker is written once, on the first successful run, and never
+            # expires — so a profile that worked for weeks and then started
+            # being rejected is still treated as "proven" and kept forever,
+            # accumulating exactly the reputation we need to shed. That is not
+            # hypothetical; it is meitav, 2026-07-20:
+            #
+            #     2026-07-19 19:59  success        <- marker written long ago
+            #     2026-07-20 08:40  failed login   "נסה שנית"
+            #     2026-07-20 10:39  failed login   "נסה שנית"
+            #     2026-07-20 13:47  failed login   "נסה שנית"
+            #     2026-07-20 16:49  failed login   "נסה שנית"
+            #
+            # …while the identical flow against a FRESH profile reached the OTP
+            # screen on a dev box. Same code, same credentials, same machine
+            # class; the only difference was the profile's history.
+            #
+            # So the rule is not "never succeeded" but "did not succeed LAST
+            # time". Discarding costs nothing measurable — every green run on
+            # record (Mor twice, meitav's repro) used a brand-new profile, so a
+            # fresh profile is not a penalty. Keeping a rotten one demonstrably
+            # costs everything.
+            _last_failed = (getattr(cred, "last_run_status", None) == "failed")
+            if (profile_was_cold or _last_failed) and profile_dir.exists():
                 import shutil as _sh
+                _why = ("no success ever recorded on it" if profile_was_cold
+                        else "last run on it was rejected")
                 try:
                     _sh.rmtree(profile_dir)
                     logger.info(
-                        "Run %s (%s): discarded UNPROVEN browser profile "
-                        "(no success ever recorded on it) — starting clean",
-                        run.id, cred.portal_kind,
+                        "Run %s (%s): discarded browser profile (%s) — starting clean",
+                        run.id, cred.portal_kind, _why,
                     )
                     _worker_note(
                         f"run {str(run.id)[:8]} {cred.portal_kind}: "
-                        "recycled unproven browser profile (never succeeded)"
+                        f"recycled browser profile ({_why})"
                     )
+                    # The dir is gone, so this run IS on a cold profile no
+                    # matter which branch brought us here. Say so, or a plugin
+                    # keying off profile_was_cold would be told a comfortable
+                    # lie about the browser it just got.
+                    profile_was_cold = True
                 except Exception as e:
                     logger.warning("could not recycle profile %s: %s", profile_dir, e)
             profile_dir.mkdir(parents=True, exist_ok=True)
