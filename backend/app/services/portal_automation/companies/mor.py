@@ -200,11 +200,20 @@ class MorPortal(BasePortalAutomation):
         # KEYSTROKES are required to drive Angular's validation. The ת"ז field
         # needs 9 digits and the phone 10 — pad a leading zero when the stored
         # value drops it (operator stores 40336281 / 504302306).
-        # Mor's server wants the 9-digit forms (with the leading 0) for BOTH the
-        # license and the ת"ז, and the 10-digit phone — even though the client
-        # form validates the shorter forms (server returns "אירעה שגיאה").
-        if len(license_no) == 8 and not license_no.startswith("0"):
-            license_no = "0" + license_no
+        # The ת"ז and the phone are padded to 9 / 10. The LICENSE is NOT — it is
+        # its own number (מספר רשיון (ת.ז/ח.פ)) and is 8 digits with no leading
+        # zero. A working manual login was captured 2026-07-20:
+        #     מספר רשיון (ת.ז/ח.פ)      40336281     <- 8, NO leading zero
+        #     מספר זהות של המשתמש/ת     040336281    <- 9
+        #     טלפון נייד                0504302306   <- 10
+        # This block used to pad the license too, on a 2026-06-28 guess that the
+        # server "wants the 9-digit form for BOTH". That guess turned 40336281
+        # into 040336281 and is what produced `400 {"resultCode":"Bad Request"}`
+        # on every run: the instrumentation showed licenseId=len9 while the real
+        # form submits len8. Editing the stored credential could never fix it —
+        # the padding re-applied on the way out, which is why the DB held the
+        # correct 8-digit value and the wire still carried 9.
+        # Do not re-add license padding without a fresh screenshot of the form.
         if len(id_no) == 8 and not id_no.startswith("0"):
             id_no = "0" + id_no
         if len(phone) == 9 and not phone.startswith("0"):
