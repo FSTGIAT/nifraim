@@ -60,6 +60,17 @@ class AnalystPortal(BasePortalAutomation):
     # the run then waited 5 minutes for a code nobody had issued. Same finding as
     # meitav — see ARCHITECTURE §4c, "the browser brand is part of the score".
     browser_channel = "msedge"
+    # Captcha-gated, so it needs the same treatment as Mor/Meitav — and for the
+    # same measured reason. The dev-box run that reached the OTP screen was
+    # HEADED, on a real browser, with a fresh profile. Without these three flags
+    # the worker launched analyst HEADLESS through the shared-browser path,
+    # where a captcha refuses the login no matter which channel is picked.
+    # `headed` also keeps it on the local worker (a headless Railway container
+    # cannot open a desktop browser at all).
+    headed = True
+    native_fingerprint = True
+    use_persistent_profile = True
+    needs_residential_proxy = False
 
     def _split(self, username: str, password: str) -> tuple[str, str]:
         """username='<id>', password='<phone>'. Digit-strip both; pad the Israeli

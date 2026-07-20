@@ -128,11 +128,19 @@ _WIN_CHROME_EXES = [
 ]
 
 
-async def _launch_real_browser(pw, headless: bool, launch_args: list):
+async def _launch_real_browser(pw, headless: bool, launch_args: list,
+                               prefer_channel: str | None = None):
     """Launch preferring a REAL browser fingerprint. Order: Chrome channel →
     Chrome .exe (system + per-user) → Edge channel → bundled Chromium (last
     resort). Bundled Chromium is a known dead-end for Harel's F5 (errorcode
     19/22), so Edge (always present on Windows, real fingerprint) is tried first.
+
+    `prefer_channel` moves one channel to the FRONT — see the twin in
+    `_launch_real_persistent` for the measurements. It must be honoured HERE too:
+    `browser_channel` was originally wired only into the persistent path, so a
+    plugin without `use_persistent_profile` had its preference silently ignored.
+    Analyst hit exactly that — it declared `browser_channel = "msedge"`, the
+    worker logged `browser=chrome`, and the captcha refused the login.
     Returns (browser, label)."""
     attempts = [("chrome", dict(channel="chrome"))]
     seen_exe = set()
@@ -142,6 +150,8 @@ async def _launch_real_browser(pw, headless: bool, launch_args: list):
             attempts.append(("chrome-exe", dict(executable_path=p)))
     attempts.append(("msedge", dict(channel="msedge")))
     attempts.append(("chromium", dict()))
+    if prefer_channel:
+        attempts.sort(key=lambda a: 0 if a[0] == prefer_channel else 1)
     last_exc = None
     for label, kw in attempts:
         try:
@@ -638,7 +648,8 @@ async def _run_inner(
             )
         else:
             browser, _blabel = await _launch_real_browser(
-                pw, not headed, launch_args
+                pw, not headed, launch_args,
+                prefer_channel=getattr(plugin, "browser_channel", None),
             )
             logger.info(
                 "Run %s (%s): launched browser=%s", run.id, cred.portal_kind, _blabel
