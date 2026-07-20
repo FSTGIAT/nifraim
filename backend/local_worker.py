@@ -336,23 +336,150 @@ async def _stand_by(uid) -> None:
             return
 
 
+_ENTRYPOINT = Path(__file__).resolve()          # <root>/backend/local_worker.py
+_ENTRY_MEMBER = "backend/local_worker.py"       # its path inside the bundle zip
+
+# Top-level names a usable worker MUST define. Truncation usually lops off the
+# tail of a file, so `main` and `_heartbeat_loop` are the load-bearing entries
+# here; the rest make a half-file far likelier to be caught.
+_REQUIRED_DEFS = frozenset({
+    "main", "_heartbeat_loop", "_beat", "_maybe_self_update",
+    "_claim_pending_batch", "_claim_pending_run", "_download_and_extract_bundle",
+})
+
+
+def _verify_entrypoint(path: Path) -> None:
+    """Raise unless `path` is a COMPLETE worker entrypoint.
+
+    `compile()` alone is not enough, and this was proven rather than assumed: a
+    `local_worker.py` truncated to half its length still parses cleanly, because
+    the cut landed between two top-level defs. Syntax validity says the bytes
+    that arrived are well-formed — not that all of them arrived. A worker whose
+    file ends before `main()` compiles perfectly and then dies with NameError on
+    startup, which from the agent's PC is indistinguishable from the bricking
+    this whole guard exists to prevent.
+
+    So check the SHAPE: every function the run loop depends on must be present,
+    and the module must still end in its `while True` supervisor block.
+    """
+    import ast as _ast
+    src = path.read_text(encoding="utf-8")
+    tree = _ast.parse(src, str(path))           # syntax
+    defs = {n.name for n in tree.body
+            if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))}
+    missing = _REQUIRED_DEFS - defs
+    if missing:
+        raise RuntimeError(f"incomplete worker file — missing {sorted(missing)}")
+    if "asyncio.run(main())" not in src:
+        raise RuntimeError("incomplete worker file — supervisor block missing")
+
+
 def _download_and_extract_bundle() -> bool:
     """RE-DOWNLOAD the worker code bundle from the server and extract it over the
     repo root — the SAME delivery the installer used (the worker is a downloaded
     bundle, NOT a git checkout). The zip is prefixed with `backend/`, so extracting
     at _ROOT lands files exactly where they belong. Returns True on success.
-    .env / venv / data are NOT in the bundle, so creds & downloads are untouched."""
+    .env / venv / data are NOT in the bundle, so creds & downloads are untouched.
+
+    ⚠️ THIS FUNCTION OVERWRITES THE FILE THAT IS CURRENTLY EXECUTING, and the
+    caller re-execs straight into the result. So a half-finished write here does
+    not degrade the worker — it DELETES it: the re-exec hits a truncated
+    `local_worker.py`, dies on a SyntaxError, and no process is left alive to
+    retry. The agent's PC then shows "מנותק" until a human physically restarts
+    it, which is precisely the hands-off failure the worker must never have.
+
+    The previous version called `z.extractall()` straight over the live tree
+    inside a bare try/except whose handler claimed it would "re-execute on
+    existing code" — untrue once extractall has partially run, because the code
+    on disk is by then neither the old nor the new version. Four guards now
+    stand between a bad download and a bricked machine:
+
+      1. CRC-verify the whole archive (`testzip()`) before touching any file —
+         a truncated or corrupt download is rejected while it is still only
+         bytes in memory.
+      2. Require the entrypoint member to be present and plausibly sized, so a
+         valid-but-wrong zip (an error page, an empty build) cannot land.
+      3. Extract to a TEMP dir and byte-compile the new entrypoint there. Only
+         a bundle that both unpacks and parses is allowed near the live tree.
+      4. Copy over the live tree keeping a backup of the entrypoint; if the
+         final on-disk file fails to compile, restore it and report failure.
+
+    Returns False (never raises) when the update cannot be applied safely. A
+    worker left on stale code still runs jobs; a bricked worker runs nothing —
+    so False is always the better outcome than a hopeful re-exec.
+    """
     base = (_env.get("WORKER_LOG_BASE", "") or os.environ.get("WORKER_LOG_BASE", "")).rstrip("/")
     token = _env.get("WORKER_LOG_TOKEN", "") or os.environ.get("WORKER_LOG_TOKEN", "")
     if not (base and token):
         log.warning("no WORKER_LOG_BASE/TOKEN — cannot download bundle")
         return False
-    import io as _io, zipfile as _zip
+    import io as _io, zipfile as _zip, tempfile as _tmp, shutil as _sh
     url = f"{base}/api/portal-automation/worker/bundle/{token}"
-    data = _ureq.urlopen(_ureq.Request(url), timeout=180).read()
-    with _zip.ZipFile(_io.BytesIO(data)) as z:
-        z.extractall(str(_ROOT))
-    log.info("worker bundle (%d bytes) extracted to %s", len(data), _ROOT)
+
+    try:
+        data = _ureq.urlopen(_ureq.Request(url), timeout=180).read()
+    except Exception as e:
+        log.warning("bundle download failed: %s", e)
+        _post_log(f"self-update: download failed ({e}) — staying on current code")
+        return False
+
+    tmpdir = None
+    try:
+        with _zip.ZipFile(_io.BytesIO(data)) as z:
+            # (1) CRC over every member. Catches the truncated/garbled download
+            #     that used to make it all the way onto disk.
+            bad = z.testzip()
+            if bad is not None:
+                raise RuntimeError(f"corrupt bundle (bad CRC in {bad})")
+            # (2) The entrypoint must exist and be a real file, not a stub.
+            names = set(z.namelist())
+            if _ENTRY_MEMBER not in names:
+                raise RuntimeError(f"bundle has no {_ENTRY_MEMBER} (got {len(names)} members)")
+            entry_size = z.getinfo(_ENTRY_MEMBER).file_size
+            if entry_size < 5000:
+                raise RuntimeError(f"{_ENTRY_MEMBER} implausibly small ({entry_size}B)")
+            # (3) Unpack somewhere harmless and prove the new entrypoint parses
+            #     BEFORE the live tree is touched at all.
+            tmpdir = Path(_tmp.mkdtemp(prefix="nifraim_update_"))
+            z.extractall(str(tmpdir))
+        staged_entry = tmpdir / _ENTRY_MEMBER
+        _verify_entrypoint(staged_entry)
+    except Exception as e:
+        log.warning("bundle rejected (%s) — staying on current code", e)
+        _post_log(f"self-update: bundle rejected ({e}) — staying on current code")
+        if tmpdir:
+            _sh.rmtree(tmpdir, ignore_errors=True)
+        return False
+
+    # (4) Apply. Keep a copy of the running entrypoint so a failed copy — a
+    #     locked file, AV quarantine, a full disk — is recoverable rather than
+    #     terminal.
+    backup = _ENTRYPOINT.with_suffix(".py.bak")
+    try:
+        _sh.copy2(_ENTRYPOINT, backup)
+    except Exception as e:
+        log.warning("could not back up entrypoint (%s) — proceeding without rollback", e)
+        backup = None
+    try:
+        _sh.copytree(tmpdir, _ROOT, dirs_exist_ok=True)
+        # The live file is what the re-exec will actually run — verify THAT, not
+        # the staged copy, so a partial copy is caught here and not by a dead
+        # process.
+        _verify_entrypoint(_ENTRYPOINT)
+    except Exception as e:
+        log.error("bundle apply FAILED (%s) — restoring previous entrypoint", e)
+        _post_log(f"self-update: apply failed ({e}) — restored previous worker code")
+        if backup and backup.exists():
+            try:
+                _sh.copy2(backup, _ENTRYPOINT)
+            except Exception as e2:
+                log.error("ROLLBACK FAILED: %s", e2)
+                _post_log(f"self-update: ROLLBACK FAILED ({e2}) — worker may need reinstall")
+        return False
+    finally:
+        _sh.rmtree(tmpdir, ignore_errors=True)
+
+    log.info("worker bundle (%d bytes) verified + extracted to %s", len(data), _ROOT)
     return True
 
 
@@ -398,12 +525,29 @@ async def _maybe_self_update(uid):
     _post_log(f"update requested ({req}) — downloading bundle + re-exec")
     await _clear()  # clear FIRST so we don't loop after re-exec.
     try:
-        _download_and_extract_bundle()
+        ok = _download_and_extract_bundle()
     except Exception as e:
-        log.warning("bundle self-update failed (%s) — re-executing on existing code", e)
+        # _download_and_extract_bundle is written not to raise, but a caller that
+        # re-execs must not depend on that promise.
+        log.warning("bundle self-update raised (%s)", e)
+        ok = False
+
+    if not ok:
+        # DO NOT re-exec. The update did not land, so a restart would at best
+        # reload the identical code and at worst run a tree we no longer trust.
+        # Staying up keeps the machine online and running jobs on the code it
+        # already has — the previous version re-exec'd unconditionally here,
+        # which is how a failed download could take the whole worker offline
+        # with nothing left to restart it.
+        log.warning("self-update did not apply — continuing on current code (no restart)")
+        _post_log("עדכון לא בוצע — העובד ממשיך לפעול על הקוד הקיים")
+        return
+
     _post_log("re-executing worker with updated code")
-    # Replace this process image with a fresh one running the freshly-downloaded code.
-    os.execv(_sys.executable, [_sys.executable, str(Path(__file__).resolve())])
+    # Replace this process image with a fresh one running the freshly-downloaded
+    # code. Safe to do now: the file about to be executed has been byte-compiled
+    # on disk by _download_and_extract_bundle.
+    os.execv(_sys.executable, [_sys.executable, str(_ENTRYPOINT)])
 
 
 async def _heartbeat_loop(uid):
