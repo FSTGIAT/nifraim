@@ -634,6 +634,13 @@ async def _run_inner(
                 prefer_channel=getattr(plugin, "browser_channel", None),
             )
             plugin.profile_was_cold = profile_was_cold
+            # WHICH browser actually launched — not which one was preferred. A
+            # plugin that blames the browser in its error text must be able to
+            # check; analyst shipped a hint saying "use Edge, not Chrome" that
+            # fired on a run which WAS on Edge, sending the reader back to a
+            # settled question. `browser_channel` is an intent, `_blabel` is the
+            # fact, and only the runner knows the fact.
+            plugin.browser_label = _blabel
             logger.info(
                 "Run %s (%s): persistent browser=%s cold_profile=%s",
                 run.id, cred.portal_kind, _blabel, profile_was_cold,
@@ -651,6 +658,7 @@ async def _run_inner(
                 pw, not headed, launch_args,
                 prefer_channel=getattr(plugin, "browser_channel", None),
             )
+            plugin.browser_label = _blabel   # set on BOTH paths — see the note above
             logger.info(
                 "Run %s (%s): launched browser=%s", run.id, cred.portal_kind, _blabel
             )

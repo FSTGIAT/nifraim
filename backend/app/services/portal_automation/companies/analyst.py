@@ -243,11 +243,28 @@ class AnalystPortal(BasePortalAutomation):
             _b = (srv["body"] or "").strip()
             _hint = ""
             if "ecaptcha" in _b or "aptcha" in _b:
-                # The known cause, and it is a machine/browser issue, not the
-                # agent's credentials — say so rather than let them re-check a
-                # correct ת"ז for an hour.
-                _hint = (" הכניסה נדחתה ע\"י מנגנון ה-captcha של אנליסט — "
-                         "יש להריץ בדפדפן Edge (browser_channel='msedge'), לא Chrome.")
+                # Name the cause from the FACT of which browser ran, not from an
+                # assumption. The first version of this hint always said "use
+                # Edge, not Chrome" — and then fired on a run that WAS on Edge
+                # (persistent browser=msedge), sending the reader back to a
+                # question already settled. `browser_label` is stamped by the
+                # runner with what actually launched.
+                _bl = getattr(self, "browser_label", "") or "unknown"
+                if _bl in ("msedge", "chrome-exe", "chrome"):
+                    _real = "msedge" in _bl
+                else:
+                    _real = False
+                if not _real:
+                    _hint = (f" רץ על דפדפן '{_bl}' — אנליסט דוחה כל דפדפן שאינו Edge. "
+                             "ודא ש-Edge מותקן במחשב (browser_channel='msedge').")
+                else:
+                    # Edge WAS used, so the browser is not the story. On a
+                    # score-gated portal the usual cause is repeated attempts:
+                    # each rejection lowers the score, and it recovers with quiet
+                    # (the Mor precedent, ARCHITECTURE §4c).
+                    _hint = (" רץ על Edge כנדרש, ולכן זו אינה בעיית דפדפן — "
+                             "ככל הנראה ניקוד ה-captcha ירד עקב ניסיונות חוזרים. "
+                             "המתן 20-30 דקות ונסה פעם אחת בלבד.")
             raise RuntimeError(
                 f"אנליסט: שרת האנליסט דחה את הכניסה ({srv['status']}: {_b[:120]}) — "
                 f"לא נשלחה הודעת SMS.{_hint}"
