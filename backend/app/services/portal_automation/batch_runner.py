@@ -295,11 +295,16 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     #   • mor still failed with the identical 400 at position 1, nothing before it
     #     — so "a preceding portal poisons it" is disproven, like the reorder and
     #     the 13s settle gap before it.
-    #   • meitav, which had succeeded 3/3 while running FIRST, failed at position 2
-    #     with `לא נמצאו שדות ת"ז/טלפון בטופס ההתחברות` — and Railway logged
-    #     `persistent browser=chrome` for that run, so it was NOT the bundled-
-    #     Chromium fallback either.
-    # Net: no gain on mor, a regression on meitav. Restore what worked.
+    #   • meitav failed the same run with `לא נמצאו שדות ת"ז/טלפון בטופס ההתחברות`.
+    #     This was FIRST BLAMED ON THE REORDER and that was wrong — correcting the
+    #     record, because a wrong incident note here misleads the next reader.
+    #     meitav's full history: success at positions 1, 2, 3 AND 5; failures at
+    #     2 and 5. Position is not the determinant. It sits at 13 ok / 3 fail
+    #     (~19%), and that run is inside its existing flake rate. Railway also
+    #     logged `persistent browser=chrome`, so it was not the bundled-Chromium
+    #     fallback. Its login-form flake predates any ordering change.
+    # Net: mor-first bought nothing, so revert to the simpler prior ordering
+    # rather than keep churn that no measurement supports.
     # Do not re-try a positional/timing fix here — four have now been disproven
     # by measurement. The open lead is the CREDENTIAL SHAPE: royg's working mor
     # username is 8-digit ('40336281|40336281', 4 live successes) while kiko's
