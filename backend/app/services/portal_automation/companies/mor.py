@@ -496,14 +496,18 @@ class MorPortal(BasePortalAutomation):
             #
             # What used to be here: a 25 s `wait_for_function` on
             # `[id^='g-recaptcha-response']` becoming non-empty, then a
-            # partial_error announcing "the token was not created". Both were
-            # wrong — that element is the reCAPTCHA **v2** checkbox's hidden
-            # textarea and does not exist on a v3 page. The wait therefore
-            # ALWAYS expired, always logged a scary (false) message, and added
-            # 25 s of dead time before every single submit. It never once
-            # reflected the state of the real token. Removed; the probe below
-            # measures the v3 path directly, and `_cap_hdr` records what the
-            # actual request carried.
+            # partial_error announcing "the token was not created". The wait
+            # ALWAYS expired, always logged that scary (false) message, and put
+            # 25 s of dead time in front of every submit.
+            #
+            # Why it expired is worth stating precisely, because the first draft
+            # of this comment got it wrong: NOT because the element is v2-only
+            # (it exists under v3 too), but because v3 fills it only once
+            # execute() has RESOLVED — and nothing calls execute() until this
+            # click. Waiting for it beforehand was waiting for the click to have
+            # already happened. Removed; the probe above measures the v3 path
+            # directly, `_cap_hdr` records what the request actually carried,
+            # and the read just after the click reports the real minted token.
             await self._probe_recaptcha(page, "mor")
 
             # ── dead ends, recorded so they are not re-walked ────────────────
