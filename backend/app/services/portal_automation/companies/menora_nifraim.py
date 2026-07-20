@@ -58,6 +58,9 @@ class MenoraNifraimPortal(MenoraPortal):
     # in the batch forces a redundant second login with no resent OTP → the OTP-input
     # selector never appears → 25s login timeout. Manual single-runs are unaffected.
     include_in_batch = False
+    # Explicitly EMPTY: this class subclasses the parent portal, and would
+    # otherwise inherit its `folds` and point at ITSELF.
+    folds = ()
 
     async def download_reports(
         self,

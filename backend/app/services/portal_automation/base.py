@@ -41,6 +41,17 @@ class BasePortalAutomation(ABC):
     # already downloads in one login (e.g. phoenix_nifraim_gemel, folded into
     # phoenix_nifraim). Keeps the batch from burning an OTP on a guaranteed fail.
     include_in_batch: bool = True
+
+    # Other portal_kinds this plugin downloads on its OWN authenticated session
+    # (one login, one OTP, several reports). Those credentials are deliberately
+    # `include_in_batch = False`, so they never get a PortalRun of their own —
+    # and the runner only stamps status on the credential it dispatched. The
+    # result was a card frozen at "ממתין" forever for a report that ran fine:
+    # live 2026-07-20, `הראל — ריכוז תשלומי עמלות` showed as never-run while
+    # having delivered 187 rows / 142 clients (the largest Harel cohort in the
+    # merged נפרעים). Declare the folded kinds here and the runner mirrors the
+    # parent's outcome onto them, so the UI stops lying about what was fetched.
+    folds: tuple[str, ...] = ()
     # Israeli insurer WAFs geo/datacenter-block non-IL IPs: from Railway's
     # foreign datacenter IP, harel/menora/phoenix hang at the first page.goto
     # (30s timeout) while the same domains answer in <250ms from a local IL IP.

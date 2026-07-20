@@ -69,6 +69,9 @@ class ClalNifraimPortal(ClalPortal):
     # Folded into the consolidated `clal` plugin (PayLink production + this
     # commissions report in one APM login). Still runnable as a manual single run.
     include_in_batch = False
+    # Explicitly EMPTY: this class subclasses the parent portal, and would
+    # otherwise inherit its `folds` and point at ITSELF.
+    folds = ()
 
     async def download_reports(
         self,

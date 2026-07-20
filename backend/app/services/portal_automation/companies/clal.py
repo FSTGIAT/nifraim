@@ -77,6 +77,9 @@ def _sanitize_label(text: str) -> str:
 class ClalPortal(BasePortalAutomation):
     portal_kind = "clal"
     company_label = "כלל — פיילינק (פרודוקציה)"
+    # Downloaded on this same login (see download_reports) — mirror our
+    # outcome onto its credential so its card is not stuck at "ממתין".
+    folds = ('clal_nifraim',)
 
     async def login(self, page: "Page", username: str, password: str) -> None:
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)

@@ -230,6 +230,9 @@ class HarelSavingsPortal(_HarelReportPortal):
     # both production (מוצרי צבירה) and נפרעים (ריכוז תשלומי עמלות). HarelPortal
     # sets include_in_batch=False (legacy safe vault) — re-enable it here.
     include_in_batch = True
+    # Downloaded on this same login (see download_reports) — mirror our
+    # outcome onto its credential so its card is not stuck at "ממתין".
+    folds = ('harel_commissions',)
 
     async def download_reports(
         self,

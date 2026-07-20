@@ -865,4 +865,44 @@ async def run_automation(run_id: uuid.UUID) -> None:
             cred.last_error = str(e)
         finally:
             cred.last_run_at = datetime.utcnow()
+            await _mirror_to_folded(db, cred)
             await db.commit()
+
+
+async def _mirror_to_folded(db, cred: PortalCredential) -> None:
+    """Copy this run's outcome onto the credentials this plugin folds in.
+
+    A folded leg (harel_commissions, clal_nifraim, menora_nifraim, migdal_apm)
+    is downloaded on the PARENT's authenticated session, so it never gets a
+    PortalRun of its own and nothing ever wrote its `last_run_*`. Its card
+    therefore sat at "ממתין" indefinitely — live 2026-07-20,
+    `הראל — ריכוז תשלומי עמלות` read as never-run while having delivered 187
+    rows / 142 clients, the largest Harel cohort in the merged נפרעים. The UI
+    was telling the agent we had not fetched the very data we had.
+
+    Best-effort and never raises: status cosmetics must not turn a successful
+    download into a failed run.
+    """
+    try:
+        from app.services.portal_automation.companies import REGISTRY
+
+        folded = getattr(REGISTRY.get(cred.portal_kind), "folds", ()) or ()
+        # Never mirror onto ourselves. The folded legs SUBCLASS their parent
+        # portal (ClalNifraimPortal(ClalPortal)…), so without this a subclass
+        # that forgets to override `folds = ()` inherits the parent's list and
+        # self-references. The subclasses do override it — this is the belt.
+        folded = tuple(k for k in folded if k != cred.portal_kind)
+        if not folded:
+            return
+        rows = (await db.execute(
+            select(PortalCredential).where(
+                PortalCredential.user_id == cred.user_id,
+                PortalCredential.portal_kind.in_(list(folded)),
+            )
+        )).scalars().all()
+        for f in rows:
+            f.last_run_at = cred.last_run_at
+            f.last_run_status = cred.last_run_status
+            f.last_error = cred.last_error
+    except Exception as e:  # noqa: BLE001 — cosmetics must never fail a run
+        logger.warning("could not mirror status to folded credentials: %s", e)

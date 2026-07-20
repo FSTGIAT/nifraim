@@ -38,6 +38,9 @@ AGENTS_SITE_URL = "https://menoranet.menora.co.il/agents-site/"
 class MenoraPortal(BasePortalAutomation):
     portal_kind = "menora"
     company_label = "מנורה"
+    # Downloaded on this same login (see download_reports) — mirror our
+    # outcome onto its credential so its card is not stuck at "ממתין".
+    folds = ('menora_nifraim',)
 
     async def login(self, page: "Page", username: str, password: str) -> None:
         # NOTE: Menora's login is NOT username + password. The form asks for

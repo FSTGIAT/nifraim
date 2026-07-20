@@ -55,6 +55,9 @@ async def _retry_file_op(fn, *, attempts: int = 4, delay: float = 0.6):
 class MigdalPortal(BasePortalAutomation):
     portal_kind = "migdal"
     company_label = "מגדל — כספת (ייצור)"
+    # Downloaded on this same login (see download_reports) — mirror our
+    # outcome onto its credential so its card is not stuck at "ממתין".
+    folds = ('migdal_apm',)
     # Migdal answers Railway's datacenter IP directly (proven live 2026-06-26),
     # so skip the IL residential proxy — avoids its latency/cost. The apmaccess
     # נפרעים leg shares this context. See memory `railway_ip_geoblocked_insurers`.

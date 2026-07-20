@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 from app.services.portal_automation.runner import (
     _run_inner,
     _set_status,
+    _mirror_to_folded,
     RUN_HARD_TIMEOUT_S,
     OtpTimeout,
 )
@@ -382,6 +383,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                 batch.failed += 1
                 cred.last_run_status = "failed"
             cred.last_run_at = datetime.utcnow()
+            await _mirror_to_folded(db, cred)   # folded legs (harel_commissions…) share this outcome
             await db.commit()
             continue
 
@@ -421,6 +423,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             batch.failed += 1
         finally:
             cred.last_run_at = datetime.utcnow()
+            await _mirror_to_folded(db, cred)   # folded legs (harel_commissions…) share this outcome
             await db.commit()
             # This credential's Playwright browser/context is now closed
             # (`_run_inner`'s own `finally` already ran) — start the settle
@@ -494,6 +497,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                 cred.last_error = str(e)
             finally:
                 cred.last_run_at = datetime.utcnow()
+                await _mirror_to_folded(db, cred)   # folded legs (harel_commissions…) share this outcome
                 await db.commit()
                 _last_browser_close_mono = _loop.time()
 
