@@ -623,10 +623,35 @@ async def _run_inner(
                     # Don't let a single bad file kill the whole run — log and
                     # carry on with the remaining files. The other downloads
                     # still produced value.
+                    #
+                    # Carry the exception TYPE and the failing source line. The
+                    # message used to be `str(err)[:120]` only, which for a bare
+                    # `invalid literal for int() with base 10: 'NaN'` (live
+                    # 2026-07-20, אלטשולר) named neither the file it came from
+                    # nor the line — the same text can be raised from a dozen
+                    # places. The parser was verified fine against a real copy of
+                    # that report (detect_format → altshuler, 134 records), so the
+                    # fault is somewhere past parse, and without a frame there is
+                    # nothing to look at. One line of traceback turns the next
+                    # occurrence from a hunt into a lookup.
+                    import traceback as _tb
+                    _frames = _tb.extract_tb(ingest_err.__traceback__)
+                    _where = ""
+                    if _frames:
+                        _f = _frames[-1]
+                        _where = f" @ {_f.filename.split('/')[-1]}:{_f.lineno} in {_f.name}()"
                     logger.warning(
-                        "Ingest failed for %s (run %s): %s", path.name, run.id, ingest_err
+                        "Ingest failed for %s (run %s): %s", path.name, run.id,
+                        _tb.format_exc()[-1500:],
                     )
-                    issues.append(f"{path.name}: הקליטה נכשלה — {str(ingest_err)[:120]}")
+                    _worker_note(
+                        f"run {str(run.id)[:8]} {cred.portal_kind}: INGEST FAIL {path.name} "
+                        f"{type(ingest_err).__name__}: {str(ingest_err)[:100]}{_where}"
+                    )
+                    issues.append(
+                        f"{path.name}: הקליטה נכשלה — "
+                        f"{type(ingest_err).__name__}: {str(ingest_err)[:100]}{_where}"
+                    )
                     continue
                 if upload.file_category not in ("production", "commission"):
                     # Downloaded fine, but no parser signature matched (fmt
