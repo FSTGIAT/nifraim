@@ -49,6 +49,17 @@ class AnalystPortal(BasePortalAutomation):
     # Ship OUT of the run-all batch until a single-run e2e is green — a half-working
     # new plugin must not break kiko's whole batch. Flip to True after verification.
     include_in_batch = False
+    # MUST be Edge. Analyst's login is captcha-gated (`GetConfiguration` returns
+    # `isCaptchaActive: true`) and it refuses automated Chrome. Measured
+    # 2026-07-20, same machine/minute/profile/flow, fields verifiably filled in
+    # both cases:
+    #     msedge -> 200 {"isError":false,"guid":"…"}  -> OTP screen, SMS sent
+    #     chrome -> 400 "Recaptcha validation failed"  -> no SMS at all
+    # That is exactly the live failure: kiko's worker defaults to Chrome (it heads
+    # the launch ladder), the login POST was rejected, no SMS was ever sent, and
+    # the run then waited 5 minutes for a code nobody had issued. Same finding as
+    # meitav — see ARCHITECTURE §4c, "the browser brand is part of the score".
+    browser_channel = "msedge"
 
     def _split(self, username: str, password: str) -> tuple[str, str]:
         """username='<id>', password='<phone>'. Digit-strip both; pad the Israeli
@@ -81,6 +92,33 @@ class AnalystPortal(BasePortalAutomation):
     async def login(self, page: "Page", username: str, password: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
         id_no, phone = self._split(username, password)
+
+        # Watch the LOGIN POST itself. The OTP screen appearing is the success
+        # signal, but its ABSENCE used to be silent: the old code fell through
+        # with "no clear transition — let the runner await OTP", so a rejected
+        # login became a five-minute wait for a code that was never sent, and
+        # the run was reported at stage=otp as though login had worked.
+        #
+        # The DOM check alone cannot see this. Chrome's rejection was a network
+        # 400 ("Recaptcha validation failed") with NO toast and no mat-error —
+        # the page simply stayed on the form. Only the response says what
+        # happened, so capture it and let the server's own words end the run.
+        srv: dict = {"status": None, "body": "", "seen": False}
+
+        async def _on_resp(resp):
+            try:
+                if resp.request.method != "POST" or "Authorization/Login" not in resp.url:
+                    return
+                srv["seen"] = True
+                srv["status"] = resp.status
+                try:
+                    srv["body"] = (await resp.text())[:300]
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        page.on("response", _on_resp)
 
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=45000)
         try:
@@ -181,8 +219,35 @@ class AnalystPortal(BasePortalAutomation):
                 err = ""
             if err and any(w in err for w in ("שגוי", "שגיא", "לא נמצא", "נסה")):
                 raise RuntimeError(f"אנליסט: הכניסה נדחתה — {err}")
+            # The server's answer beats the DOM: a captcha rejection paints
+            # nothing at all, so without this the loop just times out quietly.
+            if srv["seen"] and srv["status"] and srv["status"] >= 400:
+                break
             await page.wait_for_timeout(500)
-        # No clear transition — let the runner await OTP; submit_otp re-detects.
+
+        # FAIL LOUDLY. Falling through to the runner's OTP wait after a rejected
+        # login costs five minutes and then blames the phone — "לא התקבל קוד OTP",
+        # pointing the agent at their SMS app when the code was never requested.
+        if srv["seen"] and srv["status"] and srv["status"] >= 400:
+            _b = (srv["body"] or "").strip()
+            _hint = ""
+            if "ecaptcha" in _b or "aptcha" in _b:
+                # The known cause, and it is a machine/browser issue, not the
+                # agent's credentials — say so rather than let them re-check a
+                # correct ת"ז for an hour.
+                _hint = (" הכניסה נדחתה ע\"י מנגנון ה-captcha של אנליסט — "
+                         "יש להריץ בדפדפן Edge (browser_channel='msedge'), לא Chrome.")
+            raise RuntimeError(
+                f"אנליסט: שרת האנליסט דחה את הכניסה ({srv['status']}: {_b[:120]}) — "
+                f"לא נשלחה הודעת SMS.{_hint}"
+            )
+        if not srv["seen"]:
+            raise RuntimeError(
+                "אנליסט: בקשת הכניסה כלל לא נשלחה (לא נצפתה קריאת Authorization/Login) — "
+                "ייתכן שהטופס לא מולא או שהכפתור לא נלחץ. בדוק analyst_after_send.txt/html"
+            )
+        # OTP screen never painted but the server accepted — let the runner await
+        # the code; submit_otp re-detects the boxes.
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT

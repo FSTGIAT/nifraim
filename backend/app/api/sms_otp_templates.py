@@ -52,6 +52,19 @@ DEFAULT_SMS_OTP_TEMPLATES = [
     {"company_name": "ילין לפידות", "portal_kind": "yelin",
      "pattern": r"(ילין|yelin|yl-invest).*\d{4,8}|\d{4,8}.*(ילין|yelin|yl-invest)",
      "example": "209210 קוד האימות לשירותים דיגיטלים - ילין לפידות @online.yl-invest.co.il #209210"},
+    # Analyst is code-first too — the digits land BEFORE the brand
+    # ("…,NNNNNN הינו קוד אימות זמני לחשבונך באנליסט"), so the code-then-word
+    # alternative is required, not optional. Captured live 2026-07-20.
+    #
+    # Tagging here is for CORRECTNESS, not labelling. Without this template the
+    # analyst OTP only matched the generic "כללי" rule and landed UNTAGGED
+    # (portal_kind=NULL) — sharing one bucket with junk SMS, e.g. a credit-card
+    # statement the same day whose OTP_REGEX pulled "2026" out of the date
+    # 15/07/2026. `next-otp` prefers an exact portal_kind over NULL, so an
+    # untagged real code can lose to newer junk.
+    {"company_name": "אנליסט", "portal_kind": "analyst",
+     "pattern": r"(אנליסט|analyst).*\d{4,8}|\d{4,8}.*(אנליסט|analyst)",
+     "example": "שלום, 565109 הינו קוד אימות זמני לחשבונך באנליסט. תוקף הקוד ל-20 דקות. @agent.analyst.co.il #565109"},
     # מיטב דש — bidirectional (Israeli OTP SMS are often code-first); anchor on
     # מיטב/meitav. Live OTP wording unverified (refine example after first run).
     # אנליסט — brand-anchored best guess (bidirectional: brand↔code). Refine or add a
