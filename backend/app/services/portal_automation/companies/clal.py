@@ -67,6 +67,49 @@ _NON_PRODUCTION = ("עמלות", "נפרעים", "commission")
 _PRODUCTION_DRAWERS = ("קבצי פרודוקציה", "קבצי פרודקציה")
 
 
+def _sniff_ext(body: bytes, content_type: str = "", fallback: str = ".htm") -> str:
+    """Identify a downloaded blob by its MAGIC BYTES, not by content-type.
+
+    InfoBay serves the `קבצי פרודוקציה` box files with a generic/absent
+    content-type, so the old header-only ladder fell through to `.htm` — which
+    `upload_ingest` rejects ("Unsupported file extension 'htm'"). That extension
+    meant "we could not tell", never "this is HTML", so the real format was
+    invisible: live 2026-07-20, `כלל - פרודוקציה קבצי פרודוקציה 0.htm` was the
+    right file from the right drawer, discarded for want of a name.
+
+    Magic first, header second, fallback last.
+    """
+    head = bytes(body or b"")[:8]
+    if head[:2] == b"PK":                      # zip container (also .xlsx/.docx)
+        return ".zip"
+    if head[:4] == b"%PDF":
+        return ".pdf"
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":   # OLE2 → legacy .xls
+        return ".xls"
+    lowered = bytes(body or b"")[:512].lstrip().lower()
+    if lowered.startswith(b"<!doctype html") or lowered.startswith(b"<html"):
+        return ".htm"
+    ct = (content_type or "").lower()
+    if "pdf" in ct:
+        return ".pdf"
+    if "zip" in ct:
+        return ".zip"
+    if "excel" in ct or "spreadsheet" in ct or ".xls" in ct:
+        return ".xlsx"
+    return fallback
+
+
+def _describe_blob(body: bytes) -> str:
+    """Short, loggable fingerprint of an unidentified download — first bytes as
+    hex + printable prefix. Enough to name the format on the NEXT run without
+    anyone having to fetch the file off the worker's disk."""
+    b = bytes(body or b"")
+    if not b:
+        return "EMPTY"
+    printable = "".join(chr(c) if 32 <= c < 127 else "." for c in b[:24])
+    return f"{len(b)}B magic={b[:8].hex()} ascii={printable!r}"
+
+
 def _sanitize_label(text: str) -> str:
     """Collapse whitespace + strip filesystem-hostile chars for a filename."""
     cleaned = re.sub(r"\s+", " ", (text or "").strip())
@@ -392,14 +435,12 @@ class ClalPortal(BasePortalAutomation):
                     body = await resp.body()
                     ct = (resp.headers.get("content-type") or "").lower()
                     if body and len(body) > 512:
-                        if "pdf" in ct or vurl.lower().endswith(".pdf"):
-                            ext = ".pdf"
-                        elif "excel" in ct or "spreadsheet" in ct:
-                            ext = ".xlsx"
-                        elif "zip" in ct:
-                            ext = ".zip"
-                        else:
-                            ext = ".htm"
+                        ext = ".pdf" if vurl.lower().endswith(".pdf") else _sniff_ext(body, ct)
+                        if ext == ".htm":
+                            _logger.info("clal: unidentified viewer blob %s", _describe_blob(body))
+                            self.partial_errors.append(
+                                f"{base_name}: פורמט לא מזוהה — {_describe_blob(body)}"
+                            )
                         t = download_dir / f"{base_name}{ext}"
                         t.write_bytes(body)
                         return t
@@ -492,14 +533,12 @@ class ClalPortal(BasePortalAutomation):
             if got is None and len(xhr_captures) > xhr_before:
                 cap = xhr_captures[-1]
                 blob = (cap.get("cd") or "") + " " + (cap.get("ct") or "") + " " + (cap.get("url") or "").lower()
-                if "pdf" in blob:
-                    ext = ".pdf"
-                elif "zip" in blob:
-                    ext = ".zip"
-                elif "spreadsheet" in blob or "excel" in blob or ".xls" in blob:
-                    ext = ".xlsx"
-                else:
-                    ext = ".htm"
+                ext = _sniff_ext(cap.get("bytes") or b"", blob)
+                if ext == ".htm":
+                    _logger.info("clal: unidentified xhr blob %s", _describe_blob(cap.get("bytes")))
+                    self.partial_errors.append(
+                        f"{base_name}: פורמט לא מזוהה — {_describe_blob(cap.get('bytes'))}"
+                    )
                 try:
                     t = download_dir / f"{base_name}{ext}"
                     t.write_bytes(cap["bytes"])
