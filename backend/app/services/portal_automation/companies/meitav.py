@@ -78,7 +78,35 @@ class MeitavPortal(BasePortalAutomation):
             await page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             pass
-        await page.wait_for_timeout(2500)
+
+        # WAIT FOR THE FORM TO HYDRATE — do not type into a screen Angular has
+        # not painted. `domcontentloaded` returns before AngularJS bootstraps,
+        # the networkidle wait above is swallowed, and the old code then slept a
+        # fixed 2500ms and hoped. Total budget for the SPA was ~2.5s plus 4s on
+        # the first selector; a slower bootstrap left the inputs absent and the
+        # run died at the `לא נמצאו שדות ת"ז/טלפון` raise below — which reads
+        # like a selector/DOM change but is really a race we lost. Live
+        # 2026-07-20: two failures on a portal that is otherwise ~19% flaky, and
+        # I twice blamed unrelated causes (a batch reorder, then Mor's reCAPTCHA)
+        # before reading this. Same principle as ARCHITECTURE §11: never type
+        # into a screen the host has not painted; poll for the pixels, don't
+        # guess at the timing.
+        _FORM_READY = (
+            "input[name='identity'], input[placeholder*='תעודת זהות'], "
+            "input[placeholder*='זהות']"
+        )
+        try:
+            await page.wait_for_selector(_FORM_READY, state="visible", timeout=30000)
+        except Exception:
+            # Not fatal on its own — the selector ladder below still gets its
+            # own attempts, and Meitav may legitimately rename a field. But say
+            # so, so the failure is not misread as a DOM change again.
+            self.partial_errors.append(
+                "מיטב: טופס ההתחברות לא נצבע תוך 30 שניות — ייתכן טעינה איטית או שינוי בדף"
+            )
+            logger.warning("מיטב: login form did not hydrate within 30s at %s", page.url)
+        # Small settle for Angular to attach its validators to the painted DOM.
+        await page.wait_for_timeout(800)
 
         land = SCREENSHOT_ROOT / "meitav_login.png"
         await self._safe_screenshot(page, land)
