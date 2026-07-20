@@ -186,29 +186,39 @@ class MorPortal(BasePortalAutomation):
                         if (m && m[1] !== 'explicit') { out.key = m[1]; break; }
                     }
                     if (!out.ready || !out.key) return out;
-                    try {
-                        // api.js defines `grecaptcha.execute` as a stub BEFORE
-                        // recaptcha__en.js finishes loading; calling it in that
-                        // window throws or hangs. Google's documented contract
-                        // is to wrap every execute() in ready(). Without this a
-                        // slow load looks identical to a firewall block.
-                        await new Promise(res => window.grecaptcha.ready(res));
-                        const t = await Promise.race([
-                            window.grecaptcha.execute(out.key, {action: 'login'}),
-                            new Promise((_, rj) =>
-                                setTimeout(() => rj(new Error('execute timeout 15s')), 15000)),
-                        ]);
-                        out.tok = (t || '').length;
-                    } catch (e) { out.err = String(e).slice(0, 200); }
+                    // NOTE: this deliberately no longer calls execute() itself.
+                    // It used to, and that answered its question — 2026-07-20
+                    // measured probe_token_len=1316/1337 on kikohib's worker, so
+                    // Google is reachable and this browser CAN mint. Repeating it
+                    // every run now only adds a second 'login' assessment seconds
+                    // before the page's own, which is a plausible way to depress a
+                    // score-gated login — i.e. the diagnostic would be perturbing
+                    // the thing it measures. The post-click read of the badge
+                    // textarea reports the REAL token the page sent, at no cost.
                     return out;
                 }"""
             )
         except Exception as e:
             return f"probe failed: {e}"
+        # Which cookies does this profile actually hold? Angular's XSRF
+        # interceptor silently omits `X-XSRF-TOKEN` when the `XSRF-TOKEN` cookie
+        # is absent, so its presence/absence here is the other half of the
+        # `_xsrf_hdr` reading. Names only — never cookie VALUES (session
+        # material). A persistent profile carrying a stale set is exactly the
+        # kind of state that survives every restart and reproduces forever.
+        ck = "?"
+        try:
+            cookies = await page.context.cookies()
+            names = sorted({c.get("name", "") for c in cookies})
+            has_xsrf = any(n == "XSRF-TOKEN" for n in names)
+            ck = f"xsrf_cookie={'YES' if has_xsrf else 'NO'} n={len(names)} {names[:12]}"
+        except Exception as e:
+            ck = f"cookie read failed: {e}"
+
         msg = (f"{label}: recaptcha v3 scripts={info['scripts']} "
                f"loaded={info['loaded']} execute_ready={info['ready']} "
-               f"sitekey={info['key'][:12] or 'NONE'} probe_token_len={info['tok']} "
-               f"webdriver={info.get('wd')} err={info['err'] or 'none'}")
+               f"sitekey={info['key'][:12] or 'NONE'} "
+               f"webdriver={info.get('wd')} err={info['err'] or 'none'} | {ck}")
         try:
             from app.services.portal_automation.runner import _worker_note
             _worker_note(msg)
@@ -248,8 +258,44 @@ class MorPortal(BasePortalAutomation):
         # first looked like a rejection — a background telemetry/health call
         # returning its own 400 could otherwise get misattributed as the login
         # response.
-        srv: dict = {"status": None, "body": "", "url": "", "req": "", "cap": "?"}
+        srv: dict = {"status": None, "body": "", "url": "", "req": "",
+                     "cap": "?", "xsrf": "?"}
         all_posts: list[str] = []
+
+        async def _xsrf_hdr(req) -> str:
+            """Is Angular's `X-XSRF-TOKEN` header on this request?
+
+            Mor's bundle configures Angular's standard XSRF protection —
+            `HttpClientXsrfModule.withOptions({cookieName:'XSRF-TOKEN',
+            headerName:'X-XSRF-TOKEN'})` — and its interceptor runs on any
+            non-GET request to a RELATIVE url. `/api/agents/auth/agentSignIn`
+            is relative, so the login POST is in scope:
+
+                intercept(req){ if (GET||HEAD||url.startsWith('http')) pass;
+                  const t = tokenService.getToken();   // reads the cookie
+                  if (t !== null && !req.headers.has(name))
+                      req = req.clone({headers: set(name, t)}) }
+
+            Note the failure mode: when the cookie is absent `getToken()`
+            returns null and the header is simply NOT SET — no error, no
+            warning, the request just goes out unprotected. A server-side XSRF
+            check then rejects it with exactly the generic
+            `400 {"resultCode":"Bad Request"}` we keep getting: no captcha
+            wording, no 401/403, and entirely consistent with a VALID reCAPTCHA
+            token (already proven present at len1316). A stale or missing
+            `XSRF-TOKEN` cookie in the persistent profile would reproduce this
+            indefinitely while every other signal looks perfect."""
+            try:
+                try:
+                    h = await req.all_headers()
+                except Exception:
+                    h = req.headers or {}
+                v = h.get("x-xsrf-token")
+                if v is None:
+                    return "missing"
+                return f"len{len(v)}" if v else "EMPTY"
+            except Exception:
+                return "?"
 
         async def _cap_hdr(req) -> str:
             """Length of the `recaptcha` REQUEST HEADER — the field that decides
@@ -328,12 +374,15 @@ class MorPortal(BasePortalAutomation):
                 except Exception:
                     pass
                 cap = await _cap_hdr(resp.request)
+                xsrf = await _xsrf_hdr(resp.request)
                 all_posts.append(
-                    f"{resp.status} {resp.url} recaptcha_hdr={cap} req={_describe_req_body(req_body)}"
+                    f"{resp.status} {resp.url} recaptcha_hdr={cap} xsrf_hdr={xsrf} "
+                    f"req={_describe_req_body(req_body)}"
                 )
                 if resp.status >= 400 or "שגיא" in body:
                     srv["status"], srv["body"], srv["url"] = resp.status, body, resp.url
                     srv["req"], srv["cap"] = req_body, cap
+                    srv["xsrf"] = xsrf
             except Exception:
                 pass
 
@@ -667,7 +716,7 @@ class MorPortal(BasePortalAutomation):
                 # worker-log (which needs a separate `railway logs` grep to see).
                 _req_txt = (
                     f" req={_describe_req_body(srv.get('req', ''))[:200]}"
-                    f" recaptcha_hdr={srv.get('cap')}"
+                    f" recaptcha_hdr={srv.get('cap')} xsrf_hdr={srv.get('xsrf')}"
                 )
 
                 raise RuntimeError(
