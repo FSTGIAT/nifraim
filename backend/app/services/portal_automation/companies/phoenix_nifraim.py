@@ -49,6 +49,9 @@ HEBREW_MONTHS = [
 class PhoenixNifraimPortal(PhoenixPortal):
     portal_kind = "phoenix_nifraim"
     company_label = "הפניקס"
+    # phoenix_nifraim_gemel is pulled on THIS login (include_in_batch=False),
+    # so mirror our outcome onto it or its card stays at "ממתין" forever.
+    folds = ('phoenix_nifraim_gemel',)
     # login / submit_otp / OTP_FIELD inherited from PhoenixPortal unchanged.
     # PhoenixPortal sets include_in_batch=False (dead-end terminal); re-enable it
     # here — this is THE batch entry point for Phoenix נפרעים (downloads both the

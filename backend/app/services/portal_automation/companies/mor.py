@@ -155,7 +155,21 @@ class MorPortal(BasePortalAutomation):
                     return "{" + ", ".join(parts) + "}"
             except Exception:
                 pass
-            return f"len{len(raw)} raw={raw[:120]!r}"
+            # NON-JSON bodies: field NAMES only, never values. This used to
+            # return `raw[:120]`, which for a form-encoded login body
+            # (`licenseId=…&identity=…&phoneNumber=…`) put the licence, the
+            # national ID and the phone verbatim into the Railway worker log AND
+            # into run.error_message shown in the UI — while the docstring above
+            # promised "never the raw token/value". Background POSTs are exactly
+            # the ones most likely to be non-JSON, so this path is not rare.
+            try:
+                from urllib.parse import parse_qsl
+                pairs = parse_qsl(raw, keep_blank_values=True)
+                if pairs:
+                    return "{" + ", ".join(f"{k}=len{len(v)}" for k, v in pairs) + "}"
+            except Exception:
+                pass
+            return f"len{len(raw)} (non-json, values withheld)"
 
         async def _on_resp(resp):
             try:
@@ -359,8 +373,19 @@ class MorPortal(BasePortalAutomation):
                 pass
 
             if not token_ok:
-                # DO NOT submit without it: the server has already refused this
-                # exact shape six times, so sending it again only wastes a run.
+                # SUBMIT ANYWAY. Do NOT turn this into a hard refusal.
+                #
+                # An earlier revision raised here. That was unsafe: with INVISIBLE
+                # reCAPTCHA the token is very often minted by `grecaptcha.execute()`
+                # wired to the submit handler — i.e. only AFTER the click. If that
+                # is the mechanism here, refusing to click means the token can
+                # never appear and Mor is permanently bricked by its own fix.
+                # The one recorded success (2026-07-14 12:48 standalone) ran under
+                # code that clicked immediately, which is evidence the click is
+                # part of the mint path rather than something to withhold.
+                # Waiting first is still right — if the page mints eagerly we now
+                # carry the token instead of racing it. But when the wait expires
+                # the honest move is to try, and say what we saw.
                 #
                 # CORRECTION (do not restore the earlier wording): this comment
                 # used to claim the tokenless submits also degraded meitav via a
@@ -386,14 +411,13 @@ class MorPortal(BasePortalAutomation):
                 try:
                     from app.services.portal_automation.runner import _worker_note
                     _worker_note(
-                        f"mor: recaptcha token not minted ({state}) — refusing to submit"
+                        f"mor: recaptcha token not present pre-click ({state}) — "
+                        "submitting anyway (invisible reCAPTCHA may mint on click)"
                     )
                 except Exception:
                     pass
-                raise RuntimeError(
-                    "Mor: אסימון reCAPTCHA לא נוצר בדף ההתחברות "
-                    f"({state}) — לא נשלחה בקשה כדי לא להוריד עוד את ניקוד ה-reCAPTCHA. "
-                    "בדוק/י שהדף נטען במלואו ושאין חסימה של google.com/recaptcha."
+                self.partial_errors.append(
+                    f"Mor: אסימון reCAPTCHA לא נוצר לפני השליחה ({state}) — נשלח בכל זאת"
                 )
 
             await page.click("button[type='submit']:not([disabled])")

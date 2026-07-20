@@ -59,6 +59,32 @@ def pure_risk_insurance(product_type: str | None) -> bool:
     return any(tok in product_type for tok in _PURE_RISK_TOKENS)
 
 
+# Accumulation-bearing products that are nevertheless issued by the insurer's
+# INSURANCE entity, not its pension/gemel one. They belong on the savings sheet
+# (they carry צבירה) but must keep the insurance legal name.
+#
+# Verified against the reference portfolio (פרודוקציה יוני משורנס.xlsx, sheet
+# מוצרי חיסכון): every one of these rows carries יצרן = "הראל חברה לביטוח בע\"מ" /
+# "הפניקס חברה לביטוח בע\"מ" / "מגדל חברה לביטוח בע\"מ" / "כלל חברה לביטוח בע\"מ" /
+# "מנורה מבטחים ביטוח בע\"מ" — never the פנסיה וגמל entity.
+_INSURER_ISSUED_SAVINGS = ("מנהלים", "פוליסת חיסכון", "חיסכון פיננסי", "מגוון")
+
+
+def entity_kind(product_type: str | None, sheet: str) -> str:
+    """Which LEGAL ENTITY issues this product — 'insurance' or 'savings'.
+
+    Deliberately separate from the sheet. Sheet answers "does this row carry
+    accumulation"; entity answers "which company signed it", and for the
+    מנהלים / פוליסת-חיסכון family those answers differ. Coupling them (savings
+    sheet ⇒ savings entity) filed ביטוח מנהלים under 'הראל פנסיה וגמל בע"מ'
+    when the portfolio says 'הראל חברה לביטוח בע"מ' — the same class of
+    mis-entity this day's work set out to remove, reintroduced one layer down.
+    """
+    if product_type and any(t in product_type for t in _INSURER_ISSUED_SAVINGS):
+        return "insurance"
+    return sheet
+
+
 def savings_product_type(product_type: str | None) -> bool:
     """True for product types that are savings/pension vehicles by NAME —
     גמל / השתלמות / תגמולים / חיסכון / מנהלים / קרן פנסיה.

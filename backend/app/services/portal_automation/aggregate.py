@@ -17,6 +17,7 @@ from datetime import date, datetime
 
 from app.services.rate_select import (
     accumulation_based,
+    entity_kind,
     pure_risk_insurance,
     savings_product_type,
 )
@@ -129,7 +130,14 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
     `יצרן` is canonicalized to the reference's full legal SAVINGS-entity name.
     """
     vals = {
-        "יצרן": canonical_company(rec.get("receiving_company"), "savings"),
+        # entity_kind, NOT the sheet: ביטוח מנהלים / פוליסת חיסכון / מגוון live
+        # on THIS sheet but are issued by the insurance entity (verified against
+        # the reference portfolio). Passing "savings" here filed them under
+        # 'הראל פנסיה וגמל בע"מ' instead of 'הראל חברה לביטוח בע"מ'.
+        "יצרן": canonical_company(
+            rec.get("receiving_company"),
+            entity_kind(rec.get("product_type"), "savings"),
+        ),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
         "מס' חשבון/פוליסה": rec.get("fund_policy_number") or "",

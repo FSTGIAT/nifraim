@@ -92,7 +92,12 @@ def _sniff_ext(body: bytes, content_type: str = "", fallback: str = ".htm") -> s
             import zipfile as _zf
             with _zf.ZipFile(_io.BytesIO(bytes(body))) as z:
                 names = set(z.namelist())
-            if "[Content_Types].xml" in names or any(n.startswith("xl/") for n in names):
+            # `xl/` FIRST. Every OOXML archive carries [Content_Types].xml —
+            # docx and pptx included — so testing that first made the
+            # word/ppt branch unreachable and labelled a .docx as .xlsx, which
+            # then dies deep inside the spreadsheet parser instead of taking
+            # the clean not-ingestible path.
+            if any(n.startswith("xl/") for n in names):
                 return ".xlsx"
             if any(n.startswith("word/") or n.startswith("ppt/") for n in names):
                 return ".zip"          # OOXML but not a workbook — not ingestible
