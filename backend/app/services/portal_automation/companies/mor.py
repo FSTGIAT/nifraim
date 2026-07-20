@@ -115,6 +115,54 @@ class MorPortal(BasePortalAutomation):
             _llog.warning("Mor: warm-up dwell failed (continuing): %s", e)
         _llog.info("Mor: warm-up done")
 
+
+    async def _probe_recaptcha(self, page, label: str) -> str:
+        """Is Google's reCAPTCHA script actually alive on THIS machine?
+
+        Both this portal and Mor submit a `g-recaptcha-response` token they never
+        verify. When the page mints it in time the login works; when it does not,
+        the server answers with its own generic rejection (meitav "נסה שנית",
+        Mor `400 Bad Request`) and nothing says why. Mor waited 25s for that
+        field and it stayed EMPTY — which is not a race, it is the script never
+        producing a token. The most basic cause is the worker being unable to
+        reach google.com/recaptcha at all (proxy/AV/DNS/firewall), which would
+        take BOTH Enterprise-gated portals down together while leaving every
+        other portal untouched — exactly the pattern seen 2026-07-20.
+
+        Reports script presence, grecaptcha readiness, and token length. Never
+        fails the run: this is evidence-gathering, not a gate.
+        """
+        try:
+            info = await page.evaluate(
+                """() => {
+                    const s = [...document.querySelectorAll('script[src]')]
+                        .map(e => e.src).filter(u => u.includes('recaptcha'));
+                    const el = document.querySelector("[id^='g-recaptcha-response']");
+                    return {
+                        scripts: s.length,
+                        loaded: typeof window.grecaptcha !== 'undefined',
+                        ready: !!(window.grecaptcha && window.grecaptcha.execute),
+                        tok: el ? (el.value || '').length : -1,
+                    };
+                }"""
+            )
+        except Exception as e:
+            return f"probe failed: {e}"
+        msg = (f"{label}: recaptcha scripts={info['scripts']} "
+               f"grecaptcha_loaded={info['loaded']} execute_ready={info['ready']} "
+               f"token_len={info['tok']}")
+        try:
+            from app.services.portal_automation.runner import _worker_note
+            _worker_note(msg)
+        except Exception:
+            pass
+        if not info["loaded"]:
+            self.partial_errors.append(
+                f"{label}: סקריפט reCAPTCHA לא נטען כלל — ייתכן חסימה של google.com/recaptcha "
+                "במחשב (אנטי-וירוס/פיירוול/DNS). זו הסיבה הסבירה לדחיית ההתחברות."
+            )
+        return msg
+
     async def login(self, page: "Page", username: str, password: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
         license_no, id_no, phone = self._split(username, password)
@@ -342,6 +390,8 @@ class MorPortal(BasePortalAutomation):
                     ".map(e => e.innerText.trim()).filter(Boolean).join(' | ')"
                 )
                 raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
+
+            await self._probe_recaptcha(page, "mor")
 
             # ── The FOURTH field: the reCAPTCHA token ────────────────────────
             # Mor's login page loads INVISIBLE reCAPTCHA:
