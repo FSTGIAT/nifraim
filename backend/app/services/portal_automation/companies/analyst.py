@@ -617,24 +617,39 @@ class AnalystPortal(BasePortalAutomation):
                         sel: [...document.querySelectorAll('mat-select')].map(s => ({
                             a: s.getAttribute('aria-label') || '',
                             t: (s.innerText || '').trim().slice(0, 30)})),
+                        // Capped: a form screen can carry a dozen inputs and
+                        // crowd the links/text out of the note's length budget.
                         inp: [...document.querySelectorAll('input')]
-                              .filter(e => e.offsetParent).map(e => ({
+                              .filter(e => e.offsetParent).slice(0, 12).map(e => ({
                                 i: e.id, a: e.getAttribute('aria-label') || '',
                                 p: e.placeholder || '', v: (e.value || '').slice(0, 12),
-                                c: (e.className || '').slice(0, 45)})),
+                                c: (e.className || '').slice(0, 35)})),
                         btn: [...document.querySelectorAll('button')]
                               .filter(e => e.offsetParent)
                               .map(b => ((b.innerText || '').trim().slice(0, 22)
                                          + (b.disabled ? '[off]' : ''))),
                         opt: [...document.querySelectorAll('mat-option,[role=option]')]
                               .map(o => (o.innerText || '').trim().slice(0, 26)),
+                        // Links and page text. Their absence is why the first
+                        // snapshot could not explain /lobby: it showed an
+                        // agent-selection mat-select and two buttons, with no
+                        // way to tell what the screen wanted next. On an SPA the
+                        // route forward is usually an <a>, a nav item or a card
+                        // — none of which are <button>.
+                        a: [...document.querySelectorAll('a,[role=menuitem],mat-list-item,.nav-item')]
+                            .filter(e => e.offsetParent)
+                            .map(e => ((e.innerText || '').trim().slice(0, 24)
+                                       + (e.getAttribute('href') ? '->' + e.getAttribute('href').slice(0, 28) : '')))
+                            .filter(Boolean).slice(0, 25),
+                        txt: (document.body.innerText || '')
+                              .replace(/\\s*\\n+\\s*/g, ' | ').slice(0, 400),
                     })"""
                 )
                 from app.services.portal_automation.runner import _worker_note
                 import json as _json
                 _worker_note(
                     "analyst DOWNLOAD FAILED — dom: "
-                    + _json.dumps(snap, ensure_ascii=False)[:1500]
+                    + _json.dumps(snap, ensure_ascii=False)[:2600]
                 )
             except Exception as _e:
                 try:
