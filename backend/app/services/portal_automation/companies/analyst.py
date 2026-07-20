@@ -531,6 +531,46 @@ class AnalystPortal(BasePortalAutomation):
 
         await ck("nav_4_after_export")
         if not target:
+            # SHIP THE DOM, not a filename. `ck()` writes png/html/txt to the
+            # WORKER's disk and `logger` writes the worker's local file — on an
+            # agent's PC both are unreachable, so "בדוק …_nav_3_dates.txt" asks
+            # for evidence nobody can retrieve without sitting at that machine.
+            # This stage's whole problem is that its date-picker DOM was never
+            # observed; a run that fails without reporting what it saw teaches
+            # nothing and costs an OTP. Post a compact snapshot to the worker log
+            # (Railway) so the selectors can be fixed from one failure.
+            try:
+                snap = await page.evaluate(
+                    """() => ({
+                        url: location.href,
+                        sel: [...document.querySelectorAll('mat-select')].map(s => ({
+                            a: s.getAttribute('aria-label') || '',
+                            t: (s.innerText || '').trim().slice(0, 30)})),
+                        inp: [...document.querySelectorAll('input')]
+                              .filter(e => e.offsetParent).map(e => ({
+                                i: e.id, a: e.getAttribute('aria-label') || '',
+                                p: e.placeholder || '', v: (e.value || '').slice(0, 12),
+                                c: (e.className || '').slice(0, 45)})),
+                        btn: [...document.querySelectorAll('button')]
+                              .filter(e => e.offsetParent)
+                              .map(b => ((b.innerText || '').trim().slice(0, 22)
+                                         + (b.disabled ? '[off]' : ''))),
+                        opt: [...document.querySelectorAll('mat-option,[role=option]')]
+                              .map(o => (o.innerText || '').trim().slice(0, 26)),
+                    })"""
+                )
+                from app.services.portal_automation.runner import _worker_note
+                import json as _json
+                _worker_note(
+                    "analyst DOWNLOAD FAILED — dom: "
+                    + _json.dumps(snap, ensure_ascii=False)[:1500]
+                )
+            except Exception as _e:
+                try:
+                    from app.services.portal_automation.runner import _worker_note
+                    _worker_note(f"analyst DOWNLOAD FAILED — dom snapshot failed: {_e}")
+                except Exception:
+                    pass
             raise RuntimeError(
                 f"אנליסט: לא ירד קובץ נפרעים תקין — בדוק "
                 f"{run_id}_nav_2_report_type.txt / _nav_3_dates.txt / _nav_4_after_export.txt"
