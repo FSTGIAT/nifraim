@@ -93,6 +93,18 @@ class BasePortalAutomation(ABC):
     native_fingerprint: bool = False
     use_persistent_profile: bool = False
 
+    # Which REAL browser to try first ("msedge" | "chrome" | None = the default
+    # chrome→chrome.exe→msedge→chromium ladder). The brand is not cosmetic: a
+    # portal's reCAPTCHA can accept one real browser and refuse another.
+    # Measured 2026-07-20 against Meitav — same machine, same minute, same fresh
+    # profile, same flow:
+    #     msedge -> 200 {"actionTarget":"LoginCode"}  OTP screen   (x2)
+    #     chrome -> 401 {"message":"gCaptcha error"}  "נסה שנית"   (x2)
+    # Mor accepts BOTH (201 on each), so this is per-portal, not global. Only a
+    # PREFERENCE — the full ladder still runs behind it, so a PC without the
+    # preferred browser degrades instead of failing.
+    browser_channel: str | None = None
+
     # Set by runner.py (`_run_inner`) before login() from this credential's own
     # last recorded outcome — a MEASURED fact a plugin can use to rule out
     # "wrong credentials" on a rejection instead of guessing. A credential that

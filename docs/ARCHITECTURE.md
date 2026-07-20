@@ -346,6 +346,20 @@ claims a block only when the script is genuinely absent. **A diagnostic that man
 own false finding is worse than no diagnostic**; this one sent real effort at an imaginary
 firewall.
 
+**4. Meitav REQUIRES Edge — Chrome is refused.** The browser brand is not cosmetic. Measured
+twice each, same machine, same minute, same fresh profile, same flow:
+```
+msedge -> 200 {"actionTarget":"LoginCode","isFailed":false}  + OTP screen
+chrome -> 401 {"message":"gCaptcha error"}                   -> agent sees "נסה שנית"
+```
+The server names the cause itself, so this is not inference. The worker had been picking Chrome
+only because it heads the default `chrome→chrome.exe→msedge→chromium` ladder — which is why
+meitav failed on the agent's PC all day while the identical flow passed on a dev box. **Mor
+accepts BOTH channels (201 on each)**, so this is per-portal: `browser_channel = "msedge"` on
+the plugin moves Edge to the front, and the full ladder still runs behind it so a PC without
+Edge degrades rather than fails. When a score-gated portal fails, TRY THE OTHER REAL BROWSER
+before theorising — it is one run and it is decisive.
+
 **3. Akamai Bot Manager sits in front of it.** The page loads an obfuscated sensor from a
 random path whose filename is the **hex of the page path**
 (`76322f6c6f67696e2f6c6f67696e6167656e74` = `v2/login/loginagent`), plus a `<noscript>`

@@ -53,6 +53,17 @@ class MeitavPortal(BasePortalAutomation):
     native_fingerprint = True
     use_persistent_profile = True
     needs_residential_proxy = False
+    # MUST be Edge. Meitav's reCAPTCHA Enterprise refuses automated Chrome and
+    # accepts automated Edge — measured 2026-07-20 twice each, same machine, same
+    # minute, same fresh profile, same flow:
+    #     msedge -> 200 {"actionTarget":"LoginCode","isFailed":false} + OTP screen
+    #     chrome -> 401 {"message":"gCaptcha error"}  → the agent sees "נסה שנית"
+    # The server names the cause itself, so this is not inference. The worker was
+    # picking Chrome simply because it heads the default ladder, which is why
+    # meitav failed on kiko's PC all day while the identical flow passed here.
+    # Mor accepts both channels, hence a per-plugin preference and not a global
+    # reorder. A PC without Edge still falls through the ladder.
+    browser_channel = "msedge"
 
     def _split(self, username: str, password: str) -> tuple[str, str, str]:
         """username='<id>', password='<phone>'. Returns (id9, prefix3, local7).

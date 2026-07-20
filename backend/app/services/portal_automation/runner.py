@@ -155,7 +155,8 @@ async def _launch_real_browser(pw, headless: bool, launch_args: list):
     raise last_exc or RuntimeError("no browser could be launched")
 
 
-async def _launch_real_persistent(pw, profile_dir, headless: bool, launch_args: list, context_kwargs: dict):
+async def _launch_real_persistent(pw, profile_dir, headless: bool, launch_args: list,
+                                  context_kwargs: dict, prefer_channel: str | None = None):
     """Persistent-profile twin of `_launch_real_browser` — same real-browser ladder.
 
     This used to be a bare `channel="chrome"` with a silent `except: → bundled
@@ -165,6 +166,18 @@ async def _launch_real_persistent(pw, profile_dir, headless: bool, launch_args: 
     fingerprint reCAPTCHA Enterprise punishes, and Mor/Meitav are the two portals
     gated by it. Try Edge (a real browser, always present on Windows) BEFORE falling
     back to Chromium, and return the label so the caller can log what actually ran.
+
+    `prefer_channel` moves one channel to the FRONT of the ladder. THE BROWSER BRAND
+    IS NOT COSMETIC — a portal's reCAPTCHA can accept one real browser and refuse
+    another. Measured 2026-07-20, same machine, same minute, same fresh profile,
+    same flow, against Meitav:
+
+        msedge -> 200 {"actionTarget":"LoginCode","isFailed":false}   OTP screen  (x2)
+        chrome -> 401 {"message":"gCaptcha error"}                    "נסה שנית"  (x2)
+
+    The server names the cause itself: the Enterprise assessment failed. Mor accepts
+    BOTH channels (201 on each), so this is per-portal, not global — which is exactly
+    why it needs a per-plugin knob rather than a reordered global ladder.
     Returns (context, label)."""
     attempts = [("chrome", dict(channel="chrome"))]
     seen_exe = set()
@@ -174,6 +187,11 @@ async def _launch_real_persistent(pw, profile_dir, headless: bool, launch_args: 
             attempts.append(("chrome-exe", dict(executable_path=p)))
     attempts.append(("msedge", dict(channel="msedge")))
     attempts.append(("chromium", dict()))
+    if prefer_channel:
+        # Stable partition: preferred channel first, everything else in order —
+        # so a machine lacking the preferred browser still falls through the full
+        # ladder instead of dying.
+        attempts.sort(key=lambda a: 0 if a[0] == prefer_channel else 1)
     last_exc = None
     for label, kw in attempts:
         try:
@@ -602,7 +620,8 @@ async def _run_inner(
             # subsequent run of this portal dies on arrival, forever.
             _clear_profile_singletons(profile_dir)
             context, _blabel = await _launch_real_persistent(
-                pw, profile_dir, not headed, launch_args, context_kwargs
+                pw, profile_dir, not headed, launch_args, context_kwargs,
+                prefer_channel=getattr(plugin, "browser_channel", None),
             )
             plugin.profile_was_cold = profile_was_cold
             logger.info(
