@@ -117,49 +117,116 @@ class MorPortal(BasePortalAutomation):
 
 
     async def _probe_recaptcha(self, page, label: str) -> str:
-        """Is Google's reCAPTCHA script actually alive on THIS machine?
+        """Can THIS browser actually mint a reCAPTCHA v3 token?
 
-        Both this portal and Mor submit a `g-recaptcha-response` token they never
-        verify. When the page mints it in time the login works; when it does not,
-        the server answers with its own generic rejection (meitav "נסה שנית",
-        Mor `400 Bad Request`) and nothing says why. Mor waited 25s for that
-        field and it stayed EMPTY — which is not a race, it is the script never
-        producing a token. The most basic cause is the worker being unable to
-        reach google.com/recaptcha at all (proxy/AV/DNS/firewall), which would
-        take BOTH Enterprise-gated portals down together while leaving every
-        other portal untouched — exactly the pattern seen 2026-07-20.
+        Read Mor's own bundle (main.*.js) before changing anything here — it
+        settles what the login really does:
 
-        Reports script presence, grecaptcha readiness, and token length. Never
-        fails the run: this is evidence-gathering, not a gate.
+            getToken(a){ return from(grecaptcha.execute(this.siteKey, {action:a})) }
+            init(k,l){ script.src =
+                'https://www.google.com/recaptcha/api.js?onload=…&render=' + k }
+            logIn(v){ return this.captchaService.getToken('login')
+                        .pipe(tok => this._login(v, new HttpHeaders({recaptcha: tok}))) }
+            _login(v,h){ return this.http.post(authUrl+'/agentSignIn', v, {headers:h}) }
+
+        Two consequences, both of which invalidate the previous version of this
+        method (and roughly a week of debugging built on it):
+
+        1. `render=<sitekey>` + `execute(key,{action})` is reCAPTCHA **v3**, and
+           v3 hands the token to a JS promise. It DOES also mirror the token
+           into a hidden `textarea#g-recaptcha-response-NNNNN` inside the badge
+           — but only ONCE `execute()` has resolved. Nothing calls `execute()`
+           until the submit handler runs, so before the click that textarea is
+           empty by construction. The old login waited 25 s for it to become
+           non-empty BEFORE clicking; it therefore always expired, always logged
+           "the token was not created", and added 25 s of dead time to every
+           submit. (Do not restate this as "the element is v2-only" — that was
+           the first draft of this comment and it is false; the element exists
+           under v3 and the distinction is WHEN it is filled.)
+           Useful corollary: AFTER the click that textarea holds the very token
+           the page sent, so it is a free cross-check on the header capture
+           below — if the header reads `missing` while the textarea holds a long
+           value, suspect the capture, not the app.
+        2. The token travels as the `recaptcha` **HTTP header**, not as a body
+           field. Our request instrumentation only decoded the BODY, saw
+           {licenseId, identity, phoneNumber} — exactly what the real form
+           sends — and concluded the payload was correct. The one field that
+           decides the 400 was never looked at.
+
+        So this probe now does what the page does: pull the sitekey off the
+        injected script URL and actually call `execute()`. A long token back
+        means Google is reachable and scoring this browser; a throw/timeout
+        means the machine cannot reach google.com/recaptcha (AV/firewall/DNS/
+        proxy). Never fails the run — this is evidence, not a gate.
         """
         try:
             info = await page.evaluate(
-                """() => {
-                    const s = [...document.querySelectorAll('script[src]')]
+                """async () => {
+                    const srcs = [...document.querySelectorAll('script[src]')]
                         .map(e => e.src).filter(u => u.includes('recaptcha'));
-                    const el = document.querySelector("[id^='g-recaptcha-response']");
-                    return {
-                        scripts: s.length,
+                    const out = {
+                        scripts: srcs.length,
                         loaded: typeof window.grecaptcha !== 'undefined',
                         ready: !!(window.grecaptcha && window.grecaptcha.execute),
-                        tok: el ? (el.value || '').length : -1,
+                        key: '', tok: -1, err: '',
+                        // reCAPTCHA v3 scores `navigator.webdriver` harshly, and
+                        // runner.py applies neither
+                        // `--disable-blink-features=AutomationControlled` nor the
+                        // webdriver-hiding init script on the native-fingerprint
+                        // path that Mor uses — so this is expected to read TRUE.
+                        // Reported, not acted on: if the header turns out to
+                        // carry a full token and Mor still answers 400, this is
+                        // the next thing to change, and we will already know it.
+                        wd: navigator.webdriver,
                     };
+                    // Take the sitekey from the page rather than hardcoding it,
+                    // so a rotation on Mor's side doesn't silently break this.
+                    for (const u of srcs) {
+                        const m = u.match(/[?&]render=([^&]+)/);
+                        if (m && m[1] !== 'explicit') { out.key = m[1]; break; }
+                    }
+                    if (!out.ready || !out.key) return out;
+                    try {
+                        // api.js defines `grecaptcha.execute` as a stub BEFORE
+                        // recaptcha__en.js finishes loading; calling it in that
+                        // window throws or hangs. Google's documented contract
+                        // is to wrap every execute() in ready(). Without this a
+                        // slow load looks identical to a firewall block.
+                        await new Promise(res => window.grecaptcha.ready(res));
+                        const t = await Promise.race([
+                            window.grecaptcha.execute(out.key, {action: 'login'}),
+                            new Promise((_, rj) =>
+                                setTimeout(() => rj(new Error('execute timeout 15s')), 15000)),
+                        ]);
+                        out.tok = (t || '').length;
+                    } catch (e) { out.err = String(e).slice(0, 200); }
+                    return out;
                 }"""
             )
         except Exception as e:
             return f"probe failed: {e}"
-        msg = (f"{label}: recaptcha scripts={info['scripts']} "
-               f"grecaptcha_loaded={info['loaded']} execute_ready={info['ready']} "
-               f"token_len={info['tok']}")
+        msg = (f"{label}: recaptcha v3 scripts={info['scripts']} "
+               f"loaded={info['loaded']} execute_ready={info['ready']} "
+               f"sitekey={info['key'][:12] or 'NONE'} probe_token_len={info['tok']} "
+               f"webdriver={info.get('wd')} err={info['err'] or 'none'}")
         try:
             from app.services.portal_automation.runner import _worker_note
             _worker_note(msg)
         except Exception:
             pass
-        if not info["loaded"]:
+        # Claim a blocked machine ONLY on a positive failure signal — the script
+        # absent, or execute() actually throwing/timing out. `tok <= 0` alone is
+        # not that: a missed sitekey regex returns early with tok=-1 and err='',
+        # which would render "the script did not load" on the same line that
+        # reports loaded=True. `partial_errors` is user-facing (runner.py folds
+        # it into the run's issues), and this is precisely the false-alarm class
+        # just deleted above — a probe that blames the agent's antivirus on an
+        # otherwise healthy run is worse than a silent one.
+        if not info["loaded"] or info["err"]:
             self.partial_errors.append(
-                f"{label}: סקריפט reCAPTCHA לא נטען כלל — ייתכן חסימה של google.com/recaptcha "
-                "במחשב (אנטי-וירוס/פיירוול/DNS). זו הסיבה הסבירה לדחיית ההתחברות."
+                f"{label}: הדפדפן לא הצליח להנפיק אסימון reCAPTCHA v3 "
+                f"({info['err'] or 'הסקריפט לא נטען'}) — ייתכן חסימה של "
+                "google.com/recaptcha במחשב (אנטי-וירוס/פיירוול/DNS)."
             )
         return msg
 
@@ -181,8 +248,35 @@ class MorPortal(BasePortalAutomation):
         # first looked like a rejection — a background telemetry/health call
         # returning its own 400 could otherwise get misattributed as the login
         # response.
-        srv: dict = {"status": None, "body": "", "url": "", "req": ""}
+        srv: dict = {"status": None, "body": "", "url": "", "req": "", "cap": "?"}
         all_posts: list[str] = []
+
+        async def _cap_hdr(req) -> str:
+            """Length of the `recaptcha` REQUEST HEADER — the field that decides
+            this 400. Mor's bundle sends the v3 token as a header, never in the
+            body, so a body-only dump (which is all we had until now) shows a
+            perfectly-formed payload while the request is rejected. `missing`
+            here is the whole diagnosis; a len~500+ token means Google minted
+            one and the SERVER still refused it (score / action / clock).
+
+            Uses `all_headers()`, not `.headers`: Playwright documents the
+            latter as possibly PROVISIONAL — the set captured at
+            request-will-be-sent, which can omit headers added later in the
+            network stack. An app header from Angular's HttpHeaders is usually
+            present there, but "usually" is not good enough when this one value
+            is the entire diagnosis. A falsely-`missing` header would send the
+            next fix off to inject a token that was being sent all along."""
+            try:
+                try:
+                    h = await req.all_headers()
+                except Exception:
+                    h = req.headers or {}
+                v = h.get("recaptcha")
+                if v is None:
+                    return "missing"
+                return f"len{len(v)}" if v else "EMPTY"
+            except Exception:
+                return "?"
 
         def _describe_req_body(raw: str) -> str:
             """Field names + lengths only — a reCAPTCHA Enterprise token is a
@@ -233,10 +327,13 @@ class MorPortal(BasePortalAutomation):
                     req_body = resp.request.post_data or ""
                 except Exception:
                     pass
-                all_posts.append(f"{resp.status} {resp.url} req={_describe_req_body(req_body)}")
+                cap = await _cap_hdr(resp.request)
+                all_posts.append(
+                    f"{resp.status} {resp.url} recaptcha_hdr={cap} req={_describe_req_body(req_body)}"
+                )
                 if resp.status >= 400 or "שגיא" in body:
                     srv["status"], srv["body"], srv["url"] = resp.status, body, resp.url
-                    srv["req"] = req_body
+                    srv["req"], srv["cap"] = req_body, cap
             except Exception:
                 pass
 
@@ -391,86 +488,61 @@ class MorPortal(BasePortalAutomation):
                 )
                 raise RuntimeError(f"Mor: כפתור הכניסה נשאר מושבת (טופס לא תקין). שגיאות: {err or 'אין'}")
 
+            # ── The reCAPTCHA v3 token: a HEADER, minted on submit ───────────
+            # Mor's `logIn()` calls `grecaptcha.execute(siteKey,{action:'login'})`
+            # and only then POSTs /agentSignIn with `recaptcha: <token>` as an
+            # HTTP header. So the token is minted BY the click — there is nothing
+            # to wait for beforehand and nothing to inject.
+            #
+            # What used to be here: a 25 s `wait_for_function` on
+            # `[id^='g-recaptcha-response']` becoming non-empty, then a
+            # partial_error announcing "the token was not created". Both were
+            # wrong — that element is the reCAPTCHA **v2** checkbox's hidden
+            # textarea and does not exist on a v3 page. The wait therefore
+            # ALWAYS expired, always logged a scary (false) message, and added
+            # 25 s of dead time before every single submit. It never once
+            # reflected the state of the real token. Removed; the probe below
+            # measures the v3 path directly, and `_cap_hdr` records what the
+            # actual request carried.
             await self._probe_recaptcha(page, "mor")
 
-            # ── The FOURTH field: the reCAPTCHA token ────────────────────────
-            # Mor's login page loads INVISIBLE reCAPTCHA:
-            #   recaptcha/api.js?onload=reCaptchaOnloadCallback&render=6Letqt…
-            # and the rendered form carries `id="g-recaptcha-response-100000"`.
-            # The page's own JS mints a token into that element; the login POST
-            # is supposed to carry it alongside licenseId/identity/phoneNumber.
-            #
-            # We were clicking submit as soon as Angular enabled the button —
-            # BEFORE the token existed — so the request went out with only three
-            # fields and Mor answered `400 {"resultCode":"Bad Request"}`. That is
-            # a malformed-payload rejection, not a score rejection (a low score
-            # returns 200 + a rejection body), which is why six timing/ordering/
-            # credential hypotheses all failed: none of them could conjure a
-            # token that was never being produced. Confirmed from the saved page
-            # dumps (data/portal_screenshots/mor_login_*.html) plus the request
-            # instrumentation, which showed exactly 3 fields and no token.
-            token_ok = False
-            try:
-                await page.wait_for_function(
-                    """() => {
-                        const el = document.querySelector("[id^='g-recaptcha-response']");
-                        return !!(el && (el.value || '').length > 20);
-                    }""",
-                    timeout=25000,
-                )
-                token_ok = True
-            except Exception:
-                pass
+            # ── dead ends, recorded so they are not re-walked ────────────────
+            # Disproven by measurement, each on a live run:
+            #   • batch ordering / a settle gap before Mor  — Mor failed at
+            #     position 1 with no predecessor.
+            #   • the browser-binary fallback, credential shape, cold profile.
+            #   • license zero-padding — FIXED (the wire now carries len8, the
+            #     same as the manual form) and the 400 did not change at all.
+            #     `req={licenseId=len8, identity=len9, phoneNumber=len10}` is
+            #     now byte-identical to what Mor's own Angular form submits.
+            #   • "the token is a fourth BODY field that never gets minted" —
+            #     the bundle shows the body is exactly those three controls;
+            #     there is no fourth field to be missing.
+            # The body has been correct for some time. The `recaptcha` HEADER is
+            # the only part of the request never inspected, which is why the
+            # instrumentation above now reports it.
+            await page.click("button[type='submit']:not([disabled])")
 
-            if not token_ok:
-                # SUBMIT ANYWAY. Do NOT turn this into a hard refusal.
-                #
-                # An earlier revision raised here. That was unsafe: with INVISIBLE
-                # reCAPTCHA the token is very often minted by `grecaptcha.execute()`
-                # wired to the submit handler — i.e. only AFTER the click. If that
-                # is the mechanism here, refusing to click means the token can
-                # never appear and Mor is permanently bricked by its own fix.
-                # The one recorded success (2026-07-14 12:48 standalone) ran under
-                # code that clicked immediately, which is evidence the click is
-                # part of the mint path rather than something to withhold.
-                # Waiting first is still right — if the page mints eagerly we now
-                # carry the token instead of racing it. But when the wait expires
-                # the honest move is to try, and say what we saw.
-                #
-                # CORRECTION (do not restore the earlier wording): this comment
-                # used to claim the tokenless submits also degraded meitav via a
-                # "shared reCAPTCHA score". That is REFUTED, and by this very
-                # fix. If no token was transmitted, Mor's backend never called
-                # createAssessment, so Google never scored those attempts —
-                # there was no assessment to fail and no reputation to degrade.
-                # The two claims cannot both be true. Independently: profiles are
-                # per-portal (`BROWSER_PROFILE_ROOT / portal_kind`, runner.py) so
-                # the cookie jars are separate, the site keys differ (mor
-                # 6Letqt… via api.js, meitav 6LehTw… via enterprise.js), and
-                # meitav's `לא נמצאו שדות` failure is raised at meitav.py:137
-                # BEFORE any POST — a score cannot delete form fields. meitav
-                # runs at ~19% flake across every position (see batch_runner.py);
-                # its failures are its own.
-                tok_len = await page.evaluate(
+            # Cross-check on the header capture. The click runs the page's own
+            # grecaptcha.execute(), which mirrors the minted token into the
+            # badge's hidden textarea — so this is the token the page ACTUALLY
+            # sent. If `_cap_hdr` reports `missing` while this is 500+ chars,
+            # the capture is at fault, not the app; if both are empty, the page
+            # genuinely failed to mint one. Two independent reads of the single
+            # value this whole diagnosis rests on.
+            try:
+                await page.wait_for_timeout(1200)
+                _mint = await page.evaluate(
                     """() => {
-                        const el = document.querySelector("[id^='g-recaptcha-response']");
+                        const el = document.querySelector('textarea.g-recaptcha-response')
+                               || document.querySelector("[id^='g-recaptcha-response']");
                         return el ? (el.value || '').length : -1;
                     }"""
                 )
-                state = "השדה לא קיים בדף" if tok_len == -1 else f"נשאר ריק (len={tok_len})"
-                try:
-                    from app.services.portal_automation.runner import _worker_note
-                    _worker_note(
-                        f"mor: recaptcha token not present pre-click ({state}) — "
-                        "submitting anyway (invisible reCAPTCHA may mint on click)"
-                    )
-                except Exception:
-                    pass
-                self.partial_errors.append(
-                    f"Mor: אסימון reCAPTCHA לא נוצר לפני השליחה ({state}) — נשלח בכל זאת"
-                )
-
-            await page.click("button[type='submit']:not([disabled])")
+                from app.services.portal_automation.runner import _worker_note as _wn
+                _wn(f"mor: post-click badge token_len={_mint}")
+            except Exception:
+                pass
 
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
@@ -589,7 +661,10 @@ class MorPortal(BasePortalAutomation):
                 # the DECISIVE evidence — was the reCAPTCHA token field empty/short? —
                 # lands in run.error_message itself, not only in the Railway
                 # worker-log (which needs a separate `railway logs` grep to see).
-                _req_txt = f" req={_describe_req_body(srv.get('req', ''))[:200]}"
+                _req_txt = (
+                    f" req={_describe_req_body(srv.get('req', ''))[:200]}"
+                    f" recaptcha_hdr={srv.get('cap')}"
+                )
 
                 raise RuntimeError(
                     f"Mor: הכניסה נדחתה (אירעה שגיאה){_cold}. סיבה משוערת: "
