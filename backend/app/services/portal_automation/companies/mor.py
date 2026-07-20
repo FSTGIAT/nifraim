@@ -388,7 +388,27 @@ class MorPortal(BasePortalAutomation):
 
         page.on("response", _on_resp)
 
-        if self.profile_was_cold:
+        # WARM-UP DISABLED 2026-07-20 — do not re-enable without new evidence.
+        #
+        # `_warm_cold_profile` exists on the theory that reCAPTCHA scores a
+        # brand-new profile hardest, so it visits google.com and dwells ~25 s on
+        # the login page with synthetic mouse movement before the one submit.
+        # That theory is refuted: Mor's login was reproduced GREEN twice from a
+        # dev box (201 Success + OTP modal, real Edge and real Chrome) on a
+        # BRAND-NEW, completely unwarmed throwaway profile. Cold was never the
+        # problem — a profile that had failed ~9 times and never succeeded was.
+        #
+        # Leaving it on would also now fire on EVERY run, because runner.py
+        # recycles any profile with no recorded success, so every Mor run is
+        # "cold" by construction. That would add a google.com round-trip and
+        # ~25 s of fake mouse activity in front of each attempt — behaviour
+        # neither of the two winning runs performed, and synthetic input is a
+        # plausible negative signal in its own right.
+        #
+        # The method is kept (not deleted) so this decision stays legible and
+        # reversible if evidence ever points the other way.
+        _skip_warmup = True
+        if self.profile_was_cold and not _skip_warmup:
             await self._warm_cold_profile(page)
 
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=40000)

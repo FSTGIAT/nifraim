@@ -459,6 +459,11 @@ async def _run_inner(
             "--disable-dev-shm-usage",
             "--disable-gpu",
         ]
+        if headed:
+            # Pairs with no_viewport above: a real maximized window, so window
+            # and viewport agree the way they do for a human. Part of the
+            # configuration proven to pass Mor on 2026-07-20.
+            launch_args.append("--start-maximized")
 
         # Context kwargs shared by both launch paths. A native-fingerprint plugin
         # lets real Chrome send its own UA + Client-Hints — a pinned UA that
@@ -472,9 +477,21 @@ async def _run_inner(
             # (the `-k` equivalent); direct connections keep full TLS validation.
             ignore_https_errors=bool(context_proxy),
             accept_downloads=True,
-            viewport={"width": 1366, "height": 768},
             locale="he-IL",
         )
+        # Viewport: a HEADED browser gets `no_viewport` so the page size follows
+        # the real window, exactly as it does for a human. Pinning 1366x768 on a
+        # headed run makes the viewport disagree with the OS window — a mismatch
+        # a real browser never exhibits, and one an anti-bot score can read.
+        # The dev-box runs that reproduced Mor's login green (201 + OTP modal,
+        # Edge AND Chrome, 2026-07-20) used no_viewport + --start-maximized, so
+        # this aligns the worker with the only configuration proven to pass.
+        # Headless runs keep the fixed viewport: there is no window to follow,
+        # and every other portal depends on that stable size.
+        if headed:
+            context_kwargs["no_viewport"] = True
+        else:
+            context_kwargs["viewport"] = {"width": 1366, "height": 768}
         if native:
             context_kwargs["extra_http_headers"] = {
                 "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
