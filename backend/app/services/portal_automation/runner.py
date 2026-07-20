@@ -514,6 +514,43 @@ async def _run_inner(
             # same way.
             warm_marker = profile_dir / WARM_MARKER
             profile_was_cold = not warm_marker.exists()
+            # RECYCLE AN UNPROVEN PROFILE. A profile that has never produced a
+            # success has, by definition, nothing worth keeping — but it is not
+            # neutral either: for a reCAPTCHA-scored portal its `_GRECAPTCHA`
+            # cookie IS the accumulated reputation, so every rejected attempt
+            # makes the NEXT attempt start from a worse position. Left alone the
+            # thing spirals, and no code fix downstream can show through it.
+            #
+            # Measured 2026-07-20. Mor's login was reproduced END-TO-END from a
+            # dev box: automated Playwright + real Windows Edge -> 201 Success +
+            # OTP modal, and the same with real Chrome. Identical flow, identical
+            # credentials, identical keystrokes — the ONE difference from kiko's
+            # worker being a BRAND-NEW throwaway profile each time, against his
+            # long-lived profile that had failed ~9 times that day and never once
+            # succeeded. (That test also refutes the old "a COLD profile is what
+            # reCAPTCHA scores hardest" note: both winning runs were cold and
+            # unwarmed.)
+            #
+            # So: an unproven profile is discarded before launch. Once a run
+            # succeeds the warm marker is written (see the ingest path) and the
+            # profile is then kept for good, which preserves the reason
+            # persistence exists. Self-healing by construction — nobody has to
+            # log into the agent's PC to delete a directory.
+            if profile_was_cold and profile_dir.exists():
+                import shutil as _sh
+                try:
+                    _sh.rmtree(profile_dir)
+                    logger.info(
+                        "Run %s (%s): discarded UNPROVEN browser profile "
+                        "(no success ever recorded on it) — starting clean",
+                        run.id, cred.portal_kind,
+                    )
+                    _worker_note(
+                        f"run {str(run.id)[:8]} {cred.portal_kind}: "
+                        "recycled unproven browser profile (never succeeded)"
+                    )
+                except Exception as e:
+                    logger.warning("could not recycle profile %s: %s", profile_dir, e)
             profile_dir.mkdir(parents=True, exist_ok=True)
             # A crashed Chrome strands SingletonLock here; without this, every
             # subsequent run of this portal dies on arrival, forever.
