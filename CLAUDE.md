@@ -447,6 +447,37 @@ month → Hebrew `כ` + **Enter** → KERMIT download to `C:\fnxbox`) → `phoen
 
 ---
 
+## Score-Gated Portals (מור, מיטב) — the browser must look like a human's
+
+Mor and Meitav are refused by a **reCAPTCHA score**, not by anything wrong in the request.
+Mor answers `400 {"resultCode":"Bad Request"}` (shown to the agent as `אירעה שגיאה`) to a
+perfectly formed login. **See `docs/ARCHITECTURE.md` §4c for the proven configuration, the
+disproven list, and the invariants** — that section was rewritten 2026-07-20 after ~9
+hypotheses died, and the version it replaced asserted a cause that is now refuted.
+
+The short version, all measured (Mor reproduced green twice from a dev box, then live on the
+agent's worker: 490 records):
+
+- **Config that passes**: headed · real Chrome/Edge (never bundled Chromium) ·
+  `--disable-blink-features=AutomationControlled` always · **no** `navigator.webdriver` JS
+  patch (that one IS detectable) · `no_viewport` + `--start-maximized` on headed runs ·
+  a fresh, **unwarmed** profile.
+- **A poisoned profile beats every downstream fix.** The `_GRECAPTCHA` cookie is the
+  accumulated reputation, so each rejection makes the next attempt worse — correct fixes stay
+  invisible underneath it. Cold profiles are FINE; repeatedly-failed ones are not.
+- **The captcha token is an HTTP HEADER**, not a body field
+  (`logIn() → HttpHeaders({recaptcha: tok})`). Body-only instrumentation shows a flawless
+  payload while the request is refused — the misreading that cost days.
+- **Mor's licence is 8 digits, NOT zero-padded** (only ת"ז→9, phone→10).
+- **Debug by reproducing locally first**: Windows Python (`/mnt/c/Python313`) driving real
+  Edge/Chrome runs the same flow in minutes, and `curl` the portal's own JS bundle to see what
+  it really sends. Both beat live-run guessing — that is what finally cracked Mor.
+- **Meitav inherits the runner-level fixes automatically** (same three flags) but its last
+  failure was `לא נמצאו שדות` *before any POST* — a hydration bug, not a score rejection.
+  Its `_probe_recaptcha` is still the old, refuted version and should be corrected.
+
+---
+
 ## Local Worker & Self-Update (`local-worker` skill)
 
 Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the

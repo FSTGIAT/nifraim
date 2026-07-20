@@ -232,29 +232,94 @@ account worked. Invariants:
    fields render blank on edit and blank means *leave unchanged* — never overwrite a
    stored secret with an empty string.
 
-## 4c. reCAPTCHA Enterprise — a COLD profile is why it works for you and not for them
+## 4c. Score-gated portals (Mor, Meitav) — the browser must look like a human's
 
-Mor and Meitav are score-gated by reCAPTCHA **Enterprise**, which scores *the profile
-making the request*. Persistent profiles are per-portal
-(`data/browser_profiles/<portal_kind>`), so a portal's **first-ever run on an agent's PC**
-starts with zero cookies and zero reputation and is rejected instantly — with Mor's generic
-`אירעה שגיאה`, which looks exactly like a bad password. Shipped incident (2026-07-14): Mor
-"worked on the dev box" (profile warm from months of runs) and failed for a brand-new user
-on a healthy worker with correct credentials. Invariants:
+Mor and Meitav are gated by a **reCAPTCHA score**. Nothing about the request is wrong when
+they refuse it: Mor answers `400 {"resultCode":"Bad Request"}` — visible to the agent as the
+generic `אירעה שגיאה` — to a perfectly formed login. Everything here was established by
+measurement on 2026-07-20, after ~9 hypotheses died; the section it replaces asserted a cause
+(cold profiles) that is now **refuted**, and that wrong entry is what cost most of the day.
 
-1. **Warm a cold profile BEFORE its one submit** (`mor.py::_warm_cold_profile`), never by
-   retrying a submit — every rejected submit lowers the score further.
-2. **Cold means "no run has succeeded yet"**, not "the directory is missing". A failed first
-   attempt *creates* the dir, so dir-existence would call the coldest profile warm and skip
-   the warm-up on exactly the retry that needs it. → `WARM_MARKER` in `runner.py`.
-3. **Log which browser binary actually launched.** `_launch_real_persistent` tries
-   chrome → chrome.exe → **msedge** → chromium. It used to fall back to bundled Chromium
-   *silently* — the one fingerprint Enterprise punishes — so an Edge-only PC failed forever
-   and invisibly. `WORKER-LOG … persistent browser=chrome COLD-PROFILE` is the first thing
-   to read on any score failure.
-4. **Never assert a cause you didn't measure.** `אירעה שגיאה` is returned for BOTH a low score
-   and wrong credentials. `mor.py::_classify` reads the POST response body; only the server's
-   own words decide which message the user gets.
+### The configuration that PASSES — do not drift from it
+
+Reproduced green twice from a dev box (`201 {"resultCode":"Success"}` + OTP modal), with real
+Windows **Edge** and real Windows **Chrome**, driving our own login flow:
+
+| Setting | Value | Why |
+|---|---|---|
+| `headed` | `True` | headless is refused outright |
+| browser | real Chrome/Edge | bundled Chromium reports `sec-ch-ua: "Chromium"` — a bot brand |
+| `--disable-blink-features=AutomationControlled` | **always** | makes Chrome not set `navigator.webdriver`; genuinely false, nothing left to detect |
+| `navigator.webdriver` JS patch | **never** for native | `defineProperty` IS detectable (descriptor + `getter.toString()`) |
+| `no_viewport` + `--start-maximized` | headed runs | a pinned viewport on a headed browser disagrees with the OS window — a mismatch no real browser shows |
+| profile | fresh, **unwarmed** | both winning runs used a brand-new throwaway profile |
+| warm-up | **off** (`mor.py`, `_skip_warmup`) | synthetic mouse dwell is itself a signal, and both winning runs did none |
+
+`runner.py` applies the flag/viewport/profile rules; the per-plugin flags are `headed`,
+`native_fingerprint`, `use_persistent_profile`.
+
+### What is DISPROVEN — do not re-derive these
+
+- **"A COLD profile is what the score punishes."** Both winning runs were cold and unwarmed.
+  What actually fails is a **poisoned** profile: the `_GRECAPTCHA` cookie IS the accumulated
+  reputation, so every rejection makes the next attempt start worse. It spirals, and correct
+  fixes underneath become invisible — webdriver/payload/token fixes that day each changed
+  nothing observable until the fingerprint was also corrected.
+- **The payload.** `{licenseId=len8, identity=len9, phoneNumber=len10}` is byte-identical to
+  what Mor's own Angular form submits. Padding, field order and typing delays are all fine.
+  (The licence is **8 digits, NOT zero-padded**; only ת"ז→9 and phone→10 are padded.)
+- **A missing captcha token.** It is minted (~1300 chars) and sent — see below.
+- **`navigator.webdriver`** as sole cause: setting it False did not, by itself, fix Mor.
+- **XSRF.** Mor's server sets **no cookies at all**, so Angular's `X-XSRF-TOKEN` is correctly
+  absent for real browsers too.
+- **Automation being detectable.** Playwright-driven real Edge/Chrome logs in fine.
+
+### Mor's login, as its own bundle defines it
+
+`curl https://join.more.co.il/agentsportal/main.*.js` — fetchable from WSL, and it settles in
+minutes what live runs cannot:
+
+```js
+LoginAgentForm = {licenseId, identity, phoneNumber}      // the ENTIRE body
+logIn(v) = captchaService.getToken('login')
+             .pipe(tok => _login(v, new HttpHeaders({recaptcha: tok})))
+getToken(a) = from(grecaptcha.execute(siteKey, {action:a}))   // reCAPTCHA v3
+```
+
+**The token is an HTTP HEADER, not a body field.** Body-only instrumentation therefore shows a
+flawless payload while the request is refused — that single misreading drove days of work.
+Corollary: `g-recaptcha-response` DOES exist under v3, but is filled only *after* `execute()`
+resolves, i.e. after the submit click. Waiting on it beforehand can never succeed.
+
+### Invariants
+
+1. **Reproduce locally before theorising.** Windows Python (`/mnt/c/Python313`) driving real
+   Edge/Chrome runs the same flow in minutes — the two-Python split already used for Phoenix.
+   This is what cracked Mor, after eight live-run hypotheses failed.
+2. **Read the portal's own JS bundle** before asserting what it sends.
+3. **Never assert a cause you didn't measure.** `אירעה שגיאה` covers a low score AND wrong
+   credentials; `mor.py::_classify` reads the server's own words.
+4. **A diagnostic must not perturb what it measures.** A probe that called `grecaptcha.execute()`
+   itself added a second assessment right before the login — it was removed.
+5. **Log which browser binary launched.** `_launch_real_persistent` tries
+   chrome → chrome.exe → **msedge** → chromium; a silent Chromium fallback is the worst
+   possible fingerprint. `WORKER-LOG … persistent browser=chrome` is the first line to read.
+6. **Do not retry a rejected submit.** Every extra submit lowers the score; recovery needs
+   ~20–30 min of quiet. `_MAX_SUBMIT_ATT = 1`.
+
+### Meitav — same gate, same fixes, but its failure is NOT the same
+
+Meitav sets the identical three flags, so it inherits every runner-level fix above
+automatically (flag, viewport, profile recycling). It has **no** warm-up call, so that change
+does not apply to it. Two caveats before assuming Mor's cure transfers:
+
+- Its last failure was `לא נמצאו שדות`, raised **before any POST** — a form-hydration problem,
+  not a score rejection. A different bug that happens to share a portal class.
+- `meitav.py::_probe_recaptcha` is still the **old** version, built on the refuted "v2 element"
+  model, and it appends a user-facing `partial_errors` line blaming the agent's antivirus. It
+  should be corrected or dropped; it can only mislead.
+- Meitav loads `enterprise.js` with its own sitekey — do not assume Mor's v3 mechanism applies
+  without reading Meitav's bundle the same way.
 
 ## 5. Comparison / merge invariants
 
