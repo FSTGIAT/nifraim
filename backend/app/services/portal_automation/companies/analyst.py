@@ -507,13 +507,19 @@ class AnalystPortal(BasePortalAutomation):
         # (`DATEPICKER {"open": false, "cells": []}`), and the run finally blamed
         # the date screen. Every one of those was a downstream symptom of never
         # having left the lobby.
+        # Order follows the OPERATOR'S recorded procedure, which names the exact
+        # element: "מצד ימין יש תפריט, לוחצים על 'הפקת דוחות'" with
+        #     <span class="font-h8-regular">הפקת דוחות</span>
+        # so the documented span leads. Clicking what a person clicks is also the
+        # safer route on an Angular SPA: the target route can depend on state a
+        # guard/resolver sets up during navigation, which a raw URL jump skips.
         _clicked = await self._click_first_visible(page, [
-            "a[href='/reports']",
-            "a[href*='/reports']",
-            "a:has-text('הפקת דוחות')",
-            "[role='menuitem']:has-text('הפקת דוחות')",
+            "span.font-h8-regular:has-text('הפקת דוחות')",
             "span:has-text('הפקת דוחות')",
+            "[role='menuitem']:has-text('הפקת דוחות')",
             "li:has-text('הפקת דוחות')",
+            "a:has-text('הפקת דוחות')",
+            "a[href='/reports']",
         ], timeout=12000)
         try:
             await page.wait_for_load_state("networkidle", timeout=10000)
@@ -521,10 +527,20 @@ class AnalystPortal(BasePortalAutomation):
             pass
         await page.wait_for_timeout(1500)
 
-        # Router fallback: an SPA link can be intercepted or re-rendered mid-click.
+        # LAST-RESORT router fallback only. Prefer the click above: a URL jump
+        # bypasses whatever the SPA sets up during in-app navigation, so if this
+        # ever becomes the path that "works", the click is what actually needs
+        # fixing. Logged loudly for that reason.
         if "/reports" not in (page.url or ""):
-            logger.warning("אנליסט: still at %s after nav click (clicked=%s) — goto /reports",
+            logger.warning("אנליסט: still at %s after nav click (clicked=%s) — "
+                           "falling back to goto /reports (the CLICK should be fixed)",
                            page.url, _clicked)
+            try:
+                from app.services.portal_automation.runner import _worker_note
+                _worker_note(f"analyst: menu click did not navigate (clicked={_clicked}, "
+                             f"url={page.url}) — using goto fallback")
+            except Exception:
+                pass
             try:
                 await page.goto("https://agent.analyst.co.il/reports",
                                 wait_until="domcontentloaded", timeout=30000)
@@ -602,7 +618,7 @@ class AnalystPortal(BasePortalAutomation):
         _HE_MONTHS = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
                       "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
 
-        async def _pick_month(aria: str, yy: int, mm: int) -> bool:
+        async def _pick_month(aria: str, yy: int, mm: int, want_last: bool = False) -> bool:
             """Drive ONE readonly month picker through its calendar dialog.
 
             The operator's recorded DOM settles what these fields are:
@@ -674,13 +690,18 @@ class AnalystPortal(BasePortalAutomation):
                 except Exception:
                     continue
 
-            # Some pickers need a day after the month view; if the calendar is
-            # still open, take the first selectable cell so the dialog closes.
+            # A DAY may still be required after the month view. Which day matters:
+            # the recorded procedure uses 01/06/26 → 30/06/26, i.e. the FIRST day
+            # for "מחודש" and the LAST day for "עד חודש". Taking the first cell
+            # for both (the earlier behaviour) would ask for 01/06 → 01/06 and
+            # report a single day instead of the month.
             try:
                 if await cal.is_visible():
-                    c = page.locator(
-                        ".mat-calendar-body-cell:not(.mat-calendar-body-disabled)").first
-                    if await c.count():
+                    cells = page.locator(
+                        ".mat-calendar-body-cell:not(.mat-calendar-body-disabled)")
+                    n = await cells.count()
+                    if n:
+                        c = cells.nth(n - 1) if want_last else cells.first
                         await c.click(timeout=2500)
                         await page.wait_for_timeout(500)
             except Exception:
@@ -704,8 +725,8 @@ class AnalystPortal(BasePortalAutomation):
             the NEXT month (01/07/2026), which on a month picker is a different,
             wrong month.
             """
-            ok_from = await _pick_month("מחודש", yy, mm)
-            ok_to = await _pick_month("עד חודש", yy, mm)
+            ok_from = await _pick_month("מחודש", yy, mm, want_last=False)
+            ok_to = await _pick_month("עד חודש", yy, mm, want_last=True)
             if not (ok_from and ok_to):
                 # Report the calendar's own DOM once, so a miss here is fixable
                 # without another blind run.
