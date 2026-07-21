@@ -527,10 +527,61 @@ class AnalystPortal(BasePortalAutomation):
             pass
         await page.wait_for_timeout(1500)
 
-        # LAST-RESORT router fallback only. Prefer the click above: a URL jump
-        # bypasses whatever the SPA sets up during in-app navigation, so if this
-        # ever becomes the path that "works", the click is what actually needs
-        # fixing. Logged loudly for that reason.
+        # The menu item exists in the DOM but is not CLICKABLE — `clicked=None`
+        # with the anchors present in the snapshot means the right-hand menu is
+        # collapsed/zero-size, so Playwright's visibility check rejects it.
+        # Dispatch the click in-page instead: that runs Angular's routerLink
+        # exactly as a user's click would, without needing the element painted.
+        # (A raw page.goto does NOT substitute — measured 2026-07-21, /reports
+        # redirected straight back to /lobby, so the route is guarded and only
+        # in-app navigation satisfies it.)
+        if "/reports" not in (page.url or ""):
+            try:
+                did = await page.evaluate(
+                    """() => {
+                        const els = [...document.querySelectorAll('a,[routerlink],span,li')];
+                        const hit = els.find(e =>
+                            (e.textContent || '').trim() === 'הפקת דוחות'
+                            || (e.getAttribute && (e.getAttribute('href') || '') === '/reports'));
+                        if (!hit) return 'no-element';
+                        // Click the anchor if the text sits inside one.
+                        const a = hit.closest('a') || hit;
+                        a.click();
+                        return 'clicked:' + (a.tagName || '?');
+                    }"""
+                )
+                logger.info("אנליסט: in-page nav dispatch → %s", did)
+                await page.wait_for_timeout(2500)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+            except Exception as _e:
+                logger.warning("אנליסט: in-page nav dispatch failed: %s", _e)
+
+        # If the menu is collapsed, open it and retry the documented span. The
+        # lobby exposes one unnamed button alongside יציאה/סגירה — the likely
+        # toggle — so try the generic openers before giving up.
+        if "/reports" not in (page.url or ""):
+            for _t in ("button[aria-label*='תפריט']", "button.menu-toggle",
+                       "button:has(mat-icon)", "mat-icon:has-text('menu')",
+                       "button:not(:has-text('יציאה')):not(:has-text('סגירה'))"):
+                try:
+                    loc = page.locator(_t).first
+                    if await loc.count():
+                        await loc.click(timeout=2500)
+                        await page.wait_for_timeout(900)
+                        _again = await self._click_first_visible(page, [
+                            "span.font-h8-regular:has-text('הפקת דוחות')",
+                            "a[href='/reports']",
+                        ], timeout=4000)
+                        if _again and "/reports" in (page.url or ""):
+                            logger.info("אנליסט: menu opened via %s", _t)
+                            break
+                except Exception:
+                    continue
+            await page.wait_for_timeout(1200)
+
         if "/reports" not in (page.url or ""):
             logger.warning("אנליסט: still at %s after nav click (clicked=%s) — "
                            "falling back to goto /reports (the CLICK should be fixed)",
@@ -559,10 +610,49 @@ class AnalystPortal(BasePortalAutomation):
         # error three steps later.
         if "/reports" not in (page.url or ""):
             try:
+                # Say WHY the menu could not be clicked, not merely that it
+                # wasn't. Geometry + computed style distinguishes the candidates:
+                # a collapsed/zero-size sidebar, an off-screen drawer, a
+                # display:none menu, or an overlay eating the click. Also list
+                # every button with its class/aria so the unnamed one (the likely
+                # toggle) can be identified by name next time.
+                probe = await page.evaluate(
+                    """() => {
+                        const links = [...document.querySelectorAll('a,[routerlink],span')]
+                          .filter(e => (e.textContent || '').trim() === 'הפקת דוחות'
+                                    || (e.getAttribute && e.getAttribute('href') === '/reports'))
+                          .slice(0, 4).map(e => {
+                            const r = e.getBoundingClientRect();
+                            const s = getComputedStyle(e);
+                            return {tag: e.tagName, href: e.getAttribute('href') || '',
+                                    w: Math.round(r.width), h: Math.round(r.height),
+                                    x: Math.round(r.x), y: Math.round(r.y),
+                                    disp: s.display, vis: s.visibility, op: s.opacity,
+                                    off: !!e.offsetParent};
+                          });
+                        return {
+                            url: location.href, links,
+                            buttons: [...document.querySelectorAll('button')].slice(0, 10).map(b => ({
+                                t: (b.innerText || '').trim().slice(0, 14),
+                                cls: (b.className || '').slice(0, 40),
+                                aria: b.getAttribute('aria-label') || ''})),
+                            drawers: [...document.querySelectorAll(
+                                'mat-sidenav,mat-drawer,nav,aside,[class*=menu],[class*=sidebar]')]
+                                .slice(0, 6).map(d => ({c: (d.className || '').slice(0, 40),
+                                    w: Math.round(d.getBoundingClientRect().width)})),
+                        };
+                    }"""
+                )
                 from app.services.portal_automation.runner import _worker_note
-                _worker_note(f"analyst NAV FAILED — still at {page.url}")
+                import json as _json
+                _worker_note("analyst NAV FAILED — "
+                             + _json.dumps(probe, ensure_ascii=False)[:1800])
             except Exception:
-                pass
+                try:
+                    from app.services.portal_automation.runner import _worker_note
+                    _worker_note(f"analyst NAV FAILED — still at {page.url}")
+                except Exception:
+                    pass
             raise RuntimeError(
                 f"אנליסט: לא הצלחנו לעבור למסך 'הפקת דוחות' (נשארנו ב-{page.url}) — "
                 "בדוק את תפריט הניווט בדף הלובי."
