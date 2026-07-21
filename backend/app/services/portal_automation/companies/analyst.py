@@ -142,6 +142,45 @@ class AnalystPortal(BasePortalAutomation):
         await self._safe_screenshot(page, land)
         await self._dump_page_state(page, land)
 
+        # MOVE THE MOUSE LIKE A PERSON before clicking anything.
+        #
+        # `page.click()` teleports the cursor: the pointer is at (0,0) one moment
+        # and inside the field the next, with no path between. reCAPTCHA
+        # Enterprise scores interaction telemetry, and a session that produces
+        # keystrokes with literally NO pointer movement is a strong bot signal.
+        #
+        # This is the difference that matters here, and it was measured the right
+        # way round: a HUMAN logging in on this same machine, same IP, same Edge
+        # reaches the OTP screen reliably, while the automation is refused
+        # intermittently. So the account and the IP are not penalised and the
+        # score is not "burned" — the automated SESSION is being judged on its
+        # own, and the one thing it never produced was a mouse path.
+        #
+        # Deliberately cheap: a short glide to each control plus a small dwell.
+        # No synthetic "warm-up" browsing (that was disabled for Mor on
+        # evidence); this only makes the real interaction look like one.
+        async def _glide_click(sel: str) -> None:
+            try:
+                box = await page.locator(sel).first.bounding_box()
+            except Exception:
+                box = None
+            if not box:
+                await page.click(sel)
+                return
+            tx = box["x"] + box["width"] / 2
+            ty = box["y"] + box["height"] / 2
+            try:
+                cur = getattr(self, "_ptr", (tx - 260, ty - 140))
+                for i in range(1, 7):                     # 6-step path, eased
+                    f = i / 6
+                    await page.mouse.move(cur[0] + (tx - cur[0]) * f,
+                                          cur[1] + (ty - cur[1]) * f)
+                    await page.wait_for_timeout(45 + i * 12)
+                self._ptr = (tx, ty)
+                await page.mouse.click(tx, ty)
+            except Exception:
+                await page.click(sel)
+
         # Angular Material: matinput controls stay ng-pristine/ng-invalid under
         # page.fill(), keeping the submit disabled — drive real KEYSTROKES.
         async def _type(selectors: list[str], val: str, label: str) -> bool:
@@ -151,7 +190,7 @@ class AnalystPortal(BasePortalAutomation):
                 except Exception:
                     continue
                 try:
-                    await page.click(sel)
+                    await _glide_click(sel)
                     await page.fill(sel, "")
                     await page.keyboard.type(val, delay=70)
                     cur = await page.input_value(sel)
@@ -187,7 +226,21 @@ class AnalystPortal(BasePortalAutomation):
             raise RuntimeError(
                 "אנליסט: לא נמצאו שדות ת\"ז/טלפון בטופס ההתחברות — בדוק analyst_login.txt/html"
             )
-        await page.wait_for_timeout(400)
+
+        # A beat before submitting, with the pointer moving. Firing the click in
+        # the same tick as the final keystroke is the most machine-like moment in
+        # the whole flow — a person's hand travels to the button and their eyes
+        # check the form first. This costs ~1.5s and gives the scorer a plausible
+        # pre-submit interaction instead of an instantaneous one.
+        try:
+            _p = getattr(self, "_ptr", (400, 400))
+            for dx, dy in ((40, 25), (-30, 45), (55, -20)):
+                await page.mouse.move(_p[0] + dx, _p[1] + dy)
+                await page.wait_for_timeout(180)
+            self._ptr = (_p[0] + 55, _p[1] - 20)
+        except Exception:
+            pass
+        await page.wait_for_timeout(700)
 
         # "שלחו לי קוד" → fires the SMS (otp_since is anchored by the runner BEFORE
         # login(), so a code that arrives now is caught).
