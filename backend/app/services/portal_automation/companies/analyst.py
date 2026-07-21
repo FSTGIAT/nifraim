@@ -489,8 +489,64 @@ class AnalystPortal(BasePortalAutomation):
             await self._safe_screenshot(page, p)
             await self._dump_page_state(page, p)
 
-        # A transient post-login message may overlay the UI — let it clear.
-        await page.wait_for_timeout(2500)
+        # DISMISS THE POST-LOGIN ANNOUNCEMENT MODAL.
+        #
+        # Analyst opens the lobby with a "סוכן יקר" notice (phone-support hours)
+        # over the page, closed by a "סגירה" button. Its backdrop intercepts
+        # pointer events, so the right-hand menu — which IS rendered and visible
+        # behind it — cannot be clicked. That is the whole reason the run never
+        # left /lobby: `_click_first_visible` correctly reported the menu item as
+        # unclickable (`clicked=None`), and page.goto('/reports') bounced back
+        # because the route is guarded and only in-app navigation satisfies it.
+        #
+        # The evidence was already in an earlier dump — `btn: ["", "יציאה",
+        # "סגירה"]` — and "סגירה" is this dialog's close button. It read as page
+        # furniture until a screenshot showed the dialog.
+        #
+        # Same shape as mor.py's announcement modal, so the same belt-and-braces:
+        # click the close button, press Escape, then tear any overlay out of the
+        # DOM. Every step is a no-op when no modal is present.
+        await page.wait_for_timeout(2000)
+        for _ in range(3):
+            try:
+                btn = page.locator(
+                    "button:has-text('סגירה'), button:has-text('סגור'), "
+                    "mat-dialog-container button, .cdk-overlay-container button"
+                ).first
+                if not await btn.count():
+                    break
+                if await btn.is_visible():
+                    await btn.click(timeout=3000)
+                    logger.info("אנליסט: dismissed post-login modal")
+                    await page.wait_for_timeout(700)
+                else:
+                    break
+            except Exception:
+                break
+        try:
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(400)
+        except Exception:
+            pass
+        # Guaranteed dismissal: remove any Material overlay/backdrop still up.
+        # It is only an announcement, so tearing it down client-side is safe.
+        try:
+            removed = await page.evaluate(
+                """() => {
+                    const sel = 'mat-dialog-container, .cdk-overlay-backdrop, '
+                              + '.cdk-overlay-pane, .modal-backdrop, [class*=overlay]';
+                    const n = document.querySelectorAll(sel).length;
+                    document.querySelectorAll(sel).forEach(e => e.remove());
+                    document.body.classList.remove('cdk-global-scrollblock');
+                    document.body.style.overflow = '';
+                    return n;
+                }"""
+            )
+            if removed:
+                logger.info("אנליסט: removed %d leftover overlay node(s)", removed)
+        except Exception:
+            pass
+        await page.wait_for_timeout(600)
         await ck("nav_0_home")
 
         # 1) Navigate to הפקת דוחות — BY HREF, and then VERIFY we arrived.
