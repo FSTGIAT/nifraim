@@ -493,21 +493,64 @@ class AnalystPortal(BasePortalAutomation):
         await page.wait_for_timeout(2500)
         await ck("nav_0_home")
 
-        # 1) Navigate to הפקת דוחות.
-        await self._click_first_visible(page, [
+        # 1) Navigate to הפקת דוחות — BY HREF, and then VERIFY we arrived.
+        #
+        # The live lobby DOM (2026-07-21) gives the routes outright:
+        #   דף הבית לסוכן -> /lobby        חשבונות עמיתים -> /customer-accounts
+        #   הפקת דוחות    -> /reports      הודעות        -> /messages
+        # so "הפקת דוחות" is an <a href="/reports">, not a button or a span.
+        #
+        # Two failures compounded before this. The click result was DISCARDED —
+        # `await self._click_first_visible(...)` with no `if not clicked:` — so a
+        # missed nav was silent; and every later step then ran against /lobby.
+        # The report-type select was never found, the date pickers never opened
+        # (`DATEPICKER {"open": false, "cells": []}`), and the run finally blamed
+        # the date screen. Every one of those was a downstream symptom of never
+        # having left the lobby.
+        _clicked = await self._click_first_visible(page, [
+            "a[href='/reports']",
+            "a[href*='/reports']",
             "a:has-text('הפקת דוחות')",
-            "button:has-text('הפקת דוחות')",
             "[role='menuitem']:has-text('הפקת דוחות')",
             "span:has-text('הפקת דוחות')",
             "li:has-text('הפקת דוחות')",
-            "a:has-text('דוחות')",
         ], timeout=12000)
         try:
             await page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
             pass
         await page.wait_for_timeout(1500)
+
+        # Router fallback: an SPA link can be intercepted or re-rendered mid-click.
+        if "/reports" not in (page.url or ""):
+            logger.warning("אנליסט: still at %s after nav click (clicked=%s) — goto /reports",
+                           page.url, _clicked)
+            try:
+                await page.goto("https://agent.analyst.co.il/reports",
+                                wait_until="domcontentloaded", timeout=30000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1500)
+            except Exception as _e:
+                logger.warning("אנליסט: goto /reports failed: %s", _e)
+
         await ck("nav_1_reports")
+
+        # Do NOT continue on the lobby. Everything downstream reads a form that
+        # only exists on /reports, so proceeding just manufactures a misleading
+        # error three steps later.
+        if "/reports" not in (page.url or ""):
+            try:
+                from app.services.portal_automation.runner import _worker_note
+                _worker_note(f"analyst NAV FAILED — still at {page.url}")
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"אנליסט: לא הצלחנו לעבור למסך 'הפקת דוחות' (נשארנו ב-{page.url}) — "
+                "בדוק את תפריט הניווט בדף הלובי."
+            )
 
         # 2) Report-type mat-select → "עמלות סוכנים".
         await self._click_first_visible(page, [
