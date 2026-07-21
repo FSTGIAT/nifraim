@@ -416,11 +416,32 @@ def _download_and_extract_bundle() -> bool:
     import io as _io, zipfile as _zip, tempfile as _tmp, shutil as _sh
     url = f"{base}/api/portal-automation/worker/bundle/{token}"
 
-    try:
-        data = _ureq.urlopen(_ureq.Request(url), timeout=180).read()
-    except Exception as e:
-        log.warning("bundle download failed: %s", e)
-        _post_log(f"self-update: download failed ({e}) — staying on current code")
+    # RETRY the download. A single timeout should not cost a whole update cycle:
+    # the agent presses "עדכן עובד", the flag is consumed, the read times out on
+    # a slow link, and the worker keeps running yesterday's code while everyone
+    # believes it updated. Seen live 2026-07-21 —
+    #     "self-update: download failed (The read operation timed out)"
+    # — and the run that followed was on stale code, so a fix verified in the
+    # bundle minutes earlier was simply absent. Three attempts with backoff, and
+    # a longer per-attempt timeout: the bundle is ~1.3 MB, so a 300 s read only
+    # expires on a genuinely broken link.
+    data = None
+    _last = None
+    for _try in range(1, 4):
+        try:
+            data = _ureq.urlopen(_ureq.Request(url), timeout=300).read()
+            if _try > 1:
+                _post_log(f"self-update: bundle downloaded on attempt {_try}")
+            break
+        except Exception as e:
+            _last = e
+            log.warning("bundle download attempt %d/3 failed: %s", _try, e)
+            if _try < 3:
+                _time.sleep(5 * _try)          # 5s, 10s
+    if data is None:
+        log.warning("bundle download failed after 3 attempts: %s", _last)
+        _post_log(f"self-update: download failed after 3 attempts ({_last}) — "
+                  "staying on current code")
         return False
 
     tmpdir = None
