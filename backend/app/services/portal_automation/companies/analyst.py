@@ -471,49 +471,168 @@ class AnalystPortal(BasePortalAutomation):
         await page.wait_for_timeout(600)
         await ck("nav_2_report_type")
 
-        # 3) Date range per the 20th rule, with a self-heal walk-back. The actual
-        #    date-picker DOM is unknown — this fills any date-ish inputs it finds and
-        #    dumps state so the selectors can be finalized from nav_2_report_type.txt.
+        # 2b) AGENT select → "כל הסוכנים". A SECOND mat-select that this plugin
+        #     never touched. The operator's recorded procedure lists it right
+        #     after the report type ("בחלונית סוכנים בוחרים 'כל הסוכנים'"), and
+        #     the live /lobby DOM showed it as `aria-label="בחירת סוכן"` sitting
+        #     at "כל הסוכנים". Leaving it unset can scope the report to nothing.
+        #     Best-effort: if it is already on "כל הסוכנים" this is a no-op.
+        try:
+            _agent_sel = page.locator(
+                "mat-select[aria-label*='סוכן'], mat-select[aria-label*='בחירת סוכן']"
+            ).first
+            if await _agent_sel.count():
+                await _agent_sel.click(timeout=6000)
+                await page.wait_for_timeout(600)
+                _all = page.locator(
+                    "mat-option:has-text('כל הסוכנים'), [role='option']:has-text('כל הסוכנים')"
+                ).first
+                if await _all.count():
+                    await _all.click(timeout=5000)
+                    logger.info("אנליסט: agent select → כל הסוכנים")
+                else:
+                    await page.keyboard.press("Escape")
+                await page.wait_for_timeout(500)
+        except Exception as _e:
+            logger.warning("אנליסט: agent select step skipped: %s", _e)
+        await ck("nav_2b_agent")
+
+        # 3) Date range. The pickers are READONLY — they must be driven through
+        #    the calendar dialog, never typed into.
         target = None
         chosen_ym: tuple[int, int] | None = None
         range_confirmed = False
 
-        async def _set_range(d_from: str, d_to: str) -> bool:
-            """Best-effort fill of the from/to date inputs, then READ BACK to confirm
-            it took. Angular mat-datepicker frequently reparses/ignores raw typed
-            text, so a blind fill is not proof. Returns True only when the from-field
-            actually carries the target month+year."""
-            date_inputs = page.locator(
-                "input[matinput][type='text']:visible, input.mat-datepicker-input:visible, "
-                "input[placeholder*='תאריך']:visible, input[aria-label*='תאריך']:visible"
-            )
-            try:
-                cnt = await date_inputs.count()
-            except Exception:
-                cnt = 0
-            if cnt == 0:
+        _HE_MONTHS = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+                      "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+
+        async def _pick_month(aria: str, yy: int, mm: int) -> bool:
+            """Drive ONE readonly month picker through its calendar dialog.
+
+            The operator's recorded DOM settles what these fields are:
+
+                <input matinput readonly="true" aria-label="מחודש"
+                       class="… mat-datepicker-input …" id="mat-input-8"
+                       aria-haspopup="dialog" data-mat-calendar="mat-datepicker-0">
+                <input … aria-label="עד חודש" … data-mat-calendar="mat-datepicker-1">
+
+            `readonly="true"` is the whole story: the previous implementation did
+            `click → fill("") → keyboard.type("01/06/2026")`, which CANNOT put a
+            value into a readonly input. The range was therefore never applied,
+            the portal exported its own default period, and the run reported
+            "date range not confirmed" without anyone realising typing was
+            impossible in principle. They are month pickers (labels are
+            "מחודש"/"עד חודש" — FROM-MONTH / TO-MONTH), opened as a dialog via
+            aria-haspopup, so the month must be CLICKED in the calendar.
+
+            Returns True only when the input reads back the requested month+year.
+            """
+            di = page.locator(f"input[aria-label='{aria}']").first
+            if not await di.count():
                 return False
-            pairs = [(0, d_from), (1, d_to)] if cnt >= 2 else [(0, d_from)]
-            for idx, val in pairs:
-                try:
-                    di = date_inputs.nth(idx)
-                    await di.click()
-                    await di.fill("")
-                    await page.keyboard.type(val, delay=60)
-                except Exception:
-                    return False
             try:
-                await page.keyboard.press("Tab")
+                await di.click(timeout=6000)          # opens mat-datepicker
+                await page.wait_for_timeout(700)
+            except Exception:
+                return False
+
+            cal = page.locator(".mat-datepicker-content, mat-calendar").first
+            try:
+                await cal.wait_for(state="visible", timeout=6000)
+            except Exception:
+                return False
+
+            # Walk to the right YEAR. The period button shows the current view's
+            # label; prev/next step a year at a time in the month view.
+            for _ in range(14):
+                try:
+                    label = (await page.locator(
+                        ".mat-calendar-period-button").first.inner_text(timeout=2000)) or ""
+                except Exception:
+                    label = ""
+                if str(yy) in label:
+                    break
+                nav = ".mat-calendar-previous-button" if str(yy) < label else \
+                      ".mat-calendar-next-button"
+                # Fall back to 'previous' when the label carries no year at all.
+                if not re.search(r"\d{4}", label):
+                    nav = ".mat-calendar-previous-button"
+                try:
+                    await page.locator(nav).first.click(timeout=2500)
+                    await page.wait_for_timeout(350)
+                except Exception:
+                    break
+
+            # Click the month cell. Cells carry the Hebrew month name (or its
+            # abbreviation) as text/aria-label.
+            name = _HE_MONTHS[mm - 1]
+            for sel in (f".mat-calendar-body-cell[aria-label*='{name}']",
+                        f"[role='gridcell']:has-text('{name}')",
+                        f".mat-calendar-body-cell:has-text('{name[:3]}')"):
+                try:
+                    cell = page.locator(sel).first
+                    if await cell.count():
+                        await cell.click(timeout=3000)
+                        await page.wait_for_timeout(600)
+                        break
+                except Exception:
+                    continue
+
+            # Some pickers need a day after the month view; if the calendar is
+            # still open, take the first selectable cell so the dialog closes.
+            try:
+                if await cal.is_visible():
+                    c = page.locator(
+                        ".mat-calendar-body-cell:not(.mat-calendar-body-disabled)").first
+                    if await c.count():
+                        await c.click(timeout=2500)
+                        await page.wait_for_timeout(500)
             except Exception:
                 pass
-            await page.wait_for_timeout(400)
+
             try:
-                got0 = re.sub(r"\D", "", (await date_inputs.nth(0).input_value()) or "")
+                got = re.sub(r"\D", "", (await di.input_value()) or "")
             except Exception:
-                got0 = ""
-            want = re.sub(r"\D", "", d_from)  # e.g. 01062026
-            # Compare the month+year core (formats differ: 01/06/2026 vs 1.6.26).
-            return bool(got0) and (want[-6:] in got0 or got0[-6:] in want)
+                got = ""
+            # Accept 06/2026 or 06/26 — compare month+year, ignoring the day.
+            ok = bool(got) and f"{mm:02d}" in got and (str(yy) in got or str(yy)[-2:] in got)
+            logger.info("אנליסט: %s → %02d/%d ⇒ %r (ok=%s)", aria, mm, yy, got, ok)
+            return ok
+
+        async def _set_range(yy: int, mm: int) -> bool:
+            """Both ends of the range are the SAME month.
+
+            The recorded procedure says "בוחרים את החודש האחרון לדוגמה:
+            30/06/26 - 01/06/26" — i.e. the whole of June, expressed as a
+            FROM-MONTH / TO-MONTH pair. The old code sent `d_to` as the FIRST of
+            the NEXT month (01/07/2026), which on a month picker is a different,
+            wrong month.
+            """
+            ok_from = await _pick_month("מחודש", yy, mm)
+            ok_to = await _pick_month("עד חודש", yy, mm)
+            if not (ok_from and ok_to):
+                # Report the calendar's own DOM once, so a miss here is fixable
+                # without another blind run.
+                try:
+                    snap = await page.evaluate(
+                        """() => ({
+                            open: !!document.querySelector('.mat-datepicker-content'),
+                            period: (document.querySelector('.mat-calendar-period-button')
+                                     ||{}).innerText || '',
+                            cells: [...document.querySelectorAll('.mat-calendar-body-cell')]
+                                    .slice(0, 18).map(c => (c.getAttribute('aria-label')
+                                     || c.innerText || '').trim()),
+                            vals: [...document.querySelectorAll('input.mat-datepicker-input')]
+                                    .map(i => ({a: i.getAttribute('aria-label'), v: i.value})),
+                        })"""
+                    )
+                    from app.services.portal_automation.runner import _worker_note
+                    import json as _json
+                    _worker_note("analyst DATEPICKER — "
+                                 + _json.dumps(snap, ensure_ascii=False)[:1200])
+                except Exception:
+                    pass
+            return ok_from and ok_to
 
         async def _produce_download(out_path: Path) -> Path | None:
             """Click 'הפק דוח' and capture a native download OR XHR bytes — but only
@@ -573,11 +692,12 @@ class AnalystPortal(BasePortalAutomation):
             return got
 
         for (yy, mm) in self._target_months(date.today()):
-            nm, ny = (mm % 12) + 1, yy + (1 if mm == 12 else 0)
-            d_from = f"01/{mm:02d}/{yy}"
-            d_to = f"01/{nm:02d}/{ny}"
-            logger.info("אנליסט: trying report range %s → %s", d_from, d_to)
-            applied = await _set_range(d_from, d_to)
+            # A month RANGE with both ends on the same month — the pickers are
+            # labelled מחודש / עד חודש, so "June" is expressed as June→June, not
+            # June→July. (The old code sent the 1st of the NEXT month as the end,
+            # which on a month picker selects the wrong month outright.)
+            logger.info("אנליסט: trying report month %02d/%d", mm, yy)
+            applied = await _set_range(yy, mm)
             await ck("nav_3_dates")
 
             # Encode the month in the filename ONLY when we confirmed the range
