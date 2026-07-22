@@ -619,11 +619,25 @@ async def _reconcile_orphans(uid):
                                              "downloading", "parsing"]))
                 .values(status="success", stage="parse", finished_at=now)
             )
+            # DO NOT reap `pending`. A pending run has not been claimed by
+            # anybody — it is work waiting to be done, not a casualty of the
+            # restart. Killing it means a run created in the seconds around
+            # "עדכן עובד" dies instantly and blames the worker restart, when
+            # simply leaving it alone would let THIS worker claim and run it.
+            #
+            # Shipped 2026-07-22: the agent pressed עדכן עובד, pressed אנליסט,
+            # and the run failed in 0.5s with stage=None and
+            # "הופסק עקב הפעלה מחדש של העובד" — never having touched the portal.
+            # From the outside that is indistinguishable from a portal failure,
+            # and it cost a debugging cycle.
+            #
+            # The other states DO mean an interrupted execution (a browser was
+            # open, an OTP may have been consumed), so those stay reaped.
             await db.execute(
                 update(PortalRun)
                 .where(PortalRun.user_id == uid,
                        PortalRun.upload_id.is_(None),
-                       PortalRun.status.in_(["pending", "running", "awaiting_otp",
+                       PortalRun.status.in_(["running", "awaiting_otp",
                                              "downloading", "parsing"]))
                 .values(status="failed", error_message=msg, finished_at=now)
             )
