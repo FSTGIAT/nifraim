@@ -29,7 +29,7 @@ import asyncio
 import logging
 import subprocess
 import time as _time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # When THIS worker process started — a UI update request newer than this means
@@ -633,12 +633,33 @@ async def _reconcile_orphans(uid):
             #
             # The other states DO mean an interrupted execution (a browser was
             # open, an OTP may have been consumed), so those stay reaped.
+            # An interrupted EXECUTION is still reaped unconditionally — a
+            # browser was open and an OTP may already have been consumed, so it
+            # is not safely repeatable.
             await db.execute(
                 update(PortalRun)
                 .where(PortalRun.user_id == uid,
                        PortalRun.upload_id.is_(None),
                        PortalRun.status.in_(["running", "awaiting_otp",
                                              "downloading", "parsing"]))
+                .values(status="failed", error_message=msg, finished_at=now)
+            )
+            # A `pending` run is only spared when it is FRESH (< 10 min). That is
+            # narrowly the restart race and nothing else: the agent presses
+            # "עדכן עובד", presses a company, and the run is created while the
+            # worker is re-execing — it then died in 0.5s with stage=None and
+            # "הופסק עקב הפעלה מחדש של העובד", looking exactly like a portal
+            # failure. Sparing it lets the worker that just came up claim it.
+            #
+            # Older pendings are still reaped, deliberately: a run nobody claimed
+            # for ten minutes is abandoned, and resurrecting it later would fire
+            # a surprise download (burning an OTP) long after the agent asked.
+            await db.execute(
+                update(PortalRun)
+                .where(PortalRun.user_id == uid,
+                       PortalRun.upload_id.is_(None),
+                       PortalRun.status == "pending",
+                       PortalRun.started_at < now - timedelta(minutes=10))
                 .values(status="failed", error_message=msg, finished_at=now)
             )
             res = await db.execute(
