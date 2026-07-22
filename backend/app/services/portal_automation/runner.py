@@ -641,7 +641,19 @@ async def _run_inner(
                 _last_failed = (getattr(cred, "last_run_status", None) == "failed")
             else:
                 _st, _stage = _last_stage
-                _last_failed = (_st == "failed" and (_stage or "login") == "login")
+                # Only an explicit LOGIN-stage failure means the captcha rejected
+                # this profile. A NULL stage does NOT: it belongs to a run that
+                # never started — typically one reaped by the startup orphan
+                # sweep — and says nothing about the profile's standing.
+                #
+                # Treating NULL as "login" (the previous default) destroyed a
+                # profile that had just proven itself. Measured 2026-07-22:
+                #   14:43  failed stage=otp    <- login PASSED, profile trusted
+                #   15:01  reaped,  stage=NULL <- read as a login rejection
+                #   15:19  "recycled … (last run was rejected)" -> COLD -> refused
+                # So a worker restart could silently cost the next run its
+                # captcha standing.
+                _last_failed = (_st == "failed" and _stage == "login")
             if (profile_was_cold or _last_failed) and profile_dir.exists():
                 import shutil as _sh
                 _why = ("no success ever recorded on it" if profile_was_cold
