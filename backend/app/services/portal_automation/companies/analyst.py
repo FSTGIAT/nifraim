@@ -280,6 +280,60 @@ class AnalystPortal(BasePortalAutomation):
         # FAIL LOUDLY. Falling through to the runner's OTP wait after a rejected
         # login costs five minutes and then blames the phone — "לא התקבל קוד OTP",
         # pointing the agent at their SMS app when the code was never requested.
+        # RETRY A CAPTCHA REJECTION IN-RUN — it is free.
+        #
+        # A rejected login sends NO SMS and consumes NO OTP: the run costs ~30s
+        # and nothing else. Analyst's captcha is measurably intermittent on the
+        # agent's machine — same code, same cold profile, 14:43 passed and 15:19
+        # did not — so the only thing a rejection actually costs today is a human
+        # pressing the button again. That is the failure worth removing.
+        #
+        # Deliberately NOT the Mor rule (`_MAX_SUBMIT_ATT = 1`). Mor is
+        # score-gated reCAPTCHA **Enterprise**, where each rejected submit
+        # measurably lowers the next attempt's standing; analyst is v3 and the
+        # token is a body field regenerated per submit. Retrying here is not the
+        # same act as retrying there — but keep it bounded, and reload between
+        # attempts so a fresh token is minted rather than a stale one replayed.
+        if (srv["seen"] and srv["status"] and srv["status"] >= 400
+                and "aptcha" in (srv["body"] or "")):
+            for _att in range(2, 4):          # attempts 2 and 3
+                logger.warning("אנליסט: captcha rejection — retry %d/3 after reload", _att)
+                srv["seen"], srv["status"], srv["body"] = False, None, ""
+                try:
+                    await page.wait_for_timeout(12000)
+                    await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=45000)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=15000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(2500)
+                    if not (await _type([
+                                "input[aria-label*='זהות']",
+                                "input[formcontrolname*='identity' i]",
+                                "input[maxlength='9']"], id_no, "ת\"ז")
+                            and await _type([
+                                "input[inputmode='tel']",
+                                "input[aria-label*='טלפון']",
+                                "input[maxlength='10']"], phone, "טלפון")):
+                        break
+                    await page.wait_for_timeout(700)
+                    if not await self._click_first_visible(page, [
+                            "button[type='submit']:has-text('שלחו לי קוד')",
+                            "button:has-text('שלחו לי קוד')"], timeout=10000):
+                        break
+                    for _ in range(60):
+                        if await page.locator("input[maxlength='1']:visible").count():
+                            break
+                        if srv["seen"] and srv["status"] and srv["status"] >= 400:
+                            break
+                        await page.wait_for_timeout(500)
+                    if await page.locator("input[maxlength='1']:visible").count():
+                        logger.info("אנליסט: retry %d succeeded — OTP screen open", _att)
+                        return
+                except Exception as _e:
+                    logger.warning("אנליסט: retry %d failed: %s", _att, _e)
+                    break
+
         if srv["seen"] and srv["status"] and srv["status"] >= 400:
             _b = (srv["body"] or "").strip()
             _hint = ""
