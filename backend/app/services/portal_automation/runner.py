@@ -654,6 +654,16 @@ async def _run_inner(
                 # So a worker restart could silently cost the next run its
                 # captcha standing.
                 _last_failed = (_st == "failed" and _stage == "login")
+                # A v3 portal that keeps refusing COLD profiles must be allowed
+                # to KEEP one, or it can never accumulate the history/cookies the
+                # score is built from (see base.py).
+                if _last_failed and not getattr(
+                        plugin, "recycle_profile_on_login_failure", True):
+                    logger.info(
+                        "%s: login failed last time, but this plugin keeps its "
+                        "profile (recycle_profile_on_login_failure=False)",
+                        cred.portal_kind)
+                    _last_failed = False
             if (profile_was_cold or _last_failed) and profile_dir.exists():
                 import shutil as _sh
                 _why = ("no success ever recorded on it" if profile_was_cold

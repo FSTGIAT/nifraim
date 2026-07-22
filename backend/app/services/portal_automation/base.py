@@ -105,6 +105,19 @@ class BasePortalAutomation(ABC):
     # preferred browser degrades instead of failing.
     browser_channel: str | None = None
 
+    # Recycle the persistent profile after a LOGIN-stage failure?
+    #
+    # True (default) suits reCAPTCHA **Enterprise** portals (Mor, Meitav): there
+    # the `_GRECAPTCHA` cookie carries accumulated reputation, each rejection
+    # makes the next attempt worse, and shedding a poisoned profile is the cure.
+    #
+    # False suits a **v3** portal that keeps refusing a COLD profile. Recycling
+    # on every rejection guarantees the profile is brand-new on every attempt, so
+    # it can never build the browsing history and Google cookies v3 scores on —
+    # the run starts from zero reputation forever. Analyst is in exactly that
+    # loop on the agent's machine: fresh profile, refused, recycled, fresh again.
+    recycle_profile_on_login_failure: bool = True
+
     # Set by runner.py (`_run_inner`) before login() from this credential's own
     # last recorded outcome — a MEASURED fact a plugin can use to rule out
     # "wrong credentials" on a rejection instead of guessing. A credential that

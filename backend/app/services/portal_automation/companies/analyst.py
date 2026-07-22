@@ -71,6 +71,14 @@ class AnalystPortal(BasePortalAutomation):
     native_fingerprint = True
     use_persistent_profile = True
     needs_residential_proxy = False
+    # KEEP the profile across login rejections. Analyst is reCAPTCHA v3, and its
+    # rejections on the agent's machine are intermittent on a COLD profile
+    # (14:43 passed, 15:19 and 18:2x refused — same code, same cold profile).
+    # Recycling after every rejection guaranteed a brand-new profile each run, so
+    # it could never build the history v3 scores on. This is the one lever left
+    # that needs no human. Mor/Meitav keep the default (True): they are
+    # Enterprise, where a poisoned profile really does need shedding.
+    recycle_profile_on_login_failure = False
 
     def _split(self, username: str, password: str) -> tuple[str, str]:
         """username='<id>', password='<phone>'. Digit-strip both; pad the Israeli
