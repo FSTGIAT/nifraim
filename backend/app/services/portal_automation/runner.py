@@ -114,6 +114,55 @@ def _worker_note(msg: str) -> None:
         pass
 
 
+def _upload_capture(path, name: str | None = None) -> None:
+    """Best-effort: send a screenshot/dump to the server so it can be LOOKED at.
+
+    Plugins already capture aggressively, but the files land on the agent's own
+    disk. /_debug/screenshots serves the CLOUD container, so from here a stuck
+    run can only ever be described in prose. That cost real time today: analyst
+    sat on /lobby for several cycles and the cause — a "סוכן יקר" modal whose
+    backdrop swallowed every click — surfaced only when the agent sent a
+    screenshot by hand.
+
+    Uploading puts the picture where it can be fetched via
+    GET /_debug/screenshots/{name}. Silent and non-fatal by design: diagnostics
+    must never be able to fail a run.
+    """
+    import os
+    import urllib.request
+
+    try:
+        p = Path(path)
+        if not p.exists() or p.stat().st_size > 8 * 1024 * 1024:
+            return
+        base = (os.environ.get("WORKER_LOG_BASE", "") or "").rstrip("/")
+        token = os.environ.get("WORKER_LOG_TOKEN", "") or ""
+        if not (base and token):
+            envf = PROJECT_ROOT / ".env"
+            if envf.exists():
+                for line in envf.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    s_ = line.strip()
+                    if s_.startswith("#") or "=" not in s_:
+                        continue
+                    k, v = s_.split("=", 1)
+                    if k.strip() == "WORKER_LOG_BASE":
+                        base = base or v.strip().rstrip("/")
+                    elif k.strip() == "WORKER_LOG_TOKEN":
+                        token = token or v.strip()
+        if not (base and token):
+            return
+        from urllib.parse import quote
+        urllib.request.urlopen(
+            urllib.request.Request(
+                f"{base}/api/portal-automation/worker/capture/{token}"
+                f"?name={quote(name or p.name)}",
+                data=p.read_bytes(), method="POST"),
+            timeout=25)
+        logger.info("uploaded capture %s", name or p.name)
+    except Exception:
+        pass
+
+
 # Standard Windows install locations for REAL Google Chrome — checked when the
 # `channel="chrome"` lookup misses (e.g. a per-user install the worker's service
 # account can't see via the registry). Harel's F5 edge rejects bundled Chromium,

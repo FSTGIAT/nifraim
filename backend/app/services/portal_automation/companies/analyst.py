@@ -343,6 +343,18 @@ class AnalystPortal(BasePortalAutomation):
                     break
 
         if srv["seen"] and srv["status"] and srv["status"] >= 400:
+            # Ship the picture, not just the prose. A captcha rejection paints
+            # nothing, so this mostly proves the FORM WAS FILLED and no visible
+            # challenge appeared — which is exactly the thing prose cannot settle.
+            try:
+                shot = SCREENSHOT_ROOT / "analyst_login_rejected.png"
+                await self._safe_screenshot(page, shot)
+                await self._dump_page_state(page, shot)
+                from app.services.portal_automation.runner import _upload_capture
+                _upload_capture(shot, "analyst_login_rejected.png")
+                _upload_capture(shot.with_suffix(".txt"), "analyst_login_rejected.txt")
+            except Exception:
+                pass
             _b = (srv["body"] or "").strip()
             _hint = ""
             if "ecaptcha" in _b or "aptcha" in _b:
@@ -1224,6 +1236,12 @@ class AnalystPortal(BasePortalAutomation):
                     _worker_note(f"analyst DOWNLOAD FAILED — dom snapshot failed: {_e}")
                 except Exception:
                     pass
+            try:
+                shot = SCREENSHOT_ROOT / f"{run_id}_nav_4_after_export.png"
+                from app.services.portal_automation.runner import _upload_capture
+                _upload_capture(shot, "analyst_download_failed.png")
+            except Exception:
+                pass
             raise RuntimeError(
                 f"אנליסט: לא ירד קובץ נפרעים תקין — בדוק "
                 f"{run_id}_nav_2_report_type.txt / _nav_3_dates.txt / _nav_4_after_export.txt"

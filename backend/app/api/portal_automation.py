@@ -1333,6 +1333,44 @@ async def worker_request_update(
 # Public, token-in-URL (phone_forward_token). The local worker + its installer
 # POST diagnostics here; we echo them to the app log (visible in `railway logs`)
 # even when the worker can't reach the DB. Never leaks whether a token is valid.
+@router.post("/worker/capture/{token}")
+async def worker_capture(token: str, request: Request, name: str = "capture.png",
+                         db: AsyncSession = Depends(get_db)):
+    """Accept a SCREENSHOT (or .txt/.html dump) from the local worker.
+
+    The plugins already screenshot aggressively, but those files land on the
+    AGENT's disk — unreachable from here, and the /_debug/screenshots endpoints
+    serve the cloud container, not the worker. So a run that gets stuck can only
+    be described in text, and today that cost real time: analyst sat on /lobby
+    for several cycles and the cause (a "סוכן יקר" modal whose backdrop ate every
+    click) was only found when the agent sent a screenshot by hand.
+
+    Uploading them puts the picture where it can actually be looked at, via the
+    existing GET /_debug/screenshots[/{name}].
+    """
+    from app.services.portal_automation.runner import SCREENSHOT_ROOT
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == _clean_token(token))
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+    from pathlib import Path as _P2
+    safe = re.sub(r"[^A-Za-z0-9._\-]", "_", _P2(name).name)[:120]
+    if not safe.endswith((".png", ".txt", ".html")):
+        safe += ".png"
+    data = await request.body()
+    if not data or len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="empty or too large")
+    try:
+        SCREENSHOT_ROOT.mkdir(parents=True, exist_ok=True)
+        (SCREENSHOT_ROOT / safe).write_bytes(data)
+    except Exception as exc:
+        logger.warning("worker capture save failed: %s", exc)
+        raise HTTPException(status_code=500, detail="save failed")
+    logger.warning("WORKER-CAPTURE [%s]: %s (%d bytes)", user.email, safe, len(data))
+    return {"saved": safe, "bytes": len(data)}
+
+
 @router.post("/worker/log/{token}")
 async def worker_log(token: str, request: Request, db: AsyncSession = Depends(get_db)):
     user = (await db.execute(
