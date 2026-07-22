@@ -160,26 +160,24 @@ class AnalystPortal(BasePortalAutomation):
         # No synthetic "warm-up" browsing (that was disabled for Mor on
         # evidence); this only makes the real interaction look like one.
         async def _glide_click(sel: str) -> None:
-            try:
-                box = await page.locator(sel).first.bounding_box()
-            except Exception:
-                box = None
-            if not box:
-                await page.click(sel)
-                return
-            tx = box["x"] + box["width"] / 2
-            ty = box["y"] + box["height"] / 2
-            try:
-                cur = getattr(self, "_ptr", (tx - 260, ty - 140))
-                for i in range(1, 7):                     # 6-step path, eased
-                    f = i / 6
-                    await page.mouse.move(cur[0] + (tx - cur[0]) * f,
-                                          cur[1] + (ty - cur[1]) * f)
-                    await page.wait_for_timeout(45 + i * 12)
-                self._ptr = (tx, ty)
-                await page.mouse.click(tx, ty)
-            except Exception:
-                await page.click(sel)
+            """Plain click — deliberately NOT a synthetic mouse path.
+
+            This used to glide the pointer over 6 eased steps before clicking, on
+            the hypothesis that "keystrokes with no pointer movement" looked like
+            a bot. That hypothesis was never measured, and the evidence now runs
+            against it. Same portal, same credentials, same Edge, same minute:
+
+                plain page.click()      -> 200 + OTP SMS sent      (dev box)
+                6-step synthetic glide  -> 400 "Recaptcha validation failed"
+                                           (agent's worker, cold profile, Edge)
+
+            A perfectly linear path with fixed 45/57/69ms dwells is arguably a
+            STRONGER bot signal than a normal click, which already dispatches
+            real mousedown/mouseup. Playwright's click is what was proven to
+            pass, so that is what ships. Do not re-add the glide without a
+            measurement showing it helps.
+            """
+            await page.click(sel)
 
         # Angular Material: matinput controls stay ng-pristine/ng-invalid under
         # page.fill(), keeping the submit disabled — drive real KEYSTROKES.
@@ -227,19 +225,9 @@ class AnalystPortal(BasePortalAutomation):
                 "אנליסט: לא נמצאו שדות ת\"ז/טלפון בטופס ההתחברות — בדוק analyst_login.txt/html"
             )
 
-        # A beat before submitting, with the pointer moving. Firing the click in
-        # the same tick as the final keystroke is the most machine-like moment in
-        # the whole flow — a person's hand travels to the button and their eyes
-        # check the form first. This costs ~1.5s and gives the scorer a plausible
-        # pre-submit interaction instead of an instantaneous one.
-        try:
-            _p = getattr(self, "_ptr", (400, 400))
-            for dx, dy in ((40, 25), (-30, 45), (55, -20)):
-                await page.mouse.move(_p[0] + dx, _p[1] + dy)
-                await page.wait_for_timeout(180)
-            self._ptr = (_p[0] + 55, _p[1] - 20)
-        except Exception:
-            pass
+        # A short settle before submitting. No synthetic pointer wiggle — see
+        # _glide_click: the manufactured mouse path correlated with the captcha
+        # rejection, while a plain click passed.
         await page.wait_for_timeout(700)
 
         # "שלחו לי קוד" → fires the SMS (otp_since is anchored by the runner BEFORE
