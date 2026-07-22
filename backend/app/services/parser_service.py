@@ -1219,6 +1219,15 @@ def _parse_analyst_nifraim(df: pd.DataFrame) -> dict:
                     v = v[:-2]
                 record[fld] = v
 
+        # Leading zeros: the SAME person exists in this DB as both '50052083'
+        # (מור, מיטב) and '050052083' (הפניקס), so an unnormalised id silently
+        # fails to match half the companies. CLAUDE.md's rule is to strip.
+        # Verified: analyst's תז 50052083 is יחזקאל קר, already present from
+        # three other insurers — so this column really is the national ת"ז and
+        # the comparison keys on it.
+        if record.get("id_number"):
+            record["id_number"] = record["id_number"].lstrip("0") or "0"
+
         if record.get("balance"):
             record["month_end_balance"] = record["balance"]
 

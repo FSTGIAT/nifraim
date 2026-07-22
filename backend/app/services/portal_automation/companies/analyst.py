@@ -46,9 +46,22 @@ PORTAL_URL = "https://agent.analyst.co.il/auth/login"
 class AnalystPortal(BasePortalAutomation):
     portal_kind = "analyst"
     company_label = "אנליסט"
-    # Ship OUT of the run-all batch until a single-run e2e is green — a half-working
-    # new plugin must not break kiko's whole batch. Flip to True after verification.
-    include_in_batch = False
+    # IN the run-all batch (2026-07-22). The gate the old comment asked for is
+    # met: a single run went login -> OTP -> modal -> menu -> report type ->
+    # agents -> readonly date pickers -> file, finishing `success` with
+    # "אנליסט עמלות 06-2026.xlsx" — and the month stamp only appears when the
+    # date range was CONFIRMED applied.
+    #
+    # EXPECT INTERMITTENT LOGIN FAILURES IN THE BATCH, and do not read them as a
+    # regression. Analyst's captcha refuses this machine roughly 3 attempts in 4;
+    # login retries up to 3x in-run (a rejection sends no SMS and burns no OTP),
+    # which lands around a coin-flip per run. So the batch will report `partial`
+    # with analyst failed a fair share of the time. That is a known trade-off,
+    # taken deliberately: ~60% of batches carrying analyst data beats 0%.
+    # Nothing else is affected — the batch is failure-tolerant, and analyst's OTP
+    # is template-tagged (portal_kind='analyst') so it cannot steal another
+    # company's code.
+    include_in_batch = True
     # MUST be Edge. Analyst's login is captcha-gated (`GetConfiguration` returns
     # `isCaptchaActive: true`) and it refuses automated Chrome. Measured
     # 2026-07-20, same machine/minute/profile/flow, fields verifiably filled in
