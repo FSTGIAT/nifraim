@@ -533,10 +533,27 @@ class AnalystPortal(BasePortalAutomation):
         try:
             removed = await page.evaluate(
                 """() => {
+                    // Remove the DIALOG and its BACKDROP only.
+                    //
+                    // NEVER match `[class*=overlay]` here: that also matches
+                    // `.cdk-overlay-container`, the single host Angular Material
+                    // renders EVERY overlay into — including mat-select panels.
+                    // Deleting it leaves the page looking fine while every
+                    // dropdown silently opens with no options: measured live,
+                    // `mat-select[aria-label="בחירת סוג דוח"]` reported
+                    // aria-expanded=true while `mat-option` count was 0, so the
+                    // report type could never be chosen. Killing the modal
+                    // cannot be allowed to break the form behind it.
                     const sel = 'mat-dialog-container, .cdk-overlay-backdrop, '
-                              + '.cdk-overlay-pane, .modal-backdrop, [class*=overlay]';
+                              + '.modal-backdrop';
                     const n = document.querySelectorAll(sel).length;
                     document.querySelectorAll(sel).forEach(e => e.remove());
+                    // Empty panes left behind by the dialog are safe to drop;
+                    // panes that still hold content are somebody's live UI.
+                    document.querySelectorAll('.cdk-overlay-pane').forEach(p => {
+                        if (!p.querySelector('mat-select-panel, .mat-mdc-select-panel, '
+                                             + 'mat-option, [role=listbox]')) p.remove();
+                    });
                     document.body.classList.remove('cdk-global-scrollblock');
                     document.body.style.overflow = '';
                     return n;
@@ -764,6 +781,93 @@ class AnalystPortal(BasePortalAutomation):
         _HE_MONTHS = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
                       "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
 
+        async def _pick_day(aria: str, yy: int, mm: int, day: int) -> bool:
+            """Set ONE readonly date field by driving its calendar dialog.
+
+            Every selector here comes from the live DOM (observed 2026-07-22 on
+            the real /reports page), not from inference:
+
+              * the input is `readonly` with `data-mat-calendar="mat-datepicker-N"`,
+                so CLICKING IT DOES NOTHING — the calendar opens from the
+                `mat-datepicker-toggle` button beside it. That single fact is why
+                the previous implementation logged "no calendar" every time.
+              * the calendar is a DAY view: cells carry
+                `aria-label="1 בינואר 2026"`, and the header button reads
+                "ינו׳ 2026".
+              * the fields arrive PRE-FILLED (מחודש=1.1.2026, עד חודש=30.6.2026),
+                so a run that fails to set them still exports — silently, over the
+                portal's own default range rather than the month we asked for.
+
+            Navigation reads the first cell's aria-label to learn which month is
+            displayed, then steps next/prev exactly the required number of times —
+            no reliance on the abbreviated header text.
+            """
+            di = page.locator(f"input[aria-label='{aria}']").first
+            if not await di.count():
+                logger.warning("אנליסט: date field %s not found", aria)
+                return False
+            # The toggle sits inside the same mat-form-field as the input.
+            tog = page.locator(
+                f"mat-form-field:has(input[aria-label='{aria}']) mat-datepicker-toggle button"
+            ).first
+            if not await tog.count():
+                tog = page.locator("mat-datepicker-toggle button").first
+            try:
+                await tog.click(timeout=6000)
+                await page.wait_for_timeout(800)
+            except Exception as e:
+                logger.warning("אנליסט: %s toggle click failed: %s", aria, e)
+                return False
+
+            cal = page.locator(".mat-datepicker-content, mat-calendar").first
+            try:
+                await cal.wait_for(state="visible", timeout=6000)
+            except Exception:
+                logger.warning("אנליסט: %s calendar did not open", aria)
+                return False
+
+            want = f"{day} ב{_HE_MONTHS[mm - 1]} {yy}"
+            for _ in range(30):
+                cell = page.locator(f".mat-calendar-body-cell[aria-label='{want}']").first
+                if await cell.count():
+                    await cell.click(timeout=3000)
+                    await page.wait_for_timeout(600)
+                    break
+                # Which month is on screen? Read it off the first cell.
+                try:
+                    first = await page.locator(
+                        ".mat-calendar-body-cell").first.get_attribute("aria-label")
+                except Exception:
+                    first = None
+                cur = None
+                if first:
+                    for idx, nm in enumerate(_HE_MONTHS, start=1):
+                        if f"ב{nm} " in first:
+                            try:
+                                cur = (int(first.strip().split()[-1]), idx)
+                            except Exception:
+                                cur = None
+                            break
+                if not cur:
+                    break
+                delta = (yy * 12 + mm) - (cur[0] * 12 + cur[1])
+                if delta == 0:
+                    break
+                nav = (".mat-calendar-next-button" if delta > 0
+                       else ".mat-calendar-previous-button")
+                try:
+                    await page.locator(nav).first.click(timeout=2500)
+                    await page.wait_for_timeout(350)
+                except Exception:
+                    break
+
+            got = (await di.input_value()) or ""
+            # Live format is d.m.yyyy ("1.1.2026"); accept / as a separator too.
+            norm = "." + got.replace("/", ".").strip() + "."
+            ok = bool(got) and str(yy) in got and f".{mm}." in norm
+            logger.info("אנליסט: %s → %d.%d.%d ⇒ %r (ok=%s)", aria, day, mm, yy, got, ok)
+            return ok
+
         async def _pick_month(aria: str, yy: int, mm: int, want_last: bool = False) -> bool:
             """Drive ONE readonly month picker through its calendar dialog.
 
@@ -871,8 +975,13 @@ class AnalystPortal(BasePortalAutomation):
             the NEXT month (01/07/2026), which on a month picker is a different,
             wrong month.
             """
-            ok_from = await _pick_month("מחודש", yy, mm, want_last=False)
-            ok_to = await _pick_month("עד חודש", yy, mm, want_last=True)
+            # Day range over the whole target month: 1 -> last. The live fields
+            # read "1.1.2026" / "30.6.2026", i.e. d.m.yyyy days, matching the
+            # operator's "01/06/26 - 30/06/26".
+            import calendar as _cal
+            _last_day = _cal.monthrange(yy, mm)[1]
+            ok_from = await _pick_day("מחודש", yy, mm, 1)
+            ok_to = await _pick_day("עד חודש", yy, mm, _last_day)
             if not (ok_from and ok_to):
                 # Report the calendar's own DOM once, so a miss here is fixable
                 # without another blind run.
