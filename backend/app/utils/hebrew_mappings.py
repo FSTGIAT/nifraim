@@ -208,6 +208,34 @@ MEITAV_NIFRAIM_COLUMNS = {
 # 'דנ"ח ברוטו' + 'סוג עמלה' are unique to the Meitav export.
 MEITAV_NIFRAIM_SIGNATURE = {'דנ"ח ברוטו', "סוג עמלה"}
 
+# אנליסט (Analyst) — "עמלות סוכנים" report, downloaded by companies/analyst.py.
+# Gemel/pension house, so this is accumulation-based נפרעים: balance = יתרה,
+# commission = עמלה לתשלום לסוכנות. Columns captured from a real export
+# (2026-07-22), sheet "עמלות", 27 columns.
+#
+# Two traps in this file:
+#   * the member's ID is "תז" (no dots) while "עמית" is the member's NAME —
+#     the reverse of most exports, where ת.ז sits beside שם עמית.
+#   * "חשבון" is a composite like "5036-000-009416642"; the plain account
+#     number is "קוד חשבון". The composite is kept as the policy/fund id
+#     because it is what the portal shows the agent.
+ANALYST_NIFRAIM_COLUMNS = {
+    "תז": "id_number",
+    "עמית": "full_name",
+    "חשבון": "fund_policy_number",
+    "מסלול": "product",
+    "שם סוכן": "agent_name",
+    "מס סוכנות": "agent_number",
+    "יתרה": "balance",
+    "עמלה לתשלום לסוכנות": "commission_paid",
+    "דנח": "management_fee",
+    "תאריך הצטרפות": "sign_date",
+    "שיערוך": "processing_date",
+}
+# "עמלה לתשלום לסוכנות" + "דנח שנגבה" appear together only in the Analyst
+# export; "יתרה"/"מסלול" alone are far too common to key on.
+ANALYST_NIFRAIM_SIGNATURE = {"עמלה לתשלום לסוכנות", "דנח שנגבה"}
+
 # Column mappings for Phoenix Insurance Commission Report (נפרעים הפניקס ביטוח)
 PHOENIX_INSURANCE_NIFRAIM_COLUMNS = {
     "תז המבוטח": "id_number",

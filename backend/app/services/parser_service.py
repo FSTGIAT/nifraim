@@ -17,6 +17,8 @@ from app.utils.hebrew_mappings import (
     MENORA_COLUMNS,
     ALTSHULER_COLUMNS,
     YELIN_NIFRAIM_COLUMNS,
+    ANALYST_NIFRAIM_COLUMNS,
+    ANALYST_NIFRAIM_SIGNATURE,
     MEITAV_NIFRAIM_COLUMNS,
     MEITAV_NIFRAIM_SIGNATURE,
     PHOENIX_INSURANCE_NIFRAIM_COLUMNS,
@@ -298,6 +300,10 @@ def detect_format(columns: list[str], filename: str | None = None) -> str:
         return "menora"
     if col_set & ALTSHULER_SIGNATURE:
         return "altshuler"
+    # Analyst before the looser `&` checks: it needs BOTH columns, so it is the
+    # more specific signature and must not be shadowed (CLAUDE.md: specific first).
+    if ANALYST_NIFRAIM_SIGNATURE.issubset(col_set):
+        return "analyst_nifraim"
     if col_set & YELIN_NIFRAIM_SIGNATURE:
         return "yelin_nifraim"
 
@@ -331,6 +337,7 @@ def detect_format(columns: list[str], filename: str | None = None) -> str:
 _PRODUCTION_FORMATS = {"production"}
 _COMMISSION_FORMATS = {
     "nifraim", "hachshara_nifraim", "menora", "altshuler", "yelin_nifraim",
+    "analyst_nifraim",
     "meitav_nifraim",
     "harel_savings_nifraim", "harel_nifraim",
     "clal_life_nifraim", "clal_health_nifraim",
@@ -661,6 +668,8 @@ def parse_excel(
         return _parse_altshuler(df)
     elif file_format == "yelin_nifraim":
         return _parse_yelin_nifraim(df)
+    elif file_format == "analyst_nifraim":
+        return _parse_analyst_nifraim(df)
     elif file_format == "meitav_nifraim":
         return _parse_meitav_nifraim(df)
     elif file_format == "harel_nifraim":
@@ -1152,6 +1161,78 @@ def _parse_altshuler(df: pd.DataFrame) -> dict:
     return {
         "format": "altshuler",
         "company_source": "אלטשולר",
+        "records": records,
+    }
+
+
+def _parse_analyst_nifraim(df: pd.DataFrame) -> dict:
+    """Parse the אנליסט "עמלות סוכנים" report (companies/analyst.py).
+
+    Gemel/pension house, so accumulation-based נפרעים:
+    balance = יתרה, commission = עמלה לתשלום לסוכנות.
+
+    Two traps in this export, both the reverse of the usual convention:
+      * "תז" is the member's ID while "עמית" is the member's NAME. Most reports
+        pair ת.ז with שם עמית, so mapping by habit puts the name in id_number
+        and every row is then dropped by the id filter.
+      * "חשבון" is a composite ("5036-000-009416642"); the bare account number
+        is "קוד חשבון". The composite is kept as fund_policy_number because it
+        is the identifier the portal shows the agent.
+
+    The period is NOT inside the file — the agent picks a date range and the
+    plugin encodes it in the filename ("אנליסט עמלות 06-2026.xlsx"), which
+    detect_period_month reads first. So no period_month is returned here; the
+    filename is the authority, and it is only month-stamped when the plugin
+    CONFIRMED the range applied.
+    """
+    records = []
+
+    for _, row in df.iterrows():
+        record = {}
+        for heb_col, eng_field in ANALYST_NIFRAIM_COLUMNS.items():
+            if heb_col not in df.columns:
+                continue
+            val = row.get(heb_col)
+            if eng_field in ("balance", "commission_paid", "management_fee"):
+                record[eng_field] = parse_numeric(val)
+            elif eng_field in ("sign_date", "processing_date"):
+                record[eng_field] = parse_date(val)
+            else:
+                record[eng_field] = (
+                    str(val).strip()
+                    if val is not None and not (isinstance(val, float) and pd.isna(val))
+                    else None
+                )
+
+        full_name = record.pop("full_name", None)
+        if full_name and isinstance(full_name, str):
+            parts = full_name.strip().split(maxsplit=1)
+            record["first_name"] = parts[0] if parts else None
+            record["last_name"] = parts[1] if len(parts) > 1 else None
+
+        # Excel hands back numeric IDs as floats — "50052083.0" would never match
+        # a production row.
+        for fld in ("id_number", "agent_number", "fund_policy_number"):
+            if record.get(fld):
+                v = str(record[fld])
+                if v.endswith(".0"):
+                    v = v[:-2]
+                record[fld] = v
+
+        if record.get("balance"):
+            record["month_end_balance"] = record["balance"]
+
+        record["receiving_company"] = "אנליסט"
+        record["reconciliation_status"] = "no_data"
+
+        # Totals/metadata rows carry no ID. "-" is Analyst's own empty marker.
+        idv = record.get("id_number")
+        if idv and idv not in ("nan", "None", "", "-"):
+            records.append(record)
+
+    return {
+        "format": "analyst_nifraim",
+        "company_source": "אנליסט",
         "records": records,
     }
 
