@@ -400,17 +400,42 @@ class AnalystPortal(BasePortalAutomation):
                     continue
 
         await page.wait_for_timeout(400)
-        # "כניסה" — the OTP submit lives inside the OTP <form>. Scope to the form so
-        # a background submit button isn't clicked instead (the Mor lesson).
-        # Scoped to the OTP form so it can't hit the login form's own submit button
-        # behind it (the Mor lesson). NO bare `button:has-text('כניסה')` /
-        # `button[type=submit]` fallbacks — those could match the still-mounted login
-        # view's "שלחו לי קוד" submit and silently no-op the OTP.
-        clicked = await self._click_first_visible(page, [
-            "form button.btn-submit[type='submit']",
-            "form button[type='submit']:has-text('כניסה')",
-            "button.btn-submit:has-text('כניסה')",
-        ], timeout=6000)
+        # Some OTP widgets submit themselves once the last digit lands. If that
+        # already happened, clicking again re-submits a consumed code and the
+        # server rejects it — which looks exactly like a wrong code.
+        if "/auth/" not in (page.url or ""):
+            logger.info("אנליסט: OTP auto-submitted (url=%s) — not clicking again", page.url)
+            clicked = True
+        else:
+            # "כניסה" — the OTP submit. The scoped selectors below are tried first
+            # (a `form`-scoped or `.btn-submit` match is unambiguous), then a BARE
+            # `button:has-text('כניסה')`.
+            #
+            # The bare selector used to be banned here, carrying Mor's lesson that
+            # a background login button could be hit instead. That reasoning does
+            # not transfer: analyst puts the OTP on its OWN ROUTE (/auth/otp), so
+            # the login view is unmounted. The live DOM at that URL contains
+            # exactly two buttons — ["", "כניסה"] — with no "שלחו לי קוד" to hit
+            # by mistake.
+            #
+            # Cost of the ban, measured 2026-07-22: login passed, the SMS arrived
+            # and was consumed within 0.3s, the six boxes were filled and verified
+            # — and then all three scoped selectors missed, the Enter fallback did
+            # not submit, and the run died with "קוד ה-OTP נדחה (עדיין במסך הקוד)".
+            # A correct code was thrown away because the button was never pressed.
+            clicked = await self._click_first_visible(page, [
+                "form button.btn-submit[type='submit']",
+                "form button[type='submit']:has-text('כניסה')",
+                "button.btn-submit:has-text('כניסה')",
+                # Safe here: /auth/otp is its own route (guarded below).
+                "button:has-text('כניסה')",
+                "button[type='submit']",
+            ] if "otp" in (page.url or "").lower() else [
+                "form button.btn-submit[type='submit']",
+                "form button[type='submit']:has-text('כניסה')",
+                "button.btn-submit:has-text('כניסה')",
+            ], timeout=6000)
+            logger.info("אנליסט: OTP submit clicked=%s at %s", clicked, page.url)
         if not clicked:
             try:
                 await page.keyboard.press("Enter")
