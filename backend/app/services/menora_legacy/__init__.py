@@ -60,6 +60,28 @@ def is_menora_legacy_zip(zip_bytes: bytes) -> bool:
         return False
 
 
+def _is_cancelled_bundle(arj_name: str) -> bool:
+    """True for the מבוטלות (cancelled-policies) inner bundle, which must be
+    excluded from production. Matches the Hebrew word or the ASCII "-MM" code
+    (active production is "-MP")."""
+    if "מבוטל" in arj_name:
+        return True
+    return re.search(r"-MM\d", arj_name) is not None
+
+
+def _snapshot_sort_key(arj_name: str) -> str:
+    """Sort key for ordering snapshots newest-first. Menora names bundles
+    `<report>-<code>-<DD_MM_YYYY>-<HH_MM_SS>.ARJ`; turn the date/time tail into
+    a `YYYYMMDDHHMMSS` string that sorts chronologically. Undated names sort
+    oldest (empty key) so any dated snapshot's data wins the policy-level dedup."""
+    m = re.search(r"(\d{2})_(\d{2})_(\d{4})(?:-(\d{2})_(\d{2})_(\d{2}))?", arj_name)
+    if not m:
+        return ""
+    d, mo, y = m.group(1), m.group(2), m.group(3)
+    hms = "".join(g or "00" for g in (m.group(4), m.group(5), m.group(6)))
+    return f"{y}{mo}{d}{hms}"
+
+
 def parse_menora_legacy_zip(zip_bytes: bytes) -> dict:
     """Parse a Menora legacy production ZIP.
 
@@ -83,6 +105,31 @@ def parse_menora_legacy_zip(zip_bytes: bytes) -> dict:
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as outer:
         arj_names = [n for n in outer.namelist() if n.lower().endswith(".arj")]
+        # Skip the "מבוטלות" (cancelled-policies) bundle: Menora ships it in the
+        # same production zip as the active "פרט" bundle, but its rows are dead
+        # clients that no longer exist and must not enter production. The bundle
+        # is tagged both by the Hebrew word and by the ASCII "-MM" marker
+        # (active = "-MP"); match either so a garbled-encoding name still filters.
+        # (QA 2026-07-23: "we shouldn't have downloaded the חיים מבוטל file".)
+        kept = [n for n in arj_names if not _is_cancelled_bundle(n)]
+        skipped = [n for n in arj_names if _is_cancelled_bundle(n)]
+        if skipped:
+            logger.info(
+                "menora_legacy: skipping %d cancelled (מבוטלות) bundle(s): %s",
+                len(skipped), [n[:40] for n in skipped],
+            )
+        # De-duplicate ACROSS snapshots at the policy level. Menora ships the
+        # same report for several months in one zip (e.g. פרט dated 24_05 AND
+        # 10_06 — 71 of 73 clients identical); parsing every snapshot naively
+        # double-counts active clients into production (QA 2026-07-23:
+        # "downloaded each customer in duplicate", flagged for Migdal, present
+        # here too). We keep one row per (id_number, policy), preferring the
+        # NEWEST snapshot's data — so a client that appears only in the older
+        # snapshot is still kept (a policy-level union), rather than dropping
+        # whole older bundles which would silently lose those clients.
+        kept.sort(key=_snapshot_sort_key, reverse=True)  # newest bundle first
+        arj_names = kept
+        seen_policies: set[tuple] = set()
         for arj_name in arj_names:
             m = re.search(r"(\d{2})_(\d{2})_(\d{4})", arj_name)
             if m:
@@ -93,10 +140,15 @@ def parse_menora_legacy_zip(zip_bytes: bytes) -> dict:
             try:
                 with zipfile.ZipFile(io.BytesIO(inner_bytes)) as inner:
                     inner_records = _parse_inner_bundle(inner, source_name=arj_name)
-                    records.extend(inner_records)
             except zipfile.BadZipFile:
                 logger.warning("menora_legacy: %s is not a valid ZIP, skipping", arj_name)
                 continue
+            for rec in inner_records:
+                key = (rec.get("id_number"), rec.get("fund_policy_number"))
+                if key in seen_policies:
+                    continue
+                seen_policies.add(key)
+                records.append(rec)
 
     if latest_date:
         for r in records:
@@ -189,13 +241,18 @@ def _parse_p_line(line: str) -> dict | None:
         pos 12-14  : '008'
         pos 15-27  : agent code embedded (e.g. ...0069 = agent 0069)
         pos 28-37  : ten zeros
-        pos 38-47  : 10-digit (9-digit id_number + 1 check digit)
+        pos 38-48  : 10-digit block = 1 pad zero + 9-digit ת"ז (incl. check digit)
         pos 48-55  : 8-digit birthdate YYYYMMDD
         pos 56-78  : Hebrew name (22 chars, space-padded)
+
+    NOTE: the id block is 10 chars wide ([38:48]); the check digit lives at
+    position 47. A previous `line[38:47]` slice was one char short and silently
+    dropped the final digit of every ת"ז (QA 2026-07-23: "missing the last
+    digit"). Verified against real P.TXT: [38:48]='0022389456' → id 22389456.
     """
     try:
         policy_number = line[4:11].strip()
-        id_raw = line[38:47]  # 9-digit + check
+        id_raw = line[38:48]  # full 10-char block; lstrip handles the pad zero
         dob_raw = line[48:56]
         name_raw = line[56:78]
 

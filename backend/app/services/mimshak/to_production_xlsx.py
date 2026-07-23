@@ -119,12 +119,21 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
     insurance_rows: list[list] = []
     coverage_rows: list[list] = []
     agent_num = None
+    # Policy ids already emitted from the DAT (active-holdings) pass. The .MBT
+    # register passes below add only the policies the DAT did NOT already carry,
+    # so a life policy present in both sources is emitted once — not duplicated.
+    # (QA 2026-07-23: "Migdal downloaded each customer in duplicate." The dup was
+    # exactly the DAT life policies re-emitted verbatim by the LIFE.MBT pass.)
+    seen_dat_policies: set[str] = set()
 
     for policy_elem in root.iter():
         if _local_tag(policy_elem.tag) != "HeshbonOPolisa":
             continue
 
         policy_leaves = _collect_leaves(policy_elem)
+        dat_policy_id = (policy_leaves.get("MISPAR-POLISA-O-HESHBON") or "").lstrip("0")
+        if dat_policy_id:
+            seen_dat_policies.add(dat_policy_id)
 
         # Resolve customer for this policy via NetuneiAmitOmevutach/MISPAR-ZIHUY
         pol_cid = None
@@ -285,9 +294,8 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
     }
 
     if covrlife_path.exists():
-        # Dedup COVRLIFE only against LIFEHLTH (not DAT) — the 6 life policies
-        # that live in BOTH DAT and COVRLIFE should be emitted twice to match
-        # Surense's product count (which lists each source's policies).
+        # Dedup COVRLIFE against DAT + LIFEHLTH: a policy already emitted by
+        # either source is not re-emitted here, so no (id, policy) row repeats.
         seen_covrlife: set[str] = set()
         for raw_line in _read_text(covrlife_path).splitlines():
             if not raw_line.strip():
@@ -301,7 +309,9 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
             if policy_ref.startswith("01") and len(policy_ref) == 11:
                 policy_ref = policy_ref[2:]
             policy_id = policy_ref.lstrip("0") or policy_ref
-            if not policy_id or policy_id in seen_covrlife or policy_id in seen_lifehlth_policies:
+            if (not policy_id or policy_id in seen_covrlife
+                    or policy_id in seen_lifehlth_policies
+                    or policy_id in seen_dat_policies):
                 continue
             customer_short = cells[18].lstrip("0") if cells[18] else ""
             if primary_customers and customer_short not in primary_customers:
@@ -340,9 +350,13 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
             from .mbt import _read_text, _split_pipe
         except ImportError:
             from mbt import _read_text, _split_pipe  # type: ignore
-        # No cross-source dedup — LIFE.MBT entries duplicate the DAT snapshot's
-        # life policies by design (register vs active-holdings view). Surense
-        # emits both; we now match that.
+        # Dedup against the DAT pass: LIFE.MBT is the full register and repeats
+        # the DAT snapshot's currently-active life policies verbatim. Emitting
+        # both produced one duplicate row per active life policy (same id + same
+        # policy number) — a true duplicate in the reconciliation view, not two
+        # distinct products. Only add LIFE.MBT policies the DAT didn't already
+        # emit (paid-up / dormant policies DAT drops), which is what this loop's
+        # header always described. (QA 2026-07-23.)
         seen_life: set[str] = set()
         for raw_line in _read_text(life_path).splitlines():
             if not raw_line.strip():
@@ -351,7 +365,7 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
             if len(cells) < 20:
                 continue
             policy_id = (cells[10].lstrip("0") if cells[10] else "") or cells[10]
-            if not policy_id or policy_id in seen_life:
+            if not policy_id or policy_id in seen_life or policy_id in seen_dat_policies:
                 continue
             seen_life.add(policy_id)
             customer_short = _normalize_customer_id(cells[11])
