@@ -521,6 +521,57 @@ class HarelSavingsPortal(_HarelReportPortal):
             # merged file (harel_commissions never runs standalone in a batch).
             self.partial_errors.append(f"נפרעים: {str(e)[:120]}")
 
+        # ── Also grab the VAULT (כספת) production reports on the SAME OTP ──────
+        # The agents portal only exposes savings production (גמל/מגוון) +
+        # חיים/בריאות נפרעים. The חיים/בריאות PRODUCTION reports
+        # ("ר.ת.-מורחב חיים/בריאות פוליסות/ביטוחים") live ONLY in the harelsafe
+        # vault. HarelPortal.download_reports does the vault's password-only
+        # second login (NO extra OTP — Stage 1 APM/OTP already happened in
+        # login()) and downloads every report type. We reshape each raw file
+        # into the production schema (same _extract_production_rows path גמל/מגוון
+        # use) so they join the unified production view instead of polluting
+        # נפרעים. Best-effort: the vault needs the vault password
+        # (self._safe_password, split from the "<agents>|<vault>" credential; it
+        # falls back to the agents password when no "|" is present). Losing this
+        # leg must not drop the agents-portal results. (QA 2026-07: kiko's 4
+        # חיים/בריאות מורחב production reports were never fetched.)
+        try:
+            from app.services.portal_automation.companies.harel import HarelPortal
+            vault_raw = await HarelPortal.download_reports(
+                self, page, download_dir, username=username
+            )
+            for raw in (vault_raw or []):
+                # Surface the real header of each vault file to Railway (WORKER-
+                # LOG) so its format is visible without pulling files off the
+                # worker — this is what lets the parser/category be finalised.
+                try:
+                    import pandas as _pd
+                    _cols = list(_pd.read_excel(raw, header=None, nrows=1, dtype=str).iloc[0])
+                    _worker_note(f"harel vault {raw.name}: cols={[str(c)[:22] for c in _cols][:14]}")
+                except Exception:
+                    pass
+                # Reshape → production (distinct company_source per report type).
+                try:
+                    label = raw.stem.replace("הראל - ", "").strip() or "מורחב"
+                    company_source = f"הראל {label}"
+                    rows = _extract_production_rows(
+                        raw, company_source, run_id, SCREENSHOT_ROOT, account=""
+                    )
+                    if rows:
+                        p = _write_production_xlsx(
+                            rows, company_source, period_label, download_dir
+                        )
+                        results.append(p)
+                        _logger.info("harel vault: %s → %d rows", company_source, len(rows))
+                    else:
+                        self.partial_errors.append(f"כספת {label}: 0 שורות")
+                except Exception as e:
+                    _logger.warning("harel vault reshape failed for %s: %s", raw.name, e)
+                    self.partial_errors.append(f"כספת {raw.name}: {str(e)[:120]}")
+        except Exception as e:
+            _logger.warning("harel: vault grab failed (agents-portal results kept): %s", e)
+            self.partial_errors.append(f"כספת (ר.ת. מורחב): {str(e)[:120]}")
+
         if not results:
             raise RuntimeError(
                 f"harel: לא הופקו קבצים (פרודוקציה+נפרעים). בדוק דאמפים תחת {run_id}_*"
