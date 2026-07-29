@@ -37,6 +37,23 @@
           <span class="hero-stat-pct" :style="{ color: item.color }">{{ pctOf(item.count) }}%</span>
         </div>
       </div>
+
+      <!-- Same distribution per COMPANY. The merged נפרעים file covers every
+           company, so "how many are unpaid" is only half the answer — this
+           says at which company. Click a segment to drill straight in. -->
+      <div v-if="companyStatusRows.length > 1" class="hero-bycompany">
+        <div class="hbc-head">
+          <h3 class="hbc-title">לפי חברה</h3>
+          <span class="hbc-hint">לחצו על עמודה לצלילה לחברה</span>
+        </div>
+        <apexchart
+          type="bar"
+          :height="Math.max(190, companyStatusRows.length * 38 + 70)"
+          :options="companyStatusOptions"
+          :series="companyStatusSeries"
+        />
+        <p class="hbc-note">לקוח המחזיק מוצרים בכמה חברות נספר בכל אחת מהן.</p>
+      </div>
     </div>
 
     <!-- Company filter (when multiple commission files) -->
@@ -365,6 +382,7 @@ import { useAuthStore } from '../../stores/auth.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
+import { normalizeCompany } from '../../utils/companyNorm.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
 import AiInsightCard from '../workspace/AiInsightCard.vue'
 import AiConversationSheet from '../workspace/AiConversationSheet.vue'
@@ -704,6 +722,106 @@ const statusItems = computed(() => [
 const statusTotal = computed(() =>
   statusItems.value.reduce((sum, s) => sum + s.count, 0)
 )
+
+// ── Same distribution, broken down BY COMPANY ────────────────────────────
+// The נפרעים side is now one merged file covering every company, so a single
+// donut answers "how many customers are unpaid" but not "at which company" —
+// which is the actionable half. A customer is counted once per company they
+// hold a product with, so the per-company columns can sum to more than the
+// headline total; that's intended, not double counting.
+const companyStatusRows = computed(() => {
+  const unpaidIds = new Set(effectiveUnpaidCustomers.value.map(c => c.id_number))
+  const map = new Map()
+  const bump = (key, displayName, statusKey) => {
+    if (!map.has(key)) {
+      map.set(key, { company: displayName, matched: 0, only_production: 0, only_commission: 0 })
+    }
+    const row = map.get(key)
+    // Same insurer can arrive under several spellings (short 'מגדל' from the
+    // commission side vs legal 'מגדל חברה לביטוח בע"מ' from the merged
+    // production file). Show the shortest so the axis stays readable.
+    if (displayName.length < row.company.length) row.company = displayName
+    row[statusKey] += 1
+  }
+  for (const c of displayCustomers.value) {
+    // only_production customers with no exposure are excluded from "unpaid"
+    // in the headline, so they must be excluded here too or the two disagree.
+    if (c.match_status === 'only_production' && !unpaidIds.has(c.id_number)) continue
+    const products = [
+      ...(c.production_products || []),
+      ...(c.commission_products || []),
+      ...(c.product_matches?.matched || []),
+      ...(c.product_matches?.unmatched_production || []),
+      ...(c.product_matches?.unmatched_commission || []),
+    ]
+    // `company` FIRST — it is the SHORT brand name, resolved server-side by
+    // `_extract_short_company` from the record's own company column, and it is
+    // consistent across the production and commission sides. `company_full`
+    // is the raw legal name, so preferring it splits one insurer into two
+    // ('מגדל' and 'מגדל חברה לביטוח בע"מ') on this chart.
+    const names = products.map(p => p.company || p.company_full).filter(Boolean)
+    if (!names.length && c.company) names.push(c.company)
+    // Deduplicate on the NORMALIZED key, not the raw string. Two spellings of
+    // one insurer on the same customer would otherwise bump the same bar
+    // twice — that inflated מגדל from 73 customers to 145 on live data.
+    const byKey = new Map()
+    for (const raw of names) {
+      const name = String(raw).trim()
+      if (!name) continue
+      const k = normalizeCompany(name) || name
+      const prev = byKey.get(k)
+      if (!prev || name.length < prev.length) byKey.set(k, name)
+    }
+    if (!byKey.size) {
+      // No company on any of this customer's products. Bucket it rather than
+      // drop it — otherwise the per-company bars quietly total less than the
+      // headline and a customer disappears with no explanation.
+      bump('__none__', 'ללא שיוך חברה', c.match_status)
+    } else {
+      for (const [k, displayName] of byKey) bump(k, displayName, c.match_status)
+    }
+  }
+  return [...map.values()]
+    .map(r => ({ ...r, total: r.matched + r.only_production + r.only_commission }))
+    .filter(r => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+})
+
+const companyStatusSeries = computed(() => [
+  { name: 'נמצא בשניהם', data: companyStatusRows.value.map(r => r.matched) },
+  { name: 'לא שולם', data: companyStatusRows.value.map(r => r.only_production) },
+  { name: 'רק בנפרעים', data: companyStatusRows.value.map(r => r.only_commission) },
+])
+
+const companyStatusOptions = computed(() => ({
+  chart: {
+    type: 'bar', stacked: true, fontFamily: 'Heebo, sans-serif',
+    toolbar: { show: false },
+    events: {
+      dataPointSelection: (_e, _ctx, cfg) => {
+        const row = companyStatusRows.value[cfg.dataPointIndex]
+        const key = ['matched', 'only_production', 'only_commission'][cfg.seriesIndex]
+        if (row) onCompanyStatusClick(row, key)
+      },
+    },
+  },
+  plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '70%' } },
+  colors: statusItems.value.map(s => s.color),
+  xaxis: { categories: companyStatusRows.value.map(r => r.company) },
+  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '12px' } } },
+  legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Heebo, sans-serif' },
+  dataLabels: { enabled: true, style: { fontSize: '11px', fontFamily: 'Heebo, sans-serif' } },
+  tooltip: { y: { formatter: (v) => `${v} לקוחות` } },
+  grid: { borderColor: 'rgba(0,0,0,0.06)' },
+}))
+
+// Clicking a segment filters to that company AND opens that status list —
+// the same drill the donut does, one level more specific.
+function onCompanyStatusClick(row, statusKey) {
+  const src = props.companySources.find(s => fuzzyCompanyMatch(s, row.company))
+  companyFilter.value = src || row.company
+  onLegendClick(statusKey)
+}
 
 // Product breakdown
 const productBreakdown = computed(() => {
@@ -1324,6 +1442,37 @@ function formatCompact(val) {
   gap: 12px;
   justify-content: center;
   margin-top: 12px;
+}
+
+/* Per-company breakdown of the same three statuses */
+.hero-bycompany {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+.hbc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.hbc-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.hbc-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.hbc-note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+@media (max-width: 640px) {
+  .hbc-head { flex-direction: column; gap: 2px; }
 }
 
 .hero-stat {

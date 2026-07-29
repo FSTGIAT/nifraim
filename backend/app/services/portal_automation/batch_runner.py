@@ -683,23 +683,18 @@ async def _compare_merged(
     merged_prod_upload_id: uuid.UUID | None = None,
     held_files_count: int = 0,
 ) -> tuple[list[str], list[str], str | None]:
-    """Run the comparison once per category against the batch's merged
-    production (falling back to the newest active production) and persist a
-    CommissionComparison row per category (so both tabs populate).
+    """Run ONE comparison against the batch's merged production (falling back
+    to the newest active production) and persist a single CommissionComparison.
 
-    Returns (persisted_categories, failed_categories, skip_reason) so run_batch
-    can downgrade the batch status when comparisons are missing AND blame the
-    right side — skip_reason is "no_production" when there was nothing to
-    compare against (not a נפרעים problem), else None."""
+    Returns (persisted, failed, skip_reason) so run_batch can downgrade the
+    batch status when the comparison is missing AND blame the right side —
+    skip_reason is "no_production" when there was nothing to compare against
+    (not a נפרעים problem), else None."""
     from app.models.upload import FileUpload
     from app.models.record import ClientRecord
     from app.models.paying_company import PayingCompany
     from app.models.commission_comparison import CommissionComparison
-    from app.services.comparison_service import compute_comparison
-    from app.services.portal_automation.aggregate import (
-        commission_category_token,
-        NIFRAIM_CATEGORY_GEMEL,
-    )
+    from app.services.comparison_service import MERGED_CATEGORY, compute_comparison
 
     # Prefer the batch's just-merged production upload; otherwise the newest
     # active production. LIMIT 1 so a transient violation of the one-active
@@ -746,65 +741,55 @@ async def _compare_merged(
     )
     paying_names = [p.company_name for p in paying_q.scalars().all()]
 
-    # Split commission records by category token; pass only the matching
-    # category's records to each comparison so cross-category rows don't leak.
-    by_cat = {"gemel_hishtalmut": [], "insurance": []}
-    for rec in comm_dicts:
-        if commission_category_token(rec) == NIFRAIM_CATEGORY_GEMEL:
-            by_cat["gemel_hishtalmut"].append(rec)
-        else:
-            by_cat["insurance"].append(rec)
-
+    # ONE comparison over every נפרעים record in the merged file. This used to
+    # split by category token and persist a row each, which halved the picture
+    # the UI could show; production is now scoped by company coverage inside
+    # compute_comparison.
     persisted: list[str] = []
     failed: list[str] = []
-    for category, recs in by_cat.items():
-        if not recs:
-            continue
+    try:
+        comparison = compute_comparison(prod_dicts, comm_dicts, paying_names)
+        sources = sorted({
+            r.get("receiving_company") for r in comm_dicts if r.get("receiving_company")
+        })
+        comparison["commission_company_sources"] = sources
+        comparison["commission_company_source"] = sources[0] if len(sources) == 1 else None
+        if prod_upload.period_month is not None:
+            comparison["period_month"] = prod_upload.period_month.isoformat()
+        # Parity with compare-with-production (api/comparison.py): how many
+        # held commission files were folded into this comparison.
+        comparison["period_files_count"] = int(held_files_count)
+        comparison["period_files_excluded"] = 0
+
+        row = CommissionComparison(
+            user_id=user_id,
+            category=MERGED_CATEGORY,
+            production_upload_id=prod_upload.id,
+            summary_json=_jsonable(comparison.get("summary") or {}),
+            result_json=_jsonable(comparison),
+            commission_company_sources=_jsonable(sources),
+        )
+        db.add(row)
+        await db.commit()
+        persisted.append(MERGED_CATEGORY)
+
+        # Sync the debts table (drives the insights dashboard + the
+        # company-summary "gap" column), mirroring compare_with_production.
         try:
-            comparison = compute_comparison(
-                prod_dicts, recs, paying_names, category_override=category
-            )
-            sources = sorted({
-                r.get("receiving_company") for r in recs if r.get("receiving_company")
-            })
-            comparison["commission_company_sources"] = sources
-            comparison["commission_company_source"] = sources[0] if len(sources) == 1 else None
-            if prod_upload.period_month is not None:
-                comparison["period_month"] = prod_upload.period_month.isoformat()
-            # Parity with compare-with-production (api/comparison.py): how many
-            # held commission files were folded into this comparison.
-            comparison["period_files_count"] = int(held_files_count)
-            comparison["period_files_excluded"] = 0
-
-            row = CommissionComparison(
-                user_id=user_id,
-                category=category,
+            from app.services.debt_service import sync_debts
+            await sync_debts(
+                db, user_id, comparison,
                 production_upload_id=prod_upload.id,
-                summary_json=_jsonable(comparison.get("summary") or {}),
-                result_json=_jsonable(comparison),
-                commission_company_sources=_jsonable(sources),
+                commission_upload_id=merged_comm_upload_id,
+                category=MERGED_CATEGORY,
             )
-            db.add(row)
             await db.commit()
-            persisted.append(category)
-
-            # Sync the debts table (drives the insights dashboard + the
-            # company-summary "gap" column), mirroring compare_with_production.
-            try:
-                from app.services.debt_service import sync_debts
-                await sync_debts(
-                    db, user_id, comparison,
-                    production_upload_id=prod_upload.id,
-                    commission_upload_id=merged_comm_upload_id,
-                    category=category,
-                )
-                await db.commit()
-            except Exception as de:
-                logger.warning("Batch debt sync (%s) failed: %s", category, de)
-                await db.rollback()
-        except Exception as e:
-            logger.warning("Batch compare (%s) failed: %s", category, e)
+        except Exception as de:
+            logger.warning("Batch debt sync failed: %s", de)
             await db.rollback()
-            failed.append(category)
+    except Exception as e:
+        logger.warning("Batch compare failed: %s", e)
+        await db.rollback()
+        failed.append(MERGED_CATEGORY)
 
     return persisted, failed, None

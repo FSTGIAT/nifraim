@@ -59,6 +59,11 @@ class CommissionRateIn(BaseModel):
     company_name: str
     product: str | None = None
     rate: float
+    # 'single' | 'book' (עמלת ספר) | 'reward' (שיעור תגמול) | 'total' (סה"כ).
+    # Writable so a user can correct a mis-extracted component — the matcher
+    # sums book+reward, so an untagged component is priced as if it were the
+    # whole rate.
+    rate_kind: str | None = None
     payment_frequency: str | None = None
     paid_to: str | None = None
     company_email: str | None = None
@@ -71,6 +76,10 @@ class CommissionRateOut(BaseModel):
     company_name: str
     product: str | None = None
     rate: float
+    # Exposed so the shelf can label the 2–3 rows one agreement line unfolds
+    # into. Without it they render as visually identical duplicates and the
+    # min–max badges silently span a book rate, a reward rate and their sum.
+    rate_kind: str | None = None
     rate_scope: str | None = None
     payment_frequency: str | None
     paid_to: str | None
@@ -79,6 +88,34 @@ class CommissionRateOut(BaseModel):
     effective_to: date | None = None
 
     model_config = {"from_attributes": True}
+
+
+class RateCoverageRow(BaseModel):
+    """One company's agreement coverage over the active production file."""
+
+    company: str
+    records: int
+    contributing: int
+    approximate: int
+    # Priced off the hardcoded DEFAULT_COMMISSION_RATES seed rather than a rate
+    # extracted from the agent's own agreement PDF.
+    seeded: int = 0
+    no_company: int
+    no_rate: int
+    no_base: int
+    matched_via: str
+    expected: float
+    reason: str | None = None
+    reason_label: str | None = None
+
+
+class RateCoverageOut(BaseModel):
+    has_production: bool
+    production_filename: str | None = None
+    total_records: int = 0
+    covered_records: int = 0
+    expected_total: float = 0
+    rows: list[RateCoverageRow] = []
 
 
 # ── Analytics schemas ──

@@ -367,36 +367,18 @@ async def compare_with_production(
     # orchestrator computes + persists + debt-syncs one comparison per
     # category, exactly like the batch flow.
     from app.services.comparison_orchestrator import compute_merged_comparison
-    from app.services.portal_automation.aggregate import (
-        commission_category_token,
-        NIFRAIM_CATEGORY_GEMEL,
-    )
-
     merged = await compute_merged_comparison(db, user.id)
     if merged["skip_reason"] == "no_production":
         raise HTTPException(404, "לא נמצא קובץ פרודוקציה פעיל. יש להעלות קובץ פרודוקציה קודם.")
-    comparisons = merged["comparisons"]
-    if not comparisons:
+    comparison = merged.get("comparison")
+    if not comparison:
         raise HTTPException(400, "ההשוואה לא הופקה — לא נמצאו רשומות נפרעים תואמות")
 
-    # Category to return: explicit request wins; otherwise the dominant
-    # category of the files just uploaded; otherwise whatever exists.
-    if category and category not in comparisons:
-        # The requested tab has no commission rows anywhere — tell the user
-        # instead of silently returning the other category's data.
-        raise HTTPException(
-            400,
-            "לא נמצאו רשומות נפרעים בקטגוריה שנבחרה — ייתכן שהקובץ שייך לקטגוריה השנייה",
-        )
-    chosen = category
-    if not chosen:
-        gemel = sum(
-            1 for r in all_commission_records
-            if commission_category_token(r) == NIFRAIM_CATEGORY_GEMEL
-        )
-        detected = "gemel_hishtalmut" if gemel * 2 >= len(all_commission_records) else "insurance"
-        chosen = detected if detected in comparisons else next(iter(comparisons))
-    return comparisons[chosen]
+    # One merged comparison covering every company and both גמל and ביטוח.
+    # This used to majority-vote the uploaded records into a single category
+    # and return only that half — which mislabelled the minority half of a
+    # merged נפרעים file and hid the rest of the agent's picture.
+    return comparison
 
 
 @router.post("/refresh")
@@ -405,7 +387,7 @@ async def refresh_merged_comparison(
     user: User = Depends(get_current_user),
 ):
     """Recompute + persist the merged all-companies comparison on demand
-    (latest source per company across all stored uploads, per category)."""
+    (latest source per company across all stored uploads)."""
     from app.services.comparison_orchestrator import compute_merged_comparison
 
     merged = await compute_merged_comparison(db, user.id)
@@ -417,24 +399,25 @@ async def refresh_merged_comparison(
 
 @router.get("/insights")
 async def comparison_insights(
-    category: str,
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Always-on insights for the Comparison tab.
 
     Combines:
-        current — live aggregates from the `debts` table for this category
+        current — live aggregates from the `debts` table
         previous — same shape from the row before the latest commission_comparisons,
                    so the dashboard can show MoM deltas the moment a 2nd
                    comparison runs
-        trend — up to 6 most-recent comparison summaries for this category,
-                feeding the per-card sparklines
-    """
-    if category not in {"gemel_hishtalmut", "insurance"}:
-        raise HTTPException(400, "category חייב להיות gemel_hishtalmut או insurance")
+        trend — up to 6 most-recent comparison summaries, feeding the
+                per-card sparklines
 
-    # Live debts summary scoped to the category
+    `category` is accepted for URL compatibility and IGNORED — the comparison
+    is no longer split into גמל/ביטוח, so scoping these aggregates to one of
+    them would report half the agent's debts as if it were all of them.
+    """
+    # Live debts summary — all categories
     debts_q = await db.execute(
         select(
             Debt.status,
@@ -443,7 +426,7 @@ async def comparison_insights(
             func.count(func.distinct(Debt.customer_id_number)).label("customers"),
             func.count(func.distinct(Debt.company_name)).label("companies"),
         )
-        .where(Debt.user_id == user.id, Debt.category == category)
+        .where(Debt.user_id == user.id)
         .group_by(Debt.status)
     )
     by_status: dict[str, dict] = {}
@@ -462,7 +445,7 @@ async def comparison_insights(
             func.count(func.distinct(Debt.customer_id_number)).label("debt_customers"),
             func.count(func.distinct(Debt.company_name)).label("debt_companies"),
         )
-        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+        .where(Debt.user_id == user.id, Debt.status == "open")
     )
     distincts = distinct_q.one()
 
@@ -485,7 +468,7 @@ async def comparison_insights(
             func.count(func.distinct(Debt.customer_id_number)).label("customers"),
             func.min(Debt.created_at).label("since"),
         )
-        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+        .where(Debt.user_id == user.id, Debt.status == "open")
         .group_by(Debt.company_name)
         .order_by(func.coalesce(func.sum(Debt.expected_amount), 0).desc())
         .limit(8)
@@ -512,7 +495,7 @@ async def comparison_insights(
             func.count(func.distinct(Debt.company_name)).label("companies"),
             func.min(Debt.created_at).label("since"),
         )
-        .where(Debt.user_id == user.id, Debt.category == category, Debt.status == "open")
+        .where(Debt.user_id == user.id, Debt.status == "open")
         .group_by(Debt.customer_id_number, Debt.customer_name)
         .order_by(func.coalesce(func.sum(Debt.expected_amount), 0).desc())
         .limit(8)
@@ -530,13 +513,12 @@ async def comparison_insights(
     ]
     current["top_customers"] = customers
 
-    # Trend + previous from persisted comparisons
+    # Trend + previous from persisted comparisons. Not filtered by category:
+    # new rows are written under the single MERGED_CATEGORY label, and old
+    # per-category rows are still valid history for the same portfolio.
     history_q = await db.execute(
         select(CommissionComparison)
-        .where(
-            CommissionComparison.user_id == user.id,
-            CommissionComparison.category == category,
-        )
+        .where(CommissionComparison.user_id == user.id)
         .order_by(desc(CommissionComparison.computed_at))
         .limit(6)
     )
@@ -573,23 +555,22 @@ async def comparison_insights(
 
 @router.get("/latest")
 async def latest_comparison(
-    category: str,
+    category: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Return the most-recent persisted comparison for (user, category), or null.
+    """Return the most-recent persisted comparison for this user, or null.
 
     Lets the Comparison tab rehydrate its dashboard on page reload (and pick
     up results from scheduled portal automation runs the user wasn't watching).
+
+    `category` is accepted for URL compatibility and IGNORED. Filtering by it
+    would strand every agent whose newest comparison is a merged one, and
+    return a stale half-picture from the old per-category rows instead.
     """
-    if category not in {"gemel_hishtalmut", "insurance"}:
-        raise HTTPException(400, "category חייב להיות gemel_hishtalmut או insurance")
     result = await db.execute(
         select(CommissionComparison)
-        .where(
-            CommissionComparison.user_id == user.id,
-            CommissionComparison.category == category,
-        )
+        .where(CommissionComparison.user_id == user.id)
         .order_by(desc(CommissionComparison.computed_at))
         .limit(1)
     )
@@ -633,20 +614,18 @@ async def company_summary(
             }
         return agg[k]
 
-    # produced + received from the latest comparison per category
-    for category in ("gemel_hishtalmut", "insurance"):
-        row_q = await db.execute(
-            select(CommissionComparison)
-            .where(
-                CommissionComparison.user_id == user.id,
-                CommissionComparison.category == category,
-            )
-            .order_by(desc(CommissionComparison.computed_at))
-            .limit(1)
-        )
-        row = row_q.scalar_one_or_none()
-        if not row or not row.result_json:
-            continue
+    # produced + received from the latest comparison. This used to loop the two
+    # categories and merge their newest rows; one merged comparison now covers
+    # both, and summing a merged row with a stale per-category one would
+    # double-count every company they share.
+    row_q = await db.execute(
+        select(CommissionComparison)
+        .where(CommissionComparison.user_id == user.id)
+        .order_by(desc(CommissionComparison.computed_at))
+        .limit(1)
+    )
+    row = row_q.scalar_one_or_none()
+    if row and row.result_json:
         for cust in row.result_json.get("customers", []):
             for p in cust.get("production_products", []) or []:
                 b = _bucket(p.get("company") or p.get("company_full"))

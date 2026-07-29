@@ -33,6 +33,41 @@
       <TabHeroLoop scene="commission-shelf" class="shelf-art" />
     </header>
 
+    <!-- ── Coverage: does the shelf actually price the portfolio? ── -->
+    <section v-if="coverage?.has_production && coverage.total_records" class="cov" :class="{ 'cov--thin': coveragePct < 50 }">
+      <div class="cov-head">
+        <span class="cov-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </span>
+        <div class="cov-headline">
+          <strong><span class="ltr-number">{{ coverage.covered_records }}</span> מתוך <span class="ltr-number">{{ coverage.total_records }}</span> רשומות מתומחרות לפי ההסכמים</strong>
+          <span class="cov-sub">
+            עמלה צפויה <span class="ltr-number">{{ fmtMoney(coverage.expected_total) }}</span>
+            <template v-if="coverageApprox"> · <span class="ltr-number">{{ coverageApprox }}</span> רשומות מוערכות משיעור כללי של החברה</template>
+            <template v-if="coverageSeeded"> · <span class="ltr-number">{{ coverageSeeded }}</span> לפי שיעורי ברירת מחדל ולא לפי הסכם שהעליתם</template>
+          </span>
+        </div>
+        <span class="cov-pct ltr-number">{{ coveragePct }}%</span>
+      </div>
+      <div class="cov-bar"><div class="cov-fill" :style="{ width: coveragePct + '%' }"></div></div>
+
+      <template v-if="coverageGaps.length">
+        <button type="button" class="cov-toggle" :aria-expanded="coverageOpen" @click="coverageOpen = !coverageOpen">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" :style="{ transform: coverageOpen ? 'rotate(90deg)' : 'none' }"><polyline points="15 18 9 12 15 6"/></svg>
+          <span><span class="ltr-number">{{ coverageGaps.length }}</span> חברות ללא תמחור מלא</span>
+        </button>
+        <Transition name="fade">
+          <ul v-if="coverageOpen" class="cov-gaps">
+            <li v-for="g in coverageGaps" :key="g.company" class="cov-gap">
+              <span class="cov-gap-co">{{ g.company }}</span>
+              <span class="cov-gap-n"><span class="ltr-number">{{ g.records }}</span> רשומות</span>
+              <span class="cov-gap-why">{{ g.reason_label }}</span>
+            </li>
+          </ul>
+        </Transition>
+      </template>
+    </section>
+
     <div v-if="rates.length" class="shelf-toolbar">
       <label class="rate-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -100,7 +135,7 @@
             </tr>
             <tr v-for="rate in group.items" :key="rate.id">
               <template v-if="editingId === rate.id">
-                <td><div class="edit-stack"><input v-model="editForm.company_name" class="edit-input" placeholder="חברה" /><input v-model="editForm.product" class="edit-input" placeholder="כל המוצרים" /></div></td>
+                <td><div class="edit-stack"><input v-model="editForm.company_name" class="edit-input" placeholder="חברה" /><input v-model="editForm.product" class="edit-input" placeholder="כל המוצרים" /><select v-model="editForm.rate_kind" class="edit-input" title="סוג השיעור — עמלת ספר ושיעור תגמול מסתכמים יחד"><option value="single">שיעור יחיד</option><option value="book">עמלת ספר</option><option value="reward">שיעור תגמול</option><option value="total">סה"כ</option></select></div></td>
                 <td class="num"><input v-model.number="editForm.rate" type="number" step="0.01" class="edit-input num-input" dir="ltr" placeholder="%" /></td>
                 <td><select v-model="editForm.payment_frequency" class="edit-input"><option value="חודשי">חודשי</option><option value="רבעוני">רבעוני</option><option value="שנתי">שנתי</option></select></td>
                 <td><select v-model="editForm.paid_to" class="edit-input"><option value="עיתים">עיתים</option><option value="סוכן">סוכן</option><option value="ידנים">ידנים</option></select></td>
@@ -111,7 +146,7 @@
                 </td>
               </template>
               <template v-else>
-                <td class="product-cell" :title="rate.product || 'כל המוצרים'"><span class="product-line"><span v-if="rate.product">{{ rate.product }}</span><span v-else class="product-cell--default">כל המוצרים</span><span v-if="rateYearLabel(rate)" class="year-pill ltr-number" :class="rateYearClass(rate)" :title="rateYearTitle(rate)">{{ rateYearLabel(rate) }}</span></span></td>
+                <td class="product-cell" :title="rate.product || 'כל המוצרים'"><span class="product-line"><span v-if="rate.product">{{ rate.product }}</span><span v-else class="product-cell--default">כל המוצרים</span><span v-if="rateKindLabel(rate)" class="kind-pill" :class="'kind-pill--' + rate.rate_kind" :title="rate.rate_kind === 'total' ? 'השיעור הסופי כפי שמופיע בהסכם' : 'רכיב אחד מתוך השיעור — עמלת ספר ושיעור תגמול מסתכמים יחד'">{{ rateKindLabel(rate) }}</span><span v-if="rate.rate_scope" class="scope-pill">{{ rate.rate_scope }}</span><span v-if="rateYearLabel(rate)" class="year-pill ltr-number" :class="rateYearClass(rate)" :title="rateYearTitle(rate)">{{ rateYearLabel(rate) }}</span></span></td>
                 <td class="num"><span class="rate-pill ltr-number">{{ (rate.rate * 100).toFixed(2) }}%</span></td>
                 <td class="muted-cell">{{ rate.payment_frequency || '—' }}</td>
                 <td class="muted-cell">{{ rate.paid_to || '—' }}</td>
@@ -165,9 +200,9 @@ const seeding = ref(false)
 const search = ref('')
 const yearFilter = ref('all')
 const editingId = ref(null)
-const editForm = reactive({ company_name: '', product: '', rate: 0, payment_frequency: '', paid_to: '', company_email: '' })
+const editForm = reactive({ company_name: '', product: '', rate: 0, rate_kind: 'single', payment_frequency: '', paid_to: '', company_email: '' })
 const addingNew = ref(false)
-const newForm = reactive({ company_name: '', product: '', rate: 0, payment_frequency: 'חודשי', paid_to: 'עיתים', company_email: '' })
+const newForm = reactive({ company_name: '', product: '', rate: 0, rate_kind: 'single', payment_frequency: 'חודשי', paid_to: 'עיתים', company_email: '' })
 
 // Which shelf (category) is open/active.
 const activeShelf = ref(null)
@@ -252,13 +287,48 @@ function rateYearClass(rate) {
   return r >= n - 1 ? 'year-pill--current' : (r >= n - 3 ? 'year-pill--recent' : 'year-pill--old')
 }
 
+const KIND_LABELS = { book: 'עמלת ספר', reward: 'שיעור תגמול', total: 'סה"כ' }
+function rateKindLabel(rate) { return KIND_LABELS[(rate.rate_kind || '').toLowerCase()] || null }
+
+// One agreement LINE can unfold into several DB rows — עמלת ספר and שיעור
+// תגמול are stored separately and the real rate is their SUM (see
+// commission_rate_summing.md, and rate_select._effective_rate which this
+// mirrors). A range built from the raw rows therefore reads like
+// "0.15% – 0.40%" while the agreement says one number, mixing a book rate, a
+// reward rate and their total. Collapse to effective rates first.
+function effectivePercents(items) {
+  const kindOf = r => (r.rate_kind || 'single').toLowerCase()
+  const groups = new Map()
+  for (const r of items) {
+    const key = `${(r.product || '').trim()}|${r.rate_scope || ''}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(r)
+  }
+  const out = []
+  for (const rows of groups.values()) {
+    const total = rows.find(r => kindOf(r) === 'total')
+    if (total) { out.push(+total.rate); continue }
+    const book = rows.find(r => kindOf(r) === 'book')
+    const reward = rows.find(r => kindOf(r) === 'reward')
+    if (book && reward) { out.push(+book.rate + +reward.rate); continue }
+    if (book) { out.push(+book.rate); continue }
+    if (reward) { out.push(+reward.rate); continue }
+    for (const r of rows) out.push(+r.rate)
+  }
+  return out.map(x => +(x * 100).toFixed(2)).filter(x => x > 0)
+}
+function rangeLabel(items) {
+  const pcts = effectivePercents(items)
+  if (!pcts.length) return ''
+  const lo = Math.min(...pcts), hi = Math.max(...pcts)
+  return lo === hi ? `${lo}%` : `${lo}% – ${hi}%`
+}
+
 function _companiesOf(items) {
   const byCompany = new Map()
   for (const r of items) { const k = r.company_name || '—'; if (!byCompany.has(k)) byCompany.set(k, []); byCompany.get(k).push(r) }
   return Array.from(byCompany.entries()).map(([company, list]) => {
-    const pcts = list.map(r => +(r.rate * 100).toFixed(2)).filter(x => x > 0)
-    const range = pcts.length ? (Math.min(...pcts) === Math.max(...pcts) ? `${pcts[0]}%` : `${Math.min(...pcts)}% – ${Math.max(...pcts)}%`) : ''
-    return { company, items: list, range }
+    return { company, items: list, range: rangeLabel(list) }
   }).sort((a, b) => b.items.length - a.items.length || _normCompany(a.company).localeCompare(_normCompany(b.company), 'he'))
 }
 
@@ -271,9 +341,7 @@ const visibleCategories = computed(() => CATEGORIES.map(cat => {
     return (a.product || '').localeCompare(b.product || '', 'he')
   })
   const companies = _companiesOf(items)
-  const pcts = items.map(r => +(r.rate * 100).toFixed(2)).filter(x => x > 0)
-  const range = pcts.length ? (Math.min(...pcts) === Math.max(...pcts) ? `${pcts[0]}%` : `${Math.min(...pcts)}% – ${Math.max(...pcts)}%`) : ''
-  return { ...cat, items, companies, range }
+  return { ...cat, items, companies, range: rangeLabel(items) }
 }).filter(cat => cat.items.length > 0))
 const visibleCategoryCount = computed(() => visibleCategories.value.length)
 
@@ -288,7 +356,34 @@ watch(visibleCategories, (cats) => {
   if (!cats.find(c => c.key === activeShelf.value)) activeShelf.value = cats[0].key
 }, { immediate: true })
 
-onMounted(() => fetchRates())
+// ── Coverage: how much of the ACTIVE production file these rates actually
+// price, and which companies they miss. The shelf otherwise shows only
+// percentages and counts, so an agent had no way to notice that most of their
+// portfolio was contributing ₪0 to "עמלות צפויות". ──
+const coverage = ref(null)
+const coverageOpen = ref(false)
+
+const coverageGaps = computed(() => (coverage.value?.rows || []).filter(r => r.reason))
+const coveragePct = computed(() => {
+  const t = coverage.value?.total_records || 0
+  return t ? Math.round((coverage.value.covered_records / t) * 100) : 0
+})
+const coverageApprox = computed(() =>
+  (coverage.value?.rows || []).reduce((n, r) => n + (r.approximate || 0), 0))
+// Records priced from the built-in default rates rather than an agreement the
+// agent actually uploaded. Worth calling out: those defaults are generic, so a
+// figure resting on them shouldn't read as if it came from their contract.
+const coverageSeeded = computed(() =>
+  (coverage.value?.rows || []).reduce((n, r) => n + (r.seeded || 0), 0))
+
+function fmtMoney(n) { return '₪' + Math.round(n || 0).toLocaleString('en-US') }
+
+async function fetchCoverage() {
+  try { coverage.value = (await api.get('/commission-rates/coverage')).data }
+  catch (e) { coverage.value = null }
+}
+
+onMounted(() => { fetchRates(); fetchCoverage() })
 async function fetchRates() { loading.value = true; try { const res = await api.get('/commission-rates'); rates.value = res.data } finally { loading.value = false } }
 
 function triggerUpload() { if (!uploadingDoc.value) fileInput.value?.click() }
@@ -298,23 +393,33 @@ async function onAgreementFile(e) {
   if (!file) return
   const before = new Set(rates.value.map(r => r.id))
   await chat.uploadDocument(file)
-  await fetchRates(); emit('rates-changed')
+  await ratesChanged()
   const fresh = rates.value.filter(r => !before.has(r.id))
   if (fresh.length) activeShelf.value = categorize(fresh[0])
 }
-async function seedRates() { seeding.value = true; try { await api.post('/commission-rates/seed'); await fetchRates(); emit('rates-changed') } finally { seeding.value = false } }
+
+// Any write to the shelf changes what the rates cover, so the banner has to be
+// recomputed with them — otherwise it keeps reporting the gaps the agent just
+// closed by uploading an agreement.
+async function ratesChanged() { await fetchRates(); fetchCoverage(); emit('rates-changed') }
+
+async function seedRates() { seeding.value = true; try { await api.post('/commission-rates/seed'); await ratesChanged() } finally { seeding.value = false } }
 
 function startEdit(rate) {
   addingNew.value = false; editingId.value = rate.id
   editForm.company_name = rate.company_name; editForm.product = rate.product || ''
   editForm.rate = +(rate.rate * 100).toFixed(4)
+  editForm.rate_kind = (rate.rate_kind || 'single').toLowerCase()
   editForm.payment_frequency = rate.payment_frequency || 'חודשי'; editForm.paid_to = rate.paid_to || 'עיתים'; editForm.company_email = rate.company_email || ''
 }
-async function saveEdit(id) { await api.put(`/commission-rates/${id}`, { ...editForm, rate: editForm.rate / 100, product: editForm.product || null }); editingId.value = null; await fetchRates(); emit('rates-changed') }
-async function deleteRate(id) { await api.delete(`/commission-rates/${id}`); await fetchRates(); emit('rates-changed') }
-function startNew() { editingId.value = null; addingNew.value = true; newForm.company_name = ''; newForm.product = ''; newForm.rate = 0; newForm.payment_frequency = 'חודשי'; newForm.paid_to = 'עיתים'; newForm.company_email = '' }
+// NB: the payload deliberately omits effective_from/effective_to — the form has
+// no date inputs, and the API now assigns only what it receives, so the
+// agreement's validity window survives an edit instead of being nulled.
+async function saveEdit(id) { await api.put(`/commission-rates/${id}`, { ...editForm, rate: editForm.rate / 100, product: editForm.product || null }); editingId.value = null; await ratesChanged() }
+async function deleteRate(id) { await api.delete(`/commission-rates/${id}`); await ratesChanged() }
+function startNew() { editingId.value = null; addingNew.value = true; newForm.company_name = ''; newForm.product = ''; newForm.rate = 0; newForm.rate_kind = 'single'; newForm.payment_frequency = 'חודשי'; newForm.paid_to = 'עיתים'; newForm.company_email = '' }
 function cancelNew() { addingNew.value = false }
-async function saveNew() { if (!newForm.company_name) return; await api.post('/commission-rates', { ...newForm, rate: newForm.rate / 100, product: newForm.product || null }); addingNew.value = false; await fetchRates(); emit('rates-changed') }
+async function saveNew() { if (!newForm.company_name) return; await api.post('/commission-rates', { ...newForm, rate: newForm.rate / 100, product: newForm.product || null }); addingNew.value = false; await ratesChanged() }
 </script>
 
 <style scoped>
@@ -343,6 +448,41 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .hu-fill { height: 100%; border-radius: 999px; background: var(--chart-4); transition: width 0.3s var(--transition); }
 .hu-label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
 .hero-upload-error { margin: 8px 0 0; font-size: 12px; color: var(--red); font-weight: 600; }
+
+/* ══ Coverage banner — how much of the portfolio the shelf actually prices ══ */
+.cov { background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg, 16px); padding: 14px 18px; margin-bottom: 14px; }
+.cov--thin { border-color: color-mix(in srgb, var(--chart-4) 42%, transparent); background: color-mix(in srgb, var(--chart-4) 5%, var(--card-bg)); }
+.cov-head { display: flex; align-items: center; gap: 11px; }
+.cov-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border-radius: 9px; background: color-mix(in srgb, var(--chart-2) 14%, transparent); color: var(--chart-9); }
+.cov--thin .cov-icon { background: color-mix(in srgb, var(--chart-4) 16%, transparent); color: var(--chart-4); }
+.cov-headline { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.cov-headline strong { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.cov-sub { font-size: 11.5px; color: var(--text-muted); }
+.cov-pct { font-size: 19px; font-weight: 800; color: var(--chart-9); flex: none; }
+.cov--thin .cov-pct { color: var(--chart-4); }
+.cov-bar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 14%, transparent); overflow: hidden; margin-top: 10px; }
+.cov-fill { height: 100%; border-radius: 999px; background: var(--chart-9); transition: width 0.4s var(--transition); }
+.cov--thin .cov-fill { background: var(--chart-4); }
+.cov-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 0; background: none; border: none; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; }
+.cov-toggle:hover { color: var(--chart-4); }
+.cov-toggle svg { transition: transform 0.2s var(--transition); }
+.cov-gaps { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 1px; border-radius: 10px; overflow: hidden; }
+.cov-gap { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-surface); font-size: 12.5px; }
+.cov-gap-co { font-weight: 650; color: var(--text); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-gap-n { color: var(--text-muted); font-size: 11.5px; flex: none; }
+.cov-gap-why { color: var(--chart-4); font-weight: 600; font-size: 11.5px; flex: none; text-align: start; }
+@media (max-width: 640px) {
+  .cov-gap { flex-wrap: wrap; gap: 4px 10px; }
+  .cov-gap-co { flex: 1 0 100%; }
+}
+
+/* Rate-kind pill — one agreement line can unfold into ספר + תגמול rows, which
+   otherwise render as visually identical duplicates. */
+.kind-pill { flex: none; font-size: 10px; font-weight: 700; padding: 1.5px 7px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.kind-pill--book { color: var(--chart-9); background: color-mix(in srgb, var(--chart-9) 11%, transparent); border-color: color-mix(in srgb, var(--chart-9) 26%, transparent); }
+.kind-pill--reward { color: var(--chart-6); background: color-mix(in srgb, var(--chart-6) 11%, transparent); border-color: color-mix(in srgb, var(--chart-6) 26%, transparent); }
+.kind-pill--total { color: var(--chart-2); background: color-mix(in srgb, var(--chart-2) 13%, transparent); border-color: color-mix(in srgb, var(--chart-2) 30%, transparent); }
+.scope-pill { flex: none; font-size: 10px; font-weight: 650; padding: 1.5px 7px; border-radius: 999px; color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); white-space: nowrap; }
 
 .shelf-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 .rate-search { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-surface); color: var(--text-muted); transition: border-color 0.2s, box-shadow 0.2s; }

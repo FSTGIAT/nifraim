@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+from app.utils.company_norm import company_stem, known_company_stem
+
 # ---------------------------------------------------------------------------
 # Product category classification
 # ---------------------------------------------------------------------------
@@ -11,6 +13,13 @@ from collections import defaultdict
 _CATEGORY_GEMEL = "gemel_hishtalmut"
 _CATEGORY_INSURANCE = "insurance"
 _CATEGORY_PENSION = "pension"
+
+# The `category` column on commission_comparisons / debts is now a passive
+# LABEL — nothing branches on it. New rows are written under this single value
+# because a comparison is no longer produced per category; historical rows keep
+# their גמל/ביטוח labels and are still readable, since the read paths select the
+# newest row per user instead of filtering by category.
+MERGED_CATEGORY = "merged"
 
 _CATEGORY_LABELS = {
     _CATEGORY_GEMEL: "גמל והשתלמות",
@@ -46,6 +55,26 @@ def _classify_product_type(product_type: str | None) -> str | None:
     return _PRODUCT_TYPE_TO_CATEGORY.get(product_type)
 
 
+def _is_mixed_category(commission_records: list[dict]) -> bool:
+    """True when the commission set contains BOTH גמל and ביטוח products.
+
+    The merged נפרעים file always does. Used to suppress the category label
+    rather than let the majority vote name one half of a two-category file.
+    """
+    gemel = insurance = False
+    for r in commission_records:
+        product = (r.get("fund_type") or r.get("product") or "").lower()
+        if not product:
+            continue
+        if any(kw in product for kw in _GEMEL_KEYWORDS):
+            gemel = True
+        if any(kw in product for kw in _INSURANCE_KEYWORDS):
+            insurance = True
+        if gemel and insurance:
+            return True
+    return False
+
+
 def _detect_commission_category(commission_records: list[dict]) -> str | None:
     """Detect the category of a commission file from its product names.
 
@@ -74,34 +103,57 @@ def _detect_commission_category(commission_records: list[dict]) -> str | None:
     return None
 
 
-# Known insurance company short-name prefixes (longer names first to match greedily).
-# Used to extract the company from product names like "אקסלנס גמל" → "אקסלנס".
-_COMPANY_PREFIXES = [
-    "אלטשולר שחם", "מיטב דש", "ביטוח ישיר", "ילין לפידות", "אי.בי.אי",
-    "מנורה מבטחים", "אינטרגמל",
-    "אקסלנס", "הפניקס", "מנורה", "הכשרה", "הראל", "כלל", "מגדל",
-    "פסגות", "איילון", "אנליסט", "מור", "פניקס", "מגה", "ישיר", "מיטב",
-    "מבטחים",
+# Insurer names that may appear at the START of a product string, used ONLY
+# when the record carries no company of its own. Longer names first so the
+# match is greedy. Sub-brands map to the parent insurer they belong to —
+# 'מבטחים' is Menora's pension brand, not a company, and reporting it as one
+# split Menora into two rows on every per-company view.
+_PRODUCT_COMPANY_PREFIXES = [
+    ("אלטשולר שחם", "אלטשולר"), ("מנורה מבטחים", "מנורה"), ("ילין לפידות", "ילין"),
+    ("מיטב דש", "מיטב"), ("ביטוח ישיר", "ביטוח ישיר"), ("אי.בי.אי", "אי.בי.אי"),
+    ("אינטרגמל", "מור"), ("מבטחים", "מנורה"),
+    ("אקסלנס", "אקסלנס"), ("הפניקס", "הפניקס"), ("פניקס", "הפניקס"),
+    ("מנורה", "מנורה"), ("הכשרה", "הכשרה"), ("הראל", "הראל"), ("כלל", "כלל"),
+    ("מגדל", "מגדל"), ("פסגות", "פסגות"), ("איילון", "איילון"),
+    ("אנליסט", "אנליסט"), ("מור", "מור"), ("מגה", "מגה"), ("ישיר", "ישיר"),
+    ("מיטב", "מיטב"),
 ]
 
 
 def _extract_short_company(product_name: str | None, receiving_company: str | None) -> str:
-    """Extract short company name from product name or receiving_company.
+    """The company a record belongs to, as a short display/grouping name.
 
-    Priority:
-    1. Split on " - " (e.g. "הפניקס - גמל" → "הפניקס")
-    2. Match known company prefix in product name (e.g. "אקסלנס גמל" → "אקסלנס")
-    3. Fallback to receiving_company
+    `receiving_company` WINS. It is the record's own company column — the
+    authoritative field — and it was previously the last resort, behind two
+    guesses parsed out of the product string. Both guesses invented companies:
+
+      • "split on ' - '" turned the product 'פרודוקציה - חיים' into the company
+        'פרודוקציה' for 285 live records whose receiving_company plainly said
+        'מנורה מבטחים ביטוח בע"מ';
+      • prefix matching turned the product 'מבטחים יותר' into 'מבטחים' for 68
+        records whose receiving_company said 'מנורה'.
+
+    Both then rendered as separate insurers on every per-company view, and the
+    unpaid customers behind them were attributed to a company that isn't real.
+
+    Product parsing is kept only for records with NO company column, and now
+    has to name a RECOGNISED insurer to be believed.
     """
-    if product_name and " - " in product_name:
-        return product_name.split(" - ")[0].strip()
+    if receiving_company and receiving_company.strip():
+        # Shorten to the brand so the merged file's legal names group with the
+        # commission side's short ones ('מנורה מבטחים ביטוח בע"מ' → 'מנורה').
+        return company_stem(receiving_company) or receiving_company.strip()
 
     if product_name:
-        for prefix in _COMPANY_PREFIXES:
+        head = product_name.split(" - ")[0].strip()
+        known = known_company_stem(head)
+        if known:
+            return known
+        for prefix, parent in _PRODUCT_COMPANY_PREFIXES:
             if product_name.startswith(prefix):
-                return prefix
+                return parent
 
-    return receiving_company or ""
+    return ""
 
 
 def _normalize_id(id_number: str | None) -> str:
@@ -197,31 +249,74 @@ def compute_comparison(production_records: list[dict], commission_records: list[
     Compare production file records against commission report records.
     Match customers by id_number, then match products by fund_policy_number.
 
-    Production records are filtered by the commission file's detected category:
-    - Commission is גמל/השתלמות → only compare production גמל/השתלמות products
-    - Commission is ביטוח → only compare production ביטוח products
-    - פנסיה products are ALWAYS excluded from comparison
+    Production is scoped by COMPANY COVERAGE, not by גמל/ביטוח category:
+    - a production record is only judged paid/unpaid if its company appears in
+      the commission set being compared;
+    - companies with no נפרעים coverage are reported separately as
+      `uncovered_companies`, never as unpaid;
+    - פנסיה products are ALWAYS excluded (נפרעים is paid on the monthly
+      deposit, not on the accumulated balance).
 
-    If category_override is provided, skip auto-detection and use it directly.
+    Why the category filter is gone
+    -------------------------------
+    It existed for one case: when the agent uploaded a גמל-only נפרעים file,
+    every insurance client would otherwise be reported `only_production`, i.e.
+    falsely unpaid. Portal automation now delivers ONE merged נפרעים file
+    covering all companies and both categories, so the filter has no such job —
+    it only cut the picture in half, forcing the agent to toggle a category to
+    see the rest, and `api/comparison.py` had to majority-vote a mixed merged
+    file into a single category, mislabelling the minority half.
+
+    Company coverage is the more precise guard and works for both shapes: a
+    single-company upload only judges that company; the merged file judges
+    everything it covers. `category_override` and the detected category are
+    still accepted and returned as passive LABELS so stored rows keep meaning.
     """
-    # Detect commission file category (or use override)
+    # Kept for the response label only — this no longer filters anything.
+    #
+    # A MIXED set gets NO label. `_detect_commission_category` resolves mixed
+    # files by majority vote, which is meaningless for a merged נפרעים file
+    # covering both categories — and the label is not merely decorative
+    # downstream: the frontend summary branches on it to decide whether
+    # zero-accumulation customers count as unpaid, and the dashboard picks its
+    # hint text from it. Labelling a both-categories comparison "גמל והשתלמות"
+    # is the same majority-vote defect this change removed from the API,
+    # one layer up. Empty label → every consumer degrades to neutral.
     if category_override and category_override in (_CATEGORY_GEMEL, _CATEGORY_INSURANCE):
         commission_category = category_override
     else:
         commission_category = _detect_commission_category(commission_records)
+        if commission_category is not None and _is_mixed_category(commission_records):
+            commission_category = None
 
-    # Filter production records: only keep records matching commission category
-    # Always exclude pension records
+    # Which companies does this commission set actually speak for? Matched on
+    # the brand stem so the merged file's canonical legal names
+    # ('הראל פנסיה וגמל בע"מ') line up with production's own naming.
+    covered_stems = {
+        company_stem(r.get("receiving_company") or r.get("company_source") or "")
+        for r in commission_records
+    }
+    covered_stems.discard("")
+
     filtered_production = []
-    excluded_production = []
+    uncovered_counts: dict[str, int] = {}
     for r in production_records:
         cat = _classify_product_type(r.get("product_type"))
         if cat == _CATEGORY_PENSION:
             continue  # always exclude pension
-        if commission_category and cat and cat != commission_category:
-            excluded_production.append(r)
-            continue  # wrong category for this comparison
+        company = r.get("receiving_company")
+        # No resolvable company on the commission side (some parsers leave it
+        # empty) → compare everything, as before. Filtering on an empty set
+        # would silently drop the entire production file.
+        if covered_stems and company and company_stem(company) not in covered_stems:
+            uncovered_counts[company] = uncovered_counts.get(company, 0) + 1
+            continue
         filtered_production.append(r)
+
+    uncovered_companies = [
+        {"company": co, "records": n}
+        for co, n in sorted(uncovered_counts.items(), key=lambda kv: -kv[1])
+    ]
 
     # Extract unique short company names from filtered production
     company_names = set()
@@ -296,7 +391,15 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "commission": _get_commission(r),
                 "annual_pct": r.get("annual_commission_pct"),
                 "monthly_pct": r.get("monthly_commission_pct"),
-                "company": r.get("receiving_company"),
+                # Same treatment as production products: `company` is the SHORT
+                # brand used for grouping, `company_full` the raw name. This was
+                # the raw value while production was stemmed, so one insurer
+                # appeared under two names ('מגדל' and 'מגדל חברה לביטוח בע"מ')
+                # on any view that groups the two sides together.
+                "company": _extract_short_company(
+                    r.get("fund_type") or r.get("product"), r.get("receiving_company")
+                ),
+                "company_full": r.get("receiving_company"),
                 "fund_type": r.get("fund_type"),
                 "management_fee": r.get("management_fee"),
                 "management_fee_amount": r.get("management_fee_amount"),
@@ -365,6 +468,11 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         "summary": summary,
         "customers": customers,
         "available_companies": available_companies,
+        # Companies present in production that this commission set says nothing
+        # about. Reported so they can be shown as "no נפרעים coverage" rather
+        # than silently counted as unpaid.
+        "uncovered_companies": uncovered_companies,
+        # Passive labels — nothing branches on these any more.
         "commission_category": commission_category,
         "commission_category_label": _CATEGORY_LABELS.get(commission_category, ""),
     }

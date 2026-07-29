@@ -15,10 +15,12 @@ Selection rule per company (normalized via ``normalize_company``):
     company — otherwise it is still folded in (the batch may not cover
     every company the user uploads manually).
 
-Records are then split per category (גמל/ביטוח) with
-``commission_category_token`` — exactly like the batch's ``_compare_merged``
-— and one comparison per non-empty category is computed, persisted and
-debt-synced. ``compute_comparison`` itself is untouched.
+All folded records then go into ONE comparison, which is persisted and
+debt-synced. They used to be split per category (גמל/ביטוח) with
+``commission_category_token`` and computed twice — but the UI shows one
+category at a time, so that could only ever display half the agent's picture.
+``compute_comparison`` now scopes production by COMPANY COVERAGE instead, which
+is what the category filter was really standing in for.
 """
 
 import logging
@@ -32,11 +34,7 @@ from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.models.commission_comparison import CommissionComparison
-from app.services.comparison_service import compute_comparison
-from app.services.portal_automation.aggregate import (
-    commission_category_token,
-    NIFRAIM_CATEGORY_GEMEL,
-)
+from app.services.comparison_service import MERGED_CATEGORY, compute_comparison
 from app.utils.company_norm import normalize_company
 from app.utils.sanitize import to_jsonable
 
@@ -74,7 +72,12 @@ async def compute_merged_comparison(
           "folded_upload_ids": [uuid, ...],
         }
     """
-    out = {"comparisons": {}, "persisted": [], "skip_reason": None, "folded_upload_ids": []}
+    # `comparison` is the result; `comparisons` is kept as a single-entry dict
+    # so existing callers that index it by label keep working.
+    out = {
+        "comparison": None, "comparisons": {}, "persisted": [],
+        "skip_reason": None, "folded_upload_ids": [],
+    }
 
     # ── Production side: ALL active per-company production uploads ──────
     prod_q = await db.execute(
@@ -175,14 +178,8 @@ async def compute_merged_comparison(
 
     commission_dicts: list[dict] = []
     sources: set[str] = set()
-    contributing: dict[str, set[uuid.UUID]] = {"gemel_hishtalmut": set(), "insurance": set()}
-
-    def _cat_of(rec: dict) -> str:
-        return (
-            "gemel_hishtalmut"
-            if commission_category_token(rec) == NIFRAIM_CATEGORY_GEMEL
-            else "insurance"
-        )
+    # One set, not one per category — the comparison is no longer split.
+    contributing: set[uuid.UUID] = set()
 
     if merged_records:
         for rec in merged_records:
@@ -192,7 +189,7 @@ async def compute_merged_comparison(
             commission_dicts.append(rec)
             if rc:
                 sources.add(rc)
-            contributing[_cat_of(rec)].add(merged_upload.id)
+            contributing.add(merged_upload.id)
 
     if selected_uploads:
         sel_recs_q = await db.execute(
@@ -208,83 +205,74 @@ async def compute_merged_comparison(
             src = rec.get("receiving_company") or upload_by_id[r.upload_id].company_source
             if src:
                 sources.add(src)
-            contributing[_cat_of(rec)].add(r.upload_id)
+            contributing.add(r.upload_id)
 
     if not commission_dicts:
         out["skip_reason"] = "no_commission"
         return out
 
-    out["folded_upload_ids"] = sorted(
-        {uid for ids in contributing.values() for uid in ids}, key=str
-    )
+    out["folded_upload_ids"] = sorted(contributing, key=str)
 
-    # ── Split per category and compute (mirrors batch _compare_merged) ──
+    # ── ONE comparison over every folded נפרעים record ──
+    # This used to run twice, splitting the records into גמל and ביטוח and
+    # persisting a row for each, so the UI — which shows one category at a
+    # time — could only ever display half the agent's picture. Production is
+    # now scoped by company coverage inside compute_comparison instead.
     paying_q = await db.execute(
         select(PayingCompany).where(PayingCompany.user_id == user_id)
     )
     paying_names = [p.company_name for p in paying_q.scalars().all()]
 
-    by_cat: dict[str, list[dict]] = {"gemel_hishtalmut": [], "insurance": []}
-    for rec in commission_dicts:
-        by_cat[_cat_of(rec)].append(rec)
+    try:
+        comparison = compute_comparison(prod_dicts, commission_dicts, paying_names)
+        all_sources = sorted(sources)
+        comparison["commission_company_sources"] = all_sources
+        comparison["commission_company_source"] = (
+            all_sources[0] if len(all_sources) == 1 else None
+        )
+        if prod_anchor.period_month is not None:
+            comparison["period_month"] = prod_anchor.period_month.isoformat()
+        comparison["period_files_count"] = len(contributing)
 
-    for category, recs in by_cat.items():
-        if not recs:
-            continue
-        try:
-            comparison = compute_comparison(
-                prod_dicts, recs, paying_names, category_override=category
-            )
-            cat_sources = sorted({
-                r.get("receiving_company") for r in recs if r.get("receiving_company")
-            }) or sorted(sources)
-            comparison["commission_company_sources"] = cat_sources
-            comparison["commission_company_source"] = (
-                cat_sources[0] if len(cat_sources) == 1 else None
-            )
-            if prod_anchor.period_month is not None:
-                comparison["period_month"] = prod_anchor.period_month.isoformat()
-            comparison["period_files_count"] = len(contributing[category])
+        row = CommissionComparison(
+            user_id=user_id,
+            category=MERGED_CATEGORY,
+            production_upload_id=prod_anchor.id,
+            summary_json=to_jsonable(comparison.get("summary") or {}),
+            result_json=to_jsonable(comparison),
+            commission_company_sources=to_jsonable(all_sources),
+        )
+        db.add(row)
+        await db.commit()
+        out["comparison"] = comparison
+        out["comparisons"][MERGED_CATEGORY] = comparison
+        out["persisted"].append(MERGED_CATEGORY)
 
-            row = CommissionComparison(
-                user_id=user_id,
-                category=category,
-                production_upload_id=prod_anchor.id,
-                summary_json=to_jsonable(comparison.get("summary") or {}),
-                result_json=to_jsonable(comparison),
-                commission_company_sources=to_jsonable(cat_sources),
-            )
-            db.add(row)
-            await db.commit()
-            out["comparisons"][category] = comparison
-            out["persisted"].append(category)
+        if run_debt_sync:
+            try:
+                from app.services.debt_service import sync_debts
 
-            if run_debt_sync:
-                try:
-                    from app.services.debt_service import sync_debts
-
-                    cat_upload_ids = contributing[category]
-                    anchor_comm_id = None
-                    if merged_upload is not None and merged_upload.id in cat_upload_ids:
-                        anchor_comm_id = merged_upload.id
-                    elif cat_upload_ids:
-                        newest = max(
-                            (u for u in comm_uploads if u.id in cat_upload_ids),
-                            key=lambda u: u.uploaded_at or datetime.min,
-                        )
-                        anchor_comm_id = newest.id
-                    await sync_debts(
-                        db, user_id, comparison,
-                        production_upload_id=prod_anchor.id,
-                        commission_upload_id=anchor_comm_id,
-                        category=category,
+                anchor_comm_id = None
+                if merged_upload is not None and merged_upload.id in contributing:
+                    anchor_comm_id = merged_upload.id
+                elif contributing:
+                    newest = max(
+                        (u for u in comm_uploads if u.id in contributing),
+                        key=lambda u: u.uploaded_at or datetime.min,
                     )
-                    await db.commit()
-                except Exception as de:
-                    logger.warning("Merged debt sync (%s) failed: %s", category, de)
-                    await db.rollback()
-        except Exception as e:
-            logger.warning("Merged compare (%s) failed: %s", category, e)
-            await db.rollback()
+                    anchor_comm_id = newest.id
+                await sync_debts(
+                    db, user_id, comparison,
+                    production_upload_id=prod_anchor.id,
+                    commission_upload_id=anchor_comm_id,
+                    category=MERGED_CATEGORY,
+                )
+                await db.commit()
+            except Exception as de:
+                logger.warning("Merged debt sync failed: %s", de)
+                await db.rollback()
+    except Exception as e:
+        logger.warning("Merged compare failed: %s", e)
+        await db.rollback()
 
     return out

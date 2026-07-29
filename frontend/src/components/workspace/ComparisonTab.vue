@@ -43,36 +43,20 @@
         </div>
 
         <div class="toolbar-end">
-          <div class="category-toggle">
-            <button
-              v-for="cat in categories"
-              :key="cat.key"
-              class="toggle-segment"
-              :class="{ active: comparisonStore.activeCategory === cat.key }"
-              @click="onSelectCategory(cat.key)"
-            >
-              <span class="segment-label">{{ cat.label }}</span>
-              <span v-if="comparisonStore.hasResultFor(cat.key)" class="segment-dot"></span>
-            </button>
-          </div>
-
           <!-- History: last 3 commission files behind a clean icon popover.
                Clicking a file opens its comparison. -->
           <RecentFilesPopover @select="onCommissionFileSelect" />
         </div>
       </div>
 
-      <!-- Content area -->
+      <!-- Content area. There is no גמל/ביטוח selector any more: one merged
+           comparison covers every company and both categories, so splitting it
+           only ever showed the agent half their picture. -->
       <Transition name="tab-switch" mode="out-in">
-        <!-- No category selected → prompt -->
-        <div v-if="!comparisonStore.activeCategory" key="no-category" class="category-prompt">
-          <p>בחר קטגוריה להשוואה</p>
-        </div>
-
-        <!-- Category selected, no result → always-on insights dashboard
-             (the dashboard hosts a slim "load fresh data" strip with the
-              automation panel + manual upload behind a disclosure). -->
-        <div v-else-if="!displayResult" :key="'insights-' + comparisonStore.activeCategory" class="insights-stack">
+        <!-- No result → always-on insights dashboard (the dashboard hosts a
+             slim "load fresh data" strip with the automation panel + manual
+             upload behind a disclosure). -->
+        <div v-if="!displayResult" key="insights" class="insights-stack">
           <ComparisonInsightsDashboard
             @automation-success="onAutomationSuccess"
             @batch-done="onBatchDone"
@@ -81,7 +65,7 @@
         </div>
 
         <!-- Has result → comparison dashboard -->
-        <div v-else :key="'result-' + comparisonStore.activeCategory + (comparisonStore.singleFileView ? '-single' : '')" class="results-section">
+        <div v-else :key="'result' + (comparisonStore.singleFileView ? '-single' : '')" class="results-section">
           <!-- Ephemeral single-file drill — the merged picture is one click away -->
           <div v-if="comparisonStore.singleFileView" class="single-file-banner">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -147,8 +131,7 @@ const portalAutomationStore = usePortalAutomationStore()
 // Persisted comparison data lets the tab render even without an active
 // production file (e.g. it was deleted after the comparison was computed).
 const hasPersistedComparison = computed(() =>
-  comparisonStore.hasResultFor('gemel_hishtalmut') ||
-  comparisonStore.hasResultFor('insurance') ||
+  comparisonStore.hasResult ||
   (comparisonStore.companySummary?.companies?.length || 0) > 0
 )
 
@@ -161,35 +144,8 @@ const nifraimCompanyCount = computed(() => {
   return comparisonStore.result?.commission_company_sources?.length || 0
 })
 
-const categories = [
-  {
-    key: 'gemel_hishtalmut',
-    label: 'גמל והשתלמות',
-    description: 'קופות גמל, קרנות השתלמות',
-  },
-  {
-    key: 'insurance',
-    label: 'ביטוח',
-    description: 'חיים, בריאות, חסכון, סיעודי',
-  },
-]
-
-async function onSelectCategory(cat) {
-  if (comparisonStore.activeCategory === cat && comparisonStore.result) {
-    // Clicking the active category that has results → reset to insights view
-    comparisonStore.resetCategory(cat)
-    return
-  }
-  comparisonStore.selectCategory(cat)
-  // Always hydrate the latest persisted comparison — every compute persists,
-  // so /latest is at least as fresh as the in-memory copy. fetchLatest only
-  // replaces on success, so the existing result stays visible while the
-  // refetch is in flight (no blank flash).
-  await comparisonStore.fetchLatest(cat)
-}
-
 // What the dashboard renders: the ephemeral single-file drill when active,
-// otherwise the merged all-companies comparison for the active category.
+// otherwise the merged all-companies comparison.
 const displayResult = computed(() => comparisonStore.singleFileView?.result || comparisonStore.result)
 
 /**
@@ -269,50 +225,30 @@ const relevantCustomers = computed(() => {
     })
     .filter(Boolean) // Remove null entries (excluded only_production customers)
     .sort((a, b) => {
-      // Item 6: Sort by highest financial value
-      const isInsurance = comparisonStore.activeCategory === 'insurance'
-      if (isInsurance) {
-        return (b.total_premium || 0) - (a.total_premium || 0)
-      }
-      // Gemel: sort by total balance (sum of all production product accumulations)
-      const balA = (a.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
-      const balB = (b.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
-      return balB - balA
+      // Sort by highest financial value. The list now holds insurance and
+      // gemel customers together, so it can't branch on a category: premium
+      // first (the value of an insurance client), balance as the tiebreak
+      // (the value of a gemel one). This degrades correctly at both ends — a
+      // gemel-only portfolio has no premiums and sorts purely by balance,
+      // an insurance-only one sorts purely by premium.
+      const premDiff = (b.total_premium || 0) - (a.total_premium || 0)
+      if (premDiff) return premDiff
+      const bal = c => (c.production_products || []).reduce((s, p) => s + (p.accumulation || 0), 0)
+      return bal(b) - bal(a)
     })
 })
 
 async function onCommissionFileSelect(file) {
   if (!file || !productionStore.currentFile?.id) return
-  // Ingest already detected the category; sync the toggle if it differs so
-  // the resulting dashboard renders against the right slice.
-  const inferredCategory = inferCategoryFromFile(file)
-  if (inferredCategory && comparisonStore.activeCategory !== inferredCategory) {
-    comparisonStore.selectCategory(inferredCategory)
-  }
   try {
     // View-only drill: never persisted, never overwrites the merged picture.
+    // No category to infer any more — the comparison covers whatever the file
+    // contains, and production is scoped to the companies it actually covers.
     await comparisonStore.compareExisting(productionStore.currentFile.id, file.id, {
       persist: false,
       filename: file.filename,
     })
   } catch (_) { /* surfaced via store.error */ }
-}
-
-// Best-effort: derive (gemel|insurance) from format_type. The runner already
-// classifies, but format_type is a robust short label we can match locally.
-const _GEMEL_FORMATS = new Set([
-  'nifraim', 'hachshara_nifraim', 'menora', 'altshuler',
-  'clal_life_nifraim', 'migdal_nifraim', 'harel_nifraim',
-])
-const _INSURANCE_FORMATS = new Set([
-  'agent_tracking', 'company_report', 'clal_health_nifraim',
-  'ayalon_nifraim', 'phoenix_insurance_nifraim',
-])
-function inferCategoryFromFile(file) {
-  const f = (file?.format_type || '').toLowerCase()
-  if (_GEMEL_FORMATS.has(f)) return 'gemel_hishtalmut'
-  if (_INSURANCE_FORMATS.has(f)) return 'insurance'
-  return null
 }
 
 async function onAutomationSuccess({ run }) {
@@ -329,44 +265,22 @@ async function onAutomationSuccess({ run }) {
   try { await comparisonStore.refreshMerged() } catch { /* non-blocking */ }
 }
 
-// Clicking a company row in the summary → open the category that has results
-// for it (prefer one with a persisted comparison) and preselect the matching
-// company pill inside the dashboard (via the initialCompany prop — the
-// dashboard clears the ref once applied so manual pill clicks aren't
-// overridden later).
+// Clicking a company row in the summary → preselect the matching company pill
+// inside the dashboard (via the initialCompany prop — the dashboard clears the
+// ref once applied so manual pill clicks aren't overridden later).
 const drillCompany = ref(null)
 async function onDrillCompany(company) {
   // Company drill always targets the merged picture, not a single-file view.
   comparisonStore.clearSingleFileView()
-  const order = ['gemel_hishtalmut', 'insurance']
-  let target = order.find((c) => comparisonStore.hasResultFor(c))
-  if (!target) {
-    for (const c of order) {
-      const r = await comparisonStore.fetchLatest(c)
-      if (r) { target = c; break }
-    }
-  }
-  if (target) {
-    drillCompany.value = company || null
-    comparisonStore.selectCategory(target)
-    if (!comparisonStore.hasResultFor(target)) await comparisonStore.fetchLatest(target)
-  }
+  if (!comparisonStore.hasResult) await comparisonStore.fetchLatest()
+  if (comparisonStore.hasResult) drillCompany.value = company || null
 }
 
 // "צפה בתוצאות" from the run-all bar / dock inside the insights view →
-// jump straight to the freshest comparison. Prefer a category the batch
-// actually persisted (comparison_categories), else the first with a result.
+// jump straight to the freshest comparison.
 async function onBatchDone() {
-  const batch = portalAutomationStore.batchJustFinished || portalAutomationStore.latestBatch
-  const batchCats = batch?.comparison_categories || []
-  const order = ['gemel_hishtalmut', 'insurance']
-  const target =
-    order.find((c) => batchCats.includes(c)) ||
-    order.find((c) => comparisonStore.hasResultFor(c)) ||
-    order[0]
-  comparisonStore.selectCategory(target)
-  await comparisonStore.fetchLatest(target)
-  // The batch just rewrote the merged comparisons — refresh the bottom table.
+  await comparisonStore.fetchLatest()
+  // The batch just rewrote the merged comparison — refresh the bottom table.
   comparisonStore.fetchCompanySummary()
 }
 
@@ -376,17 +290,10 @@ onMounted(async () => {
   }
   // Load the cross-company overview (no-op if no comparisons exist yet).
   comparisonStore.fetchCompanySummary()
-  // Auto-select first category so toggle always has an active segment
-  if (!comparisonStore.activeCategory) {
-    comparisonStore.selectCategory('gemel_hishtalmut')
-  }
-  // Hydrate the latest persisted result for the active category on every
-  // mount — persisted /latest is always >= the in-memory copy, and the
-  // existing result stays visible while the refetch resolves.
-  const cat = comparisonStore.activeCategory
-  if (cat) {
-    await comparisonStore.fetchLatest(cat)
-  }
+  // Hydrate the latest persisted result on every mount — persisted /latest is
+  // always >= the in-memory copy, and the existing result stays visible while
+  // the refetch resolves (fetchLatest only replaces on success).
+  await comparisonStore.fetchLatest()
   // Populate the recent-files strip with whatever's already on the server.
   // Cheap call (single SELECT) and uploads list is a small payload.
   if (!uploadsStore.uploads.length) {
@@ -525,59 +432,6 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-/* Category toggle */
-.category-toggle {
-  display: flex;
-  background: var(--bg);
-  border-radius: 10px;
-  padding: 3px;
-  flex-shrink: 0;
-}
-
-.toggle-segment {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 18px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-  white-space: nowrap;
-}
-
-.toggle-segment:hover:not(.active) {
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.toggle-segment.active {
-  color: var(--primary-deep);
-  background: var(--bg-surface);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-.segment-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--accent-emerald);
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-/* Category prompt */
-.category-prompt {
-  text-align: center;
-  padding: 60px 24px;
-  color: var(--text-muted);
-  font-size: 15px;
-}
-
 .results-section {}
 
 /* Ephemeral single-file drill banner — cool info tint (chart sky-blue) so it
@@ -680,10 +534,6 @@ onMounted(async () => {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
-  }
-
-  .category-toggle {
-    justify-content: center;
   }
 }
 

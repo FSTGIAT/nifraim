@@ -1,11 +1,23 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, computed } from 'vue'
+import { ref, computed } from 'vue'
 import api from '../api/client.js'
 
+// One comparison, not one per category.
+//
+// This store used to hold `results.gemel_hishtalmut` and `results.insurance`
+// side by side with an `activeCategory` selecting between them, so the tab
+// could only ever render half the agent's picture and they had to toggle to
+// see the rest. Worse, the two halves double-counted: measured on live data,
+// the same portfolio produced 802 customer rows across the two categories for
+// 624 actual customers, and 64 clients were reported unpaid in one category
+// while being paid in the other.
+//
+// The backend now returns a single merged comparison covering every company
+// and both categories, scoped by company coverage instead. See
+// services/comparison_service.compute_comparison.
 export const useComparisonStore = defineStore('comparison', () => {
-  const activeCategory = ref(null)  // 'gemel_hishtalmut' | 'insurance' | null
-  const results = reactive({ gemel_hishtalmut: null, insurance: null })
-  const result = computed(() => activeCategory.value ? results[activeCategory.value] : null)
+  const result = ref(null)
+  const lastComputedAt = ref(null)
 
   const uploading = ref(false)
   const error = ref(null)
@@ -14,32 +26,19 @@ export const useComparisonStore = defineStore('comparison', () => {
 
   // Ephemeral single-file drill — a comparison of ONE commission file the
   // user clicked, shown temporarily WITHOUT being persisted server-side and
-  // WITHOUT overwriting results[] — so the merged all-companies "full
+  // WITHOUT overwriting `result` — so the merged all-companies "full
   // picture" always stays the default the dashboard falls back to.
-  const singleFileView = ref(null) // { result, uploadId, filename, category }
+  const singleFileView = ref(null) // { result, uploadId, filename }
+
+  const hasResult = computed(() => !!result.value)
 
   function clearSingleFileView() {
     singleFileView.value = null
   }
 
-  function selectCategory(cat) {
-    if (activeCategory.value !== cat) clearSingleFileView()
-    activeCategory.value = cat
-  }
-
-  function clearCategory() {
-    activeCategory.value = null
-    clearSingleFileView()
-  }
-
-  function hasResultFor(cat) {
-    return !!results[cat]
-  }
-
-  function resetCategory(cat) {
-    if (cat) {
-      results[cat] = null
-    }
+  function resetResult() {
+    result.value = null
+    lastComputedAt.value = null
     clearSingleFileView()
   }
 
@@ -56,10 +55,7 @@ export const useComparisonStore = defineStore('comparison', () => {
       const res = await api.post('/comparison/dual-upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      // Store in active category if set
-      if (activeCategory.value) {
-        results[activeCategory.value] = res.data
-      }
+      result.value = res.data
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בהעלאת הקבצים'
@@ -76,19 +72,15 @@ export const useComparisonStore = defineStore('comparison', () => {
       const formData = new FormData()
       formData.append('production_upload_id', productionUploadId)
       formData.append('commission_upload_id', commissionUploadId)
-      if (activeCategory.value) formData.append('category', activeCategory.value)
       formData.append('persist', persist ? 'true' : 'false')
       const res = await api.post('/comparison/compute', formData)
       if (persist) {
-        if (activeCategory.value) {
-          results[activeCategory.value] = res.data
-        }
+        result.value = res.data
       } else {
         singleFileView.value = {
           result: res.data,
           uploadId: commissionUploadId,
           filename: filename || res.data?.commission_company_source || '',
-          category: activeCategory.value,
         }
       }
       return res.data
@@ -111,15 +103,12 @@ export const useComparisonStore = defineStore('comparison', () => {
         formData.append('commission_files', file)
       }
       if (commPassword) formData.append('commission_password', commPassword)
-      if (activeCategory.value) formData.append('category', activeCategory.value)
 
       const res = await api.post('/comparison/compare-with-production', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: onProgress,
       })
-      if (activeCategory.value) {
-        results[activeCategory.value] = res.data
-      }
+      result.value = res.data
       return res.data
     } catch (e) {
       error.value = e.response?.data?.detail || 'שגיאה בהשוואה מול פרודוקציה'
@@ -139,13 +128,10 @@ export const useComparisonStore = defineStore('comparison', () => {
       // Navigation drill — ephemeral, never clobbers the merged picture.
       formData.append('persist', 'false')
       const res = await api.post('/comparison/compute', formData)
-      const cat = res.data.commission_category || 'gemel_hishtalmut'
-      activeCategory.value = cat
       singleFileView.value = {
         result: res.data,
         uploadId: commissionUploadId,
         filename: res.data?.commission_company_source || '',
-        category: cat,
       }
       return res.data
     } catch (e) {
@@ -156,19 +142,16 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
-  // Per-category timestamp of when the persisted comparison was computed
-  const lastComputedAt = reactive({ gemel_hishtalmut: null, insurance: null })
   const fetchingLatest = ref(false)
 
-  async function fetchLatest(category) {
-    if (!category) return null
+  async function fetchLatest() {
     fetchingLatest.value = true
     try {
-      const res = await api.get('/comparison/latest', { params: { category } })
+      const res = await api.get('/comparison/latest')
       const payload = res.data?.result || null
       if (payload) {
-        results[category] = payload
-        lastComputedAt[category] = res.data?.computed_at || null
+        result.value = payload
+        lastComputedAt.value = res.data?.computed_at || null
       }
       return payload
     } catch (e) {
@@ -180,8 +163,8 @@ export const useComparisonStore = defineStore('comparison', () => {
     }
   }
 
-  // Cross-company reconciliation overview (both categories), feeds the
-  // "סיכום לפי חברה" table at the top of the Comparison tab.
+  // Cross-company reconciliation overview, feeds the "סיכום לפי חברה"
+  // table at the top of the Comparison tab.
   const companySummary = ref(null)
   const fetchingSummary = ref(false)
 
@@ -200,11 +183,11 @@ export const useComparisonStore = defineStore('comparison', () => {
   }
 
   // Recompute + persist the merged all-companies comparison on the server,
-  // then rehydrate the active category and the cross-company overview.
+  // then rehydrate it and the cross-company overview.
   async function refreshMerged() {
     try {
       const res = await api.post('/comparison/refresh')
-      if (activeCategory.value) await fetchLatest(activeCategory.value)
+      await fetchLatest()
       fetchCompanySummary()
       return res.data?.persisted || []
     } catch (e) {
@@ -214,22 +197,19 @@ export const useComparisonStore = defineStore('comparison', () => {
   }
 
   function reset() {
-    activeCategory.value = null
-    results.gemel_hishtalmut = null
-    results.insurance = null
+    resetResult()
     error.value = null
     filterStatus.value = ''
     searchQuery.value = ''
-    clearSingleFileView()
   }
 
   return {
-    activeCategory, results, result,
+    result, hasResult,
     uploading, error, filterStatus, searchQuery,
     lastComputedAt, fetchingLatest,
     companySummary, fetchingSummary, fetchCompanySummary,
     singleFileView, clearSingleFileView, refreshMerged,
-    selectCategory, clearCategory, hasResultFor, resetCategory,
+    resetResult,
     uploadAndCompare, compareExisting, compareWithProduction, autoCompare,
     fetchLatest, reset,
   }

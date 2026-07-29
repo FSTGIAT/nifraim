@@ -326,8 +326,7 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
       // Tolerate individual failures — a partial refresh is still better
       // than a stale screen.
       await Promise.allSettled([
-        comparisonStore.fetchLatest('gemel_hishtalmut'),
-        comparisonStore.fetchLatest('insurance'),
+        comparisonStore.fetchLatest(),
         comparisonStore.fetchCompanySummary(),
         productionStore.refreshAll(),
         uploadsStore.fetchUploads(),

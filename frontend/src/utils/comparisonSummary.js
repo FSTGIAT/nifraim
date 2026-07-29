@@ -416,9 +416,29 @@ function customerHasOnlyZeroAccum(c) {
   return products.every((p) => !(p.accumulation || p.balance || 0))
 }
 
+function customerHasNoExposure(c) {
+  // Per-customer version of the rule above, for a merged list that holds gemel
+  // and insurance customers together: "no exposure" means no accumulation AND
+  // no premium. Deciding this from a single category label was a coin flip —
+  // on a merged comparison the label is one category's name, so insurance
+  // customers were being dropped from unpaid for having no accumulation
+  // (they never do), or gemel customers counted despite zero balance.
+  if ((c.total_premium || 0) > 0) return false
+  return customerHasOnlyZeroAccum(c)
+}
+
 function customerExposure(c, isInsurance) {
   // For insurance: total premium. For gemel: total accumulation across products.
-  if (isInsurance) return c.total_premium || 0
+  // `isInsurance` is null on a merged comparison (no single category applies),
+  // in which case decide per customer: a premium means an insurance client,
+  // otherwise fall through to accumulation. Forcing one branch for the whole
+  // list reported every gemel client's exposure as ₪0 (they carry no premium)
+  // or every insurance client's as ₪0 (they carry no accumulation).
+  if (isInsurance === null || isInsurance === undefined) {
+    if ((c.total_premium || 0) > 0) return c.total_premium
+  } else if (isInsurance) {
+    return c.total_premium || 0
+  }
   let accum = 0
   for (const p of (c.product_matches?.matched || [])) accum += (p.balance || p.accumulation || 0)
   for (const p of (c.product_matches?.unmatched_commission || [])) accum += (p.balance || 0)
@@ -451,13 +471,21 @@ function topCompanyByUnpaid(unpaidCustomers) {
 export function buildCommissionComparisonSummary(customers, categoryLabel, companySources) {
   if (!Array.isArray(customers) || customers.length === 0) return null
 
-  const isInsurance = (categoryLabel || '').includes('ביטוח')
+  // null when there is no category label — a merged comparison covers both, so
+  // no single branch is correct and the helpers decide per customer instead.
+  const isInsurance = categoryLabel ? categoryLabel.includes('ביטוח') : null
+  // What to call a customer's exposure in prose. On a merged list neither
+  // 'פרמיה' nor 'צבירה' is true of every row, so use the neutral 'היקף'.
+  const exposureWord = isInsurance === null ? 'היקף' : (isInsurance ? 'פרמיה' : 'צבירה')
 
   const matched = customers.filter((c) => c.match_status === 'matched')
   const onlyComm = customers.filter((c) => c.match_status === 'only_commission')
   const onlyProd = customers.filter((c) => c.match_status === 'only_production')
-  // For gemel, "effective unpaid" excludes zero-accumulation customers (no exposure → not really unpaid).
-  const effectiveUnpaid = isInsurance ? onlyProd : onlyProd.filter((c) => !customerHasOnlyZeroAccum(c))
+  // "Effective unpaid" excludes customers with no exposure at all — no premium
+  // and no accumulation. Judged per customer rather than from the category
+  // label, because a merged comparison holds both kinds and its label (when it
+  // has one at all) describes only part of the set.
+  const effectiveUnpaid = onlyProd.filter((c) => !customerHasNoExposure(c))
 
   const totalCommissionPaid = customers.reduce((s, c) => s + sumCustomerCommissionPaid(c), 0)
 
@@ -545,7 +573,7 @@ export function buildCommissionComparisonSummary(customers, categoryLabel, compa
       const inComm = (c.match_status === 'matched' || c.match_status === 'only_commission') ? 'כן' : 'לא'
       const co = c.company ? ` [${c.company}]` : ''
       const bits = [`פרודוקציה=${inProd}`, `נפרעים=${inComm}`]
-      if (exp) bits.push(`${isInsurance ? 'פרמיה' : 'צבירה'} ${formatAmount(exp)}`)
+      if (exp) bits.push(`${exposureWord} ${formatAmount(exp)}`)
       if (paid) bits.push(`עמלה ${formatAmount(paid)}`)
       FACTS.push(`- ${c.id_number || '—'} ${c.name || ''}${co}: ${bits.join(' · ')}`)
     }
@@ -569,7 +597,7 @@ export function buildCommissionComparisonSummary(customers, categoryLabel, compa
     L.push('לא משולם לפי חברה:')
     for (const [co, info] of sortedCo.slice(0, 12)) {
       const bits = [`${info.count} לקוחות`]
-      if (info.exposure) bits.push(`${isInsurance ? 'פרמיה' : 'צבירה'} ${formatAmount(info.exposure)}`)
+      if (info.exposure) bits.push(`${exposureWord} ${formatAmount(info.exposure)}`)
       L.push(`- ${co}: ${bits.join(' · ')}`)
     }
     L.push('')
@@ -602,7 +630,7 @@ export function buildCommissionComparisonSummary(customers, categoryLabel, compa
     .sort((a, b) => b.exp - a.exp)
     .slice(0, 10)
   if (rankedUnpaid.length) {
-    L.push(`10 הלא-משולמים הגדולים ביותר לפי ${isInsurance ? 'פרמיה' : 'צבירה'}:`)
+    L.push(`10 הלא-משולמים הגדולים ביותר לפי ${exposureWord}:`)
     for (const { c, exp } of rankedUnpaid) {
       const co = c.company ? ` (${c.company})` : ''
       L.push(`- ${c.id_number} ${c.name || ''}${co}: ${formatAmount(exp)}`)

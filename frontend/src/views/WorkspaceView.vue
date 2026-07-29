@@ -300,29 +300,11 @@ function onCardSelect(payload) {
   activeTab.value = tabId
   viewMode.value = 'content'
 
-  // Auto-select comparison category if company is provided
+  // The merged comparison already covers every company, so there is no
+  // category to select. Only compute when we have nothing cached at all.
   if (tabId === 'comparison' && company) {
-    const cats = ['gemel_hishtalmut', 'insurance']
-    // Find category with a cached result matching the company
-    const matchedCat = cats.find(cat => {
-      const r = comparisonStore.results[cat]
-      if (!r) return false
-      const sources = r.commission_company_sources || []
-      const source = r.commission_company_source || ''
-      const allSources = sources.length ? sources : (source ? [source] : [])
-      return allSources.some(s =>
-        s.includes(company) || company.includes(s)
-      )
-    })
-    if (matchedCat) {
-      comparisonStore.selectCategory(matchedCat)
-    } else if (uploadId && productionStore.currentFile?.id) {
-      // No cached result — auto-trigger comparison computation
+    if (!comparisonStore.hasResult && uploadId && productionStore.currentFile?.id) {
       comparisonStore.autoCompare(productionStore.currentFile.id, uploadId).catch(() => {})
-    } else {
-      // Fallback: select first category with any result
-      const fallback = cats.find(cat => comparisonStore.results[cat])
-      if (fallback) comparisonStore.selectCategory(fallback)
     }
   }
 }
@@ -332,26 +314,10 @@ function goHome() {
 }
 
 // ── Batch results toast → navigation ───────────────────────────────────
-// Prefer a category the batch actually persisted (comparison_categories),
-// else the first category with a cached result.
-function batchTargetCategory() {
-  const batch = portalAutomationStore.batchJustFinished || portalAutomationStore.latestBatch
-  const batchCats = batch?.comparison_categories || []
-  const order = ['gemel_hishtalmut', 'insurance']
-  return (
-    order.find((c) => batchCats.includes(c)) ||
-    order.find((c) => comparisonStore.results[c]) ||
-    null
-  )
-}
-
 function onBatchToastNavigate(tab) {
   if (tab === 'comparison') {
-    const cat = batchTargetCategory()
-    if (cat) {
-      comparisonStore.selectCategory(cat)
-      comparisonStore.fetchLatest(cat).catch(() => {})
-    }
+    // One merged comparison — just pull the freshest one the batch persisted.
+    comparisonStore.fetchLatest().catch(() => {})
   }
   onCardSelect({ tab })
 }

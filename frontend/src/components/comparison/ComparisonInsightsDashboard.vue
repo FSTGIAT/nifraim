@@ -82,7 +82,10 @@ const authStore = useAuthStore()
 const insights = ref(null)
 const loading = ref(true)
 
-const activeCategory = computed(() => props.category || comparisonStore.activeCategory)
+// The comparison is no longer split into גמל/ביטוח. `category` remains a prop
+// only so a caller can still scope a drill; with nothing passed these insights
+// cover the whole portfolio, which is what the merged comparison holds.
+const activeCategory = computed(() => props.category || null)
 const categoryLabel = computed(() =>
   activeCategory.value === 'insurance' ? 'ביטוח' :
   activeCategory.value === 'gemel_hishtalmut' ? 'גמל והשתלמות' : '',
@@ -99,11 +102,12 @@ async function fetchCommissionRates() {
   } catch { /* non-blocking */ }
 }
 
-async function fetchInsights(cat) {
-  if (!cat) return
+async function fetchInsights() {
   loading.value = true
   try {
-    const res = await api.get('/comparison/insights', { params: { category: cat } })
+    // No category param — the endpoint aggregates the whole portfolio. Passing
+    // one used to return only half the agent's open debts.
+    const res = await api.get('/comparison/insights')
     insights.value = res.data
   } catch (e) {
     console.warn('insights fetch failed', e)
@@ -114,10 +118,9 @@ async function fetchInsights(cat) {
 }
 
 onMounted(() => {
-  fetchInsights(activeCategory.value)
+  fetchInsights()
   fetchCommissionRates()
 })
-watch(activeCategory, (cat) => fetchInsights(cat))
 
 const current = computed(() => insights.value?.current || {})
 

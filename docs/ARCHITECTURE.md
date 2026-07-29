@@ -138,6 +138,9 @@ Invariants:
 | **Global SMS OTP templates (CRUD/seed)** | `api/sms_otp_templates.py`, `models/sms_otp_template.py` |
 | **Claude agreement/rate extraction** | `services/document_extraction.py`, `api/ai_documents.py` |
 | **How extracted rates are picked for math** | `services/rate_select.py` |
+| **How expected commission is calculated** | `services/rate_select.py` + skill `commission-calculation` |
+| **Why a company contributes ₪0 (coverage)** | `rate_select.explain_expected_commission`, `GET /api/commission-rates/coverage` |
+| **Company name spaces (legal vs collapse vs stem)** | `utils/company_norm.py` — see §6b |
 | **AI chat (streaming)** | `services/ai_service.py::stream_chat` |
 | **Customer portal (shareable link)** | `services/portal_service.py`, `api/portal.py`, `CustomerPortalView.vue` |
 | **Phoenix native terminal (green-screen)** | `scripts/windows/phoenix_terminal_run.py`, `services/phoenix_mu.py` |
@@ -400,7 +403,57 @@ reCAPTCHA.
    fabricated. — `_normalize_and_validate_rates`
 3. **`rates[]` = ongoing נפרעים only.** Scope/היקף/מענק-גיוס/clawback are
    stripped (they'd pollute expected-commission math). Ceilings `0.03` gemel /
-   `0.20` insurance are the last guard. — `rate_select.py`
+   `0.25` insurance are the last guard, plus a FLOOR of `0.03` on premium-based
+   fallbacks so a savings rate can't price an insurance premium. — `rate_select.py`
+
+---
+
+## 6b. Commission calculation invariants
+
+Full detail lives in the **`commission-calculation` skill**; these are the ones
+you must not break.
+
+1. **Two numbers, never mixed.** *עמלות שהתקבלו* comes from נפרעים files only
+   (per company, latest `period_month`). *עמלות צפויות* comes from production ×
+   agreements and needs no נפרעים at all. — `api/production.py`, `rate_select.py`
+2. **The commission basis is per RECORD, not per category.** `accumulation × rate
+   ÷ 12` when `accumulation_based()`, else `premium × rate`. Pension and
+   pure-risk are excluded from the accumulation path — that exclusion is a
+   deliberate fix; reverting it refiles insurance rows under pension entities.
+3. **THE NAME SEAM — the root of a whole class of silent-₪0 bugs.**
+   `utils/company_norm.py` has three functions with different jobs:
+   `canonical_company` (full legal entity, written into the merged production
+   file's `יצרן`), `normalize_company` (collapse key, comparison/AI equality)
+   and `company_stem`/`company_residue` (brand + product remainder, **rate
+   matching**). **`normalize_company` does NOT invert `canonical_company`** —
+   for מנורה, מגדל(savings), אלטשולר, ילין and אנליסט the merged file's legal
+   name and the agreement shelf's short name do not compare equal, so rate
+   lookup silently returned 0 and whole companies contributed nothing.
+   `company_stem` is the fallback tier that closes it.
+4. **No silent skip.** Every failure in the expected math is a `continue`.
+   `select_rate` returns a `route` for every decision and
+   `explain_expected_commission` turns those into a per-company coverage report,
+   surfaced at `GET /api/commission-rates/coverage` and in the agreements shelf.
+5. **There is no גמל/ביטוח dimension in the comparison.** Production is scoped
+   by **company coverage** — a record is judged paid/unpaid only if its company
+   appears in the commission set; uncovered companies are returned as
+   `uncovered_companies`, never as unpaid. The old category split halved the
+   picture and double-counted (802 rows for 624 customers; 97 reported
+   `only_in_production` where the truth is 33). `commission_comparisons.category`
+   and `debts.category` remain as **passive labels** — nothing branches on them.
+6. **`rate_select.py` is the single source of truth.** Dashboard, monthly
+   insights and AI chat must report the same number. (`/expected-trend`,
+   `insights.py` and `ai_service._rate_for` still re-implement the loop — open.)
+7. **A record's company comes from its COMPANY COLUMN, never guessed from the
+   product name.** `_extract_short_company` trusts `receiving_company` first and
+   only parses the product string when there is no company at all — and then
+   only accepts a name `known_company_stem` recognises. It used to guess first,
+   and invented insurers: the product `פרודוקציה - חיים` became the company
+   "פרודוקציה" for 285 records and `מבטחים יותר` became "מבטחים" for 68, each
+   rendering as a fake insurer with real unpaid customers behind it. Sub-brands
+   map to their parent (מבטחים→מנורה, אינטרגמל→מור). Both product sides carry
+   `company` = short brand (the grouping key) and `company_full` = raw legal
+   name; group on `company`, or one insurer splits in two.
 
 ---
 

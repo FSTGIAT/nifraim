@@ -466,20 +466,27 @@ HEADER_SCAN_KEYWORDS = {"תז העמית", "שם העמית", "תעודת זהו
 
 # Default commission rates from the rate table image
 DEFAULT_COMMISSION_RATES = [
-    {"company_name": "יצח", "rate": 0.004, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
-    {"company_name": "פניקס פוליסות", "rate": 0.0034, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
-    {"company_name": "פניקס גמל והשתלמות", "rate": 0.0045, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
-    {"company_name": "הראל מגוון", "rate": 0.005, "payment_frequency": None, "paid_to": None, "company_email": None},
-    {"company_name": "ילין גמל", "rate": 0.003, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
-    {"company_name": "מיטב דש", "rate": 0.003, "payment_frequency": "רבעוני", "paid_to": "עיתים", "company_email": None},
-    {"company_name": "מור גמל", "rate": 0.003, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": "amalotgp@more.co.il"},
-    {"company_name": "אנליסט", "rate": 0.004, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
-    {"company_name": "מגדל קשת", "rate": 0.003, "payment_frequency": "חודשי", "paid_to": "סוכן", "company_email": None},
-    {"company_name": "הכשרה", "rate": 0.005, "payment_frequency": "רבעוני", "paid_to": "סוכן", "company_email": None},
-    {"company_name": "אלטשולר", "rate": 0.003, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
-    {"company_name": "אקסלנס ניהול תיקים", "rate": 0.0045, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
-    {"company_name": "מור ניהול תיקים", "rate": 0.005, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": "amalotgp@more.co.il"},
-    {"company_name": "מיטב דש ניהול תיקים", "rate": 0.004, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+    # company_name is the COMPANY; anything describing the product belongs in
+    # `product`. These used to read "הראל מגוון" / "מגדל קשת" / "פניקס פוליסות"
+    # with product=NULL, which showed the agent companies that don't exist and
+    # left the two פניקס rows indistinguishable — both normalise to "הפניקס"
+    # with no product, so the matcher had to choose between 0.34% and 0.45% on
+    # DB row order alone. Migration b7c8d9e0f1a2 rewrites existing rows to
+    # match this shape.
+    {"company_name": "יצח", "product": None, "rate": 0.004, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+    {"company_name": "הפניקס", "product": "פוליסות", "rate": 0.0034, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+    {"company_name": "הפניקס", "product": "גמל והשתלמות", "rate": 0.0045, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+    {"company_name": "הראל", "product": "מגוון", "rate": 0.005, "payment_frequency": None, "paid_to": None, "company_email": None},
+    {"company_name": "ילין", "product": "גמל", "rate": 0.003, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
+    {"company_name": "מיטב דש", "product": None, "rate": 0.003, "payment_frequency": "רבעוני", "paid_to": "עיתים", "company_email": None},
+    {"company_name": "מור", "product": "גמל", "rate": 0.003, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": "amalotgp@more.co.il"},
+    {"company_name": "אנליסט", "product": None, "rate": 0.004, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
+    {"company_name": "מגדל", "product": "קשת", "rate": 0.003, "payment_frequency": "חודשי", "paid_to": "סוכן", "company_email": None},
+    {"company_name": "הכשרה", "product": None, "rate": 0.005, "payment_frequency": "רבעוני", "paid_to": "סוכן", "company_email": None},
+    {"company_name": "אלטשולר", "product": None, "rate": 0.003, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
+    {"company_name": "אקסלנס ניהול תיקים", "product": None, "rate": 0.0045, "payment_frequency": "שנתי", "paid_to": "ידנים", "company_email": None},
+    {"company_name": "מור", "product": "ניהול תיקים", "rate": 0.005, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": "amalotgp@more.co.il"},
+    {"company_name": "מיטב", "product": "ניהול תיקים", "rate": 0.004, "payment_frequency": "חודשי", "paid_to": "עיתים", "company_email": None},
 ]
 
 # Default volume commission rates from Excel
