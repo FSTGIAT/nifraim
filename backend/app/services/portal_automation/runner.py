@@ -1113,7 +1113,16 @@ async def _run_inner(
                         db, cred.user_id, ingested
                     ) or set()
                 except Exception as e:
+                    # ROLL BACK so a fold failure can't leave the session poisoned
+                    # — otherwise the later cred.last_run_status="success" write
+                    # can't commit and the card shows a STALE 'failed' even though
+                    # the run succeeded (kiko 2026-07-30). Then fall back to
+                    # per-file post-ingest below.
                     logger.warning("standalone fold-into-merged failed (keeping per-file ingest): %s", e)
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                 for upload_id, file_category, _company in ingested:
                     if upload_id in consumed:
                         continue  # already folded into (and superseded by) the merged file
