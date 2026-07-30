@@ -274,7 +274,16 @@ class ClalPortal(BasePortalAutomation):
                 break
             except Exception:
                 continue
-        await page.wait_for_load_state("networkidle", timeout=20000)
+        # Clal's post-login UI is an Angular SPA (…/ClalAgentClient/#/) that polls
+        # continuously, so it often NEVER reaches "networkidle" — an unguarded wait
+        # here raises `Timeout 20000ms exceeded` and kills a run whose OTP was
+        # actually accepted (live: kikohib 2026-07-30 batch failed @otp on exactly
+        # this line). The wait is only a settle; download_reports navigates the SPA
+        # home and has its own checkpoints, so a timeout must NOT fail the run.
+        try:
+            await page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            pass
 
     async def download_reports(
         self,

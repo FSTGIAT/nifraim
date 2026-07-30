@@ -13,6 +13,7 @@ all insurers. The production output re-parses via the existing
 from __future__ import annotations
 
 import io
+import logging
 from datetime import date, datetime
 
 from app.services.rate_select import (
@@ -32,6 +33,8 @@ from app.services.mimshak.xlsx_writer import (
 )
 from app.utils.hebrew_mappings import COLUMNS_UNIFIED_NIFRAIM
 from app.utils.company_norm import canonical_company
+
+logger = logging.getLogger(__name__)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -169,6 +172,36 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
     return _row(COLUMNS_SAVINGS_PRODUCTS, vals)
 
 
+def _is_duplicate_catalogue_row(rec: dict, seen: set) -> bool:
+    """True for a repeat of a money-less PRODUCT-PRESENCE row.
+
+    `harel_vault_prod` deliberately emits id + product + name with no policy
+    number and no amounts — its job is to record WHICH products a client holds,
+    while the agents-portal leg carries the money (summing both would
+    double-count). Those rows arrive once per vault report, so the same
+    (client, product) repeats: live, 1,780 of kikohib's 2,458 production rows
+    were such entries, one (id, product) pair appearing 8 times, and the
+    production tab counted every repeat as another מוצר.
+
+    Deduping is safe *because* they carry no amounts — there is no figure to
+    lose. A row with a policy number or any money is never touched.
+    """
+    if rec.get("fund_policy_number"):
+        return False
+    if _f(rec.get("accumulation")) or _f(rec.get("total_premium")):
+        return False
+    key = (
+        (rec.get("receiving_company") or "").strip(),
+        (rec.get("id_number") or "").strip(),
+        (rec.get("product") or "").strip(),
+        (rec.get("product_type") or "").strip(),
+    )
+    if key in seen:
+        return True
+    seen.add(key)
+    return False
+
+
 def build_unified_workbook_bytes(records: list[dict], agent_number=None, as_of=None) -> bytes:
     """Build ONE 6-sheet production xlsx from all batch production records.
 
@@ -179,11 +212,18 @@ def build_unified_workbook_bytes(records: list[dict], agent_number=None, as_of=N
     """
     insurance_rows: list[list] = []
     savings_rows: list[list] = []
+    seen_catalogue: set[tuple] = set()
+    dropped = 0
     for rec in records:
+        if _is_duplicate_catalogue_row(rec, seen_catalogue):
+            dropped += 1
+            continue
         if classify_record(rec) == "savings":
             savings_rows.append(record_to_savings_row(rec, agent_number, as_of))
         else:
             insurance_rows.append(record_to_insurance_product_row(rec, agent_number, as_of))
+    if dropped:
+        logger.info("aggregate: dropped %d duplicate product-presence rows", dropped)
 
     wb = build_workbook(
         insurance_rows,

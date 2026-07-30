@@ -532,16 +532,31 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         )
         prod_periods = [p for (p,) in periods_q.all() if p]
     batch_period = Counter(prod_periods).most_common(1)[0][0] if prod_periods else None
-    if batch_period is None:
-        # No period detected on any held production upload. Israeli insurers
-        # report ~30 days late, so the batch almost always describes the
-        # PREVIOUS calendar month. Falling back keeps batch.period_month
-        # non-NULL and — critically — keeps the Hebrew month in the merged
-        # filenames below, so detect_period_month resolves from the filename
-        # instead of drifting to record dates / uploaded_at.
-        batch_period = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    # PRODUCTION and נפרעים describe different months, so they must not share
+    # one fallback.
+    #
+    #   נפרעים  — Israeli insurers report ~30 days late, so a batch run today
+    #             carries LAST month's commission. Previous-month fallback.
+    #   production — a portfolio snapshot as of the moment it is downloaded.
+    #             It is THIS month's data. Dating it a month back filed a
+    #             30-July download as "יוני", so the newest production sat to
+    #             the LEFT of month-old data on the trend chart and replaced
+    #             the real June file.
+    #
+    # Both fallbacks keep the Hebrew month in the merged filename, which is
+    # what `detect_period_month` reads first — without it the period drifts to
+    # record dates or uploaded_at.
+    _this_month = date.today().replace(day=1)
+    _prev_month = (_this_month - timedelta(days=1)).replace(day=1)
+    prod_period = batch_period or _this_month
+    comm_period = batch_period or _prev_month
+
+    # The batch is anchored on its production snapshot.
+    batch_period = prod_period
     batch.period_month = batch_period
-    month_label = _month_label(batch_period)
+    month_label = _month_label(prod_period)
+    comm_month_label = _month_label(comm_period)
     # Valuation date (נכון ליום) = last day of the period month — matches the
     # reference production file, which stamps every row with the month-end.
     if batch_period.month == 12:
@@ -617,8 +632,8 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         )
         comm_records = [_record_to_dict(r) for r in comm_recs_q.scalars().all()]
         if comm_records:
-            nif_bytes = build_unified_nifraim_bytes(comm_records, period_label=month_label)
-            fname = f"נפרעים מאוחד {month_label}.xlsx".replace("  ", " ").strip()
+            nif_bytes = build_unified_nifraim_bytes(comm_records, period_label=comm_month_label)
+            fname = f"נפרעים מאוחד {comm_month_label}.xlsx".replace("  ", " ").strip()
             merged_comm_upload, _ = await ingest_file_bytes(
                 db, user_id=user_id, content=nif_bytes, filename=fname,
                 commit=False, make_active=True, company_source_override="מאוחד",
