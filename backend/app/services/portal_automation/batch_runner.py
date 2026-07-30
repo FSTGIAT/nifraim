@@ -148,15 +148,31 @@ async def _tag_source_accounts_from_filename(db, upload_ids: list[uuid.UUID]) ->
 
 
 async def _delete_uploads(db, upload_ids: list[uuid.UUID]) -> None:
-    """Delete held per-company uploads after their data has been folded into a
-    merged file. Cascade removes their ClientRecord rows; NULL any
-    portal_runs.upload_id first (that FK has no ON DELETE rule)."""
+    """Delete uploads after their data has been folded into a merged file.
+
+    ClientRecord (ondelete=CASCADE) and the comparison/batch/yield FKs
+    (ondelete=SET NULL) self-heal, but several tables reference file_uploads with
+    NO ON DELETE rule and must be cleared first, or the delete raises a
+    ForeignKeyViolation. The batch only ever deleted FRESH per-company uploads
+    (no summaries/snapshots yet) so it never hit this — but the standalone fold
+    deletes the ESTABLISHED old merged file, which HAS a production_summary +
+    snapshot; missing that made the fold throw and fall back to a split
+    production state (kiko 2026-07-30). Mirrors the DELETE-production endpoint."""
     if not upload_ids:
         return
     from sqlalchemy import update as sql_update, delete as sql_delete
     from app.models.upload import FileUpload
+    from app.models.portal_snapshot import PortalSnapshot
+    from app.models.production_summary import ProductionSummary
+    from app.models.debt import Debt
     await db.execute(
         sql_update(PortalRun).where(PortalRun.upload_id.in_(upload_ids)).values(upload_id=None)
+    )
+    await db.execute(sql_delete(PortalSnapshot).where(PortalSnapshot.upload_id.in_(upload_ids)))
+    await db.execute(sql_delete(ProductionSummary).where(ProductionSummary.upload_id.in_(upload_ids)))
+    await db.execute(sql_delete(Debt).where(Debt.production_upload_id.in_(upload_ids)))
+    await db.execute(
+        sql_update(Debt).where(Debt.commission_upload_id.in_(upload_ids)).values(commission_upload_id=None)
     )
     # ORM delete per row so the records cascade fires.
     rows = (await db.execute(select(FileUpload).where(FileUpload.id.in_(upload_ids)))).scalars().all()
