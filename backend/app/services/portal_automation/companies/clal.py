@@ -617,9 +617,13 @@ class ClalPortal(BasePortalAutomation):
             holder: dict = {}
             p.once("download", lambda d: holder.setdefault("dl", d))
             clicked = False
-            for sel in ("a:has-text('הורד')", "input[value='הורדה']",
-                        "input[value*='הורד']", "[onclick*='Download']",
-                        "a[href*='Download']"):
+            # The per-file download control is confirmed live (2026-07-30) to be
+            #   <a href="javascript:download();" class="lnkDownload" title="הורד">הורד</a>
+            # so match its CLASS first (unambiguous), then title/text, then the
+            # "הורדה" button, before the broader fallbacks.
+            for sel in ("a.lnkDownload", "a[title='הורד']", "a:has-text('הורד')",
+                        "input[value='הורדה']", "input[value*='הורד']",
+                        "[onclick*='Download']", "a[href*='Download']"):
                 try:
                     loc = fr.locator(sel).first
                     if await loc.count():
@@ -628,8 +632,16 @@ class ClalPortal(BasePortalAutomation):
                         break
                 except Exception:
                     continue
-            if not clicked:
-                return None
+            # The link's action is a bare `javascript:download()` call. If no
+            # selector clicked, or the click didn't register a download event,
+            # invoke the frame's (or page's) own download() directly — this is
+            # what the anchor would have run anyway.
+            if not clicked or not holder.get("dl"):
+                for _tgt in (fr, p):
+                    try:
+                        await _tgt.evaluate("typeof download==='function' && download()")
+                    except Exception:
+                        continue
             for _ in range(30):  # boxes can be a few MB
                 if holder.get("dl"):
                     break

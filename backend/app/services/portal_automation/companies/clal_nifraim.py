@@ -166,20 +166,41 @@ class ClalNifraimPortal(ClalPortal):
                 "a[href*='commissions']",
                 "a:has-text('לפירוט עמלות')",
             ]
+
+            async def _open_commissions() -> bool:
+                """Click the "לפירוט עמלות" anchor. Prefer a visible click, but
+                fall back to an in-page dispatch: the anchor is confirmed present
+                (href="../commissions", live 2026-07-30) yet Angular Material can
+                keep it in a non-active panel, so Playwright's visibility gate
+                skips it and the run wrongly reports "לא נמצא הקישור". A direct
+                .click() on the `<a target="_blank">` still opens the new tab that
+                expect_page catches. Scoped to a commissions href / that exact
+                text so it can't hit the promo tile."""
+                if await self._click_first_visible(page, commissions_link, timeout=6000):
+                    return True
+                return bool(await page.evaluate(
+                    """() => {
+                        const a = [...document.querySelectorAll('a')].find(e =>
+                            /commissions/i.test(e.getAttribute('href') || '')
+                            || (e.textContent || '').includes('לפירוט עמלות'));
+                        if (a) { a.click(); return true; }
+                        return false;
+                    }"""
+                ))
+
             grid_page: "Page" = page
+            clicked = False
             try:
-                async with page.context.expect_page(timeout=10000) as popup_info:
-                    clicked = await self._click_first_visible(
-                        page, commissions_link, timeout=15000
-                    )
+                async with page.context.expect_page(timeout=12000) as popup_info:
+                    clicked = await _open_commissions()
                 grid_page = await popup_info.value
                 await grid_page.wait_for_load_state("domcontentloaded", timeout=20000)
                 _logger.info("Clal נפרעים: commissions opened in popup → %s", grid_page.url)
             except Exception:
-                # No popup — it may have navigated in the same tab.
-                clicked = await self._click_first_visible(
-                    page, commissions_link, timeout=4000
-                )
+                # No popup — it may have navigated in the same tab, or the first
+                # attempt found nothing; retry the dispatch once.
+                if not clicked:
+                    clicked = await _open_commissions()
                 try:
                     await page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception:

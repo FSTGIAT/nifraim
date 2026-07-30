@@ -1097,7 +1097,26 @@ async def _run_inner(
             # Shared with the manual upload route — single dispatcher.
             # A batch defers these until after the merged files are built.
             if not defer_post_ingest:
+                # STANDALONE run: fold this company's fresh data into the unified
+                # 'מאוחד' aggregate (replace its slice, keep every other company)
+                # so a single-company re-run reaches the final merged file WITHOUT
+                # re-running the other portals — and without the double-count of
+                # its rows living in both the old merged file and this new upload.
+                # No-op when there's no aggregate to fold into; then the plain
+                # per-file post-ingest below runs as before.
+                consumed: set = set()
+                try:
+                    from app.services.portal_automation.batch_runner import (
+                        fold_standalone_run_into_merged,
+                    )
+                    consumed = await fold_standalone_run_into_merged(
+                        db, cred.user_id, ingested
+                    ) or set()
+                except Exception as e:
+                    logger.warning("standalone fold-into-merged failed (keeping per-file ingest): %s", e)
                 for upload_id, file_category, _company in ingested:
+                    if upload_id in consumed:
+                        continue  # already folded into (and superseded by) the merged file
                     try:
                         schedule_post_ingest(cred.user_id, upload_id, file_category)
                     except Exception as e:

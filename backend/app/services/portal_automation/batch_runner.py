@@ -165,6 +165,122 @@ async def _delete_uploads(db, upload_ids: list[uuid.UUID]) -> None:
     await db.flush()
 
 
+async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) -> None:
+    """Fold a STANDALONE (non-batch) portal run's fresh data into the unified
+    'מאוחד' production / נפרעים file(s).
+
+    After a full batch the merged 'מאוחד' file is the single active source and
+    the per-company uploads are deleted. Running ONE company afterwards
+    (``defer_post_ingest=False``) ingests it as a fresh standalone upload that
+    sits BESIDE the merged file — so that company is counted TWICE (old rows in
+    the merged file + new rows in the standalone upload). This rebuilds the
+    aggregate from "every OTHER company's rows already in the aggregate + this
+    company's FRESH rows", replacing only the just-run company's slice and
+    preserving everyone else — the same end state a batch produces, without
+    re-running the other portals. The other companies' data is never lost; only
+    the stale slice of the company that just ran is dropped.
+
+    No-op when the run company is the only active data (nothing to aggregate
+    into) — the plain standalone upload then stands on its own.
+    """
+    import calendar as _cal
+    from sqlalchemy import select as _select, update as _update
+    from app.models.upload import FileUpload
+    from app.models.record import ClientRecord
+    from app.services.portal_automation.aggregate import (
+        build_unified_workbook_bytes, build_unified_nifraim_bytes,
+    )
+    from app.services.upload_ingest import ingest_file_bytes, schedule_post_ingest
+    from app.utils.company_norm import normalize_company
+
+    prod_new = [uid for (uid, cat, _c) in ingested if cat == "production"]
+    comm_new = [uid for (uid, cat, _c) in ingested if cat == "commission"]
+    consumed: set = set()  # upload_ids folded away (caller skips their post-ingest)
+
+    async def _period(upload_ids):
+        q = await db.execute(_select(FileUpload.period_month).where(FileUpload.id.in_(upload_ids)))
+        ms = [m for (m,) in q.all() if m]
+        return max(ms) if ms else None
+
+    async def _records(upload_ids):
+        q = await db.execute(_select(ClientRecord).where(ClientRecord.upload_id.in_(upload_ids)))
+        return [_record_to_dict(r) for r in q.scalars().all()]
+
+    def _keys(recs):
+        return {normalize_company(r.get("receiving_company"))
+                for r in recs if r.get("receiving_company")}
+
+    # ── PRODUCTION ────────────────────────────────────────────────────────
+    if prod_new:
+        fresh = await _records(prod_new)
+        fresh_keys = _keys(fresh)
+        act_q = await db.execute(_select(FileUpload.id).where(
+            FileUpload.user_id == user_id, FileUpload.is_production.is_(True)))
+        act_ids = [i for (i,) in act_q.all()]
+        other_ids = [i for i in act_ids if i not in prod_new]
+        if other_ids and fresh:
+            all_recs = await _records(act_ids)
+            # Drop EVERY row of the just-run company (both its stale rows inside
+            # the merged file and the fresh standalone rows), then add the fresh
+            # rows back once — so the company appears exactly once.
+            merged = [r for r in all_recs
+                      if normalize_company(r.get("receiving_company")) not in fresh_keys] + fresh
+            per = await _period(prod_new) or await _period(act_ids)
+            as_of = per.replace(day=_cal.monthrange(per.year, per.month)[1]) if per else None
+            xlsx = build_unified_workbook_bytes(merged, as_of=as_of)
+            fname = f"פרודוקציה מאוחד {_month_label(per)}.xlsx".replace("  ", " ").strip()
+            merged_up, _ = await ingest_file_bytes(
+                db, user_id=user_id, content=xlsx, filename=fname,
+                commit=False, make_active=True, company_source_override="מאוחד")
+            await db.execute(_update(FileUpload).where(
+                FileUpload.user_id == user_id, FileUpload.is_production.is_(True),
+                FileUpload.id != merged_up.id).values(is_production=False))
+            await _delete_uploads(db, act_ids)
+            await db.commit()
+            consumed.update(prod_new)
+            try:
+                schedule_post_ingest(user_id, merged_up.id, "production")
+            except Exception:
+                pass
+            logger.info("standalone fold: production merged rebuilt — %d recs, replaced slice=%s",
+                        len(merged), fresh_keys)
+
+    # ── נפרעים ────────────────────────────────────────────────────────────
+    if comm_new:
+        await _tag_source_accounts_from_filename(db, comm_new)
+        per = await _period(comm_new)
+        # Only fold when we can period-scope, so two different months never merge.
+        if per is not None:
+            fresh = await _records(comm_new)
+            fresh_keys = _keys(fresh)
+            agg_q = await db.execute(_select(FileUpload.id).where(
+                FileUpload.user_id == user_id,
+                FileUpload.file_category == "commission",
+                FileUpload.period_month == per))
+            agg_ids = [i for (i,) in agg_q.all()]
+            other_ids = [i for i in agg_ids if i not in comm_new]
+            if other_ids and fresh:
+                all_recs = await _records(agg_ids)
+                merged = [r for r in all_recs
+                          if normalize_company(r.get("receiving_company")) not in fresh_keys] + fresh
+                nif = build_unified_nifraim_bytes(merged, period_label=_month_label(per))
+                fname = f"נפרעים מאוחד {_month_label(per)}.xlsx".replace("  ", " ").strip()
+                merged_up, _ = await ingest_file_bytes(
+                    db, user_id=user_id, content=nif, filename=fname,
+                    commit=False, make_active=True, company_source_override="מאוחד")
+                await _delete_uploads(db, agg_ids)
+                await db.commit()
+                consumed.update(comm_new)
+                try:
+                    schedule_post_ingest(user_id, merged_up.id, "commission")
+                except Exception:
+                    pass
+                logger.info("standalone fold: נפרעים merged rebuilt — %d recs, replaced slice=%s",
+                            len(merged), fresh_keys)
+
+    return consumed
+
+
 async def _run_worker_only_portal(db, run, cred):
     """Dispatch a non-Playwright portal (phoenix_terminal) to its native Windows
     orchestrator subprocess. Returns (success, upload_id). Failure-tolerant — a
