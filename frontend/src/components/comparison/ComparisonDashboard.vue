@@ -1079,6 +1079,10 @@ function openDetailFromFilter(c) {
     track: p.track || null,
     management_fee: p.management_fee ?? null,
     management_fee_amount: p.management_fee_amount ?? null,
+    rate: p.rate ?? null,
+    expected_commission: p.expected_commission ?? null,
+    expected_is_estimate: p.expected_is_estimate ?? null,
+    commission_gap: p.commission_gap ?? null,
     paid: true,
   }))
   const unmatched = (c.product_matches?.unmatched_production || []).map(p => ({
@@ -1092,6 +1096,10 @@ function openDetailFromFilter(c) {
     policy_number: p.policy_number,
     sign_date: p.sign_date || null,
     track: p.track || null,
+    rate: p.rate ?? null,
+    expected_commission: p.expected_commission ?? null,
+    expected_is_estimate: p.expected_is_estimate ?? null,
+    commission_gap: p.commission_gap ?? null,
     paid: false,
   }))
   const unmatchedComm = (c.product_matches?.unmatched_commission || []).map(p => ({
@@ -1105,6 +1113,10 @@ function openDetailFromFilter(c) {
     fund_type: p.fund_type || null,
     management_fee: p.management_fee ?? null,
     management_fee_amount: p.management_fee_amount ?? null,
+    rate: p.rate ?? null,
+    expected_commission: p.expected_commission ?? null,
+    expected_is_estimate: p.expected_is_estimate ?? null,
+    commission_gap: p.commission_gap ?? null,
     paid: true,
     source: 'commission_only',
   }))
@@ -1125,6 +1137,10 @@ function openDetailFromFilter(c) {
       fund_type: p.fund_type || null,
       management_fee: p.management_fee ?? null,
       management_fee_amount: p.management_fee_amount ?? null,
+      rate: p.rate ?? null,
+      expected_commission: p.expected_commission ?? null,
+      expected_is_estimate: p.expected_is_estimate ?? null,
+      commission_gap: p.commission_gap ?? null,
       paid: true,
       source: 'commission_only',
     }))

@@ -109,6 +109,13 @@ def entity_kind(product_type: str | None, sheet: str) -> str:
     """
     if product_type and any(t in product_type for t in _INSURER_ISSUED_SAVINGS):
         return "insurance"
+    # A pure-risk policy is issued by the INSURANCE entity no matter which
+    # sheet carries it. Making this explicit is what lets `classify_record`
+    # route an accumulation-bearing risk policy to the savings sheet — the only
+    # sheet with a צבירה column — without refiling it under the pension entity,
+    # which is the 2026-07-14 bug. Sheet and entity stay decoupled, as intended.
+    if pure_risk_insurance(product_type):
+        return "insurance"
     return sheet
 
 

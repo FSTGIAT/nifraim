@@ -81,7 +81,17 @@ def classify_record(rec: dict) -> str:
     if savings_product_type(product_type):
         return "savings"
     if pure_risk_insurance(product_type):
-        return "insurance"
+        # …unless the row carries a policy VALUE and no premium. The sheets are
+        # lossy by schema — insurance has only `סה"כ פרמיה`, savings only
+        # `צבירה` — so a risk policy with an accumulation and no premium lands
+        # on a sheet that cannot hold either of its numbers, and the value is
+        # silently discarded. Measured: the Phoenix MU book parsed 259 rows
+        # carrying ₪1,094,213, and after the merge every one of them read ₪0.
+        #
+        # The savings SHEET is safe now that `entity_kind` pins pure-risk to the
+        # INSURANCE entity regardless of sheet — the 2026-07-14 bug was the
+        # entity, not the sheet.
+        return "savings" if (accum > 0 and premium <= 0) else "insurance"
     if accum > 0 and premium <= 0:
         return "savings"
     return "insurance"

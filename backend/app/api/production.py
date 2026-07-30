@@ -1190,6 +1190,11 @@ async def get_expected_commission_trend(
     per_period_clients: dict = defaultdict(set)
     upload_to_period = {u.id: u.period_month for u in latest_by_period.values()}
 
+    # Why a company produced NO expected commission — so the chart can say so
+    # instead of silently dropping it. An agent seeing 2 of 7 companies has no
+    # way to tell "these have no agreement rate" from "the app is broken".
+    excluded: dict = defaultdict(lambda: defaultdict(lambda: {"no_rate": 0, "no_base": 0}))
+
     for upload_id, id_number, company, product_type, product_name, premium, accum in records_q.all():
         if not company:
             continue
@@ -1200,17 +1205,20 @@ async def get_expected_commission_trend(
         premium_f = float(premium or 0)
         is_accum = accumulation_based(product_type, accum_f)
         rate = expected_rate(user_rates, _pick_rate, company, product_name, product_type, is_accum)
+        period = upload_to_period[upload_id]
         if rate <= 0:
+            excluded[period][company]["no_rate"] += 1
             continue
         if is_accum:
             exp = accum_f * rate / 12.0
         else:
             if premium_f <= 0:
+                excluded[period][company]["no_base"] += 1
                 continue
             exp = premium_f * rate
         if exp <= 0:
+            excluded[period][company]["no_base"] += 1
             continue
-        period = upload_to_period[upload_id]
         per_period[period][company] += exp
         if id_number:
             per_period_clients[period].add(id_number)
@@ -1225,6 +1233,16 @@ async def get_expected_commission_trend(
             "total_expected": total,
             "unique_clients": len(per_period_clients[period]),
             "by_company": by_company,
+            # Companies present in this month's production that contribute
+            # nothing, and why. Shown under the chart.
+            "uncovered": [
+                {"company": co, "no_rate": v["no_rate"], "no_base": v["no_base"]}
+                for co, v in sorted(
+                    excluded.get(period, {}).items(),
+                    key=lambda kv: -(kv[1]["no_rate"] + kv[1]["no_base"]),
+                )
+                if co not in by_company and (v["no_rate"] or v["no_base"])
+            ],
         })
     if not out:
         reason = "no_rates"

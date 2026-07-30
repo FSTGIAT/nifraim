@@ -96,13 +96,23 @@
                   <span class="amt-lbl">ד.נ ₪</span>
                   <span class="amt-val ltr-number">{{ fmtCell(p.management_fee_amount) }}</span>
                 </div>
-                <div class="amt" v-if="!p.paid && !p.source && rateLabel(p)">
-                  <span class="amt-lbl">אחוז</span>
-                  <span class="amt-val ltr-number amt-muted">{{ rateLabel(p) }}</span>
+                <!-- Rate + expected now render on PAID lines too. They used to
+                     be unpaid-only, which hid the comparison exactly where it
+                     matters: on a line that WAS paid, is it the right amount? -->
+                <div class="amt" v-if="rateLabel(p)">
+                  <span class="amt-lbl">{{ isEstimate(p) ? 'אחוז משוער' : 'אחוז לפי ההסכם' }}</span>
+                  <span class="amt-val ltr-number amt-muted">{{ isEstimate(p) ? '~' : '' }}{{ rateLabel(p) }}</span>
                 </div>
-                <div class="amt" v-if="!p.paid && !p.source && expectedCommission(p) != null">
-                  <span class="amt-lbl">עמלה צפויה</span>
-                  <span class="amt-val ltr-number amt-expected">{{ fmtCell(expectedCommission(p)) }}</span>
+                <div class="amt" v-if="expectedCommission(p) != null"
+                     :title="isEstimate(p) ? 'אין בהסכם שיעור למוצר הזה — הערכה לפי שיעור כללי של החברה' : ''">
+                  <span class="amt-lbl">{{ isEstimate(p) ? 'הערכה' : 'אמור לשלם' }}</span>
+                  <span class="amt-val ltr-number amt-expected">{{ isEstimate(p) ? '~' : '' }}{{ fmtCell(expectedCommission(p)) }}</span>
+                </div>
+                <!-- Only ever shown against a FIRM rate — an estimate would
+                     manufacture a debt out of a guess. -->
+                <div class="amt" v-if="p.commission_gap > 0">
+                  <span class="amt-lbl">חסר</span>
+                  <span class="amt-val ltr-number amt-gap">{{ fmtCell(p.commission_gap) }}</span>
                 </div>
                 <div class="amt" v-if="p.sign_date">
                   <span class="amt-lbl">הצטרפות</span>
@@ -237,6 +247,10 @@ function findRate(product) {
 // policy purely because the company matches.
 function backendResolved(p) {
   return p && p.expected_is_estimate !== undefined && p.expected_is_estimate !== null
+}
+
+function isEstimate(p) {
+  return p?.expected_is_estimate === true
 }
 
 function rateOf(p) {
@@ -585,4 +599,5 @@ function fmtCell(val) {
 }
 
 .ltr-number { direction: ltr; unicode-bidi: isolate; }
+.amt-gap { color: var(--red); font-weight: 700; }
 </style>

@@ -88,6 +88,16 @@
       <p v-if="isSingleMonth" class="trend-single-caption">
         חודש ראשון נקלט — המגמה תצטייר אוטומטית עם ההורדה הבאה
       </p>
+      <!-- Why companies are missing from the bar. Without this, an agent
+           seeing 2 of 7 companies can't tell "no agreement rate for these"
+           from "the app lost my data". -->
+      <p v-if="uncovered.length" class="trend-uncovered">
+        <span class="tu-lead">לא נכללות בחישוב:</span>
+        <span v-for="u in uncovered" :key="u.company" class="tu-item">
+          {{ u.company }}
+          <span class="tu-why">{{ u.no_rate >= u.no_base ? 'אין שיעור בהסכם' : 'אין צבירה או פרמיה בקובץ' }}</span>
+        </span>
+      </p>
     </template>
 
     <div v-else-if="loading" class="trend-empty">
@@ -134,6 +144,13 @@ const loading = ref(true)
 // from `points` so it can never be summed into the expected figure.
 const receivedTotal = ref(0)
 const receivedCompanies = ref({})
+
+// Companies in the LATEST month's production that contribute no expected
+// commission, with the reason the backend gives.
+const uncovered = computed(() => {
+  const last = points.value[points.value.length - 1]
+  return (last?.uncovered || []).slice(0, 6)
+})
 
 // Collapse a { rawCompanyName: value } map so a company's legal-entity variants
 // (e.g. "הפניקס חברה לביטוח בע\"מ" + "הפניקס אקסלנס פנסיה וגמל בע\"מ") merge into
@@ -679,4 +696,9 @@ const chartOptions = computed(() => ({
 @keyframes trend-spin { to { transform: rotate(360deg); } }
 .trend-current--actual .trend-current-value { color: var(--chart-9); }
 .trend-current--actual .trend-current-label { color: var(--text-muted); }
+.trend-uncovered { margin: 6px 0 0; font-size: 11.5px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.tu-lead { font-weight: 650; }
+.tu-item { white-space: nowrap; }
+.tu-why { color: var(--chart-4); }
+.tu-why::before { content: '— '; }
 </style>
