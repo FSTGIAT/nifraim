@@ -25,8 +25,15 @@
         </span>
       </div>
       <div v-if="hasData" class="trend-current">
-        <span class="trend-current-label">סה"כ {{ latestLabel }}</span>
+        <span class="trend-current-label">צפוי {{ latestLabel }}</span>
         <span class="trend-current-value ltr-number">{{ formatCurrency(latestValue) }}</span>
+      </div>
+      <!-- Actual received — deliberately its own figure. It used to be folded
+           into the expected bar for companies with no priceable base, which
+           made the headline a mix of money owed and money already paid. -->
+      <div v-if="hasData && receivedTotal > 0" class="trend-current trend-current--actual">
+        <span class="trend-current-label">התקבל בפועל</span>
+        <span class="trend-current-value ltr-number">{{ formatCurrency(receivedTotal) }}</span>
       </div>
     </div>
 
@@ -115,6 +122,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
 import { useProductionStore } from '../../stores/production.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
+import { brandForLabel } from '../../utils/companyBrand.js'
 
 defineEmits(['go-to-automation'])
 
@@ -122,21 +130,85 @@ const productionStore = useProductionStore()
 const points = ref([])
 const reason = ref(null)
 const loading = ref(true)
+// ACTUAL commission received (from /comparison/company-summary). Held apart
+// from `points` so it can never be summed into the expected figure.
+const receivedTotal = ref(0)
+const receivedCompanies = ref({})
+
+// Collapse a { rawCompanyName: value } map so a company's legal-entity variants
+// (e.g. "הפניקס חברה לביטוח בע\"מ" + "הפניקס אקסלנס פנסיה וגמל בע\"מ") merge into
+// ONE branded label — otherwise the two sub-top-5 keys each fall into "אחרות".
+// Unknown companies keep their raw name (brandForLabel falls back to label '?').
+function collapseByCompany(byCompany) {
+  const out = {}
+  for (const [name, val] of Object.entries(byCompany || {})) {
+    const v = Number(val) || 0
+    if (v === 0) continue
+    const brand = brandForLabel(name)
+    const label = brand && brand.label && brand.label !== '?' ? brand.label : name
+    out[label] = (out[label] || 0) + v
+  }
+  return out
+}
+
+// EXPECTED only. This used to top the latest period up with ACTUAL received
+// for companies whose production carries no priceable base (Phoenix life:
+// premium=0 & accumulation=0), so they'd appear at all — but that silently
+// added a different quantity into a chart titled "עמלות צפויות". Live, the
+// ₪132,146 headline was mostly נפרעים actuals: הכשרה ₪45,509, מור ₪19,373 and
+// הפניקס ₪31,458 were the amounts PAID, not amounts owed. Conflating Actual
+// with Expected is the one thing commission_calculation_model.md forbids.
+//
+// Actual now rides alongside as its OWN series (see `receivedPoint`), so a
+// company with no priceable base is still visible — as what it really is.
+function mergeTrends(expPoints) {
+  const pts = expPoints.map((p) => ({ ...p, by_company: collapseByCompany(p.by_company) }))
+  for (const p of pts) {
+    const total = Object.values(p.by_company).reduce((s, v) => s + (Number(v) || 0), 0)
+    p.total_expected = Math.round(total * 100) / 100
+  }
+  return pts
+}
 
 async function load() {
   loading.value = true
   try {
-    // EXPECTED commission per production month — the moment a production
-    // file lands (upload or automation batch) the chart updates. Decoupled
-    // from when נפרעים reports actually arrive. New shape is
-    // { points: [...], reason }, but legacy deployments may still return a
-    // bare array — handle both defensively.
-    const { data } = await api.get('/production/expected-trend')
-    const payload = Array.isArray(data) ? { points: data, reason: null } : (data || {})
-    points.value = Array.isArray(payload.points) ? payload.points : []
+    // EXPECTED commission per production month (primary) — updates the moment a
+    // production file lands. Decoupled from when נפרעים reports arrive. The latest
+    // period is topped up with ACTUAL received per company (/comparison/company-summary)
+    // so companies whose production has no priceable base (Phoenix life) still
+    // surface. Expected shape is { points, reason } (legacy: a bare array).
+    const [expRes, csRes] = await Promise.allSettled([
+      api.get('/production/expected-trend'),
+      api.get('/comparison/company-summary'),
+    ])
+
+    let payload = { points: [], reason: null }
+    if (expRes.status === 'fulfilled') {
+      const d = expRes.value.data
+      payload = Array.isArray(d) ? { points: d, reason: null } : (d || { points: [], reason: null })
+    } else {
+      console.error('Failed to load expected commission trend', expRes.reason)
+    }
+    const expPoints = Array.isArray(payload.points) ? payload.points : []
     reason.value = payload.reason || null
+
+    // Per-company actual received (₪) — { companyName: received }.
+    const receivedByCompany = {}
+    if (csRes.status === 'fulfilled') {
+      for (const c of (csRes.value.data?.companies || [])) {
+        const v = Number(c.received) || 0
+        if (v > 0) receivedByCompany[c.company] = v
+      }
+    }
+
+    points.value = mergeTrends(expPoints)
+    // Kept separate on purpose — this is what ARRIVED, not what is owed.
+    receivedTotal.value = Object.values(receivedByCompany)
+      .reduce((s, v) => s + (Number(v) || 0), 0)
+    receivedCompanies.value = collapseByCompany(receivedByCompany)
   } catch (err) {
-    console.error('Failed to load expected commission trend', err)
+    console.error('Failed to load commission trend', err)
     points.value = []
     reason.value = null
   } finally {
@@ -605,4 +677,6 @@ const chartOptions = computed(() => ({
 }
 
 @keyframes trend-spin { to { transform: rotate(360deg); } }
+.trend-current--actual .trend-current-value { color: var(--chart-9); }
+.trend-current--actual .trend-current-label { color: var(--text-muted); }
 </style>

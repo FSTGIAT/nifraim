@@ -1,6 +1,10 @@
+import logging
 from collections import defaultdict
 
+from app.services.rate_select import rate_for_product
 from app.utils.company_norm import company_stem, known_company_stem
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Product category classification
@@ -53,6 +57,62 @@ def _classify_product_type(product_type: str | None) -> str | None:
     if not product_type:
         return None
     return _PRODUCT_TYPE_TO_CATEGORY.get(product_type)
+
+
+def _rate_for(user_rates, company, product, product_type, accumulation, premium):
+    """(rate, expected_commission, is_estimate) for one product line, or blanks
+    when the caller supplied no rates.
+
+    Thin wrapper so every product dict in this module resolves its rate the
+    same way — through `rate_select`, the single source of truth — instead of
+    the frontend guessing from the company name.
+
+    `is_estimate` is the load-bearing part. `rate_select` will fall back to the
+    company's DEFAULT or the MEDIAN of its rates when no agreement line names
+    the product, and that number must never be presented as "this is what you
+    are owed". Live example: מנורה has no ביטוח-חיים line, so those policies
+    fell to the 10% median of every מנורה rate and produced
+    "expected ₪1,529 vs paid ₪10.35" — a ₪21K phantom debt across the book.
+    A firm figure comes only from a rate row that NAMES the product.
+    """
+    if not user_rates:
+        return None, None, None
+    try:
+        rate, expected, route = rate_for_product(
+            user_rates, company, product, product_type, accumulation, premium
+        )
+        is_estimate = not (route or "").endswith((":product", ":residue"))
+        return rate, expected, is_estimate
+    except Exception:  # never let rate lookup break the comparison itself
+        logger.warning("rate lookup failed for %s / %s", company, product, exc_info=True)
+        return None, None, None
+
+
+# A payment is "off" only beyond BOTH thresholds — insurers round, and a
+# commission can straddle a month boundary. ₪1 absolute kills rounding noise;
+# 2% kills timing drift on large accumulations. Below these, silence.
+_GAP_MIN_SHEKEL = 1.0
+_GAP_MIN_FRACTION = 0.02
+
+
+def _commission_gap(expected, actual, is_estimate) -> float | None:
+    """How far the paid commission is from what the agreement says, or None.
+
+    Returns a positive number when the agent was UNDER-paid, negative when
+    over-paid. Only ever computed against a FIRM rate — an estimated rate
+    would manufacture a debt out of a guess (see `_rate_for`).
+    """
+    if is_estimate or expected is None or actual is None:
+        return None
+    try:
+        gap = float(expected) - float(actual)
+    except (TypeError, ValueError):
+        return None
+    if abs(gap) < _GAP_MIN_SHEKEL:
+        return None
+    if float(expected) and abs(gap) / abs(float(expected)) < _GAP_MIN_FRACTION:
+        return None
+    return round(gap, 2)
 
 
 def _is_mixed_category(commission_records: list[dict]) -> bool:
@@ -244,7 +304,8 @@ def _is_paying_company(company_name: str | None, paying_list: list[str]) -> bool
 
 def compute_comparison(production_records: list[dict], commission_records: list[dict],
                         paying_company_names: list[str] | None = None,
-                        category_override: str | None = None) -> dict:
+                        category_override: str | None = None,
+                        user_rates: list | None = None) -> dict:
     """
     Compare production file records against commission report records.
     Match customers by id_number, then match products by fund_policy_number.
@@ -364,11 +425,19 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         for r in prod_recs:
             product_name = r.get("product") or ""
             sign_date_val = r.get("sign_date")
+            p_rate, p_expected, p_est = _rate_for(
+                user_rates, r.get("receiving_company"), product_name,
+                r.get("product_type"), r.get("accumulation"), r.get("total_premium"),
+            )
             prod_products.append({
                 "product": product_name,
                 "product_type": r.get("product_type"),
                 "company": _extract_short_company(product_name, r.get("receiving_company")),
                 "company_full": r.get("receiving_company"),
+                # Resolved server-side by the canonical selector — see _rate_for.
+                "rate": p_rate,
+                "expected_commission": p_expected,
+                "expected_is_estimate": p_est,
                 "premium": r.get("total_premium"),
                 "policy_number": r.get("fund_policy_number"),
                 "status": r.get("product_status"),
@@ -383,12 +452,26 @@ def compute_comparison(production_records: list[dict], commission_records: list[
 
         # Aggregate commission data
         comm_total = sum(_get_commission(r) or 0 for r in comm_recs)
-        comm_products = [
-            {
-                "product": r.get("fund_type") or r.get("product"),
+        comm_products = []
+        for r in comm_recs:
+            c_product = r.get("fund_type") or r.get("product")
+            c_rate, c_expected, c_est = _rate_for(
+                user_rates, r.get("receiving_company"), c_product,
+                r.get("product_type") or r.get("fund_type"),
+                _get_balance(r), r.get("total_premium"),
+            )
+            comm_products.append({
+                "product": c_product,
                 "account": r.get("fund_policy_number"),
                 "balance": _get_balance(r),
                 "commission": _get_commission(r),
+                # What the agreement says this line SHOULD have paid, next to
+                # the `commission` that actually arrived — the agent could
+                # previously see only one of the two.
+                "rate": c_rate,
+                "expected_commission": c_expected,
+                "expected_is_estimate": c_est,
+                "commission_gap": _commission_gap(c_expected, _get_commission(r), c_est),
                 "annual_pct": r.get("annual_commission_pct"),
                 "monthly_pct": r.get("monthly_commission_pct"),
                 # Same treatment as production products: `company` is the SHORT
@@ -403,12 +486,10 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "fund_type": r.get("fund_type"),
                 "management_fee": r.get("management_fee"),
                 "management_fee_amount": r.get("management_fee_amount"),
-            }
-            for r in comm_recs
-        ]
+            })
 
         # Product-level matching by account number
-        product_matches = _match_products(prod_recs, comm_recs)
+        product_matches = _match_products(prod_recs, comm_recs, user_rates)
         paid_count = len(product_matches["matched"])
         unpaid_count = len(product_matches["unmatched_production"])
 
@@ -455,7 +536,30 @@ def compute_comparison(production_records: list[dict], commission_records: list[
             "product_matches": product_matches,
         })
 
+    # Payments that disagree with the agreement — the alert the agent acts on.
+    # Only FIRM rates contribute (see _commission_gap), so this is a claim the
+    # agent can take to the insurer, not a modelling artefact.
+    gap_lines = [
+        p
+        for c in customers
+        for key in ("commission_products",)
+        for p in (c.get(key) or [])
+        if p.get("commission_gap") is not None
+    ] + [
+        m
+        for c in customers
+        for m in ((c.get("product_matches") or {}).get("matched") or [])
+        if m.get("commission_gap") is not None
+    ]
+    underpaid = [p for p in gap_lines if p["commission_gap"] > 0]
+    overpaid = [p for p in gap_lines if p["commission_gap"] < 0]
+
     summary = {
+        "mismatch_count": len(gap_lines),
+        "underpaid_count": len(underpaid),
+        "underpaid_total": round(sum(p["commission_gap"] for p in underpaid), 2),
+        "overpaid_count": len(overpaid),
+        "overpaid_total": round(-sum(p["commission_gap"] for p in overpaid), 2),
         "total_customers": len(all_ids),
         "matched": len(matched_ids),
         "only_in_production": len(only_prod_ids),
@@ -502,7 +606,8 @@ def _policy_matches(prod_policy: str, comm_policy: str) -> bool:
     return False
 
 
-def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
+def _match_products(prod_recs: list[dict], comm_recs: list[dict],
+                    user_rates: list | None = None) -> dict:
     """Match products between production and commission by account/policy number."""
     matched = []
     unmatched_prod = list(prod_recs)
@@ -516,6 +621,11 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
             cn = cr.get("fund_policy_number")
             if cn and _policy_matches(pn, cn):
                 product_name = pr.get("product") or ""
+                m_rate, m_expected, m_est = _rate_for(
+                    user_rates, pr.get("receiving_company"), product_name,
+                    pr.get("product_type"), pr.get("accumulation"),
+                    pr.get("total_premium"),
+                )
                 matched.append({
                     "policy_number": pn,
                     "production_product": product_name,
@@ -523,6 +633,16 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
                     "company": _extract_short_company(product_name, pr.get("receiving_company")),
                     "premium": pr.get("total_premium"),
                     "accumulation": pr.get("accumulation"),
+                    # What the AGREEMENT says this line should pay, from the
+                    # production side, next to what actually arrived. The UI's
+                    # old "צפוי" was balance × the insurer's own reported
+                    # monthly_pct — useful, but it answers "does the insurer
+                    # agree with itself", not "did they pay me my rate".
+                    "rate": m_rate,
+                    "expected_commission": m_expected,
+                    "expected_is_estimate": m_est,
+                    "commission_gap": _commission_gap(
+                        m_expected, _get_commission(cr), m_est),
                     "commission": _get_commission(cr),
                     "balance": _get_balance(cr),
                     "monthly_pct": cr.get("monthly_commission_pct"),
@@ -544,6 +664,12 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
              "premium": r.get("total_premium"),
              "policy_number": r.get("fund_policy_number"),
              "accumulation": r.get("accumulation"),
+             # Same resolved rate as production_products — this is the list the
+             # customer drill-down actually renders for "unpaid" products.
+             **dict(zip(("rate", "expected_commission", "expected_is_estimate"),
+                        _rate_for(user_rates, r.get("receiving_company"),
+                                  r.get("product"), r.get("product_type"),
+                                  r.get("accumulation"), r.get("total_premium")))),
              "sign_date": str(r["sign_date"]) if r.get("sign_date") else None,
              "track": r.get("track"),
              "client_phone": r.get("client_phone"),
@@ -558,6 +684,11 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict]) -> dict:
              "commission": _get_commission(r),
              "balance": _get_balance(r),
              "company": _extract_short_company(r.get("fund_type") or r.get("product"), r.get("receiving_company")),
+             **dict(zip(("rate", "expected_commission", "expected_is_estimate"),
+                        _rate_for(user_rates, r.get("receiving_company"),
+                                  r.get("fund_type") or r.get("product"),
+                                  r.get("product_type") or r.get("fund_type"),
+                                  _get_balance(r), r.get("total_premium")))),
              "fund_type": r.get("fund_type")}
             for r in unmatched_comm
         ],

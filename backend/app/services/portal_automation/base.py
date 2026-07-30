@@ -125,6 +125,12 @@ class BasePortalAutomation(ABC):
     # right after is far better explained by a score/rate gate than by a typo.
     cred_last_run_status: str | None = None
     cred_last_run_at = None  # datetime | None — typed loosely to avoid an import here
+    # Stage of the last finished run ("login"/"otp"/"download"/"parse"/None).
+    # Set by runner.py. Lets a score-gated plugin shed/keep its reCAPTCHA
+    # reputation by WHERE the last run failed: a login-stage reject means the
+    # captcha refused us (shed); an otp/download failure means login PASSED, so
+    # the reputation is proven and must be kept.
+    cred_last_run_stage: str | None = None
 
     def __init__(self) -> None:
         # Best-effort legs (a folded נפרעים grab, a secondary report) that fail
@@ -134,6 +140,40 @@ class BasePortalAutomation(ABC):
         # short Hebrew note per failed leg; the runner writes them onto
         # PortalRun.error_message so the batch can surface + downgrade to partial.
         self.partial_errors: list[str] = []
+
+    async def _shed_recaptcha_reputation(self, page: "Page") -> None:
+        """Clear ONLY the `_GRECAPTCHA` reputation cookie, keeping the rest of
+        the persistent profile intact.
+
+        The middle path this class was missing. `recycle=True` nukes the WHOLE
+        profile to shed a poisoned reCAPTCHA reputation (Mor/Meitav) — but that
+        also throws away the aged Google/browsing cookies a **v3** portal
+        (analyst) is scored on, so a cold profile gets refused too. `recycle=
+        False` keeps the profile — but then it hoards the poisoned `_GRECAPTCHA`
+        forever and stays rejected. Per the measured model (see `browser_channel`
+        / `recycle_profile_on_login_failure` above, and memories portal_mor /
+        portal_cold_profile_recaptcha): `_GRECAPTCHA` alone carries the
+        accumulated reputation, each rejection lowers it, and a FRESH reputation
+        is fine. So dropping just that one cookie sheds the poison while the
+        aged profile (which helps every OTHER bot signal) is preserved.
+
+        Only worth calling when the last run was REJECTED — a winning reputation
+        should be kept, not thrown away.
+        """
+        try:
+            await page.context.clear_cookies(name="_GRECAPTCHA")
+            from app.services.portal_automation.runner import logger as _lg, _worker_note
+            _lg.info("%s: shed poisoned _GRECAPTCHA reputation cookie", self.portal_kind)
+            try:
+                _worker_note(f"{self.portal_kind}: shed _GRECAPTCHA (was rejected last run)")
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                from app.services.portal_automation.runner import logger as _lg
+                _lg.warning("%s: could not shed _GRECAPTCHA: %s", self.portal_kind, e)
+            except Exception:
+                pass
 
     @abstractmethod
     async def login(self, page: "Page", username: str, password: str) -> None:

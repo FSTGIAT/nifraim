@@ -7,6 +7,29 @@
       @open-sheet="openAiSheet"
     />
 
+    <!-- ALERT: payments that disagree with the agreement. Only firm rates
+         (an agreement line that names the product) reach here, so every row
+         is a claim the agent can actually take to the insurer. -->
+    <div v-if="mismatchAlert.count" class="gap-alert" role="alert">
+      <span class="ga-icon" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </span>
+      <div class="ga-text">
+        <strong>
+          <span class="ltr-number">{{ mismatchAlert.count }}</span>
+          מוצרים שולמו בסכום שונה מהשיעור שבהסכם
+        </strong>
+        <span class="ga-sub">
+          חסר סה"כ <span class="ltr-number">{{ fmtMoney(mismatchAlert.under) }}</span>
+          <template v-if="mismatchAlert.overCount">
+            · שולם ביתר <span class="ltr-number">{{ fmtMoney(mismatchAlert.over) }}</span>
+          </template>
+          · מחושב לפי האחוז שבטבלת העמלות מול מה שדווח בנפרעים
+        </span>
+      </div>
+      <button class="ga-action" @click="onLegendClick('matched')">הצג לקוחות</button>
+    </div>
+
     <!-- HERO: Customer Status Distribution -->
     <div class="hero-card">
       <div class="hero-header">
@@ -722,6 +745,29 @@ const statusItems = computed(() => [
 const statusTotal = computed(() =>
   statusItems.value.reduce((sum, s) => sum + s.count, 0)
 )
+
+// ── Agreement vs. actually-paid mismatches ───────────────────────────────
+// Derived from the products themselves rather than the summary, so a drill
+// into one company reports that company's mismatches, not the whole book's.
+function fmtMoney(n) { return '₪' + Math.round(Math.abs(n || 0)).toLocaleString('en-US') }
+
+const mismatchAlert = computed(() => {
+  let count = 0, under = 0, over = 0, overCount = 0
+  for (const c of displayCustomers.value) {
+    const lines = [
+      ...(c.commission_products || []),
+      ...((c.product_matches?.matched) || []),
+    ]
+    for (const p of lines) {
+      const gap = p?.commission_gap
+      if (gap == null) continue
+      count += 1
+      if (gap > 0) under += gap
+      else { over += -gap; overCount += 1 }
+    }
+  }
+  return { count, under, over, overCount }
+})
 
 // ── Same distribution, broken down BY COMPANY ────────────────────────────
 // The נפרעים side is now one merged file covering every company, so a single
@@ -2148,4 +2194,33 @@ function formatCompact(val) {
   .unpaid-strip-actions { width: 100%; justify-content: flex-start; }
 }
 
+
+/* Agreement-vs-paid mismatch alert */
+.gap-alert {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 16px; margin-bottom: 14px;
+  background: color-mix(in srgb, var(--chart-4) 8%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--chart-4) 38%, transparent);
+  border-radius: var(--radius-lg, 16px);
+}
+.ga-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: none; border-radius: 9px;
+  background: color-mix(in srgb, var(--chart-4) 16%, transparent);
+  color: var(--chart-4);
+}
+.ga-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.ga-text strong { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.ga-sub { font-size: 11.5px; color: var(--text-secondary); }
+.ga-action {
+  flex: none; padding: 8px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--chart-4) 40%, transparent);
+  background: var(--card-bg); color: var(--chart-4);
+  font-family: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer;
+}
+.ga-action:hover { background: color-mix(in srgb, var(--chart-4) 10%, var(--card-bg)); }
+@media (max-width: 640px) {
+  .gap-alert { flex-wrap: wrap; }
+  .ga-action { width: 100%; }
+}
 </style>

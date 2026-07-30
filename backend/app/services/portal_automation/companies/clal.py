@@ -147,61 +147,92 @@ class ClalPortal(BasePortalAutomation):
     folds = ('clal_nifraim',)
 
     async def login(self, page: "Page", username: str, password: str) -> None:
-        await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+        from app.services.portal_automation.runner import SCREENSHOT_ROOT
 
-        # Step 2: the landing page shows an entry link before the APM form
-        # ("<span class='LoginText'> לכניסה לאתר <a>לחץ/י כאן</a></span>").
-        # Best-effort — harmless if the credentials form is already rendered.
-        await self._click_first_visible(
-            page,
-            [
-                "span.LoginText a",
-                "a:has-text('לחץ')",
-                "a:has-text('לכניסה')",
-            ],
-            timeout=6000,
+        async def _attempt() -> str:
+            """One full logon attempt. Returns 'otp' | 'creds' | 'pwchange' | 'timeout'."""
+            await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=30000)
+            # Landing entry link before the APM form
+            # ("<span class='LoginText'> לכניסה לאתר <a>לחץ/י כאן</a></span>").
+            await self._click_first_visible(
+                page,
+                ["span.LoginText a", "a:has-text('לחץ')", "a:has-text('לכניסה')"],
+                timeout=6000,
+            )
+            # Standard F5 APM user+password form (input#input_1 / input#input_2).
+            await apm_login_submit(page, username, password)
+            # A real URL redirect marks the reset page (the login page's own
+            # "שכחתי סיסמה" link would false-positive a body substring).
+            for _ in range(24):  # ~12s
+                if self._is_password_change_url(page.url):
+                    return "pwchange"
+                if await self._has_credentials_error(page):
+                    return "creds"
+                try:
+                    el = await page.query_selector(self.OTP_FIELD)
+                    if el and await el.is_visible():
+                        return "otp"
+                except Exception:
+                    pass
+                await page.wait_for_timeout(500)
+            if self._is_password_change_url(page.url):
+                return "pwchange"
+            try:
+                await self._wait_visible(page, self.OTP_FIELD, timeout=10000)
+                return "otp"
+            except Exception:
+                return "timeout"
+
+        async def _dump_rejection() -> None:
+            base = SCREENSHOT_ROOT / "clal_login_rejected.png"
+            await self._safe_screenshot(page, base)
+            await self._dump_page_state(page, base)
+
+        _PWCHANGE_MSG = (
+            "כלל מבקשת לעדכן סיסמה. החליפ/י סיסמה באתר כלל (clalnet.co.il) ואז "
+            "עדכנ/י את הסיסמה השמורה כאן כדי שהאוטומציה תוכל להתחבר."
         )
 
-        # Step 3: standard F5 APM username + password form (sits directly on the
-        # clalnet landing page: input#input_1 / input#input_2, button "כניסה").
-        await apm_login_submit(page, username, password)
-
-        # Steps 4+5: after submit the POST resolves to one of two screens —
-        #   (a) the password-change branch: a redirect to
-        #       …/ClalnetForgotPsw/ClalnetForgotPassword.html (we can't reset it), or
-        #   (b) the OTP-entry screen.
-        # Poll for whichever appears first. NOTE: only a real URL redirect marks
-        # the reset page — the login page itself carries a "שכחתי סיסמה" link to
-        # ForgotPassword.html, so a body-substring check would false-positive.
-        for _ in range(24):  # ~12s
-            if self._is_password_change_url(page.url):
+        # F5 BIG-IP APM allows only a limited number of concurrent sessions per
+        # user. A leftover session from an earlier run re-renders the logon page
+        # WITH the inline "שם המשתמש או הסיסמא שגויים" error even though the
+        # password is correct — measured 2026-07-24: the SAME creds succeeded at
+        # 14:57 and a fresh login 65 min later was bounced with that text in 5 s.
+        # Clearing cookies kills the stale F5 session, so retry ONCE on a clean
+        # session before trusting a credentials rejection (the same self-heal
+        # Hachshara — same F5 platform — already has). A GENUINE bad password
+        # still fails: it is rejected again on the clean second attempt.
+        for attempt in range(2):
+            result = await _attempt()
+            if result == "otp":
+                return
+            if result == "pwchange":
+                raise RuntimeError(_PWCHANGE_MSG)
+            if attempt == 0:
+                # 'creds' or 'timeout' on the first try → likely a stale F5
+                # session. Shed cookies and retry clean.
+                _logger.warning(
+                    "Clal: login gave %r on attempt 1 — clearing cookies "
+                    "(likely stale F5 session) and retrying clean", result)
+                try:
+                    await page.context.clear_cookies()
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1000)
+                continue
+            # Second attempt on a clean session still failed → real.
+            await _dump_rejection()
+            if result == "creds":
                 raise RuntimeError(
-                    "כלל מבקשת לעדכן סיסמה. החליפ/י סיסמה באתר כלל "
-                    "(clalnet.co.il) ואז עדכנ/י את הסיסמה השמורה כאן כדי שהאוטומציה "
-                    "תוכל להתחבר."
+                    "כלל דחתה את שם המשתמש/הסיסמה (\"שם המשתמש או הסיסמא שגויים\") "
+                    "גם אחרי ניקוי סשן F5 — ייתכן שהסיסמה פגה/הוחלפה. התחבר/י ידנית "
+                    "לאתר כלל, עדכנ/י סיסמה, ואז עדכנ/י את הפרטים השמורים כאן. "
+                    "בדוק clal_login_rejected.txt"
                 )
-            if await self._has_credentials_error(page):
-                raise RuntimeError(
-                    "כלל דחתה את שם המשתמש/הסיסמה (\"שם המשתמש או הסיסמא שגויים\"). "
-                    "ייתכן שהסיסמה פגה/הוחלפה — התחבר/י ידנית לאתר כלל, אפס/עדכן/י "
-                    "סיסמה, ואז עדכנ/י את פרטי ההתחברות השמורים כאן."
-                )
-            try:
-                el = await page.query_selector(self.OTP_FIELD)
-                if el and await el.is_visible():
-                    return
-            except Exception:
-                pass
-            await page.wait_for_timeout(500)
-
-        # Neither appeared — wait once more so the failure carries a clear
-        # "OTP field never showed" diagnostic (runner dumps page state).
-        if self._is_password_change_url(page.url):
             raise RuntimeError(
-                "כלל מבקשת לעדכן סיסמה. החליפ/י סיסמה באתר כלל ואז עדכנ/י את "
-                "הסיסמה השמורה כאן כדי שהאוטומציה תוכל להתחבר."
+                "כלל: מסך ה-OTP לא הופיע אחרי התחברות (גם אחרי ניקוי סשן) — "
+                "בדוק clal_login_rejected.txt"
             )
-        await self._wait_visible(page, self.OTP_FIELD, timeout=10000)
 
     @staticmethod
     def _is_password_change_url(url: str | None) -> bool:
@@ -255,7 +286,9 @@ class ClalPortal(BasePortalAutomation):
     ) -> list[Path]:
         self.report_password = None
 
-        from app.services.portal_automation.runner import SCREENSHOT_ROOT, logger
+        from app.services.portal_automation.runner import (
+            SCREENSHOT_ROOT, logger, _worker_note,
+        )
 
         run_id = download_dir.name
         download_dir.mkdir(parents=True, exist_ok=True)
@@ -350,30 +383,73 @@ class ClalPortal(BasePortalAutomation):
         await page.wait_for_timeout(1200)
         await _checkpoint("after_toggle")
 
-        # Step 7: open "infobay" — Clal's reports system that hosts the PayLink
-        # grid (ctl00_MainContent_grdList, with report-type rows like "תשלומים
-        # במערכת פיילינק" and "בריאות"). It's an ASP.NET WebForms app reached from
-        # the open-icon side menu, and opens in a new tab.
-        infobay_candidates = [
-            "a:has-text('infobay')",
-            "div.text:has-text('infobay')",
-            "*:has-text('infobay')",
-        ]
+        # Step 7: open "infobay" — Clal's reports system (data.clal.co.il) that
+        # hosts the "מגירות מידע" drawer grid (frmReportStat.aspx, grdList) with
+        # rows like "קבצי פרודוקציה" and "בריאות".
+        #
+        # DIAGNOSED LIVE 2026-07-24 (kiko batch 3c0b055f): the old
+        # `*:has-text('infobay')` text-click was too loose — it matched a promo
+        # tile and navigated to a MARKETING PDF (ניוד-פנסיה-מגיל-60.pdf), so the
+        # grid never rendered → 0 drawers → the run hard-raised and even the
+        # נפרעים leg was lost. The real entry is a specific anchor whose href
+        # points at `data.clal.co.il` with a signed, session-scoped `k=` key.
+        # Navigate to that href in a NEW page (the sidebar overlay makes the
+        # anchor itself flaky to click, but its href SSO-lands straight on the
+        # drawer grid — verified live). Fall back to the old text-click.
+        infobay_url = None
         try:
-            async with page.context.expect_page(timeout=8000) as popup_info:
-                await self._click_first_visible(page, infobay_candidates, timeout=8000)
-            popup = await popup_info.value
-            await popup.wait_for_load_state("domcontentloaded", timeout=20000)
-            page = popup  # swap active handle to the infobay/PayLink tab
-            _attach_response_listener(page)
-            logger.info("Clal: infobay opened in popup %s", page.url)
+            a = page.locator("a[href*='data.clal.co.il']").first
+            if await a.count():
+                infobay_url = await a.get_attribute("href")
         except Exception:
-            # No popup — infobay may have loaded in the same tab (or the click
-            # missed; the dumps below will show which).
+            pass
+        opened = False
+        if infobay_url:
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                popup = await page.context.new_page()
+                await popup.goto(infobay_url, wait_until="domcontentloaded", timeout=30000)
+                page = popup
+                _attach_response_listener(page)
+                opened = True
+                logger.info("Clal: infobay opened via anchor href %s", page.url)
+            except Exception as e:
+                logger.warning("Clal: infobay href navigation failed (%s) — trying click", e)
+        if not opened:
+            infobay_candidates = [
+                "a[href*='data.clal.co.il']",
+                "a:has-text('infobay')",
+                "div.text:has-text('infobay')",
+            ]
+            try:
+                async with page.context.expect_page(timeout=8000) as popup_info:
+                    await self._click_first_visible(page, infobay_candidates, timeout=8000)
+                popup = await popup_info.value
+                await popup.wait_for_load_state("domcontentloaded", timeout=20000)
+                page = popup
+                _attach_response_listener(page)
+                logger.info("Clal: infobay opened in popup %s", page.url)
             except Exception:
-                pass
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+
+        # InfoBay one-session guard: "מהלך עבודה פעיל בלשונית אחרת" — when a prior
+        # (failed) run left an active InfoBay session, this modal blocks the grid
+        # with יציאה / המשך. Clicking המשך continues into THIS window's grid.
+        # Without it the grid never renders → 0 drawers (recurs for an agent whose
+        # runs fail mid-session, e.g. kiko). It's InfoBay's OWN HTML modal, not a
+        # native browser dialog, so click the button element.
+        try:
+            cont = page.locator(
+                "input[value='המשך'], button:has-text('המשך'), a:has-text('המשך')"
+            ).first
+            if await cont.count() and await cont.is_visible():
+                await cont.click(timeout=4000)
+                logger.info("Clal: dismissed InfoBay 'active session' modal via המשך")
+                await page.wait_for_timeout(1500)
+        except Exception:
+            pass
 
         # Wait for the ASP.NET grid to render before enumerating.
         try:
@@ -492,6 +568,116 @@ class ClalPortal(BasePortalAutomation):
             except Exception:
                 return None
 
+        async def _harvest_bundle_modal(p, base_name: str, dump_stem: str | None) -> "Path | None":
+            """Capture a production "תיבה" box from the IN-PAGE MODAL iframe.
+
+            For bundle='2' reports (קבצי פרודוקציה), ShowReport() does NOT open a
+            popup or navigate — it loads `#frBundle` (iframe) with
+            src="frmBundle.aspx?RepID=…" inside `#divModalDialog`, and that frame
+            shows the box message with the attached `.exe` self-extracting file
+            and a "הורד" link (confirmed live 2026-07-24 from the saved
+            frmReportList HTML + the operator screenshot). The old code watched
+            only for download/popup/nav/xhr, none of which fire for a modal
+            iframe — hence "לא ירדו קבצים" for every production report.
+
+            Find the frmBundle frame, click הורד/הורדה, capture the download.
+            """
+            # Locate the bundle iframe by URL (survives re-render better than #id).
+            fr = None
+            for _ in range(30):  # ~12s for the iframe to attach + load
+                for f in p.frames:
+                    if "frmbundle.aspx" in (f.url or "").lower():
+                        fr = f
+                        break
+                if fr:
+                    break
+                await asyncio.sleep(0.4)
+            if fr is None:
+                return None
+            try:
+                await fr.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+            if dump_stem:
+                await self._safe_screenshot(p, SCREENSHOT_ROOT / f"{dump_stem}.png")
+                await self._dump_page_state(p, SCREENSHOT_ROOT / f"{dump_stem}.png")
+
+            # The download attaches to the PAGE, not the frame. Arm the listener,
+            # then click the per-file "הורד" link (or the "הורדה" button) inside
+            # the frame. `a:has-text('הורד')` matches both הורד and הורדה.
+            holder: dict = {}
+            p.once("download", lambda d: holder.setdefault("dl", d))
+            clicked = False
+            for sel in ("a:has-text('הורד')", "input[value='הורדה']",
+                        "input[value*='הורד']", "[onclick*='Download']",
+                        "a[href*='Download']"):
+                try:
+                    loc = fr.locator(sel).first
+                    if await loc.count():
+                        await loc.click(timeout=4000)
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+            if not clicked:
+                return None
+            for _ in range(30):  # boxes can be a few MB
+                if holder.get("dl"):
+                    break
+                await asyncio.sleep(0.4)
+            if not holder.get("dl"):
+                # Some InfoBay builds stream the box via the response listener.
+                return None
+            dl = holder["dl"]
+            raw_name = dl.suggested_filename or f"{base_name}.exe"
+            box_path = download_dir / raw_name
+            try:
+                await dl.save_as(str(box_path))
+            except Exception:
+                return None
+            data = box_path.read_bytes()
+            _logger.info("clal: box captured %s (%d bytes) magic=%s",
+                         raw_name, len(data), data[:4].hex())
+            try:
+                _worker_note(
+                    f"clal box {raw_name}: {len(data)}B magic={data[:8].hex()} "
+                    f"ascii={data[:16].decode('latin-1', 'replace')!r}"
+                )
+            except Exception:
+                pass
+            # Extract the payload. InfoBay .exe boxes are self-extracting ZIPs;
+            # Python's zipfile scans for the End-Of-Central-Directory record, so a
+            # ZIP-SFX opens directly from the .exe bytes — pure-Python, portable
+            # to the Windows worker (no 7z/unzip dependency). If it isn't a ZIP,
+            # keep the .exe and surface it (do NOT invent a parser for an unseen
+            # format).
+            try:
+                import io as _io
+                import zipfile as _zip
+                if _zip.is_zipfile(_io.BytesIO(data)):
+                    with _zip.ZipFile(_io.BytesIO(data)) as zf:
+                        inner = [n for n in zf.namelist() if not n.endswith("/")]
+                        _worker_note(f"clal box {raw_name}: ZIP-SFX inner={inner[:10]}")
+                        # Prefer a spreadsheet/data member; else the largest file.
+                        pick = next(
+                            (n for n in inner if n.lower().endswith((".xlsx", ".xls", ".csv", ".txt", ".dat"))),
+                            max(inner, key=lambda n: zf.getinfo(n).file_size) if inner else None,
+                        )
+                        if pick:
+                            payload = zf.read(pick)
+                            ext = Path(pick).suffix or _sniff_ext(payload)
+                            out = download_dir / f"{base_name}{ext}"
+                            out.write_bytes(payload)
+                            _logger.info("clal: box payload %s → %s (%d bytes)", raw_name, pick, len(payload))
+                            return out
+            except Exception as e:
+                _logger.warning("clal: box extract failed for %s: %s", raw_name, e)
+            # Not a ZIP (or empty): surface the box for follow-up, keep the file.
+            self.partial_errors.append(
+                f"{base_name}: תיבת .exe התקבלה אך לא חולצה — {_describe_blob(data)}"
+            )
+            return box_path
+
         async def _grab_report(p, row, base_name: str, dump_stem: str | None) -> "Path | None":
             """Double-click a report row (ShowReport → window.open) and capture
             the file across all behaviours: native download, popup viewer, or
@@ -565,6 +751,27 @@ class ClalPortal(BasePortalAutomation):
                 except Exception:
                     pass
                 await _dismiss_dialog(p)
+
+            # Production "תיבה" box: ShowReport('0') loaded an IN-PAGE MODAL
+            # iframe (frmBundle.aspx), not a popup/nav — so none of the branches
+            # above fired. Harvest the .exe box from that iframe. This is THE path
+            # for קבצי פרודוקציה (bundle=2); the checks above serve the בריאות
+            # PDFs and other report types.
+            if got is None:
+                got = await _harvest_bundle_modal(p, base_name, dump_stem)
+                if got is not None:
+                    # Close the modal so the next report row is clickable.
+                    for sel in ("#divModalDialog a:has-text('סגירה')",
+                                "input[value='סגירה']", ".jqmClose",
+                                "a:has-text('סגירה')"):
+                        try:
+                            loc = p.locator(sel).first
+                            if await loc.count() and await loc.is_visible():
+                                await loc.click(timeout=2000)
+                                break
+                        except Exception:
+                            continue
+                    await _dismiss_dialog(p)
 
             # Migdal-style fallback: if no download/popup yielded a file, take any
             # bytes the response listener captured during this report.
@@ -646,11 +853,18 @@ class ClalPortal(BasePortalAutomation):
         )
 
         if not targets:
-            hint = (SCREENSHOT_ROOT / f"{run_id}_paylink.txt").name
-            raise RuntimeError(
-                f"לא נמצאו מגירות פרודוקציה ב-{page.url}. "
-                f"בדוק/י את {hint} ואת {run_id}_grid_rows.txt לרשימת השורות."
+            # DEGRADE, don't hard-raise: this raise used to abort the whole run
+            # BEFORE the נפרעים leg (live batch 3c0b055f — an empty production
+            # grid took נפרעים down with it, flipping a partial into a total
+            # failure). Record it and fall through to the נפרעים grab, which
+            # shares this one Clal login. The final "no results at all" guard
+            # still raises if BOTH legs come back empty.
+            logger.warning("Clal: no production drawers at %s — continuing to נפרעים", page.url)
+            self.partial_errors.append(
+                f"פרודוקציה: לא נמצאו מגירות ({page.url[:80]}) — "
+                f"בדוק {run_id}_paylink.txt / {run_id}_grid_rows.txt"
             )
+            targets = []
 
         saved: list[Path] = []
         for r in targets:
@@ -755,8 +969,12 @@ class ClalPortal(BasePortalAutomation):
 
         if not results:
             hint = (SCREENSHOT_ROOT / f"{run_id}_paylink.txt").name
+            # Surface the per-leg causes — the generic text alone hid WHY each
+            # leg came back empty (batch 3c0b055f: undiagnosable from the run row).
+            legs = " | ".join(self.partial_errors[-4:]) if self.partial_errors else ""
             raise RuntimeError(
-                f"Clal: לא ירדו קבצים (פרודוקציה+נפרעים). בדוק/י {hint}, "
-                f"{run_id}_grid_rows.txt ו-{run_id}_A_commissions_*.txt."
+                f"Clal: לא ירדו קבצים (פרודוקציה+נפרעים)"
+                + (f" — {legs}" if legs else "")
+                + f". בדוק/י {hint}, {run_id}_grid_rows.txt ו-{run_id}_A_commissions_*.txt."
             )
         return results

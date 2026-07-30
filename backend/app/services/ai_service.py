@@ -517,7 +517,8 @@ async def _get_comparison_context(db: AsyncSession, user_id: uuid.UUID, prod_upl
             continue
 
         comm_dicts = [_record_to_dict(r) for r in comm_records]
-        comparison = compute_comparison(prod_dicts, comm_dicts, paying_names)
+        comparison = compute_comparison(prod_dicts, comm_dicts, paying_names,
+                                        user_rates=list(user_rates))
 
         cat = comparison.get("commission_category", "")
         cat_label = comparison.get("commission_category_label", "")

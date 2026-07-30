@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from collections import Counter
 from datetime import datetime, date, timedelta
@@ -73,6 +74,12 @@ _HE_MONTHS = {
 # variable that IS unique to batch mode. See mor.py's request-payload
 # instrumentation for the decisive evidence if this alone doesn't fix it.
 RECAPTCHA_SETTLE_S = 12
+
+# A login refused by the invisible-captcha score, in any of the shapes the
+# plugins surface it (analyst: "400: Recaptcha validation failed", meitav:
+# "נסה שנית", chrome-refusal: "gCaptcha error"). Used to pick which pass-1
+# failures earn the end-of-batch retry.
+_CAPTCHA_REJECT_RE = re.compile(r"recaptcha|gcaptcha|captcha|נסה שנית", re.IGNORECASE)
 
 # Hebrew labels for the comparison categories (for error_message wording).
 _CATEGORY_LABELS = {"gemel_hishtalmut": "גמל והשתלמות", "insurance": "ביטוח"}
@@ -329,6 +336,15 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # not re-attempted, so we never burn extra OTPs on a guaranteed failure.
     otp_failed: list[PortalCredential] = []
 
+    # reCAPTCHA-score rejections (analyst "Recaptcha validation failed", מיטב/מור
+    # "נסה שנית"/"gCaptcha") get the same single end-of-batch retry. The score is
+    # probabilistic — batch 3c0b055f: both score-gated portals passed on 07-23
+    # and were refused within 13s of each other on 07-24 on identical code. The
+    # rejection happens BEFORE any SMS is sent, so a retry burns no OTP, and the
+    # rest of the batch (~20 min) is exactly the cooldown the operator guidance
+    # prescribes ("המתן 20-30 דקות ונסה פעם אחת בלבד").
+    captcha_failed: list[PortalCredential] = []
+
     # Data-loss notes from runs that finished "success" but lost rows on the
     # way (a folded נפרעים leg failed, or a file ingested with an unrecognized
     # format and was excluded from the merge). _run_inner records them on
@@ -421,6 +437,8 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             cred.last_run_status = "failed"
             cred.last_error = str(e)
             batch.failed += 1
+            if _CAPTCHA_REJECT_RE.search(str(e)):
+                captcha_failed.append(cred)
         finally:
             cred.last_run_at = datetime.utcnow()
             await _mirror_to_folded(db, cred)   # folded legs (harel_commissions…) share this outcome
@@ -438,12 +456,15 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     # production/commission workbooks. A new PortalRun row is created per retry
     # (preserves the pass-1 failure in history); on success we flip the batch
     # tally (failed-1, succeeded+1) so totals stay consistent.
-    if otp_failed:
+    retry_creds = otp_failed + [c for c in captcha_failed if c not in otp_failed]
+    if retry_creds:
         logger.info(
-            "Batch %s: retrying %d OTP-timeout portal(s): %s",
-            batch.id, len(otp_failed), [c.portal_kind for c in otp_failed],
+            "Batch %s: retrying %d portal(s) (OTP-timeout: %s, captcha-score: %s)",
+            batch.id, len(retry_creds),
+            [c.portal_kind for c in otp_failed],
+            [c.portal_kind for c in captcha_failed],
         )
-        for cred in otp_failed:
+        for cred in retry_creds:
             # Same reCAPTCHA settle gap as the main pass (RECAPTCHA_SETTLE_S) —
             # a retried persistent-profile portal must not launch right on the
             # heels of the previous retry's browser closing either.
@@ -694,6 +715,7 @@ async def _compare_merged(
     from app.models.record import ClientRecord
     from app.models.paying_company import PayingCompany
     from app.models.commission_comparison import CommissionComparison
+    from app.models.commission_rate import CommissionRate
     from app.services.comparison_service import MERGED_CATEGORY, compute_comparison
 
     # Prefer the batch's just-merged production upload; otherwise the newest
@@ -748,7 +770,13 @@ async def _compare_merged(
     persisted: list[str] = []
     failed: list[str] = []
     try:
-        comparison = compute_comparison(prod_dicts, comm_dicts, paying_names)
+        rates_q = await db.execute(
+            select(CommissionRate).where(CommissionRate.user_id == user_id)
+        )
+        comparison = compute_comparison(
+            prod_dicts, comm_dicts, paying_names,
+            user_rates=list(rates_q.scalars().all()),
+        )
         sources = sorted({
             r.get("receiving_company") for r in comm_dicts if r.get("receiving_company")
         })

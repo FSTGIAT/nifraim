@@ -49,9 +49,11 @@ HEBREW_MONTHS = [
 class PhoenixNifraimPortal(PhoenixPortal):
     portal_kind = "phoenix_nifraim"
     company_label = "הפניקס"
-    # phoenix_nifraim_gemel is pulled on THIS login (include_in_batch=False),
-    # so mirror our outcome onto it or its card stays at "ממתין" forever.
-    folds = ('phoenix_nifraim_gemel',)
+    # Both of these are pulled on THIS login (include_in_batch=False), so mirror
+    # our outcome onto them or their cards stay at "ממתין" forever:
+    #   phoenix_nifraim_gemel — the גמל נפרעים report
+    #   phoenix_sfe           — the SFE כספת production vault (grabbed below)
+    folds = ('phoenix_nifraim_gemel', 'phoenix_sfe')
     # login / submit_otp / OTP_FIELD inherited from PhoenixPortal unchanged.
     # PhoenixPortal sets include_in_batch=False (dead-end terminal); re-enable it
     # here — this is THE batch entry point for Phoenix נפרעים (downloads both the
@@ -154,6 +156,11 @@ class PhoenixNifraimPortal(PhoenixPortal):
         # PRODUCTION: the no-OTP SFE כספת vault (same creds, separate site). Open
         # it in a fresh page so the agentportal session is untouched. Needs the
         # password (passed by the runner's inspect-dispatch). Best-effort.
+        #
+        # This is THE place the vault is pulled in a batch — `phoenix_sfe` keeps
+        # include_in_batch=False so it is never downloaded twice. Its own card
+        # exists for visibility + manual runs, and `folds` (above) mirrors this
+        # run's outcome onto it so it doesn't sit at "ממתין" forever.
         if password:
             sfe_page = None
             try:

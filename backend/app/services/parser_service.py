@@ -268,6 +268,40 @@ def _filename_looks_like_commission(filename: str | None) -> bool:
     return looks_commission and not looks_production
 
 
+def _repair_nan_numeric_cells(raw: bytes) -> bytes:
+    """Repair an xlsx whose exporter wrote a literal 'NaN' as a NUMERIC cell.
+
+    openpyxl's `_cast_number` raises `ValueError: invalid literal for int()
+    with base 10: 'NaN'` on the FIRST such cell and the whole read dies — the
+    entire report is lost to one bad cell (live: אלטשולר נפרעים גמל.xlsx,
+    batch 3c0b055f 2026-07-24). Dropping the `<v>` value turns that cell into
+    an empty one and the rest of the file parses normally. Returns the input
+    unchanged when there is nothing to fix (or on any repair error — a broken
+    repair must never mask the original parse error).
+    """
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zin:
+            sheet_names = [n for n in zin.namelist() if n.startswith("xl/worksheets/")]
+            if not sheet_names or not any(
+                b">NaN</v>" in zin.read(n) or b">nan</v>" in zin.read(n)
+                for n in sheet_names
+            ):
+                return raw
+            out = io.BytesIO()
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+                for n in zin.namelist():
+                    data = zin.read(n)
+                    if n in sheet_names:
+                        data = data.replace(b"<v>NaN</v>", b"").replace(b"<v>nan</v>", b"")
+                    zout.writestr(n, data)
+            logger.warning("repaired literal-NaN numeric cells in xlsx (%d sheets)", len(sheet_names))
+            return out.getvalue()
+    except Exception:
+        return raw
+
+
 def detect_format(columns: list[str], filename: str | None = None) -> str:
     """Detect file format based on column headers.
 
@@ -499,6 +533,8 @@ def parse_excel(
 
     ext = filename.rsplit(".", 1)[-1].lower()
     engine = "openpyxl" if ext == "xlsx" else "xlrd"
+    if ext == "xlsx":
+        raw = _repair_nan_numeric_cells(raw)
     buf = io.BytesIO(raw)
 
     # Try to detect named sheets for production files

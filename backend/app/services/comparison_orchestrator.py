@@ -34,8 +34,9 @@ from app.models.upload import FileUpload
 from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.models.commission_comparison import CommissionComparison
+from app.models.commission_rate import CommissionRate
 from app.services.comparison_service import MERGED_CATEGORY, compute_comparison
-from app.utils.company_norm import normalize_company
+from app.utils.company_norm import company_stem, normalize_company
 from app.utils.sanitize import to_jsonable
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,20 @@ def _record_to_dict(r: ClientRecord) -> dict:
 
 
 def _company_key(name: str | None) -> str:
-    return normalize_company(name) or ""
+    """Key deciding whether the merged baseline already COVERS a company.
+
+    Must be the brand stem, not `normalize_company`. The merged נפרעים file
+    holds canonical legal names while a standalone per-company upload holds the
+    short one, and `normalize_company` does not collapse those to each other:
+
+        'מנורה מבטחים ביטוח בע"מ' -> 'מנורה מבטחים'
+        'מנורה'                   -> 'מנורה'          (no match)
+
+    So the merged file was judged NOT to cover מנורה, its standalone upload was
+    folded in on top, and the same 852 records were counted twice — ₪7,758.32
+    of מנורה commission double-billed into the totals (live, kikohib).
+    """
+    return company_stem(name) or ""
 
 
 async def compute_merged_comparison(
@@ -223,8 +237,16 @@ async def compute_merged_comparison(
     )
     paying_names = [p.company_name for p in paying_q.scalars().all()]
 
+    # Agreement rates, so every product line carries its OWN resolved rate and
+    # expected commission instead of the frontend guessing from company name.
+    rates_q = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user_id)
+    )
+    user_rates = list(rates_q.scalars().all())
+
     try:
-        comparison = compute_comparison(prod_dicts, commission_dicts, paying_names)
+        comparison = compute_comparison(prod_dicts, commission_dicts, paying_names,
+                                        user_rates=user_rates)
         all_sources = sorted(sources)
         comparison["commission_company_sources"] = all_sources
         comparison["commission_company_source"] = (

@@ -363,14 +363,27 @@ def select_rate(user_rates, company: str, product: str | None,
         best = max((s for s, _ in scored), default=0)
         if best > 0:
             matches = [r for s, r in scored if s == best]
-            # Narrow to ONE product — the most specific line that tied. Only
-            # then combine, because `_effective_rate` sums book+reward and
-            # medians year-bands, both of which are only meaningful within a
-            # single product. Letting it span two different products turned
-            # 'קופות גמל / נפרעים' (0.25%, from the agreement) and a bare 'גמל'
-            # (0.30%, seeded) into their 0.30% median for 223 מור records.
-            longest = max(matches, key=lambda r: len(r.product or ""))
-            target = (longest.product or "").lower()
+            # Narrow to ONE product. Only then combine, because
+            # `_effective_rate` sums book+reward and medians year-bands, both
+            # of which are only meaningful within a single product. Letting it
+            # span two products turned 'קופות גמל / נפרעים' (0.25%, from the
+            # agreement) and a bare 'גמל' (0.30%, seeded) into their median.
+            #
+            # Among rows that tie, prefer the one with the FEWEST words the
+            # record does NOT mention — i.e. the best-covered line, not the
+            # longest. Longest-wins picked narrow special cases over the
+            # general rule: 'הפניקס גמל לבני 60 ומעלה' matched
+            # 'מוצרי גמל והשתלמות' (0.27%) and
+            # 'מוצרי גמל והשתלמות – עמית קיים עם ייפוי כוח' (0.20%) equally on
+            # the word גמל, and took the longer — pricing a plain gemel policy
+            # at the power-of-attorney rate, ₪260 instead of ₪351.
+            text_tokens = _tokens(text)
+
+            def _unmatched(r):
+                return len(_tokens((r.product or "").lower()) - text_tokens)
+
+            best_row = min(matches, key=lambda r: (_unmatched(r), len(r.product or "")))
+            target = (best_row.product or "").lower()
             matches = [r for r in matches if (r.product or "").lower() == target]
             rate = _effective_rate(matches)
             if _ok(rate):
@@ -420,6 +433,38 @@ def select_rate(user_rates, company: str, product: str | None,
     if vals:
         return vals[len(vals) // 2], f"{tier}:median"
     return 0.0, f"{tier}:no_sane_rate"
+
+
+def rate_for_product(user_rates, company: str, product: str | None,
+                     product_type: str | None, accumulation, premium
+                     ) -> tuple[float, float | None, str]:
+    """(rate, expected_commission, route) for ONE product line.
+
+    The per-product entry point, for surfaces that show a single policy rather
+    than a portfolio total — the comparison's product tables and customer
+    drill-down. Same selector and same formulas as
+    `compute_expected_commission`, so a product row and the dashboard KPI can
+    never disagree.
+
+    Exists because the frontend was picking rates itself: it matched on COMPANY
+    NAME only, ignored the rate row's `product` entirely, and took the first
+    hit. Every policy a client held at one insurer therefore showed the same
+    rate — a בריאות policy priced at the חיים rate, whichever row the API
+    happened to return first.
+    """
+    accum_f = float(accumulation or 0)
+    prem_f = float(premium or 0)
+    is_accum = accumulation_based(product_type, accum_f)
+    rate, route = select_rate(user_rates, company, product, product_type, is_accum)
+    if rate <= 0:
+        return 0.0, None, route
+    if is_accum:
+        return rate, round(accum_f * rate / 12.0, 2), route
+    if prem_f > 0:
+        return rate, round(prem_f * rate, 2), route
+    # A rate exists but the file carries no base to apply it to (e.g. the
+    # Phoenix MU book has no premium). Report the rate, not a fake amount.
+    return rate, None, route
 
 
 def expected_rate(user_rates, pick_rate: Callable | None, company: str,

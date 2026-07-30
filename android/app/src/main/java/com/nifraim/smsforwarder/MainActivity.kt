@@ -12,6 +12,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.work.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -35,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applyWindowInsets()
 
         urlEdit = findViewById(R.id.urlEdit)
         saveBtn = findViewById(R.id.saveBtn)
@@ -98,6 +102,26 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "כתובת ה-Webhook הוגדרה אוטומטית", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /**
+     * Pad the root view by the system-bar insets.
+     *
+     * Apps targeting API 36 (Android 16) are drawn edge-to-edge and the
+     * `windowOptOutEdgeToEdgeEnforcement` escape hatch no longer works, so without
+     * this the header sits under the status bar and the footer under the gesture
+     * nav bar. `android:statusBarColor` in the theme is inert for the same reason —
+     * the bar now shows the page background instead of the orange band.
+     */
+    private fun applyWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        // @color/background is #F4F6F9 — without this the status-bar icons render
+        // white on near-white and disappear.
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
     }
 
     /** Fetch the latest company SMS templates now (off the main thread).

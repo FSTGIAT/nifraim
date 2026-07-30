@@ -40,13 +40,22 @@
             <span class="amount-label">ד.נ ₪</span>
             <span class="amount-value ltr-val">{{ formatAmount(m.management_fee_amount) }}</span>
           </div>
-          <div v-if="expectedFromFile(m) != null" class="amount-item expected">
-            <span class="amount-label">צפוי</span>
-            <span class="amount-value ltr-val">{{ formatAmount(expectedFromFile(m)) }}</span>
+          <div v-if="m.rate" class="amount-item rate-info">
+            <span class="amount-label">{{ isEstimate(m) ? 'אחוז משוער' : 'אחוז לפי ההסכם' }}</span>
+            <span class="amount-value ltr-val">{{ isEstimate(m) ? '~' : '' }}{{ (m.rate * 100).toFixed(2) }}%</span>
+          </div>
+          <div v-if="expectedFromFile(m) != null" class="amount-item expected" :class="{ 'is-estimate': isEstimate(m) }"
+               :title="isEstimate(m) ? 'אין בהסכם שיעור למוצר הזה — הערכה לפי שיעור כללי של החברה' : ''">
+            <span class="amount-label">{{ isEstimate(m) ? 'הערכה' : 'אמור לשלם' }}</span>
+            <span class="amount-value ltr-val">{{ isEstimate(m) ? '~' : '' }}{{ formatAmount(expectedFromFile(m)) }}</span>
           </div>
           <div class="amount-item commission">
-            <span class="amount-label">עמלה</span>
+            <span class="amount-label">שולם בפועל</span>
             <span class="amount-value ltr-val" :class="commissionDiffClass(m)">{{ formatAmount(m.commission) }}</span>
+          </div>
+          <div v-if="shortfall(m) != null" class="amount-item shortfall">
+            <span class="amount-label">חסר</span>
+            <span class="amount-value ltr-val">{{ formatAmount(shortfall(m)) }}</span>
           </div>
         </div>
       </div>
@@ -135,9 +144,9 @@
               <span class="amount-label">פרמיה</span>
               <span class="amount-value ltr-val">{{ formatAmount(p.premium) }}</span>
             </div>
-            <div v-if="findRateForProduct(p)" class="amount-item rate-info">
+            <div v-if="resolvedRate(p)" class="amount-item rate-info">
               <span class="amount-label">אחוז נפרע</span>
-              <span class="amount-value ltr-val">{{ findRateForProduct(p).ratePct }}</span>
+              <span class="amount-value ltr-val">{{ resolvedRate(p).ratePct }}</span>
             </div>
             <div v-else class="amount-item rate-missing">
               <span class="amount-label">אחוז נפרע</span>
@@ -197,9 +206,34 @@ function formatPct(val) {
   return (val * 100).toFixed(4) + '%'
 }
 
+// What this line SHOULD have paid. Prefer the agreement-based figure the
+// backend resolved from the agent's own rate table; fall back to the insurer's
+// self-reported monthly_pct × balance, which only answers "does the insurer
+// agree with itself", not "was I paid my rate".
 function expectedFromFile(matchedProduct) {
+  if (matchedProduct.expected_commission != null) return matchedProduct.expected_commission
   if (matchedProduct.monthly_pct == null || matchedProduct.balance == null) return null
   return matchedProduct.balance * matchedProduct.monthly_pct
+}
+
+// A shortfall is only claimed when the expected figure is FIRM — i.e. it came
+// from an agreement line that names this product. When rate_select had to fall
+// back to the company's default or median, the number is an estimate and
+// subtracting a real payment from it invents a debt: מנורה life policies
+// estimated at the 10% median showed "₪1,529 expected vs ₪10.35 paid".
+function isEstimate(m) {
+  return m?.expected_is_estimate === true
+}
+
+// The backend computes the gap itself (agreement expected − actually paid),
+// applying the rounding/timing tolerances, and only ever against a FIRM rate.
+function shortfall(m) {
+  if (m?.commission_gap != null) return m.commission_gap > 0 ? m.commission_gap : null
+  if (isEstimate(m)) return null
+  const exp = expectedFromFile(m)
+  if (exp == null || m.commission == null) return null
+  const diff = exp - m.commission
+  return diff > 1 ? diff : null
 }
 
 function commissionDiffClass(matchedProduct) {
@@ -210,8 +244,32 @@ function commissionDiffClass(matchedProduct) {
   return 'match-diff'
 }
 
+// Prefer the rate the BACKEND resolved for this exact product line
+// (rate_select.rate_for_product). `findRateForProduct` matches on company name
+// only, so it hands every product at one insurer the same rate — kept solely
+// as a fallback for comparisons persisted before the backend shipped it.
+// `expected_is_estimate` is null ONLY when the backend had no rate table to
+// consult; once it ran it is always a boolean. So a product with rate 0 and a
+// boolean flag means "the selector looked and correctly declined" — usually
+// because a gemel-magnitude rate would have been applied to an insurance
+// premium. Falling back to the company-name matcher there re-creates the very
+// bug this replaced: it happily returns מגדל's 0.30% for a חיים policy.
+function backendResolved(product) {
+  return product && product.expected_is_estimate !== undefined
+    && product.expected_is_estimate !== null
+}
+
+function resolvedRate(product) {
+  if (product && typeof product.rate === 'number' && product.rate > 0) {
+    return { rate: product.rate, ratePct: (product.rate * 100).toFixed(2) + '%' }
+  }
+  if (backendResolved(product)) return null   // looked, found nothing sane
+  return findRateForProduct(product)          // pre-existing persisted payload
+}
+
 function expectedCommission(product) {
-  const rateInfo = findRateForProduct(product)
+  if (product && product.expected_commission != null) return product.expected_commission
+  const rateInfo = resolvedRate(product)
   if (!rateInfo) return null
   return calcExpectedCommission(product, rateInfo.rate)
 }
@@ -425,6 +483,7 @@ function findRateForProduct(product) {
   color: var(--text-muted);
   font-size: 12px;
 }
+.amount-item.shortfall .amount-value { color: var(--red); font-weight: 700; }
 
 .amount-item.rate-info .amount-value {
   color: var(--primary);
@@ -516,4 +575,5 @@ function findRateForProduct(product) {
   border-radius: 8px;
   border: 1px dashed var(--border-subtle);
 }
+.amount-item.expected.is-estimate .amount-value { color: var(--text-muted); font-style: italic; }
 </style>

@@ -114,6 +114,50 @@ def _excepthook(et, ev, tb):
 _sys.excepthook = _excepthook
 _post_log("worker process starting (importing app…)")
 
+
+def _report_desktop_interactivity() -> None:
+    """Windows: reCAPTCHA v3 (analyst/meitav/mor — on BOTH login and the OTP
+    submit) scores a browser as a BOT unless it runs on the INTERACTIVE, unlocked
+    desktop. A worker in session 0 (a service / "run whether logged on or not")
+    or on a LOCKED screen launches a HEADED browser that is invisible and
+    non-interactive → the score gate refuses login/OTP even with a correct code
+    (measured 2026-07-24: analyst reached OTP, the fresh correct code was
+    rejected, and the operator reported the browser window never appeared).
+    Surface the state so this is never a guess again."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        # Window-station name: WINSTA0 = the interactive station (headed browser is
+        # visible when the session is unlocked); anything else = a session-0
+        # service station where the browser can never be seen or scored as human.
+        h = u.GetProcessWindowStation()
+        n = ctypes.c_ulong(0)
+        u.GetUserObjectInformationW(h, 2, None, 0, ctypes.byref(n))
+        buf = ctypes.create_unicode_buffer(max(n.value // 2, 2))
+        u.GetUserObjectInformationW(h, 2, buf, n.value, ctypes.byref(n))
+        winsta = buf.value or "?"
+        interactive = winsta.upper() == "WINSTA0"
+        has_fg = bool(u.GetForegroundWindow())
+        base = (f"desktop: window_station={winsta} interactive={interactive} "
+                f"foreground_window={has_fg}")
+        if interactive:
+            _post_log("OK " + base + " — headed browser will be VISIBLE while the "
+                      "screen is unlocked (reCAPTCHA v3 can pass).")
+        else:
+            _post_log("WARNING " + base + " — headed browser is NON-INTERACTIVE / "
+                      "INVISIBLE (session-0). reCAPTCHA v3 (analyst/meitav/mor) will "
+                      "score it as a BOT and refuse login/OTP. Launch the worker in "
+                      "the LOGGED-IN interactive session (double-click start_worker.bat "
+                      "while logged in / Startup folder), NOT as a 'run whether logged "
+                      "on or not' service, and keep the screen UNLOCKED during runs.")
+    except Exception as e:
+        _post_log(f"desktop check failed: {e}")
+
+
+_report_desktop_interactivity()
+
 from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 

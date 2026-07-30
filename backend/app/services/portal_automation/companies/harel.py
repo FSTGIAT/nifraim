@@ -465,15 +465,19 @@ class HarelPortal(BasePortalAutomation):
                 )
 
             # InfoBay safe form uses `<input type="button" id="cmdOK"
-            # onclick="__doPostBack('cmdOK','')" value="כניסה">`. Firing the
-            # postback directly via JS sidesteps Playwright's click-handler
-            # racing the navigation.
+            # onclick="__doPostBack('cmdOK','')" value="כניסה">`. A REAL CLICK is
+            # required — `__doPostBack('cmdOK','')` alone leaves the run stuck on
+            # Login.aspx (the button's onclick runs the form's own JS — password
+            # marshalling into the postback — which a bare __doPostBack skips).
+            # Measured live 2026-07-30: real `page.click("input#cmdOK")` with the
+            # vault password landed on `frmReportStat.aspx?key=…` and all 5
+            # reports downloaded; the __doPostBack path silently failed. So click
+            # FIRST, __doPostBack only as the fallback.
             try:
-                await page.evaluate("__doPostBack('cmdOK', '')")
+                await page.click("input#cmdOK", timeout=5000, no_wait_after=True)
             except Exception:
-                # Fallback: real click
                 try:
-                    await page.click("input#cmdOK", timeout=4000, no_wait_after=True)
+                    await page.evaluate("__doPostBack('cmdOK', '')")
                 except Exception:
                     await _checkpoint("2_safe_submit_not_found")
                     raise RuntimeError(
@@ -494,6 +498,31 @@ class HarelPortal(BasePortalAutomation):
             except Exception:
                 pass
             await _checkpoint("2_safe_logged_in")
+            # A rejected vault login re-renders Login.aspx SILENTLY (both waits
+            # above swallow their timeouts), and the run then drifts into the
+            # report loop against an empty page → the misleading "0/5 reports"
+            # (live: kiko's first vault run, batch 3c0b055f — no vault password
+            # stored, agents password used as fallback). Fail HERE, and say so.
+            if "frmReport" not in page.url and "frmDirectAccess" not in page.url:
+                # DIAGNOSED LIVE 2026-07-24 (kiko's first folded vault run): the
+                # standalone vault relies on the APM auto-SSO landing straight on
+                # harelsafe/frmReportStat?key=… right after OTP (the key= is
+                # SINGLE-USE — see step 1). When this runs FOLDED after the
+                # agents-portal production/נפרעים legs, that one-time SSO was
+                # already spent landing on the agents portal, so goto(Login.aspx)
+                # drops to the password form — which the agents password does not
+                # open (a separate harelsafe credential). So the fix is NOT a
+                # generic "store a password": either store the real harelsafe
+                # vault password (as '<agents-pw>|<vault-pw>'), or run Harel-vault
+                # as its own login so it keeps the post-OTP SSO. Loud + specific
+                # so the next reader doesn't re-chase the silent 0/5.
+                raise RuntimeError(
+                    f"כספת הראל לא נפתחה בריצה המשולבת — נחתנו על טופס סיסמה ב-{page.url}. "
+                    "ה-SSO החד-פעמי שאחרי ה-OTP כבר נוצל לפורטל הסוכנים, וסיסמת הפורטל "
+                    "אינה פותחת את הכספת. פתרון: לשמור בפרטי הראל סיסמת-כספת נפרדת "
+                    "('<סיסמת-פורטל>|<סיסמת-כספת>'), או להריץ את כספת הראל כהתחברות נפרדת. "
+                    f"בדוק {run_id}_2_safe_logged_in.txt"
+                )
 
         # ── XHR fallback listener — captures Excel/ZIP/octet downloads in
         # case Playwright's expect_download misses a WebMethod stream. Reset

@@ -222,15 +222,49 @@ class HachsharaPortal(BasePortalAutomation):
         page.on("response", _on_response)
         await ck("post_otp")
 
-        # 1) right menu → דוחות  (live element: <span> דוחות</span>)
-        await self._click_first_visible(page, [
-            "span:has-text('דוחות')", "a:has-text('דוחות')",
-            "button:has-text('דוחות')", "*:has-text('דוחות'):visible",
-        ], timeout=10000)
-        await page.wait_for_timeout(1200)
-        await ck("nav1_dohot")
+        # ── Navigation: verified hops, not fire-and-forget ────────────────
+        # Live failure 2026-07-24 (batch 3c0b055f): the SPA booted slowly after
+        # OTP, every _click_first_visible timed out SILENTLY, and the run died
+        # much later at "no-download-trigger-visible" with url = the site ROOT —
+        # blaming the wrong step. Each hop below verifies the URL actually
+        # advanced, retries, and fails loudly AT THAT STEP. Re-verified live
+        # 2026-07-24: the flow itself is unchanged (menu → /reports → tile →
+        # report form → הכל → הורד ל excel), but the report id changed (66→152),
+        # so match /reports/<digits>, never a fixed id.
+        import re as _re
 
-        # 2) עמלות  (live element: <h5 class="hover-affected-child-color">עמלות</h5>)
+        # 0) slow-boot gate: wait for the sidebar to actually render
+        try:
+            await page.wait_for_selector(
+                "span:has-text('דוחות'), a:has-text('דוחות')",
+                state="visible", timeout=45000,
+            )
+        except Exception:
+            await ck("nav0_spa_not_ready")
+            raise RuntimeError(
+                f"Hachshara: התפריט לא נטען אחרי ההתחברות ({page.url}) — "
+                f"בדוק {run_id}_nav0_spa_not_ready.txt"
+            )
+
+        # 1) right menu → דוחות — must land on /reports
+        for _ in range(3):
+            await self._click_first_visible(page, [
+                "span:has-text('דוחות')", "a:has-text('דוחות')",
+                "button:has-text('דוחות')", "*:has-text('דוחות'):visible",
+            ], timeout=10000)
+            try:
+                await page.wait_for_url(lambda u: "/reports" in (u or ""), timeout=8000)
+                break
+            except Exception:
+                await page.wait_for_timeout(1500)
+        await ck("nav1_dohot")
+        if "/reports" not in (page.url or ""):
+            raise RuntimeError(
+                f"Hachshara: הקליק על 'דוחות' לא ניווט (עדיין ב-{page.url}) — "
+                f"בדוק {run_id}_nav1_dohot.txt"
+            )
+
+        # 2) עמלות section header — its tiles render below the fold, scroll to it
         for sel in ("h5:has-text('עמלות')", "*:has-text('עמלות'):visible"):
             loc = page.locator(sel).first
             try:
@@ -245,20 +279,46 @@ class HachsharaPortal(BasePortalAutomation):
         await page.wait_for_timeout(1200)
         await ck("nav2_amlot")
 
-        # 3) "בסט אינווסט-עמלות נפרעים" — ONE item (live element: <p>), SAME TAB
-        #    (no popup). Goes to .../reports/66 (the פיקדונות נפרעים grid).
-        await self._click_first_visible(page, [
-            "p:has-text('בסט אינווסט'):has-text('נפרעים')",
-            "p:has-text('בסט אינווסט')",
-            "*:has-text('בסט אינווסט'):visible",
-            "a:has-text('נפרעים')",
-        ], timeout=8000)
+        # 3) "בסט אינווסט-עמלות נפרעים" tile — must land on /reports/<id>
+        for _ in range(2):
+            await self._click_first_visible(page, [
+                "p:has-text('בסט אינווסט'):has-text('נפרעים')",
+                "p:has-text('בסט אינווסט')",
+                "*:has-text('בסט אינווסט'):visible",
+                "a:has-text('נפרעים')",
+            ], timeout=8000)
+            try:
+                await page.wait_for_url(
+                    lambda u: bool(_re.search(r"/reports/\d+", u or "")), timeout=10000)
+                break
+            except Exception:
+                await page.wait_for_timeout(1500)
         try:
             await page.wait_for_load_state("networkidle", timeout=12000)
         except Exception:
             pass
-        await page.wait_for_timeout(1500)
         await ck("nav3_nifraim")
+        if not _re.search(r"/reports/\d+", page.url or ""):
+            raise RuntimeError(
+                f"Hachshara: אריח 'בסט אינווסט-עמלות נפרעים' לא נפתח (עדיין ב-{page.url}) — "
+                f"בדוק {run_id}_nav2_amlot.txt / _nav3_nifraim.txt"
+            )
+
+        # 3b) the report form renders lazily (measured ~8s+ live 2026-07-24) —
+        # wait for the agent autocomplete / excel button before touching it.
+        try:
+            await page.wait_for_selector(
+                "#mat-input-0, input[placeholder*='פיננסי סוכן'], "
+                "button:has-text('הורד ל excel'), i.mdi-microsoft-excel",
+                state="visible", timeout=60000,
+            )
+        except Exception:
+            await ck("nav3b_form_not_rendered")
+            raise RuntimeError(
+                f"Hachshara: טופס הדוח לא נטען ב-{page.url} — "
+                f"בדוק {run_id}_nav3b_form_not_rendered.txt"
+            )
+        await page.wait_for_timeout(1000)
 
         # 4) agent financial-number autocomplete (#mat-input-0, placeholder
         #    "בחר מספר פיננסי סוכן") → pick the **הכל** (ALL) option. WITHOUT this

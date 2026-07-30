@@ -62,25 +62,38 @@ class AltshulerPortal(BasePortalAutomation):
     async def login(self, page: "Page", username: str, password: str) -> None:
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
 
-        await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=45000)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=15000)
-        except Exception:
-            pass
-        await page.wait_for_timeout(2500)
+        # The login form is Angular-rendered; the SPA sometimes hangs on its
+        # loading spinner and never paints the form within one wait (live
+        # 2026-07-24: two batch runs died here with only the spinner on screen,
+        # the run row pointing at altshuler_login.png). A stuck SPA bootstrap
+        # recovers on a reload, so try the load up to 3× before giving up —
+        # cheap, and it needs no OTP (nothing was submitted yet).
+        containers = page.locator(".login-new-input-container")
+        form_ready = False
+        for attempt in range(3):
+            await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=45000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(2500)
+            try:
+                await containers.first.wait_for(state="visible", timeout=15000)
+                form_ready = True
+                break
+            except Exception:
+                logger.warning(
+                    "אלטשולר: login form not painted (attempt %d/3) — reloading", attempt + 1)
 
         land = SCREENSHOT_ROOT / "altshuler_login.png"
         await self._safe_screenshot(page, land)
         await self._dump_page_state(page, land)
 
         # Two segmented groups, DOM order: [0]=license (L- mark), [1]=ת"ז.
-        containers = page.locator(".login-new-input-container")
-        try:
-            await containers.first.wait_for(state="visible", timeout=15000)
-        except Exception:
+        if not form_ready:
             raise RuntimeError(
-                "אלטשולר: טופס ההתחברות לא נטען (login-new-input-container חסר) — "
-                "בדוק altshuler_login.txt"
+                "אלטשולר: טופס ההתחברות לא נטען אחרי 3 טעינות (login-new-input-container "
+                "חסר) — האתר לא סיים לטעון (ספינר). בדוק altshuler_login.txt"
             )
         if await containers.count() < 2:
             raise RuntimeError(

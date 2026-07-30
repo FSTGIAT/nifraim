@@ -47,6 +47,8 @@ import re
 import zipfile
 from datetime import date
 
+from app.utils.visual_hebrew import reverse_visual_hebrew
+
 logger = logging.getLogger(__name__)
 
 COMPANY = "הכשרה"
@@ -184,24 +186,10 @@ def parse_hachshara_prod_zip(zip_bytes: bytes, filename: str | None = None) -> d
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def _reverse_visual_hebrew(s: str) -> str:
-    """Recover logical Hebrew from a CP862 visual-order field.
-
-    The legacy writer reversed the whole string for DOS display, then put each
-    numeric run back in reading order. So the inverse is: re-reverse the numeric
-    runs, then reverse the whole string.
-
-        visual  '02/16 טרפ טסב'  ->  logical  'בסט פרט 02/16'
-
-    A naive whole-field `[::-1]` (what `menora_legacy` and `phoenix_mu` do, and
-    which is fine for their pure-Hebrew name fields) would render that date as
-    '61/20'. Product names here mix Hebrew with dates, so it must be run-aware.
-    """
-    s = (s or "").strip()
-    if not s:
-        return ""
-    protected = _LTR_RUN.sub(lambda m: m.group(0)[::-1], s)
-    return protected[::-1].strip()
+# Promoted to app/utils/visual_hebrew.py so phoenix_mu can use the same
+# run-aware implementation instead of a naive [::-1]. Kept as a module-local
+# alias because the SP/SB/RM parsers below reference it by this name.
+_reverse_visual_hebrew = reverse_visual_hebrew
 
 
 # ────────────────────────────────────────────────────────────────────────────

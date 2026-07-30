@@ -23,6 +23,33 @@
       </div>
     </div>
 
+    <!-- Per-company "did not pay" donut — one slice per company with an open
+         gap, sized by unpaid ₪ (or unpaid-customer count when no gap amounts).
+         Colors reuse the exact per-company palette the table rows use. -->
+    <div v-if="donutMode !== 'none'" class="crs-chart">
+      <div class="crs-chart-head">
+        <h4 class="crs-chart-title">לא שולם לפי חברה</h4>
+        <span class="crs-chart-sub">{{ donutMode === 'gap' ? 'לפי סכום פער' : 'לפי לקוחות שלא שולמו' }}</span>
+      </div>
+      <div class="crs-chart-wrap">
+        <apexchart
+          type="donut"
+          height="290"
+          width="100%"
+          :options="donutOptions"
+          :series="donutData.series"
+        />
+      </div>
+    </div>
+    <div v-else class="crs-chart crs-chart--clear" role="status">
+      <span class="crs-clear-icon" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </span>
+      <p class="crs-clear-text">הכול נגבה — אין חברות עם פער פתוח</p>
+    </div>
+
     <div class="crs-table-wrap">
       <table class="crs-table">
         <thead>
@@ -168,10 +195,124 @@ import { assignNearestDistinct } from '../../utils/chartPalette.js'
 const props = defineProps({
   summary: { type: Object, default: null }, // { companies: [...], totals: {...} }
 })
-defineEmits(['drill'])
+const emit = defineEmits(['drill'])
 
 const rows = computed(() => props.summary?.companies || [])
 const totals = computed(() => props.summary?.totals || null)
+
+// ── "לא שולם לפי חברה" donut ───────────────────────────────────────────────
+// Prefer sizing slices by the open gap (₪); if no company carries a gap amount
+// but some have unpaid customers, size by that count instead. Cap the slices so
+// the donut stays legible (no-pie-overuse) — the rest roll into "אחרות".
+const MAX_SLICES = 6
+
+const unpaidByGap = computed(() =>
+  rows.value.filter((r) => Number(r.gap) > 0).sort((a, b) => b.gap - a.gap)
+)
+const unpaidByCount = computed(() =>
+  rows.value.filter((r) => Number(r.unpaid) > 0).sort((a, b) => b.unpaid - a.unpaid)
+)
+const donutMode = computed(() => {
+  if (unpaidByGap.value.length) return 'gap'
+  if (unpaidByCount.value.length) return 'count'
+  return 'none'
+})
+
+// ApexCharts fills need concrete colors — resolve any CSS-var fallback to hex.
+function donutColor(company) {
+  const c = companyColor(company)
+  return typeof c === 'string' && c.startsWith('var(') ? '#4E9DD0' : c
+}
+
+const donutData = computed(() => {
+  const gap = donutMode.value === 'gap'
+  const src = gap ? unpaidByGap.value : unpaidByCount.value
+  const valOf = (r) => (gap ? Number(r.gap) : Number(r.unpaid))
+  const labels = []
+  const series = []
+  const colors = []
+  for (const r of src.slice(0, MAX_SLICES)) {
+    labels.push(r.company)
+    series.push(valOf(r))
+    colors.push(donutColor(r.company))
+  }
+  const tail = src.slice(MAX_SLICES)
+  if (tail.length) {
+    labels.push('אחרות')
+    series.push(tail.reduce((s, r) => s + valOf(r), 0))
+    colors.push('#B9B9BE')
+  }
+  return { labels, series, colors }
+})
+
+function fmtDonutVal(v) {
+  return donutMode.value === 'gap' ? fmtMoney(v) : fmtInt(v)
+}
+const donutTotal = computed(() =>
+  donutData.value.series.reduce((s, v) => s + (Number(v) || 0), 0)
+)
+
+const donutOptions = computed(() => ({
+  chart: {
+    type: 'donut',
+    fontFamily: 'Heebo, sans-serif',
+    toolbar: { show: false },
+    events: {
+      dataPointSelection: (_e, _ctx, cfg) => {
+        const label = donutData.value.labels[cfg.dataPointIndex]
+        if (label && label !== 'אחרות') emit('drill', label)
+      },
+    },
+  },
+  labels: donutData.value.labels,
+  colors: donutData.value.colors,
+  stroke: { width: 2, colors: ['#ffffff'] },
+  dataLabels: {
+    enabled: true,
+    formatter: (pct) => `${Math.round(pct)}%`,
+    style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', fontWeight: 700 },
+    dropShadow: { enabled: false },
+  },
+  legend: {
+    position: 'bottom',
+    fontFamily: 'Heebo, sans-serif',
+    fontSize: '12px',
+    labels: { colors: '#706E6B' },
+    markers: { width: 10, height: 10, radius: 3 },
+    itemMargin: { horizontal: 8, vertical: 3 },
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '68%',
+        labels: {
+          show: true,
+          name: { fontFamily: 'Heebo, sans-serif', fontSize: '12px', color: '#706E6B' },
+          value: {
+            fontFamily: 'Heebo, sans-serif',
+            fontSize: '18px',
+            fontWeight: 700,
+            color: '#181818',
+            formatter: (v) => fmtDonutVal(Number(v)),
+          },
+          total: {
+            show: true,
+            label: donutMode.value === 'gap' ? 'סה״כ פער' : 'סה״כ לא שולמו',
+            fontFamily: 'Heebo, sans-serif',
+            fontSize: '12px',
+            color: '#706E6B',
+            formatter: () => fmtDonutVal(donutTotal.value),
+          },
+        },
+      },
+    },
+  },
+  tooltip: {
+    y: { formatter: (v) => fmtDonutVal(Number(v)) },
+    style: { fontFamily: 'Heebo, sans-serif' },
+  },
+  states: { active: { filter: { type: 'none' } } },
+}))
 
 // One distinct palette color per company, anchored to its brand hue — the
 // SAME assignment mechanism the automation canvas uses, so a company keeps
@@ -307,6 +448,65 @@ function fmtMoney(n) {
   background: var(--bg, #F3F3F3);
   color: var(--text-muted, #706E6B);
   border-color: var(--border-subtle, #E5E5E5);
+}
+
+/* "לא שולם לפי חברה" donut */
+.crs-chart {
+  margin: 4px 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+}
+
+.crs-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.crs-chart-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text, #181818);
+}
+
+.crs-chart-sub {
+  font-size: 12px;
+  color: var(--text-muted, #706E6B);
+}
+
+.crs-chart-wrap {
+  direction: ltr;
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.crs-chart--clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 0 18px;
+}
+
+.crs-clear-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-light, #EBF7EE);
+  color: var(--green-deep, #1B5E20);
+  flex-shrink: 0;
+}
+
+.crs-clear-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #3E3E3C);
 }
 
 /* Table */

@@ -540,17 +540,34 @@ class HarelSavingsPortal(_HarelReportPortal):
             vault_raw = await HarelPortal.download_reports(
                 self, page, download_dir, username=username
             )
+            # The vault reports are CP862 fixed-width (SP/RP/SB/RB/RM), NOT
+            # xlsx — pd.read_excel cannot read them. harel_vault_prod parses
+            # them (reusing the הכשרה SP/SB/RM line parsers) into the same
+            # production schema. First pass parses every recognized file so
+            # names from the master (SP/RP) reports can be stamped onto the
+            # insurance/funds rows (the only reports carrying names).
+            from app.services import harel_vault_prod
+            parsed_vault, other_raw = [], []
             for raw in (vault_raw or []):
-                # Surface the real header of each vault file to Railway (WORKER-
-                # LOG) so its format is visible without pulling files off the
-                # worker — this is what lets the parser/category be finalised.
-                try:
-                    import pandas as _pd
-                    _cols = list(_pd.read_excel(raw, header=None, nrows=1, dtype=str).iloc[0])
-                    _worker_note(f"harel vault {raw.name}: cols={[str(c)[:22] for c in _cols][:14]}")
-                except Exception:
-                    pass
-                # Reshape → production (distinct company_source per report type).
+                res = harel_vault_prod.parse_vault_file(raw)
+                if res is None:
+                    other_raw.append(raw)  # unknown name → try xlsx reshape
+                else:
+                    parsed_vault.append(res)
+            harel_vault_prod.fill_names_from_masters(parsed_vault)
+            for company_source, label, rows in parsed_vault:
+                _worker_note(f"harel vault {label}: {len(rows)} rows")
+                if rows:
+                    p = _write_production_xlsx(
+                        rows, company_source, period_label, download_dir
+                    )
+                    results.append(p)
+                    _logger.info("harel vault: %s → %d rows", company_source, len(rows))
+                else:
+                    self.partial_errors.append(f"כספת {label}: 0 שורות")
+            # Fallback: any file whose name we didn't recognize (e.g. a future
+            # real xlsx export) still goes through the standard reshape.
+            for raw in other_raw:
                 try:
                     label = raw.stem.replace("הראל - ", "").strip() or "מורחב"
                     company_source = f"הראל {label}"
@@ -558,13 +575,9 @@ class HarelSavingsPortal(_HarelReportPortal):
                         raw, company_source, run_id, SCREENSHOT_ROOT, account=""
                     )
                     if rows:
-                        p = _write_production_xlsx(
+                        results.append(_write_production_xlsx(
                             rows, company_source, period_label, download_dir
-                        )
-                        results.append(p)
-                        _logger.info("harel vault: %s → %d rows", company_source, len(rows))
-                    else:
-                        self.partial_errors.append(f"כספת {label}: 0 שורות")
+                        ))
                 except Exception as e:
                     _logger.warning("harel vault reshape failed for %s: %s", raw.name, e)
                     self.partial_errors.append(f"כספת {raw.name}: {str(e)[:120]}")

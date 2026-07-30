@@ -224,16 +224,39 @@ function findRate(product) {
   return arr[0]
 }
 
+// The backend now resolves each product's rate with the canonical selector
+// (rate_select.rate_for_product) and ships it on the product itself. Prefer
+// that. `findRate` below is a FALLBACK only, for comparisons persisted before
+// this existed — it matches on company name alone and cannot tell two products
+// at the same insurer apart, which is exactly the bug this replaces.
+// `expected_is_estimate` is null ONLY when the backend had no rate table; once
+// it ran it is always a boolean. rate 0 + boolean flag = "the selector looked
+// and correctly declined" (typically a gemel-magnitude rate that must not be
+// applied to an insurance premium). Falling back to the company-name matcher
+// there re-creates the bug this replaced — it returns מגדל's 0.30% for a חיים
+// policy purely because the company matches.
+function backendResolved(p) {
+  return p && p.expected_is_estimate !== undefined && p.expected_is_estimate !== null
+}
+
+function rateOf(p) {
+  if (p && typeof p.rate === 'number' && p.rate > 0) return p.rate
+  if (backendResolved(p)) return null
+  return findRate(p)?.rate ?? null
+}
+
 function rateLabel(p) {
-  const rate = findRate(p)
+  const rate = rateOf(p)
   if (!rate) return null
-  return (rate.rate * 100).toFixed(2) + '%'
+  return (rate * 100).toFixed(2) + '%'
 }
 
 function expectedCommission(p) {
-  const rate = findRate(p)
+  if (p && p.expected_commission != null) return p.expected_commission
+  if (backendResolved(p)) return null
+  const rate = rateOf(p)
   if (!rate) return null
-  return calcExpectedCommission(p, rate.rate)
+  return calcExpectedCommission(p, rate)
 }
 
 const unpaidProducts = computed(() => {

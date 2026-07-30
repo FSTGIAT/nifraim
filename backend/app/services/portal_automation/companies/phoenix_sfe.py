@@ -41,14 +41,43 @@ logger = logging.getLogger(__name__)
 SFE_BASE = "https://sfe.fnx.co.il/SFE/"
 SFE_URL = "https://sfe.fnx.co.il/SFE/Logon.aspx?ReturnUrl=%2fSFE%2ffiles.aspx"
 
+# Filename anatomy (the only reliable discriminator — the grid's date column
+# renders per session locale, and the display name is truncated):
+#     201000 513026484 HOLDNG PNN 009 20260714 1824410385 .DAT
+#     ^prefix ^sender   ^kind  ^ent ^ver ^date  ^serial
+_RE_FILE = re.compile(r"(\d{9})HOLDNG([A-Z]*)(\d{3})(\d{8})")
+
+
+def _file_date_key(name: str | None) -> str:
+    """Reporting date as YYYYMMDD — locale-proof, unlike the display column."""
+    m = _RE_FILE.search(name or "")
+    return m.group(4) if m else ""
+
+
+def _series_key(name: str | None) -> str:
+    """Identify the publishing entity: sender id + entity marker (e.g.
+    `513026484/PNN` = הפניקס פנסיה וגמל, `520023185/ING` = הפניקס חברה לביטוח).
+
+    Each series is an independent monthly stream. Files from different series sit
+    interleaved in one grid and routinely share a publication date, so the series
+    must be part of the selection key — see the grouping in download_reports.
+    Unparseable names fall back to their own bucket rather than colliding with a
+    real series, so a format change degrades to "download it too", never to
+    "silently drop a series".
+    """
+    m = _RE_FILE.search(name or "")
+    return f"{m.group(1)}/{m.group(2) or '?'}" if m else f"unparsed:{name or ''}"
+
 
 class PhoenixSfePortal(BasePortalAutomation):
     portal_kind = "phoenix_sfe"
     company_label = "הפניקס — כספת"
     requires_otp = False
-    # Folded into the consolidated `phoenix_nifraim` plugin, which (after its
-    # agentportal OTP login) opens this no-OTP SFE vault with the same creds to
-    # grab production. Still runnable as a manual single run.
+    # Pulled on the `phoenix_nifraim` login (that plugin opens this no-OTP vault
+    # with the same creds), so it must stay OUT of the batch or the vault would be
+    # downloaded twice per run. It has its own card for visibility + manual runs,
+    # and `phoenix_nifraim.folds` mirrors that run's outcome onto this card so it
+    # doesn't sit at "ממתין" forever.
     include_in_batch = False
 
     async def _dismiss_greeting(self, page: "Page") -> None:
@@ -202,14 +231,6 @@ class PhoenixSfePortal(BasePortalAutomation):
             }"""
         )
 
-        def _file_date_key(name: str | None) -> str:
-            # The reporting date is embedded in the filename as YYYYMMDD right
-            # after the HOLDNG marker + 3-digit version (locale-proof, unlike the
-            # display column which renders DD/MM/YYYY or M/D/YYYY by session locale):
-            #   201000520023185 HOLDNGING 009 20260517 1633570567 .DAT
-            m = re.search(r"HOLDNG[A-Z]*\d{3}(\d{8})", name or "")
-            return m.group(1) if m else ""
-
         dat_rows = [
             r for r in rows
             if r.get("name") and str(r["name"]).lower().endswith(".dat") and r.get("url")
@@ -221,14 +242,47 @@ class PhoenixSfePortal(BasePortalAutomation):
                 "(see *_sfe_no_dat artifacts)"
             )
 
-        # Newest = max embedded filename date; tie-break to the topmost grid row
-        # (the grid is sorted newest-first, so -idx keeps idx 0 on ties / no-date).
-        chosen = max(dat_rows, key=lambda r: (_file_date_key(r["name"]), -r["idx"]))
+        # The safe holds SEVERAL INDEPENDENT SERIES, one per Phoenix legal entity,
+        # interleaved in one grid and distinguished only by the sender id + marker
+        # inside the filename:
+        #   201000**513026484**HOLDNG**PNN**009 20260714 … → הפניקס פנסיה וגמל  (pension)
+        #   201000**520023185**HOLDNG**ING**009 20260714 … → הפניקס חברה לביטוח (life)
+        # Both entities publish on the SAME day, so a global "newest" ties on the
+        # date and the old tie-break (-idx → grid row 0) silently picked pension
+        # EVERY time; the life series was unreachable by any code path and the
+        # vault contributed a single policy. Group by series and take the newest of
+        # each, so adding an entity can never again drop a whole book unnoticed.
+        best: dict[str, dict] = {}
+        for r in dat_rows:
+            key = _series_key(r["name"])
+            rank = (_file_date_key(r["name"]), -r["idx"])
+            cur = best.get(key)
+            if cur is None or rank > (_file_date_key(cur["name"]), -cur["idx"]):
+                best[key] = r
+        chosen_rows = [best[k] for k in sorted(best)]
         logger.info(
-            "phoenix_sfe: %d .DAT row(s); picking newest '%s' (shown %s)",
-            len(dat_rows), chosen["name"], chosen.get("dateText"),
+            "phoenix_sfe: %d .DAT row(s) across %d series %s — taking the newest of each",
+            len(dat_rows), len(best), sorted(best),
         )
+        for r in chosen_rows:
+            logger.info(
+                "phoenix_sfe:   series %-22s → %s (shown %s)",
+                _series_key(r["name"]), r["name"], r.get("dateText"),
+            )
 
+        saved: list[Path] = []
+        for chosen in chosen_rows:
+            saved.append(await self._download_row(page, chosen, download_dir, _checkpoint))
+
+        await _checkpoint("sfe_done")
+        logger.info(
+            "phoenix_sfe: saved %d file(s): %s",
+            len(saved), ", ".join(f"{p.name} ({p.stat().st_size}B)" for p in saved),
+        )
+        return saved
+
+    async def _download_row(self, page: "Page", chosen: dict, download_dir: Path, _checkpoint) -> Path:
+        """Download one grid row via the 3-layer capture (native → XHR → GET)."""
         out = download_dir / chosen["name"]
         abs_url = SFE_BASE + str(chosen["url"]).lstrip("/")
 
@@ -277,6 +331,5 @@ class PhoenixSfePortal(BasePortalAutomation):
         finally:
             page.remove_listener("response", _on_response)
 
-        await _checkpoint("sfe_done")
         logger.info("phoenix_sfe: saved %s (%d bytes)", out.name, out.stat().st_size)
-        return [out]
+        return out

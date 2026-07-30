@@ -16,7 +16,7 @@ from 80-line sample bundles delivered 2026-05. Fields are conservative:
     id_number  : reliable (positioned + check-digit pattern)
     birthdate  : reliable (8-digit YYYYMMDD)
     name       : reliable (Hebrew, CP1255)
-    policy id  : reliable (7-digit prefix)
+    policy id  : reliable (9-wide zero-padded field at [2:11] — NOT [4:11])
     premium    : best-effort (regex over amount block)
     accumulation : best-effort
 
@@ -194,31 +194,67 @@ def _parse_inner_bundle(inner: zipfile.ZipFile, *, source_name: str) -> list[dic
         logger.warning("menora_legacy: %s has no P.TXT, skipping", source_name)
         return []
 
-    # G.TXT keyed by policy_id (7-digit positions 4-11) so we can fill in
-    # amounts on P.TXT rows
+    # G.TXT is indexed under BOTH policy-key widths, because G's own layout is
+    # unconfirmed (we have no spec, and the only samples we've measured are P.TXT).
+    #
+    #   wide   = the real policy from [2:11], zero-stripped (see _policy_from_p_line)
+    #   narrow = the legacy [4:11] slice, kept verbatim
+    #
+    # The two namespaces cannot collide (different widths), so indexing both is
+    # purely additive. Lookup below tries wide first and falls back to narrow, and
+    # the narrow key is computed from the RAW P line — never from the emitted
+    # field. Net effect: if G shares P's layout the join gets STRONGER (the old
+    # 7-char key was not unique — with policies spread over 34/35/36/37 prefixes
+    # two could share a suffix, and this dict is last-write-wins, so premiums
+    # could silently attach to the wrong policy); if G's layout differs, the
+    # narrow path reproduces the old join byte-for-byte. There is no input on
+    # which premiums can be lost.
     g_by_policy: dict[str, dict] = {}
     if g_txt:
         for line in g_txt.split("\r\n"):
             if not line.strip():
                 continue
-            policy = line[4:11].strip()
-            if not policy:
-                continue
-            g_by_policy[policy] = _parse_g_line(line)
+            parsed = _parse_g_line(line)
+            wide = _policy_from_p_line(line)
+            if wide:
+                g_by_policy[wide] = parsed
+            narrow = line[4:11].strip()
+            if narrow:
+                g_by_policy[narrow] = parsed
 
     out: list[dict] = []
+    rows = wide_hits = narrow_hits = misses = guard_rejects = 0
     for line in p_txt.split("\r\n"):
         if not line.strip() or len(line) < 60:
             continue
         rec = _parse_p_line(line)
         if not rec or not rec.get("id_number"):
             continue
-        # Enrich with financial fields when G.TXT has a matching policy
-        g = g_by_policy.get(rec.get("fund_policy_number") or "", {})
+        rows += 1
+        if rec.get("fund_policy_number") is None:
+            guard_rejects += 1
+        # Enrich with financial fields when G.TXT has a matching policy.
+        g: dict = {}
+        for key, which in ((rec.get("fund_policy_number"), "wide"), (line[4:11].strip(), "narrow")):
+            if key and key in g_by_policy:
+                g = g_by_policy[key]
+                if which == "wide":
+                    wide_hits += 1
+                else:
+                    narrow_hits += 1
+                break
+        else:
+            misses += 1
         for k, v in g.items():
             if v is not None and rec.get(k) is None:
                 rec[k] = v
         out.append(rec)
+
+    logger.info(
+        "menora_legacy: %s premium join — rows=%d wide=%d narrow=%d miss=%d "
+        "| policy-guard rejects=%d/%d",
+        source_name[:40], rows, wide_hits, narrow_hits, misses, guard_rejects, rows,
+    )
     return out
 
 
@@ -229,14 +265,40 @@ def _parse_inner_bundle(inner: zipfile.ZipFile, *, source_name: str) -> list[dic
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def _policy_from_p_line(line: str) -> str | None:
+    """Menora's policy number: a 9-wide, ZERO-PADDED field at [2:11].
+
+    Returns None — never a truncated fallback — when the field isn't 9 digits.
+    A wrong-but-plausible policy number is exactly the failure class this guard
+    exists to remove; `None` degrades loudly (comparison_service._match_products
+    skips a row with no policy) instead of silently mis-matching.
+
+    Deliberately does NOT check `line[0:2] == "06"`. Every sample we have starts
+    `06`, but nothing proves that holds across agents and bundles, and a mismatch
+    would silently null a VALID policy. The proof that the policy lives at [2:11]
+    is independent of whatever [0:2] means, so validate the policy, not its
+    neighbour.
+
+    The lstrip is load-bearing, and measured: the field is 9 wide but the policy
+    inside it can be shorter. Real row from a live bundle has [2:11]='011738333'
+    → 11738333, which is the value the נפרעים report carries for that client.
+    Measured length histogram over a real 80-row bundle: 72×9, 7×8, 1×7 digits —
+    so "always 9 digits" would be a wrong assertion.
+    """
+    field = line[2:11]
+    if len(field) != 9 or not field.isdigit():
+        return None
+    return field.lstrip("0") or field
+
+
 def _parse_p_line(line: str) -> dict | None:
     """Parse one row of P.TXT (customer + policy master).
 
     Reference row:
         06361004450400800000000100690000000000002238945619680121יחיים יבכוב...
 
-        pos 0-3    : record-type prefix (0636/0635/0634)
-        pos 4-10   : 7-digit policy number
+        pos 0-1    : '06' (constant record-type marker — not interpreted)
+        pos 2-10   : 9-wide zero-padded policy number  ← '361004450' above
         pos 11     : '4' (constant)
         pos 12-14  : '008'
         pos 15-27  : agent code embedded (e.g. ...0069 = agent 0069)
@@ -249,9 +311,20 @@ def _parse_p_line(line: str) -> dict | None:
     position 47. A previous `line[38:47]` slice was one char short and silently
     dropped the final digit of every ת"ז (QA 2026-07-23: "missing the last
     digit"). Verified against real P.TXT: [38:48]='0022389456' → id 22389456.
+
+    NOTE 2 — same class of bug, found the same way. The policy was read with
+    `line[4:11]`, a 7-char slice that dropped its first two digits, because this
+    docstring used to claim pos 0-3 was a "record-type prefix (0636/0635/0634)".
+    It isn't: [0:2] is the constant '06' and the 34/35/36/37 that follows is the
+    POLICY's own leading pair. QA 2026-07: "במנורה - מספר הפוליסה מופיעה בלי שני
+    המספרים הראשונים". Confirmed three ways — the reference row above
+    ([2:11]='361004450', [11] still the documented '4'); 66 of 77 production rows
+    that lost exactly a 34/35/36/37 prefix against manually-uploaded ground
+    truth; and re-parsing a real bundle, where policies matching the נפרעים
+    report for the same ת"ז went from 1/80 to 80/80. See _policy_from_p_line.
     """
     try:
-        policy_number = line[4:11].strip()
+        policy_number = _policy_from_p_line(line)
         id_raw = line[38:48]  # full 10-char block; lstrip handles the pad zero
         dob_raw = line[48:56]
         name_raw = line[56:78]
@@ -276,22 +349,28 @@ def _parse_p_line(line: str) -> dict | None:
         # gives proper RTL rendering downstream.
         name_logical = name_raw.strip()[::-1].strip()
         parts = name_logical.split(None, 1)
-        # Menora convention: surname first, then first name. Map to schema.
+        # After the whole-field reverse, parts[0] is the GIVEN name and the
+        # remainder is the surname. The old code mapped parts[0]→last_name on a
+        # "Menora convention: surname first" comment — true of the raw visual
+        # field, but the reverse has already undone that ordering, so every row
+        # came out inverted (stored first_name='כוכבי מליחי', last_name='סיגלית'
+        # for סיגלית כוכבי מליחי). Keep split(None, 1) so a two-word surname
+        # stays whole.
         if len(parts) >= 2:
-            last_name = parts[0]
-            first_name = parts[1]
+            first_name = parts[0]
+            last_name = parts[1]
         elif parts:
-            last_name = parts[0]
-            first_name = None
-        else:
+            first_name = parts[0]
             last_name = None
+        else:
             first_name = None
+            last_name = None
 
         return {
             "id_number": id_number,
             "first_name": first_name,
             "last_name": last_name,
-            "fund_policy_number": policy_number or None,
+            "fund_policy_number": policy_number,
             "receiving_company": "מנורה",
             "product_type": "ביטוח חיים",
             "product": "פרודוקציה - חיים",

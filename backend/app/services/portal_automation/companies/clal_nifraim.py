@@ -155,10 +155,16 @@ class ClalNifraimPortal(ClalPortal):
             # ── Step A: open the commissions tab via "לפירוט עמלות" ──
             # Do NOT force-navigate (F5 APM session). The link carries
             # href="../commissions" target="_blank" → opens a new tab.
+            #
+            # ONLY anchor-scoped selectors. The old `*:has-text('לפירוט עמלות')`
+            # fallback matched a rotating PROMO tile on the SPA home and opened a
+            # marketing PDF (clalbit.co.il/…/memberclub_digital_a4-3.pdf) instead
+            # of the commissions grid → "לא נמצאו סוגי עמלה" (live 2026-07-24).
+            # A real commissions entry is always an <a> with a commissions href
+            # or that exact link text, never an arbitrary element.
             commissions_link = [
                 "a[href*='commissions']",
                 "a:has-text('לפירוט עמלות')",
-                "*:has-text('לפירוט עמלות')",
             ]
             grid_page: "Page" = page
             try:

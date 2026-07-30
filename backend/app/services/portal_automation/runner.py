@@ -163,6 +163,51 @@ def _upload_capture(path, name: str | None = None) -> None:
         pass
 
 
+# Runs whose artifacts were already shipped — _set_status(finished, failed) can
+# fire more than once for the same run (plugin raise → batch catch), and the
+# dumps only need to travel once.
+_UPLOADED_ARTIFACT_RUNS: set[str] = set()
+
+
+def _upload_run_artifacts(run_id: str, since_epoch: float | None = None,
+                          limit: int = 16) -> None:
+    """Ship a failed run's dumps to the server so it's self-documenting via
+    GET /_debug/screenshots. Newest-first, capped, silent by design —
+    diagnostics must never be able to fail (or slow) a run materially.
+
+    Uploads TWO sets, deduped:
+      1. `{run_id}_*` — plugins that name dumps by run id (clal, hachshara…).
+      2. Any SCREENSHOT_ROOT file MODIFIED DURING THIS RUN (mtime >= since_epoch)
+         — this catches plugins that dump to a FIXED name (analyst_login.png,
+         `altshuler_login.txt`, `meitav_*`). That gap left altshuler's login
+         failure (batch 778bd998) blind: the run row pointed at
+         `altshuler_login.txt` but the run_id glob never matched it.
+    """
+    try:
+        rid = str(run_id)
+        if not rid or rid in _UPLOADED_ARTIFACT_RUNS:
+            return
+        _UPLOADED_ARTIFACT_RUNS.add(rid)
+        if not SCREENSHOT_ROOT.exists():
+            return
+        # 60s of slack before the run started, so a dump written just before the
+        # first status flip still counts as "this run".
+        cutoff = (since_epoch - 60) if since_epoch else None
+        picked: dict = {}
+        for p in SCREENSHOT_ROOT.iterdir():
+            if not p.is_file():
+                continue
+            try:
+                if p.name.startswith(rid) or (cutoff and p.stat().st_mtime >= cutoff):
+                    picked[p.name] = p
+            except OSError:
+                continue
+        for p in sorted(picked.values(), key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
+            _upload_capture(p)
+    except Exception:
+        pass
+
+
 # Standard Windows install locations for REAL Google Chrome — checked when the
 # `channel="chrome"` lookup misses (e.g. a per-user install the worker's service
 # account can't see via the registry). Harel's F5 edge rejects bundled Chromium,
@@ -331,6 +376,15 @@ async def _set_status(db: AsyncSession, run: PortalRun, *, status: str | None = 
     if finished:
         run.finished_at = datetime.utcnow()
     await db.commit()
+    # A finished failure ships its own checkpoint dumps to the server — the
+    # files live on the WORKER's disk, and error messages that point at them
+    # by name are otherwise dead ends (batch 3c0b055f: clal + hachshara).
+    if finished and status in ("failed", "timeout"):
+        try:
+            _since = run.started_at.timestamp() if run.started_at else None
+            await asyncio.to_thread(_upload_run_artifacts, str(run.id), _since)
+        except Exception:
+            pass
 
 
 async def _db_utc_now(db: AsyncSession) -> datetime:
@@ -359,6 +413,7 @@ async def _wait_for_otp(
     user_id: uuid.UUID,
     since: datetime,
     portal_kind: str | None = None,
+    timeout_s: int | None = None,
 ) -> str:
     """Poll otp_inbox for an OTP that arrived after `since`.
 
@@ -383,7 +438,7 @@ async def _wait_for_otp(
     consumed row to prevent reuse.
     """
     base = (portal_kind or "").split("_")[0] or None
-    deadline = asyncio.get_event_loop().time() + OTP_WAIT_TIMEOUT_S
+    deadline = asyncio.get_event_loop().time() + (timeout_s or OTP_WAIT_TIMEOUT_S)
     while asyncio.get_event_loop().time() < deadline:
         stmt = (
             select(OtpInbox)
@@ -455,6 +510,23 @@ async def _run_inner(
     # itself distinguish cause. See mor.py::_classify and memory `portal_mor`.
     plugin.cred_last_run_status = cred.last_run_status
     plugin.cred_last_run_at = cred.last_run_at
+    # Also expose the STAGE of the last finished run. A score-gated plugin must
+    # not shed/recycle a reCAPTCHA reputation that PASSED login and only failed
+    # downstream (otp/download) — that reputation is proven, and discarding it
+    # gets the next run rejected cold. Live 2026-07-24: analyst passed reCAPTCHA
+    # at 15:58 (@otp) then the shed fired at 16:53 on last_status='failed' and
+    # cleared the good reputation → rejected again. Stage tells shed-vs-keep.
+    try:
+        _last = (await db.execute(
+            select(PortalRun.stage)
+            .where(PortalRun.credential_id == cred.id,
+                   PortalRun.id != run.id,
+                   PortalRun.finished_at.is_not(None))
+            .order_by(PortalRun.started_at.desc()).limit(1)
+        )).first()
+        plugin.cred_last_run_stage = _last[0] if _last else None
+    except Exception:
+        plugin.cred_last_run_stage = None
 
     password = decrypt(cred.encrypted_password)
 
@@ -837,7 +909,33 @@ async def _run_inner(
                 otp = await _wait_for_otp(
                     db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind
                 )
-                await plugin.submit_otp(page, otp)
+                try:
+                    await plugin.submit_otp(page, otp)
+                except Exception as _otp_err:
+                    # A code rejected as INVALID (analyst errorCode 2 = "still on
+                    # the code screen") is usually a SECOND code invalidating the
+                    # one we grabbed: the login's captcha-retry re-requests, or a
+                    # resend fires, and the portal only honours the NEWEST code.
+                    # Measured 2026-07-24: submitting the older of two codes →
+                    # errorCode 2; the newer one logs in cleanly. So on a
+                    # rejection, wait briefly for any newer code, grab it, and
+                    # retry the submit ONCE. No extra OTP is requested — we only
+                    # consume a code the portal already sent.
+                    await asyncio.sleep(4)
+                    try:
+                        newer = await _wait_for_otp(
+                            db, run, cred.user_id, otp_since,
+                            portal_kind=cred.portal_kind, timeout_s=8,
+                        )
+                    except OtpTimeout:
+                        newer = None
+                    if newer and newer != otp:
+                        logger.warning(
+                            "%s: OTP rejected — retrying with a newer code",
+                            cred.portal_kind)
+                        await plugin.submit_otp(page, newer)
+                    else:
+                        raise _otp_err
 
             # A consolidated multi-login plugin (e.g. Migdal mfte+apmaccess) can
             # call this to obtain a SECOND OTP after a second login inside
@@ -976,6 +1074,14 @@ async def _run_inner(
                 error=("הושלם חלקית: " + " | ".join(issues))[:500] if issues else None,
                 finished=True,
             )
+            # Partial success (a folded leg died, e.g. the Harel vault's 0/5)
+            # leaves its evidence on the worker's disk too — ship it.
+            if issues:
+                try:
+                    _since = run.started_at.timestamp() if run.started_at else None
+                    await asyncio.to_thread(_upload_run_artifacts, str(run.id), _since)
+                except Exception:
+                    pass
 
             # This profile has now carried a real login through to a download, so it
             # has the cookies/reputation the next run inherits — stop warming it.

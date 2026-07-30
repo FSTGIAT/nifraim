@@ -84,14 +84,20 @@ class AnalystPortal(BasePortalAutomation):
     native_fingerprint = True
     use_persistent_profile = True
     needs_residential_proxy = False
-    # KEEP the profile across login rejections. Analyst is reCAPTCHA v3, and its
-    # rejections on the agent's machine are intermittent on a COLD profile
-    # (14:43 passed, 15:19 and 18:2x refused — same code, same cold profile).
-    # Recycling after every rejection guaranteed a brand-new profile each run, so
-    # it could never build the history v3 scores on. This is the one lever left
-    # that needs no human. Mor/Meitav keep the default (True): they are
-    # Enterprise, where a poisoned profile really does need shedding.
-    recycle_profile_on_login_failure = False
+    # RECYCLE the profile after a login rejection — a FRESH profile passes.
+    #
+    # This was flipped to False on 2026-07-22 ("let the profile PERSIST", commit
+    # 2d5a0fd) on the theory that v3 needs to accumulate history. That theory is
+    # DISPROVEN: it worked for a day while the kept profile was still clean, then
+    # the SAME profile accumulated failed-login reputation and was refused from
+    # 07-24 on — "it worked before" then stopped. Reproduced locally 2026-07-24: a
+    # BRAND-NEW profile mints a valid v3 token and the login POST returns 200
+    # (OTP sent), while kiko's poisoned kept-profile is refused. A poisoned
+    # profile beats every other fix (see memories portal_mor /
+    # portal_cold_profile_recaptcha) — so shed it, exactly like Mor/Meitav. The
+    # runner's recycle is stage-aware (only after a LOGIN-stage failure), so a
+    # profile that passed login and failed downstream is kept, not thrown away.
+    recycle_profile_on_login_failure = True
 
     def _split(self, username: str, password: str) -> tuple[str, str]:
         """username='<id>', password='<phone>'. Digit-strip both; pad the Israeli
@@ -152,6 +158,10 @@ class AnalystPortal(BasePortalAutomation):
 
         page.on("response", _on_resp)
 
+        # The whole poisoned profile is recycled to fresh by the runner after a
+        # login-stage rejection (recycle_profile_on_login_failure=True), so there
+        # is no per-cookie shed to do here — a fresh profile passes (proven live
+        # 2026-07-24: brand-new profile → valid token → login 200 / OTP sent).
         await page.goto(PORTAL_URL, wait_until="domcontentloaded", timeout=45000)
         try:
             await page.wait_for_load_state("networkidle", timeout=15000)

@@ -319,21 +319,32 @@ const companyChartOptions = computed(() => ({
     animations: { enabled: true, easing: 'easeinout', speed: 700 },
     events: { dataPointSelection: () => openDrilldown('companies') },
   },
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: true } },
-  dataLabels: { enabled: true, formatter: v => '₪' + Math.round(v).toLocaleString(), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif', colors: ['#fff'] }, dropShadow: { enabled: true, top: 0, left: 0, blur: 2, opacity: 0.55, color: '#000' } },
+  // `distributed` colours each BAR and only works with a single series, so it
+  // must switch off once premium is plotted alongside accumulation.
+  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: companyChartSeries.value.length === 1 } },
+  dataLabels: { enabled: true, formatter: v => (v ? '₪' + Math.round(v).toLocaleString() : ''), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif', colors: ['#fff'] }, dropShadow: { enabled: true, top: 0, left: 0, blur: 2, opacity: 0.55, color: '#000' } },
   xaxis: { categories: props.analytics.company_breakdown.map(c => c.company), labels: { show: false } },
   yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '13px', fontWeight: 600 } } },
   colors: PALETTE_SERIES,
-  legend: { show: false },
+  legend: { show: companyChartSeries.value.length > 1, position: 'top', horizontalAlign: 'right', fontFamily: 'Heebo, sans-serif' },
   states: { active: { filter: { type: 'none' } } },
   tooltip: { y: { formatter: v => '₪' + Math.round(v).toLocaleString() } },
   grid: { borderColor: 'var(--border-subtle)', xaxis: { lines: { show: false } } },
 }))
 
-const companyChartSeries = computed(() => [{
-  name: 'צבירה',
-  data: props.analytics.company_breakdown.map(c => c.accumulation),
-}])
+// Accumulation AND premium. Plotting accumulation alone reported every
+// premium-based insurer as ₪0 — מנורה showed nothing against ₪271,406 of real
+// premium, מגדל nothing against ₪16,682 — which reads as "this company has no
+// portfolio" rather than "this company's portfolio isn't measured in צבירה".
+// A company legitimately has one, the other, or both.
+const companyChartSeries = computed(() => {
+  const rows = props.analytics.company_breakdown
+  const series = [{ name: 'צבירה', data: rows.map(c => c.accumulation || 0) }]
+  if (rows.some(c => (c.premium || 0) > 0)) {
+    series.push({ name: 'פרמיה', data: rows.map(c => c.premium || 0) })
+  }
+  return series
+})
 
 // "התפלגות לפי סוג מוצר" — record count per product type (palette orange gradient).
 // Click a bar → products drill-down.

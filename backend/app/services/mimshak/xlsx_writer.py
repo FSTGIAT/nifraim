@@ -136,23 +136,42 @@ def _normalize_insurer(name: str | None) -> str:
     return INSURER_NAME_OVERRIDES.get(name, name)
 
 
-# Migdal's production report uses a fixed bucket label per `סוג מוצר` in the
-# `מוצר` column — every life row reads "מגדל - חיים", every health row
-# "מגדל - בריאות", etc. The raw policy product name (e.g. "מגדל קשת לפרט")
-# lives in DAT's SHEM-TOCHNIT, but the report normalizes it away.
-_PRODUCT_BUCKET_BY_SUG: dict[str, str] = {
-    "ביטוח חיים": "מגדל - חיים",
-    "ביטוח בריאות": "מגדל - בריאות",
-    "ביטוח חיים משכנתא": "מגדל - ביטוח חיים משכנתא",
-    "ביטוח סיעוד": "מגדל - סיעוד",
-    "ביטוח כללי": "מגדל - כללי",
-    "ביטוח נסיעות": "מגדל - נסיעות",
+# The production report writes `מוצר` as "<brand> - <category>" — every life row
+# reads "מגדל - חיים", every health row "מגדל - בריאות", etc. The raw policy
+# product name (e.g. "מגדל קשת לפרט") lives in DAT's SHEM-TOCHNIT, but the report
+# normalizes it away.
+#
+# The CATEGORY suffix is insurer-independent; only the brand changes. This map was
+# reverse-engineered from Migdal's report and used to hardcode "מגדל - " into the
+# label, so every OTHER insurer's DAT came out branded Migdal — live 2026-07-29 all
+# 55 policies in a הפניקס SFE vault file were stored as `מגדל - חיים`. Derive the
+# brand from the row's own insurer instead.
+_PRODUCT_CATEGORY_BY_SUG: dict[str, str] = {
+    "ביטוח חיים": "חיים",
+    "ביטוח בריאות": "בריאות",
+    "ביטוח חיים משכנתא": "ביטוח חיים משכנתא",
+    "ביטוח סיעוד": "סיעוד",
+    "ביטוח כללי": "כללי",
+    "ביטוח נסיעות": "נסיעות",
 }
 
 
-def _bucket_product_label(sug_mutzar: str) -> str:
-    """Return the REF-style `מוצר` bucket label for a given `סוג מוצר`."""
-    return _PRODUCT_BUCKET_BY_SUG.get(sug_mutzar, sug_mutzar)
+def _bucket_product_label(sug_mutzar: str, insurer_name: str | None = None) -> str:
+    """Return the REF-style `מוצר` bucket label — "<brand> - <category>".
+
+    `insurer_name` is the row's own SHEM-YATZRAN; the brand is derived with the
+    shared `normalize_company` helper (`הפניקס חברה לביטוח בע"מ` → `הפניקס`) so the
+    label always matches the `יצרן` column beside it. With no insurer, or an
+    unmapped `סוג מוצר`, fall back to the bare category rather than inventing a
+    brand.
+    """
+    category = _PRODUCT_CATEGORY_BY_SUG.get(sug_mutzar, sug_mutzar)
+    if not insurer_name:
+        return category
+    from app.utils.company_norm import normalize_company
+
+    brand = normalize_company(insurer_name)
+    return f"{brand} - {category}" if brand else category
 
 
 def _default_employer_name(customer: dict) -> str:
@@ -216,7 +235,7 @@ def build_insurance_product_row(
     return [
         _normalize_insurer(insurer_name),
         sug_mutzar,
-        _bucket_product_label(sug_mutzar),
+        _bucket_product_label(sug_mutzar, insurer_name),
         policy.get("MISPAR-POLISA-O-HESHBON") or "",
         agency_name,
         customer.get("SHEM-PRATI") or "",
@@ -408,7 +427,7 @@ def build_life_product_row(
     status_label = "פעיל" if (end_date is None or end_date >= today) else "סילוק"
 
     sug_mutzar = "ביטוח חיים"
-    product_name = _bucket_product_label(sug_mutzar)
+    product_name = _bucket_product_label(sug_mutzar, insurer_name)
 
     email = person.get("email") or ""
     phone = person.get("mobile") or ""
@@ -587,8 +606,10 @@ def build_coverage_row(
                    or _to_float(coverage.get("SCHUM-KISUI")))
 
     # Same `מוצר` bucket-label normalization as the insurance-products sheet —
-    # see _bucket_product_label. SHEM-TOCHNIT (e.g. "מגדל קשת לפרט") is the
-    # raw Migdal policy name; the report rolls it up to "מגדל - חיים" etc.
+    # see _bucket_product_label. SHEM-TOCHNIT (e.g. "מגדל קשת לפרט") is the raw
+    # per-insurer policy name; the report rolls it up to "<brand> - חיים" etc.
+    # Pass insurer_name so this sheet's label matches the products sheet — without
+    # it the two sheets disagree on the same policy.
     cov_sug_mutzar = (
         _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="")
         or _lookup(SUG_MUTZAR_LABELS, "1")
@@ -596,7 +617,7 @@ def build_coverage_row(
     return [
         _normalize_insurer(insurer_name),
         cov_sug_mutzar,
-        _bucket_product_label(cov_sug_mutzar),
+        _bucket_product_label(cov_sug_mutzar, insurer_name),
         policy.get("MISPAR-POLISA-O-HESHBON") or "",
         customer.get("SHEM-PRATI") or "",
         customer.get("SHEM-MISHPACHA") or "",

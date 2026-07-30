@@ -18,6 +18,7 @@ from app.models.record import ClientRecord
 from app.models.paying_company import PayingCompany
 from app.models.debt import Debt
 from app.models.commission_comparison import CommissionComparison
+from app.models.commission_rate import CommissionRate
 from app.api.deps import get_paid_user as get_current_user
 from sqlalchemy import and_
 
@@ -50,6 +51,16 @@ def _jsonable(obj):
     if isinstance(obj, uuid.UUID):
         return str(obj)
     return obj
+
+
+
+async def _user_rates(db: AsyncSession, user_id: uuid.UUID) -> list:
+    """The agent's agreement rates, so every product line in a comparison
+    carries its own resolved rate + expected commission."""
+    res = await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user_id)
+    )
+    return list(res.scalars().all())
 
 
 async def _persist_comparison(
@@ -185,7 +196,8 @@ async def dual_upload(
     paying_names = [p.company_name for p in paying_result.scalars().all()]
 
     # Compute comparison on the fly
-    comparison = compute_comparison(prod_result["records"], comm_result["records"], paying_names)
+    comparison = compute_comparison(prod_result["records"], comm_result["records"], paying_names,
+                                    user_rates=await _user_rates(db, user.id))
     comparison["commission_company_source"] = comm_result.get("company_source")
     await _persist_comparison(db, user.id, comparison, production_upload_id=prod_upload.id)
     return comparison
@@ -248,7 +260,8 @@ async def compute_from_uploads(
     )
     comm_upload = comm_upload_result.scalar_one_or_none()
 
-    comparison = compute_comparison(prod_dicts, comm_dicts, paying_names, category_override=category)
+    comparison = compute_comparison(prod_dicts, comm_dicts, paying_names, category_override=category,
+                                    user_rates=await _user_rates(db, user.id))
     comparison["commission_company_source"] = comm_upload.company_source if comm_upload else None
     if persist:
         await _persist_comparison(db, user.id, comparison, production_upload_id=uuid.UUID(production_upload_id))
