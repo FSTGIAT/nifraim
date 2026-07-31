@@ -510,6 +510,60 @@ class ClalPortal(BasePortalAutomation):
             except Exception:
                 pass
 
+        def _box_month(text: str):
+            """(year, month) from a box name's `…מתאריך_DD-MM-YYYY…` stamp, else None.
+            The box's own name carries its creation date — more reliable than
+            guessing which date CELL is 'תאריך יצירה'."""
+            m = re.search(r"מתאריך[_\s-]*(\d{2})-(\d{2})-(\d{4})", text or "")
+            return (int(m.group(3)), int(m.group(2))) if m else None
+
+        async def _close_bundle_modal(p) -> None:
+            """Close the in-page frmBundle box modal so the NEXT row is clickable.
+            The modal stays open after a download and its backdrop intercepts
+            clicks — leaving it open is why the old loop only ever got box 0."""
+            frames = [f for f in p.frames if "frmbundle" in (f.url or "").lower()]
+            for t in frames + [p]:
+                for sel in ("input[value='סגירה']", "button:has-text('סגירה')",
+                            "a:has-text('סגירה')", "input[value*='סגירה']", "#cmdClose"):
+                    try:
+                        loc = t.locator(sel).first
+                        if await loc.count() and await loc.is_visible():
+                            await loc.click(timeout=2500)
+                            await p.wait_for_timeout(500)
+                            return
+                    except Exception:
+                        continue
+            # Fallback: tear the modal/backdrop out so it stops eating clicks.
+            try:
+                await p.evaluate(
+                    """() => {
+                        ['divModalDialog','frBundle'].forEach(id => {
+                            const e = document.getElementById(id);
+                            if (e) { const d = e.closest('.ui-dialog') || e; d.remove(); }
+                        });
+                        document.querySelectorAll('.ui-widget-overlay').forEach(e => e.remove());
+                    }"""
+                )
+            except Exception:
+                pass
+
+        async def _goto_next_page(p, cur: int) -> bool:
+            """Advance the InfoBay pager to page cur+1 (best-effort). Returns
+            True if it moved — used only when a month's boxes overflow one page."""
+            nxt = str(cur + 1)
+            for sel in (f"a:text-is('{nxt}')", f"a:has-text('{nxt}')"):
+                try:
+                    loc = p.locator(sel).last
+                    if await loc.count():
+                        await loc.click(timeout=4000)
+                        await p.wait_for_load_state("domcontentloaded", timeout=8000)
+                        await p.wait_for_selector(ROW_SELECTOR, timeout=6000)
+                        await p.wait_for_timeout(400)
+                        return True
+                except Exception:
+                    continue
+            return False
+
         async def _save_dl(dl, base_name: str) -> "Path | None":
             ext = Path(dl.suggested_filename or "").suffix or ".bin"
             t = download_dir / f"{base_name}{ext}"
@@ -918,31 +972,72 @@ class ClalPortal(BasePortalAutomation):
             await self._safe_screenshot(page, SCREENSHOT_ROOT / f"{run_id}_reports_{label}.png")
             await self._dump_page_state(page, SCREENSHOT_ROOT / f"{run_id}_reports_{label}.png")
 
-            # 2. Download each report by double-clicking its row (ShowReport).
-            n_reports = await page.evaluate(
-                """(sel) => {
-                    const g = document.querySelector("table[id*='grdList']");
-                    return g ? g.querySelectorAll(sel.replace(/table\\[id\\*='grdList'\\] /g,'')).length : 0;
-                }""",
-                ROW_SELECTOR,
-            )
-            for ri in range(n_reports or 0):
-                row = page.locator(ROW_SELECTOR).nth(ri)
-                # Select first (highlights + sets the hidden fields), then grab.
+            # 2. Download THIS MONTH's boxes — not just the newest.
+            #
+            # The list is newest-first and each box name carries its creation
+            # date (…מתאריך_DD-MM-YYYY…). Each date is a separate box holding a
+            # few clients, so a single month's production spans several boxes
+            # (live 2026-07-30: 12 boxes total; July = the 3 newest = the real
+            # month's production, ~20 clients — the old code grabbed only box 0,
+            # one client). Walk top-down, download every box whose month == the
+            # NEWEST box's month, and STOP at the first box from an earlier month
+            # ("everything created this month"). Each box opens an IN-PAGE modal
+            # that must be CLOSED before the next row, or its backdrop blocks the
+            # next click. Pages overflow at 5 rows — follow the pager only while
+            # still inside the target month.
+            target_month = None
+            ri, page_no, box_i = 0, 1, 0
+            while True:
+                rows_loc = page.locator(ROW_SELECTOR)
+                n_rows = await rows_loc.count()
+                if ri >= n_rows:
+                    # End of this page — is the next page still the same month?
+                    if target_month is not None and await _goto_next_page(page, page_no):
+                        page_no += 1
+                        ri = 0
+                        continue
+                    break
+                row = rows_loc.nth(ri)
                 try:
-                    await row.click(timeout=5000)
-                    await page.wait_for_timeout(300)
+                    # The VISIBLE cell text is truncated ("…מתאריך_15-07-202 …"),
+                    # so inner_text loses the 4-digit year and _box_month can't
+                    # read the date. The FULL box name lives in a `title`
+                    # attribute — read that instead (live 2026-07-30: this was
+                    # why the month filter skipped every row and downloaded 0).
+                    name = await row.evaluate(
+                        """el => {
+                            const t = [...el.querySelectorAll('[title]')]
+                                .map(e => e.getAttribute('title') || '')
+                                .find(x => x.includes('מתאריך'));
+                            return t || el.innerText || '';
+                        }"""
+                    )
+                    name = (name or "").strip()
                 except Exception:
-                    pass
+                    ri += 1
+                    continue
+                mo = _box_month(name)
+                if mo is None:
+                    ri += 1
+                    continue
+                if target_month is None:
+                    target_month = mo
+                    logger.info("clal: target production month = %02d/%d", mo[1], mo[0])
+                if mo != target_month:
+                    logger.info("clal: box '%s' is %02d/%d (earlier) — stopping",
+                                name[:40], mo[1], mo[0])
+                    break
                 got = await _grab_report(
-                    page,
-                    row,
-                    f"כלל - פרודוקציה {label} {ri}",
-                    dump_stem=f"{run_id}_view_{label}" if ri == 0 else None,
+                    page, row, f"כלל - פרודוקציה {label} {box_i}",
+                    dump_stem=f"{run_id}_view_{label}" if box_i == 0 else None,
                 )
+                await _close_bundle_modal(page)
                 await _dismiss_dialog(page)
                 if got:
                     saved.append(got)
+                ri += 1
+                box_i += 1
+            logger.info("clal: downloaded %d production box(es) for %s", box_i, label)
 
             # 3. Back to the drawer list for the next type (app's own back —
             # browser back / re-visiting the key URL drops the InfoBay session).
@@ -958,6 +1053,56 @@ class ClalPortal(BasePortalAutomation):
             if "frmlogin" in page.url.lower():
                 logger.warning("Clal: bounced to login after '%s'", label)
                 break
+
+        # Merge the month's production boxes into ONE clal production file.
+        # Each box is a Mimshak .DAT holding a few clients; the runner ingests
+        # every returned file with make_active=True, which DEACTIVATES
+        # same-company actives — so returning the raw per-box .DATs would keep
+        # only the LAST box (one client). Parse each and rebuild one
+        # unified-format workbook (the same 6-tab shape as the manual
+        # "פרודוקציה כלל" export), so ALL of the month's clients land in a single
+        # active production upload. Best-effort: on failure, fall back to the raw
+        # boxes rather than lose everything.
+        # The month's clients live in the boxes' `.MEV` files (Clal fixed-width),
+        # NOT the Mimshak `.DAT` (which holds one client) — parsing the `.DAT`
+        # was why every run showed "1 customer" (live 2026-07-31). Extract the
+        # `.MEV` from each downloaded box `.exe`, parse (clal_mev handles the
+        # cp862-visual / cp1255 encodings + Hebrew reversal), dedup, and build
+        # one unified-format production workbook.
+        exe_boxes = sorted(download_dir.glob("תיבה_*.exe"))
+        if exe_boxes:
+            try:
+                import zipfile
+                from app.services.clal_mev import parse_clal_mev, product_for_box
+                from app.services.portal_automation.aggregate import (
+                    build_unified_workbook_bytes,
+                )
+                mev_rows: list = []
+                for exe in exe_boxes:
+                    prod, ptype = product_for_box(exe.name)
+                    try:
+                        with zipfile.ZipFile(exe) as z:
+                            for zi in z.infolist():
+                                if zi.filename.upper().endswith(".MEV") and zi.file_size > 100:
+                                    mev_rows.extend(parse_clal_mev(z.read(zi.filename), prod, ptype))
+                    except Exception as e:
+                        logger.warning("clal: MEV parse failed for %s: %s", exe.name, e)
+                seen: set = set()
+                uniq: list = []
+                for row in mev_rows:
+                    k = (row["id_number"], row["product"])
+                    if k not in seen:
+                        seen.add(k)
+                        uniq.append(row)
+                if uniq:
+                    out = download_dir / "כלל - פרודוקציה.xlsx"
+                    out.write_bytes(build_unified_workbook_bytes(uniq))
+                    # Replace the raw per-box .DAT files with the merged MEV file.
+                    saved = [f for f in saved if f.suffix.lower() != ".dat"] + [out]
+                    logger.info("clal: %d clients from %d boxes (.MEV)", len(uniq), len(exe_boxes))
+                    _worker_note(f"clal production: {len(uniq)} clients from {len(exe_boxes)} boxes (.MEV)")
+            except Exception as e:
+                logger.warning("clal: MEV merge failed (keeping raw boxes): %s", e)
 
         results: list[Path] = list(saved)
         if not saved:
