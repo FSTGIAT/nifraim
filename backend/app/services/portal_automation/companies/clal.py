@@ -1073,20 +1073,30 @@ class ClalPortal(BasePortalAutomation):
         if exe_boxes:
             try:
                 import zipfile
-                from app.services.clal_mev import parse_clal_mev, product_for_box
+                from app.services.clal_mev import (
+                    parse_clal_mev, parse_clal_pol, product_for_box,
+                )
                 from app.services.portal_automation.aggregate import (
                     build_unified_workbook_bytes,
                 )
                 mev_rows: list = []
+                pol_map: dict = {}  # ת"ז → policy (from .POL; premium isn't in the boxes)
                 for exe in exe_boxes:
                     prod, ptype = product_for_box(exe.name)
                     try:
                         with zipfile.ZipFile(exe) as z:
                             for zi in z.infolist():
-                                if zi.filename.upper().endswith(".MEV") and zi.file_size > 100:
+                                nm = zi.filename.upper()
+                                if nm.endswith(".MEV") and zi.file_size > 100:
                                     mev_rows.extend(parse_clal_mev(z.read(zi.filename), prod, ptype))
+                                elif nm.endswith(".POL") and zi.file_size > 50:
+                                    pol_map.update(parse_clal_pol(z.read(zi.filename)))
                     except Exception as e:
-                        logger.warning("clal: MEV parse failed for %s: %s", exe.name, e)
+                        logger.warning("clal: box parse failed for %s: %s", exe.name, e)
+                # Attach the policy number (from .POL) to each client's row.
+                for row in mev_rows:
+                    if not row.get("fund_policy_number") and row["id_number"] in pol_map:
+                        row["fund_policy_number"] = pol_map[row["id_number"]]
                 seen: set = set()
                 uniq: list = []
                 for row in mev_rows:

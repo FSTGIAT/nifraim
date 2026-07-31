@@ -112,6 +112,29 @@ def parse_clal_mev(raw: bytes, product: str = "", product_type: str = "") -> lis
     return rows
 
 
+def parse_clal_pol(raw: bytes) -> dict:
+    """Parse a box `.POL` file → {ת"ז: policy_number}.
+
+    Record (cp862): `agent[0:5] + policy[5:12] + …zeros… + insured ת"ז[22:31] +
+    owner ת"ז[31:40]`. The INSURED ([22:31]) is the correct join key (the `.MV2`
+    used the OWNER [12:21] → wrong). Verified 20/39 vs the oracle file; the boxes
+    cover ~27 clients' policies (the rest are portal-enriched, not in the boxes).
+    Premium is NOT in any box file, so it stays None.
+    """
+    text = raw.decode("cp862", errors="replace")
+    out: dict = {}
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if len(line) < 31 or not line[:5].isdigit():
+            continue
+        pol = line[5:12].lstrip("0")
+        tz = line[22:31]
+        if pol and tz.isdigit():
+            idn = tz.lstrip("0") or "0"
+            if 4 <= len(idn) <= 9:
+                out.setdefault(idn, pol)  # first policy per client
+    return out
+
+
 def product_for_box(box_name: str) -> tuple[str, str]:
     """(product, product_type) from the box name. 17854/בריאות ⇒ health, else חיים."""
     n = box_name or ""
