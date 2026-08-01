@@ -57,6 +57,31 @@ def _d(v):
     return v or ""
 
 
+def _policy_str(v) -> str:
+    """Policy / account number as a CLEAN string.
+
+    Parsers and the DB hand policy numbers over in mixed types — a bare int, a
+    numpy/py float (`9054568.0`), or a string. When a float reaches the sheet,
+    openpyxl writes a numeric cell and every reader (pandas, the portal, the
+    comparison engine) reads back the ugly `9054568.0`. Normalise the integer-
+    valued numeric cases to their digits and leave genuinely non-numeric or
+    leading-zero policies untouched (don't `int()`-roundtrip — that would eat a
+    legitimate leading zero or an alphanumeric policy)."""
+    if v in (None, ""):
+        return ""
+    if isinstance(v, bool):  # guard: bool is an int subclass
+        return ""
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() else str(v)
+    s = str(v).strip()
+    # numeric string that picked up a trailing ".0" from a float roundtrip
+    if s.endswith(".0") and s[:-2].isdigit():
+        return s[:-2]
+    return s
+
+
 def classify_record(rec: dict) -> str:
     """'savings' for accumulation/gemel products, else 'insurance'.
 
@@ -117,7 +142,7 @@ def record_to_insurance_product_row(rec: dict, agent_number=None, as_of=None) ->
         "יצרן": canonical_company(rec.get("receiving_company"), "insurance"),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
-        "מס' חשבון/פוליסה": rec.get("fund_policy_number") or "",
+        "מס' חשבון/פוליסה": _policy_str(rec.get("fund_policy_number")),
         "שם פרטי לקוח": rec.get("first_name") or "",
         "שם משפחה לקוח": rec.get("last_name") or "",
         "מספר ת.ז": _id_number_int(rec.get("id_number")),
@@ -153,7 +178,7 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
         ),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
-        "מס' חשבון/פוליסה": rec.get("fund_policy_number") or "",
+        "מס' חשבון/פוליסה": _policy_str(rec.get("fund_policy_number")),
         "שם פרטי לקוח": rec.get("first_name") or "",
         "שם משפחה לקוח": rec.get("last_name") or "",
         "מספר ת.ז": _id_number_int(rec.get("id_number")),
@@ -286,7 +311,7 @@ def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
         "קטגוריה": commission_category_token(rec),
         "סוג מוצר": rec.get("fund_type") or "",
         "מוצר": rec.get("product") or "",
-        "מס' פוליסה/חשבון": rec.get("fund_policy_number") or "",
+        "מס' פוליסה/חשבון": _policy_str(rec.get("fund_policy_number")),
         "פרמיה": round(_f(rec.get("total_premium")), 2),
         "צבירה": round(_f(rec.get("accumulation") or rec.get("balance")), 2),
         "עמלה ששולמה": round(_f(rec.get("commission_paid")), 2),
