@@ -262,6 +262,90 @@ def build_insurance_product_row(
     ]
 
 
+# Per-policy accumulation total, in preference order. TOTAL-CHISACHON-MTZBR is
+# exactly one-per-policy and equals the sum of the per-track SCHUM-TZVIRA-BAMASLUL
+# values (verified 55/55 on a live Phoenix SFE holdings DAT), so it is the right
+# policy-level figure — reading the per-track field would pick a single track.
+# ERECH-MESOLAK-SOF-SHANA is the insurance surrender value Migdal uses; kept last
+# as a fallback so an insurer that only populates it still yields accumulation.
+_ACCUM_FIELDS = (
+    "TOTAL-CHISACHON-MTZBR",
+    "TOTAL-CHISACHON-MITZTABER",
+    "SCHUM-TZVIRA-BAMASLUL",
+    "ERECH-MESOLAK-SOF-SHANA",
+)
+
+
+def policy_accumulation(policy: dict) -> float:
+    """Return the policy's accumulation (צבירה) from the first populated field in
+    `_ACCUM_FIELDS`, else 0.0."""
+    for tag in _ACCUM_FIELDS:
+        v = _to_float(policy.get(tag))
+        if v:
+            return v
+    return 0.0
+
+
+def build_savings_product_row(
+    *,
+    insurer_name: str,
+    customer: dict,
+    policy: dict,
+    mbt_person: dict | None,
+    valuation_date: date | None,
+    accumulation: float,
+    agency_name: str = "",
+) -> list:
+    """Return a list of cells in COLUMNS_SAVINGS_PRODUCTS order for an
+    accumulation-based (savings/gemel/life-savings) holdings policy.
+
+    Mirrors `build_insurance_product_row` for the shared identity fields, but
+    carries `צבירה` instead of a premium — a Mimshak holdings DAT reports
+    savings policies (e.g. Phoenix מסלול לחיים פרט) with an accumulation and no
+    premium, and the insurance sheet has no column for it, so those numbers were
+    being dropped entirely."""
+    dob = _fmt_date(customer.get("TAARICH-LEYDA"))
+    age = _compute_age(dob, valuation_date)
+    email = customer.get("E-MAIL") or (mbt_person or {}).get("email")
+    phone = customer.get("MISPAR-CELLULARI") or (mbt_person or {}).get("mobile")
+    city = customer.get("SHEM-YISHUV") or (mbt_person or {}).get("city_he")
+    id_int = _id_number_int(customer.get("MISPAR-ZIHUY-LAKOACH"))
+    employer_id = policy.get("MPR-MAASIK-BE-YATZRAN") or ""
+    employer_name = policy.get("SHEM-MAASIK") or ""
+    sug_mutzar = (
+        _lookup(SUG_MUTZAR_LABELS, policy.get("SUG-MUTZAR"), fallback="")
+        or _lookup(SUG_MUTZAR_LABELS, "1")
+    )
+    vals = {
+        "יצרן": _normalize_insurer(insurer_name),
+        "סוג מוצר": sug_mutzar,
+        "מוצר": _bucket_product_label(sug_mutzar, insurer_name),
+        "מס' חשבון/פוליסה": policy.get("MISPAR-POLISA-O-HESHBON") or "",
+        "סוכנות": agency_name,
+        "שם פרטי לקוח": customer.get("SHEM-PRATI") or "",
+        "שם משפחה לקוח": customer.get("SHEM-MISHPACHA") or "",
+        "מספר ת.ז": id_int,
+        "סלולרי לקוח": _format_phone(phone),
+        'דוא"ל לקוח': email or "",
+        "תאריך לידה": dob,
+        "גיל": age,
+        "מגדר": _lookup(MIN_LABELS, customer.get("MIN")),
+        "יישוב": city or "",
+        "סטטוס מוצר": _lookup(STATUS_POLISA_LABELS, policy.get("STATUS-POLISA-O-CHESHBON")),
+        "תאריך עדכון סטטוס": _fmt_date(policy.get("TAARICH-IDKUN-STATUS")),
+        "תאריך הצטרפות למוצר": _fmt_date(
+            policy.get("TAARICH-HITZTARFUT-MUTZAR") or policy.get("TAARICH-HITZTARFUT-RISHON")
+        ),
+        "מזהה מעסיק": employer_id,
+        "שם מעסיק": employer_name,
+        "צבירה": round(accumulation, 2) if accumulation else 0.0,
+        "מספר סוכן": policy.get("MPR-MEFITZ-BE-YATZRAN") or "",
+        'מת"ל': agency_name,
+        "נכון ליום": _fmt_date(policy.get("TAARICH-NECHONUT")),
+    }
+    return [vals.get(col, "") for col in COLUMNS_SAVINGS_PRODUCTS]
+
+
 def build_lifehlth_product_row(
     *,
     cells: list[str],

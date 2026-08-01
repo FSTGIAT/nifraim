@@ -23,6 +23,9 @@ try:
     from .parse_dat import find_dat, _local_tag, _text, _strip_leading_zeros
     from .xlsx_writer import (
         build_insurance_product_row,
+        build_savings_product_row,
+        policy_accumulation,
+        _pick_coverage_premium,
         build_coverage_row,
         build_lifehlth_product_row,
         build_covrlife_product_row,
@@ -37,6 +40,9 @@ except ImportError:
     from parse_dat import find_dat, _local_tag, _text, _strip_leading_zeros  # type: ignore
     from xlsx_writer import (  # type: ignore
         build_insurance_product_row,
+        build_savings_product_row,
+        policy_accumulation,
+        _pick_coverage_premium,
         build_coverage_row,
         build_lifehlth_product_row,
         build_covrlife_product_row,
@@ -117,6 +123,7 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
             customers_by_id[cid] = leaves
 
     insurance_rows: list[list] = []
+    savings_rows: list[list] = []
     coverage_rows: list[list] = []
     agent_num = None
     # Policy ids already emitted from the DAT (active-holdings) pass. The .MBT
@@ -172,16 +179,35 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
                 cov_leaves = _collect_leaves(zk)
                 policy_coverages.append(cov_leaves)
 
-        # Sheet 5 row
-        insurance_rows.append(build_insurance_product_row(
-            insurer_name=insurer_name,
-            customer=customer,
-            policy=policy_leaves,
-            coverages=policy_coverages,
-            mbt_person=mbt_person,
-            valuation_date=valuation_date,
-            agency_name=agency_name,
-        ))
+        # Savings vs insurance: an accumulation-based policy with no premium
+        # (Phoenix SFE life-savings, gemel, pension) carries its money in צבירה,
+        # which the insurance sheet cannot hold — route it to the savings sheet so
+        # the amount survives. A premium-bearing policy (Migdal insurance holdings)
+        # stays on the insurance sheet unchanged. Mirrors aggregate.classify_record's
+        # amount heuristic (accum>0 & premium<=0 ⇒ savings).
+        premium = sum(_pick_coverage_premium(c) for c in policy_coverages)
+        accumulation = policy_accumulation(policy_leaves)
+        if accumulation > 0 and premium <= 0:
+            savings_rows.append(build_savings_product_row(
+                insurer_name=insurer_name,
+                customer=customer,
+                policy=policy_leaves,
+                mbt_person=mbt_person,
+                valuation_date=valuation_date,
+                accumulation=accumulation,
+                agency_name=agency_name,
+            ))
+        else:
+            # Sheet 5 row
+            insurance_rows.append(build_insurance_product_row(
+                insurer_name=insurer_name,
+                customer=customer,
+                policy=policy_leaves,
+                coverages=policy_coverages,
+                mbt_person=mbt_person,
+                valuation_date=valuation_date,
+                agency_name=agency_name,
+            ))
 
         # Sheet 6 rows — one per coverage
         for cov in policy_coverages:
@@ -378,13 +404,15 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
             ))
             extra_life += 1
 
-    wb = build_workbook(insurance_rows, coverage_rows, agent_number=agent_num)
+    wb = build_workbook(
+        insurance_rows, coverage_rows, agent_number=agent_num, savings_rows=savings_rows
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
 
     dat_count = len(insurance_rows) - extra_lifehlth - extra_covrlife - extra_life
     print(
-        f"✓ wrote {len(insurance_rows)} policies "
+        f"✓ wrote {len(insurance_rows)} insurance + {len(savings_rows)} savings policies "
         f"(DAT={dat_count}, "
         f"LIFEHLTH+={extra_lifehlth}, COVRLIFE+={extra_covrlife}, "
         f"LIFE+={extra_life}) "
