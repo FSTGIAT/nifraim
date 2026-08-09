@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מדריך תפעול — Nifraim</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #F57C00;
+      --primary-light: #FFE0B2;
+      --primary-dark: #E65100;
+      --accent-cyan: #00BCD4;
+      --accent-emerald: #10B981;
+      --accent-violet: #8B5CF6;
+      --accent-red: #EF4444;
+      --accent-amber: #F59E0B;
+      --accent-blue: #3B82F6;
+      --text: #1a1a2e;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --bg: #f8fafc;
+      --bg-surface: #ffffff;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --border-subtle: #f1f5f9;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Heebo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.8;
+      font-size: 15px;
+    }
+
+    /* Sidebar TOC */
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 280px;
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100vh;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 24px 20px;
+      z-index: 10;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .sidebar-logo .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .sidebar-logo h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .sidebar-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .toc-list {
+      list-style: none;
+    }
+
+    .toc-list li {
+      margin-bottom: 2px;
+    }
+
+    .toc-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      color: var(--text-secondary);
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .toc-list a:hover {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .toc-list .toc-number {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .toc-list a:hover .toc-number {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* Main content */
+    .main {
+      margin-right: 280px;
+      flex: 1;
+      max-width: 860px;
+      padding: 48px 56px 80px;
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, var(--primary), #ff9800, #ffb74d);
+      border-radius: 20px;
+      padding: 48px 44px;
+      color: white;
+      margin-bottom: 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -40px;
+      left: -40px;
+      width: 180px;
+      height: 180px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: -60px;
+      left: 30%;
+      width: 240px;
+      height: 240px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 50%;
+    }
+
+    .hero h1 {
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .hero p {
+      font-size: 17px;
+      opacity: 0.92;
+      font-weight: 400;
+      position: relative;
+    }
+
+    .hero .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(4px);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 20px;
+      position: relative;
+    }
+
+    /* Sections */
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--border-subtle);
+    }
+
+    .section-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .section-header h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 28px 0 12px;
+    }
+
+    h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin: 20px 0 8px;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-accent {
+      border-right: 4px solid var(--primary);
+    }
+
+    /* Info boxes */
+    .info-box {
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .info-box.tip {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+
+    .info-box.warning {
+      background: #fefce8;
+      border: 1px solid #fde68a;
+      color: #854d0e;
+    }
+
+    .info-box.note {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+
+    .info-box .icon {
+      font-size: 18px;
+      flex-shrink: 0;
+      line-height: 1.4;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+      background: var(--card-bg);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+    }
+
+    thead {
+      background: var(--border-subtle);
+    }
+
+    th {
+      padding: 12px 16px;
+      text-align: right;
+      font-weight: 700;
+      color: var(--text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text);
+    }
+
+    tr:hover td {
+      background: #fafbfc;
+    }
+
+    /* Lists */
+    ul, ol {
+      padding-right: 24px;
+      margin-bottom: 12px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    /* Steps */
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .steps li:last-child { border-bottom: none; }
+
+    .steps li::before {
+      content: counter(step);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Tags */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .tag-blue { background: #dbeafe; color: #1d4ed8; }
+    .tag-green { background: #dcfce7; color: #15803d; }
+    .tag-purple { background: #ede9fe; color: #6d28d9; }
+    .tag-red { background: #fee2e2; color: #b91c1c; }
+    .tag-amber { background: #fef3c7; color: #b45309; }
+    .tag-cyan { background: #cffafe; color: #0e7490; }
+
+    /* KPI row */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .kpi-card .kpi-icon {
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .kpi-card .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .kpi-card .kpi-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 2px;
+    }
+
+    /* Tabs visual */
+    .tabs-visual {
+      display: flex;
+      gap: 4px;
+      background: var(--border-subtle);
+      border-radius: var(--radius);
+      padding: 4px;
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .tab-item.active {
+      background: var(--card-bg);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* FAQ */
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .faq-q {
+      padding: 14px 18px;
+      font-weight: 700;
+      font-size: 14px;
+      background: var(--border-subtle);
+      color: var(--text);
+      cursor: default;
+    }
+
+    .faq-a {
+      padding: 14px 18px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      background: var(--card-bg);
+    }
+
+    /* Company grid */
+    .company-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .company-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.2s;
+    }
+
+    .company-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .company-card .name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .company-card .meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Flow diagram */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin: 20px 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .flow-step {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 18px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: var(--shadow-sm);
+      min-width: 140px;
+    }
+
+    .flow-step .step-num {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .flow-arrow {
+      font-size: 20px;
+      color: var(--text-muted);
+      padding: 0 6px;
+    }
+
+    /* Workflow numbered */
+    .workflow-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .workflow-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .workflow-list .wf-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    strong { font-weight: 700; }
+
+    code {
+      background: var(--border-subtle);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 13px;
+      direction: ltr;
+      unicode-bidi: embed;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      .sidebar { display: none; }
+      .main { margin-right: 0; padding: 24px 20px 60px; }
+    }
+
+    /* Print */
+    @media print {
+      .sidebar { display: none; }
+      .main { margin-right: 0; }
+      .hero { break-inside: avoid; }
+      .section { break-inside: avoid; }
+    }
+
+    /* Scroll smooth */
+    html { scroll-behavior: smooth; }
+
+    /* Footer */
+    .footer {
+      margin-top: 48px;
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar TOC -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">N</div>
+        <h2>Nifraim</h2>
+      </div>
+      <div class="sidebar-subtitle">מדריך תפעול למשתמש חדש</div>
+      <ul class="toc-list">
+        <li><a href="#intro"><span class="toc-number">1</span>מבוא</a></li>
+        <li><a href="#auth"><span class="toc-number">2</span>התחברות והרשמה</a></li>
+        <li><a href="#layout"><span class="toc-number">3</span>מבנה המערכת</a></li>
+        <li><a href="#production"><span class="toc-number">4</span>פרודוקציה</a></li>
+        <li><a href="#comparison"><span class="toc-number">5</span>השוואת נפרעים</a></li>
+        <li><a href="#recruits"><span class="toc-number">6</span>גיוס חדש</a></li>
+        <li><a href="#unpaid"><span class="toc-number">7</span>סיכום חובות</a></li>
+        <li><a href="#rates"><span class="toc-number">8</span>טבלת עמלות</a></li>
+        <li><a href="#emails"><span class="toc-number">9</span>אימיילים לחברות</a></li>
+        <li><a href="#portal"><span class="toc-number">10</span>פורטל לקוחות</a></li>
+        <li><a href="#companies"><span class="toc-number">11</span>חברות נתמכות</a></li>
+        <li><a href="#tips"><span class="toc-number">12</span>טיפים ושאלות</a></li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+
+      <!-- Hero -->
+      <div class="hero">
+        <h1>מדריך תפעול למערכת Nifraim</h1>
+        <p>מערכת חכמה לניהול והתאמת נתוני ביטוח — כל מה שצריך לדעת כדי להתחיל</p>
+        <div class="badge">גרסה עדכנית — מרץ 2026</div>
+      </div>
+
+      <!-- 1. Introduction -->
+      <section class="section" id="intro">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #FFF3E0, #FFE0B2); color: var(--primary);">📋</div>
+          <h2>מבוא — מה זה Nifraim?</h2>
+        </div>
+
+        <div class="card card-accent">
+          <p><strong>Nifraim</strong> היא מערכת לניהול והתאמת נתוני ביטוח, שנבנתה עבור סוכני ביטוח בישראל.</p>
+        </div>
+
+        <h3>מה המערכת עושה?</h3>
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-icon">📊</div>
+            <div class="kpi-label">פרודוקציה</div>
+            <div class="kpi-value">העלאה וניתוח אוטומטי של קבצי פרודוקציה</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">🔍</div>
+            <div class="kpi-label">השוואת נפרעים</div>
+            <div class="kpi-value">בדיקה שכל העמלות משולמות</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">👥</div>
+            <div class="kpi-label">מעקב גיוסים</div>
+            <div class="kpi-value">בדיקה שמגויסים הגיעו לפרודוקציה</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">🔗</div>
+            <div class="kpi-label">פורטל לקוחות</div>
+            <div class="kpi-value">קישור מאובטח לצפייה בתיק</div>
+          </div>
+        </div>
+
+        <h3>למי המערכת מיועדת?</h3>
+        <p>סוכני ביטוח שרוצים לנהל את הנפרעים, לוודא שכל העמלות משולמות, ולנהל את תיק הלקוחות בצורה מסודרת.</p>
+      </section>
+
+      <!-- 2. Auth -->
+      <section class="section" id="auth">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E8F5E9, #C8E6C9); color: #2E7D32;">🔐</div>
+          <h2>התחברות והרשמה</h2>
+        </div>
+
+        <h3>הרשמה (פעם ראשונה)</h3>
+        <ol class="steps">
+          <li>היכנסו לכתובת המערכת</li>
+          <li>לחצו על <strong>"הרשמה"</strong></li>
+          <li>הזינו כתובת אימייל וסיסמה</li>
+          <li>לחצו <strong>"הירשם"</strong> — תועברו למסך הראשי</li>
+        </ol>
+
+        <h3>התחברות (חוזרת)</h3>
+        <ol class="steps">
+          <li>היכנסו לכתובת המערכת</li>
+          <li>הזינו אימייל וסיסמה</li>
+          <li>לחצו <strong>"התחבר"</strong></li>
+        </ol>
+
+        <div class="info-box tip">
+          <span class="icon">💡</span>
+          <div>בכניסה הראשונה יופעל <strong>סיור הדרכה אינטראקטיבי</strong> בן 7 שלבים שמסביר את כל חלקי המערכת. ניתן לדלג עליו בכל שלב.</div>
+        </div>
+      </section>
+
+      <!-- 3. Layout -->
+      <section class="section" id="layout">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E3F2FD, #BBDEFB); color: #1565C0;">🏗️</div>
+          <h2>מבנה המערכת — איפה מה נמצא</h2>
+        </div>
+
+        <h3>סרגל עליון (Header)</h3>
+        <p>בראש המסך נמצא סרגל קבוע:</p>
+
+        <table>
+          <thead>
+            <tr><th>רכיב</th><th>מיקום</th><th>תפקיד</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>לוגו Nifraim</strong></td><td>ימין</td><td>חזרה למסך הראשי</td></tr>
+            <tr><td><strong>שורת חיפוש</strong></td><td>מרכז</td><td>חיפוש לקוחות לפי שם או מספר ת.ז</td></tr>
+            <tr><td><strong>שם המשתמש</strong></td><td>שמאל</td><td>מציג את שם המשתמש המחובר</td></tr>
+            <tr><td><strong>גלגל שיניים</strong></td><td>שמאל</td><td>הגדרות — בחירת ספק דוא"ל (Gmail / Outlook / ברירת מחדל)</td></tr>
+            <tr><td><strong>התנתקות</strong></td><td>שמאל קיצוני</td><td>יציאה מהמערכת</td></tr>
+          </tbody>
+        </table>
+
+        <h3>לשוניות (Tabs)</h3>
+        <p>מתחת לסרגל העליון יש שורת לשוניות צבעוניות:</p>
+
+        <div class="tabs-visual">
+          <div class="tab-item active">📊 פרודוקציה</div>
+          <div class="tab-item">🔍 השוואת נפרעים</div>
+          <div class="tab-item">👥 גיוס חדש</div>
+          <div class="tab-item">🔴 סיכום חובות</div>
+          <div class="tab-item">💰 טבלת עמלות</div>
+          <div class="tab-item">✉️ אימיילים</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>#</th><th>לשונית</th><th>צבע</th><th>תפקיד</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td><strong>פרודוקציה</strong></td><td><span class="tag tag-blue">כחול</span></td><td>העלאת קובץ פרודוקציה וצפייה בנתונים</td></tr>
+            <tr><td>2</td><td><strong>השוואת נפרעים</strong></td><td><span class="tag tag-cyan">ירוק-תכלת</span></td><td>השוואה בין פרודוקציה לדוחות נפרעים</td></tr>
+            <tr><td>3</td><td><strong>גיוס חדש</strong></td><td><span class="tag tag-purple">סגול</span></td><td>מעקב אחרי מגויסים חדשים</td></tr>
+            <tr><td>4</td><td><strong>סיכום חובות</strong></td><td><span class="tag tag-red">אדום</span></td><td>סיכום מוצרים שלא שולמו</td></tr>
+            <tr><td>5</td><td><strong>טבלת עמלות</strong></td><td><span class="tag tag-amber">כתום</span></td><td>ניהול שיעורי עמלות לפי חברה</td></tr>
+            <tr><td>6</td><td><strong>אימיילים לחברות</strong></td><td><span class="tag tag-blue">כחול</span></td><td>ניהול כתובות אימייל של חברות ביטוח</td></tr>
+          </tbody>
+        </table>
+
+        <h3>גרירת קבצים (Drag &amp; Drop)</h3>
+        <div class="info-box note">
+          <span class="icon">📎</span>
+          <div>ניתן לגרור קובץ Excel לכל מקום במסך — המערכת תזהה אוטומטית באיזו לשונית אתם ותעלה את הקובץ למקום הנכון.
+          <br><br>
+          <strong>בלשונית פרודוקציה</strong> → יעלה כקובץ פרודוקציה<br>
+          <strong>בלשונית השוואת נפרעים</strong> → יעלה כקובץ נפרעים
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Production -->
+      <section class="section" id="production">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E3F2FD, #90CAF9); color: #1565C0;">📊</div>
+          <h2>לשונית פרודוקציה</h2>
+        </div>
+
+        <div class="info-box tip">
+          <span class="icon">⭐</span>
+          <div>זו הלשונית הראשונה והחשובה ביותר — ממנה מתחיל כל תהליך עבודה.</div>
+        </div>
+
+        <h3>שלב 1: העלאת קובץ</h3>
+        <ol class="steps">
+          <li>גררו קובץ Excel (<code>.xlsx</code> או <code>.xls</code>) לאזור ההעלאה, או לחצו כדי לבחור קובץ</li>
+          <li>אם הקובץ <strong>מוגן בסיסמה</strong> — הפעילו את המתג "קובץ מוצפן" והזינו את הסיסמה</li>
+          <li>לחצו <strong>"העלה קובץ"</strong></li>
+        </ol>
+
+        <h3>מה קורה בזמן ההעלאה?</h3>
+        <p>המערכת מציגה 3 שלבים:</p>
+
+        <div class="flow">
+          <div class="flow-step">
+            <span class="step-num">שלב 1</span>
+            העלאת קובץ
+          </div>
+          <div class="flow-arrow">←</div>
+          <div class="flow-step">
+            <span class="step-num">שלב 2</span>
+            ניתוח נתונים
+          </div>
+          <div class="flow-arrow">←</div>
+          <div class="flow-step">
+            <span class="step-num">שלב 3</span>
+            שמירת נתונים
+          </div>
+        </div>
+
+        <table>
+          <thead><tr><th>שלב</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>1. העלאת קובץ</strong></td><td>הקובץ עולה לשרת (מוצג אחוז התקדמות)</td></tr>
+            <tr><td><strong>2. ניתוח נתונים</strong></td><td>המערכת מזהה את הפורמט, ממפה עמודות בעברית, ומפענחת את הנתונים</td></tr>
+            <tr><td><strong>3. שמירת נתונים</strong></td><td>הרשומות נשמרות במאגר</td></tr>
+          </tbody>
+        </table>
+
+        <h3>אחרי ההעלאה — שתי תתי-לשוניות</h3>
+
+        <div class="card">
+          <h4>📈 תובנות (Insights)</h4>
+          <p>דשבורד אנליטי שמציג:</p>
+          <ul>
+            <li>סה"כ פרמיה, צבירה, מספר לקוחות</li>
+            <li>התפלגות לפי חברות ביטוח</li>
+            <li>התפלגות לפי סוגי מוצרים</li>
+            <li>לקוחות מובילים</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h4>📁 השוואת קבצים (File Comparison)</h4>
+          <p>השוואה בין קובץ הפרודוקציה הנוכחי לקובץ קודם:</p>
+          <ul>
+            <li><span class="tag tag-green">חדשים</span> — לקוחות שנוספו</li>
+            <li><span class="tag tag-red">הוסרו</span> — לקוחות שנמחקו</li>
+            <li><span class="tag tag-amber">שונו</span> — שינוי בפרמיה, צבירה, או מספר מוצרים</li>
+            <li><span class="tag tag-blue">ללא שינוי</span> — לקוחות שלא השתנו</li>
+          </ul>
+          <div class="info-box note">
+            <span class="icon">🖱️</span>
+            <div>תרשימים אינטראקטיביים — לחיצה על פרוסה בגרף פותחת רשימת לקוחות מפורטת.</div>
+          </div>
+        </div>
+
+        <h3>פעולות נוספות</h3>
+        <ul>
+          <li><strong>החלפת קובץ</strong> — כפתור העלאה מחליף את הקובץ הנוכחי</li>
+          <li><strong>מחיקת קובץ</strong> — כפתור X מוחק את הקובץ ומחזיר למצב ריק</li>
+        </ul>
+      </section>
+
+      <!-- 5. Comparison -->
+      <section class="section" id="comparison">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E0F7FA, #80DEEA); color: #00838F;">🔍</div>
+          <h2>לשונית השוואת נפרעים</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>כאן בודקים שכל מה שמופיע בפרודוקציה אכן משולם על ידי חברות הביטוח.</div>
+        </div>
+
+        <div class="info-box warning">
+          <span class="icon">⚠️</span>
+          <div><strong>דרישה מוקדמת:</strong> חייבים להעלות קובץ פרודוקציה קודם (בלשונית פרודוקציה). אם לא הועלה קובץ — תופיע הודעת אזהרה.</div>
+        </div>
+
+        <h3>שלב 1: בחירת קטגוריה</h3>
+        <p>בחרו את סוג ההשוואה:</p>
+
+        <div class="kpi-row">
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-amber);">
+            <div class="kpi-icon">🏦</div>
+            <div class="kpi-value">גמל והשתלמות</div>
+            <div class="kpi-label">קופות גמל, קרנות השתלמות, פנסיה</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-blue);">
+            <div class="kpi-icon">🛡️</div>
+            <div class="kpi-value">ביטוח</div>
+            <div class="kpi-label">ביטוח חיים, בריאות, חיסכון, סיעוד</div>
+          </div>
+        </div>
+
+        <div class="info-box tip">
+          <span class="icon">💡</span>
+          <div>לכל קטגוריה יש היסטוריית העלאות ותוצאות נפרדות.</div>
+        </div>
+
+        <h3>שלב 2: העלאת קובץ נפרעים</h3>
+        <ol class="steps">
+          <li>העלו קובץ Excel של דוח נפרעים מחברת הביטוח</li>
+          <li>המערכת מזהה אוטומטית את הפורמט (אקסלנס, פניקס, מור, הכשרה, מנורה, אלטשולר, ועוד)</li>
+          <li>ההשוואה מתבצעת אוטומטית מול הפרודוקציה</li>
+        </ol>
+
+        <h3>שלב 3: תוצאות ההשוואה (מסך מלא)</h3>
+        <p>לאחר ההשוואה, המסך עובר למצב <strong>מסך מלא</strong> עם:</p>
+
+        <h4>כרטיסי סיכום (KPI)</h4>
+        <div class="kpi-row">
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-emerald);">
+            <div class="kpi-icon">✅</div>
+            <div class="kpi-value">מוצרים משולמים</div>
+            <div class="kpi-label">מספר מוצרים ששולמו</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-red);">
+            <div class="kpi-icon">❌</div>
+            <div class="kpi-value">מוצרים לא משולמים</div>
+            <div class="kpi-label">מוצרים שלא שולמו</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-amber);">
+            <div class="kpi-icon">💰</div>
+            <div class="kpi-value">עמלה צפויה</div>
+            <div class="kpi-label">סה"כ עמלה צפויה</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-blue);">
+            <div class="kpi-icon">💵</div>
+            <div class="kpi-value">עמלה בפועל</div>
+            <div class="kpi-label">סה"כ עמלה ששולמה</div>
+          </div>
+        </div>
+
+        <h4>תרשימים אינטראקטיביים</h4>
+        <ul>
+          <li><strong>תרשים עוגה ראשי</strong> — התפלגות לפי סטטוס (משולם / לא משולם / חלקי / בפרודוקציה בלבד)</li>
+          <li><strong>תרשימי עוגה לפי חברה</strong> — כל חברת ביטוח בנפרד</li>
+          <li><strong>תרשים עמודות</strong> — מוצרים לא משולמים מובילים</li>
+        </ul>
+
+        <h4>ניווט בתוצאות</h4>
+        <div class="card">
+          <p><strong>🖱️ לחיצה על גרף</strong> → נפתח חלון סינון עם רשימת לקוחות</p>
+          <p><strong>👤 לחיצה על לקוח</strong> → נפתח חלון פרטי לקוח עם השוואה צד-בצד:</p>
+          <ul>
+            <li><strong>צד שמאל:</strong> מה שמופיע בפרודוקציה (מוצרים, פרמיות, צבירות)</li>
+            <li><strong>צד ימין:</strong> מה שמופיע בנפרעים (עמלות ששולמו)</li>
+            <li>תגיות צבעוניות: <span class="tag tag-green">משולם</span> <span class="tag tag-red">לא משולם</span> <span class="tag tag-amber">חוסר התאמה</span></li>
+          </ul>
+          <p><strong>📋 טבלת השוואה</strong> — רשימה מלאה של כל הלקוחות, ניתנת למיון ולהרחבה</p>
+        </div>
+
+        <h4>יציאה ממסך מלא</h4>
+        <p>לחצו על <strong>כפתור חזרה</strong> בסרגל העליון או על הלשונית של הקטגוריה.</p>
+      </section>
+
+      <!-- 6. Recruits -->
+      <section class="section" id="recruits">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #F3E5F5, #CE93D8); color: #7B1FA2;">👥</div>
+          <h2>לשונית גיוס חדש</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>מעקב אחרי מגויסים חדשים — בדיקה שהגיוסים הגיעו לפרודוקציה.</div>
+        </div>
+
+        <div class="info-box warning">
+          <span class="icon">⚠️</span>
+          <div>מומלץ להעלות קובץ פרודוקציה קודם כדי לאפשר השוואה.</div>
+        </div>
+
+        <h3>העלאת קובץ גיוסים</h3>
+        <ol class="steps">
+          <li>לחצו <strong>"העלה קובץ גיוס חדש"</strong></li>
+          <li>בחרו קובץ Excel של מעקב סוכן</li>
+          <li>המערכת מנתחת ומציגה את המגויסים בטבלה</li>
+        </ol>
+
+        <h3>טבלת מגויסים</h3>
+        <table>
+          <thead><tr><th>עמודה</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>מספר ת.ז</strong></td><td>תעודת זהות של המגויס</td></tr>
+            <tr><td><strong>שם פרטי</strong></td><td>שם פרטי</td></tr>
+            <tr><td><strong>שם משפחה</strong></td><td>שם משפחה</td></tr>
+            <tr><td><strong>חברה</strong></td><td>חברת הביטוח</td></tr>
+            <tr><td><strong>מוצר</strong></td><td>סוג המוצר</td></tr>
+            <tr><td><strong>סכום</strong></td><td>סכום הפרמיה</td></tr>
+          </tbody>
+        </table>
+
+        <h3>פעולות בטבלה</h3>
+        <ul>
+          <li><strong>עריכה</strong> — לחצו על שורה כדי לערוך ישירות בטבלה</li>
+          <li><strong>הוספת שורה</strong> — כפתור "+ הוסף שורה" מוסיף שורה ריקה</li>
+          <li><strong>מחיקה</strong> — כפתור X בכל שורה</li>
+          <li><strong>שמירה</strong> — כפתור "שמור" שומר את כל השינויים</li>
+        </ul>
+
+        <h3>השוואה מול פרודוקציה</h3>
+        <p>המערכת בודקת אוטומטית האם כל מגויס נמצא בפרודוקציה:</p>
+        <ul>
+          <li><span class="tag tag-green">נמצא</span> — המגויס מופיע בפרודוקציה</li>
+          <li><span class="tag tag-red">לא נמצא</span> — המגויס חסר בפרודוקציה</li>
+        </ul>
+      </section>
+
+      <!-- 7. Unpaid -->
+      <section class="section" id="unpaid">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #FFEBEE, #EF9A9A); color: #C62828;">🔴</div>
+          <h2>לשונית סיכום חובות</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>סיכום של כל המוצרים שלא שולמו, מחולק לפי חברת ביטוח.</div>
+        </div>
+
+        <div class="info-box warning">
+          <span class="icon">⚠️</span>
+          <div>נתונים מופיעים רק לאחר שביצעתם השוואת נפרעים. אם לא בוצעה השוואה — יופיע מסך ריק.</div>
+        </div>
+
+        <h3>מה מוצג?</h3>
+
+        <h4>כרטיסי סיכום</h4>
+        <div class="kpi-row">
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-red);">
+            <div class="kpi-icon">💸</div>
+            <div class="kpi-value">סה"כ חיוב לא משולם</div>
+            <div class="kpi-label">הסכום הכולל שלא שולם</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-amber);">
+            <div class="kpi-icon">📦</div>
+            <div class="kpi-value">מוצרים לא משולמים</div>
+            <div class="kpi-label">מספר מוצרים</div>
+          </div>
+          <div class="kpi-card" style="border-top: 3px solid var(--accent-blue);">
+            <div class="kpi-icon">📊</div>
+            <div class="kpi-value">השוואות פעילות</div>
+            <div class="kpi-label">מספר השוואות</div>
+          </div>
+        </div>
+
+        <h4>טבלת חובות לפי חברה</h4>
+        <table>
+          <thead><tr><th>עמודה</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>שם החברה</strong></td><td>עם אייקון צבעוני</td></tr>
+            <tr><td><strong>קטגוריה</strong></td><td>גמל / ביטוח</td></tr>
+            <tr><td><strong>מספר מוצרים</strong></td><td>כמות מוצרים לא משולמים</td></tr>
+            <tr><td><strong>סכום לא משולם</strong></td><td>הסכום הכולל</td></tr>
+            <tr><td><strong>פס התקדמות</strong></td><td>אחוז מתוך הסה"כ</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 8. Rates -->
+      <section class="section" id="rates">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #FFF8E1, #FFE082); color: #F57F17;">💰</div>
+          <h2>לשונית טבלת עמלות</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>ניהול שיעורי עמלות לפי חברת ביטוח — משמש לחישוב עמלות צפויות.</div>
+        </div>
+
+        <div class="info-box tip">
+          <span class="icon">🚀</span>
+          <div><strong>התחלה מהירה:</strong> בפעם הראשונה, לחצו <strong>"טען ברירת מחדל"</strong> כדי למלא טבלה ראשונית עם ערכים נפוצים.</div>
+        </div>
+
+        <h3>עמודות הטבלה</h3>
+        <table>
+          <thead><tr><th>עמודה</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>חברה</strong></td><td>שם חברת הביטוח</td></tr>
+            <tr><td><strong>שיעור עמלה (%)</strong></td><td>אחוז העמלה</td></tr>
+            <tr><td><strong>תדירות תשלום</strong></td><td>חודשי / רבעוני / שנתי</td></tr>
+            <tr><td><strong>משולם ל</strong></td><td>עיתים / סוכן / ידנים</td></tr>
+            <tr><td><strong>אימייל חברה</strong></td><td>כתובת דוא"ל ליצירת קשר</td></tr>
+          </tbody>
+        </table>
+
+        <h3>פעולות</h3>
+        <ul>
+          <li><strong>עריכה</strong> — לחצו על כפתור העיפרון בשורה, ערכו, ולחצו "שמור"</li>
+          <li><strong>הוספה</strong> — כפתור "+ הוסף שורה" בתחתית הטבלה</li>
+          <li><strong>מחיקה</strong> — כפתור X בכל שורה</li>
+        </ul>
+      </section>
+
+      <!-- 9. Emails -->
+      <section class="section" id="emails">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E3F2FD, #90CAF9); color: #1565C0;">✉️</div>
+          <h2>לשונית אימיילים לחברות</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>ניהול פרטי קשר של אנשי קשר בחברות הביטוח.</div>
+        </div>
+
+        <div class="info-box tip">
+          <span class="icon">🚀</span>
+          <div><strong>התחלה מהירה:</strong> לחצו <strong>"טען ברירת מחדל"</strong> למילוי רשימת אנשי קשר ראשונית.</div>
+        </div>
+
+        <h3>עמודות הטבלה</h3>
+        <table>
+          <thead><tr><th>עמודה</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>חברה</strong></td><td>שם חברת הביטוח</td></tr>
+            <tr><td><strong>אימייל</strong></td><td>כתובת דוא"ל</td></tr>
+            <tr><td><strong>איש קשר</strong></td><td>שם איש הקשר</td></tr>
+            <tr><td><strong>הערות</strong></td><td>הערות חופשיות</td></tr>
+          </tbody>
+        </table>
+
+        <h3>פעולות</h3>
+        <ul>
+          <li><strong>עריכה</strong> — כפתור עיפרון → עריכה ישירה → שמירה</li>
+          <li><strong>הוספה</strong> — כפתור "+ הוסף איש קשר"</li>
+          <li><strong>מחיקה</strong> — כפתור X</li>
+        </ul>
+      </section>
+
+      <!-- 10. Portal -->
+      <section class="section" id="portal">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #E8F5E9, #A5D6A7); color: #2E7D32;">🔗</div>
+          <h2>פורטל לקוחות — קישורים שיתופיים</h2>
+        </div>
+
+        <div class="info-box note">
+          <span class="icon">ℹ️</span>
+          <div>שיתוף קישור מאובטח שבו הלקוח יכול לראות את התיק שלו.</div>
+        </div>
+
+        <h3>יצירת קישור (מצד הסוכן)</h3>
+        <ol class="steps">
+          <li>עברו ללשונית <strong>גיוס חדש</strong></li>
+          <li>פתחו את האזור <strong>"קישורים ללקוחות"</strong></li>
+          <li>לחצו <strong>"צור קישור חדש"</strong></li>
+          <li>המערכת ממלאת אוטומטית את שם הלקוח והאימייל (מתוך הפרודוקציה)</li>
+          <li>הגדירו סיסמה לקישור</li>
+          <li>לחצו <strong>"צור"</strong></li>
+        </ol>
+
+        <h3>שיתוף הקישור</h3>
+        <ul>
+          <li><strong>העתקה</strong> — כפתור "העתק קישור" מעתיק את הכתובת ללוח</li>
+          <li><strong>שליחה באימייל</strong> — כפתור "שלח אימייל" שולח את הקישור + סיסמה ישירות ללקוח</li>
+        </ul>
+
+        <h3>מה הלקוח רואה?</h3>
+        <p>הלקוח מקבל קישור ונכנס עם הסיסמה שהגדרתם. בפורטל הוא רואה:</p>
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-icon">📊</div>
+            <div class="kpi-value">כרטיסי סיכום</div>
+            <div class="kpi-label">פרמיה, צבירה, מספר מוצרים</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">🍩</div>
+            <div class="kpi-value">תרשים עוגה</div>
+            <div class="kpi-label">התפלגות לפי חברות</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">📋</div>
+            <div class="kpi-value">טבלת מוצרים</div>
+            <div class="kpi-label">רשימה מלאה עם פרטים</div>
+          </div>
+        </div>
+
+        <h3>ניהול קישורים</h3>
+        <table>
+          <thead><tr><th>שדה</th><th>תיאור</th></tr></thead>
+          <tbody>
+            <tr><td><strong>שם ות.ז</strong></td><td>שם הלקוח ומספר זהות</td></tr>
+            <tr><td><strong>סטטוס</strong></td><td><span class="tag tag-green">פעיל</span> <span class="tag tag-red">בוטל</span> <span class="tag tag-amber">פג תוקף</span></td></tr>
+            <tr><td><strong>תאריכים</strong></td><td>תאריך יצירה + כניסה אחרונה</td></tr>
+            <tr><td><strong>ביטול</strong></td><td>כפתור ביטול — מבטל קישור פעיל</td></tr>
+          </tbody>
+        </table>
+
+        <h3>אבטחה</h3>
+        <div class="card card-accent">
+          <ul>
+            <li>הקישור תקף ל-<strong>30 יום</strong> מרגע היצירה</li>
+            <li>הלקוח חסום אחרי <strong>5 ניסיונות כושלים</strong> למשך 15 דקות</li>
+            <li>הסיסמה מוצפנת ולא ניתנת לשחזור</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 11. Companies -->
+      <section class="section" id="companies">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #EDE7F6, #B39DDB); color: #4527A0;">🏢</div>
+          <h2>חברות ביטוח נתמכות</h2>
+        </div>
+
+        <p>המערכת מזהה אוטומטית קבצי Excel מהחברות הבאות:</p>
+
+        <div class="company-grid">
+          <div class="company-card">
+            <div class="name">אקסלנס</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> דוח מעקב סוכן</div>
+          </div>
+          <div class="company-card">
+            <div class="name">הפניקס</div>
+            <div class="meta"><span class="tag tag-amber">xls + סיסמה</span> קובץ מוגן</div>
+          </div>
+          <div class="company-card">
+            <div class="name">מור</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> דוח נפרעים</div>
+          </div>
+          <div class="company-card">
+            <div class="name">הכשרה</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> דוח נפרעים</div>
+          </div>
+          <div class="company-card">
+            <div class="name">מנורה</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> 3 סוגי עמלות</div>
+          </div>
+          <div class="company-card">
+            <div class="name">אלטשולר</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> דוח נפרעים</div>
+          </div>
+          <div class="company-card">
+            <div class="name">הראל</div>
+            <div class="meta"><span class="tag tag-blue">xlsx</span> דוח נפרעים ביטוח</div>
+          </div>
+          <div class="company-card">
+            <div class="name">פרודוקציה</div>
+            <div class="meta"><span class="tag tag-green">xlsx</span> קובץ פרודוקציה מהסוכנות</div>
+          </div>
+        </div>
+
+        <div class="info-box tip">
+          <span class="icon">✨</span>
+          <div>אין צורך לבחור ידנית את סוג הקובץ — המערכת מזהה אוטומטית לפי שמות העמודות.</div>
+        </div>
+      </section>
+
+      <!-- 12. Tips -->
+      <section class="section" id="tips">
+        <div class="section-header">
+          <div class="section-icon" style="background: linear-gradient(135deg, #FFF3E0, #FFCC80); color: #E65100;">💡</div>
+          <h2>טיפים ושאלות נפוצות</h2>
+        </div>
+
+        <h3>סדר עבודה מומלץ</h3>
+        <ul class="workflow-list">
+          <li><span class="wf-num">1</span> העלו קובץ פרודוקציה — זה הבסיס לכל שאר הפעולות</li>
+          <li><span class="wf-num">2</span> העלו דוחות נפרעים — לכל חברת ביטוח בנפרד, בקטגוריה המתאימה</li>
+          <li><span class="wf-num">3</span> בדקו את סיכום החובות — לאחר ההשוואות</li>
+          <li><span class="wf-num">4</span> עדכנו את טבלת העמלות — לחישוב עמלות מדויק</li>
+          <li><span class="wf-num">5</span> שתפו פורטל ללקוחות — לפי הצורך</li>
+        </ul>
+
+        <h3>שאלות נפוצות</h3>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: הקובץ מוגן בסיסמה, מה עושים?</div>
+          <div class="faq-a">הפעילו את המתג "קובץ מוצפן" לפני ההעלאה והזינו את הסיסמה.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: העליתי קובץ ולא מזוהות עמודות, מה לעשות?</div>
+          <div class="faq-a">ודאו שהקובץ הוא בפורמט Excel תקני (xlsx או xls) ושהוא מחברת ביטוח נתמכת. אם הבעיה נמשכת — ייתכן שהפורמט השתנה.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: איך מחליפים קובץ פרודוקציה?</div>
+          <div class="faq-a">בלשונית פרודוקציה, לחצו על כפתור ההעלאה (אייקון ענן) ליד שם הקובץ הנוכחי.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: איפה רואים את ההשוואה הקודמת?</div>
+          <div class="faq-a">כל קטגוריה (גמל/ביטוח) שומרת את התוצאה האחרונה. חזרו ללשונית השוואת נפרעים ובחרו את הקטגוריה.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: הלקוח שכח את הסיסמה לפורטל, מה עושים?</div>
+          <div class="faq-a">בטלו את הקישור הקיים וצרו קישור חדש עם סיסמה חדשה.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-q">ש: איך מאפסים את סיור ההדרכה?</div>
+          <div class="faq-a">פתחו את כלי המפתחים בדפדפן (F12) → Console → הקלידו: <code>localStorage.removeItem('onboarding_completed')</code> ורעננו את הדף.</div>
+        </div>
+
+        <h3>הגדרות אישיות</h3>
+        <div class="card">
+          <p>כפתור <strong>גלגל השיניים</strong> בסרגל העליון מאפשר לבחור ספק דוא"ל מועדף:</p>
+          <ul>
+            <li><strong>ברירת מחדל</strong> — פותח את תוכנת המייל של המחשב</li>
+            <li><strong>Gmail</strong> — פותח חלון חיבור ב-Gmail</li>
+            <li><strong>Outlook</strong> — פותח חלון חיבור ב-Outlook</li>
+          </ul>
+          <p>ההגדרה נשמרת ומשפיעה על כל הקישורים ל"שלח אימייל" במערכת.</p>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p><strong>צריכים עזרה?</strong> פנו לתמיכה הטכנית או בדקו את סיור ההדרכה האינטראקטיבי (ניתן לאפס דרך ההגדרות).</p>
+        <p style="margin-top: 8px; color: var(--text-muted);">Nifraim — מדריך תפעול | מרץ 2026</p>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>
