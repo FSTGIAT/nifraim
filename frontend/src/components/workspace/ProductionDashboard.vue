@@ -74,32 +74,21 @@
     <!-- Hero chart: commission trend (most important — sits directly under KPIs) -->
     <ProductionTrendChart @go-to-automation="$emit('go-to-automation')" />
 
-    <!-- Row 1: Company + Product Type side by side (click a bar → drill-down) -->
-    <div class="charts-row">
-      <div class="chart-card" v-if="analytics.company_breakdown.length">
-        <div class="chart-header">
-          <h3>התפלגות לפי חברה</h3>
-        </div>
-        <apexchart
-          type="bar"
-          :height="chartsRowHeight"
-          :options="companyChartOptions"
-          :series="companyChartSeries"
-        />
-      </div>
+    <!-- Unpaid clients + biggest movers, then actual vs agreed commission. -->
+    <ProductionAlerts />
 
-      <div class="chart-card" v-if="analytics.product_type_breakdown.length">
-        <div class="chart-header">
-          <h3>התפלגות לפי סוג מוצר</h3>
-        </div>
-        <apexchart
-          type="bar"
-          :height="chartsRowHeight"
-          :options="productBarOptions"
-          :series="productBarSeries"
-        />
-      </div>
-    </div>
+    <!-- Actual vs agreed commission, per company, with the alerts on top. -->
+    <RateAuditPanel />
+
+    <!-- Company and product distributions.
+         These replace two ApexCharts bar charts that grouped on the RAW
+         columns and discarded which bar was clicked. Raw grouping split one
+         insurer across its legal entities (מנורה ביטוח + מנורה פנסיה וגמל) and
+         reported one product under four spellings (חיים / ביטוח חיים /
+         ר.ת.-מורחב חיים ביטוחים / ר.ת.-מורחב חיים פוליסות = 561 rows), and
+         every `dataPointSelection` handler took no arguments, so clicking any
+         company or product opened the same flat all-companies table. -->
+    <ProductionBreakdown />
 
     <!-- Row 3: Top Clients (full width; click a bar → drill-down) -->
     <div class="chart-card" v-if="hasTopClientsData">
@@ -215,6 +204,10 @@ const props = defineProps({
   analytics: { type: Object, required: true },
 })
 
+import ProductionBreakdown from './ProductionBreakdown.vue'
+import RateAuditPanel from './RateAuditPanel.vue'
+import ProductionAlerts from './ProductionAlerts.vue'
+
 defineEmits(['go-to-automation'])
 
 const topMetric = ref('premium')
@@ -305,70 +298,9 @@ const activePercent = computed(() => {
 // utils/chartPalette.js). Each bar/company/category gets a clearly distinct hue.
 const PALETTE_SERIES = CHART_PALETTE
 
-// Shared height for side-by-side charts — driven by the one with more items.
-const chartsRowHeight = computed(() => {
-  const productCount = props.analytics.product_type_breakdown.length
-  const companyCount = props.analytics.company_breakdown.length
-  return Math.max(280, Math.max(productCount, companyCount) * 38)
-})
-
-// "התפלגות לפי חברה" — accumulation per company. Click a bar → companies drill-down.
-const companyChartOptions = computed(() => ({
-  chart: {
-    type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
-    animations: { enabled: true, easing: 'easeinout', speed: 700 },
-    events: { dataPointSelection: () => openDrilldown('companies') },
-  },
-  // `distributed` colours each BAR and only works with a single series, so it
-  // must switch off once premium is plotted alongside accumulation.
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '70%', distributed: companyChartSeries.value.length === 1 } },
-  dataLabels: { enabled: true, formatter: v => (v ? '₪' + Math.round(v).toLocaleString() : ''), style: { fontSize: '12px', fontFamily: 'Heebo, sans-serif', colors: ['#fff'] }, dropShadow: { enabled: true, top: 0, left: 0, blur: 2, opacity: 0.55, color: '#000' } },
-  xaxis: { categories: props.analytics.company_breakdown.map(c => c.company), labels: { show: false } },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '13px', fontWeight: 600 } } },
-  colors: PALETTE_SERIES,
-  legend: { show: companyChartSeries.value.length > 1, position: 'top', horizontalAlign: 'right', fontFamily: 'Heebo, sans-serif' },
-  states: { active: { filter: { type: 'none' } } },
-  tooltip: { y: { formatter: v => '₪' + Math.round(v).toLocaleString() } },
-  grid: { borderColor: 'var(--border-subtle)', xaxis: { lines: { show: false } } },
-}))
-
-// Accumulation AND premium. Plotting accumulation alone reported every
-// premium-based insurer as ₪0 — מנורה showed nothing against ₪271,406 of real
-// premium, מגדל nothing against ₪16,682 — which reads as "this company has no
-// portfolio" rather than "this company's portfolio isn't measured in צבירה".
-// A company legitimately has one, the other, or both.
-const companyChartSeries = computed(() => {
-  const rows = props.analytics.company_breakdown
-  const series = [{ name: 'צבירה', data: rows.map(c => c.accumulation || 0) }]
-  if (rows.some(c => (c.premium || 0) > 0)) {
-    series.push({ name: 'פרמיה', data: rows.map(c => c.premium || 0) })
-  }
-  return series
-})
-
-// "התפלגות לפי סוג מוצר" — record count per product type (palette orange gradient).
-// Click a bar → products drill-down.
-const productBarOptions = computed(() => ({
-  chart: {
-    type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
-    animations: { enabled: true, easing: 'easeinout', speed: 700 },
-    events: { dataPointSelection: () => openDrilldown('products') },
-  },
-  plotOptions: { bar: { horizontal: true, borderRadius: 5, barHeight: '55%', distributed: true } },
-  dataLabels: { enabled: false },
-  xaxis: { categories: props.analytics.product_type_breakdown.map(p => p.product_type), labels: { style: { fontFamily: 'Heebo, sans-serif' } } },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' }, maxWidth: 200 } },
-  colors: PALETTE_SERIES,
-  legend: { show: false },
-  states: { active: { filter: { type: 'none' } } },
-  tooltip: { y: { formatter: v => v.toLocaleString() + ' רשומות' } },
-  grid: { borderColor: 'var(--border-subtle)' },
-}))
-
-const productBarSeries = computed(() => [{
-  name: 'רשומות',
-  data: props.analytics.product_type_breakdown.map(p => p.count),
-}])
+// The company / product-type bar charts that lived here were replaced by
+// <ProductionBreakdown>, which groups on the canonical company and product
+// keys and carries the click target through to a real drill-down.
 
 // Top clients (premium/accumulation toggle).
 const topClientsData = computed(() =>

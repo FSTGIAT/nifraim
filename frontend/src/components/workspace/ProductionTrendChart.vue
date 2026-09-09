@@ -95,7 +95,7 @@
         <span class="tu-lead">לא נכללות בחישוב:</span>
         <span v-for="u in uncovered" :key="u.company" class="tu-item">
           {{ u.company }}
-          <span class="tu-why">{{ u.no_rate >= u.no_base ? 'אין שיעור בהסכם' : 'אין צבירה או פרמיה בקובץ' }}</span>
+          <span class="tu-why">{{ uncoveredReason(u) }}</span>
         </span>
       </p>
     </template>
@@ -151,6 +151,34 @@ const uncovered = computed(() => {
   const last = points.value[points.value.length - 1]
   return (last?.uncovered || []).slice(0, 6)
 })
+
+// Why a company contributes nothing. The backend counts four DISTINCT causes
+// and this reports the dominant one; each implies a different fix, which is
+// the whole point of splitting them (QA 2026-09-09, item 7):
+//
+//   no_company      → the agent has no agreement for this insurer at all
+//   no_rate         → agreement exists, but nothing covers this product
+//   risk_no_premium → the rows carry צבירה, but a risk product is priced off
+//                     PREMIUM and the file has none. The old wording said
+//                     "אין צבירה או פרמיה בקובץ" about Phoenix rows holding
+//                     ₪51.2M of צבירה — false, and it sent the agent hunting
+//                     for missing data that was right there.
+//   no_base         → genuinely no premium and no accumulation in the file
+const UNCOVERED_REASONS = {
+  no_company: 'אין הסכם לחברה הזו',
+  no_rate: 'יש הסכם, אך אין שיעור עמלה למוצר הזה',
+  risk_no_premium: 'מוצר ביטוחי ללא פרמיה בקובץ (הצבירה אינה בסיס לעמלה)',
+  no_base: 'אין פרמיה או צבירה בקובץ',
+}
+const UNCOVERED_ORDER = ['no_company', 'no_rate', 'risk_no_premium', 'no_base']
+
+function uncoveredReason(u) {
+  let best = null
+  for (const k of UNCOVERED_ORDER) {
+    if ((u[k] || 0) > (best ? u[best] : 0)) best = k
+  }
+  return UNCOVERED_REASONS[best] || 'לא נכלל בחישוב'
+}
 
 // Collapse a { rawCompanyName: value } map so a company's legal-entity variants
 // (e.g. "הפניקס חברה לביטוח בע\"מ" + "הפניקס אקסלנס פנסיה וגמל בע\"מ") merge into

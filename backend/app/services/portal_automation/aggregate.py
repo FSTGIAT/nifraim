@@ -125,6 +125,44 @@ def classify_record(rec: dict) -> str:
     return "insurance"
 
 
+def merged_company_key(rec: dict, *, commission: bool) -> str:
+    """The EXACT `יצרן` value the merged workbook will stamp for this record.
+
+    The standalone fold has to answer "which rows of the existing merged file
+    does this fresh run replace?". That means comparing a fresh parser record
+    (short brand name — 'מנורה', 'מיטב דש') against a merged-file record (full
+    legal entity — 'מנורה מבטחים פנסיה וגמל בע"מ'). The fold used
+    `normalize_company` for that, which does NOT invert `canonical_company`:
+    measured on the live entity table it MISSES for מנורה, מגדל-savings,
+    אלטשולר, מיטב, ילין, אנליסט and כלל-בריאות. A miss means the stale slice is
+    kept AND the fresh rows appended — the company appears twice.
+
+    `company_stem` matches all of them, but it is too coarse to be the fold
+    key: it collapses 'הראל חברה לביטוח בע"מ' and 'הראל פנסיה וגמל בע"מ' onto
+    one key, so folding a fresh Harel GEMEL run would delete Harel's INSURANCE
+    rows from the merge. (It is the right key for *display* grouping, which is
+    what the export summary uses it for.)
+
+    So the key is `canonical_company` itself — idempotent, so a merged row maps
+    to itself, and entity-precise. Deriving it HERE, from the same branch the
+    writers use, is the point: the previous bug was two functions that had to
+    invert each other and silently drifted apart.
+    """
+    raw = rec.get("receiving_company") or rec.get("company_source")
+    if commission:
+        kind = (
+            "savings"
+            if commission_category_token(rec) == NIFRAIM_CATEGORY_GEMEL
+            else "insurance"
+        )
+    elif classify_record(rec) == "savings":
+        kind = entity_kind(rec.get("product_type"), "savings")
+    else:
+        kind = "insurance"
+    return canonical_company(raw, kind)
+
+
+
 # ── production rows ──────────────────────────────────────────────────────
 
 def _row(columns: list[str], values: dict) -> list:
@@ -139,7 +177,7 @@ def record_to_insurance_product_row(rec: dict, agent_number=None, as_of=None) ->
     so portal short-names (הפניקס, מנורה, …) don't fragment the merged file.
     """
     vals = {
-        "יצרן": canonical_company(rec.get("receiving_company"), "insurance"),
+        "יצרן": merged_company_key(rec, commission=False),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
         "מס' חשבון/פוליסה": _policy_str(rec.get("fund_policy_number")),
@@ -172,10 +210,7 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
         # on THIS sheet but are issued by the insurance entity (verified against
         # the reference portfolio). Passing "savings" here filed them under
         # 'הראל פנסיה וגמל בע"מ' instead of 'הראל חברה לביטוח בע"מ'.
-        "יצרן": canonical_company(
-            rec.get("receiving_company"),
-            entity_kind(rec.get("product_type"), "savings"),
-        ),
+        "יצרן": merged_company_key(rec, commission=False),
         "סוג מוצר": rec.get("product_type") or "",
         "מוצר": rec.get("product") or "",
         "מס' חשבון/פוליסה": _policy_str(rec.get("fund_policy_number")),
@@ -200,19 +235,26 @@ def record_to_savings_row(rec: dict, agent_number=None, as_of=None) -> list:
 def _is_duplicate_catalogue_row(rec: dict, seen: set) -> bool:
     """True for a repeat of a money-less PRODUCT-PRESENCE row.
 
-    `harel_vault_prod` deliberately emits id + product + name with no policy
-    number and no amounts — its job is to record WHICH products a client holds,
-    while the agents-portal leg carries the money (summing both would
-    double-count). Those rows arrive once per vault report, so the same
-    (client, product) repeats: live, 1,780 of kikohib's 2,458 production rows
-    were such entries, one (id, product) pair appearing 8 times, and the
-    production tab counted every repeat as another מוצר.
+    `harel_vault_prod` deliberately emits id + policy + product + name with NO
+    amounts — its job is to record WHICH products a client holds, while the
+    agents-portal leg carries the money (summing both would double-count).
+    Those rows arrive once per vault report, so the same (client, policy,
+    product) repeats: live, 1,780 of kikohib's 2,458 production rows were such
+    entries, one pair appearing 8 times, and the production tab counted every
+    repeat as another מוצר.
 
     Deduping is safe *because* they carry no amounts — there is no figure to
-    lose. A row with a policy number or any money is never touched.
+    lose. A row carrying any money is never touched.
+
+    The policy number is PART OF THE KEY, not an escape hatch. It used to be one
+    (`if rec.get("fund_policy_number"): return False`), which was harmless only
+    while `harel_vault_prod` left it empty on every vault row. Now that it emits
+    the real policy (QA 2026-09-06), bailing out would disable this guard
+    entirely and put all 1,783 raw vault rows back into the merged file. Keying
+    on it instead keeps the repeats collapsed (1,783 → 1,738) while no longer
+    merging two insureds who share one policy — which the old key, built on an
+    `id_number` that actually held the policy, silently did.
     """
-    if rec.get("fund_policy_number"):
-        return False
     if _f(rec.get("accumulation")) or _f(rec.get("total_premium")):
         return False
     key = (
@@ -220,6 +262,7 @@ def _is_duplicate_catalogue_row(rec: dict, seen: set) -> bool:
         (rec.get("id_number") or "").strip(),
         (rec.get("product") or "").strip(),
         (rec.get("product_type") or "").strip(),
+        str(rec.get("fund_policy_number") or "").strip(),
     )
     if key in seen:
         return True
@@ -301,13 +344,11 @@ def commission_category_token(rec: dict) -> str:
 def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
     # Canonicalize יצרן to the same legal-entity names the production merge uses
     # so the production↔נפרעים compare pairs by company instead of fragmenting.
-    kind = "savings" if commission_category_token(rec) == NIFRAIM_CATEGORY_GEMEL else "insurance"
-    raw_company = rec.get("receiving_company") or rec.get("company_source")
     vals = {
         "מספר ת.ז": _id_number_int(rec.get("id_number")),
         "שם פרטי": rec.get("first_name") or "",
         "שם משפחה": rec.get("last_name") or "",
-        "יצרן": canonical_company(raw_company, kind),
+        "יצרן": merged_company_key(rec, commission=True),
         "קטגוריה": commission_category_token(rec),
         "סוג מוצר": rec.get("fund_type") or "",
         "מוצר": rec.get("product") or "",
@@ -319,7 +360,15 @@ def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
         "סכום בפועל": round(_f(rec.get("actual_amount")), 2),
         "שיעור עמלה שנתי": rec.get("annual_commission_pct") or "",
         "שיעור עמלה חודשי": rec.get("monthly_commission_pct") or "",
-        "חודש": period_label or "",
+        # Each row carries ITS OWN source file's month, not the batch's single
+        # headline label. The batch label is derived from the PRODUCTION
+        # uploads (`batch_period`), so stamping it on every נפרעים row relabels
+        # a company's real month: live, four May/June commission files were
+        # written into a workbook titled יולי and every row said יולי.
+        # `_period_label` is attached per record by the batch merge; the
+        # file-wide `period_label` stays the fallback for callers that have no
+        # per-row provenance.
+        "חודש": rec.get("_period_label") or period_label or "",
         # Source-portal account carried per-row (Harel stores it in lead_source).
         "מספר חשבון": rec.get("lead_source") or "",
     }

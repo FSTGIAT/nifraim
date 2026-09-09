@@ -204,10 +204,9 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
     from app.models.upload import FileUpload
     from app.models.record import ClientRecord
     from app.services.portal_automation.aggregate import (
-        build_unified_workbook_bytes, build_unified_nifraim_bytes,
+        build_unified_workbook_bytes, build_unified_nifraim_bytes, merged_company_key,
     )
     from app.services.upload_ingest import ingest_file_bytes, schedule_post_ingest
-    from app.utils.company_norm import normalize_company
 
     prod_new = [uid for (uid, cat, _c) in ingested if cat == "production"]
     comm_new = [uid for (uid, cat, _c) in ingested if cat == "commission"]
@@ -222,14 +221,22 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
         q = await db.execute(_select(ClientRecord).where(ClientRecord.upload_id.in_(upload_ids)))
         return [_record_to_dict(r) for r in q.scalars().all()]
 
-    def _keys(recs):
-        return {normalize_company(r.get("receiving_company"))
-                for r in recs if r.get("receiving_company")}
+    def _keys(recs, *, commission: bool):
+        """The slice of the merged file this run replaces.
+
+        MUST be the same key the merged workbook stamps as `יצרן`, or the
+        stale slice survives and the company is written twice. See
+        `aggregate.merged_company_key` — this used `normalize_company`, which
+        does not invert `canonical_company` and silently missed for מנורה,
+        מגדל-savings, אלטשולר, מיטב, ילין, אנליסט and כלל-בריאות.
+        """
+        return {merged_company_key(r, commission=commission)
+                for r in recs if r.get("receiving_company") or r.get("company_source")}
 
     # ── PRODUCTION ────────────────────────────────────────────────────────
     if prod_new:
         fresh = await _records(prod_new)
-        fresh_keys = _keys(fresh)
+        fresh_keys = _keys(fresh, commission=False)
         act_q = await db.execute(_select(FileUpload.id).where(
             FileUpload.user_id == user_id, FileUpload.is_production.is_(True)))
         act_ids = [i for (i,) in act_q.all()]
@@ -240,7 +247,7 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
             # the merged file and the fresh standalone rows), then add the fresh
             # rows back once — so the company appears exactly once.
             merged = [r for r in all_recs
-                      if normalize_company(r.get("receiving_company")) not in fresh_keys] + fresh
+                      if merged_company_key(r, commission=False) not in fresh_keys] + fresh
             per = await _period(prod_new) or await _period(act_ids)
             as_of = per.replace(day=_cal.monthrange(per.year, per.month)[1]) if per else None
             xlsx = build_unified_workbook_bytes(merged, as_of=as_of)
@@ -268,7 +275,7 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
         # Only fold when we can period-scope, so two different months never merge.
         if per is not None:
             fresh = await _records(comm_new)
-            fresh_keys = _keys(fresh)
+            fresh_keys = _keys(fresh, commission=True)
             agg_q = await db.execute(_select(FileUpload.id).where(
                 FileUpload.user_id == user_id,
                 FileUpload.file_category == "commission",
@@ -278,7 +285,7 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
             if other_ids and fresh:
                 all_recs = await _records(agg_ids)
                 merged = [r for r in all_recs
-                          if normalize_company(r.get("receiving_company")) not in fresh_keys] + fresh
+                          if merged_company_key(r, commission=True) not in fresh_keys] + fresh
                 nif = build_unified_nifraim_bytes(merged, period_label=_month_label(per))
                 fname = f"נפרעים מאוחד {_month_label(per)}.xlsx".replace("  ", " ").strip()
                 merged_up, _ = await ingest_file_bytes(
@@ -360,6 +367,48 @@ async def run_batch(batch_id: uuid.UUID) -> None:
             batch.error_message = str(e)[:500]
             batch.finished_at = datetime.utcnow()
             await db.commit()
+
+
+async def _note_unbucketed_upload(
+    db, upload_id, cred, notes: list[str], run_error: str | None = None
+) -> None:
+    """Record a downloaded file that reached NEITHER merged file.
+
+    `ingest_file_bytes` sets `file_category` from the detected format, and an
+    unrecognized format falls through `category_for_format` → "unknown" →
+    `file_category="general"`. The batch's bucketing is an
+    `if production / elif commission`, so a "general" upload matched neither
+    branch and was dropped on the floor: the row existed in the DB, the run
+    reported success, and the company simply was not in the merged workbook.
+
+    Live on kikohib 2026-08-30, three files downloaded successfully and
+    vanished this way — `אלטשולר נפרעים גמל.xlsx` (2 rows),
+    `אלטשולר עמלות לפי מוצרים.xlsx` (4), `כלל עמלות גמל.xlsx` (9) — which is
+    why אלטשולר was the one company missing from the merged נפרעים entirely.
+
+    Routing it into `partial_notes` downgrades the batch to `partial` and names
+    the file, so a detection gap surfaces as a visible per-company problem
+    instead of a quietly-thin merge.
+    """
+    from app.models.upload import FileUpload
+
+    try:
+        up = await db.get(FileUpload, upload_id)
+    except Exception:  # noqa: BLE001 - a note must never break the batch
+        up = None
+    if up is None:
+        notes.append(f"{cred.portal_kind}: קובץ שהתקבל לא נכלל באיחוד")
+        return
+    # `runner._run_inner` already notes an unrecognized format on
+    # run.error_message (which becomes a partial_note of its own), so only add
+    # ours when this file isn't already accounted for — otherwise every
+    # unparsed file is reported twice.
+    if up.filename and up.filename in (run_error or ""):
+        return
+    notes.append(
+        f"{cred.portal_kind}: {up.filename} — הפורמט לא זוהה "
+        f"({up.format_type or 'unknown'}), {up.record_count or 0} שורות לא נכללו באיחוד"
+    )
 
 
 async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
@@ -548,6 +597,11 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                     prod_upload_ids.append(upload_id)
                 elif file_category == "commission":
                     comm_upload_ids.append(upload_id)
+                else:
+                    # Neither bucket — see _note_unbucketed_upload.
+                    await _note_unbucketed_upload(
+                        db, upload_id, cred, partial_notes, run.error_message
+                    )
             if run.error_message:  # success-with-losses (see partial_notes above)
                 partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
         except OtpTimeout as e:
@@ -634,6 +688,10 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                         prod_upload_ids.append(upload_id)
                     elif file_category == "commission":
                         comm_upload_ids.append(upload_id)
+                    else:
+                        await _note_unbucketed_upload(
+                            db, upload_id, cred, partial_notes, run.error_message
+                        )
                 if run.error_message:  # success-with-losses (see partial_notes above)
                     partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
             except OtpTimeout as e:
@@ -682,7 +740,23 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
     _this_month = date.today().replace(day=1)
     _prev_month = (_this_month - timedelta(days=1)).replace(day=1)
     prod_period = batch_period or _this_month
-    comm_period = batch_period or _prev_month
+
+    # The נפרעים headline must come from the נפרעים FILES, not from the
+    # production snapshot. Deriving it from `batch_period` (production) is how
+    # a July production run came to title a workbook of May/June commission
+    # data "נפרעים מאוחד יולי" — and since `detect_period_month` reads the
+    # filename FIRST, that label then became the merged upload's own
+    # period_month, making the mislabel self-fulfilling.
+    comm_periods: list[date] = []
+    if comm_upload_ids:
+        _cp = await db.execute(
+            select(FileUpload.period_month).where(FileUpload.id.in_(comm_upload_ids))
+        )
+        comm_periods = [p for (p,) in _cp.all() if p]
+    comm_period = (
+        Counter(comm_periods).most_common(1)[0][0] if comm_periods
+        else (batch_period or _prev_month)
+    )
 
     # The batch is anchored on its production snapshot.
     batch_period = prod_period
@@ -759,10 +833,25 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         # each row came from. Production already carries it via a per-row column.
         await _tag_source_accounts_from_filename(db, comm_upload_ids)
 
+        # Per-row provenance: `_record_to_dict` drops upload_id, so resolve each
+        # source file's month HERE and carry it on the record. Without this every
+        # row inherits one batch-wide label (see `comm_period` above).
+        _pm = await db.execute(
+            select(FileUpload.id, FileUpload.period_month)
+            .where(FileUpload.id.in_(comm_upload_ids))
+        )
+        _upload_label = {
+            uid: (_month_label(pm) if pm else "") for uid, pm in _pm.all()
+        }
+
         comm_recs_q = await db.execute(
             select(ClientRecord).where(ClientRecord.upload_id.in_(comm_upload_ids))
         )
-        comm_records = [_record_to_dict(r) for r in comm_recs_q.scalars().all()]
+        comm_records = []
+        for r in comm_recs_q.scalars().all():
+            d = _record_to_dict(r)
+            d["_period_label"] = _upload_label.get(r.upload_id, "")
+            comm_records.append(d)
         if comm_records:
             nif_bytes = build_unified_nifraim_bytes(comm_records, period_label=comm_month_label)
             fname = f"נפרעים מאוחד {comm_month_label}.xlsx".replace("  ", " ").strip()
