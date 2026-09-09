@@ -119,8 +119,11 @@ async def run_maslaka_poll() -> None:
     expire stale inquiries. No-ops gracefully on empty inbox / local mock.
 
     Gated by `MASLAKA_ENABLED` so a fresh deploy doesn't start hammering an
-    unconfigured vault on day one."""
-    if not settings.MASLAKA_ENABLED:
+    unconfigured vault on day one, AND by `MASLAKA_VAULT_HOST` so only the Gateway
+    VM polls. On Railway the inbox path resolves to an empty container directory,
+    so a poll there would report "scanned 0" forever while real feedback sat
+    unread in the Gateway's IN folder — a green light over a dead exchange."""
+    if not (settings.MASLAKA_ENABLED and settings.MASLAKA_VAULT_HOST):
         return
     try:
         async with async_session() as db:

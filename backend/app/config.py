@@ -90,6 +90,19 @@ class Settings(BaseSettings):
     # shipping a half-specified request at a regulator. Flip to True ONLY when the
     # vault is live and MASLAKA_AGENT_NUMBER / MASLAKA_AGENT_ID are set.
     MASLAKA_ENABLED: bool = False                  # N → Y when the מסלקה grants access
+    # WHICH HOST AM I? True only on the Maslaka Gateway VM — the Israeli Windows box
+    # whose folders the מסלקה Transporter syncs. It is NOT a feature flag: setting it
+    # on Railway makes the cloud write outbox XML to a container disk the Transporter
+    # cannot see, which looks like success and silently loses the request
+    # (docs/ARCHITECTURE.md §12 invariant #3). Gates the outbound claim loop, the
+    # scheduler's poll/retention jobs, and POST /api/maslaka/poll.
+    #
+    #                     Railway        Gateway VM
+    #   MASLAKA_ENABLED   true           true        ← the feature is live
+    #   MASLAKA_VAULT_HOST false         TRUE        ← who actually touches the vault
+    #   creates rows      yes            —
+    #   transports XML    no             yes
+    MASLAKA_VAULT_HOST: bool = False
     # Separate Fernet key from PORTAL_CRED_FERNET_KEY — blast-radius isolation.
     MASLAKA_ENCRYPTION_KEY: str = ""
     # Local-filesystem mock vault dirs (used when MASLAKA_TRANSPORT="local").

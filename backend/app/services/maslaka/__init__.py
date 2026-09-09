@@ -5,6 +5,7 @@ Public surface (everything else is module-internal):
     from app.services.maslaka.orchestration import (
         create_inquiry, submit_inquiry, poll_and_ingest,
         expire_stale_inquiries, get_enriched_picture,
+        claim_and_submit_one, submit_pending_inquiries,   # Gateway claim loop
     )
     from app.services.maslaka.transport import get_transport
     from app.services.maslaka.audit import log_event

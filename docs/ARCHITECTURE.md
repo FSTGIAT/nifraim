@@ -823,9 +823,29 @@ means shipping a guessed XML tree at a regulator.
    not ours; a bare `write_bytes` lets it ship a half-written XML. `LocalVaultTransport.send`
    writes `.tmp` then renames (as the SFTP path always did). Inbound is safe already —
    `list_inbox` skips `.tmp` and dotfiles.
-3. **The API host is NOT the vault host.** `submit_inquiry` writing the outbox from Railway
-   writes to a container disk the Transporter cannot see. The outbound leg belongs on the
-   Gateway worker (claim `pending` inquiries, mirroring the `PortalRun` claim loop).
+3. **The API host is NOT the vault host.** ✅ **CLOSED 2026-09-09.** `submit_inquiry` used to
+   run as a FastAPI BackgroundTask, i.e. on whichever host served the request — Railway —
+   where `transport.send()` writes to a container disk the Transporter cannot see, reports
+   success, and flips the row to `submitted` with the request silently lost. The BackgroundTask
+   is gone; `POST /inquiry` now only creates a `pending` row, and `backend/maslaka_worker.py`
+   on the Gateway claims it (`SELECT … FOR UPDATE SKIP LOCKED`) and does the transport.
+   **There is no inline fallback** — on Railway no send could ever work, so a row waiting for
+   the Gateway is correct behaviour, not degraded behaviour.
+
+   This forced splitting one overloaded flag in two, because `require_maslaka_enabled` also
+   gated `POST /inquiry` — so invariant #6 (`MASLAKA_ENABLED=false` on Railway forever) meant
+   an agent could never create an inquiry at all:
+
+   | | Railway | Gateway VM |
+   |---|---|---|
+   | `MASLAKA_ENABLED` — the feature is live | true (after go-live) | true |
+   | `MASLAKA_VAULT_HOST` — **this host owns the vault folders** | **false** | **true** |
+   | creates inquiry rows | yes | — |
+   | transports XML / polls the inbox | **no** | yes |
+
+   `MASLAKA_VAULT_HOST` is named as a statement about the host, not a feature, so nobody sets
+   it on Railway "to make maslaka work". Design + what is and isn't tested:
+   `.claude/plans/maslaka-gateway-claim-loop.md`.
 4. **Vault paths must be ABSOLUTE.** `MASLAKA_LOCAL_*` resolve against the process CWD — a
    worker started from a different directory silently gets a *different, empty* vault and
    looks healthy while exchanging nothing.

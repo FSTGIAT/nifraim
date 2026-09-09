@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_paid_user as get_current_user
-from app.database import async_session, get_db
+from app.database import get_db
 from app.models.pension_audit import PensionAuditLog
 from app.models.pension_holding import PensionHolding
 from app.models.pension_inquiry import PensionInquiry
@@ -52,31 +52,51 @@ def require_maslaka_enabled() -> None:
         )
 
 
+def require_vault_host() -> None:
+    """Second gate: only the Gateway VM may TOUCH the vault.
+
+    `MASLAKA_ENABLED` says the feature is live; `MASLAKA_VAULT_HOST` says this
+    process is the Israeli box whose folders the Transporter syncs. On Railway the
+    latter is false, so a poll here would list an empty container directory and
+    report "0 files" forever. Refusing is honest; succeeding emptily is not.
+    """
+    if not settings.MASLAKA_VAULT_HOST:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "פעולה זו רצה רק על שרת הכספת (Maslaka Gateway), לא על השרת בענן. "
+                "(MASLAKA_VAULT_HOST=false)"
+            ),
+        )
+
+
 # ─── Inquiry creation ──────────────────────────────────────────────────────
 @router.post("/inquiry", response_model=InquiryOut, dependencies=[Depends(require_maslaka_enabled)])
 async def create_inquiry_endpoint(
     payload: InquiryCreateRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Create a pending inquiry and enqueue the actual vault send to a
-    background task — same pattern as `api/production.py:82-89,174-176`."""
+    """Create a `pending` inquiry row. **Does not send anything.**
+
+    The send deliberately does NOT happen here. This used to be a FastAPI
+    BackgroundTask, which runs on the host that served the request — Railway —
+    where `transport.send()` writes the XML to a container disk the Transporter
+    cannot see, reports success, and flips the row to `submitted`. The request
+    was silently lost (docs/ARCHITECTURE.md §12 invariant #3).
+
+    The row now sits `pending` until the Gateway VM's `maslaka_worker.py` claims
+    it. There is no inline fallback, because on this host there is no send that
+    could ever work — a pending row waiting for the Gateway is correct behaviour,
+    not degraded behaviour.
+    """
     inquiry = await orchestration.create_inquiry(
         db,
         user_id=user.id,
         customer_id_number=payload.customer_id_number,
         customer_name=payload.customer_name,
     )
-    background_tasks.add_task(_submit_bg, inquiry.id)
     return _serialize_inquiry(inquiry)
-
-
-async def _submit_bg(inquiry_id: uuid.UUID) -> None:
-    """Run the vault submit on a fresh DB session — same trick as the
-    portal-snapshot background helper in production.py uses."""
-    async with async_session() as db:
-        await orchestration.submit_inquiry(db, inquiry_id)
 
 
 # ─── Inquiry listing + detail ──────────────────────────────────────────────
@@ -148,7 +168,8 @@ async def enriched_picture(
 
 
 # ─── Manual poll (for dev / on-demand refresh) ─────────────────────────────
-@router.post("/poll", response_model=PollStatsOut, dependencies=[Depends(require_maslaka_enabled)])
+@router.post("/poll", response_model=PollStatsOut,
+             dependencies=[Depends(require_maslaka_enabled), Depends(require_vault_host)])
 async def manual_poll(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),

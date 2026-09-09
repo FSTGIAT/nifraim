@@ -2,7 +2,9 @@
 
 Public functions (everything else is module-internal):
     create_inquiry(...)       — agent-initiated, status=pending
-    submit_inquiry(...)       — background task, status=pending → submitted
+    submit_inquiry(...)       — Gateway claim loop, status=pending → submitted
+    claim_and_submit_one(...) — FOR UPDATE SKIP LOCKED claim of one pending row
+    submit_pending_inquiries(...) — bounded drain of the pending queue
     poll_and_ingest(...)      — scheduler/manual, walks the inbox
     expire_stale_inquiries(...) — scheduler, flips timed-out rows
     get_enriched_picture(...)  — read-only, shaped like portal dashboard
@@ -133,6 +135,55 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
 
 
 # ─── Poll + ingest ─────────────────────────────────────────────────────────
+async def claim_and_submit_one(db: AsyncSession) -> uuid.UUID | None:
+    """Claim the oldest `pending` inquiry and run its vault send. Returns the id
+    submitted, or None when the queue is empty.
+
+    `SELECT ... FOR UPDATE SKIP LOCKED` rather than the status-CAS that
+    `local_worker._claim_pending_run` uses. The difference is how long the claim
+    lives: a PortalRun claim outlives its transaction by minutes of Playwright, so
+    it needs a durable `running` marker in a column. A maslaka send is seconds and
+    sits entirely inside one transaction, so a row lock is enough — and a crash
+    releases it automatically, which is why there is no stale-claim reaper here.
+
+    A status CAS would also be actively *wrong*: flipping to `submitted` before the
+    send means a crash mid-send loses the request while the row claims success. The
+    status must advance only after `transport.send()` returns, which is exactly
+    what `submit_inquiry` already does.
+
+    ONE row at a time, deliberately: `submit_inquiry` commits internally, which
+    would release a multi-row lock early and hand the rest to a concurrent claimer
+    mid-flight.
+    """
+    inquiry_id = (await db.execute(
+        select(PensionInquiry.id)
+        .where(PensionInquiry.status == "pending")
+        .order_by(PensionInquiry.created_at)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )).scalar_one_or_none()
+    if inquiry_id is None:
+        return None
+    await submit_inquiry(db, inquiry_id)      # commits, releasing the row lock
+    return inquiry_id
+
+
+async def submit_pending_inquiries(db: AsyncSession, *, max_per_tick: int = 20) -> int:
+    """Drain the pending queue, bounded. Returns how many were submitted.
+
+    Bounded so one tick can never monopolise the loop: with a large backlog the
+    worker still returns to poll the inbox instead of spending the whole cycle
+    sending. `submit_inquiry` never raises — it records `failed` on the row — so a
+    single poisoned inquiry cannot stall the drain.
+    """
+    submitted = 0
+    for _ in range(max_per_tick):
+        if await claim_and_submit_one(db) is None:
+            break
+        submitted += 1
+    return submitted
+
+
 async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None) -> dict:
     """Walk the vault inbox, route each file to feedback/holdings ingest,
     archive on success. Returns stats for the scheduler/health endpoint.
