@@ -149,6 +149,7 @@
               <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
+              <MaslakaTestTab v-else-if="activeTab === 'maslaka-test'" key="maslaka-test" />
               <PortalAutomationTab v-else-if="activeTab === 'portal-automation'" key="portal-automation" :auto-open-add="autoOpenAddPortal" @opened="autoOpenAddPortal = false" @go-to-comparison="onCardSelect('comparison')" />
             </Transition>
           </div>
@@ -241,6 +242,7 @@ import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
+import MaslakaTestTab from '../components/workspace/MaslakaTestTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 import AiVizPanel from '../components/workspace/AiVizPanel.vue'
 

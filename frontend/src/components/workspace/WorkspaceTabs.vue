@@ -169,6 +169,14 @@ const tabs = [
     ink: 'var(--tab-ai-ink)',
   },
   {
+    id: 'maslaka-test',
+    label: 'בדיקות מסלקה',
+    description: 'פענוח קבצי מסלקה אמיתיים מול הקוד',
+    accent: 'var(--tab-maslaka)',
+    accentGlow: 'var(--tab-maslaka-wash)',
+    ink: 'var(--tab-maslaka)',
+  },
+  {
     id: 'portal-automation',
     label: 'אוטומציה',
     description: 'התחברות אוטומטית לפורטלים והורדת דוחות',

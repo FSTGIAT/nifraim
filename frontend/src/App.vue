@@ -127,6 +127,8 @@ const navTabs = [
   --tab-ai: var(--chart-13);
   --tab-ai-wash: rgba(183, 156, 235, 0.14);
   --tab-ai-ink: #6A48C9;
+  --tab-maslaka: var(--chart-14);
+  --tab-maslaka-wash: rgba(44, 95, 107, 0.10);
   --tab-automation: var(--chart-12);
   --tab-automation-wash: rgba(14, 140, 138, 0.10);
   /* Text-safe inks for the pastel-yellow (chart-8) CTA surfaces */
