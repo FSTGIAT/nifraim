@@ -11,9 +11,12 @@
     <div v-if="gate" class="mk-gate">
       <h4>השירות עדיין לא פעיל</h4>
       <p>{{ gate }}</p>
+      <!-- Updated 2026-09-10: the first two are DONE. The vault connects, uploads
+           succeed in ~150ms, and MASLAKA_AGENT_ID is issued. Leaving them listed
+           would misreport where we actually are. -->
       <ul>
-        <li>סוויפטנס טרם הנפיקה מספר סוכן ומזהה סוכן</li>
-        <li>כספת הבדיקות (TST) טרם אושרה לכתובת שלנו</li>
+        <li>כספת הבדיקות (TST) מחוברת — קבצים נשלחים בהצלחה</li>
+        <li>ממתינים להפעלה שלנו כבעל רישיון <strong>שולח</strong> אצל המסלקה</li>
         <li>לכל לקוח נדרש ייפוי כוח חתום לפני בקשת מידע</li>
       </ul>
     </div>

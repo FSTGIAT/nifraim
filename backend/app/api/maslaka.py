@@ -33,6 +33,7 @@ from app.config import settings
 from app.services.maslaka import orchestration
 from app.services.maslaka.events import ACTION_CODES, build_events_request
 from app.services.maslaka.filenames import build_filename, parse_filename
+from app.services.maslaka.xsd import schema_for, validate as xsd_validate
 from app.services.mimshak import parse_mimshak_dat
 
 router = APIRouter()
@@ -280,6 +281,18 @@ async def inspect_sample(name: str, user: User = Depends(get_current_user)):
             payload["error"] = f"XML parse error: {e}"
         return payload
 
+    # Validate the INBOUND file too. When a real FEDBKA finally lands we want the
+    # console to say whether it validates before anyone trusts the parsed rows —
+    # a parser is happy to produce plausible numbers from a malformed file.
+    _decoded = parse_filename(path.name)
+    payload["validation"] = xsd_validate(
+        raw,
+        schema_file=schema_for(
+            service=_decoded.service if _decoded else None,
+            product_family=_decoded.product_family if _decoded else None,
+        ),
+    ).to_dict()
+
     try:
         result = parse_mimshak_dat(raw, path.name)
         rows = result.get("records", [])
@@ -355,7 +368,11 @@ async def preview_request(
             customer_first_name=str(payload.get("first_name") or ""),
             customer_last_name=str(payload.get("last_name") or ""),
             sequence=int(payload.get("sequence") or 1),
-            environment_code="1" if env == "PRD" else "2",
+            # 1 = TEST, 2 = PRODUCTION per the official XSD. This endpoint kept
+            # its own inline copy of the mapping — and it was the inverted one.
+            # Two copies of a rule is how the rule goes wrong; use the shared
+            # helper's convention, keyed off the environment the caller picked.
+            environment_code="2" if env == "PRD" else "1",
             allow_placeholder_identity=True,
         )
     except ValueError as e:
@@ -375,8 +392,8 @@ async def preview_request(
     # State what is still missing rather than letting a rendered request imply
     # it is ready to send.
     blockers = []
-    if not settings.MASLAKA_AGENT_ID or not settings.MASLAKA_AGENT_NUMBER:
-        blockers.append("חסרים MASLAKA_AGENT_ID / MASLAKA_AGENT_NUMBER — טרם התקבלו מסוויפטנס")
+    if not settings.MASLAKA_AGENT_ID:
+        blockers.append("חסר MASLAKA_AGENT_ID — מזהה השולח (ח.פ)")
     if not settings.MASLAKA_ENABLED:
         blockers.append("MASLAKA_ENABLED=false — הכספת עדיין סגורה")
     if not settings.MASLAKA_VAULT_HOST:
@@ -384,7 +401,16 @@ async def preview_request(
     if action.needs_customer:
         blockers.append("נדרש ייפוי כוח בתוקף (1700) לפני בקשת מידע על לקוח")
 
+    # Validate what we just built against Swiftness's OWN schema. This is the
+    # check that found four fatal defects on 2026-09-10 after four live sends
+    # went unanswered — a rendered request that has not been validated tells you
+    # nothing about whether the מסלקה will accept it.
+    validation = xsd_validate(req.xml, schema_file=schema_for(service="EVENTS"))
+    if validation.ok is False:
+        blockers.append(f"הקובץ אינו עומד בסכימה הרשמית ({len(validation.errors)} שגיאות)")
+
     return {
+        "validation": validation.to_dict(),
         "action": {"code": action.code, "label": action.label, "note": action.note},
         "environment": env,
         "filename": filename,
@@ -417,3 +443,80 @@ def _serialize_inquiry(inq: PensionInquiry) -> InquiryOut:
         providers_received=inq.providers_received,
         created_at=inq.created_at,
     )
+
+
+@router.get("/sends")
+async def list_sends(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Every request this licence has put on the wire, newest first.
+
+    Exists because on 2026-09-10 six live files were sent by hand and the only
+    record of them was a terminal scrollback. If a send is not visible here it
+    may as well not have happened — you cannot reason about "no response yet"
+    without knowing exactly what went out and when.
+    """
+    rows = (await db.execute(
+        select(PensionInquiry)
+        .where(PensionInquiry.user_id == user.id)
+        .order_by(PensionInquiry.created_at.desc())
+        .limit(100)
+    )).scalars().all()
+
+    out = []
+    for r in rows:
+        decoded = parse_filename(r.vault_outbound_filename or "") if r.vault_outbound_filename else None
+        out.append({
+            "id": str(r.id),
+            "customer_id_number": r.customer_id_number,
+            "customer_name": r.customer_name,
+            "status": r.status,
+            "action_code": (r.interface_code or "").rpartition(":")[2] or None,
+            "filename": r.vault_outbound_filename,
+            "filename_decoded": decoded.to_dict() if decoded else None,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "acknowledged_at": r.acknowledged_at.isoformat() if r.acknowledged_at else None,
+            "providers_expected": r.providers_expected,
+            "providers_received": r.providers_received,
+            "error_code": r.error_code,
+            "error_detail": r.error_detail,
+        })
+    return out
+
+
+@router.get("/vault")
+async def vault_state(user: User = Depends(get_current_user)):
+    """What is actually sitting in the vault right now, and whether this host
+    can even see it.
+
+    `is_vault_host` is the honest part: on the dev box the answer is no, and the
+    inbox will read 0 no matter what the מסלקה has sent. Only the Gateway VM
+    (MASLAKA_VAULT_HOST=true) watches the real Transporter folders.
+    """
+    from app.services.maslaka.transport import get_transport
+
+    state = {
+        "is_vault_host": bool(settings.MASLAKA_VAULT_HOST),
+        "environment": "TST" if settings.MASLAKA_TEST_ENVIRONMENT else "PRD",
+        "transport": settings.MASLAKA_TRANSPORT,
+        "inbox": [],
+        "error": None,
+    }
+    if not settings.MASLAKA_VAULT_HOST:
+        state["note"] = (
+            "השרת הזה אינו שרת הכספת — התיקיות האמיתיות נמצאות רק ב-Gateway "
+            "(51.58.32.28). מה שמוצג כאן הוא הכספת המקומית בלבד."
+        )
+    try:
+        for f in await get_transport().list_inbox():
+            decoded = parse_filename(f.name)
+            state["inbox"].append({
+                "name": f.name,
+                "size": f.bytes_size,
+                "decoded": decoded.to_dict() if decoded else None,
+                "recognized": decoded is not None,
+            })
+    except Exception as e:                                   # noqa: BLE001
+        state["error"] = f"{type(e).__name__}: {e}"
+    return state

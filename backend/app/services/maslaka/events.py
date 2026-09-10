@@ -212,7 +212,16 @@ def build_events_request(
     _sub(header, "MISPAR-GIRSAT-XML", EVENTS_VERSION)
     _sub(header, "TAARICH-BITZUA", now.strftime("%Y%m%d%H%M%S"))
     _sub(header, "KOD-SVIVAT-AVODA", env)
-    _sub(header, "MISPAR-HAKOVETZ", file_number or now.strftime("%Y%m%d%H%M%S%f"))
+    # xsd:length is 34 EXACTLY — not maxLength. The old fallback
+    # (`%Y%m%d%H%M%S%f`) is 20 chars and made every request built without an
+    # explicit file_number schema-invalid. Default to the real shape instead:
+    # a bad default is worse than a missing argument, because it looks fine.
+    _sender_for_file_no = "".join(
+        ch for ch in str(settings.MASLAKA_AGENT_ID or "") if ch.isdigit()
+    ) or "0"
+    _sub(header, "MISPAR-HAKOVETZ", file_number or build_file_number(
+        sender_id=_sender_for_file_no, sequence=sequence, when=now,
+    ))
     _sub(header, "MISPAR-SIDURI", str(int(sequence)).zfill(4))
 
     sender = _sub(header, "NetuneiGoremSholech")

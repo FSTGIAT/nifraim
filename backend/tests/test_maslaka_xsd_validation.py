@@ -65,6 +65,18 @@ def main() -> None:
         detail = "" if ok else schema.error_log[0].message[:90]
         check(f"{code} ({action.label}) validates", ok, detail)
 
+    print("\nMISPAR-HAKOVETZ is xsd:length 34 EXACTLY — including the default:")
+    import re
+    bare = build_events_request(
+        action_code="9100", customer_id_number="043417252",
+        sequence=1, when=now, allow_placeholder_identity=True,
+    )  # deliberately NO file_number: the fallback must be valid on its own
+    fn = re.search(r"<MISPAR-HAKOVETZ>([^<]*)</MISPAR-HAKOVETZ>", bare.xml.decode()).group(1)
+    check("default file number is 34 chars", len(fn) == 34, f"{len(fn)}: {fn}")
+    check("a request built with no file_number still validates",
+          schema.validate(etree.fromstring(bare.xml)),
+          "" if schema.validate(etree.fromstring(bare.xml)) else schema.error_log[0].message[:80])
+
     print("\nThe environment mapping is 1=TEST / 2=PRODUCTION, per the XSD:")
     root = etree.parse(str(XSD_DIR / "events_007.xsd")).getroot()
     XS = "{http://www.w3.org/2001/XMLSchema}"

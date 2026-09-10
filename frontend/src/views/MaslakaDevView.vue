@@ -18,6 +18,7 @@
     <div v-else class="mt-modes">
       <button class="mt-mode" :class="{ 'mt-mode--on': mode === 'out' }" @click="mode = 'out'">בקשות יוצאות</button>
       <button class="mt-mode" :class="{ 'mt-mode--on': mode === 'in' }" @click="mode = 'in'">קבצים נכנסים</button>
+      <button class="mt-mode" :class="{ 'mt-mode--on': mode === 'log' }" @click="mode = 'log'; loadLog()">מה נשלח בפועל</button>
     </div>
 
     <!-- OUTBOUND: build the exact request, per action code, per environment -->
@@ -79,6 +80,21 @@
             </div>
           </div>
 
+          <!-- The verdict that matters: does Swiftness's own schema accept this? -->
+          <div v-if="preview.validation" class="mt-valid" :class="validClass">
+            <div class="mt-valid-head">
+              <span class="mt-valid-badge">{{ validLabel }}</span>
+              <span class="mt-valid-schema ltr-number" v-if="preview.validation.schema">{{ preview.validation.schema }}</span>
+            </div>
+            <p v-if="preview.validation.ok === true" class="mt-valid-note">
+              הקובץ עומד בסכימה הרשמית של סוויפטנס. זו הבדיקה שחשפה ארבעה פגמים קטלניים ב-10/09 —
+              בקשה שלא נבדקה מול הסכימה לא אומרת דבר על האם המסלקה תקבל אותה.
+            </p>
+            <ul v-else-if="preview.validation.errors.length" class="mt-valid-errs">
+              <li v-for="(e, i) in preview.validation.errors" :key="i" dir="ltr">{{ e }}</li>
+            </ul>
+          </div>
+
           <div v-if="preview.blockers.length" class="mt-blockers">
             <h4>לא נשלח — מה עוד חסר</h4>
             <ul><li v-for="(b, i) in preview.blockers" :key="i">{{ b }}</li></ul>
@@ -89,6 +105,63 @@
             <pre class="mt-xml" dir="ltr">{{ prettyXml }}</pre>
           </div>
         </template>
+      </section>
+    </div>
+
+    <!-- What we ACTUALLY put on the wire. Six files were sent by hand on 10/09
+         and the only record was a terminal scrollback. -->
+    <div v-else-if="!loading && !error && mode === 'log'" class="mt-body mt-body--wide">
+      <section class="mt-main">
+        <div class="mt-panel">
+          <h4>מצב הכספת</h4>
+          <div v-if="vault" class="mt-vault">
+            <div class="mt-vault-row">
+              <span class="mt-vault-k">שרת כספת</span>
+              <span class="mt-vault-v" :class="vault.is_vault_host ? 'ok' : 'warn'">
+                {{ vault.is_vault_host ? 'כן' : 'לא — זהו שרת פיתוח' }}
+              </span>
+            </div>
+            <div class="mt-vault-row">
+              <span class="mt-vault-k">סביבה</span>
+              <span class="mt-vault-v ltr-number">{{ vault.environment }}</span>
+            </div>
+            <div class="mt-vault-row">
+              <span class="mt-vault-k">קבצים בתיבה הנכנסת</span>
+              <span class="mt-vault-v ltr-number">{{ vault.inbox.length }}</span>
+            </div>
+          </div>
+          <p v-if="vault && vault.note" class="mt-vault-note">{{ vault.note }}</p>
+          <p v-if="vault && vault.error" class="mt-error">{{ vault.error }}</p>
+        </div>
+
+        <div class="mt-panel">
+          <h4>בקשות שנשלחו</h4>
+          <p v-if="!sends.length" class="mt-vault-note">
+            עדיין לא נשלחה אף בקשה דרך האפליקציה. שליחה מתבצעת רק מה-Gateway
+            (MASLAKA_VAULT_HOST=true) — הבקשות שנשלחו ידנית ב-10/09 אינן מופיעות כאן.
+          </p>
+          <div v-else class="mt-table-scroll">
+            <table class="mt-table">
+              <thead>
+                <tr>
+                  <th>לקוח</th><th>קוד</th><th>סטטוס</th><th>שם הקובץ</th>
+                  <th>נשלח</th><th>אושר</th><th>גופים</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in sends" :key="r.id">
+                  <td><span class="ltr-number">{{ r.customer_id_number }}</span></td>
+                  <td><span class="ltr-number">{{ r.action_code || '—' }}</span></td>
+                  <td>{{ r.status }}</td>
+                  <td><span class="ltr-number mt-fn">{{ r.filename || '—' }}</span></td>
+                  <td><span class="ltr-number">{{ shortTime(r.submitted_at) }}</span></td>
+                  <td><span class="ltr-number">{{ shortTime(r.acknowledged_at) }}</span></td>
+                  <td><span class="ltr-number">{{ r.providers_received }}<template v-if="r.providers_expected">/{{ r.providers_expected }}</template></span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -128,6 +201,18 @@
           </div>
 
           <!-- Diagnostics -->
+          <!-- Validate the inbound file too: a parser will happily produce
+               plausible numbers from a malformed file. -->
+          <div v-if="detail.validation" class="mt-valid" :class="detailValidClass">
+            <div class="mt-valid-head">
+              <span class="mt-valid-badge">{{ detailValidLabel }}</span>
+              <span class="mt-valid-schema ltr-number" v-if="detail.validation.schema">{{ detail.validation.schema }}</span>
+            </div>
+            <ul v-if="detail.validation.ok === false && detail.validation.errors.length" class="mt-valid-errs">
+              <li v-for="(e, i) in detail.validation.errors.slice(0, 12)" :key="i" dir="ltr">{{ e }}</li>
+            </ul>
+          </div>
+
           <div v-if="detail.diagnostics && detail.diagnostics.kind === 'holdings'" class="mt-stats">
             <div class="mt-stat">
               <span class="mt-stat-n ltr-number">{{ detail.diagnostics.rows }}</span>
@@ -229,6 +314,37 @@ const showXml = ref(false)
 
 // Two halves of one protocol: what we send, and what comes back.
 const mode = ref('out')
+const sends = ref([])
+const vault = ref(null)
+
+// `ok === null` is NOT the same as false: it means nobody validated this file.
+// A console that shows a green tick for an unchecked file is worse than useless.
+function verdict(v) {
+  if (!v) return { cls: '', label: '' }
+  if (v.ok === true) return { cls: 'mt-valid--ok', label: 'תקין מול הסכימה הרשמית' }
+  if (v.ok === false) return { cls: 'mt-valid--bad', label: `לא תקין — ${v.errors.length} שגיאות` }
+  return { cls: 'mt-valid--unknown', label: 'לא נבדק מול סכימה' }
+}
+const validClass = computed(() => verdict(preview.value?.validation).cls)
+const validLabel = computed(() => verdict(preview.value?.validation).label)
+const detailValidClass = computed(() => verdict(detail.value?.validation).cls)
+const detailValidLabel = computed(() => verdict(detail.value?.validation).label)
+
+function shortTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+async function loadLog() {
+  try {
+    const [s, v] = await Promise.all([api.get('/maslaka/sends'), api.get('/maslaka/vault')])
+    sends.value = s.data
+    vault.value = v.data
+  } catch (e) {
+    error.value = e?.response?.data?.detail || 'שגיאה בטעינת יומן השליחות'
+  }
+}
 const actions = ref([])
 const actionCode = ref('9100')
 const environment = ref('TST')
@@ -535,4 +651,34 @@ onMounted(() => { load(); loadActions() })
   .mt-ruler { flex-wrap: wrap; }
   .mt-seg { flex: 1 1 110px; }
 }
+.mt-valid {
+  padding: 12px 14px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--surface);
+}
+.mt-valid-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt-valid-badge { font-size: 0.88rem; font-weight: 700; }
+.mt-valid-schema { font-size: 0.74rem; color: var(--text-secondary); }
+.mt-valid--ok { background: rgba(46,132,74,0.07); border-color: rgba(46,132,74,0.35); }
+.mt-valid--ok .mt-valid-badge { color: #2E844A; }
+.mt-valid--bad { background: rgba(198,40,40,0.06); border-color: rgba(198,40,40,0.3); }
+.mt-valid--bad .mt-valid-badge { color: #C62828; }
+.mt-valid--unknown { background: rgba(249,169,55,0.08); border-color: rgba(249,169,55,0.35); }
+.mt-valid--unknown .mt-valid-badge { color: #B26B00; }
+.mt-valid-note { margin: 8px 0 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6; max-width: 78ch; }
+.mt-valid-errs { margin: 8px 0 0; padding-inline-start: 18px; }
+.mt-valid-errs li { font-size: 0.78rem; color: #C62828; line-height: 1.65; }
+
+.mt-vault { display: flex; flex-wrap: wrap; gap: 10px; }
+.mt-vault-row {
+  flex: 1 1 150px; padding: 10px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.mt-vault-k { font-size: 0.73rem; color: var(--text-secondary); }
+.mt-vault-v { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.mt-vault-v.ok { color: #2E844A; }
+.mt-vault-v.warn { color: #B26B00; }
+.mt-vault-note { margin: 10px 0 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.65; max-width: 78ch; }
+.mt-fn { font-size: 0.72rem; }
+.mt-body--wide { display: block; }
 </style>
