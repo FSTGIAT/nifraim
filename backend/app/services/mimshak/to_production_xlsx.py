@@ -25,6 +25,7 @@ try:
         build_insurance_product_row,
         build_savings_product_row,
         policy_accumulation,
+        policy_accumulation_from_element,
         _pick_coverage_premium,
         build_coverage_row,
         build_lifehlth_product_row,
@@ -42,6 +43,7 @@ except ImportError:
         build_insurance_product_row,
         build_savings_product_row,
         policy_accumulation,
+        policy_accumulation_from_element,
         _pick_coverage_premium,
         build_coverage_row,
         build_lifehlth_product_row,
@@ -263,7 +265,10 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
         # stays on the insurance sheet unchanged. Mirrors aggregate.classify_record's
         # amount heuristic (accum>0 & premium<=0 ⇒ savings).
         premium = sum(_pick_coverage_premium(c) for c in policy_coverages)
-        accumulation = policy_accumulation(policy_leaves)
+        # From the ELEMENT, not the flattened dict: a policy that reports its
+        # balance per component (פיצויים / מעסיק / עובד) loses everything after
+        # the first value once flattened.
+        accumulation = policy_accumulation_from_element(policy_elem)
         if accumulation > 0 and premium <= 0:
             savings_rows.append(build_savings_product_row(
                 insurer_name=insurer_name,

@@ -278,11 +278,47 @@ _ACCUM_FIELDS = (
 
 def policy_accumulation(policy: dict) -> float:
     """Return the policy's accumulation (צבירה) from the first populated field in
-    `_ACCUM_FIELDS`, else 0.0."""
+    `_ACCUM_FIELDS`, else 0.0.
+
+    DICT-BASED — only correct when the policy carries ONE value for the tag.
+    Prefer `policy_accumulation_from_element` where the element is available:
+    the flattened dict is first-value-wins, so a policy that reports its balance
+    per component silently loses every component after the first.
+    """
     for tag in _ACCUM_FIELDS:
         v = _to_float(policy.get(tag))
         if v:
             return v
+    return 0.0
+
+
+def policy_accumulation_from_element(policy_elem) -> float:
+    """Sum the policy's accumulation across ALL component blocks.
+
+    Migdal (and others) split a policy's balance into one `PerutYitrot` block per
+    `KOD-SUG-HAFRASHA` — פיצויים / תגמולי מעסיק / תגמולי עובד — each carrying its
+    own `TOTAL-CHISACHON-MTZBR`. The flattened dict keeps only the first, so
+    policy 23282652 reported 7,172 instead of 27,731 (74% low) and 0604502013
+    reported 459,782 instead of 1,238,482 (63% low).
+
+    Summing is safe for the single-value case that motivated the original code
+    (Phoenix SFE, verified 55/55): a sum of one element is that element. Verified
+    against every holdings sample — wherever the file also carries per-track
+    `SCHUM-TZVIRA-BAMASLUL`, the SUM matches it exactly and the first value does
+    not.
+    """
+    for tag in _ACCUM_FIELDS:
+        vals = []
+        for e in policy_elem.iter():
+            if list(e):                                   # containers only
+                continue
+            if (e.tag.rsplit("}", 1)[-1] if "}" in e.tag else e.tag) != tag:
+                continue
+            v = _to_float((e.text or "").strip())
+            if v:
+                vals.append(v)
+        if vals:
+            return sum(vals)
     return 0.0
 
 

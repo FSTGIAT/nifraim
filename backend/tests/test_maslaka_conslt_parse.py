@@ -106,6 +106,38 @@ def main() -> None:
     check("SUG_MUTZAR 1 label unchanged (downstream key)",
           SUG_MUTZAR_LABELS.get("1") == "ביטוח חיים")
 
+    # REGRESSION (2026-09-10): accumulation came from the FLATTENED policy dict,
+    # which is first-value-wins. Migdal splits a policy's balance into one
+    # PerutYitrot per KOD-SUG-HAFRASHA (פיצויים / מעסיק / עובד), each carrying its
+    # own TOTAL-CHISACHON-MTZBR — so policy 23282652 reported 7,172 instead of
+    # 27,731 (74% low) and 0604502013 reported 459,782 instead of 1,238,482.
+    # Where the file also carries per-track SCHUM-TZVIRA-BAMASLUL, the SUM matches
+    # it exactly and the first value does not; that independent figure is the
+    # assertion here, which is what makes this verifiable rather than plausible.
+    import xml.etree.ElementTree as ET
+    from app.services.mimshak.xlsx_writer import policy_accumulation_from_element
+
+    def _lt(t: str) -> str:
+        return t.rsplit("}", 1)[-1] if "}" in t else t
+
+    print("\nAccumulation sums ALL component blocks, not just the first:")
+    for f in sorted(FIXTURES.glob("*CONSLT*")):
+        root = ET.parse(f).getroot()
+        seen: set[str] = set()
+        for pol in [e for e in root.iter() if _lt(e.tag) == "HeshbonOPolisa"]:
+            pid = next((e.text for e in pol.iter()
+                        if _lt(e.tag) == "MISPAR-POLISA-O-HESHBON"), None)
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            tracks = [float(e.text) for e in pol.iter()
+                      if _lt(e.tag) == "SCHUM-TZVIRA-BAMASLUL" and (e.text or "").strip()]
+            if not tracks:
+                continue            # no independent figure to check against
+            got = policy_accumulation_from_element(pol)
+            check(f"policy {pid} accumulation matches its track total",
+                  abs(got - sum(tracks)) < 2, f"{got:,.0f} vs {sum(tracks):,.0f}")
+
     print("\n" + ("ALL PASS" if not FAILURES else f"{len(FAILURES)} FAILURE(S): " + "; ".join(FAILURES)))
     sys.exit(1 if FAILURES else 0)
 
