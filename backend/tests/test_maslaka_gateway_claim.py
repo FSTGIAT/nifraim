@@ -223,6 +223,29 @@ async def test_worker_tick() -> None:
         check("_tick ran the inbox poll and advanced _last_poll_at",
               maslaka_worker._last_poll_at > __import__("datetime").datetime.min)
 
+        # REGRESSION (2026-09-10): the daily sequence must be UNIQUE per sender
+        # per day. `submit_pending_inquiries` drains up to 20 rows per tick, so
+        # a hardcoded sequence gives every file in the batch the SAME name —
+        # the Transporter uploads one and silently drops the rest, with no
+        # error in any log. One file proves nothing; three must differ.
+        before_n = len(files)
+        async with async_session() as db:
+            for i in range(3):
+                inq = await orchestration.create_inquiry(
+                    db, user_id=user.id, customer_id_number=f"9988770{i}", customer_name="batch",
+                )
+                created.append(inq.id)
+        await maslaka_worker._tick()
+
+        batch = sorted(p.name for p in Path(settings.MASLAKA_LOCAL_OUTBOX).iterdir() if p.is_file())
+        new_names = batch[-3:] if len(batch) >= before_n + 3 else []
+        check("the 3-row batch drained", len(batch) == before_n + 3, f"{len(batch)} files")
+        check("every filename in the batch is DISTINCT (no sequence collision)",
+              len(set(new_names)) == 3, ", ".join(new_names))
+        seqs = [parse_filename(n).sequence for n in new_names if parse_filename(n)]
+        check("all three parse and carry distinct sequences",
+              len(seqs) == 3 and len(set(seqs)) == 3, ",".join(seqs))
+
         # Second tick must NOT re-poll (interval not elapsed) but must still drain.
         before = maslaka_worker._last_poll_at
         await maslaka_worker._tick()

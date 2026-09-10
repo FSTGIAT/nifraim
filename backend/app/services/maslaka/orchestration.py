@@ -33,7 +33,7 @@ from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.services.maslaka import adapter, audit
 from app.services.maslaka.events import (
-    build_events_request, build_file_number, environment,
+    ACTION_CODES, build_events_request, build_file_number, environment,
     MaslakaIdentityNotConfigured,
 )
 from app.services.maslaka.filenames import build_filename
@@ -125,11 +125,19 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         # XML, so every request the app sent on its own would have been
         # discarded without content-level feedback.
         sender_id = settings.MASLAKA_AGENT_ID or ""
-        now = datetime.now()
+        # utcnow, not now(): the filename timestamp, `submitted_at` and the
+        # allocator's day window must all be in the same clock. Both hosts run
+        # UTC so a mismatch is inert in production and wrong on a dev box.
+        now = datetime.utcnow()
         env_code, file_type = environment()
         sequence = await _allocate_daily_sequence(db, sender_id=sender_id, when=now)
 
-        action_code = (inquiry.interface_code or "").rpartition(":")[2] or DEFAULT_ACTION_CODE
+        # `rpartition` on a colon-less value returns the WHOLE string, so rows
+        # created before the action code was recorded (interface_code =
+        # "events_v007") would otherwise pass "events_v007" as an action code
+        # and fail as a generic transport_error. Validate against the table.
+        _parsed = (inquiry.interface_code or "").rpartition(":")[2]
+        action_code = _parsed if _parsed in ACTION_CODES else DEFAULT_ACTION_CODE
         req = build_events_request(
             action_code=action_code,
             customer_id_number=inquiry.customer_id_number,
