@@ -267,6 +267,7 @@ async def inspect_sample(name: str, user: User = Depends(get_current_user)):
         schema_file=schema_for(
             service=_decoded.service if _decoded else None,
             product_family=_decoded.product_family if _decoded else None,
+            xml=raw,   # unrecognised filename → fall back to the file's SUG-MIMSHAK
         ),
     ).to_dict()
 

@@ -91,6 +91,36 @@ def main() -> None:
     check("environment() returns 1 for the test vault", environment() == ("1", "TST"),
           str(environment()))
 
+    print("\nEvery vendored schema compiles, and each sample matches exactly ONE:")
+    # NOT XSD_DIR — importing it here would shadow the module-level constant
+    # for the whole function, including the lines above this one.
+    from app.services.maslaka.xsd import sug_mimshak, SCHEMA_BY_SUG_MIMSHAK
+    schemas = {}
+    for x in sorted(XSD_DIR.glob("*.xsd")):
+        try:
+            schemas[x.stem] = etree.XMLSchema(etree.parse(str(x)))
+        except Exception as e:                              # noqa: BLE001
+            check(f"{x.stem} compiles", False, str(e)[:60])
+    check("all 18 interface schemas compile", len(schemas) == 18, f"{len(schemas)}")
+
+    for f in sorted(SAMPLES.iterdir()):
+        doc = etree.parse(str(f))
+        hits = [n for n, sc in schemas.items() if sc.validate(doc)]
+        # Exactly one is the real assertion: if a file validated against two
+        # schemas the routing would be a coin flip.
+        check(f"{f.name[:34]} matches exactly one schema", len(hits) == 1,
+              ", ".join(hits) or "none")
+
+    print("\nSUG-MIMSHAK inside the envelope routes without a filename:")
+    for f in sorted(SAMPLES.glob("*FEDBK*"))[:1] + sorted(SAMPLES.glob("*CONSLT*"))[:1]:
+        raw = f.read_bytes()
+        sm = sug_mimshak(raw)
+        check(f"{f.name[:30]} declares SUG-MIMSHAK", sm is not None, str(sm))
+    check("feedback routes by envelope alone",
+          SCHEMA_BY_SUG_MIMSHAK.get("20") == "feedback_009.xsd")
+    check("events routes by envelope alone",
+          SCHEMA_BY_SUG_MIMSHAK.get("6") == "events_007.xsd")
+
     print("\nThe vendor's own files validate against their published schemas:")
     fb = etree.XMLSchema(etree.parse(str(XSD_DIR / "feedback_009.xsd")))
     for f in sorted(SAMPLES.glob("*FEDBK*")):

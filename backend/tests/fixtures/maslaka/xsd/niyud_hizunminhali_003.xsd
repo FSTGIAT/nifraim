@@ -1,0 +1,1247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xsd:schema version="1.0" elementFormDefault="qualified" attributeFormDefault="unqualified" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <xsd:element name="MimshakNiyud">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="KoteretKovetz" minOccurs="1">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="SUG-MIMSHAK" minOccurs="1">
+                <xsd:annotation>
+                  <xsd:documentation>
+ממשק ניוד, נספחים ה+ו
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:int">
+                    <xsd:enumeration value="31" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="MISPAR-GIRSAT-XML" minOccurs="1">
+                <xsd:annotation>
+                  <xsd:documentation>
+מספר גרסא ראשי 
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:string">
+                    <xsd:enumeration value="003" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="TAARICH-BITZUA" minOccurs="1">
+                <xsd:annotation>
+                  <xsd:documentation>
+תאריך ושעת יצירת הקובץ
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:string">
+                    <xsd:pattern value="([0-9]\d{3}((0[1-9]|1[012])(0[1-9]|1\d|2[0-8])|(0[13456789]|1[012])(29|30)|(0[13578]|1[02])31)|(15(8[48]|9[26])|(1[6-9]|[2-9]\d)(0[48]|[13579][26]|[2468][048])|([2468][048]|16|3579[26])00)0229)((0[0-9]|1[0-9]|2[0-3])([0-5]\d){2})" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="KOD-SVIVAT-AVODA" minOccurs="1">
+                <xsd:annotation>
+                  <xsd:documentation>
+סוג הנתונים המועברים בקובץ
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:int">
+                    <xsd:enumeration value="1" />
+                    <xsd:enumeration value="2" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="MISPAR-HAKOVETZ" minOccurs="1">
+                <xsd:annotation>
+                  <xsd:documentation>
+מספר הקובץ
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:string">
+                    <xsd:maxLength value="34" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="MISPAR-SIDURI" minOccurs="1" nillable="true">
+                <xsd:annotation>
+                  <xsd:documentation>
+מספר סידורי של הקובץ 
+</xsd:documentation>
+                </xsd:annotation>
+                <xsd:simpleType>
+                  <xsd:restriction base="xsd:int">
+                    <xsd:totalDigits value="4" />
+                    <xsd:minInclusive value="0" />
+                  </xsd:restriction>
+                </xsd:simpleType>
+              </xsd:element>
+              <xsd:element name="NetuneiGoremSholech" minOccurs="1">
+                <xsd:complexType>
+                  <xsd:sequence>
+                    <xsd:element name="KOD-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = יצרן
+2 = מסלקה
+3 = מפיץ
+4 = לקוח
+5 = מעסיק
+6 = לשכת שירות
+8 = חברה מנהלת קופה מקבלת
+9 = חברה מנהלת קופה מעבירה
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="2" />
+						  <xsd:enumeration value="8" />
+						  <xsd:enumeration value="9" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SUG-MEZAHE-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+סוג מזהה גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                          <xsd:enumeration value="3" />
+                          <xsd:enumeration value="4" />
+                          <xsd:enumeration value="5" />
+                          <xsd:enumeration value="7" />
+                          <xsd:enumeration value="8" />
+                          <xsd:enumeration value="9" />
+                          <xsd:enumeration value="10" />
+                          <xsd:enumeration value="11" />
+                          <xsd:enumeration value="12" />
+                          <xsd:enumeration value="13" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-ZIHUI-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר זיהוי גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="16" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-GOREM-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="100" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-PRATI-ISH-KESHER-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם פרטי - איש קשר גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="20" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-MISHPACHA-ISH-KESHER-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם משפחה - איש קשר גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="20" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר טלפון קווי - איש קשר גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+						<xsd:pattern value="[0-9]+" />							
+                          <xsd:maxLength value="11" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="E-MAIL-ISH-KESHER-SHOLECH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+כתובת דוא"ל - איש קשר גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="50" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-CELLULARI-ISH-KESHER-SHOLECH" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+טלפון סלולארי - איש קשר גורם שולח
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+						<xsd:pattern value="[0-9]+" />							
+                          <xsd:maxLength value="15" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+              <xsd:element name="NetuneiGoremNimaan" minOccurs="1">
+                <xsd:complexType>
+                  <xsd:sequence>
+                    <xsd:element name="KOD-NIMAAN" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+קוד גורם נמען
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="2" />
+                          <xsd:enumeration value="8" />
+				     	  <xsd:enumeration value="9" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SUG-MEZAHE-NIMAAN" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+סוג מזהה גורם נמען
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                          <xsd:enumeration value="3" />
+                          <xsd:enumeration value="4" />
+                          <xsd:enumeration value="5" />
+                          <xsd:enumeration value="7" />
+                          <xsd:enumeration value="8" />
+                          <xsd:enumeration value="9" />
+                          <xsd:enumeration value="10" />
+                          <xsd:enumeration value="11" />
+                          <xsd:enumeration value="12" />
+                          <xsd:enumeration value="13" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-ZIHUI-NIMAAN" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר זיהוי גורם נמען
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="16" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-ZIHUI-ETZEL-YATZRAN-NIMAAN" minOccurs="0" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר מזהה אצל יצרן
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="16" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:element>
+        <xsd:element name="GufHamimshak" minOccurs="1">
+          <xsd:complexType>
+            <xsd:sequence>
+              <xsd:element name="YeshutGoremPoneLemislaka" minOccurs="1" maxOccurs="unbounded">
+                <xsd:complexType>
+                  <xsd:sequence>
+                    <xsd:element name="SUG-MAVIR-MEIDA" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+סוג פונה
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="8" />
+						  <xsd:enumeration value="9" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SUG-KOD-MAVIR-MEIDA" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+סוג קוד מזהה פונה
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                          <xsd:enumeration value="3" />
+                          <xsd:enumeration value="4" />
+                          <xsd:enumeration value="5" />
+                          <xsd:enumeration value="7" />
+                          <xsd:enumeration value="8" />
+                          <xsd:enumeration value="9" />
+                          <xsd:enumeration value="10" />
+                          <xsd:enumeration value="11" />
+                          <xsd:enumeration value="12" />
+                          <xsd:enumeration value="13" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-MEZAHE-PONE" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר מזהה פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="16" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-GOREM-PONE" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם גורם פונה
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="50" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-MEZAHE-METAFEL" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר מזהה מתפעל
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="16" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-PRATI-PONE-LEMETAVECH" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם פרטי - איש קשר גורם פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="20" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="SHEM-MISHPACHA-PONE-LEMETAVECH" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם משפחה - איש קשר גורם פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="20" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-TELEPHONE-KAVI-PONE-LEMETAVECH" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר טלפון קווי - איש קשר גורם פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+						<xsd:pattern value="[0-9]+" />							
+                          <xsd:maxLength value="11" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="E-MAIL-PONE-LEMETAVECH" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+כתובת דוא"ל - איש קשר גורם פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="50" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                    <xsd:element name="MISPAR-CELLULARI" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+טלפון סלולארי - איש קשר גורם פונה למתווך
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+						<xsd:pattern value="[0-9]+" />							
+                          <xsd:maxLength value="15" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                 
+				<xsd:element name="Haavara" minOccurs="1" maxOccurs="unbounded">
+                      <xsd:complexType>
+                        <xsd:sequence>
+						<xsd:element name="KupaMaavira" minOccurs="1">
+                         <xsd:complexType>
+                          <xsd:sequence>
+                           <xsd:element name="KOD-MEZAHE-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+קוד מזהה קופה מעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="[0-9]{30}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						    <xsd:element name="SHEM-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם הקופה המעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="100" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="SHEM-HAGUF-HAMENAEL-SHEL-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם הגוף המנהל של הקופה המעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="100" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						  <xsd:element name="SUG-KUPA-MAAVIRA" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+סוג קופה מעבירה
+1 = קופת ביטוח
+2 = קרן פנסיה 
+3 = קופת גמל 
+4 = קרן השתלמות
+5 = קופת גמל להשקעה
+6 = חיסכון לכל ילד
+7= קופת גמל בנהול אישי
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+						  <xsd:enumeration value="3" />
+						  <xsd:enumeration value="4" />
+                          <xsd:enumeration value="5" />
+						  <xsd:enumeration value="6" />
+						  <xsd:enumeration value="7" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+			 </xsd:sequence>
+              </xsd:complexType>
+               </xsd:element>
+              <xsd:element name="PirteiHeshbonKupaMaavira" minOccurs="0">
+                <xsd:complexType>
+                  <xsd:sequence>
+                   <xsd:element name="MISPAR-BANK-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר בנק קופה מעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="3" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						    <xsd:element name="MISPAR-SNIF-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר סניף קופה מעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="3" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						    <xsd:element name="MISPAR-CHESHBON-KUPA-MAAVIRA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר חשבון קופה מעבירה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="20" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+       <xsd:element name="KupaMekabelet" minOccurs="1">
+                         <xsd:complexType>
+                          <xsd:sequence>
+                           <xsd:element name="KOD-MEZAHE-KUPA-MEKABELET" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+קוד מזהה קופה מקבלת
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="[0-9]{30}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						    <xsd:element name="SHEM-KUPA-MEKABELET" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם קופה מקבלת/שם פוליסה
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="100" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="SHEM-GUF-MENAEL-SHEL-KUPA-MEKABELET" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם הגוף המנהל של הקופה המקבלת/שם חברת הביטוח
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="100" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="SUG-KUPA-MEKABELET" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+1 = קופת ביטוח
+2 = קרן פנסיה 
+3 = קופת גמל 
+4 = קרן השתלמות
+5 = קופת גמל להשקעה
+6 = חיסכון לכל ילד
+7= קופת גמל בנהול אישי
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+									  <xsd:enumeration value="1" />
+									  <xsd:enumeration value="2" />
+						              <xsd:enumeration value="3" />
+						              <xsd:enumeration value="4" />
+						              <xsd:enumeration value="5" />
+						              <xsd:enumeration value="6" />
+									  <xsd:enumeration value="7" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+			 </xsd:sequence>
+              </xsd:complexType>
+               </xsd:element>  
+			 <xsd:element name="PirteiAmitOver"  minOccurs="1" maxOccurs="unbounded">
+                 <xsd:complexType>
+                   <xsd:sequence>
+				   <xsd:element name="SUG-MEZAHE-LAKOACH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+אחד מן הערכים הבאים:
+1 = מספר תעודת זהות
+2 = מספר דרכון
+3 = מספר תאגיד
+4 = עוסק מורשה
+5 = ח.פ
+6= אחר
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+						              <xsd:enumeration value="3" />
+						              <xsd:enumeration value="4" />
+						              <xsd:enumeration value="5" />
+						              <xsd:enumeration value="6" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+					 <xsd:element name="MISPAR-MEZAHE-LAKOACH" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר מזהה לקוח
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="16" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+              <xsd:element name="SHEM-PRATI" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם פרטי
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="50" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						  <xsd:element name="SHEM-PRATI-KODEM" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם פרטי קודם
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="50" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						  <xsd:element name="SHEM-MISHPACHA" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם משפחה 
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="50" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						  <xsd:element name="SHEM-MISHPACHA-KODEM" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+שם משפחה קודם/נוסף 
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:maxLength value="50" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>	
+                  
+			 <xsd:element name="PirteiHaavara" minOccurs="1">
+                  <xsd:complexType>
+                    <xsd:sequence>
+					 <xsd:element name="SHLAV-BETALICH-NIUD" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+2 = נספח ה
+3 = נספח ה1
+4 = נספח ו
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+						              <xsd:enumeration value="2" />
+						              <xsd:enumeration value="3" />
+						              <xsd:enumeration value="4" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+				 <xsd:element name="AVOR-SHALAV-NIUD" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = נספח ד+א
+4 = נספח ו
+5 = נספח י
+6 = ניוד כספים לא פעילים
+7 = העברת נספח ז-ח
+8 = העברת נספח א' ממפיץ ליצאן  
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                                      <xsd:enumeration value="1" />
+                                      <xsd:enumeration value="4" />
+						              <xsd:enumeration value="5" />
+						              <xsd:enumeration value="6" />
+						              <xsd:enumeration value="7" />
+						              <xsd:enumeration value="8" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+				 <xsd:element name="STATUS-RESHOMA" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = רשומה ראשונה
+2 = רשומה מתקנת
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+			<xsd:element name="MOED-KABALA-MISLAKA" minOccurs="1" nillable="true">
+										  <xsd:annotation>
+											<xsd:documentation>
+			מועד קבלת הנספח במסלקה
+											</xsd:documentation>
+											  </xsd:annotation>
+					<xsd:simpleType>
+						<xsd:restriction base="xsd:date">
+						</xsd:restriction>
+					</xsd:simpleType>
+											</xsd:element>					
+                  <xsd:element name="ILAT-HAAVARA" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = בקשת העמית (להעברה חלקית של הכספים) 
+2 = עיקול בקופה המעבירה (בהעברה חלקית)
+3 = שעבוד בקופה המעבירה (בהעברה חלקית)
+4 = פרעון חוב מעסיק
+5 = אחר
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+						              <xsd:enumeration value="3" />
+						              <xsd:enumeration value="4" />
+						              <xsd:enumeration value="5" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+<xsd:element name="KOD-SHALAV-MISLAKA" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+קוד שלב במסלקה הפנסיונית
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="50" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>						
+			   			   <xsd:element name="MISPAR-MEZAHE-SHALAV" minOccurs="1">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר מזהה שלב
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="([A-F]|\d){8}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){12}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="MISPAR-MEZAHE-KODEM-LASHALAV" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר מזהה קודם לשלב 
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="([A-F]|\d){8}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){12}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="ASMACHTA-MEKASHERET" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+אסמכתא מקשרת לבקשה 
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="([A-F]|\d){8}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){12}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="MISPAR-MISLAKA" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר מסלקה  
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="([A-F]|\d){8}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){12}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+						   <xsd:element name="MISPAR-MISLAKA-KODEM" minOccurs="1" nillable="true">
+                            <xsd:annotation>
+                              <xsd:documentation>
+מספר מסלקה קודם 
+</xsd:documentation>
+                            </xsd:annotation>
+                            <xsd:simpleType>
+                              <xsd:restriction base="xsd:string">
+                                <xsd:pattern value="([A-F]|\d){8}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){4}-([A-F]|\d){12}" />
+                              </xsd:restriction>
+                            </xsd:simpleType>
+                          </xsd:element>
+			 </xsd:sequence>
+              </xsd:complexType>
+               </xsd:element>
+			   	 <xsd:element name="mismachim" minOccurs="0">
+                         <xsd:complexType>
+                          <xsd:sequence>
+				  <xsd:element name="mismachim-Nilvim-Beramat-Eirua" minOccurs="0">
+                         <xsd:complexType>
+                          <xsd:sequence>
+				  <xsd:element name="KOL-MISMACHIM-TZURFU" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = כן
+2 = לא
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+					 <xsd:element name="TFASIM-DRUSHIM-CHATUMIM" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = כן
+2 = לא
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+				 </xsd:sequence>
+              </xsd:complexType>
+             </xsd:element>
+			 <xsd:element name="ZihuiShemMismachBeramatEirua" minOccurs="0" maxOccurs="unbounded">
+                         <xsd:complexType>
+                          <xsd:sequence>
+						  <xsd:element name="SHEM-KOVETZ-SHEL-MISMACH-BERAMAT-EIRUA-VEBERAMAT-LAKOACH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+שם קובץ של מסמך ברמת אירוע וברמת לקוח 
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="100" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+					 <xsd:element name="SUG-MISMACH" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים: 
+1 = תצלום ת.ז +ספח /רישיון נהיגה/דרכון
+7 = אחר 
+23 = מסמך הנמקה
+32 = נספח א חלק 1
+33 = נספח א חלק 2
+34 = נספח א' חלק 3
+35 = נספח ו
+36 = תצלום ת.ז. של האפוטרופוס
+37 = פרוטוקול זכויות חתימה.
+38 = מסמכים בגין העמית בקופה המעבירה
+39 = פסיקתא
+40 = טופס עבור חבר קיבוץ
+41 = אישור בן זוג לניוד
+42= זכאות המעסיק לכספי פיצויים
+43 = נספח ד' חיסכון ארוך טווח לילד
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+						              <xsd:enumeration value="1" />
+									  <xsd:enumeration value="7" />
+									  <xsd:enumeration value="23" />
+						              <xsd:enumeration value="32" />
+						              <xsd:enumeration value="33" />
+						              <xsd:enumeration value="34" />
+						              <xsd:enumeration value="35" />
+						              <xsd:enumeration value="36" />
+						              <xsd:enumeration value="37" />
+						              <xsd:enumeration value="38" />
+						              <xsd:enumeration value="39" />
+						              <xsd:enumeration value="40" />
+									  <xsd:enumeration value="41" />
+									  <xsd:enumeration value="42" />
+									  <xsd:enumeration value="43" />									  
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+					 <xsd:element name="TAARICH-CHTIMA-LAKOACH" minOccurs="1" nillable="true">
+                              <xsd:annotation>
+                                <xsd:documentation>
+תאריך חתימת לקוח/אפוטרופוס
+                                </xsd:documentation>
+								  </xsd:annotation>
+								   <xsd:simpleType>
+									 <xsd:restriction base="xsd:string">
+                       <xsd:pattern value="([0-9]\d{3}((0[1-9]|1[012])(0[1-9]|1\d|2[0-8])|(0[13456789]|1[012])(29|30)|(0[13578]|1[02])31)|(15(8[48]|9[26])|(1[6-9]|[2-9]\d)(0[48]|[13579][26]|[2468][048])|([2468][048]|16|3579[26])00)0229)" />
+                     </xsd:restriction>
+								   </xsd:simpleType>
+								</xsd:element>
+							<xsd:element name="ASMACHTA-KOVEZ" minOccurs="1" nillable="true">
+                      <xsd:annotation>
+                        <xsd:documentation>
+מספר אסמכתא אצל המפיץ/מוסדי 
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="30" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+					 <xsd:element name="CHATIMA-GRAFIT" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+ערכים:
+1 = כן
+2 = לא
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                          </xsd:sequence>
+                        </xsd:complexType>
+                      </xsd:element>
+                          </xsd:sequence>
+                        </xsd:complexType>
+                      </xsd:element>
+				
+					 <xsd:element name="HizunChozer" minOccurs="0" maxOccurs="unbounded">
+             <xsd:complexType>
+               <xsd:sequence>
+					  <xsd:element name="KOD-HIZUN-HOZER" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+                        1 = העברת הכספים מנוגדת להוראות תקנה 2
+						2 = העברת הכספים מנוגדת להוראות תקנה 3
+						3 = על חשבונו של העמית / הרכיב המבוקש בקופה מוטל צו עיקול בסכום מלוא היתרה הצבורה 
+						4 = על חשבונו של העמית / הרכיב המבוקש בקופה מוטל שעבוד שנעשה כדין בסכום מלוא היתרה הצבורה
+						5 = העמית החל לקבל קצבת זקנה מהקופה המעבירה, המחושבת לפי מלוא יתרתו הצבורה / הרכיב המבוקש
+						6 = העמית הגיש בקשה לקבלת קצבת נכות שעודה תלויה ועומדת
+						7 = זכאותו של העמית לקבל קצבת נכות מהקופה אושרה וטרם פקעה
+						8 = בחשבונו של העמית בקופה קיימת יתרת חוב בשל הלוואה שטרם נפרעה במלואה
+						9 = העמית נפטר
+						10 = העמית הגיש בקשת העברה לקרן חדשה זכאית מקופת גמל שאינה קרן חדשה זכאית והוא ממשיך להיות עמית פעיל בקופת הגמל המעבירה
+						11 = החשבון נסגר
+						12 = הבקשה פקעה / מועד החתימה מאוחר מהמועד הקבוע בתקנות
+						13 = לא צורף צילום ת.ז של העמית ושל האפוטרופוס ככל שנדרש
+						14 = לא צורף פרוטוקול זכויות חתימה אם נדרש
+						15 = הבקשה אינה חתומה על ידי העמית, או על ידי אפוטרופוס, לפי העניין
+						16 = לא צוין תאריך חתימת העמית/בן זןג/אפוטרופוס 
+						17 = מספר חשבון/פוליסה שגוי של הקופה המעבירה
+						19 = לא צורפה בקשת העברה (נספח א)
+						21 = לא צוין אישור מס הכנסה (לא רלוונטי לביטוח)
+						22 = התקבל ותקין (עבור נספחים ז'+ח', ובקשת הביטול התקבלה ואושרה עבור נספח ו')
+						23 = התקבלה הודעת ביטול בקשת העברה אך מכיוון שאירע מקרה ביטוח לאחר המועד הקובע, בקשת הביטול אינה תקפה
+						24 = התקבלה הודעת ביטול לבקשת העברה והתקבלו הפקדות אצל הקופה המקבלת
+						25 = היתרה הצבורה המדווחת אינה מתאימה לדיווחים שהעביר החוסך/מפיץ / בקשת הניוד
+						26 = לא דווחו התנועות הכספיות כנדרש / חסרות תנועות כספיות
+						28 = קיימת אי התאמה בין תאריך העברה המדווח לזה המדווח בבנק
+						30 = קיימת אי התאמה בתשלום ביחס לדיווח בבלוק העברה
+						32 = היעדר התאמה בין סך הכספים שדווחו שהועברו לבין סך הכספים המדווחים בבנק
+						33 = פירוט הכיסוי הביטוחי חסרים (נספח ז')
+						34 = לעמית אין זכויות במערכת/העמית אינו מוכר
+						35 = לא רשומות לזכות העמית זכויות ברכיב המבוקש
+						36 = לא צורף מסמך "אישור בן זוג לניוד"
+						37 = אחר
+						38 = הצהרות המבוטח אינן מאפשרות ניוד
+						39 = תקופת התשואות המדווחת שגויה / חסרה
+						40 = התקבלה הפקדה בארבעת החודשים שקדמו למועד קבלת הבקשה
+						41 = התקבלה בקשה להעברת פנסיה כללית ולעמית פנסיה מקיפה בקופה המעבירה
+						42 = הטופס אינו תואם את הנתונים שהועברו בממשק
+						43 = הטופס/המסמך אינו מלא/ברור/בתוקף
+						44 = לעמית אין מוצר מתאים לביצוע ניוד נכנס, נדרש להשלים את תהליך ההצטרפות
+						45 = לא הועברה ריבית פיגורים כנדרש
+						46 = לא צורף "אישור הקיבוץ להעברת הכספים"
+						47 = לא צורף מסמך "פסיקתא"
+						48 = הבקשה שהועברה על ידי מבוטלת אך עדיין לא התקבלה הפקדה ראשונה (ישמש מפיץ וקופה מקבלת בלבד)
+						49= בקשת הניוד נדחית  בעילה של זכאות המעסיק לפיצויים לפי סעיפים 1 או 3 לסעיף 23(א)(3)(ב) או סעיף 23(א)(3)(ד) לחוק הפיקוח על שירותים פיננסים (קופות גמל), התשס"ה-2005.
+						50 = בקשת הניוד התקבלה, מחכים להשלמת תהליך ההצטרפות
+						51= חשבון בסיכון, נדרש לבצע "הכר את הלקוח"
+						52 = הבקשה שהתקבלה הינה בקשה כפולה. מספר מסלקה כפול מופיע בבלוק פירוט שגיאה ברמת רשומה
+						53 = פער בין דיווח המעסיקים בבלוקים (מעסיק קיים בבלוק יתרות/הפקדות  ולא קיים בבלוק מעסיקים ) 
+						54 =מיפוי הערכים בשדות המגדירים את שכבות הכסף בקופה המעבירה אינו תקין 
+						55 =בלוק חסר
+						56 = לא בוצעה בדיקת סדין מאחר והכסף לא אותר
+						57 = הממשק הועבר בטעות - מבוטל על ידי קופה מעבירה
+						60 = לא דווח מספר מזהה עבור מעסיק מסוים
+						61 = דיווח הרכיבים אינו עמוד בתקנה 19
+						62 = סכום היתרה הצבורה אינו תואם לסך היתרות
+						63 = דיווח לא תקין לעצמאי
+						64 = תאריך ההצטרפות אינו תקין
+						65 = אין התאמה בין בלוק הפקדות לבלוק פרטי העברת כספים
+						66 = דווחו כספי פיצויים בבלוק פירוט יתרות אך ללא פרטי מעסיק
+						67 = לא ניתן לבצע העברת כספים בהתאם לתנאי הפוליסה
+						68 = חשבון\פוליסת שדווח בנספח א+ד אינו תואם את מספר חשבון/פוליסה בסדין של קופה מעבירה
+						69 = הועבר ערך לא חוקי בתאריך התחלת קרן השתלמות - מקרן השתלמות לקרן השתלמות
+						70 = הסכום שדווח בבלוק יתרות פטורות גבוה מהסכום שדווח בבלוק יתרות
+						71 = קרן תשלומים פטורים צמודה עם רווחים בסוג תשלום פטור=4 אינו שווה לסכום שדווח בבלוק יתרות תחת קוד תכולת שכבה 14
+						72 = בבלוק יתרות פטורות תחת סוג תשלום פטור =4 , אינן מכילות ערך ולידי בשדה "מועד יצירת הסכום הפטור"
+						73 = בשכבת הכספים דווחו כספים עם רווח ללא קרן- בהעברה מקופת גמל לקופת גמל
+						74 = לא ניתן להעביר כספים מקרן השתלמות כאשר הקרן אינה נזילה
+						75 = סכום יתרה לתקופה גדול מסכום ההפקדות/ סכום יתרה לתקופה קטן מסכום ההפקדות 
+						קוד 77 = סכום התחשבנות על כספי פיצויים אינו שווה לסכום שדווח בשדות  "סכום שנוכה ממנו מס" + "הסכום שבגינו נוצל פטור לפי סעיף 9 (7א)"
+						קוד 78=לא ניתן לדווח נתוני התחשבנות על כספי פיצויים עבור מעסיק נוכחי
+						קוד 79= דווח  בשדה "סוג תנועה" ערך 9 = "ניכוי מס" ולא דווחו עבור אותו מעסיק השדות הרלבנטיים לעניין ההתחשבנות בבלוק "מעסיק"
+						קוד 80 = קיימת שגיאה בנתונים המדווחים בבלוק תקופת אכשרה - עדכוני ביטוח
+						קוד 81 = קיימת שגיאה בנתונים המדווחים בבלוק תקופת אכשרה - שכר קובע
+						82 = לא ניתן להעביר תאריך הפסקת עבודה למעסיק שמוגדר בשדה סטטוס (מעסיק) כמעסיק נוכחי
+						83 = אין התאמה בסטטוס מעסיק המדווח בשדה 161 למדווח בשדה 171 בגיליון נספחים ז' ו ח'
+						קודים 84-100 הינם קודים עתידיים
+                        </xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:int">
+                          <xsd:enumeration value="1" />
+                          <xsd:enumeration value="2" />
+					      <xsd:enumeration value="3" />
+                          <xsd:enumeration value="4" />
+						  <xsd:enumeration value="5" />
+                          <xsd:enumeration value="6" />
+						  <xsd:enumeration value="7" />
+                          <xsd:enumeration value="8" />
+					      <xsd:enumeration value="9" />
+                          <xsd:enumeration value="10" />
+					      <xsd:enumeration value="11" />
+                          <xsd:enumeration value="12" />
+					      <xsd:enumeration value="13" />
+                          <xsd:enumeration value="14" />
+					      <xsd:enumeration value="15" />
+                          <xsd:enumeration value="16" />
+						  <xsd:enumeration value="17" />
+                          <xsd:enumeration value="19" />
+                          <xsd:enumeration value="21" />
+                          <xsd:enumeration value="22" />
+					      <xsd:enumeration value="23" />
+                          <xsd:enumeration value="24" />
+					      <xsd:enumeration value="25" />
+                          <xsd:enumeration value="26" />
+						  <xsd:enumeration value="28" />
+						  <xsd:enumeration value="30" />
+					      <xsd:enumeration value="32" />
+				          <xsd:enumeration value="33" />
+                          <xsd:enumeration value="34" />
+					      <xsd:enumeration value="35" />
+                          <xsd:enumeration value="36" />
+					      <xsd:enumeration value="37" />
+                          <xsd:enumeration value="38" />
+				          <xsd:enumeration value="39" />
+                          <xsd:enumeration value="40" />
+                          <xsd:enumeration value="41" />
+						  <xsd:enumeration value="42" />
+                          <xsd:enumeration value="43" />
+				          <xsd:enumeration value="44" />
+                          <xsd:enumeration value="45" />
+                          <xsd:enumeration value="46" />
+						  <xsd:enumeration value="47" />
+                          <xsd:enumeration value="48" />
+				          <xsd:enumeration value="49" />
+                          <xsd:enumeration value="50" />
+                          <xsd:enumeration value="51" />
+						  <xsd:enumeration value="52" />
+                          <xsd:enumeration value="53" />
+						  <xsd:enumeration value="54" />
+                          <xsd:enumeration value="55" />
+				          <xsd:enumeration value="56" />
+                          <xsd:enumeration value="57" />
+                          <xsd:enumeration value="58" />
+						  <xsd:enumeration value="59" />
+                          <xsd:enumeration value="60" />
+						  <xsd:enumeration value="61" />
+                          <xsd:enumeration value="62" />
+				          <xsd:enumeration value="63" />
+                          <xsd:enumeration value="64" />
+                          <xsd:enumeration value="65" />
+						  <xsd:enumeration value="66" />
+                          <xsd:enumeration value="67" />
+						  <xsd:enumeration value="68" />
+                          <xsd:enumeration value="69" />
+				          <xsd:enumeration value="70" />
+                          <xsd:enumeration value="71" />
+                          <xsd:enumeration value="72" />
+						  <xsd:enumeration value="73" />
+                          <xsd:enumeration value="74" />
+						  <xsd:enumeration value="75" />
+                          <xsd:enumeration value="77" />
+						  <xsd:enumeration value="78" />
+                          <xsd:enumeration value="79" />
+                          <xsd:enumeration value="80" />
+                          <xsd:enumeration value="81" />
+                          <xsd:enumeration value="82" />
+                          <xsd:enumeration value="83" />						  
+                        </xsd:restriction>
+                      </xsd:simpleType>
+                    </xsd:element>
+                <xsd:element name="TAARICH-KABALAT-NISPACH-MIS" minOccurs="1" nillable="true">
+                              <xsd:annotation>
+                                <xsd:documentation>
+תאריך קבלת הנספח מהמסלקה
+                                </xsd:documentation>
+								  </xsd:annotation>
+						<xsd:simpleType>
+							<xsd:restriction base="xsd:date">
+							</xsd:restriction>
+						</xsd:simpleType>
+				</xsd:element>
+					 <xsd:element name="PerutShgiha" minOccurs="0">
+             <xsd:complexType>
+               <xsd:sequence>
+					   <xsd:element name="PERUT-HAILA" minOccurs="1">
+                      <xsd:annotation>
+                        <xsd:documentation>
+פירוט לקוד שגיאה ברמת רשומה
+</xsd:documentation>
+                      </xsd:annotation>
+                      <xsd:simpleType>
+                        <xsd:restriction base="xsd:string">
+                          <xsd:maxLength value="500" />
+                        </xsd:restriction>
+                         </xsd:simpleType>
+                          </xsd:element>
+               </xsd:sequence>
+             </xsd:complexType>
+           </xsd:element>
+		                  </xsd:sequence>
+             </xsd:complexType>
+           </xsd:element>
+                   </xsd:sequence>
+                 </xsd:complexType>
+               </xsd:element>
+                        </xsd:sequence>
+                      </xsd:complexType>
+                    </xsd:element>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+             </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+  <xsd:element name="ReshumatSgira" minOccurs="1">
+                         <xsd:complexType>
+                          <xsd:sequence>
+						     <xsd:element name="MISPAR-YESHUYUT-LAKOACH-BAKOVETZ" minOccurs="1">
+                                        <xsd:annotation>
+                                          <xsd:documentation>
+מספר ישויות לקוח בקובץ
+</xsd:documentation>
+                                        </xsd:annotation>
+                                        <xsd:simpleType>
+                                          <xsd:restriction base="xsd:int">
+                                            <xsd:totalDigits value="5" />
+                                            <xsd:minInclusive value="0" />
+                                          </xsd:restriction>
+                                        </xsd:simpleType>
+                                      </xsd:element>
+						   <xsd:element name="MISPAR-BAKASHOT" minOccurs="1">
+                                        <xsd:annotation>
+                                          <xsd:documentation>
+מספר רשומות
+</xsd:documentation>
+                                        </xsd:annotation>
+                                        <xsd:simpleType>
+                                          <xsd:restriction base="xsd:int">
+                                            <xsd:totalDigits value="6" />
+                                            <xsd:minInclusive value="0" />
+                                          </xsd:restriction>
+                                        </xsd:simpleType>
+                                      </xsd:element>
+						   </xsd:sequence>
+                        </xsd:complexType>
+                      </xsd:element>
+			      </xsd:sequence>
+                </xsd:complexType>
+             </xsd:element>
+            </xsd:schema>

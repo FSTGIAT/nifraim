@@ -33,10 +33,40 @@ SCHEMA_BY_SERVICE: dict[str, str] = {
     "FEDBKA": "feedback_009.xsd",
     "FEDBKB": "feedback_009.xsd",
     "WRNING": "feedback_009.xsd",
+    # פיצויים — three schemas, split by the action-code pairs they carry.
+    "EMPSV1": "pitzuim_9301_9303_005.xsd",
+    "EMPSV2": "pitzuim_9300_9302_005.xsd",
+    "EMPSV3": "pitzuim_9305_9306_005.xsd",
+    # מעסיקים
+    "EMPONG": "maasikim_shotef_006.xsd",
+    "EMPNEG": "maasikim_shliliim_006.xsd",
+    "EMPFED": "maasikim_mesakem_006.xsd",
+    "EMPYRL": "maasikim_shnati_006.xsd",
     # Holdings/טרום-ייעוץ answers are split by product family, which the filename
     # carries in PPP — resolved by `schema_for()` below.
     "CONSLT": "",
     "HOLDNG": "",
+    "HOLCON": "",
+}
+
+# `SUG-MIMSHAK` is declared INSIDE the file and is the authoritative interface
+# id — a filename can be wrong or absent, the envelope cannot. Measured by
+# reading the enumeration out of each vendored schema. Note two are ambiguous
+# on their own: 1/2/3 covers all four holdings families and 17 covers all three
+# פיצויים variants, so the filename still decides within those groups.
+SCHEMA_BY_SUG_MIMSHAK: dict[str, str] = {
+    "6": "events_007.xsd",
+    "20": "feedback_009.xsd",
+    "12": "maasikim_shotef_006.xsd",
+    "13": "maasikim_shliliim_006.xsd",
+    "14": "maasikim_mesakem_006.xsd",
+    "18": "maasikim_mesakem_006.xsd",
+    "16": "maasikim_shnati_006.xsd",
+    "30": "niyud_haavaraamit_003.xsd",
+    "31": "niyud_hizunminhali_003.xsd",
+    "32": "niyud_nispachpigurim_003.xsd",
+    "33": "niyud_nispasha_003.xsd",
+    "35": "niyud_hizuncaspi_003.xsd",
 }
 
 SCHEMA_BY_PRODUCT_FAMILY: dict[str, str] = {
@@ -63,17 +93,44 @@ class ValidationResult:
         return {"ok": self.ok, "schema": self.schema, "errors": self.errors}
 
 
-def schema_for(*, service: str | None, product_family: str | None = None) -> str | None:
+def sug_mimshak(xml: bytes) -> str | None:
+    """Read `SUG-MIMSHAK` out of the envelope. Cheap, namespace-agnostic, and
+    does not require the file to have a legal name."""
+    import re
+
+    m = re.search(rb"<SUG-MIMSHAK>\s*([0-9]+)\s*</SUG-MIMSHAK>", xml)
+    return m.group(1).decode() if m else None
+
+
+def schema_for(
+    *,
+    service: str | None,
+    product_family: str | None = None,
+    xml: bytes | None = None,
+) -> str | None:
     """Pick the schema file for a service id, using the product family where the
-    service alone does not determine it (holdings answers are per-family)."""
+    service alone does not determine it (holdings answers are per-family).
+
+    When `xml` is supplied and the filename does not resolve, fall back to the
+    file's own `SUG-MIMSHAK`. That matters for anything the מסלקה sends whose
+    name we do not recognise — an unrecognised name is exactly when you most
+    want to know what the file actually is."""
     if not service:
-        return None
+        return _by_envelope(xml)
     name = SCHEMA_BY_SERVICE.get(service.upper())
     if name:
         return name
-    if service.upper() in ("CONSLT", "HOLDNG"):
-        return SCHEMA_BY_PRODUCT_FAMILY.get((product_family or "").upper())
-    return None
+    if service.upper() in ("CONSLT", "HOLDNG", "HOLCON"):
+        fam = SCHEMA_BY_PRODUCT_FAMILY.get((product_family or "").upper())
+        if fam:
+            return fam
+    return _by_envelope(xml)
+
+
+def _by_envelope(xml: bytes | None) -> str | None:
+    if not xml:
+        return None
+    return SCHEMA_BY_SUG_MIMSHAK.get(sug_mimshak(xml) or "")
 
 
 @lru_cache(maxsize=16)
