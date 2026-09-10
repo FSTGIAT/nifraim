@@ -119,8 +119,17 @@ class Settings(BaseSettings):
     MASLAKA_SFTP_INBOX: str = "/inbox"
     MASLAKA_SFTP_ARCHIVE: str = "/archive"
     # Our identity in outbound XML (filled in once we have a clearinghouse account).
+    # WHO WE ARE on the wire. `MASLAKA_AGENT_ID` is the identifier itself and
+    # `MASLAKA_SENDER_ID_TYPE` says what KIND it is — they must agree, and the
+    # מסלקה rejects a mismatch. Per the vault-opening form, Nifraim registered
+    # under ח.פ 558638623 (חברה מנהלת AND מתפעלת), so the sender is the COMPANY:
+    # type "1". Swiftness's published sample happens to show an individual
+    # licence holder (type "3", a ת"ז), which is the other legitimate case.
+    #   1 = ח.פ   ·   3 = ת"ז
+    # NB `MASLAKA_AGENT_NUMBER` holds a NAME (SHEM-GOREM-SHOLECH), not a number.
     MASLAKA_AGENT_NUMBER: str = ""
     MASLAKA_AGENT_ID: str = ""
+    MASLAKA_SENDER_ID_TYPE: str = "1"
     # Contact block on every outbound ממשק אירועים file (`NetuneiGoremSholech`).
     # The real Swiftness sample populates all five; they identify a HUMAN the
     # clearinghouse can call about a request, not the licence holder.

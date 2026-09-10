@@ -198,7 +198,9 @@ def build_events_request(
 
     sender = _sub(header, "NetuneiGoremSholech")
     _sub(sender, "KOD-SHOLECH", "3")            # 3 = בעל רישיון
-    _sub(sender, "SUG-MEZAHE-SHOLECH", "3")     # 3 = ת.ז.
+    # Must match the KIND of MISPAR-ZIHUI-SHOLECH below: 1 = ח.פ, 3 = ת"ז.
+    # Nifraim is registered on the vault form under ח.פ, so "1".
+    _sub(sender, "SUG-MEZAHE-SHOLECH", settings.MASLAKA_SENDER_ID_TYPE or "1")
     _sub(sender, "MISPAR-ZIHUI-SHOLECH", agent_id)
     _sub(sender, "SHEM-GOREM-SHOLECH", agent_name)
     _sub(sender, "SHEM-PRATI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_FIRST_NAME)
