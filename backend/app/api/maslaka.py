@@ -52,8 +52,9 @@ def require_maslaka_enabled() -> None:
         raise HTTPException(
             status_code=503,
             detail=(
-                "המסלקה הפנסיונית עדיין לא פעילה — הכספת טרם נפתחה. "
-                "(MASLAKA_ENABLED=false)"
+                "המסלקה הפנסיונית כבויה בסביבה הזו (MASLAKA_ENABLED=false). "
+                "הכספת עצמה כן פתוחה — קבצים נשלחים אליה בהצלחה מה-Gateway. "
+                "מה שחסר הוא הפעלה שלנו כבעל רישיון שולח אצל המסלקה."
             ),
         )
 
