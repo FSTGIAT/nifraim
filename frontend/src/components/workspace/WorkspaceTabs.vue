@@ -169,9 +169,9 @@ const tabs = [
     ink: 'var(--tab-ai-ink)',
   },
   {
-    id: 'maslaka-test',
-    label: 'בדיקות מסלקה',
-    description: 'פענוח קבצי מסלקה אמיתיים מול הקוד',
+    id: 'maslaka',
+    label: 'מסלקה פנסיונית',
+    description: 'משיכת נתוני חיסכון פנסיוני של לקוח',
     accent: 'var(--tab-maslaka)',
     accentGlow: 'var(--tab-maslaka-wash)',
     ink: 'var(--tab-maslaka)',

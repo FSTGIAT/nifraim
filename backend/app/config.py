@@ -121,6 +121,19 @@ class Settings(BaseSettings):
     # Our identity in outbound XML (filled in once we have a clearinghouse account).
     MASLAKA_AGENT_NUMBER: str = ""
     MASLAKA_AGENT_ID: str = ""
+    # Contact block on every outbound ממשק אירועים file (`NetuneiGoremSholech`).
+    # The real Swiftness sample populates all five; they identify a HUMAN the
+    # clearinghouse can call about a request, not the licence holder.
+    MASLAKA_CONTACT_FIRST_NAME: str = ""
+    MASLAKA_CONTACT_LAST_NAME: str = ""
+    MASLAKA_CONTACT_PHONE: str = ""
+    MASLAKA_CONTACT_MOBILE: str = ""
+    MASLAKA_CONTACT_EMAIL: str = ""
+    # KOD-SVIVAT-AVODA / the .TST-vs-.DAT filename suffix. True while integrating
+    # against the TEST vault. This is the switch that decides whether a real
+    # request reaches the live clearinghouse, and getting it wrong is SILENT —
+    # so it is explicit rather than derived from MASLAKA_ENABLED.
+    MASLAKA_TEST_ENVIRONMENT: bool = True
     # Lifecycle + retention knobs.
     MASLAKA_RETENTION_DAYS: int = 90
     MASLAKA_INQUIRY_TIMEOUT_DAYS: int = 7

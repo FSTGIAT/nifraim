@@ -31,7 +31,8 @@ from pathlib import Path
 
 from app.config import settings
 from app.services.maslaka import orchestration
-from app.services.maslaka.filenames import parse_filename
+from app.services.maslaka.events import ACTION_CODES, build_events_request
+from app.services.maslaka.filenames import build_filename, parse_filename
 from app.services.mimshak import parse_mimshak_dat
 
 router = APIRouter()
@@ -304,6 +305,95 @@ async def inspect_sample(name: str, user: User = Depends(get_current_user)):
     except Exception as e:                                   # noqa: BLE001
         payload["error"] = f"{type(e).__name__}: {e}"
     return payload
+
+
+@router.get("/actions")
+async def list_actions(user: User = Depends(get_current_user)):
+    """The ממשק אירועים action codes we support (נספח י\"א)."""
+    return [
+        {
+            "code": a.code,
+            "label": a.label,
+            "note": a.note,
+            "needs_customer": a.needs_customer,
+        }
+        for a in ACTION_CODES.values()
+    ]
+
+
+@router.post("/preview")
+async def preview_request(
+    payload: dict,
+    user: User = Depends(get_current_user),
+):
+    """Build the EXACT request we would send — XML plus filename — and return it
+    WITHOUT transporting anything.
+
+    This is why the console works before Swiftness issues our credentials: the
+    envelope, the action code and the נספח ו' filename are all fully determined
+    without a vault. `allow_placeholder_identity` fills the agent number with a
+    visible `<ת.ז. הסוכן>` marker so it is obvious what is still missing rather
+    than looking configured.
+    """
+    action_code = str(payload.get("action_code") or "").strip()
+    if action_code not in ACTION_CODES:
+        raise HTTPException(status_code=400, detail=f"קוד פעולה לא מוכר: {action_code}")
+
+    env = str(payload.get("environment") or "TST").upper()
+    if env not in ("TST", "PRD"):
+        raise HTTPException(status_code=400, detail="environment must be TST or PRD")
+
+    customer_id = str(payload.get("customer_id_number") or "").strip()
+    action = ACTION_CODES[action_code]
+    if action.needs_customer and not customer_id:
+        raise HTTPException(status_code=400, detail="פעולה זו דורשת מספר זהות של לקוח")
+
+    try:
+        req = build_events_request(
+            action_code=action_code,
+            customer_id_number=customer_id or None,
+            customer_first_name=str(payload.get("first_name") or ""),
+            customer_last_name=str(payload.get("last_name") or ""),
+            sequence=int(payload.get("sequence") or 1),
+            environment_code="1" if env == "PRD" else "2",
+            allow_placeholder_identity=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    agent_id = settings.MASLAKA_AGENT_ID or "0"
+    filename = build_filename(
+        direction="001",                       # בעל רישיון → מסלקה
+        sender_id=agent_id,
+        service="EVENTS",
+        version="007",
+        sequence=int(payload.get("sequence") or 1),
+        product_family="000",                  # only אחזקות/טרום-ייעוץ files name a family
+        file_type="DAT" if env == "PRD" else "TST",
+    )
+
+    # State what is still missing rather than letting a rendered request imply
+    # it is ready to send.
+    blockers = []
+    if not settings.MASLAKA_AGENT_ID or not settings.MASLAKA_AGENT_NUMBER:
+        blockers.append("חסרים MASLAKA_AGENT_ID / MASLAKA_AGENT_NUMBER — טרם התקבלו מסוויפטנס")
+    if not settings.MASLAKA_ENABLED:
+        blockers.append("MASLAKA_ENABLED=false — הכספת עדיין סגורה")
+    if not settings.MASLAKA_VAULT_HOST:
+        blockers.append("השרת הזה אינו שרת הכספת — שליחה מתבצעת רק מה-Gateway")
+    if action.needs_customer:
+        blockers.append("נדרש ייפוי כוח בתוקף (1700) לפני בקשת מידע על לקוח")
+
+    return {
+        "action": {"code": action.code, "label": action.label, "note": action.note},
+        "environment": env,
+        "filename": filename,
+        "filename_decoded": (parse_filename(filename).to_dict() if parse_filename(filename) else None),
+        "xml": req.xml.decode("utf-8"),
+        "record_reference": req.record_reference,
+        "blockers": blockers,
+        "sent": False,
+    }
 
 
 # ─── Internal: serializer ──────────────────────────────────────────────────

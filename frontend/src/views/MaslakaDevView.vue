@@ -2,8 +2,9 @@
   <div class="mt-wrap">
     <header class="mt-head">
       <div>
-        <h3>בדיקות מסלקה</h3>
-        <span class="mt-sub">קבצי מסלקה אמיתיים, מפוענחים מול הקוד שלנו — שם הקובץ, ה-XML המקורי, והשורות שהיו נשמרות</span>
+        <router-link to="/workspace" class="mt-back">חזרה למערכת</router-link>
+        <h3>קונסולת מסלקה — פנימי</h3>
+        <span class="mt-sub">כלי פיתוח. שני חלקים: מה אנחנו <strong>שולחים</strong> (בונה בקשה אמיתית בלי לשלוח), ומה אנחנו <strong>מקבלים</strong> (קבצי מסלקה אמיתיים מול הפרסר).</span>
       </div>
       <div class="mt-env" :class="{ 'mt-env--prod': envIsProd }">
         <span class="mt-env-dot"></span>{{ envIsProd ? 'ייצור' : 'בדיקות' }}
@@ -12,9 +13,86 @@
 
     <div v-if="loading && !samples.length" class="mt-loading"><div class="spinner"></div></div>
 
-    <p v-else-if="error" class="mt-error">{{ error }}</p>
+    <p v-if="error" class="mt-error">{{ error }}</p>
 
-    <div v-else class="mt-body">
+    <div v-else class="mt-modes">
+      <button class="mt-mode" :class="{ 'mt-mode--on': mode === 'out' }" @click="mode = 'out'">בקשות יוצאות</button>
+      <button class="mt-mode" :class="{ 'mt-mode--on': mode === 'in' }" @click="mode = 'in'">קבצים נכנסים</button>
+    </div>
+
+    <!-- OUTBOUND: build the exact request, per action code, per environment -->
+    <div v-if="!loading && !error && mode === 'out'" class="mt-body">
+      <nav class="mt-rail" aria-label="קודי פעולה">
+        <div class="mt-group">
+          <h4>קוד פעולה</h4>
+          <button
+            v-for="a in actions"
+            :key="a.code"
+            class="mt-item"
+            :class="{ 'mt-item--on': a.code === actionCode }"
+            @click="actionCode = a.code; runPreview()"
+          >
+            <span class="mt-item-title">{{ a.label }}</span>
+            <span class="mt-item-meta ltr-number">{{ a.code }}</span>
+          </button>
+        </div>
+      </nav>
+
+      <section class="mt-main">
+        <div class="mt-panel">
+          <div class="mt-form">
+            <label>
+              <span>סביבה</span>
+              <select v-model="environment" @change="runPreview()">
+                <option value="TST">בדיקות (TST)</option>
+                <option value="PRD">ייצור (PRD)</option>
+              </select>
+            </label>
+            <label v-if="currentAction && currentAction.needs_customer">
+              <span>מספר זהות לקוח</span>
+              <input v-model="customerId" dir="ltr" placeholder="381788223" @keyup.enter="runPreview()" />
+            </label>
+            <label v-if="currentAction && currentAction.needs_customer">
+              <span>שם פרטי</span>
+              <input v-model="firstName" @keyup.enter="runPreview()" />
+            </label>
+            <label v-if="currentAction && currentAction.needs_customer">
+              <span>שם משפחה</span>
+              <input v-model="lastName" @keyup.enter="runPreview()" />
+            </label>
+            <button class="mt-primary" @click="runPreview()">בנה בקשה</button>
+          </div>
+          <p v-if="currentAction" class="mt-note">{{ currentAction.note }}</p>
+        </div>
+
+        <p v-if="previewError" class="mt-error">{{ previewError }}</p>
+
+        <template v-if="preview">
+          <div class="mt-ruler-card">
+            <div class="mt-ruler-name ltr-number">{{ preview.filename }}</div>
+            <div v-if="preview.filename_decoded" class="mt-ruler">
+              <div v-for="seg in previewSegments" :key="seg.key" class="mt-seg" :style="{ flexGrow: seg.len }">
+                <span class="mt-seg-raw ltr-number">{{ seg.raw }}</span>
+                <span class="mt-seg-label">{{ seg.label }}</span>
+                <span class="mt-seg-val">{{ seg.value }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="preview.blockers.length" class="mt-blockers">
+            <h4>לא נשלח — מה עוד חסר</h4>
+            <ul><li v-for="(b, i) in preview.blockers" :key="i">{{ b }}</li></ul>
+          </div>
+
+          <div class="mt-panel">
+            <h4>ה-XML שהיינו שולחים</h4>
+            <pre class="mt-xml" dir="ltr">{{ prettyXml }}</pre>
+          </div>
+        </template>
+      </section>
+    </div>
+
+    <div v-else-if="!loading && !error && mode === 'in'" class="mt-body">
       <!-- Sample picker -->
       <nav class="mt-rail" aria-label="קבצי דוגמה">
         <div v-for="group in grouped" :key="group.label" class="mt-group">
@@ -139,7 +217,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import api from '../../api/client.js'
+import api from '../api/client.js'
 
 const samples = ref([])
 const selectedName = ref('')
@@ -148,6 +226,68 @@ const loading = ref(true)
 const detailLoading = ref(false)
 const error = ref('')
 const showXml = ref(false)
+
+// Two halves of one protocol: what we send, and what comes back.
+const mode = ref('out')
+const actions = ref([])
+const actionCode = ref('9100')
+const environment = ref('TST')
+const customerId = ref('381788223')
+const firstName = ref('שמעון')
+const lastName = ref('לוי')
+const preview = ref(null)
+const previewError = ref('')
+
+const currentAction = computed(() => actions.value.find(a => a.code === actionCode.value) || null)
+
+const previewSegments = computed(() => buildSegments(preview.value?.filename_decoded))
+
+// Indent the flat XML so the envelope is readable. The builder emits it
+// unindented because whitespace between elements is not ours to invent on a
+// file a regulator parses — this is display only.
+const prettyXml = computed(() => {
+  const raw = preview.value?.xml || ''
+  if (!raw) return ''
+  let depth = 0
+  return raw
+    .replace(/></g, '>\n<')
+    .split('\n')
+    .map(line => {
+      if (/^<\//.test(line)) depth = Math.max(0, depth - 1)
+      const out = '  '.repeat(depth) + line
+      if (/^<[^/?!][^>]*[^/]>$/.test(line) && !/^<\//.test(line)) depth += 1
+      return out
+    })
+    .join('\n')
+})
+
+async function loadActions() {
+  try {
+    const { data } = await api.get('/maslaka/actions')
+    actions.value = data
+    if (data.length && !data.some(a => a.code === actionCode.value)) actionCode.value = data[0].code
+    await runPreview()
+  } catch (e) {
+    previewError.value = 'לא ניתן לטעון את קודי הפעולה'
+  }
+}
+
+async function runPreview() {
+  previewError.value = ''
+  try {
+    const { data } = await api.post('/maslaka/preview', {
+      action_code: actionCode.value,
+      environment: environment.value,
+      customer_id_number: customerId.value,
+      first_name: firstName.value,
+      last_name: lastName.value,
+    })
+    preview.value = data
+  } catch (e) {
+    preview.value = null
+    previewError.value = e?.response?.data?.detail || 'בניית הבקשה נכשלה'
+  }
+}
 
 // A sample is only "production" if its file type says DAT. The TST/DAT switch is
 // the one thing that decides whether a real request reaches the live vault, so it
@@ -166,8 +306,9 @@ const grouped = computed(() => {
 
 // The נספח ו' grammar, in file order. `len` drives each segment's width so the
 // ruler is proportional to the real character budget.
-const segments = computed(() => {
-  const f = detail.value?.filename
+const segments = computed(() => buildSegments(detail.value?.filename))
+
+function buildSegments(f) {
   if (!f) return []
   return [
     { key: 'dir', len: 3, raw: f.direction, label: 'כיוון', value: f.direction_label },
@@ -179,7 +320,7 @@ const segments = computed(() => {
     { key: 'seq', len: 4, raw: f.sequence, label: 'רץ יומי', value: f.sequence },
     { key: 'typ', len: 3, raw: f.file_type, label: 'סוג', value: f.file_type_label },
   ]
-})
+}
 
 function formatKb(bytes) {
   return Math.max(1, Math.round((bytes || 0) / 1024))
@@ -225,11 +366,51 @@ async function select(name) {
   }
 }
 
-onMounted(load)
+onMounted(() => { load(); loadActions() })
 </script>
 
 <style scoped>
-.mt-wrap { display: flex; flex-direction: column; gap: 18px; }
+.mt-wrap {
+  display: flex; flex-direction: column; gap: 18px;
+  max-width: 1320px; margin: 0 auto; padding: 28px 24px 60px;
+}
+.mt-back {
+  display: inline-block; margin-bottom: 8px; font-size: 0.8rem;
+  color: var(--text-secondary); text-decoration: none;
+}
+.mt-back:hover { color: var(--tab-maslaka); }
+
+.mt-modes { display: flex; gap: 8px; }
+.mt-mode {
+  padding: 8px 16px; font-family: inherit; font-size: 0.86rem; cursor: pointer;
+  background: var(--surface); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.mt-mode--on {
+  background: var(--tab-maslaka-wash); color: var(--tab-maslaka);
+  border-color: var(--tab-maslaka); font-weight: 600;
+}
+
+.mt-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.mt-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--text-secondary); }
+.mt-form input, .mt-form select {
+  padding: 7px 10px; font-family: inherit; font-size: 0.86rem; min-width: 150px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--text-primary);
+}
+.mt-primary {
+  padding: 8px 18px; font-family: inherit; font-size: 0.86rem; font-weight: 600;
+  cursor: pointer; color: #fff; background: var(--tab-maslaka);
+  border: 1px solid var(--tab-maslaka); border-radius: var(--radius-sm);
+}
+
+.mt-blockers {
+  padding: 14px 16px; border-radius: var(--radius-md);
+  background: rgba(249, 169, 55, 0.08); border: 1px solid rgba(249, 169, 55, 0.35);
+}
+.mt-blockers h4 { margin: 0 0 8px; font-size: 0.9rem; color: var(--text-primary); }
+.mt-blockers ul { margin: 0; padding-inline-start: 18px; }
+.mt-blockers li { font-size: 0.83rem; color: var(--text-primary); line-height: 1.7; }
 
 .mt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .mt-head h3 { margin: 0 0 4px; font-size: 1.35rem; font-weight: 700; color: var(--text-primary); }

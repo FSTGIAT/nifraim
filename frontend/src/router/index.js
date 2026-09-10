@@ -54,6 +54,13 @@ const routes = [
     meta: { requiresAuth: true, requiresPaid: true },
   },
   {
+    path: '/dev/maslaka',
+    name: 'maslaka-dev',
+    component: () => import('../views/MaslakaDevView.vue'),
+    // Internal protocol console — deliberately NOT in any nav. Reached by URL.
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/admin',
     name: 'Admin',
     component: () => import('../views/AdminView.vue'),
