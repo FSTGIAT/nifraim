@@ -116,15 +116,20 @@ def _sub(parent: ET.Element, tag: str, text: str | None = None) -> ET.Element:
     return el
 
 
-def _mark_nils(elem: ET.Element) -> None:
+def _mark_nils(elem: ET.Element, exempt: set[int] | None = None) -> None:
     """Flag every empty LEAF as `xsi:nil="true"`, after the tree is complete.
 
     Done as a pass rather than at creation: a container is created before its
     children exist, so deciding at creation time would mark `KoteretKovetz` nil
     and then hang children off it — a contradiction no schema accepts.
     """
+    exempt = exempt or set()
     for child in elem:
-        _mark_nils(child)
+        _mark_nils(child, exempt)
+    if id(elem) in exempt:
+        # minOccurs=1 but NOT nillable, with all children optional: the element
+        # must be PRESENT and EMPTY. Marking it nil makes the file invalid.
+        return
     if len(elem) == 0 and not (elem.text or "").strip():
         elem.set("xsi:nil", "true")
 
@@ -178,6 +183,19 @@ def build_events_request(
         agent_id = agent_id or "<ת.ז. הסוכן>"
         agent_name = agent_name or "<שם הסוכן>"
 
+    if not action.needs_customer and not customer_id_number:
+        # The XSD makes YeshutLakoachMeidaBsisi/MISPAR-MEZAHE-LAKOACH minOccurs=1
+        # and NOT nillable, with no alternative branch — so even a per-יצרן
+        # production-report subscription (2000/2100/2500) must name an identity
+        # here. What identity that is — the בעל רישיון's own ח.פ, or the
+        # יצרן's — is NOT settled by the schema and must be confirmed with
+        # Swiftness. Refuse rather than guess: an invalid file gets silence, and
+        # a plausible-but-wrong identity gets someone else's data.
+        raise ValueError(
+            f"action {action.code} ({action.label}) still requires an identifier in "
+            "MISPAR-MEZAHE-LAKOACH — the XSD has no customer-less branch. Pass "
+            "customer_id_number explicitly once Swiftness confirms whose ID belongs there."
+        )
     if action.needs_customer and not customer_id_number:
         raise ValueError(f"action {action_code} requires a customer id")
 
@@ -206,7 +224,13 @@ def build_events_request(
     _sub(sender, "SHEM-GOREM-SHOLECH", agent_name)
     _sub(sender, "SHEM-PRATI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_FIRST_NAME)
     _sub(sender, "SHEM-MISHPACHA-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_LAST_NAME)
-    _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_PHONE)
+    # The XSD makes this minOccurs=1, NOT nillable, pattern [0-9]+ — so an empty
+    # value or xsi:nil is a hard violation, not a blank field. We have no landline
+    # on file, so fall back to the mobile: a real reachable number beats an
+    # invalid file. Set MASLAKA_CONTACT_PHONE to a real landline when we have one.
+    _landline = "".join(ch for ch in (settings.MASLAKA_CONTACT_PHONE or "") if ch.isdigit())
+    _mobile = "".join(ch for ch in (settings.MASLAKA_CONTACT_MOBILE or "") if ch.isdigit())
+    _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", _landline or _mobile)
     _sub(sender, "E-MAIL-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_EMAIL)
     _sub(sender, "MISPAR-CELLULARI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_MOBILE)
     _sub(sender, "MISPAR-ZIHUI-ETZEL-YATZRAN-NIMAAN")
@@ -278,6 +302,18 @@ def build_events_request(
     for tag in ("HAZHARAT-MAASIK-H-P-KASUR", "ISUR-OVED-PIZUIM"):
         _sub(kod, tag)
     _sub(kod, "RIANUN-FISHING", "1" if action.code == "9102" else "2")
+    # The XSD sequence does not end at RIANUN-FISHING. These five are all
+    # minOccurs=1 (nillable) and the file is INVALID without them — omitting
+    # them is what made our first four live sends fail validation.
+    for tag in (
+        "KOD-ZIHUI-OVED-BAMISLAKA", "ZIHUI-HOSHECH-BAMISLAKA",
+        "NITAN-LEYADEA-BAAL-RISHAYON", "ASMACHTA-MISLAKA", "RESERVA-MISLAKA",
+    ):
+        _sub(kod, tag)
+    # YipuiKoach and mismachim are minOccurs=1 and NOT nillable, but every child
+    # is minOccurs=0 — so an EMPTY container is valid and a missing one is not.
+    # They must be excluded from _mark_nils for exactly that reason.
+    _nil_exempt = (_sub(kod, "YipuiKoach"), _sub(kod, "mismachim"))
 
     closing = _sub(root, "ReshumatSgira")
     _sub(closing, "MISPAR-YESHUYUT-LAKOACH-BAKOVETZ", "1" if action.needs_customer else "0")
@@ -285,7 +321,7 @@ def build_events_request(
 
     # The real file is indented two spaces; match it so a byte-level diff against
     # the vendor sample stays readable.
-    _mark_nils(root)
+    _mark_nils(root, exempt=set(id(e) for e in _nil_exempt))
     ET.indent(root, space="  ")
     xml = (b'<?xml version="1.0" encoding="utf-8"?>\n'
            + ET.tostring(root, encoding="utf-8"))
@@ -318,13 +354,18 @@ def maslaka_now() -> datetime:
 def environment() -> tuple[str, str]:
     """`(KOD-SVIVAT-AVODA, filename suffix)` — always derived together.
 
-    These two must agree. On 2026-09-10 we sent the TST vault a file named
-    `…0001.DAT` (ייצור) whose payload said `KOD-SVIVAT-AVODA=2` (בדיקות),
-    because the filename suffix and the environment code were computed in two
-    different places from two different expressions. Nothing rejected it and
-    nothing answered it. Derive both here or not at all.
+    **KOD-SVIVAT-AVODA is 1 = TEST, 2 = PRODUCTION.** This is the reverse of
+    what this code assumed until 2026-09-10, and the inversion is why three
+    live sends went unanswered: all three carried `2` (PRODUCTION) into the
+    TEST vault. Two independent sources agree — Swiftness's published XSD says
+    so in its own `<xsd:documentation>`, and all 12 vendor sample files are
+    `.DAT` (ייצור) carrying `2`.
+
+    The suffix and the code must also AGREE with each other, which is why they
+    are returned together: a `.TST` name over a `2` payload is a test file with
+    a production flag.
     """
-    return ("2", "TST") if settings.MASLAKA_TEST_ENVIRONMENT else ("1", "DAT")
+    return ("1", "TST") if settings.MASLAKA_TEST_ENVIRONMENT else ("2", "DAT")
 
 
 def build_file_number(*, sender_id: str, sequence: int, when: datetime) -> str:

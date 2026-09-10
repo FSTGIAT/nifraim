@@ -97,8 +97,19 @@ def main() -> None:
 
     # Production-report subscriptions are per MANUFACTURER — no customer at all.
     check("2100 needs no customer", ACTION_CODES["2100"].needs_customer is False)
-    prod = build_events_request(action_code="2100", allow_placeholder_identity=True)
-    check("2100 builds without a customer", b"<KOD-EIRUA>2100</KOD-EIRUA>" in prod.xml)
+    # Corrected 2026-09-10 against the official XSD: "needs no customer" is about
+    # the REQUEST's semantics (it is per-יצרן, not per-saver), but the schema
+    # still makes MISPAR-MEZAHE-LAKOACH minOccurs=1 and NOT nillable. Building
+    # without an identifier produced an invalid file, so the builder now refuses
+    # instead of emitting one. Whose ID belongs there is open with Swiftness.
+    try:
+        build_events_request(action_code="2100", allow_placeholder_identity=True)
+        check("2100 refuses to build with no identifier", False, "it built anyway")
+    except ValueError as e:
+        check("2100 refuses to build with no identifier", "MISPAR-MEZAHE-LAKOACH" in str(e))
+    prod = build_events_request(action_code="2100", customer_id_number="558638623",
+                                allow_placeholder_identity=True)
+    check("2100 builds when given one", b"<KOD-EIRUA>2100</KOD-EIRUA>" in prod.xml)
 
     # Environment: this decides whether real traffic hits the live vault.
     check("TST → KOD-SVIVAT-AVODA 2", text_of(x, "KOD-SVIVAT-AVODA") == "2")

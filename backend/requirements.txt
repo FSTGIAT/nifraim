@@ -36,3 +36,4 @@ paramiko==3.5.0
 # terminal opened. Markers keep them off the Linux/Railway build.
 pywin32>=306; sys_platform == "win32"
 Pillow>=10; sys_platform == "win32"
+lxml>=5.0
