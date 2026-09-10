@@ -255,6 +255,20 @@ async def inspect_sample(name: str, user: User = Depends(get_current_user)):
     }
 
     service = parsed_name.service if parsed_name else ""
+    # Validate EVERY inbound file, before any branch returns. This sat below the
+    # feedback early-return at first, which meant FEDBKA — the exact file we are
+    # waiting on — was the one file that skipped validation. A parser is happy to
+    # produce plausible numbers from a malformed file; say whether it validates
+    # before anyone trusts the fields.
+    _decoded = parse_filename(path.name)
+    payload["validation"] = xsd_validate(
+        raw,
+        schema_file=schema_for(
+            service=_decoded.service if _decoded else None,
+            product_family=_decoded.product_family if _decoded else None,
+        ),
+    ).to_dict()
+
     if service in ("FEDBKA", "FEDBKB"):
         # Feedback carries no holdings — surface its correlation keys instead,
         # since MISPAR-MISLAKA is what a response is matched on.
@@ -280,18 +294,6 @@ async def inspect_sample(name: str, user: User = Depends(get_current_user)):
         except ET.ParseError as e:
             payload["error"] = f"XML parse error: {e}"
         return payload
-
-    # Validate the INBOUND file too. When a real FEDBKA finally lands we want the
-    # console to say whether it validates before anyone trusts the parsed rows —
-    # a parser is happy to produce plausible numbers from a malformed file.
-    _decoded = parse_filename(path.name)
-    payload["validation"] = xsd_validate(
-        raw,
-        schema_file=schema_for(
-            service=_decoded.service if _decoded else None,
-            product_family=_decoded.product_family if _decoded else None,
-        ),
-    ).to_dict()
 
     try:
         result = parse_mimshak_dat(raw, path.name)
