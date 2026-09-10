@@ -141,12 +141,33 @@ INSURER_NAME_OVERRIDES: dict[str, str] = {
     'מגדל חברה לבטוח בע"מ': 'מגדל חברה לביטוח בע"מ',
 }
 
+# SUG-MUTZAR — the מבנה אחיד product-type table.
+#
+# The previous values (2=ביטוח בריאות, 3=ביטוח סיעוד, 4=ביטוח כללי, 5=ביטוח נסיעות)
+# were reverse-engineered from Migdal insurance holdings, where in practice every
+# product was type 1 — so the wrong codes never showed. They are WRONG: 2 and 3 are
+# קרן פנסיה and קופת גמל, exactly the products מור/מיטב/ילין/אנליסט deliver.
+# Corrected 2026-09-10 against *כללי מערכת ממשק אחזקות 9.0* (Swiftness) and verified
+# on their published CONSLT samples: ING→1, KGM→3, PNN→2, PNO→2.
+#
+# `1` deliberately keeps the label "ביטוח חיים" rather than the standard's full
+# "פוליסת ביטוח חיים משולב חיסכון": that exact string is a key in
+# `xlsx_writer._PRODUCT_CATEGORY_BY_SUG` and flows into stored product labels.
+# Renaming it would silently re-bucket every existing insurance row.
+#
+# Codes 2 and 5 are ambiguous alone — a קרן פנסיה is ותיקה or חדשה per
+# `PENSIA-VATIKA-O-HADASHA` (1=ותיקה, 2=חדשה); resolve that at the call site.
 SUG_MUTZAR_LABELS: dict[str, str] = {
-    "1": "ביטוח חיים",
-    "2": "ביטוח בריאות",
-    "3": "ביטוח סיעוד",
-    "4": "ביטוח כללי",
-    "5": "ביטוח נסיעות",
+    "1": "ביטוח חיים",          # פוליסת ביטוח חיים משולב חיסכון
+    "2": "קרן פנסיה",
+    "3": "קופת גמל",
+    "4": "קרן השתלמות",
+    "5": "פוליסת חיסכון טהור",
+    "6": "פוליסת סיכון טהור",
+    "7": "ביטוח חיים משכנתא",
+    "8": "פוליסת סיכון טהור קולקטיב",
+    "9": "קופת גמל להשקעה",
+    "10": "חיסכון לכל ילד",
 }
 
 # Policy status: code 7 = פעיל confirmed from Migdal reference rows.

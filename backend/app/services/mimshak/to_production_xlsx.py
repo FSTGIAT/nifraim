@@ -122,6 +122,45 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
         if cid:
             customers_by_id[cid] = leaves
 
+    # Parent map — ElementTree gives no upward links, and two fields a policy
+    # row needs are NOT descendants of `HeshbonOPolisa`:
+    #   • SUG-MUTZAR lives on `NetuneiMutzar`, a sibling of `YeshutLakoach`
+    #     one level up under `Mutzar`;
+    #   • the customer's national ID lives on the enclosing `YeshutLakoach`.
+    # `_collect_leaves(policy_elem)` only walks downward, so both came back
+    # None and the caller silently fell back to SUG-MUTZAR "1" — which is why
+    # every gemel (3) and pension (2) product was labelled ביטוח חיים, and why
+    # a policy whose block omits `NetuneiAmitOmevutach` got no id_number at all.
+    # Verified against Swiftness's own published CONSLT samples 2026-09-10.
+    _parents: dict[int, ET.Element] = {}
+    for _p in root.iter():
+        for _c in _p:
+            _parents[id(_c)] = _p
+
+    def _ancestor(elem: ET.Element, tag: str) -> ET.Element | None:
+        """Nearest ancestor with this local tag, or None."""
+        cur = elem
+        while id(cur) in _parents:
+            cur = _parents[id(cur)]
+            if _local_tag(cur.tag) == tag:
+                return cur
+        return None
+
+    def _product_scope_leaves(policy_elem: ET.Element) -> dict[str, str]:
+        """Leaves of the enclosing `Mutzar` EXCLUDING its policies, so
+        product-level fields (SUG-MUTZAR, PENSIA-VATIKA-O-HADASHA, employer
+        block) are visible to a policy row without dragging in sibling
+        policies' values."""
+        mutzar = _ancestor(policy_elem, "Mutzar")
+        if mutzar is None:
+            return {}
+        out: dict[str, str] = {}
+        for child in mutzar:
+            if _local_tag(child.tag) in ("YeshutLakoach", "HeshbonotOPolisot"):
+                continue
+            out.update(_collect_leaves(child))
+        return out
+
     insurance_rows: list[list] = []
     savings_rows: list[list] = []
     coverage_rows: list[list] = []
@@ -132,12 +171,21 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
     # (QA 2026-07-23: "Migdal downloaded each customer in duplicate." The dup was
     # exactly the DAT life policies re-emitted verbatim by the LIFE.MBT pass.)
     seen_dat_policies: set[str] = set()
+    # Distinct from `seen_dat_policies` (which gates the .MBT top-up passes):
+    # this one suppresses a product block the DAT itself repeats verbatim.
+    emitted_policy_rows: set[tuple[str, str, str]] = set()
+    skipped_duplicate_rows = 0
 
     for policy_elem in root.iter():
         if _local_tag(policy_elem.tag) != "HeshbonOPolisa":
             continue
 
         policy_leaves = _collect_leaves(policy_elem)
+        # Product-level fields sit ABOVE the policy — merge them in without
+        # letting them shadow anything the policy states for itself.
+        _scope = _product_scope_leaves(policy_elem)
+        for _k, _v in _scope.items():
+            policy_leaves.setdefault(_k, _v)
         dat_policy_id = (policy_leaves.get("MISPAR-POLISA-O-HESHBON") or "").lstrip("0")
         if dat_policy_id:
             seen_dat_policies.add(dat_policy_id)
@@ -152,7 +200,36 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
                     pol_cid = _strip_leading_zeros(_text(sub) or "")
                     break
             break
+        # `_strip_leading_zeros` returns "0" for an empty string (the
+        # `lstrip("0") or "0"` idiom used across this codebase), so an EMPTY
+        # `MISPAR-ZIHUY` yields a truthy "0" rather than None. The PNN sample
+        # carries exactly that — `<MISPAR-ZIHUY/>` — so a plain falsy check
+        # silently accepted "0" as the customer and looked up a saver that
+        # cannot exist. Treat "0" as absent.
+        if not pol_cid or pol_cid == "0":
+            # Not every product block carries `NetuneiAmitOmevutach` — the
+            # CONSLT PNN sample doesn't, and every row came out with no
+            # id_number at all. The identity IS present, but `YeshutLakoach`
+            # hangs off `NetuneiMutzar`, a SIBLING of `HeshbonotOPolisot`
+            # under `Mutzar` — not an ancestor of the policy. So neither a
+            # downward walk from the policy nor an upward walk reaches it;
+            # take it from the enclosing product's scope instead.
+            pol_cid = _strip_leading_zeros(
+                _product_scope_leaves(policy_elem).get("MISPAR-ZIHUY-LAKOACH", "") or ""
+            )
         customer = customers_by_id.get(pol_cid, {}) if pol_cid else {}
+
+        # A file can repeat a product block verbatim. Swiftness's own CONSLT ING
+        # sample carries the SAME policy twice — two `Mutzar` blocks identical
+        # across all 355 leaves — and emitting both double-counts its צבירה into
+        # every downstream total. Dedupe on (customer, policy, product type):
+        # one saver cannot hold the same policy number twice in the same product
+        # type at the same insurer, so a repeat is always the file talking twice.
+        _row_key = (pol_cid or "", dat_policy_id, str(policy_leaves.get("SUG-MUTZAR") or ""))
+        if _row_key in emitted_policy_rows:
+            skipped_duplicate_rows += 1
+            continue
+        emitted_policy_rows.add(_row_key)
 
         mbt_person = mbt_data["persons"].get(pol_cid) if pol_cid else None
         if agent_num is None:
@@ -413,7 +490,8 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
     dat_count = len(insurance_rows) - extra_lifehlth - extra_covrlife - extra_life
     print(
         f"✓ wrote {len(insurance_rows)} insurance + {len(savings_rows)} savings policies "
-        f"(DAT={dat_count}, "
+        + (f"[{skipped_duplicate_rows} duplicate block(s) skipped] " if skipped_duplicate_rows else "")
+        + f"(DAT={dat_count}, "
         f"LIFEHLTH+={extra_lifehlth}, COVRLIFE+={extra_covrlife}, "
         f"LIFE+={extra_life}) "
         f"+ {len(coverage_rows)} coverages "
