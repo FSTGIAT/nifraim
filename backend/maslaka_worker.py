@@ -69,7 +69,13 @@ for _key in (
     "MASLAKA_TRANSPORT", "MASLAKA_LOCAL_OUTBOX", "MASLAKA_LOCAL_INBOX",
     "MASLAKA_LOCAL_ARCHIVE",
 ):
-    if not os.environ.get(_key) and _env.get(_key):
+    # `not in`, deliberately — NOT `not os.environ.get(...)`. An explicitly
+    # empty value is a decision ("this is unset"), and refilling it from the
+    # .env file overrides the caller silently. Live: the preflight test set
+    # MASLAKA_AGENT_NUMBER="" to prove the worker refuses an unidentified
+    # deployment, the file put the real value back, and the worker booted and
+    # ran forever instead of exiting.
+    if _key not in os.environ and _env.get(_key):
         os.environ[_key] = _env[_key]
 os.environ.setdefault("DATABASE_URL_SYNC", os.environ.get("DATABASE_URL", "").replace("+asyncpg", ""))
 

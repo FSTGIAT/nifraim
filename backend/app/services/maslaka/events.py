@@ -97,12 +97,35 @@ ACTION_CODES: dict[str, ActionCode] = {
 }
 
 
+XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
+
+
 def _sub(parent: ET.Element, tag: str, text: str | None = None) -> ET.Element:
+    """Add a child. An absent value is `xsi:nil="true"`, NOT an empty tag.
+
+    The real agent-sent sample declares `xmlns:xsi` on <Mimshak> and marks every
+    one of its 39 absent values `xsi:nil="true"` — it contains zero `<TAG></TAG>`
+    pairs. A schema that validates nillable elements treats the two differently,
+    and this is the class of mistake the מסלקה rejects before returning any
+    content-level feedback.
+    """
     el = ET.SubElement(parent, tag)
-    # Empty elements are meaningful in this interface — the real sample carries
-    # dozens of them — so write "" rather than omitting the node.
-    el.text = "" if text is None else str(text)
+    if text is not None and str(text) != "":
+        el.text = str(text)
     return el
+
+
+def _mark_nils(elem: ET.Element) -> None:
+    """Flag every empty LEAF as `xsi:nil="true"`, after the tree is complete.
+
+    Done as a pass rather than at creation: a container is created before its
+    children exist, so deciding at creation time would mark `KoteretKovetz` nil
+    and then hang children off it — a contradiction no schema accepts.
+    """
+    for child in elem:
+        _mark_nils(child)
+    if len(elem) == 0 and not (elem.text or "").strip():
+        elem.set("xsi:nil", "true")
 
 
 class MaslakaIdentityNotConfigured(RuntimeError):
@@ -163,7 +186,7 @@ def build_events_request(
     # test environment is silent, and this is the field that decides it.
     env = environment_code or ("1" if not settings.MASLAKA_TEST_ENVIRONMENT else "2")
 
-    root = ET.Element("Mimshak")
+    root = ET.Element("Mimshak", {"xmlns:xsi": XSI_NS})
 
     header = _sub(root, "KoteretKovetz")
     _sub(header, "SUG-MIMSHAK", SUG_MIMSHAK_EVENTS)
@@ -204,9 +227,14 @@ def build_events_request(
     customer = _sub(pone, "YeshutLakoachMeidaBsisi")
     _sub(customer, "SUG-LAKOACH", "1")
     _sub(customer, "SUG-MEZAHE-LAKOACH", "3")   # 3 = ת.ז.
-    # Bare 9 digits here — the 12-digit zero-padding belongs to the FILENAME, not
-    # the payload. The real sample carries "381788223".
-    _sub(customer, "MISPAR-MEZAHE-LAKOACH", (customer_id_number or "").lstrip("0"))
+    # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
+    # including any leading zero, and `043417252` is a real one. Stripping would
+    # send an 8-digit identifier for every saver whose ת"ז starts with 0 — about
+    # a tenth of them — and the sample this builder was modelled on happened to
+    # carry `381788223`, so the bug would not have shown until live traffic.
+    # The 12-digit padding is a separate thing, and belongs to the FILENAME.
+    _digits = "".join(ch for ch in (customer_id_number or "") if ch.isdigit())
+    _sub(customer, "MISPAR-MEZAHE-LAKOACH", _digits.zfill(9) if _digits else "")
     _sub(customer, "SHEM-PRATI-LAKOACH", customer_first_name)
     _sub(customer, "SHEM-MISHPACHA-LAKOACH", customer_last_name)
     for tag in ("SHEM-MAASIK", "KOD-MEZAHE-MAASIK-ETZEL-YATZRAN", "KOD-MEDINA", "TAARICH-LEIDA"):
@@ -240,7 +268,12 @@ def build_events_request(
     _sub(closing, "MISPAR-YESHUYUT-LAKOACH-BAKOVETZ", "1" if action.needs_customer else "0")
     _sub(closing, "MISPAR-BAKASHOT", "1")
 
-    xml = b'<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="utf-8")
+    # The real file is indented two spaces; match it so a byte-level diff against
+    # the vendor sample stays readable.
+    _mark_nils(root)
+    ET.indent(root, space="  ")
+    xml = (b'<?xml version="1.0" encoding="utf-8"?>\n'
+           + ET.tostring(root, encoding="utf-8"))
     return EventsRequest(
         xml=xml,
         action_code=action.code,
