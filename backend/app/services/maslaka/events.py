@@ -32,6 +32,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.config import settings
 
@@ -294,6 +295,23 @@ def build_events_request(
         customer_id=customer_id_number,
         record_reference=record_ref,
     )
+
+
+# ─── The wire clock is Israel local time, ALWAYS ────────────────────────────
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+
+
+def maslaka_now() -> datetime:
+    """Wall-clock time in Israel, naive — the clock every מסלקה timestamp uses.
+
+    `TAARICH-BITZUA` and the filename's 14-digit stamp are read by an Israeli
+    regulatory system as Israel local time. Neither `datetime.now()` nor
+    `utcnow()` is safe to use here: the Gateway VM runs UTC (so `now()` is 3h
+    behind in summer) and the dev box runs IDT (so `utcnow()` is 3h behind
+    there too). On 2026-09-10 we sent one file stamped 17:38 while the clock in
+    Israel read 20:39. Convert explicitly or the value is wrong on some host.
+    """
+    return datetime.now(ISRAEL_TZ).replace(tzinfo=None)
 
 
 # ─── One source of truth for test-vs-production ─────────────────────────────

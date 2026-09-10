@@ -34,6 +34,7 @@ from app.models.upload import FileUpload
 from app.services.maslaka import adapter, audit
 from app.services.maslaka.events import (
     ACTION_CODES, build_events_request, build_file_number, environment,
+    maslaka_now,
     MaslakaIdentityNotConfigured,
 )
 from app.services.maslaka.filenames import build_filename
@@ -125,10 +126,11 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         # XML, so every request the app sent on its own would have been
         # discarded without content-level feedback.
         sender_id = settings.MASLAKA_AGENT_ID or ""
-        # utcnow, not now(): the filename timestamp, `submitted_at` and the
-        # allocator's day window must all be in the same clock. Both hosts run
-        # UTC so a mismatch is inert in production and wrong on a dev box.
-        now = datetime.utcnow()
+        # Israel local, explicitly — see events.maslaka_now(). The filename
+        # stamp, TAARICH-BITZUA and the allocator's business-day window all use
+        # this one clock; the "business day" the sequence resets on is an
+        # ISRAELI day, not a UTC one.
+        now = maslaka_now()
         env_code, file_type = environment()
         sequence = await _allocate_daily_sequence(db, sender_id=sender_id, when=now)
 
