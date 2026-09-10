@@ -57,6 +57,23 @@ async def test_claim_and_skip_locked() -> None:
     settings.MASLAKA_ENCRYPTION_KEY = __import__("cryptography.fernet", fromlist=["Fernet"]).Fernet.generate_key().decode()
     reset_transport_for_tests()
 
+    # These tests run against the SHARED local dev DB and assert things like
+    # "the queue is now empty", so a single row left behind by an interrupted
+    # run makes the next run fail with seven confusing failures that have
+    # nothing to do with the code. Purge our own fixtures first; the `finally`
+    # below covers the happy path, this covers the killed-mid-run one.
+    TEST_IDS = ("58661554", "11122233", "99887766", "99887700", "99887701", "99887702")
+    async with async_session() as db:
+        stale = (await db.execute(
+            select(PensionInquiry.id).where(PensionInquiry.customer_id_number.in_(TEST_IDS))
+        )).scalars().all()
+        if stale:
+            await db.execute(delete(PensionRawPayload).where(PensionRawPayload.inquiry_id.in_(stale)))
+            await db.execute(delete(PensionAuditLog).where(PensionAuditLog.inquiry_id.in_(stale)))
+            await db.execute(delete(PensionInquiry).where(PensionInquiry.id.in_(stale)))
+            await db.commit()
+            print(f"  (purged {len(stale)} row(s) left by an earlier interrupted run)")
+
     created: list[uuid.UUID] = []
     try:
         async with async_session() as db:
