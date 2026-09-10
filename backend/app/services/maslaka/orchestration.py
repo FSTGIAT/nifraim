@@ -32,6 +32,11 @@ from app.models.pension_audit import PensionRawPayload
 from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.services.maslaka import adapter, audit
+from app.services.maslaka.events import (
+    build_events_request, build_file_number, environment,
+    MaslakaIdentityNotConfigured,
+)
+from app.services.maslaka.filenames import build_filename
 from app.services.maslaka.transport import get_transport, VaultFile
 from app.utils.crypto import encrypt_bytes
 from app.utils.sanitize import sanitize_record
@@ -58,7 +63,7 @@ async def create_inquiry(
         customer_id_number=normalized,
         customer_name=customer_name,
         status="pending",
-        interface_code="events_v007",
+        interface_code=f"events_v007:{DEFAULT_ACTION_CODE}",
         request_reference=uuid.uuid4().hex,
         expires_at=datetime.utcnow() + timedelta(days=settings.MASLAKA_INQUIRY_TIMEOUT_DAYS),
     )
@@ -71,6 +76,33 @@ async def create_inquiry(
     )
     await db.commit()
     return inquiry
+
+
+# ─── Daily file sequence (EEEE in the נספח ו' filename) ─────────────────────
+# The 4-digit sequence resets at the start of each business day and must be
+# unique per sender per day: two files a second apart with the same sequence
+# get IDENTICAL names, and the Transporter uploads one and silently drops the
+# rest. `submit_pending_inquiries` drains up to 20 rows per tick, so this is a
+# real collision, not a theoretical one.
+#
+# An advisory lock (not a counter table) because this repo currently has three
+# alembic heads — allocating without a schema change is the smaller risk. The
+# lock is transaction-scoped, so it releases on the commit inside submit_inquiry.
+# Gaps are fine: Swiftness's own samples jump 6501 → 6535 → 6555.
+DEFAULT_ACTION_CODE = "9100"   # טרום ייעוץ, one-off. No UI picker yet.
+
+
+async def _allocate_daily_sequence(db: AsyncSession, *, sender_id: str, when: datetime) -> int:
+    day_start = datetime(when.year, when.month, when.day)
+    key = f"maslaka_seq:{sender_id}:{day_start.date().isoformat()}"
+    await db.execute(select(func.pg_advisory_xact_lock(func.hashtext(key))))
+    used = (await db.execute(
+        select(func.count(PensionInquiry.id)).where(
+            PensionInquiry.submitted_at >= day_start,
+            PensionInquiry.vault_outbound_filename.is_not(None),
+        )
+    )).scalar_one()
+    return int(used) + 1
 
 
 async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
@@ -86,21 +118,49 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         return
 
     try:
-        xml_bytes, ref = adapter.build_events_request(
-            inquiry.customer_id_number,
-            request_reference=inquiry.request_reference,
+        # The real ממשק אירועים v007 builder + the נספח ו' filename grammar.
+        # Until 2026-09-10 this path used a stub that produced
+        # `events_v007_<hex>.xml`, which is not a legal name in that grammar at
+        # all — the מסלקה identifies a file by its NAME before it parses any
+        # XML, so every request the app sent on its own would have been
+        # discarded without content-level feedback.
+        sender_id = settings.MASLAKA_AGENT_ID or ""
+        now = datetime.now()
+        env_code, file_type = environment()
+        sequence = await _allocate_daily_sequence(db, sender_id=sender_id, when=now)
+
+        action_code = (inquiry.interface_code or "").rpartition(":")[2] or DEFAULT_ACTION_CODE
+        req = build_events_request(
+            action_code=action_code,
+            customer_id_number=inquiry.customer_id_number,
+            customer_first_name=(inquiry.customer_name or "").split(" ")[0],
+            customer_last_name=" ".join((inquiry.customer_name or "").split(" ")[1:]),
+            sequence=sequence,
+            when=now,
+            environment_code=env_code,
+            file_number=build_file_number(sender_id=sender_id, sequence=sequence, when=now),
         )
+        xml_bytes = req.xml
+        filename = build_filename(
+            direction="001",              # בעל רישיון → מסלקה
+            sender_id=sender_id,
+            service="EVENTS",
+            version="007",
+            sequence=sequence,
+            product_family="000",         # only אחזקות/טרום-ייעוץ files name a family
+            file_type=file_type,          # same call as env_code — they cannot disagree
+        )
+
         # Stash the encrypted outbound payload before we transport — if the
         # transport fails we still have the audit trail.
         await _store_raw_payload(
             db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
             direction="outbound", interface_code="events_v007",
-            source_filename=f"events_v007_{ref}.xml",
+            source_filename=filename,
             plaintext=xml_bytes,
         )
 
         transport = get_transport()
-        filename = f"events_v007_{ref}.xml"
         await transport.send(filename, xml_bytes)
 
         # Advance status now that the transport succeeded.
@@ -112,7 +172,7 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         inquiry.submitted_at = datetime.utcnow()
         await db.commit()
         logger.info("maslaka.submit_inquiry: %s → submitted (vault file %s)", inquiry.id, filename)
-    except adapter.MaslakaIdentityNotConfigured as e:
+    except MaslakaIdentityNotConfigured as e:
         # Not a transport problem — the deployment has no clearinghouse identity.
         # Label it as itself so the operator fixes the env instead of chasing SFTP.
         logger.error("maslaka.submit_inquiry: %s — identity not configured", inquiry_id)

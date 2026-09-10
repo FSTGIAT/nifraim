@@ -50,3 +50,5 @@ worker/worker_console.log
 
 # graphify — generated knowledge graph (machine-specific, regenerable)
 graphify-out/
+
+maslaka_worker.log

@@ -193,6 +193,30 @@ async def test_worker_tick() -> None:
 
         files = [p for p in Path(settings.MASLAKA_LOCAL_OUTBOX).iterdir() if p.is_file()]
         check("_tick drained the outbound queue", len(files) == 1, f"{len(files)} files")
+
+        # REGRESSION (2026-09-10): the submit path used to write
+        # `events_v007_<hex>.xml`, which is not a legal name under נספח ו' at
+        # all. The מסלקה matches on the NAME before it parses any XML, so every
+        # request the app sent by itself was unidentifiable. Guard the grammar,
+        # and guard that the suffix agrees with the payload's KOD-SVIVAT-AVODA —
+        # a `.DAT` name over a `KOD-SVIVAT-AVODA=2` body is what we actually
+        # shipped into the TST vault, and nothing ever answered it.
+        from app.services.maslaka.filenames import parse_filename
+        from app.services.maslaka.events import environment
+        parsed = parse_filename(files[0].name)
+        check("vault filename is legal under נספח ו'", parsed is not None, files[0].name)
+        if parsed:
+            env_code, file_type = environment()
+            check("filename suffix agrees with the environment code",
+                  parsed.file_type == file_type, f"{parsed.file_type} vs {file_type}")
+            check("outbound direction is בעל רישיון → מסלקה",
+                  parsed.direction == "001", parsed.direction)
+            check("service is EVENTS v007",
+                  parsed.service == "EVENTS" and parsed.version == "007",
+                  f"{parsed.service}/{parsed.version}")
+            body = files[0].read_bytes().decode("utf-8")
+            check("payload KOD-SVIVAT-AVODA matches the suffix",
+                  f"<KOD-SVIVAT-AVODA>{env_code}</KOD-SVIVAT-AVODA>" in body)
         async with async_session() as db:
             row = await db.get(PensionInquiry, created[0])
         check("_tick advanced the row to submitted", row.status == "submitted", row.status)

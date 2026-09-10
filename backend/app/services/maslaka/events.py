@@ -245,7 +245,19 @@ def build_events_request(
     eirua = _sub(customer, "Eirua")
     kod = _sub(eirua, "KodEirua")
     _sub(kod, "KOD-EIRUA", action.code)
-    record_ref = now.strftime("%Y%m%d%H%M%S") + str(int(sequence)).zfill(4)
+    # MISPAR-MEZAHE-RESHUMA is FIXED-WIDTH 74. Every one of the 13 real EVENTS
+    # samples is exactly 74 characters; an 18-char value would have come back a
+    # defect. The first 14 are the timestamp in all of them — the remaining 60
+    # differ per file and their internal composition is not documented in
+    # anything we hold, so we fill deterministically: sender, action, sequence,
+    # then zero padding. Length and uniqueness are right; the internal layout is
+    # an assumption to re-check against the Events XSD when it arrives.
+    record_ref = (
+        now.strftime("%Y%m%d%H%M%S")                       # 14
+        + "".join(ch for ch in str(agent_id) if ch.isdigit()).zfill(12)   # 12
+        + action.code.zfill(4)                             # 4
+        + str(int(sequence)).zfill(4)                      # 4
+    ).ljust(74, "0")[:74]
     _sub(kod, "MISPAR-MEZAHE-RESHUMA", record_ref)
     # Left empty on an opening request: MISPAR-MISLAKA is the GUID the מסלקה
     # ASSIGNS, and it comes back to us on the FEDBKB. It is the correlation key
@@ -282,3 +294,29 @@ def build_events_request(
         customer_id=customer_id_number,
         record_reference=record_ref,
     )
+
+
+# ─── One source of truth for test-vs-production ─────────────────────────────
+def environment() -> tuple[str, str]:
+    """`(KOD-SVIVAT-AVODA, filename suffix)` — always derived together.
+
+    These two must agree. On 2026-09-10 we sent the TST vault a file named
+    `…0001.DAT` (ייצור) whose payload said `KOD-SVIVAT-AVODA=2` (בדיקות),
+    because the filename suffix and the environment code were computed in two
+    different places from two different expressions. Nothing rejected it and
+    nothing answered it. Derive both here or not at all.
+    """
+    return ("2", "TST") if settings.MASLAKA_TEST_ENVIRONMENT else ("1", "DAT")
+
+
+def build_file_number(*, sender_id: str, sequence: int, when: datetime) -> str:
+    """`MISPAR-HAKOVETZ` in the shape Swiftness's own files use.
+
+    Verified against all 12 vendor samples: `YYYYMMDDHHMMSS` + sender left-padded
+    to 16 + the 4-digit daily sequence. NOTE this is house style, not a validated
+    rule — three FEDBKB samples echo a *sender-chosen* value that does not derive
+    from the filename at all, which proves the מסלקה accepts and answers a file
+    whose MISPAR-HAKOVETZ disagrees with its name. Matching the shape is hygiene.
+    """
+    digits = "".join(ch for ch in str(sender_id) if ch.isdigit()) or "0"
+    return f"{when.strftime('%Y%m%d%H%M%S')}{digits.zfill(16)}{str(int(sequence)).zfill(4)}"
