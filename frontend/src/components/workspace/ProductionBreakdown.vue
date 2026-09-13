@@ -16,8 +16,24 @@
         </div>
       </div>
       <p class="pb-hint">בחר חברה בגרף כדי לראות את החלוקה הפנימית שלה</p>
-      <apexchart type="bar" :height="companyHeight"
+      <apexchart v-if="shownCompanies.length" type="bar" :height="companyHeight"
                  :options="companyOptions" :series="companySeries" />
+      <p v-else class="pb-none">אף חברה לא מדווחת {{ coMetric === 'premium' ? 'פרמיה' : 'צבירה' }}</p>
+
+      <!-- Named, not dropped: each of these is clickable into its own
+           breakdown, so a company is never invisible just because it reports
+           the other measure. -->
+      <div v-if="otherCompanies.length" class="pb-others">
+        <span class="pb-others-lead">
+          ללא {{ coMetric === 'premium' ? 'פרמיה' : 'צבירה' }} מדווחת:
+        </span>
+        <button v-for="c in otherCompanies" :key="c.company" class="pb-other"
+                @click="openCompany = c.company">
+          {{ c.company }}
+          <span class="ltr-number">{{ money(c[coMetric === 'premium' ? 'accumulation' : 'premium']) }}</span>
+          <span class="pb-other-unit">{{ otherMetricLabel }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- ── Products, split ביטוח / פיננסים ───────────────────────────────
@@ -43,20 +59,8 @@
         <div class="pb-split">
           <section v-for="cat in CATS" :key="cat.key">
             <h5>{{ cat.label }}</h5>
-            <p v-if="!openCompanyRow.products[cat.key].length" class="pb-none">
-              אין מוצרים בקטגוריה זו
-            </p>
-            <table v-else class="pb-table">
-              <thead><tr><th>מוצר</th><th>{{ cat.metricLabel }}</th><th>לקוחות</th></tr></thead>
-              <tbody>
-                <tr v-for="p in openCompanyRow.products[cat.key]" :key="p.product"
-                    class="pb-row" @click="drill(cat.key, p.product, openCompanyRow.company)">
-                  <td>{{ p.product }}</td>
-                  <td class="pb-num"><span class="ltr-number">{{ money(p[cat.metric]) }}</span></td>
-                  <td class="pb-num"><span class="ltr-number">{{ p.clients }}</span></td>
-                </tr>
-              </tbody>
-            </table>
+            <CompanyProductRows :rows="openCompanyRow.products[cat.key]"
+                                @drill="drill(cat.key, $event.product, openCompanyRow.company)" />
           </section>
         </div>
       </template>
@@ -108,6 +112,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
+import CompanyProductRows from './CompanyProductRows.vue'
 import { assignCompanyColors, CHART_PALETTE } from '../../utils/chartPalette'
 import { money, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
 
@@ -130,11 +135,20 @@ const drillClients = ref([])
 const drillTitle = ref('')
 const openClient = ref(null)
 
-// Companies with a value for the CURRENT measure. A company that reports only
-// premium would otherwise sit at zero on the צבירה view and read as "manages
-// nothing" rather than "does not report a balance".
+// Companies with a value for the CURRENT measure.
+//
+// Those without one are NOT discarded — they are named under the chart. Live,
+// a book where only one insurer reports a balance rendered a chart with a
+// single bar and no hint that three other companies existed, which reads as
+// broken rather than as "these three report premium, not a balance".
 const shownCompanies = computed(() =>
   companies.value.filter(c => Number(c[coMetric.value]) > 0),
+)
+const otherCompanies = computed(() =>
+  companies.value.filter(c => !(Number(c[coMetric.value]) > 0)),
+)
+const otherMetricLabel = computed(
+  () => (coMetric.value === 'premium' ? 'צבירה' : 'פרמיה'),
 )
 const openCompanyRow = computed(
   () => companies.value.find(c => c.company === openCompany.value) || null,
@@ -292,14 +306,36 @@ onMounted(async () => {
 }
 .toggle-btn.active { background: var(--primary-light); color: var(--primary); }
 .pb-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.pb-others {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle);
+}
+.pb-others-lead { font-size: 11px; color: var(--text-muted); }
+.pb-other {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 4px 10px; border-radius: 12px;
+  border: 1px solid var(--border-subtle); background: none;
+  font-family: inherit; font-size: 12px; color: var(--text); cursor: pointer;
+}
+.pb-other:hover { border-color: var(--text-muted); background: var(--border-subtle); }
+.pb-other-unit { font-size: 10px; color: var(--text-muted); }
+
 .pb-none { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 .pb-entities { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
 
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
-.pb-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-@media (max-width: 700px) { .pb-split { grid-template-columns: 1fr; } }
-.pb-split h5 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+/* Stacked, not side by side. Two five-column row components sharing one modal
+   width crushed both: the columns overlapped and the צבירה figure was cut off.
+   Each category now gets the full width. */
+.pb-split { display: flex; flex-direction: column; gap: 22px; }
+.pb-split h5 {
+  font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.pb-split h5::after {
+  content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+}
 
 .pb-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .pb-table th {
