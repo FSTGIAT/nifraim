@@ -21,10 +21,19 @@
         </span>
         <span class="pa-tile-lbl">שינוי נטו מול החודש הקודם</span>
       </div>
-      <div class="pa-tile" :class="{ 'pa-tile--in': mounted }">
-        <span class="pa-tile-val ltr-number">{{ coveredCompanies.length }}</span>
-        <span class="pa-tile-lbl">חברות שנבדקו</span>
-      </div>
+      <!-- Clickable, because the number alone read as a contradiction: "3
+           חברות שנבדקו" sat beside a movers chart showing four companies. The
+           fourth is one that reported LAST month and not this one. -->
+      <button class="pa-tile" :class="{ 'pa-tile--in': mounted }"
+              @click="checkedOpen = true" :disabled="!checkedCompanies.length">
+        <span class="pa-tile-val ltr-number">
+          {{ coveredCompanies.length }}<span v-if="missingCount" class="pa-tile-of">
+            / {{ checkedCompanies.length }}</span>
+        </span>
+        <span class="pa-tile-lbl">
+          {{ missingCount ? 'חברות שדיווחו החודש' : 'חברות שנבדקו' }}
+        </span>
+      </button>
     </div>
 
     <p v-if="uncheckable.length" class="pa-note">
@@ -49,6 +58,27 @@
                    :series="moverSeries(clientMovers)" />
       </section>
     </div>
+
+    <DataModal :open="checkedOpen" title="אילו חברות נבדקו החודש" @close="checkedOpen = false">
+      <p class="pa-note">
+        בדיקת "לקוחות ללא תשלום" יכולה לרוץ רק על חברה ששלחה דוח נפרעים החודש.
+        חברה שלא שלחה — לא ידוע אם שילמה, ולכן הלקוחות שלה אינם ברשימה.
+      </p>
+      <table class="pa-table">
+        <thead><tr><th>חברה</th><th>סטטוס</th><th>עמלות החודש</th></tr></thead>
+        <tbody>
+          <tr v-for="c in checkedCompanies" :key="c.company">
+            <td>{{ c.company }}</td>
+            <td>
+              <span class="pa-badge2" :class="c.reported ? 'pa-badge2--ok' : 'pa-badge2--miss'">
+                {{ c.reported ? 'התקבל דוח' : 'לא התקבל דוח' }}
+              </span>
+            </td>
+            <td class="pa-num"><span class="ltr-number">{{ money(c.commission) }}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </DataModal>
 
     <DataModal :open="unpaidOpen" title="לקוחות שלא התקבל בגינם תשלום"
                :subtitle="`${unpaidTotal} לקוחות`" @close="unpaidOpen = false">
@@ -110,6 +140,8 @@ const companyMovers = ref([])
 const clientMovers = ref([])
 const previousPeriod = ref(null)
 const unpaidOpen = ref(false)
+const checkedOpen = ref(false)
+const checkedCompanies = ref([])
 const moverDetail = ref(null)
 const mounted = ref(false)
 
@@ -121,6 +153,9 @@ const net = computed(() => companyMovers.value
   .reduce((s, m) => s + m.delta, 0))
 // Named, not hidden: a company that sent no report is why the unpaid list is
 // shorter than it looks.
+const missingCount = computed(
+  () => checkedCompanies.value.filter(c => !c.reported).length,
+)
 const uncheckable = computed(
   () => companyMovers.value.filter(m => m.reported === false).map(m => m.company),
 )
@@ -131,15 +166,7 @@ function moverSeries(rows) {
   return [{ name: 'שינוי', data: rows.map(m => m.delta) }]
 }
 
-/** Indices of the three largest movements — the only bars that get text. */
-function labelled(rows) {
-  return new Set(
-    rows.map((m, i) => [i, Math.abs(m.delta)])
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([i]) => i),
-  )
-}
+
 
 function moverOptions(rows, labelKey) {
   return {
@@ -168,21 +195,23 @@ function moverOptions(rows, labelKey) {
       return m && m.delta < 0 ? DOWN : UP
     }],
     plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '58%' } },
-    // Selective labels, not one per bar. A single `offsetX` pushes every label
-    // the same way, so on a diverging chart the negative bars' labels land on
-    // top of the zero line; and small movers had their text clipped by the
-    // axis. The three biggest movements carry text, the rest rely on bar
-    // length plus the hover tooltip.
-    dataLabels: {
-      enabled: true,
-      formatter: (v, o) => (labelled(rows).has(o.dataPointIndex) ? signedMoney(v) : ''),
-      style: { fontSize: '11px', fontFamily: 'Heebo, sans-serif', colors: ['#3E3E3C'] },
-      offsetX: 0,
-      textAnchor: 'middle',
-    },
+    // The value rides in the AXIS label, not over the bar.
+    //
+    // ApexCharts applies one `offsetX` to every data label, which on a
+    // diverging chart pushes the negative bars' text back across the zero
+    // line. Labelling only the biggest few avoided the collision but left the
+    // rest unreadable — including the single negative bar, the most visually
+    // distinct row in the chart, which had no number at all. Putting the value
+    // beside the name labels every row, cannot collide, and still leaves the
+    // bar to carry magnitude and direction.
+    dataLabels: { enabled: false },
     legend: { show: false },
     xaxis: {
-      categories: rows.map(m => m[labelKey] || m.company || m.name || '—'),
+      // Two-line category: name, then the signed amount.
+      categories: rows.map(m => [
+        m[labelKey] || m.company || m.name || '—',
+        signedMoney(m.delta),
+      ]),
       labels: { formatter: axisMoney, style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B' } },
     },
     yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B', fontSize: '12px' } } },
@@ -213,6 +242,7 @@ onMounted(async () => {
     unpaid.value = res.data.unpaid || []
     unpaidTotal.value = res.data.unpaid_total || 0
     coveredCompanies.value = res.data.covered_companies || []
+    checkedCompanies.value = res.data.checked_companies || []
     companyMovers.value = res.data.company_movers || []
     clientMovers.value = res.data.client_movers || []
     previousPeriod.value = res.data.previous_period
@@ -252,6 +282,13 @@ button.pa-tile:not(:disabled):hover { border-color: var(--text-muted); }
 .pa-tile--warn .pa-tile-val { color: var(--amber); }
 .pa-tile-val { font-size: 22px; font-weight: 700; color: var(--text); }
 .pa-tile-lbl { font-size: 12px; color: var(--text-muted); }
+.pa-tile-of { font-size: 15px; font-weight: 600; color: var(--text-muted); }
+.pa-badge2 {
+  display: inline-block; padding: 2px 9px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.pa-badge2--ok { background: var(--green-light, #E8F5EC); color: var(--accent-emerald); }
+.pa-badge2--miss { background: var(--border-subtle); color: var(--text-muted); }
 
 .pa-note { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
 

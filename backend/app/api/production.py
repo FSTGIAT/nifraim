@@ -107,6 +107,20 @@ async def _get_all_production_uploads(db: AsyncSession, user_id: uuid.UUID) -> l
     return list(result.scalars().all())
 
 
+def _display_name(first, last, id_number) -> str:
+    """A person's name, or their ID when the file didn't carry one.
+
+    Some parsers write "0" (or a stray separator) into the name columns rather
+    than leaving them empty, so a plain `first or last or id` still yields a row
+    labelled "0" — live, one client appeared in the movers chart as literally
+    `0`. Anything with no letters or digits in it is not a name.
+    """
+    name = f"{first or ''} {last or ''}".strip()
+    if name and any(ch.isalpha() for ch in name):
+        return name
+    return str(id_number or "").strip() or name
+
+
 # Why one production record contributes nothing to expected commission.
 # Four causes, because each implies a DIFFERENT fix for the agent; the previous
 # two-bucket split reported one misleading sentence for all of them (QA #7).
@@ -1071,7 +1085,7 @@ async def get_production_alerts(
             if key:
                 e = comm_now_client.setdefault(
                     key, {"id_number": r.id_number,
-                          "name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
+                          "name": _display_name(r.first_name, r.last_name, r.id_number),
                           "amount": 0.0})
                 e["amount"] += amount
 
@@ -1089,7 +1103,7 @@ async def get_production_alerts(
                 continue
             e = unpaid.setdefault(key, {
                 "id_number": r.id_number,
-                "name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
+                "name": _display_name(r.first_name, r.last_name, r.id_number),
                 "companies": set(), "products": 0,
                 "premium": 0.0, "accumulation": 0.0,
             })
@@ -1141,7 +1155,7 @@ async def get_production_alerts(
             key = _normalize_id(r.id_number)
             if key:
                 e = prev_client.setdefault(
-                    key, {"name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
+                    key, {"name": _display_name(r.first_name, r.last_name, r.id_number),
                           "amount": 0.0})
                 e["amount"] += amount
 
@@ -1175,9 +1189,21 @@ async def get_production_alerts(
                 })
         client_movers.sort(key=lambda m: -abs(m["delta"]))
 
+    # Every company the agent could expect a report from this period, each with
+    # whether it actually arrived. The count alone read as a contradiction next
+    # to a movers chart that showed one company MORE than the count.
+    checked = []
+    for stem in sorted(set(covered) | {m["company"] for m in company_movers}):
+        checked.append({
+            "company": stem,
+            "reported": stem in covered,
+            "commission": round(comm_now.get(stem, 0.0), 2),
+        })
+
     return {
         "unpaid": unpaid_list[:50],
         "unpaid_total": len(unpaid_list),
+        "checked_companies": checked,
         # Naming the companies the check COULD run for is what stops a short
         # list reading as "almost everyone was paid".
         "covered_companies": sorted(covered),
