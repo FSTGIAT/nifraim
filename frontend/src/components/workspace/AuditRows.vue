@@ -15,7 +15,16 @@
         <span class="ar-bar ar-bar--agreed" :style="{ width: pct(c.expected_firm) }"></span>
       </span>
       <span v-else class="ar-track ar-track--none">
-        <span class="ar-reason">{{ c.no_agreement ? 'אין הסכם עמלות' : 'אין שיעור למוצרים שלה' }}</span>
+        <!-- The reason is the actionable part of the row, so it behaves like
+             one: it names WHY the company can't be compared and opens the list
+             of everyone in the same position, with what it would take to fix. -->
+        <button class="ar-reason" @click.stop="$emit('explain', c)">
+          {{ c.no_agreement ? 'אין הסכם עמלות' : 'אין שיעור למוצרים שלה' }}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+          </svg>
+        </button>
       </span>
 
       <span class="ar-amt ltr-number">{{ money(c.comparable ? c.paid_firm : c.paid) }}</span>
@@ -36,7 +45,7 @@ const GAP_MIN_PCT = 10
 const GAP_MIN_SHEKEL = 100
 
 const props = defineProps({ rows: { type: Array, default: () => [] } })
-defineEmits(['pick'])
+defineEmits(['pick', 'explain'])
 
 const shown = ref(false)
 
@@ -91,7 +100,14 @@ onMounted(() => { requestAnimationFrame(() => { shown.value = true }) })
 .ar-bar--agreed { background: var(--text-muted); opacity: 0.38; }
 
 .ar-track--none { justify-content: center; }
-.ar-reason { font-size: 11px; color: var(--text-muted); }
+.ar-reason {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 11px;
+  border: 1px solid var(--border-subtle); background: none;
+  color: var(--text-muted); font-family: inherit; font-size: 11px;
+  cursor: pointer; align-self: flex-start;
+}
+.ar-reason:hover { color: var(--text); border-color: var(--text-muted); }
 
 .ar-amt { font-size: 13px; font-weight: 700; color: var(--text); text-align: left; }
 .ar-gap { font-size: 13px; font-weight: 700; text-align: left; }

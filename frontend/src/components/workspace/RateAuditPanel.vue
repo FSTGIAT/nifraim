@@ -27,42 +27,38 @@
       <span><i class="ra-key ra-key--agreed"></i>לפי ההסכם</span>
       <span class="ra-legend-hint">בחר חברה לפירוט לפי מוצר</span>
     </div>
-    <AuditRows :rows="companies" @pick="openCompany = $event" />
+    <AuditRows :rows="companies" @pick="openCompany = $event"
+               @explain="explainOpen = true" />
 
     <button class="ra-all" @click="tableOpen = true">הצג את כל הנתונים</button>
 
     <DataModal :open="!!openCompany"
                :title="openCompany ? openCompany.company + ' — לפי מוצר' : ''"
+               :subtitle="openCompany ? `${openCompany.products.length} מוצרים` : ''"
                @close="openCompany = null">
-      <template v-if="openCompany">
-        <table class="ra-table">
-          <thead><tr><th>מוצר</th><th>שולם</th><th>לפי ההסכם</th><th>הפרש</th><th>שורות</th></tr></thead>
-          <tbody>
-            <tr v-for="p in openCompany.products" :key="p.product">
-              <td>
-                {{ p.product }}
-                <span v-if="p.estimated" class="ra-est"
-                      :title="`${p.estimated} שורות ללא שיעור עמלה מפורש בהסכם — הצפי בשורות אלה הוא הערכה`">≈</span>
-              </td>
-              <td class="ra-num"><span class="ltr-number">{{ money(p.paid) }}</span></td>
-              <td class="ra-num"><span class="ltr-number">{{ money(p.expected) }}</span></td>
-              <td class="ra-num">
-                <!-- A product whose rows ALL fall back to a default or median
-                     rate has no claim attached to it. מנורה's "מבטחים יותר"
-                     shows expected ₪14,627 against ₪380 paid — the documented
-                     ₪21K phantom — so printing −₪14,247 here, even unstyled,
-                     invites exactly the reading the headline is built to
-                     prevent. The two amounts stay; the difference does not. -->
-                <span v-if="p.estimated >= p.records" class="ra-dash" :title="ESTIMATE_HINT">—</span>
-                <span v-else class="ltr-number" :class="p.estimated ? '' : deltaClass(p.paid - p.expected, p.expected)">
-                  {{ signedMoney(p.paid - p.expected) }}
-                </span>
-              </td>
-              <td class="ra-num"><span class="ltr-number">{{ p.records }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </template>
+      <ProductRows v-if="openCompany" :products="openCompany.products" />
+    </DataModal>
+
+    <!-- Who cannot be checked, and what would make them checkable. -->
+    <DataModal :open="explainOpen" title="חברות שאי אפשר להשוות" @close="explainOpen = false">
+      <p class="ra-explain-lead">
+        השוואה בין מה ששולם למה שמגיע דורשת שיעור עמלה מפורש בהסכם. לחברות האלה
+        התקבלו עמלות, אבל אין מולן שיעור לבדוק אותן — הסכום שהתקבל מוצג, ואי אפשר
+        לדעת אם הוא נכון.
+      </p>
+      <ul class="ra-explain">
+        <li v-for="c in notComparable" :key="c.company">
+          <span class="ra-ex-co">{{ c.company }}</span>
+          <span class="ra-ex-amt ltr-number">{{ money(c.paid) }}</span>
+          <span class="ra-ex-why">
+            {{ c.no_agreement ? 'אין הסכם עמלות במערכת' : 'יש הסכם, אך אין שיעור למוצרים שהתקבלו' }}
+          </span>
+        </li>
+      </ul>
+      <p class="ra-explain-foot">
+        להוספת הסכם: לשונית <strong>טבלת עמלות</strong> — העלאת מסמך ההסכם, והמערכת
+        תחלץ ממנו את שיעורי העמלה.
+      </p>
     </DataModal>
 
     <DataModal :open="tableOpen" title="עמלות בפועל מול ההסכמים — כל הנתונים" @close="tableOpen = false">
@@ -115,6 +111,7 @@ import { ref, computed } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
 import AuditRows from './AuditRows.vue'
+import ProductRows from './ProductRows.vue'
 import { money, signedMoney, pct } from '../../utils/chartDefaults'
 
 // A gap is worth naming only past BOTH thresholds — insurers round, and a
@@ -128,6 +125,9 @@ const companies = ref([])
 const period = ref(null)
 const openCompany = ref(null)
 const tableOpen = ref(false)
+const explainOpen = ref(false)
+
+const notComparable = computed(() => companies.value.filter(c => !c.comparable && c.paid > 0))
 
 function gapClass(c) {
   if (!c.comparable || c.gap_pct === null) return ''
@@ -236,6 +236,22 @@ api.get('/production/rate-audit')
 .ra-key--paid { background: var(--chart-9); }
 .ra-key--agreed { background: var(--text-muted); opacity: 0.38; }
 .ra-legend-hint { margin-right: auto; }
+
+.ra-explain-lead { font-size: 13px; color: var(--text); line-height: 1.8; margin-bottom: 14px; }
+.ra-explain { list-style: none; display: flex; flex-direction: column; }
+.ra-explain li {
+  display: grid; grid-template-columns: 1fr auto 1.4fr; align-items: center; gap: 12px;
+  padding: 10px 4px; border-bottom: 1px solid var(--border-subtle);
+}
+.ra-explain li:last-child { border-bottom: none; }
+.ra-ex-co { font-size: 13px; font-weight: 600; color: var(--text); }
+.ra-ex-amt { font-size: 13px; font-weight: 700; color: var(--text); }
+.ra-ex-why { font-size: 12px; color: var(--text-muted); }
+.ra-explain-foot {
+  font-size: 12px; color: var(--text-muted); line-height: 1.8;
+  margin-top: 14px; padding: 10px 12px;
+  border-radius: var(--radius-sm); background: var(--border-subtle);
+}
 
 .ra-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ra-table th {
