@@ -1350,7 +1350,8 @@ async def get_rate_audit(
                 "accumulation": accum,
             })
             pp = per_product.setdefault(
-                prod or "—", {"product": prod or "—", "paid": 0.0,
+                prod or "ללא שם מוצר",
+                {"product": prod or "ללא שם מוצר", "paid": 0.0,
                               "expected": 0.0, "records": 0, "estimated": 0}
             )
             pp["paid"] += row_paid

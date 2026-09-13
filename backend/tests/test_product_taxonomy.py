@@ -54,6 +54,18 @@ check("'פיננסים וזמן פרישה' survives",
       canonical_product_type("פיננסים וזמן פרישה"), "פיננסים וזמן פרישה")
 check("'סיכונים' survives", canonical_product_type("סיכונים"), "סיכונים")
 
+print("\n[4b] a value with no letters is not a product name")
+# Menora's נפרעים rows carry a product column holding "0" and ".5". Preserving
+# them verbatim put a product literally called 0 into the breakdown tables and
+# into an alert reading `שולם ₪1,519 יותר … בעיקר ב"0"` — a sentence pointing
+# at nothing. Unknown WORDING is worth keeping; a stray digit is not wording.
+for raw in ["0", ".5", "-", "0.0", "5", "00"]:
+    check(f"{raw!r} is not a product", canonical_product_type(raw), "")
+check("a name with digits in it survives",
+      canonical_product_type("ניתוח שקל ראשון 10.23"), "ניתוח שקל ראשון 10.23")
+check("a canonical type with digits still resolves",
+      canonical_product_type("טיפולים פרימיום 10.23"), "טיפולים פרימיום 10.23")
+
 print("\n[5] empty input never crashes and never invents a product")
 for raw in [None, "", "   "]:
     check(f"{raw!r} → ''", canonical_product_type(raw), "")

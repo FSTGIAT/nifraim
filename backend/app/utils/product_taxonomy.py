@@ -83,6 +83,13 @@ def canonical_product_type(raw: str | None) -> str:
     s = re.sub(r"\s+", " ", str(raw).replace("‏", "").replace("‎", "")).strip()
     if not s:
         return ""
+    # A value with no letters in it is not a product name. Menora's נפרעים file
+    # carries rows whose product column holds "0" and ".5", and preserving them
+    # verbatim put a product literally called 0 into the breakdown tables and
+    # into an alert that read `שולם ₪1,519 יותר … בעיקר ב"0"`. Unknown WORDING
+    # is worth keeping; a stray digit is not wording.
+    if not any(ch.isalpha() for ch in s):
+        return ""
 
     stripped = s
     for pref in _REPORT_PREFIXES:

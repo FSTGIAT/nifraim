@@ -19,27 +19,20 @@
       </li>
     </ul>
 
-    <!-- Two bars per company on ONE axis — both are shekels, so they compare
-         directly. Only companies whose rows carry a product-level rate appear:
-         a fallback rate is not a claim about what anyone owes. -->
-    <p class="ra-hint">בחר חברה בגרף כדי לראות את הפירוט לפי מוצר</p>
-    <apexchart v-if="comparable.length" type="bar" :height="chartHeight"
-               :options="chartOptions" :series="chartSeries" />
-    <p v-else class="ra-none">אין חברה עם שיעור עמלה מפורש בהסכם — אין מה להשוות.</p>
-
-    <!-- Companies that can't be compared are listed, never dropped: each line
-         names the action that would make them comparable. -->
-    <ul v-if="notComparable.length" class="ra-excluded">
-      <li v-for="c in notComparable" :key="c.company">
-        <span class="ra-ex-name">{{ c.company }}</span>
-        <span class="ra-ex-paid ltr-number">{{ money(c.paid) }}</span>
-        <span class="ra-tag">{{ c.no_agreement ? 'אין הסכם עמלות' : 'אין שיעור למוצרים שלה' }}</span>
-      </li>
-    </ul>
+    <!-- One list, not a chart plus a separate list underneath. Companies that
+         cannot be compared were rendered in a different visual language from
+         the ones that could, so the panel read as two unrelated blocks. -->
+    <div class="ra-legend">
+      <span><i class="ra-key ra-key--paid"></i>שולם בפועל</span>
+      <span><i class="ra-key ra-key--agreed"></i>לפי ההסכם</span>
+      <span class="ra-legend-hint">בחר חברה לפירוט לפי מוצר</span>
+    </div>
+    <AuditRows :rows="companies" @pick="openCompany = $event" />
 
     <button class="ra-all" @click="tableOpen = true">הצג את כל הנתונים</button>
 
-    <DataModal :open="!!openCompany" :title="openCompany ? openCompany.company + ' — לפי מוצר' : ''"
+    <DataModal :open="!!openCompany"
+               :title="openCompany ? openCompany.company + ' — לפי מוצר' : ''"
                @close="openCompany = null">
       <template v-if="openCompany">
         <table class="ra-table">
@@ -48,12 +41,20 @@
             <tr v-for="p in openCompany.products" :key="p.product">
               <td>
                 {{ p.product }}
-                <span v-if="p.estimated" class="ra-tag ltr-number">{{ p.estimated }} ללא שיעור מדויק</span>
+                <span v-if="p.estimated" class="ra-est"
+                      :title="`${p.estimated} שורות ללא שיעור עמלה מפורש בהסכם — הצפי בשורות אלה הוא הערכה`">≈</span>
               </td>
               <td class="ra-num"><span class="ltr-number">{{ money(p.paid) }}</span></td>
               <td class="ra-num"><span class="ltr-number">{{ money(p.expected) }}</span></td>
               <td class="ra-num">
-                <span class="ltr-number" :class="p.estimated ? '' : deltaClass(p.paid - p.expected)">
+                <!-- A product whose rows ALL fall back to a default or median
+                     rate has no claim attached to it. מנורה's "מבטחים יותר"
+                     shows expected ₪14,627 against ₪380 paid — the documented
+                     ₪21K phantom — so printing −₪14,247 here, even unstyled,
+                     invites exactly the reading the headline is built to
+                     prevent. The two amounts stay; the difference does not. -->
+                <span v-if="p.estimated >= p.records" class="ra-dash" :title="ESTIMATE_HINT">—</span>
+                <span v-else class="ltr-number" :class="p.estimated ? '' : deltaClass(p.paid - p.expected, p.expected)">
                   {{ signedMoney(p.paid - p.expected) }}
                 </span>
               </td>
@@ -101,8 +102,9 @@
         </tbody>
       </table>
       <p class="ra-foot">
-        ההשוואה נעשית רק על שורות שיש להן שיעור עמלה מפורש בהסכם. שיעור שנגזר מברירת מחדל
-        או מחציון אינו טענה על חוב, ולכן אינו נכלל בהפרש.
+        <span class="ra-est">≈</span> מסמן מוצר שחלק משורותיו אינן נושאות שיעור עמלה מפורש
+        בהסכם. שיעור שנגזר מברירת מחדל או מחציון אינו טענה על חוב, ולכן אינו נכלל בהפרש
+        שבראש המסך.
       </p>
     </DataModal>
   </div>
@@ -112,68 +114,35 @@
 import { ref, computed } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
-import { money, signedMoney, pct, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
+import AuditRows from './AuditRows.vue'
+import { money, signedMoney, pct } from '../../utils/chartDefaults'
 
 // A gap is worth naming only past BOTH thresholds — insurers round, and a
 // commission can straddle a month boundary. Mirrors the comparison engine.
 const GAP_MIN_PCT = 10
 const GAP_MIN_SHEKEL = 100
 
-// Status colours, reserved: never reused as a categorical series hue.
-const PAID = '#2F73C4'
-const AGREED = '#9AA5B1'
+const ESTIMATE_HINT = 'כל השורות במוצר זה מתומחרות בשיעור ברירת מחדל — אין כאן טענה על חוב'
 
 const companies = ref([])
 const period = ref(null)
 const openCompany = ref(null)
 const tableOpen = ref(false)
 
-const comparable = computed(() => companies.value.filter(c => c.comparable))
-const notComparable = computed(() => companies.value.filter(c => !c.comparable && c.paid > 0))
-const chartHeight = computed(() => Math.max(200, comparable.value.length * 58 + 70))
-
-const chartSeries = computed(() => [
-  { name: 'שולם בפועל', data: comparable.value.map(c => c.paid_firm) },
-  { name: 'לפי ההסכם', data: comparable.value.map(c => c.expected_firm) },
-])
-
-const chartOptions = computed(() => ({
-  ...BASE_CHART,
-  chart: {
-    ...BASE_CHART.chart,
-    type: 'bar',
-    events: {
-      dataPointSelection: (_e, _ctx, cfg) => {
-        const c = comparable.value[cfg.dataPointIndex]
-        if (c) openCompany.value = c
-      },
-    },
-  },
-  colors: [PAID, AGREED],
-  plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '74%', columnWidth: '74%' } },
-  // A 2px surface gap so the two bars never fuse into one block.
-  stroke: { show: true, width: 2, colors: ['#fff'] },
-  dataLabels: { enabled: false },
-  legend: {
-    show: true, position: 'top', horizontalAlign: 'right',
-    fontFamily: 'Heebo, sans-serif', fontSize: '12px',
-    markers: { width: 10, height: 10, radius: 3 },
-    labels: { colors: '#706E6B' },
-  },
-  xaxis: {
-    categories: comparable.value.map(c => c.company),
-    labels: { formatter: axisMoney, style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B' } },
-  },
-  yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B', fontSize: '13px' } } },
-  tooltip: { ...BASE_CHART.tooltip, shared: true, intersect: false, y: { formatter: money } },
-}))
-
 function gapClass(c) {
   if (!c.comparable || c.gap_pct === null) return ''
   if (Math.abs(c.gap_pct) < GAP_MIN_PCT || Math.abs(c.gap) < GAP_MIN_SHEKEL) return ''
   return c.gap < 0 ? 'ra-neg' : 'ra-pos'
 }
-function deltaClass(d) { return d < 0 ? 'ra-neg' : 'ra-pos' }
+function deltaClass(diff, expected) {
+  // Same thresholds as the headline gap. Colouring by sign alone painted a ₪1
+  // rounding difference in alarm red — and a diff of −₪0.004 rendered as a red
+  // "₪0". Insurers round, and a commission can straddle a month boundary.
+  const base = Math.abs(Number(expected) || 0)
+  if (Math.abs(diff) < GAP_MIN_SHEKEL) return ''
+  if (base && (Math.abs(diff) / base) * 100 < GAP_MIN_PCT) return ''
+  return diff < 0 ? 'ra-neg' : 'ra-pos'
+}
 
 const alerts = computed(() => {
   const out = []
@@ -184,8 +153,12 @@ const alerts = computed(() => {
       const dir = c.gap < 0 ? 'פחות' : 'יותר'
       // Name the product driving it — "Phoenix is 33% off" sends the agent
       // through 750 rows; naming the product does not.
+      // Skip products the source file never named. Menora's rows carry a
+      // product column holding "0" and ".5", which produced the alert
+      // `שולם ₪1,519 יותר … בעיקר ב"0"` — a sentence that points at nothing.
       const worst = (c.products || [])
-        .filter(p => p.estimated === 0 && p.expected > 0)
+        .filter(p => p.estimated === 0 && p.expected > 0
+          && p.product && /\p{L}/u.test(p.product))
         .sort((a, b) => Math.abs(b.paid - b.expected) - Math.abs(a.paid - a.expected))[0]
       out.push({
         key: 'gap-' + c.company,
@@ -207,7 +180,14 @@ const alerts = computed(() => {
 })
 
 api.get('/production/rate-audit')
-  .then((res) => { companies.value = res.data.companies || []; period.value = res.data.period })
+  .then((res) => {
+    const all = res.data.companies || []
+    companies.value = [
+      ...all.filter(c => c.comparable),
+      ...all.filter(c => !c.comparable),
+    ]
+    period.value = res.data.period
+  })
   .catch(() => { companies.value = [] })
 </script>
 
@@ -247,6 +227,16 @@ api.get('/production/rate-audit')
 }
 .ra-all:hover { color: var(--text); }
 
+.ra-legend {
+  display: flex; align-items: center; gap: 16px;
+  margin: 2px 0 10px; font-size: 11px; color: var(--text-muted);
+}
+.ra-legend span { display: flex; align-items: center; gap: 6px; }
+.ra-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.ra-key--paid { background: var(--chart-9); }
+.ra-key--agreed { background: var(--text-muted); opacity: 0.38; }
+.ra-legend-hint { margin-right: auto; }
+
 .ra-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ra-table th {
   font-size: 11px; font-weight: 600; color: var(--text-muted);
@@ -264,5 +254,11 @@ api.get('/production/rate-audit')
 .ra-neg { color: var(--chart-loss); font-weight: 700; }
 .ra-pos { color: var(--chart-gain); font-weight: 700; }
 .ra-dash { color: var(--text-muted); }
+.ra-est {
+  display: inline-block; margin-right: 5px; width: 16px; height: 16px;
+  line-height: 15px; text-align: center; border-radius: 50%;
+  background: var(--border-subtle); color: var(--text-muted);
+  font-size: 11px; font-weight: 700; cursor: help;
+}
 .ra-foot { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
 </style>
