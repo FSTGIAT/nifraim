@@ -1,5 +1,15 @@
 <template>
-  <div v-if="companies.length" class="ra-card">
+  <div v-if="loading" class="ra-card ra-card--skeleton" aria-busy="true">
+    <div class="ra-head"><h3>עמלות בפועל מול ההסכמים</h3></div>
+    <p class="ra-sub">טוען נתוני עמלות…</p>
+    <div class="ra-skel" v-for="n in 5" :key="n">
+      <span class="ra-skel-name"></span>
+      <span class="ra-skel-bar"></span>
+      <span class="ra-skel-amt"></span>
+    </div>
+  </div>
+
+  <div v-else-if="companies.length" class="ra-card">
     <div class="ra-head">
       <h3>עמלות בפועל מול ההסכמים</h3>
       <span v-if="period" class="ra-period ltr-number">{{ period }}</span>
@@ -9,13 +19,25 @@
     <!-- Anything needing action is stated before the chart. A panel that opens
          with a plot makes the reader hunt for the problem. -->
     <ul v-if="alerts.length" class="ra-alerts">
-      <li v-for="a in alerts" :key="a.key" class="ra-alert" :class="'ra-alert--' + a.level">
+      <li v-for="a in shownAlerts" :key="a.key" class="ra-alert" :class="'ra-alert--' + a.level">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
           <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
         <span>{{ a.text }}</span>
+      </li>
+      <!-- One company per alert means a wide book fills the screen before the
+           numbers start. The most severe stay open; the rest are one press away. -->
+      <li v-if="hiddenAlerts" class="ra-alert-more">
+        <button @click="allAlerts = !allAlerts">
+          {{ allAlerts ? 'הצג פחות' : `הצג עוד ${hiddenAlerts} התראות` }}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+               :class="{ 'ra-chev--open': allAlerts }">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
       </li>
     </ul>
 
@@ -127,10 +149,18 @@ const GAP_MIN_SHEKEL = 100
 const ESTIMATE_HINT = 'כל השורות במוצר זה מתומחרות בשיעור ברירת מחדל — אין כאן טענה על חוב'
 
 const companies = ref([])
+const loading = ref(true)
 const period = ref(null)
 const openCompany = ref(null)
 const tableOpen = ref(false)
 const explainOpen = ref(false)
+const allAlerts = ref(false)
+const ALERTS_OPEN = 3
+
+const shownAlerts = computed(
+  () => (allAlerts.value ? alerts.value : alerts.value.slice(0, ALERTS_OPEN)),
+)
+const hiddenAlerts = computed(() => Math.max(0, alerts.value.length - ALERTS_OPEN))
 
 const notComparable = computed(() => companies.value.filter(c => !c.comparable && c.paid > 0))
 
@@ -185,6 +215,7 @@ const alerts = computed(() => {
 })
 
 api.get('/production/rate-audit')
+  .finally(() => { loading.value = false })
   .then((res) => {
     const all = res.data.companies || []
     companies.value = [
@@ -201,6 +232,25 @@ api.get('/production/rate-audit')
   background: var(--card-bg); border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md); padding: 20px;
 }
+.ra-card--skeleton { pointer-events: none; }
+.ra-skel {
+  display: grid; grid-template-columns: minmax(64px, 110px) 1fr 84px;
+  align-items: center; gap: 12px; padding: 11px 8px;
+}
+.ra-skel span { display: block; height: 10px; border-radius: 5px;
+  background: linear-gradient(90deg,
+    var(--border-subtle) 25%, rgba(0,0,0,0.045) 37%, var(--border-subtle) 63%);
+  background-size: 400% 100%;
+  animation: ra-shimmer 1.3s ease-in-out infinite;
+}
+.ra-skel-name { width: 70%; }
+.ra-skel-amt { width: 100%; }
+@keyframes ra-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) { .ra-skel span { animation: none; } }
+
 .ra-head { display: flex; align-items: baseline; gap: 10px; }
 .ra-head h3 { font-size: 15px; font-weight: 700; color: var(--text); }
 .ra-period { font-size: 12px; color: var(--text-muted); }
@@ -216,6 +266,16 @@ api.get('/production/rate-audit')
 .ra-alert svg { flex-shrink: 0; margin-top: 2px; }
 .ra-alert--warn { background: var(--amber-light); color: var(--amber); }
 .ra-alert--info { background: var(--primary-light); color: var(--primary); }
+.ra-alert-more { display: flex; }
+.ra-alert-more button {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm); background: none; color: var(--text-muted);
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.ra-alert-more button:hover { color: var(--text); border-color: var(--text-muted); }
+.ra-alert-more svg { transition: transform 0.2s var(--transition); }
+.ra-chev--open { transform: rotate(180deg); }
 
 .ra-excluded { list-style: none; margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
 .ra-excluded li {

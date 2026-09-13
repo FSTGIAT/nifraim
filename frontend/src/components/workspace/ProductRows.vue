@@ -1,9 +1,20 @@
 <template>
   <div class="pr">
-    <div class="pr-legend">
-      <span><i class="pr-key pr-key--paid"></i>שולם בפועל</span>
-      <span><i class="pr-key pr-key--agreed"></i>לפי ההסכם</span>
-      <span class="pr-legend-cols">שולם · לפי ההסכם · שיעור · הפרש · שורות</span>
+    <!-- A real header row on the SAME grid as the data rows, so each label
+         sits over the column it names. It was a single run of dot-separated
+         text floating to one side, which named the columns in the right order
+         and pointed at none of them. -->
+    <div class="pr-row pr-head">
+      <span class="pr-keys">
+        <i class="pr-key pr-key--paid"></i>שולם
+        <i class="pr-key pr-key--agreed"></i>לפי ההסכם
+      </span>
+      <span></span>
+      <span>שולם</span>
+      <span>לפי ההסכם</span>
+      <span>שיעור</span>
+      <span>הפרש</span>
+      <span>שורות</span>
     </div>
 
     <ul class="pr-list">
@@ -131,11 +142,20 @@ watch(() => props.products, play)
 </script>
 
 <style scoped>
-.pr-legend {
-  display: flex; gap: 16px; align-items: center;
-  font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
+/* `.pr-row` sets opacity:0 until its enter transition runs, and it is declared
+   AFTER this block — so a bare `.pr-head` lost the cascade and the header row
+   rendered invisible. Qualified with `.pr-row` it wins on specificity wherever
+   it sits in the file. */
+.pr-row.pr-head {
+  font-size: 11px; color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 7px; opacity: 1; transform: none; transition: none;
 }
-.pr-legend span { display: flex; align-items: center; gap: 6px; }
+.pr-row.pr-head:hover { background: none; }
+.pr-row.pr-head > span:not(.pr-keys) { text-align: left; }
+.pr-row.pr-head > span:first-child { text-align: right; }
+.pr-keys { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pr-keys .pr-key:not(:first-child) { margin-right: 8px; }
 .pr-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .pr-key--paid { background: var(--chart-9); }
 .pr-key--agreed { background: var(--text-muted); opacity: 0.38; }
@@ -178,7 +198,6 @@ watch(() => props.products, play)
 .pr-rate { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; cursor: help; }
 /* A rate that came from a default is context, not the agreement's word. */
 .pr-rate--soft { color: var(--text-muted); font-weight: 500; font-style: italic; }
-.pr-legend-cols { margin-right: auto; }
 .pr-rows { font-size: 11px; color: var(--text-muted); text-align: left; }
 
 .pr-est {

@@ -1259,11 +1259,21 @@ async def get_rate_audit(
     if not picked:
         return {"companies": [], "period": None}
 
+    # Only the columns this endpoint reads. Hydrating full ORM objects pulled
+    # 40+ columns per row across thousands of rows for the eight that are used.
     rows = (await db.execute(
-        select(ClientRecord).where(
-            ClientRecord.upload_id.in_([u.id for u in picked])
-        )
-    )).scalars().all()
+        select(
+            ClientRecord.receiving_company,
+            ClientRecord.product,
+            ClientRecord.product_type,
+            ClientRecord.fund_type,
+            ClientRecord.accumulation,
+            ClientRecord.total_premium,
+            ClientRecord.commission_paid,
+            ClientRecord.commission_before_fee,
+            ClientRecord.actual_amount,
+        ).where(ClientRecord.upload_id.in_([u.id for u in picked]))
+    )).all()
 
     user_rates = list((await db.execute(
         select(CommissionRate).where(CommissionRate.user_id == user.id)
@@ -1271,6 +1281,21 @@ async def get_rate_audit(
 
     # VAT basis is a per-COMPANY property of the export, so resolve it once per
     # company before pricing any row.
+    # `select_rate` scans the agreement shelf and token-scores every candidate
+    # product on each call, and it was being invoked once per ROW — 2,678 times
+    # for ~60 distinct products. That made this endpoint take 4.5s, so the panel
+    # appeared seconds after the rest of the tab and the page visibly jumped.
+    # The answer depends only on (company, product, product_type, basis).
+    _rate_cache: dict[tuple, tuple] = {}
+
+    def _rate_for(company, product, product_type, is_accum):
+        key = (company, product, product_type, is_accum)
+        hit = _rate_cache.get(key)
+        if hit is None:
+            hit = select_rate(user_rates, company, product, product_type, is_accum)
+            _rate_cache[key] = hit
+        return hit
+
     grouped: dict[str, list] = defaultdict(list)
     for r in rows:
         brand = company_stem(r.receiving_company) or (r.receiving_company or "")
@@ -1317,8 +1342,8 @@ async def get_rate_audit(
             # accumulation invented ₪5,515 of "expected" against ₪230 actually
             # paid, and that single mistake drove Phoenix's headline gap.
             is_accum = accumulation_based(product_type, accum)
-            rate, route = select_rate(
-                user_rates, r.receiving_company, r.product, product_type, is_accum
+            rate, route = _rate_for(
+                r.receiving_company, r.product, product_type, is_accum
             )
             if is_accum:
                 accum_base += accum
