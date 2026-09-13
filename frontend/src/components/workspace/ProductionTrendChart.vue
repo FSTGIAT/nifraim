@@ -7,7 +7,7 @@
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
         </span>
-        <h3>עמלות צפויות לפי חודש</h3>
+        <h3>{{ mode === 'actual' ? 'עמלות שהתקבלו לפי חודש' : 'עמלות צפויות לפי חודש' }}</h3>
         <span
           v-if="hasTrend"
           class="trend-badge"
@@ -35,10 +35,20 @@
         <span class="trend-current-label">התקבל בפועל</span>
         <span class="trend-current-value ltr-number">{{ formatCurrency(receivedTotal) }}</span>
       </div>
+      <!-- Which measure the bars show. Expected is computable only where an
+           agreement and a priceable base exist, so it covers a fraction of the
+           book; actual covers every company that paid. -->
+      <div v-if="hasData" class="trend-modes">
+        <button class="trend-mode" :class="{ active: mode === 'expected' }"
+                @click="mode = 'expected'">צפוי לפי הסכמים</button>
+        <button class="trend-mode" :class="{ active: mode === 'actual' }"
+                :disabled="!actualPoints.length"
+                @click="mode = 'actual'">התקבל בפועל</button>
+      </div>
     </div>
 
     <!-- Insight card: biggest drop + CTA to automation -->
-    <div v-if="insight" class="trend-insight" :class="`trend-insight--${insight.severity}`">
+    <div v-if="insight && mode === 'expected'" class="trend-insight" :class="`trend-insight--${insight.severity}`">
       <div class="trend-insight-body">
         <div class="trend-insight-icon" aria-hidden="true">
           <svg v-if="insight.severity === 'warn'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -131,7 +141,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
 import { useProductionStore } from '../../stores/production.js'
-import { CHART_PALETTE } from '../../utils/chartPalette.js'
+import { CHART_PALETTE, companyColor, VALIDATED_SLOTS } from '../../utils/chartPalette.js'
 import { brandForLabel } from '../../utils/companyBrand.js'
 
 defineEmits(['go-to-automation'])
@@ -144,6 +154,15 @@ const loading = ref(true)
 // from `points` so it can never be summed into the expected figure.
 const receivedTotal = ref(0)
 const receivedCompanies = ref({})
+
+// Two different questions, so two views rather than two y-scales on one chart.
+//   'expected' — what the agreements say is owed, per production month.
+//   'actual'   — what actually arrived, per נפרעים month.
+// Expected can only be computed where an agreement AND a priceable base exist
+// (live: 2 companies of 9), so a chart locked to it looks like most of the
+// book is missing. Actual covers every company that paid.
+const mode = ref('expected')
+const actualPoints = ref([])
 
 // Companies in the LATEST month's production that contribute no expected
 // commission, with the reason the backend gives.
@@ -248,6 +267,19 @@ async function load() {
     }
 
     points.value = mergeTrends(expPoints)
+
+    // Actual received per month per company — its own endpoint, never blended
+    // into the expected series.
+    try {
+      const tr = await api.get('/production/trend')
+      actualPoints.value = (tr.data || []).map(pt => ({
+        ...pt,
+        by_company: collapseByCompany(pt.by_company),
+        total_expected: pt.total_commission,
+      }))
+    } catch (e) {
+      actualPoints.value = []
+    }
     // Kept separate on purpose — this is what ARRIVED, not what is owed.
     receivedTotal.value = Object.values(receivedByCompany)
       .reduce((s, v) => s + (Number(v) || 0), 0)
@@ -321,23 +353,47 @@ const momPct = computed(() => {
   return ((curr - prev) / prev) * 100
 })
 
-// Top companies by latest period contribution → become individual lines.
-// Limit to 5 so the chart stays readable; remaining companies are rolled
-// into "אחרות" (still shown as a thin line so totals reconcile visually).
+// Every company that contributed in ANY month gets its own segment.
+//
+// This used to rank on the LATEST period and keep 5. Both halves hid data:
+// a month where only one company reported — live, 2026-05 with only הראל —
+// pushed every other company into "אחרות", so a chart titled "by month"
+// showed one company and a grey blob. Ranking across all periods means a
+// company that paid in March is still named in March even if it paid nothing
+// in May.
+//
+// The cap is now the palette's validated slot count, not a readability guess.
+// Beyond it the remainder folds into "אחרות" rather than inventing hues.
+// What the chart plots. `points` stays the expected series so the headline
+// numbers and the drop-insight card keep their meaning.
+const shownPoints = computed(
+  () => (mode.value === 'actual' ? actualPoints.value : points.value),
+)
+
 const topCompanies = computed(() => {
-  if (!points.value.length) return []
-  const latest = points.value[points.value.length - 1].by_company || {}
-  return Object.entries(latest)
+  if (!shownPoints.value.length) return []
+  const totals = {}
+  for (const p of shownPoints.value) {
+    for (const [name, val] of Object.entries(p.by_company || {})) {
+      totals[name] = (totals[name] || 0) + (Number(val) || 0)
+    }
+  }
+  return Object.entries(totals)
+    .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, VALIDATED_SLOTS)
     .map(([name]) => name)
 })
 
-// Bright-bold categorical palette (shared) for the stacked company segments.
-const COMPANY_PALETTE = CHART_PALETTE
+// Colour follows the COMPANY, not its position in the series array — so a
+// month with fewer companies doesn't repaint the ones that remain.
+const COMPANY_PALETTE = computed(() => [
+  ...topCompanies.value.map(companyColor),
+  '#9AA5B1', // "אחרות" — deliberately neutral: it is a remainder, not a company
+])
 
 const series = computed(() => {
-  if (!points.value.length) return []
+  if (!shownPoints.value.length) return []
   // Stacked vertical bars per month — the height of each bar IS the total,
   // so we don't add a separate "total" series. Each colored segment is a
   // company.
@@ -345,11 +401,11 @@ const series = computed(() => {
   topCompanies.value.forEach((company) => {
     out.push({
       name: company,
-      data: points.value.map(p => Number(p.by_company?.[company]) || 0),
+      data: shownPoints.value.map(p => Number(p.by_company?.[company]) || 0),
     })
   })
-  // "אחרות" — every company not in top 5
-  const others = points.value.map((p) => {
+  // "אחרות" — the remainder beyond the validated slot count
+  const others = shownPoints.value.map((p) => {
     const all = p.by_company || {}
     let sum = 0
     for (const [name, val] of Object.entries(all)) {
@@ -443,7 +499,7 @@ const chartOptions = computed(() => ({
     zoom: { enabled: false },
     animations: { enabled: true, easing: 'easeinout', speed: 600 },
   },
-  colors: COMPANY_PALETTE,
+  colors: COMPANY_PALETTE.value,
   plotOptions: {
     bar: {
       horizontal: false,
@@ -455,7 +511,10 @@ const chartOptions = computed(() => ({
       borderRadiusWhenStacked: 'last',
     },
   },
-  stroke: { show: false },
+  // A 2px surface-coloured gap between stacked segments. Without it adjacent
+  // company fills touch, and two hues that pass CVD separation on their own
+  // still read as one block where they meet.
+  stroke: { show: true, width: 2, colors: ['#fff'] },
   fill: { type: 'solid', opacity: 1 },
   dataLabels: {
     enabled: true,
@@ -480,7 +539,7 @@ const chartOptions = computed(() => ({
     background: { enabled: false },
   },
   xaxis: {
-    categories: points.value.map(p => p.period_label || ''),
+    categories: shownPoints.value.map(p => p.period_label || ''),
     labels: {
       style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#706E6B' },
     },
@@ -513,6 +572,15 @@ const chartOptions = computed(() => ({
 </script>
 
 <style scoped>
+.trend-modes { display: flex; gap: 6px; margin-right: auto; }
+.trend-mode {
+  padding: 4px 12px; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); background: none; color: var(--text-muted);
+  font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.trend-mode.active { background: var(--primary-light); color: var(--primary); border-color: transparent; }
+.trend-mode:disabled { opacity: 0.45; cursor: default; }
+
 .trend-card {
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);

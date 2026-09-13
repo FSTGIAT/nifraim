@@ -1741,148 +1741,92 @@ async def get_commission_trend(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Month-over-month ACTUAL commission, using the same per-company-latest-period
-    logic as the dashboard's "עמלות שהתקבלו" KPI.
+    """Month-over-month ACTUAL commission received, broken down by company.
 
-    For each period M (every period_month we have any commission file for):
-      total_M = Σ over companies of (commission_paid sum of that company's
-                latest upload whose period_month ≤ M)
+    This is the companion to `/expected-trend`. Expected commission can only be
+    computed for a company that has an agreement AND a priceable base, so on a
+    real book it covers a handful of companies — live, 2 of 9. Actual money
+    received covers every company that paid, which is what an agent means by
+    "show me all my companies".
 
-    This means:
-      - April reflects ₪66K-ish (Hachshara's April + Phoenix's latest = March +
-        Mor's latest = March + …) — matches the dashboard.
-      - March reflects "what we knew as of end-of-March" per company.
-      - The series can grow OR shrink month-to-month (a company reporting a
-        lower number in a later period replaces its previous contribution).
+    Grouping is by the RECORD's company, not the upload's `company_source`.
+    The previous version grouped by source and so reported a single bucket
+    named "מאוחד" worth ₪102,945 — the entire merged file as one "company" —
+    alongside stale per-company leftovers, double-counting to ₪138,662 against
+    a true ₪102,945. It had no frontend caller, which is why that went unseen.
 
-    Re-uploads of the same filename are deduped to the latest. Uploads with
-    NULL period_month are excluded.
+    Period selection reuses `_select_unified_uploads`, so a stale leftover
+    cannot resurface here after being excluded everywhere else.
     """
-    from collections import defaultdict
-
-    result = await db.execute(
-        select(FileUpload)
-        .where(
+    uploads = list((await db.execute(
+        select(FileUpload).where(
             FileUpload.user_id == user.id,
-            FileUpload.file_category == "commission",
             FileUpload.is_production == False,
-        )
-        .order_by(desc(FileUpload.uploaded_at))
-    )
-    uploads = result.scalars().all()
-
-    # Dedupe: latest upload per filename (handles re-uploads of same period)
-    by_filename: dict[str, FileUpload] = {}
-    for u in uploads:
-        if u.filename not in by_filename:
-            by_filename[u.filename] = u
-
-    surviving = [u for u in by_filename.values() if u.period_month is not None]
-    if not surviving:
+            FileUpload.file_category == "commission",
+        ).order_by(FileUpload.uploaded_at.desc())
+    )).scalars().all())
+    if not uploads:
         return []
 
-    # Sum commission_paid + count distinct clients per upload (one SQL round-trip).
-    upload_ids = [u.id for u in surviving]
-    sum_result = await db.execute(
-        select(
-            ClientRecord.upload_id,
-            func.coalesce(func.sum(ClientRecord.commission_paid), 0).label("total"),
-            func.count(func.distinct(ClientRecord.id_number)).label("clients"),
-        )
-        .where(
-            ClientRecord.upload_id.in_(upload_ids),
-            ClientRecord.user_id == user.id,
-        )
-        .group_by(ClientRecord.upload_id)
+    # One merged upload per period: the batch produces exactly one, and a
+    # period's rows must not be assembled from two different harvests.
+    by_period: dict = {}
+    for u in uploads:
+        if u.period_month is None:
+            continue
+        cur = by_period.get(u.period_month)
+        if cur is None or u.uploaded_at > cur.uploaded_at:
+            by_period[u.period_month] = u
+    if not by_period:
+        return []
+
+    keep = {u.id for u in _select_unified_uploads(uploads)}
+    periods = sorted(
+        p for p, u in by_period.items() if u.id in keep or u.company_source == "מאוחד"
     )
-    upload_totals: dict = {}
-    for upload_id, total, clients in sum_result.all():
-        upload_totals[upload_id] = (float(total or 0), int(clients or 0))
+    if not periods:
+        periods = sorted(by_period)
 
-    # Group surviving uploads by company. Some companies (Phoenix) emit
-    # multiple FILES per period — sum those together inside the same period.
-    # {company: {period_month: total_in_that_period}}
-    by_company_period: dict = defaultdict(lambda: defaultdict(float))
-    by_company_period_clients: dict = defaultdict(lambda: defaultdict(set))
-    # Need raw client IDs to dedupe across files of same company+period
-    if upload_ids:
-        client_q = await db.execute(
-            select(ClientRecord.upload_id, ClientRecord.id_number)
-            .where(
-                ClientRecord.upload_id.in_(upload_ids),
-                ClientRecord.user_id == user.id,
-                ClientRecord.id_number.isnot(None),
-            )
-        )
-        client_rows = client_q.all()
-    else:
-        client_rows = []
-    upload_clients: dict = defaultdict(set)
-    for uid, idn in client_rows:
-        if idn:
-            upload_clients[uid].add(idn.strip())
-
-    for u in surviving:
-        company_key = u.company_source or u.filename
-        total, _ = upload_totals.get(u.id, (0.0, 0))
-        by_company_period[company_key][u.period_month] += total
-        by_company_period_clients[company_key][u.period_month] |= upload_clients.get(u.id, set())
-
-    # All distinct period months — BUT exclude "ghost" periods that have
-    # essentially no real reported activity for that exact month (e.g. a
-    # single file mis-tagged 2026-05 with ₪0 commission would otherwise
-    # produce a duplicate May column showing the same total as April,
-    # because per-company-latest-up-to-M just inherits April's snapshot).
-    #
-    # Threshold: a period must have ≥ ₪500 in strict-period commission_paid
-    # to appear on the chart. Below that, the period is almost certainly
-    # a tagging artefact (see CLAUDE.md → Period Detection).
-    GHOST_PERIOD_THRESHOLD = 500.0
-    strict_totals: dict = defaultdict(float)
-    for company_period_totals in by_company_period.values():
-        for period, val in company_period_totals.items():
-            strict_totals[period] += val
-
-    # The chart's purpose is to show the commission TREND. Previously the
-    # x-axis was filtered to only periods where a production file also
-    # existed, which made the chart collapse to empty when the user had only
-    # one tagged production month. Trend chart now plots every commission
-    # period (above the ghost threshold) — production is context, not a
-    # gate.
-    all_periods = sorted(
-        p for p in {u.period_month for u in surviving}
-        if strict_totals[p] >= GHOST_PERIOD_THRESHOLD
-    )
-
-    # For each period M, sum each company's latest period ≤ M (and record the
-    # per-company contribution so the chart can draw one line per company and
-    # the insight engine can attribute drops to specific companies).
     points = []
-    for M in all_periods:
+    for period in periods:
+        upload = by_period[period]
+        rows = (await db.execute(
+            select(
+                ClientRecord.id_number,
+                ClientRecord.receiving_company,
+                ClientRecord.commission_paid,
+                ClientRecord.commission_before_fee,
+                ClientRecord.actual_amount,
+            ).where(ClientRecord.upload_id == upload.id)
+        )).all()
+
+        by_company: dict[str, float] = defaultdict(float)
+        clients: set[str] = set()
         total = 0.0
-        clients = set()
-        by_company_for_period: dict = {}
-        for company, period_totals in by_company_period.items():
-            relevant = [pm for pm in period_totals.keys() if pm <= M]
-            if not relevant:
+        for idn, company, paid, before_fee, actual in rows:
+            amount = float(_get_commission({
+                "commission_paid": paid,
+                "commission_before_fee": before_fee,
+                "actual_amount": actual,
+            }) or 0)
+            if not amount:
                 continue
-            latest_pm = max(relevant)
-            contribution = period_totals[latest_pm]
-            total += contribution
-            # Skip companies whose latest report is ₪0 — they pollute the
-            # legend and aren't useful for trend attribution.
-            if contribution > 0:
-                by_company_for_period[company] = round(contribution, 2)
-            clients |= by_company_period_clients[company][latest_pm]
+            stem = company_stem(company) or (company or "—")
+            by_company[stem] += amount
+            total += amount
+            if idn:
+                clients.add(idn)
+
         points.append({
-            "period_month": M.isoformat(),
-            "period_label": M.strftime("%Y-%m"),
+            "period_month": period,
+            "period_label": period.strftime("%Y-%m"),
             "total_commission": round(total, 2),
             "unique_clients": len(clients),
-            "by_company": by_company_for_period,
+            "by_company": {k: round(v, 2) for k, v in
+                           sorted(by_company.items(), key=lambda kv: -kv[1])},
         })
-
     return points
+
 
 
 @router.get("/history", response_model=list[ProductionFileInfo])

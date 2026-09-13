@@ -9,17 +9,31 @@
 // Interleaved warm/cool so even a 5-bar chart shows a full bright spread
 // (instead of running red→pink→yellow before reaching the greens/blues).
 export const CHART_PALETTE = [
-  '#EF5350', // coral red
+  // Slots 1-11 are VALIDATED for categorical use (lightness band, chroma floor,
+  // CVD separation, normal-vision floor) against the app's light chart surface.
+  // Re-run before changing any value:
+  //   node validate_palette.js "<comma-separated hexes>" --mode light
+  // The previous values failed three checks: #F9A937/#9CCC3C/#F4D35E sat above
+  // the lightness band, and magenta beside turquoise measured ΔE 5.7 (deutan) —
+  // under the 6.0 floor, i.e. indistinguishable to a red-green colourblind
+  // reader. Hues were kept in their original families; only slots 7 and 8 swap
+  // order, and --tab-recruits was repointed so its identity colour is unchanged.
+  // Contrast vs surface is a WARN for four slots, which obligates the visible
+  // labels + table view these charts ship (never colour alone).
+  '#E04B48', // coral red
   '#4E9DD0', // sky blue
-  '#F9A937', // golden amber
+  '#D9820F', // golden amber
   '#8E44AD', // purple
-  '#9CCC3C', // lime green
+  '#6FA82C', // lime green
   '#E84A7F', // magenta pink
-  '#3DB6B0', // turquoise
-  '#F4D35E', // soft yellow
+  '#C9A227', // gold
+  '#0FA39B', // turquoise
   '#2F73C4', // cobalt blue
   '#4A8B2C', // forest green
-  '#FF5C8A', // bright pink
+  '#D96AB5', // orchid
+  // Slots 12-15 are OUTSIDE the validated range — they cannot clear the chroma
+  // floor without abandoning their hue families. A chart needing more than 11
+  // categories must fold the remainder into "אחרות" rather than reach here.
   '#0E8C8A', // teal
   '#B79CEB', // lavender
   '#2C5F6B', // deep teal
@@ -75,4 +89,34 @@ export function assignNearestDistinct(items) {
     out.set(key, pick.c)
   }
   return out
+}
+
+
+// ── Stable per-company colour ────────────────────────────────────────────
+// A company must keep the SAME colour in every chart and across every filter
+// change. Assigning by array index makes colour follow RANK instead of the
+// entity: filtering one company out, or a month where only one company
+// reported, repaints all the survivors and the reader silently re-learns the
+// legend. Keying off the company's own name fixes it.
+//
+// `COMPANY_BRAND`'s key order is the fixed registry; anything outside it (a
+// new insurer) gets a deterministic hash slot, which can collide but never
+// shifts between renders.
+import { COMPANY_BRAND, brandForLabel } from './companyBrand.js'
+
+const _BRAND_ORDER = Object.values(COMPANY_BRAND).map(b => b.label)
+
+// Only the VALIDATED range — see the note on CHART_PALETTE. Beyond it a chart
+// folds the remainder into "אחרות" rather than inventing a hue.
+export const VALIDATED_SLOTS = 11
+
+export function companyColor(name) {
+  if (!name) return CHART_PALETTE[0]
+  const brand = brandForLabel(name)
+  const idx = brand && brand.label ? _BRAND_ORDER.indexOf(brand.label) : -1
+  if (idx >= 0) return CHART_PALETTE[idx % VALIDATED_SLOTS]
+  let h = 0
+  const str = String(name)
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
+  return CHART_PALETTE[h % VALIDATED_SLOTS]
 }

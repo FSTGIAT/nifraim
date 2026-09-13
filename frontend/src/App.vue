@@ -88,17 +88,17 @@ const navTabs = [
   /* Bright-bold categorical palette (data-viz + colorful UI like the
      automation cadences). Mirrors src/utils/chartPalette.js — keep in sync.
      Use these for charts/categories; use the brand tokens above for chrome. */
-  --chart-1: #EF5350;   /* coral red */
+  --chart-1: #E04B48;   /* coral red */
   --chart-2: #4E9DD0;   /* sky blue */
-  --chart-3: #F9A937;   /* golden amber */
+  --chart-3: #D9820F;   /* golden amber */
   --chart-4: #8E44AD;   /* purple */
-  --chart-5: #9CCC3C;   /* lime green */
+  --chart-5: #6FA82C;   /* lime green */
   --chart-6: #E84A7F;   /* magenta pink */
-  --chart-7: #3DB6B0;   /* turquoise */
-  --chart-8: #F4D35E;   /* soft yellow */
+  --chart-7: #C9A227;   /* gold */
+  --chart-8: #0FA39B;   /* turquoise */
   --chart-9: #2F73C4;   /* cobalt blue */
   --chart-10: #4A8B2C;  /* forest green */
-  --chart-11: #FF5C8A;  /* bright pink */
+  --chart-11: #D96AB5;  /* orchid */
   --chart-12: #0E8C8A;  /* teal */
   --chart-13: #B79CEB;  /* lavender */
   --chart-14: #2C5F6B;  /* deep teal */
@@ -118,8 +118,8 @@ const navTabs = [
   --tab-emails: var(--chart-6);
   --tab-emails-wash: rgba(232, 74, 127, 0.10);
   --tab-emails-ink: #C42B60;
-  --tab-recruits: var(--chart-7);
-  --tab-recruits-wash: rgba(61, 182, 176, 0.12);
+  --tab-recruits: var(--chart-8);
+  --tab-recruits-wash: rgba(15, 163, 155, 0.12);
   --tab-recruits-ink: #1E7D78;
   --tab-portal: var(--chart-2);
   --tab-portal-wash: rgba(78, 157, 208, 0.12);
