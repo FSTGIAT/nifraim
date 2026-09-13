@@ -19,6 +19,13 @@ export const BASE_CHART = {
     zoom: { enabled: false },
     animations: { enabled: true, easing: 'easeout', speed: 500 },
   },
+  // ApexCharts fills bars at 0.85 opacity by default, so every mark rendered a
+  // washed-out version of the palette rather than the palette — which is the
+  // one thing the colour validation cannot see. Measured live:
+  // #E04B48 arrived as rgba(224,75,72,0.85). Blending a validated hue toward
+  // the surface shifts its lightness and its contrast, i.e. exactly the checks
+  // it was stepped to pass.
+  fill: { opacity: 1 },
   grid: { borderColor: GRID, strokeDashArray: 3 },
   states: { hover: { filter: { type: 'darken', value: 0.9 } } },
   tooltip: {

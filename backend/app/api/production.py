@@ -1581,8 +1581,26 @@ async def get_production_breakdown(
         })
     company_list.sort(key=lambda r: (-(r["accumulation"] + r["premium"]), r["company"]))
 
+    # Companies the agent expects to see but that have NO production rows, each
+    # with why. Two different causes, and conflating them makes a chart with
+    # four bars out of eleven configured portals look broken:
+    #   * six are gemel/pension houses whose portals publish נפרעים only —
+    #     there is no production report to download, so this is not a failure;
+    #   * כלל publishes one and its download failed, which IS.
+    configured = await _configured_company_stems(db, user.id)
+    present = {c["company"] for c in company_list}
+    missing = [
+        {
+            "company": stem,
+            "reason": ("no_report" if not meta.get("production") else "not_received"),
+        }
+        for stem, meta in sorted(configured.items())
+        if stem not in present
+    ]
+
     return {
         "companies": company_list,
+        "missing": missing,
         "products": {
             "insurance": _emit(products["insurance"], "premium"),
             "financial": _emit(products["financial"], "accumulation"),

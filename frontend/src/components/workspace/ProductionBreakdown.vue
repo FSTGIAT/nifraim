@@ -7,7 +7,10 @@
          screen instead of mixing two scales on one axis. -->
     <div class="chart-card">
       <div class="chart-header">
-        <h3>התפלגות לפי חברה</h3>
+        <h3>
+          התפלגות לפי חברה
+          <span class="pb-count ltr-number">{{ companies.length }}</span>
+        </h3>
         <div class="chart-actions">
           <button class="toggle-btn" :class="{ active: coMetric === 'accumulation' }"
                   @click="coMetric = 'accumulation'">צבירה</button>
@@ -34,6 +37,27 @@
           <span class="pb-other-unit">{{ otherMetricLabel }}</span>
         </button>
       </div>
+
+      <!-- Why the chart has fewer bars than the agent has portals. Two
+           different causes, and merging them makes a real failure look like a
+           fact of life: six gemel houses publish נפרעים ONLY — there is no
+           production report to download — while כלל publishes one whose
+           download failed. -->
+      <p v-if="noReport.length" class="pb-absent">
+        <span class="pb-absent-lead">ללא דוח פרודוקציה בפורטל:</span>
+        {{ noReport.join(' · ') }}
+        <span class="pb-absent-note">(חברות גמל ופנסיה — הפורטלים שלהן מספקים נפרעים בלבד)</span>
+      </p>
+      <p v-if="notReceived.length" class="pb-absent pb-absent--warn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span class="pb-absent-lead">לא התקבלה פרודוקציה:</span>
+        {{ notReceived.join(' · ') }}
+        <span class="pb-absent-note">(הפורטל מספק דוח — ההורדה לא הושלמה)</span>
+      </p>
     </div>
 
     <!-- ── Products, split ביטוח / פיננסים ───────────────────────────────
@@ -126,6 +150,7 @@ const CATS = [
 const loaded = ref(false)
 const companies = ref([])
 const products = ref({ insurance: [], financial: [] })
+const missing = ref([])
 const coMetric = ref('accumulation')
 const openCompany = ref(null)
 
@@ -146,6 +171,12 @@ const shownCompanies = computed(() =>
 )
 const otherCompanies = computed(() =>
   companies.value.filter(c => !(Number(c[coMetric.value]) > 0)),
+)
+const noReport = computed(
+  () => missing.value.filter(m => m.reason === 'no_report').map(m => m.company),
+)
+const notReceived = computed(
+  () => missing.value.filter(m => m.reason !== 'no_report').map(m => m.company),
 )
 const otherMetricLabel = computed(
   () => (coMetric.value === 'premium' ? 'צבירה' : 'פרמיה'),
@@ -283,6 +314,7 @@ onMounted(async () => {
     const res = await api.get('/production/breakdown')
     companies.value = res.data.companies || []
     products.value = res.data.products || { insurance: [], financial: [] }
+    missing.value = res.data.missing || []
     loaded.value = companies.value.length > 0
   } catch (e) {
     loaded.value = false
@@ -306,6 +338,20 @@ onMounted(async () => {
 }
 .toggle-btn.active { background: var(--primary-light); color: var(--primary); }
 .pb-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.pb-count {
+  display: inline-block; margin-right: 7px; padding: 1px 8px;
+  border-radius: 10px; background: var(--border-subtle);
+  color: var(--text-muted); font-size: 11px; font-weight: 700; vertical-align: 2px;
+}
+.pb-absent {
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+  margin-top: 12px; font-size: 11.5px; color: var(--text-muted); line-height: 1.7;
+}
+.pb-absent svg { align-self: center; color: var(--amber); }
+.pb-absent-lead { font-weight: 700; color: var(--text); }
+.pb-absent-note { opacity: 0.8; }
+.pb-absent--warn .pb-absent-lead { color: var(--amber); }
+
 .pb-others {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle);
