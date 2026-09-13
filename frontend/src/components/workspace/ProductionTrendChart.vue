@@ -47,6 +47,19 @@
       </div>
     </div>
 
+    <!-- The expected view covers only companies with an agreement and a
+         priceable base. Saying how many, next to the bars, is what stops a
+         partial chart reading as a broken one. -->
+    <p v-if="hasData && mode === 'expected' && actualCompanyCount > expectedCompanyCount"
+       class="trend-coverage">
+      <span class="ltr-number">{{ expectedCompanyCount }}</span> מתוך
+      <span class="ltr-number">{{ actualCompanyCount }}</span> חברות —
+      צפי מחושב רק לחברות שיש להן הסכם ובסיס לחישוב.
+      <button class="trend-coverage-btn" @click="mode = 'actual'">
+        הצג את מה שהתקבל בפועל מכולן
+      </button>
+    </p>
+
     <!-- Insight card: biggest drop + CTA to automation -->
     <div v-if="insight && mode === 'expected'" class="trend-insight" :class="`trend-insight--${insight.severity}`">
       <div class="trend-insight-body">
@@ -161,7 +174,15 @@ const receivedCompanies = ref({})
 // Expected can only be computed where an agreement AND a priceable base exist
 // (live: 2 companies of 9), so a chart locked to it looks like most of the
 // book is missing. Actual covers every company that paid.
-const mode = ref('expected')
+// ACTUAL is the default view.
+//
+// Expected commission can only be computed where an agreement AND a priceable
+// base both exist — live that is 2 companies of 10, so opening on it showed a
+// two-bar chart for a ten-company book and read as broken. Twice reported as
+// "where are all the companies". Money actually received covers everyone who
+// paid, which is what "my commissions this month" means to an agent; the
+// expected view is one press away and now states its own coverage.
+const mode = ref('actual')
 const actualPoints = ref([])
 
 // Companies in the LATEST month's production that contribute no expected
@@ -366,6 +387,18 @@ const momPct = computed(() => {
 // Beyond it the remainder folds into "אחרות" rather than inventing hues.
 // What the chart plots. `points` stays the expected series so the headline
 // numbers and the drop-insight card keep their meaning.
+function countCompanies(pts) {
+  const seen = new Set()
+  for (const p of pts) {
+    for (const [name, v] of Object.entries(p.by_company || {})) {
+      if (Number(v) > 0) seen.add(name)
+    }
+  }
+  return seen.size
+}
+const expectedCompanyCount = computed(() => countCompanies(points.value))
+const actualCompanyCount = computed(() => countCompanies(actualPoints.value))
+
 const shownPoints = computed(
   () => (mode.value === 'actual' ? actualPoints.value : points.value),
 )
@@ -623,6 +656,16 @@ const chartOptions = computed(() => ({
 
 <style scoped>
 .trend-modes { display: flex; gap: 6px; margin-right: auto; }
+.trend-coverage {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 10px 0 2px; font-size: 12px; color: var(--text-muted);
+}
+.trend-coverage-btn {
+  padding: 3px 10px; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); background: none; color: var(--primary);
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.trend-coverage-btn:hover { background: var(--primary-light); }
 .trend-mode {
   padding: 4px 12px; border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm); background: none; color: var(--text-muted);
