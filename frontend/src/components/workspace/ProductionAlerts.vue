@@ -100,25 +100,9 @@
       </table>
     </DataModal>
 
-    <DataModal :open="!!moverDetail" :title="moverDetail ? moverDetail.label : ''"
-               @close="moverDetail = null">
-      <table v-if="moverDetail" class="pa-table">
-        <thead><tr><th>חודש קודם</th><th>החודש</th><th>שינוי</th></tr></thead>
-        <tbody>
-          <tr>
-            <td class="pa-num"><span class="ltr-number">{{ money(moverDetail.previous) }}</span></td>
-            <td class="pa-num"><span class="ltr-number">{{ money(moverDetail.now) }}</span></td>
-            <td class="pa-num">
-              <span class="ltr-number" :class="moverDetail.delta < 0 ? 'pa-neg' : 'pa-pos'">
-                {{ signedMoney(moverDetail.delta) }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="moverDetail && moverDetail.reported === false" class="pa-note">
-        לא התקבל דוח נפרעים מחברה זו החודש — הירידה משקפת הורדה שנכשלה, לא הפסקת תשלום.
-      </p>
+    <DataModal :open="!!moverDetail" size="sm"
+               :title="moverDetail ? moverDetail.label : ''" @close="moverDetail = null">
+      <MoverDetail :mover="moverDetail" />
     </DataModal>
   </div>
 </template>
@@ -128,6 +112,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
 import MoverRows from './MoverRows.vue'
+import MoverDetail from './MoverDetail.vue'
 import { money, signedMoney } from '../../utils/chartDefaults'
 
 const unpaid = ref([])

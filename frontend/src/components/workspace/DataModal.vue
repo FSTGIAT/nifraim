@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="dm">
       <div v-if="open" class="dm-overlay" @click.self="$emit('close')">
-        <div class="dm-card" role="dialog" aria-modal="true">
+        <div class="dm-card" :class="'dm-card--' + size" role="dialog" aria-modal="true">
           <div class="dm-head">
             <h4>{{ title }}</h4>
             <span v-if="subtitle" class="dm-sub ltr-number">{{ subtitle }}</span>
@@ -29,6 +29,9 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, default: '' },
   subtitle: { type: String, default: '' },
+  // A table of many rows and a single-figure card want very different widths;
+  // one 900px shell around one row is mostly empty space.
+  size: { type: String, default: 'lg' },  // 'sm' | 'lg'
 })
 const emit = defineEmits(['close'])
 
@@ -50,9 +53,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 .dm-card {
   background: var(--card-bg); border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg); width: 100%; max-width: 900px;
+  border-radius: var(--radius-lg); width: 100%;
   max-height: 84vh; display: flex; flex-direction: column;
 }
+.dm-card--lg { max-width: 900px; }
+.dm-card--sm { max-width: 440px; }
 .dm-head {
   display: flex; align-items: center; gap: 12px;
   padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);
