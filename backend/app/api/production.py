@@ -1682,7 +1682,28 @@ async def get_breakdown_clients(
         c["premium"] = round(c["premium"], 2)
         c["accumulation"] = round(c["accumulation"], 2)
     out.sort(key=lambda c: (-(c["accumulation"] + c["premium"]), c["name"]))
-    return {"clients": out, "total": len(out)}
+
+    # A figure repeated identically across many clients is almost never a real
+    # per-client figure — it is a group or total written onto every member row
+    # by the source file. Live: ~76 clients each carrying exactly ₪14,612 of
+    # monthly health premium, which is an implausible individual premium and
+    # accounts for the whole product on its own. The list itself is correct (it
+    # reconciles with the product card to the shekel), so the problem is
+    # upstream and worth naming rather than rendering 76 identical rows as fact.
+    suspect = None
+    for field in ("premium", "accumulation"):
+        counts: dict[float, int] = defaultdict(int)
+        for c in out:
+            if c[field]:
+                counts[round(c[field], 2)] += 1
+        if not counts:
+            continue
+        value, n = max(counts.items(), key=lambda kv: kv[1])
+        if n >= 5 and n >= 0.2 * len(counts) + 0.2 * sum(counts.values()):
+            suspect = {"field": field, "value": value, "clients": n}
+            break
+
+    return {"clients": out, "total": len(out), "identical_value": suspect}
 
 
 

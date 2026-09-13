@@ -96,38 +96,7 @@
                @close="closeDrill">
       <p v-if="drillLoading" class="pb-none">טוען…</p>
       <p v-else-if="!drillClients.length" class="pb-none">אין לקוחות להצגה</p>
-      <table v-else class="pb-table">
-        <thead><tr><th>לקוח</th><th>פרמיה</th><th>צבירה</th><th>מוצרים</th></tr></thead>
-        <tbody>
-          <template v-for="c in drillClients" :key="c.id_number">
-            <tr class="pb-row" @click="openClient = openClient === c.id_number ? null : c.id_number">
-              <td>{{ c.name || c.id_number }}</td>
-              <td class="pb-num"><span class="ltr-number">{{ money(c.premium) }}</span></td>
-              <td class="pb-num"><span class="ltr-number">{{ money(c.accumulation) }}</span></td>
-              <td class="pb-num"><span class="ltr-number">{{ c.products.length }}</span></td>
-            </tr>
-            <!-- One client's full holdings, insurance and savings together. -->
-            <tr v-if="openClient === c.id_number" class="pb-sub">
-              <td colspan="4">
-                <table class="pb-table pb-table--sub">
-                  <thead>
-                    <tr><th>מוצר</th><th>חברה</th><th>סוג</th><th>פרמיה</th><th>צבירה</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(p, i) in c.products" :key="i">
-                      <td>{{ p.raw_product || p.product }}</td>
-                      <td>{{ p.company }}</td>
-                      <td>{{ p.category === 'insurance' ? 'ביטוח' : 'פיננסים' }}</td>
-                      <td class="pb-num"><span class="ltr-number">{{ money(p.premium) }}</span></td>
-                      <td class="pb-num"><span class="ltr-number">{{ money(p.accumulation) }}</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+      <ClientRows v-else :rows="drillClients" :identical="drillIdentical" />
     </DataModal>
   </div>
 </template>
@@ -137,6 +106,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
 import CompanyProductRows from './CompanyProductRows.vue'
+import ClientRows from './ClientRows.vue'
 import { assignCompanyColors, CHART_PALETTE } from '../../utils/chartPalette'
 import { money, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
 
@@ -158,7 +128,7 @@ const drillOpen = ref(false)
 const drillLoading = ref(false)
 const drillClients = ref([])
 const drillTitle = ref('')
-const openClient = ref(null)
+const drillIdentical = ref(null)
 
 // Companies with a value for the CURRENT measure.
 //
@@ -289,7 +259,7 @@ function productOptions(cat) {
 async function drill(category, product, company) {
   drillOpen.value = true
   drillLoading.value = true
-  openClient.value = null
+  drillIdentical.value = null
   drillClients.value = []
   drillTitle.value = company ? `${company} · ${product}` : product
   try {
@@ -297,6 +267,7 @@ async function drill(category, product, company) {
       params: { category, product, company: company || undefined },
     })
     drillClients.value = res.data.clients || []
+    drillIdentical.value = res.data.identical_value || null
   } catch (e) {
     drillClients.value = []
   } finally {
@@ -306,7 +277,6 @@ async function drill(category, product, company) {
 
 function closeDrill() {
   drillOpen.value = false
-  openClient.value = null
 }
 
 onMounted(async () => {
