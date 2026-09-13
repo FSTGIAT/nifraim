@@ -1351,12 +1351,25 @@ async def get_rate_audit(
             })
             pp = per_product.setdefault(
                 prod or "ללא שם מוצר",
-                {"product": prod or "ללא שם מוצר", "paid": 0.0,
-                              "expected": 0.0, "records": 0, "estimated": 0}
+                {"product": prod or "ללא שם מוצר", "paid": 0.0, "expected": 0.0,
+                 "records": 0, "estimated": 0,
+                 # How the expected figure was reached, so "why does it say I'm
+                 # owed this" is answerable without reading the code:
+                 #   base × rate  (÷12 on an accumulation basis)
+                 "base": 0.0, "basis": None, "rate": None, "route": None}
             )
             pp["paid"] += row_paid
             pp["expected"] += row_exp
             pp["records"] += 1
+            pp["base"] += accum if is_accum else premium
+            if pp["basis"] is None:
+                pp["basis"] = "accumulation" if is_accum else "premium"
+            # The rate is per (company, product), so every row of a product
+            # resolves the same one; keep the first non-zero and the route that
+            # produced it.
+            if pp["rate"] is None and rate > 0:
+                pp["rate"] = round(rate, 6)
+                pp["route"] = route
             if rate > 0 and is_estimate:
                 pp["estimated"] += 1
 
@@ -1380,6 +1393,10 @@ async def get_rate_audit(
         for pp in per_product.values():
             pp["paid"] = round(pp["paid"], 2)
             pp["expected"] = round(pp["expected"], 2)
+            pp["base"] = round(pp["base"], 2)
+            # A rate that came from a default or a median is not a rate FOR this
+            # product — the UI has to be able to say which it is.
+            pp["firm"] = bool(pp["route"] and pp["route"].endswith((":product", ":residue")))
 
         out.append({
             "company": brand,
@@ -1405,6 +1422,11 @@ async def get_rate_audit(
             "no_agreement": no_rate_rows == len(recs),
             "rows_without_rate": no_rate_rows,
             "products": sorted(per_product.values(), key=lambda x: -x["paid"]),
+            "unrated_products": [
+                pp["product"] for pp in
+                sorted(per_product.values(), key=lambda x: -x["paid"])
+                if not pp["firm"] and pp["paid"] > 0
+            ][:8],
             # An unverified VAT basis can move `paid` by ~18%, which would read
             # as a rate breach that isn't one.
             "vat_verified": basis["verified"],

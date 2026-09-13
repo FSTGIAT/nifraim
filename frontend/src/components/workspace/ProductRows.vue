@@ -3,6 +3,7 @@
     <div class="pr-legend">
       <span><i class="pr-key pr-key--paid"></i>שולם בפועל</span>
       <span><i class="pr-key pr-key--agreed"></i>לפי ההסכם</span>
+      <span class="pr-legend-cols">שולם · לפי ההסכם · שיעור · הפרש · שורות</span>
     </div>
 
     <ul class="pr-list">
@@ -22,7 +23,16 @@
         </span>
 
         <span class="pr-val ltr-number">{{ money(p.paid) }}</span>
-        <span class="pr-val pr-val--muted ltr-number">{{ money(p.expected) }}</span>
+        <!-- The expected figure carries its own derivation: base × rate. The
+             question "where does this number come from" should not require
+             reading the code. -->
+        <span class="pr-val pr-val--muted ltr-number" :title="formula(p)">
+          {{ money(p.expected) }}
+        </span>
+        <span class="pr-rate ltr-number" :class="{ 'pr-rate--soft': !p.firm }"
+              :title="p.firm ? 'שיעור מההסכם, למוצר הזה' : 'אין שיעור למוצר הזה בהסכם — חושב לפי ברירת מחדל'">
+          {{ p.rate ? pctText(p.rate) : '—' }}
+        </span>
         <span class="pr-diff ltr-number" :class="tone(p)">
           {{ isEstimate(p) ? '—' : signedMoney(p.paid - p.expected) }}
         </span>
@@ -98,6 +108,19 @@ function estTip(p) {
   return `${p.estimated} מתוך ${p.records} שורות ללא שיעור עמלה מפורש בהסכם`
 }
 
+function pctText(rate) {
+  const n = Number(rate) * 100
+  return (n < 1 ? n.toFixed(3) : n.toFixed(2)) + '%'
+}
+
+/** "₪8,513 פרמיה × 19.2% = ₪1,635" — the arithmetic behind the expected cell. */
+function formula(p) {
+  if (!p.rate || !p.base) return ''
+  const basis = p.basis === 'accumulation' ? 'צבירה' : 'פרמיה'
+  const per = p.basis === 'accumulation' ? ' ÷ 12' : ''
+  return `${money(p.base)} ${basis} × ${pctText(p.rate)}${per} = ${money(p.expected)}`
+}
+
 function play() {
   expanded.value = false
   shown.value = false
@@ -120,7 +143,7 @@ watch(() => props.products, play)
 .pr-list { list-style: none; display: flex; flex-direction: column; }
 .pr-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) 1.6fr 72px 72px 72px 44px;
+  grid-template-columns: minmax(110px, 1.3fr) 1.4fr 70px 70px 58px 70px 40px;
   align-items: center; gap: 12px;
   padding: 8px; border-bottom: 1px solid var(--border-subtle);
   opacity: 0; transform: translateY(4px);
@@ -152,6 +175,10 @@ watch(() => props.products, play)
 .pr-diff.is-up { color: var(--chart-gain); }
 .pr-diff.is-down { color: var(--chart-loss); }
 .pr-diff.is-none { color: var(--text-muted); font-weight: 500; }
+.pr-rate { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; cursor: help; }
+/* A rate that came from a default is context, not the agreement's word. */
+.pr-rate--soft { color: var(--text-muted); font-weight: 500; font-style: italic; }
+.pr-legend-cols { margin-right: auto; }
 .pr-rows { font-size: 11px; color: var(--text-muted); text-align: left; }
 
 .pr-est {

@@ -51,7 +51,12 @@
           <span class="ra-ex-co">{{ c.company }}</span>
           <span class="ra-ex-amt ltr-number">{{ money(c.paid) }}</span>
           <span class="ra-ex-why">
-            {{ c.no_agreement ? 'אין הסכם עמלות במערכת' : 'יש הסכם, אך אין שיעור למוצרים שהתקבלו' }}
+            <template v-if="c.no_agreement">אין הסכם עמלות במערכת</template>
+            <template v-else>
+              יש הסכם, אך אין בו שיעור למוצרים האלה:
+              <!-- Naming them is the difference between a status and a task. -->
+              <strong class="ra-ex-prods">{{ (c.unrated_products || []).join(' · ') }}</strong>
+            </template>
           </span>
         </li>
       </ul>
@@ -246,7 +251,8 @@ api.get('/production/rate-audit')
 .ra-explain li:last-child { border-bottom: none; }
 .ra-ex-co { font-size: 13px; font-weight: 600; color: var(--text); }
 .ra-ex-amt { font-size: 13px; font-weight: 700; color: var(--text); }
-.ra-ex-why { font-size: 12px; color: var(--text-muted); }
+.ra-ex-why { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.ra-ex-prods { color: var(--text); font-weight: 600; }
 .ra-explain-foot {
   font-size: 12px; color: var(--text-muted); line-height: 1.8;
   margin-top: 14px; padding: 10px 12px;
