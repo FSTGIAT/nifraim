@@ -135,5 +135,16 @@ export function brandForLabel(label) {
     const bl = brand.label.toLowerCase()
     if (norm === bl || norm.includes(bl) || bl.includes(norm)) return brand
   }
+  // Legal names that share only the FIRST word with the brand label. Substring
+  // matching alone misses them: 'מיטב גמל ופנסיה בע"מ' does not contain
+  // 'מיטב דש', so it fell through to the fallback and the chart legend showed
+  // the full legal name beside every other company's short brand — and the
+  // colour lookup keyed off an unknown name. Same for 'אלטשולר שחם …'.
+  const head = norm.split(/[\s־-]+/)[0]
+  if (head.length >= 3) {
+    for (const brand of Object.values(COMPANY_BRAND)) {
+      if (brand.label.toLowerCase().split(/[\s־-]+/)[0] === head) return brand
+    }
+  }
   return FALLBACK
 }

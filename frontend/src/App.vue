@@ -93,9 +93,9 @@ const navTabs = [
   --chart-3: #D9820F;   /* golden amber */
   --chart-4: #8E44AD;   /* purple */
   --chart-5: #6FA82C;   /* lime green */
-  --chart-6: #E84A7F;   /* magenta pink */
-  --chart-7: #C9A227;   /* gold */
-  --chart-8: #0FA39B;   /* turquoise */
+  --chart-6: #D6336C;   /* magenta pink */
+  --chart-7: #0FA39B;   /* turquoise */
+  --chart-8: #C9A227;   /* gold */
   --chart-9: #2F73C4;   /* cobalt blue */
   --chart-10: #4A8B2C;  /* forest green */
   --chart-11: #D96AB5;  /* orchid */
@@ -116,9 +116,9 @@ const navTabs = [
   --tab-commission: var(--chart-4);
   --tab-commission-wash: rgba(142, 68, 173, 0.10);
   --tab-emails: var(--chart-6);
-  --tab-emails-wash: rgba(232, 74, 127, 0.10);
+  --tab-emails-wash: rgba(214, 51, 108, 0.10);
   --tab-emails-ink: #C42B60;
-  --tab-recruits: var(--chart-8);
+  --tab-recruits: var(--chart-7);
   --tab-recruits-wash: rgba(15, 163, 155, 0.12);
   --tab-recruits-ink: #1E7D78;
   --tab-portal: var(--chart-2);

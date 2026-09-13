@@ -16,8 +16,10 @@ export const CHART_PALETTE = [
   // The previous values failed three checks: #F9A937/#9CCC3C/#F4D35E sat above
   // the lightness band, and magenta beside turquoise measured ΔE 5.7 (deutan) —
   // under the 6.0 floor, i.e. indistinguishable to a red-green colourblind
-  // reader. Hues were kept in their original families; only slots 7 and 8 swap
-  // order, and --tab-recruits was repointed so its identity colour is unchanged.
+  // reader. EVERY slot keeps its original hue family — slot 8's yellow is the
+  // primary 'run all portals' button (--chart-8-ink/-deep are built on it) and
+  // slot 7's turquoise is the recruits tab, so neither could move families.
+  // The separation was won by deepening slot 6's magenta instead.
   // Contrast vs surface is a WARN for four slots, which obligates the visible
   // labels + table view these charts ship (never colour alone).
   '#E04B48', // coral red
@@ -25,9 +27,9 @@ export const CHART_PALETTE = [
   '#D9820F', // golden amber
   '#8E44AD', // purple
   '#6FA82C', // lime green
-  '#E84A7F', // magenta pink
-  '#C9A227', // gold
+  '#D6336C', // magenta pink
   '#0FA39B', // turquoise
+  '#C9A227', // gold
   '#2F73C4', // cobalt blue
   '#4A8B2C', // forest green
   '#D96AB5', // orchid
@@ -111,12 +113,53 @@ const _BRAND_ORDER = Object.values(COMPANY_BRAND).map(b => b.label)
 export const VALIDATED_SLOTS = 11
 
 export function companyColor(name) {
-  if (!name) return CHART_PALETTE[0]
+  return CHART_PALETTE[preferredSlot(name)]
+}
+
+function preferredSlot(name) {
+  if (!name) return 0
   const brand = brandForLabel(name)
   const idx = brand && brand.label ? _BRAND_ORDER.indexOf(brand.label) : -1
-  if (idx >= 0) return CHART_PALETTE[idx % VALIDATED_SLOTS]
+  if (idx >= 0) return idx % VALIDATED_SLOTS
   let h = 0
   const str = String(name)
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0
-  return CHART_PALETTE[h % VALIDATED_SLOTS]
+  return h % VALIDATED_SLOTS
+}
+
+/**
+ * `Map(name → hex)` for a set of companies drawn together, with NO two sharing
+ * a colour.
+ *
+ * `companyColor` alone cannot guarantee that: there are more known brands than
+ * validated slots, so `index % 11` collides — live, הראל (brand 12) landed on
+ * הפניקס's slot 1 and the two biggest companies in the chart were the same
+ * blue. Two companies sharing a colour in one chart is strictly worse than a
+ * company's colour shifting between two different charts, so preference gives
+ * way to distinctness: each name takes its preferred slot when free, otherwise
+ * the next free one, walking a fixed order so the result is deterministic for
+ * a given set.
+ */
+export function assignCompanyColors(names) {
+  const out = new Map()
+  const taken = new Set()
+  const list = Array.from(names || [])
+  // Two passes: everyone who can have their preferred slot gets it first, so
+  // one early collision can't cascade through the rest.
+  for (const n of list) {
+    const slot = preferredSlot(n)
+    if (!taken.has(slot)) {
+      taken.add(slot)
+      out.set(n, CHART_PALETTE[slot])
+    }
+  }
+  let next = 0
+  for (const n of list) {
+    if (out.has(n)) continue
+    while (taken.has(next) && next < CHART_PALETTE.length) next++
+    const slot = next < CHART_PALETTE.length ? next : out.size % VALIDATED_SLOTS
+    taken.add(slot)
+    out.set(n, CHART_PALETTE[slot])
+  }
+  return out
 }

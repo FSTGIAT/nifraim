@@ -141,7 +141,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import api from '../../api/client.js'
 import { useProductionStore } from '../../stores/production.js'
-import { CHART_PALETTE, companyColor, VALIDATED_SLOTS } from '../../utils/chartPalette.js'
+import { CHART_PALETTE, assignCompanyColors, VALIDATED_SLOTS } from '../../utils/chartPalette.js'
 import { brandForLabel } from '../../utils/companyBrand.js'
 
 defineEmits(['go-to-automation'])
@@ -387,10 +387,13 @@ const topCompanies = computed(() => {
 
 // Colour follows the COMPANY, not its position in the series array — so a
 // month with fewer companies doesn't repaint the ones that remain.
-const COMPANY_PALETTE = computed(() => [
-  ...topCompanies.value.map(companyColor),
-  '#9AA5B1', // "אחרות" — deliberately neutral: it is a remainder, not a company
-])
+const COMPANY_PALETTE = computed(() => {
+  const map = assignCompanyColors(topCompanies.value)
+  return [
+    ...topCompanies.value.map(c => map.get(c)),
+    '#9AA5B1', // "אחרות" — deliberately neutral: a remainder, not a company
+  ]
+})
 
 const series = computed(() => {
   if (!shownPoints.value.length) return []

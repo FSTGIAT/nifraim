@@ -108,7 +108,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
-import { companyColor, CHART_PALETTE } from '../../utils/chartPalette'
+import { assignCompanyColors, CHART_PALETTE } from '../../utils/chartPalette'
 import { money, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
 
 const CATS = [
@@ -164,7 +164,11 @@ const companyOptions = computed(() => ({
       },
     },
   },
-  colors: shownCompanies.value.map(c => companyColor(c.company)),
+  colors: (() => {
+    // Distinct per company within THIS chart — see assignCompanyColors.
+    const map = assignCompanyColors(shownCompanies.value.map(c => c.company))
+    return shownCompanies.value.map(c => map.get(c.company))
+  })(),
   plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '62%', distributed: true } },
   dataLabels: {
     enabled: true,
