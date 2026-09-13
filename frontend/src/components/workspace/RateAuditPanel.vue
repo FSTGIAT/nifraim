@@ -16,19 +16,48 @@
     </div>
     <p class="ra-sub">מה שכל חברה שילמה בפועל, מול מה שאמורה הייתה לשלם לפי אחוזי ההסכם.</p>
 
-    <!-- Anything needing action is stated before the chart. A panel that opens
-         with a plot makes the reader hunt for the problem. -->
+    <!-- Alerts as cards, not a stack of identical amber bars.
+         Three of them carried three different meanings — money owed, money
+         over-received, and a note that nothing could be checked — in one
+         colour, one weight, and one icon, with the figure buried mid-sentence.
+         Severity now drives the colour and the amount leads. -->
     <ul v-if="alerts.length" class="ra-alerts">
-      <li v-for="a in shownAlerts" :key="a.key" class="ra-alert" :class="'ra-alert--' + a.level">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        <span>{{ a.text }}</span>
+      <li v-for="(a, i) in shownAlerts" :key="a.key"
+          class="ra-alert" :class="['ra-alert--' + a.level, { 'ra-alert--in': mounted }]"
+          :style="{ transitionDelay: i * 60 + 'ms' }">
+        <button class="ra-alert-btn" @click="onAlert(a)">
+          <span class="ra-alert-icon" aria-hidden="true">
+            <svg v-if="a.level === 'loss'" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
+            </svg>
+            <svg v-else-if="a.level === 'gain'" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+            </svg>
+          </span>
+
+          <span class="ra-alert-body">
+            <span class="ra-alert-top">
+              <span class="ra-alert-co">{{ a.company }}</span>
+              <span class="ra-alert-amt ltr-number">{{ a.amount }}</span>
+            </span>
+            <span class="ra-alert-txt">{{ a.text }}</span>
+          </span>
+
+          <svg class="ra-alert-go" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
       </li>
-      <!-- One company per alert means a wide book fills the screen before the
-           numbers start. The most severe stay open; the rest are one press away. -->
       <li v-if="hiddenAlerts" class="ra-alert-more">
         <button @click="allAlerts = !allAlerts">
           {{ allAlerts ? 'הצג פחות' : `הצג עוד ${hiddenAlerts} התראות` }}
@@ -150,6 +179,7 @@ const ESTIMATE_HINT = 'כל השורות במוצר זה מתומחרות בשי
 
 const companies = ref([])
 const loading = ref(true)
+const mounted = ref(false)
 const period = ref(null)
 const openCompany = ref(null)
 const tableOpen = ref(false)
@@ -182,40 +212,57 @@ function deltaClass(diff, expected) {
 const alerts = computed(() => {
   const out = []
   const noAgreement = companies.value.filter(c => c.no_agreement && c.paid > 0)
+
   for (const c of companies.value) {
     if (c.no_agreement || !c.comparable) continue
-    if (Math.abs(c.gap_pct) >= GAP_MIN_PCT && Math.abs(c.gap) >= GAP_MIN_SHEKEL) {
-      const dir = c.gap < 0 ? 'פחות' : 'יותר'
-      // Name the product driving it — "Phoenix is 33% off" sends the agent
-      // through 750 rows; naming the product does not.
-      // Skip products the source file never named. Menora's rows carry a
-      // product column holding "0" and ".5", which produced the alert
-      // `שולם ₪1,519 יותר … בעיקר ב"0"` — a sentence that points at nothing.
-      const worst = (c.products || [])
-        .filter(p => p.estimated === 0 && p.expected > 0
-          && p.product && /\p{L}/u.test(p.product))
-        .sort((a, b) => Math.abs(b.paid - b.expected) - Math.abs(a.paid - a.expected))[0]
-      out.push({
-        key: 'gap-' + c.company,
-        level: c.gap < 0 ? 'warn' : 'info',
-        text: `${c.company}: שולם ${money(Math.abs(c.gap))} ${dir} מהצפוי לפי ההסכם `
-          + `(${c.gap_pct > 0 ? '+' : ''}${c.gap_pct}%)${worst ? ` בעיקר ב"${worst.product}"` : ''}.`,
-      })
-    }
-  }
-  if (noAgreement.length) {
-    const total = noAgreement.reduce((s, c) => s + c.paid, 0)
+    if (Math.abs(c.gap_pct) < GAP_MIN_PCT || Math.abs(c.gap) < GAP_MIN_SHEKEL) continue
+    const short = c.gap < 0
+    // Name the product driving it — "Phoenix is 33% off" sends the agent
+    // through 750 rows; naming the product does not. Products the source file
+    // never named are skipped: pointing at "0" points at nothing.
+    const worst = (c.products || [])
+      .filter(p => p.estimated === 0 && p.expected > 0 && p.product && /\p{L}/u.test(p.product))
+      .sort((a, b) => Math.abs(b.paid - b.expected) - Math.abs(a.paid - a.expected))[0]
     out.push({
-      key: 'noagr', level: 'info',
-      text: `${noAgreement.map(c => c.company).join(', ')}: התקבלו ${money(total)} `
-        + `ואין הסכם עמלות במערכת — העלה את ההסכמים כדי שנוכל לבדוק אותם.`,
+      key: 'gap-' + c.company,
+      // Being paid LESS than the agreement is money owed; being paid more is
+      // worth knowing but is not a debt. One amber for both said neither.
+      level: short ? 'loss' : 'gain',
+      company: c.company,
+      amount: signedMoney(c.gap),
+      text: `${short ? 'שולם פחות' : 'שולם יותר'} מהצפוי לפי ההסכם · `
+        + `${Math.abs(c.gap_pct)}%${worst ? ` · בעיקר ב"${worst.product}"` : ''}`,
+      target: c,
+    })
+  }
+  out.sort((a, b) => (a.level === 'loss' ? 0 : 1) - (b.level === 'loss' ? 0 : 1))
+
+  if (noAgreement.length) {
+    const total = noAgreement.reduce((sum, c) => sum + c.paid, 0)
+    out.push({
+      key: 'noagr',
+      level: 'info',
+      company: noAgreement.length === 1
+        ? noAgreement[0].company
+        : `${noAgreement.length} חברות`,
+      amount: money(total),
+      text: `התקבלו עמלות ואין הסכם לבדוק אותן — ${noAgreement.map(c => c.company).join(', ')}`,
+      explain: true,
     })
   }
   return out
 })
 
+function onAlert(a) {
+  if (a.explain) explainOpen.value = true
+  else if (a.target) openCompany.value = a.target
+}
+
 api.get('/production/rate-audit')
-  .finally(() => { loading.value = false })
+  .finally(() => {
+    loading.value = false
+    requestAnimationFrame(() => { mounted.value = true })
+  })
   .then((res) => {
     const all = res.data.companies || []
     companies.value = [
@@ -258,15 +305,55 @@ api.get('/production/rate-audit')
 .ra-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .ra-none { font-size: 13px; color: var(--text-muted); padding: 10px 0; }
 
-.ra-alerts { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-.ra-alert {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 9px 12px; border-radius: var(--radius-sm); font-size: 13px; line-height: 1.5;
+.ra-alerts {
+  list-style: none; display: grid; gap: 10px; margin-bottom: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
 }
-.ra-alert svg { flex-shrink: 0; margin-top: 2px; }
-.ra-alert--warn { background: var(--amber-light); color: var(--amber); }
-.ra-alert--info { background: var(--primary-light); color: var(--primary); }
-.ra-alert-more { display: flex; }
+@media (max-width: 720px) { .ra-alerts { grid-template-columns: 1fr; } }
+
+.ra-alert {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+  /* The accent edge carries severity before any text is read. */
+  border-inline-start: 3px solid var(--ra-accent, var(--text-muted));
+  opacity: 0; transform: translateY(5px);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0, 0.2, 1);
+}
+.ra-alert--in { opacity: 1; transform: none; }
+.ra-alert--loss { --ra-accent: var(--chart-loss); }
+.ra-alert--gain { --ra-accent: var(--chart-gain); }
+.ra-alert--info { --ra-accent: var(--primary); }
+
+.ra-alert-btn {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 11px; width: 100%;
+  padding: 11px 13px; background: none; border: none;
+  font-family: inherit; text-align: right; cursor: pointer;
+}
+.ra-alert-btn:hover { background: var(--border-subtle); border-radius: var(--radius-md); }
+.ra-alert-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: color-mix(in srgb, var(--ra-accent) 12%, transparent);
+  color: var(--ra-accent);
+}
+.ra-alert-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ra-alert-top { display: flex; align-items: baseline; gap: 8px; }
+.ra-alert-co { font-size: 13px; font-weight: 700; color: var(--text); }
+/* The amount leads; it used to sit mid-sentence. */
+.ra-alert-amt { font-size: 15px; font-weight: 800; color: var(--ra-accent); margin-right: auto; }
+.ra-alert-txt {
+  font-size: 11.5px; color: var(--text-muted); line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ra-alert-go { color: var(--text-muted); flex-shrink: 0; }
+.ra-alert-btn:hover .ra-alert-go { color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ra-alert { opacity: 1; transform: none; transition: none; }
+}
+.ra-alert-more { display: flex; align-items: center; }
 .ra-alert-more button {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px; border: 1px dashed var(--border-subtle);
