@@ -753,20 +753,20 @@ function buildScaleMock() {
 .fc-3 {
   width: 90px; height: 90px;
   top: 30%; left: 8%;
-  background: color-mix(in srgb, var(--chart-3, #F9A937) 6%, transparent);
+  background: color-mix(in srgb, var(--chart-3, #D9820F) 6%, transparent);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 .fc-4 {
   width: 120px; height: 120px;
   top: 55%; right: 6%;
-  background: color-mix(in srgb, var(--chart-7, #3DB6B0) 4%, transparent);
-  border: 1px solid color-mix(in srgb, var(--chart-7, #3DB6B0) 5%, transparent);
+  background: color-mix(in srgb, var(--chart-7, #0FA39B) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-7, #0FA39B) 5%, transparent);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 .fc-5 {
   width: 50px; height: 50px;
   top: 18%; right: 22%;
-  background: color-mix(in srgb, var(--chart-6, #E84A7F) 6%, transparent);
+  background: color-mix(in srgb, var(--chart-6, #D6336C) 6%, transparent);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 .fc-6 {
@@ -1109,8 +1109,8 @@ function buildScaleMock() {
 }
 /* Section accents ride the shared CHART_PALETTE tokens */
 .lib-icon--prod   { background: color-mix(in srgb, var(--chart-4, #8E44AD) 12%, white); color: var(--chart-4, #8E44AD); }
-.lib-icon--comm   { background: color-mix(in srgb, var(--chart-3, #F9A937) 16%, white); color: color-mix(in srgb, var(--chart-3, #F9A937) 65%, black); }
-.lib-icon--myfile { background: color-mix(in srgb, var(--chart-6, #E84A7F) 12%, white); color: var(--chart-6, #E84A7F); }
+.lib-icon--comm   { background: color-mix(in srgb, var(--chart-3, #D9820F) 16%, white); color: color-mix(in srgb, var(--chart-3, #D9820F) 65%, black); }
+.lib-icon--myfile { background: color-mix(in srgb, var(--chart-6, #D6336C) 12%, white); color: var(--chart-6, #D6336C); }
 .lib-icon--rates  { background: color-mix(in srgb, var(--chart-10, #4A8B2C) 12%, white); color: var(--chart-10, #4A8B2C); }
 
 /* Optional AI-generated tile art fills the icon square */

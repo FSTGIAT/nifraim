@@ -555,10 +555,38 @@ const chartOptions = computed(() => ({
       style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', colors: '#706E6B' },
     },
   },
+  // A stacked bar with 10 companies produced a 10-row tooltip in which nine
+  // rows read ₪0 — the month's actual content (מגדל ₪20) was buried among
+  // companies that simply did not report that month. Only series with a value
+  // are listed, ordered by size, with the month total on top.
   tooltip: {
     shared: true,
     intersect: false,
-    y: { formatter: formatCurrency },
+    custom: ({ series, dataPointIndex, w }) => {
+      const rows = series
+        .map((data, i) => ({
+          name: w.globals.seriesNames[i],
+          value: Number(data[dataPointIndex]) || 0,
+          color: w.globals.colors[i],
+        }))
+        .filter(r => r.value > 0)
+        .sort((a, b) => b.value - a.value)
+      const label = w.globals.labels?.[dataPointIndex] ?? ''
+      const total = rows.reduce((sum, r) => sum + r.value, 0)
+      if (!rows.length) {
+        return `<div class="tt"><div class="tt-head">${label}</div>`
+          + '<div class="tt-empty">לא התקבלו עמלות בחודש זה</div></div>'
+      }
+      const body = rows.map(r => (
+        '<div class="tt-row">'
+        + `<span class="tt-dot" style="background:${r.color}"></span>`
+        + `<span class="tt-name">${r.name}</span>`
+        + `<span class="tt-val">${formatCurrency(r.value)}</span>`
+        + '</div>'
+      )).join('')
+      return `<div class="tt"><div class="tt-head">${label}`
+        + `<span class="tt-total">${formatCurrency(total)}</span></div>${body}</div>`
+    },
   },
   legend: {
     show: true,
@@ -573,6 +601,25 @@ const chartOptions = computed(() => ({
   grid: { borderColor: '#E5E5E5', strokeDashArray: 3, padding: { top: 20 } },
 }))
 </script>
+
+<style>
+/* Custom tooltip for the stacked commission chart. Unscoped on purpose:
+   ApexCharts injects this markup outside the component's DOM. */
+.apexcharts-tooltip .tt { font-family: Heebo, sans-serif; direction: rtl; padding: 4px 0; min-width: 190px; }
+.apexcharts-tooltip .tt-head {
+  display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
+  padding: 6px 12px 7px; border-bottom: 1px solid #E5E5E5;
+  font-size: 12px; font-weight: 700; color: #3E3E3C;
+}
+.apexcharts-tooltip .tt-total { font-size: 12px; font-weight: 700; color: #3E3E3C; direction: ltr; }
+.apexcharts-tooltip .tt-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 12px;
+}
+.apexcharts-tooltip .tt-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.apexcharts-tooltip .tt-name { color: #3E3E3C; flex: 1; }
+.apexcharts-tooltip .tt-val { color: #706E6B; direction: ltr; }
+.apexcharts-tooltip .tt-empty { padding: 8px 12px; font-size: 12px; color: #706E6B; }
+</style>
 
 <style scoped>
 .trend-modes { display: flex; gap: 6px; margin-right: auto; }

@@ -224,7 +224,7 @@ function isRunning(credId) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--chart-8, #F4D35E);  /* pastel palette yellow */
+  background: var(--chart-8, #C9A227);  /* pastel palette yellow */
   color: var(--chart-8-ink);
   border: none;
   border-radius: 9px;
@@ -235,14 +235,14 @@ function isRunning(credId) {
   font-size: 13px;
   letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 5px 12px color-mix(in srgb, var(--chart-3, #F9A937) 30%, transparent);
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--chart-3, #D9820F) 30%, transparent);
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
   flex-shrink: 0;
 }
 .btn-add:hover {
   transform: translateY(-1px);
   filter: brightness(1.03);
-  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-3, #F9A937) 40%, transparent);
+  box-shadow: 0 9px 20px color-mix(in srgb, var(--chart-3, #D9820F) 40%, transparent);
 }
 .btn-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
