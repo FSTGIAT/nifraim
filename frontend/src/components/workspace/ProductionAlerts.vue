@@ -44,18 +44,19 @@
     <!-- Diverging bars: the question is DIRECTION, so up and down get two hues
          around a zero line, never a rainbow. Rows are ordered by magnitude so
          the biggest movement in either direction sits nearest the axis label. -->
+    <!-- Diverging rows rather than a plotted bar chart.
+         The encoding is the same — length is magnitude, side is direction —
+         but each part gets its own column: the name reads on one line, the
+         bars share a zero axis, and the amounts align in a single column
+         instead of being stacked under the names in 10px axis text. -->
     <div class="pa-split">
       <section v-if="companyMovers.length">
         <h4>השינויים הגדולים לפי חברה</h4>
-        <apexchart type="bar" :height="barHeight(companyMovers)"
-                   :options="moverOptions(companyMovers, 'company')"
-                   :series="moverSeries(companyMovers)" />
+        <MoverRows :rows="companyMovers" label-key="company" @pick="moverDetail = $event" />
       </section>
       <section v-if="clientMovers.length">
         <h4>השינויים הגדולים לפי לקוח</h4>
-        <apexchart type="bar" :height="barHeight(clientMovers)"
-                   :options="moverOptions(clientMovers, 'name')"
-                   :series="moverSeries(clientMovers)" />
+        <MoverRows :rows="clientMovers" label-key="name" @pick="moverDetail = $event" />
       </section>
     </div>
 
@@ -126,12 +127,8 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
-import { money, signedMoney, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
-
-// Diverging pair + a neutral for "no report". Status hues, never categorical.
-const UP = '#2E7D5B'
-const DOWN = '#C23934'
-const MISSING = '#9AA5B1'
+import MoverRows from './MoverRows.vue'
+import { money, signedMoney } from '../../utils/chartDefaults'
 
 const unpaid = ref([])
 const unpaidTotal = ref(0)
@@ -159,74 +156,6 @@ const missingCount = computed(
 const uncheckable = computed(
   () => companyMovers.value.filter(m => m.reported === false).map(m => m.company),
 )
-
-const barHeight = rows => Math.max(160, rows.length * 34 + 60)
-
-function moverSeries(rows) {
-  return [{ name: 'שינוי', data: rows.map(m => m.delta) }]
-}
-
-
-
-function moverOptions(rows, labelKey) {
-  return {
-    ...BASE_CHART,
-    chart: {
-      ...BASE_CHART.chart,
-      type: 'bar',
-      // One orchestrated entrance: the bars grow out of the zero line once,
-      // which is what makes the direction legible. No looping, no per-hover
-      // re-animation, and the browser's reduced-motion setting turns it off.
-      animations: {
-        enabled: !prefersReducedMotion(),
-        easing: 'easeout', speed: 700,
-        animateGradually: { enabled: true, delay: 60 },
-      },
-      events: {
-        dataPointSelection: (_e, _ctx, cfg) => {
-          const m = rows[cfg.dataPointIndex]
-          if (m) moverDetail.value = { ...m, label: m[labelKey] || m.company || m.name }
-        },
-      },
-    },
-    colors: [({ dataPointIndex }) => {
-      const m = rows[dataPointIndex]
-      if (m && m.reported === false) return MISSING
-      return m && m.delta < 0 ? DOWN : UP
-    }],
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '58%' } },
-    // The value rides in the AXIS label, not over the bar.
-    //
-    // ApexCharts applies one `offsetX` to every data label, which on a
-    // diverging chart pushes the negative bars' text back across the zero
-    // line. Labelling only the biggest few avoided the collision but left the
-    // rest unreadable — including the single negative bar, the most visually
-    // distinct row in the chart, which had no number at all. Putting the value
-    // beside the name labels every row, cannot collide, and still leaves the
-    // bar to carry magnitude and direction.
-    dataLabels: { enabled: false },
-    legend: { show: false },
-    xaxis: {
-      // Two-line category: name, then the signed amount.
-      categories: rows.map(m => [
-        m[labelKey] || m.company || m.name || '—',
-        signedMoney(m.delta),
-      ]),
-      labels: { formatter: axisMoney, style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B' } },
-    },
-    yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B', fontSize: '12px' } } },
-    tooltip: {
-      ...BASE_CHART.tooltip,
-      y: {
-        formatter: (v, o) => {
-          const m = rows[o.dataPointIndex]
-          if (m && m.reported === false) return `${signedMoney(v)} — לא התקבל דוח החודש`
-          return `${money(m.previous)} ← ${money(m.now)}  (${signedMoney(v)})`
-        },
-      },
-    },
-  }
-}
 
 function prefersReducedMotion() {
   try {
@@ -307,8 +236,8 @@ button.pa-tile:not(:disabled):hover { border-color: var(--text-muted); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pa-table th:not(:first-child), .pa-table td.pa-num { text-align: center; width: 100px; }
-.pa-neg { color: var(--red, #c23934); }
-.pa-pos { color: var(--accent-emerald); }
+.pa-neg { color: var(--chart-loss); }
+.pa-pos { color: var(--chart-gain); }
 
 @media (prefers-reduced-motion: reduce) {
   .pa-tile { transition: none; opacity: 1; transform: none; }

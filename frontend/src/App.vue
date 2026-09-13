@@ -104,6 +104,18 @@ const navTabs = [
   --chart-14: #2C5F6B;  /* deep teal */
   --chart-15: #8FD9C6;  /* mint */
 
+  /* Diverging pair for gain/loss marks — kept SEPARATE from the alert tokens
+     above. `--red` (#EA001E) is the error state; reusing it as a data colour
+     makes every downward bar look like a failure.
+     Measured against the chart surface: this pair clears the CVD floor
+     (ΔE 7.9 deutan) where the calmer `--red-deep` did NOT (ΔE 4.2) — red and
+     green is the worst possible pairing for a colourblind reader, so direction
+     is ALSO carried by the sign in the amount and by which side of the zero
+     axis the bar sits on. Never colour alone. */
+  --chart-gain: #2E844A;
+  --chart-loss: #DC2626;
+  --chart-absent: #9AA5B1;
+
   /* ── Tab identities (accent / wash / ink) ─────────────────────────
      Each workspace tab owns ONE CHART_PALETTE color. Orange (--primary)
      is the GLOBAL brand-action color (uploads, CTAs) — never a tab

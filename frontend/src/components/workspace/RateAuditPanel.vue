@@ -261,8 +261,8 @@ api.get('/production/rate-audit')
   display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 10px;
   background: var(--border-subtle); color: var(--text-muted); font-size: 10px; font-weight: 600;
 }
-.ra-neg { color: var(--red, #c23934); font-weight: 700; }
-.ra-pos { color: var(--accent-emerald); font-weight: 700; }
+.ra-neg { color: var(--chart-loss); font-weight: 700; }
+.ra-pos { color: var(--chart-gain); font-weight: 700; }
 .ra-dash { color: var(--text-muted); }
 .ra-foot { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
 </style>
