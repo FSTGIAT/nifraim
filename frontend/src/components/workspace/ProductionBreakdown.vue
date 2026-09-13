@@ -68,7 +68,30 @@
       <div v-for="cat in CATS" :key="cat.key" class="chart-card">
         <div class="chart-header"><h3>{{ cat.title }}</h3></div>
         <p class="pb-hint">בחר מוצר כדי לראות את הלקוחות שמחזיקים בו</p>
-        <p v-if="!products[cat.key].length" class="pb-none">אין נתונים</p>
+        <!-- An empty category is never just "no data". Two different things
+             produce it, and both are worth saying:
+               * the companies that would supply financial production publish
+                 נפרעים only — there is no such report to download;
+               * accumulation the insurers DO report can sit on rows that also
+                 carry premium, which classifies them as ביטוח. That money is
+                 in the book, just on the other card — and a bare "אין נתונים"
+                 beside ₪1.77M of held balance reads as data loss. -->
+        <div v-if="!products[cat.key].length" class="pb-empty">
+          <p class="pb-empty-lead">אין מוצרים בקטגוריה זו</p>
+          <p v-if="cat.key === 'financial' && crossAccumulation > 0" class="pb-empty-note">
+            עם זאת, <strong class="ltr-number">{{ money(crossAccumulation) }}</strong> של צבירה
+            מוחזקים במוצרים שמסווגים כביטוח (שורות שנושאות גם פרמיה) — הם מופיעים בכרטיס
+            "ביטוח — לפי מוצר" ובפירוט של כל חברה.
+          </p>
+          <p v-if="cat.key === 'financial' && noReport.length" class="pb-empty-note">
+            החברות שמספקות מוצרים פיננסיים — {{ noReport.join(' · ') }} —
+            אינן מפרסמות דוח פרודוקציה בפורטל, אלא נפרעים בלבד.
+          </p>
+          <p v-if="cat.key === 'insurance' && crossPremium > 0" class="pb-empty-note">
+            עם זאת, <strong class="ltr-number">{{ money(crossPremium) }}</strong> של פרמיה
+            נרשמים על מוצרים שמסווגים כפיננסיים.
+          </p>
+        </div>
         <apexchart v-else type="bar" :height="productHeight(cat.key)"
                    :options="productOptions(cat)" :series="productSeries(cat)" />
       </div>
@@ -142,6 +165,15 @@ const shownCompanies = computed(() =>
 const otherCompanies = computed(() =>
   companies.value.filter(c => !(Number(c[coMetric.value]) > 0)),
 )
+// Money held on the OTHER side of the split — the reason an empty card is not
+// the same as an empty book.
+const crossAccumulation = computed(
+  () => products.value.insurance.reduce((sum, p) => sum + (Number(p.accumulation) || 0), 0),
+)
+const crossPremium = computed(
+  () => products.value.financial.reduce((sum, p) => sum + (Number(p.premium) || 0), 0),
+)
+
 const noReport = computed(
   () => missing.value.filter(m => m.reason === 'no_report').map(m => m.company),
 )
@@ -335,6 +367,14 @@ onMounted(async () => {
 }
 .pb-other:hover { border-color: var(--text-muted); background: var(--border-subtle); }
 .pb-other-unit { font-size: 10px; color: var(--text-muted); }
+
+.pb-empty { padding: 10px 0 4px; }
+.pb-empty-lead { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.pb-empty-note {
+  font-size: 12px; color: var(--text-muted); line-height: 1.8; margin-top: 6px;
+  padding: 9px 11px; border-radius: var(--radius-sm); background: var(--border-subtle);
+}
+.pb-empty-note strong { color: var(--text); }
 
 .pb-none { font-size: 13px; color: var(--text-muted); padding: 12px 0; }
 .pb-entities { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
