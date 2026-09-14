@@ -4,7 +4,13 @@ F5 BIG-IP APM at `agents-login.hcsra.co.il/my.policy`. Shares the APM login
 form with Phoenix, Clal, Migdal-APM (see `_apm_helpers.py`).
 
 Operator nav (live): right menu → **דוחות** → scroll to **עמלות** → open the
-**בסט אינווסט** (Best Invest) window/חלונית → **דוחות נפרעים** → export Excel.
+**בסט אינווסט** (Best Invest) window/חלונית → pick the agent (**הכל**) → pick
+**חודש עיבוד** → **הורד ל excel**.
+
+The חודש עיבוד step is not optional. Skipping it exports every client the agent
+has ever had instead of the ones still under them that month, and the result is
+a well-formed file that passes every downstream check — so the export is also
+verified against the month before it is accepted (`verify_processing_month`).
 The Best-Invest step may open a NEW TAB (handled via context.expect_page, same
 pattern as Clal's infobay). Downloaded file = `hachshara_nifraim` format
 (company_source=הכשרה, commission) — no parser changes.
@@ -16,16 +22,118 @@ Selectors are best-effort against the operator's described path; refine from the
 from __future__ import annotations
 
 import asyncio
+import re
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.services.portal_automation.base import BasePortalAutomation
+from app.services.portal_automation.base import BasePortalAutomation, reporting_months
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
 
 
 PORTAL_URL = "https://agents-login.hcsra.co.il/my.policy"
+
+# הכשרה publishes a processing month on the 21st of the following month, so the
+# newest PUBLISHED month is two back before the 21st and one back on/after it:
+#   run 14/09/2026 -> חודש עיבוד 07/2026      run 21/09/2026 -> 08/2026
+CYCLE_CUTOFF_DAY = 21
+
+# The column the export carries the processing month in. Live files spell it with
+# a TRAILING SPACE ("תאריך עיבוד ") and hold strings like "01/2026", so match on a
+# stripped substring, never on equality.
+PROCESSING_MONTH_COL = "תאריך עיבוד"
+
+_HEB_MONTHS = (
+    "", "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+    "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+)
+
+
+def _cell_month(val) -> tuple[int, int] | None:
+    """(year, month) out of one תאריך עיבוד cell, or None if unreadable.
+
+    Live files hold the string "MM/YYYY"; openpyxl can also hand back a real
+    datetime, and other exports of the same report use "DD/MM/YYYY".
+    """
+    if val is None:
+        return None
+    if isinstance(val, (datetime, date)):
+        return val.year, val.month
+    text = str(val).strip()
+    if not text or text.lower() in {"nan", "nat", "none"}:
+        return None
+
+    # ISO-ish "2026-01" / "2026-01-15" -> year first
+    m = re.match(r"^(\d{4})[-/.](\d{1,2})(?:[-/.]\d{1,2})?$", text)
+    if m:
+        y, mm = int(m.group(1)), int(m.group(2))
+        return (y, mm) if 1 <= mm <= 12 else None
+
+    # "MM/YYYY", "MM-YYYY", "DD/MM/YYYY"
+    parts = [p for p in re.split(r"[-/.\s]+", text) if p.isdigit()]
+    if len(parts) == 2:
+        mm, y = int(parts[0]), int(parts[1])
+    elif len(parts) == 3:
+        mm, y = int(parts[1]), int(parts[2])
+    else:
+        return None
+    if y < 100:
+        y += 2000
+    return (y, mm) if 1 <= mm <= 12 and 1900 < y < 2200 else None
+
+
+def verify_processing_month(df, year: int, month: int) -> tuple[bool, str]:
+    """Is this export really ONE processing month, and the one we asked for?
+
+    Returns (ok, reason). `reason` is a Hebrew operator-facing message when not ok.
+
+    This is the guard for the bug that made it necessary (2026-09): with no month
+    selected, the report exports EVERY client the agent has ever had instead of
+    the ones still under them that month, and it sails through every other check
+    - the 1 KB size gate, the column-name signature, record_count, the runner.
+    Kept a pure function over a DataFrame so it is testable without a portal.
+    """
+    col = next(
+        (c for c in df.columns if PROCESSING_MONTH_COL in str(c).strip()), None
+    )
+    if col is None:
+        return False, (
+            f"בקובץ אין עמודת '{PROCESSING_MONTH_COL}' - "
+            f"נמצאו: {', '.join(str(c).strip() for c in list(df.columns)[:12])}"
+        )
+
+    seen: dict[tuple[int, int], int] = {}
+    unreadable = 0
+    for val in df[col].tolist():
+        ym = _cell_month(val)
+        if ym is None:
+            unreadable += 1
+        else:
+            seen[ym] = seen.get(ym, 0) + 1
+
+    total = sum(seen.values())
+    if total == 0:
+        return False, (
+            "הקובץ שהתקבל ריק - אין אף שורת נתונים עם תאריך עיבוד "
+            f"(שורות בקובץ: {len(df)}, לא ניתן לפענח: {unreadable})"
+        )
+
+    want = (year, month)
+    others = {ym: n for ym, n in seen.items() if ym != want}
+    if others:
+        got = ", ".join(
+            f"{m:02d}/{y} ({n} שורות)"
+            for (y, m), n in sorted(others.items(), reverse=True)[:6]
+        )
+        return False, (
+            f"הדוח לא סונן לחודש {month:02d}/{year} - הקובץ מכיל גם: {got}. "
+            "זה הסימן ש'חודש עיבוד' לא נבחר בפועל והדוח החזיר את כל הלקוחות "
+            "שהיו אי פעם אצל הסוכן."
+        )
+    return True, ""
+
 
 
 class HachsharaPortal(BasePortalAutomation):
@@ -190,6 +298,10 @@ class HachsharaPortal(BasePortalAutomation):
         from app.services.portal_automation.runner import SCREENSHOT_ROOT
         run_id = download_dir.name
         download_dir.mkdir(parents=True, exist_ok=True)
+        # Provisional name. The month is stamped on only AFTER the file is
+        # verified to contain it (see the rename below) - `detect_period_month`
+        # reads the filename FIRST, so a month in the name must be a statement
+        # about the contents, never about what we asked for.
         target = download_dir / "הכשרה נפרעים.xlsx"
 
         async def ck(tag: str):
@@ -348,6 +460,157 @@ class HachsharaPortal(BasePortalAutomation):
             pass
         await ck("nav4_agent_all")
 
+        # 4b) חודש עיבוד (processing month) — THE step this flow was missing.
+        #
+        # Without it the report exports EVERY client the agent has ever had
+        # rather than the ones still under them that month (live 2026-09-14), and
+        # nothing downstream notices: the file is well-formed, the columns match
+        # the signature, and the run reports success. kikohib's count had drifted
+        # 350 → 356 → 362 across runs, which is what an accumulating
+        # all-clients-ever export looks like.
+        #
+        # 🚫 NEVER "pick the newest option" here. Unlike Altshuler's
+        # `_select_mat_last` (altshuler.py:570), whose dropdowns only list months
+        # that HAVE data, this list offers a month before its cycle has published
+        # it: on 14/09/2026 it shows 08/2026, but the 21/09 cycle has not run, so
+        # the correct choice is 07/2026. Taking the last option downloads a thin
+        # or empty report that still looks like a successful run. Compute the
+        # month, then step BACKWARD only.
+        candidates = reporting_months(date.today(), CYCLE_CUTOFF_DAY)
+        picked_month: tuple[int, int] | None = None
+
+        month_input = page.locator(
+            "input[placeholder*='חודש עיבוד'], input[aria-label*='חודש עיבוד']"
+        ).first
+        # Anchored on the placeholder, never on #mat-input-N: those ids are
+        # positional (the live field is #mat-input-14) and shift as the form grows.
+        if not await month_input.count():
+            await ck("nav4b_month_field_missing")
+            raise RuntimeError(
+                f"Hachshara: לא נמצא שדה 'חודש עיבוד' בטופס ({page.url}) — "
+                f"בדוק {run_id}_nav4b_month_field_missing.txt"
+            )
+
+        # The agent picker above ends its Escape INSIDE a bare `except: pass`, so a
+        # failure there leaves the cdk-overlay backdrop up — and it would swallow
+        # this field's click exactly the way it swallows the export button. Clear
+        # it unconditionally rather than inheriting that step's luck.
+        for _ in range(3):
+            if not await page.locator(".cdk-overlay-backdrop").count():
+                break
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(400)
+
+        async def _month_options():
+            """Locator for THIS field's options, never the whole page.
+
+            `mat-option` is page-global: if another panel is open (the agent
+            autocomplete) its financial numbers are digit strings too, and a
+            digits-only comparison could match one by coincidence — clicking the
+            wrong list and reporting "did not stick". Angular Material points the
+            input at its own panel via aria-owns/aria-controls, so use that.
+            """
+            for attr in ("aria-owns", "aria-controls"):
+                try:
+                    panel_id = await month_input.get_attribute(attr)
+                except Exception:
+                    panel_id = None
+                if panel_id:
+                    pid = panel_id.split()[0]
+                    loc = page.locator(f"#{pid} mat-option, #{pid} [role='option']")
+                    if await loc.count():
+                        return loc
+            # Fallback: the visible overlay pane (only one is open at a time here).
+            loc = page.locator(
+                ".cdk-overlay-pane:visible mat-option, .cdk-overlay-pane:visible [role='option']"
+            )
+            return loc if await loc.count() else page.locator("mat-option, [role='option']")
+
+        options = page.locator("mat-option, [role='option']")  # rebound per open
+
+        async def _open_panel() -> list[str]:
+            """Open the dropdown and return its option labels, top to bottom."""
+            nonlocal options
+            await month_input.click()
+            await page.wait_for_timeout(1200)
+            options = await _month_options()
+            if not await options.count():
+                await month_input.press("ArrowDown")
+                await page.wait_for_timeout(800)
+                options = await _month_options()
+            out: list[str] = []
+            for i in range(await options.count()):
+                try:
+                    out.append(((await options.nth(i).inner_text()) or "").strip())
+                except Exception:
+                    out.append("")
+            return out
+
+        def _match(labels: list[str], want: tuple[int, int]) -> int | None:
+            """Index of the option meaning (year, month), or None.
+
+            Compares on digits only, so 07/2026, 07-2026, 072026 and 07.2026 all
+            match; Hebrew month names ("יולי 2026") are matched separately.
+            """
+            y, m = want
+            numeric = {f"{m:02d}{y}", f"{m}{y}", f"{y}{m:02d}"}
+            for idx, text in enumerate(labels):
+                if re.sub(r"\D", "", text) in numeric:
+                    return idx
+                if _HEB_MONTHS[m] and f"{_HEB_MONTHS[m]} {y}" in text:
+                    return idx
+            return None
+
+        def _applied_is(value: str, want: tuple[int, int]) -> bool:
+            y, m = want
+            if re.sub(r"\D", "", value) in {f"{m:02d}{y}", f"{m}{y}", f"{y}{m:02d}"}:
+                return True
+            return bool(_HEB_MONTHS[m]) and _HEB_MONTHS[m] in value
+
+        # Re-open the panel for every candidate: clicking an option CLOSES it, so
+        # a second attempt against the first attempt's locators would click a
+        # detached node and look like a silent miss.
+        labels: list[str] = []
+        for want in candidates:
+            labels = await _open_panel()
+            if want is candidates[0]:
+                # Log every option once. The label format is only known from live
+                # runs, and this line is the evidence that a NEWER month was on
+                # offer and was deliberately skipped.
+                print(f"[hachshara] חודש עיבוד options ({len(labels)}): {labels}")
+            idx = _match(labels, want)
+            if idx is None:
+                await page.keyboard.press("Escape")
+                await page.wait_for_timeout(300)
+                print(f"[hachshara] {want[1]:02d}/{want[0]} not in the list — stepping back")
+                continue
+            await options.nth(idx).click()
+            await page.wait_for_timeout(600)
+            # Read the value back — a click landing is not the same as the widget
+            # accepting it.
+            applied = ((await month_input.input_value()) or "").strip()
+            if _applied_is(applied, want):
+                picked_month = want
+                print(f"[hachshara] חודש עיבוד selected: {applied!r} → {want}")
+                break
+            print(f"[hachshara] click on {want} did not stick (field reads {applied!r})")
+
+        # Close the mat-autocomplete panel before clicking export — the cdk-overlay
+        # backdrop otherwise swallows the "הורד ל excel" click (same bug the agent
+        # picker above already pays for).
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(2500)
+        await ck("nav4b_month")
+
+        if picked_month is None:
+            raise RuntimeError(
+                f"Hachshara: לא הצלחתי לבחור 'חודש עיבוד'. ציפיתי לאחד מ-"
+                f"{', '.join(f'{m:02d}/{y}' for y, m in candidates)} אך האפשרויות "
+                f"היו: {labels or '(ריק)'} — בדוק {run_id}_nav4b_month.txt. "
+                "לא מורידים דוח ללא חודש: הוא יחזיר את כל הלקוחות שהיו אי פעם "
+                "אצל הסוכן וייראה כהצלחה."
+            )
+
         # 5) download — button "הורד ל excel" (<i class="mdi mdi-microsoft-excel">).
         #    This Angular page covers elements, so FORCE-click the exact button;
         #    native download + XHR fallback.
@@ -395,4 +658,41 @@ class HachsharaPortal(BasePortalAutomation):
                 pass
 
         await ck("nav5_after_export")
-        return [target]
+
+        # 6) Verify what actually ARRIVED, then name the file after it.
+        #
+        # The month hop reading its value back only proves the widget accepted a
+        # click — not that the grid re-filtered. This form exports from a single
+        # button with no "הפק דוח" to confirm a regenerate, so the contents are
+        # the only real evidence. Fail here rather than ingest: an unfiltered
+        # export is exactly the bug, and it looks like success at every layer.
+        yyyy, mm = picked_month
+        try:
+            import pandas as pd
+
+            df = pd.read_excel(target)
+        except Exception as read_err:
+            await ck("nav6_unreadable")
+            raise RuntimeError(
+                f"Hachshara: הקובץ שהתקבל לא נקרא ({target.name}) — "
+                f"בדוק {run_id}_nav6_unreadable.txt: {read_err}"
+            )
+
+        ok, reason = verify_processing_month(df, yyyy, mm)
+        if not ok:
+            await ck("nav6_wrong_month")
+            raise RuntimeError(
+                f"Hachshara: {reason} — בדוק {run_id}_nav4b_month.txt / "
+                f"{run_id}_nav6_wrong_month.txt"
+            )
+
+        # Only now is the month a fact about the contents. Note this renames the
+        # DOWNLOADED FILE only — run_id (download_dir.name) keeps driving the dump
+        # prefixes, so the file names quoted in the errors above still resolve.
+        stamped = download_dir / f"הכשרה נפרעים {mm:02d}-{yyyy}.xlsx"
+        target.replace(stamped)
+        print(
+            f"[hachshara] verified {len(df)} rows, all תאריך עיבוד = "
+            f"{mm:02d}/{yyyy} → {stamped.name}"
+        )
+        return [stamped]

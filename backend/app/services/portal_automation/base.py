@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from playwright.async_api import Page
 
 # An async callable the runner passes into download_reports so a plugin can
@@ -15,6 +17,40 @@ if TYPE_CHECKING:
 # Awaiting it flips the run back to `awaiting_otp`, waits for a fresh
 # company-routed code, and returns it.
 OtpProvider = Callable[[], Awaitable[str]]
+
+
+def reporting_months(
+    today: "date", cutoff_day: int, extra_back: int = 2
+) -> list[tuple[int, int]]:
+    """Ordered (year, month) candidates for "which reporting month should exist
+    right now", newest-plausible FIRST.
+
+    Israeli insurers publish a reporting month on a fixed day of the following
+    month. Before that day the newest PUBLISHED month is two back; on/after it,
+    one back::
+
+        reporting_months(date(2026, 9, 14), 21)  -> [(2026, 7), (2026, 6), (2026, 5)]
+        reporting_months(date(2026, 9, 21), 21)  -> [(2026, 8), (2026, 7), (2026, 6)]
+        reporting_months(date(2026, 1, 14), 21)  -> [(2025, 11), (2025, 10), (2025, 9)]
+
+    `extra_back` further candidates follow the primary as a self-heal for a late
+    publish. They only ever go BACKWARD: a month newer than the primary has not
+    been published yet, so selecting it downloads an empty or partial report.
+
+    Generalises `analyst.AnalystPortal._target_months` (cutoff_day=20); הכשרה
+    uses 21. Analyst keeps its own copy for now - it is live and working.
+    """
+    back = 1 if today.day >= cutoff_day else 2
+
+    def shift(months_back: int) -> tuple[int, int]:
+        m = today.month - months_back
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        return y, m
+
+    return [shift(back + i) for i in range(extra_back + 1)]
 
 
 class BasePortalAutomation(ABC):
