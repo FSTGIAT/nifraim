@@ -40,7 +40,14 @@ _BACKOFF_CAP = timedelta(hours=6)
 def _in_backoff(cfg: MailboxConfig, now: datetime) -> bool:
     if not cfg.consecutive_failures or not cfg.last_polled_at:
         return False
-    delay = min(_BACKOFF_BASE * (2 ** (cfg.consecutive_failures - 1)), _BACKOFF_CAP)
+    # Clamp the EXPONENT, not the product. `timedelta * 2**37` raises
+    # OverflowError ("days=1431655765; must have magnitude <= 999999999")
+    # before `min` can apply the cap, and that escapes `_in_backoff` -> the
+    # mailbox is never polled again instead of retrying every 6h. kikohib's
+    # M365 mailbox reached 38 consecutive failures and went silent on
+    # 2026-07-23; the only symptom was a log line every poll tick.
+    shift = min(max(cfg.consecutive_failures - 1, 0), 16)
+    delay = min(_BACKOFF_BASE * (2 ** shift), _BACKOFF_CAP)
     return now < cfg.last_polled_at + delay
 
 

@@ -133,36 +133,31 @@ def _parse_zip_bundle(content: bytes, filename: str) -> dict:
     )
 
 
-async def ingest_file_bytes(
-    db: AsyncSession,
-    user_id: uuid.UUID,
+def parse_any(
     content: bytes,
     filename: str,
     password: str | None = None,
-    commit: bool = True,
-    make_active: bool = True,
-    company_source_override: str | None = None,
-) -> tuple[FileUpload, str]:
-    """Parse the bytes (xlsx/xls/zip) and persist to the database.
+    expected_category: str | None = None,
+) -> dict:
+    """THE single front door: bytes → {"format", "company_source", "records",
+    "ext"}.
 
-    Returns (FileUpload, fmt). Callers pass `fmt` to `schedule_post_ingest()`
-    to trigger the right downstream hooks (snapshot/summary for production,
-    auto-compare for commission). `commit=False` lets the caller compose the
-    ingest into a larger transaction.
+    Pure (no DB, no I/O) so it can be driven by tests and the offline parser
+    harness (`backend/scripts/parse_corpus.py`) exactly as `ingest_file_bytes`
+    drives it in production. The extension is only a hint — the content sniffs
+    below win, because portal plugins routinely save a Mimshak ZIP under an
+    `.xlsx` name and the Phoenix SFE vault serves an XML envelope as a lone
+    `.DAT`.
 
-    `make_active=False` holds a production upload WITHOUT flipping it to the
-    active production file (or deactivating same-company actives). The "run all
-    portals" batch uses this to ingest each per-company file, then aggregate
-    them into ONE merged production upload that becomes the single active file.
-    `company_source_override` forces FileUpload.company_source (e.g. "מאוחד"
-    for the merged files), independent of what the parser detected.
+    ORDER IS LOAD-BEARING: the ZIP sniffs (mimshak → menora_legacy →
+    menora_amalot → hachshara_prod) are content signatures that can collide.
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
     # Magic-byte override: portal automation plugins occasionally save a real
     # ZIP (e.g. Migdal Mimshak bundle from the Safes vault) under a misleading
-    # `.xlsx` filename. Sniff the first 4 bytes — if it's a ZIP that the
-    # Mimshak parser recognises, route to the ZIP path regardless of extension.
+    # `.xlsx` filename. Sniff the first 4 bytes — if it's a ZIP that one of the
+    # bundle parsers recognises, route to the ZIP path regardless of extension.
     if content[:4] == b"PK\x03\x04" and ext != "zip":
         from app.services.mimshak import is_mimshak_zip
         from app.services.menora_legacy import is_menora_legacy_zip
@@ -190,121 +185,182 @@ async def ingest_file_bytes(
         from app.services.mimshak import parse_mimshak_dat
         result = parse_mimshak_dat(content, filename)
     elif ext in ("xlsx", "xls"):
-        result = parse_excel(content, filename, password)
+        result = parse_excel(content, filename, password, expected_category)
     else:
-        raise ValueError(f"Unsupported file extension '{ext}' (expected xlsx/xls/zip/dat)")
+        raise ValueError(
+            f"Unsupported file extension '{ext}' (expected xlsx/xls/zip/dat)"
+        )
+
+    if expected_category and ext not in ("xlsx", "xls"):
+        # parse_excel already enforced it for the Excel path.
+        from app.services.parser_service import _enforce_expected_category
+        _enforce_expected_category(expected_category, result["format"], filename)
+
+    # The extension AFTER the sniffs above, which is what `FileUpload.file_type`
+    # has always recorded: a Mimshak bundle saved as `.xlsx` is a "zip", and the
+    # download endpoint picks its Content-Type off this value. Recomputing it
+    # from the filename in the caller would quietly undo the sniff.
+    result["ext"] = ext
+    return result
+
+
+async def ingest_file_bytes(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    content: bytes,
+    filename: str,
+    password: str | None = None,
+    commit: bool = True,
+    make_active: bool = True,
+    company_source_override: str | None = None,
+) -> tuple[FileUpload, str]:
+    """Parse the bytes (xlsx/xls/zip) and persist to the database.
+
+    Returns (FileUpload, fmt). Callers pass `fmt` to `schedule_post_ingest()`
+    to trigger the right downstream hooks (snapshot/summary for production,
+    auto-compare for commission). `commit=False` lets the caller compose the
+    ingest into a larger transaction.
+
+    `make_active=False` holds a production upload WITHOUT flipping it to the
+    active production file (or deactivating same-company actives). The "run all
+    portals" batch uses this to ingest each per-company file, then aggregate
+    them into ONE merged production upload that becomes the single active file.
+    `company_source_override` forces FileUpload.company_source (e.g. "מאוחד"
+    for the merged files), independent of what the parser detected.
+    """
+    result = parse_any(content, filename, password)
     fmt = result["format"]
     file_category = _file_category_for_format(fmt)
 
-    # Replace-on-upload: same user + filename + category → wipe prior rows so
-    # comparisons always operate on the freshest data. Dependents (debts,
-    # summaries, snapshots) reference file_uploads without ON DELETE CASCADE,
-    # so we clear them explicitly first.
-    old_uploads_result = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.filename == filename,
-            FileUpload.file_category == file_category,
-        )
-    )
-    old_uploads = old_uploads_result.scalars().all()
-    if old_uploads:
-        old_ids = [u.id for u in old_uploads]
-        await db.execute(sql_delete(Debt).where(
-            or_(
-                Debt.commission_upload_id.in_(old_ids),
-                Debt.production_upload_id.in_(old_ids),
+    # ONE SAVEPOINT around the whole replace-then-insert. The block below
+    # DELETES the prior upload for (user, filename, category) and flushes,
+    # and only then builds the replacement — so any failure in between used
+    # to leave the delete applied. Nothing rolled it back: the portal runner
+    # catches an ingest error, appends to `issues` and continues, and the
+    # outer failure handler's `_set_status()` ends in `await db.commit()`,
+    # which COMMITS the orphaned delete. A file that failed to ingest could
+    # therefore destroy the good copy it was meant to replace.
+    #
+    # A savepoint is the right scope, not `db.rollback()` in the caller: the
+    # runner ingests several files in ONE transaction, so a full rollback
+    # would also discard the files that already succeeded in that run.
+    # It also recovers the session when a DB-level error poisons the
+    # transaction, which a plain try/except cannot do.
+    #
+    # Known consequence: `_save_upload_to_disk` runs inside the savepoint, so a
+    # rollback leaves its file on disk under an upload.id that no longer exists.
+    # Harmless — that write is already best-effort and nothing reads a file
+    # without its FileUpload row — but the orphan is not cleaned up.
+    async with db.begin_nested():
+        # Replace-on-upload: same user + filename + category → wipe prior rows so
+        # comparisons always operate on the freshest data. Dependents (debts,
+        # summaries, snapshots) reference file_uploads without ON DELETE CASCADE,
+        # so we clear them explicitly first.
+        old_uploads_result = await db.execute(
+            select(FileUpload).where(
+                FileUpload.user_id == user_id,
+                FileUpload.filename == filename,
+                FileUpload.file_category == file_category,
             )
-        ))
-        await db.execute(sql_delete(ProductionSummary).where(
-            ProductionSummary.upload_id.in_(old_ids)
-        ))
-        await db.execute(sql_delete(PortalSnapshot).where(
-            PortalSnapshot.upload_id.in_(old_ids)
-        ))
-        # portal_runs.upload_id references file_uploads.id but the FK has
-        # no ON DELETE rule — when the same filename is re-ingested by a
-        # later run, the prior run's upload_id still points at the old row
-        # and blocks the DELETE. NULL it out so the new ingest can proceed.
-        # (The prior run's success log + downloaded_filename are preserved.)
-        from app.models.portal_run import PortalRun
-        from sqlalchemy import update as sql_update
-        await db.execute(
-            sql_update(PortalRun)
-            .where(PortalRun.upload_id.in_(old_ids))
-            .values(upload_id=None)
         )
-        for old in old_uploads:
-            await db.delete(old)
+        old_uploads = old_uploads_result.scalars().all()
+        if old_uploads:
+            old_ids = [u.id for u in old_uploads]
+            await db.execute(sql_delete(Debt).where(
+                or_(
+                    Debt.commission_upload_id.in_(old_ids),
+                    Debt.production_upload_id.in_(old_ids),
+                )
+            ))
+            await db.execute(sql_delete(ProductionSummary).where(
+                ProductionSummary.upload_id.in_(old_ids)
+            ))
+            await db.execute(sql_delete(PortalSnapshot).where(
+                PortalSnapshot.upload_id.in_(old_ids)
+            ))
+            # portal_runs.upload_id references file_uploads.id but the FK has
+            # no ON DELETE rule — when the same filename is re-ingested by a
+            # later run, the prior run's upload_id still points at the old row
+            # and blocks the DELETE. NULL it out so the new ingest can proceed.
+            # (The prior run's success log + downloaded_filename are preserved.)
+            from app.models.portal_run import PortalRun
+            from sqlalchemy import update as sql_update
+            await db.execute(
+                sql_update(PortalRun)
+                .where(PortalRun.upload_id.in_(old_ids))
+                .values(upload_id=None)
+            )
+            for old in old_uploads:
+                await db.delete(old)
+            await db.flush()
+
+        from app.services.parser_service import detect_period_month
+        from datetime import datetime as _dt
+        # A parser may supply an authoritative period_month (e.g. Menora amalot CSV
+        # reads "לתקופה : MM/YYYY" from the title); prefer it over filename/data-date
+        # inference, which the embedded generation timestamp would otherwise fool.
+        period = result.get("period_month") or detect_period_month(
+            filename, result.get("records"), uploaded_at=_dt.utcnow()
+        )
+
+        upload = FileUpload(
+            user_id=user_id,
+            filename=filename,
+            file_type=result["ext"],
+            company_source=company_source_override or result["company_source"],
+            record_count=len(result["records"]),
+            format_type=fmt,
+            file_category=file_category,
+            period_month=period,
+        )
+        db.add(upload)
         await db.flush()
 
-    from app.services.parser_service import detect_period_month
-    from datetime import datetime as _dt
-    # A parser may supply an authoritative period_month (e.g. Menora amalot CSV
-    # reads "לתקופה : MM/YYYY" from the title); prefer it over filename/data-date
-    # inference, which the embedded generation timestamp would otherwise fool.
-    period = result.get("period_month") or detect_period_month(
-        filename, result.get("records"), uploaded_at=_dt.utcnow()
-    )
+        # Preserve the original bytes on disk so the UI can offer download/preview.
+        # Best-effort — never blocks the ingest.
+        saved_path = _save_upload_to_disk(user_id, upload.id, filename, content)
+        if saved_path:
+            upload.file_path = saved_path
 
-    upload = FileUpload(
-        user_id=user_id,
-        filename=filename,
-        file_type=ext,
-        company_source=company_source_override or result["company_source"],
-        record_count=len(result["records"]),
-        format_type=fmt,
-        file_category=file_category,
-        period_month=period,
-    )
-    db.add(upload)
-    await db.flush()
+        for rec_data in result["records"]:
+            clean = sanitize_record(rec_data)
+            record = ClientRecord(
+                user_id=user_id,
+                upload_id=upload.id,
+                **{k: v for k, v in clean.items() if hasattr(ClientRecord, k)},
+            )
+            db.add(record)
+        await db.flush()
 
-    # Preserve the original bytes on disk so the UI can offer download/preview.
-    # Best-effort — never blocks the ingest.
-    saved_path = _save_upload_to_disk(user_id, upload.id, filename, content)
-    if saved_path:
-        upload.file_path = saved_path
+        if fmt == "company_report":
+            await apply_commission_rates(db, user_id, upload.id)
 
-    for rec_data in result["records"]:
-        clean = sanitize_record(rec_data)
-        record = ClientRecord(
-            user_id=user_id,
-            upload_id=upload.id,
-            **{k: v for k, v in clean.items() if hasattr(ClientRecord, k)},
-        )
-        db.add(record)
-    await db.flush()
+        # Percent-vs-percent deviation: works whenever the parser populates
+        # reported_commission_pct (currently Menora; trivially extends as we
+        # add the same "אחוז עמלה" mapping to other נפרעים parsers).
+        await apply_rate_deviation(db, user_id, upload.id)
 
-    if fmt == "company_report":
-        await apply_commission_rates(db, user_id, upload.id)
+        await cross_reference_uploads(db, user_id)
 
-    # Percent-vs-percent deviation: works whenever the parser populates
-    # reported_commission_pct (currently Menora; trivially extends as we
-    # add the same "אחוז עמלה" mapping to other נפרעים parsers).
-    await apply_rate_deviation(db, user_id, upload.id)
-
-    await cross_reference_uploads(db, user_id)
-
-    # Production uploads replace the prior active production FROM THE SAME
-    # COMPANY only. Uploads from different companies (Migdal + Menora + ...)
-    # for the same period all stay active simultaneously — together they
-    # form the unified monthly production view. Within a single company the
-    # latest upload still replaces prior ones.
-    # make_active=False holds the upload non-active (batch path): the per-company
-    # production files are aggregated into one merged upload that becomes active
-    # at batch end, so flipping is_production here would double-count.
-    if fmt == "production" and make_active:
-        company = company_source_override or result.get("company_source")
-        deactivate_q = update(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.is_production.is_(True),
-            FileUpload.id != upload.id,
-        )
-        if company:
-            deactivate_q = deactivate_q.where(FileUpload.company_source == company)
-        await db.execute(deactivate_q.values(is_production=False))
-        upload.is_production = True
+        # Production uploads replace the prior active production FROM THE SAME
+        # COMPANY only. Uploads from different companies (Migdal + Menora + ...)
+        # for the same period all stay active simultaneously — together they
+        # form the unified monthly production view. Within a single company the
+        # latest upload still replaces prior ones.
+        # make_active=False holds the upload non-active (batch path): the per-company
+        # production files are aggregated into one merged upload that becomes active
+        # at batch end, so flipping is_production here would double-count.
+        if fmt == "production" and make_active:
+            company = company_source_override or result.get("company_source")
+            deactivate_q = update(FileUpload).where(
+                FileUpload.user_id == user_id,
+                FileUpload.is_production.is_(True),
+                FileUpload.id != upload.id,
+            )
+            if company:
+                deactivate_q = deactivate_q.where(FileUpload.company_source == company)
+            await db.execute(deactivate_q.values(is_production=False))
+            upload.is_production = True
 
     if commit:
         await db.commit()

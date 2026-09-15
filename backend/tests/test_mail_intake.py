@@ -349,7 +349,14 @@ async def test_seam_db():
     rows after we've deleted them."""
     print("\nShared seam (guard, ingest, dedup) — DB, cleaned up after:")
     from sqlalchemy import delete, select
-    from app.database import async_session
+    from app.database import async_session, engine
+
+    # pytest-asyncio gives each test its own event loop, but the module-level
+    # engine pools asyncpg connections bound to the loop that first used them
+    # — so this raised "attached to a different loop" whenever another DB test
+    # ran first. Dispose for a clean pool on THIS loop (same guard as
+    # test_ingest_savepoint.py) so the suite is order-independent.
+    await engine.dispose()
     from app.models.user import User
     from app.models.mailbox_config import MailboxConfig
     from app.models.mailbox_message import MailboxProcessedMessage
