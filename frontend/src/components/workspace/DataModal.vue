@@ -31,7 +31,7 @@ const props = defineProps({
   subtitle: { type: String, default: '' },
   // A table of many rows and a single-figure card want very different widths;
   // one 900px shell around one row is mostly empty space.
-  size: { type: String, default: 'lg' },  // 'sm' | 'lg'
+  size: { type: String, default: 'lg' },  // 'sm' | 'lg' | 'xl'
 })
 const emit = defineEmits(['close'])
 
@@ -57,6 +57,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   max-height: 84vh; display: flex; flex-direction: column;
 }
 .dm-card--lg { max-width: 900px; }
+/* A bookcase needs room for a row of binders; at 900px it wraps to four rows. */
+.dm-card--xl { max-width: 1180px; }
 .dm-card--sm { max-width: 440px; }
 .dm-head {
   display: flex; align-items: center; gap: 12px;

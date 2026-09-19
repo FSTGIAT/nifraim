@@ -193,6 +193,29 @@ check("second collision suffixed", _excel_sheet_name("הראל", taken), "הרא
 check("over-long truncated to 31", len(_excel_sheet_name("x" * 60, taken)), 31)
 
 print()
+# ---------------------------------------------------------------------------
+print("\n[6] the PRODUCTION aggregation path de-stales too (QA 2026-09-18)")
+# The live shape that broke התפלגות לפי חברה / לקוחות לפי פרמיה: three uploads
+# flagged is_production at once. `/breakdown`, `/analytics` and `/clients` read
+# "every is_production row" and so summed April + June + September together —
+# 5,080 rows / 890 clients / 21 companies / ₪383.4M, against the correct
+# 2,238 / 408 / 5 / ₪53.3M that the KPI tiles on the SAME screen showed.
+# Premium came out 3.25x too high, which QA reported as "הפרמיה ברמה שנתית".
+prod_apr = U("פרודוקציה אפריל.xlsx", 'הפניקס אקסלנס פנסיה וגמל בע"מ', _dt("2026-05-18 18:27"))
+prod_jun = U("פרודוקציה מאוחד יוני 26.xlsx", "מאוחד", _dt("2026-07-02 06:35"))
+prod_sep = U("פרודוקציה מאוחד ספטמבר 26.xlsx", "מאוחד", _dt("2026-09-15 18:51"))
+check("only the newest production merge survives",
+      _select_unified_uploads([prod_apr, prod_jun, prod_sep]), [prod_sep])
+
+# And the record-aggregation helper must actually route through the selector —
+# it is the single seam every per-record production endpoint shares.
+import inspect as _inspect  # noqa: E402
+from app.api.production import _get_production_upload_ids  # noqa: E402
+_src = _inspect.getsource(_get_production_upload_ids)
+check("_get_production_upload_ids applies the selector",
+      "_select_unified_uploads(" in _src, True)
+
+
 if failures:
     print(f"FAILED ({len(failures)}): {failures}")
     sys.exit(1)

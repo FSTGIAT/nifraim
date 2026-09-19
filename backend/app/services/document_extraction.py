@@ -82,14 +82,20 @@ def _ocr_pdf(file_bytes: bytes) -> str:
     return "\n\n".join(out).strip()
 
 
-def extract_text_layer(file_bytes: bytes) -> str:
-    """Pull the text layer from a PDF: pdfplumber first, Hebrew OCR fallback for
-    scanned PDFs.
+def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
+    """Pull the text layer from a PDF and say WHERE it came from.
+
+    Returns `(text, source)` with source in {"layer", "ocr", "none"}.
+
+    The source is not cosmetic. `_value_appears_in_text` — the guard that drops
+    fabricated rates — returns True unconditionally when the text is empty, so
+    on a scanned agreement with no OCR it silently switches itself off. The
+    caller has to know that happened in order to say so; see `extract_pdf`.
 
     Each page is separated with a marker so Claude can cite page numbers.
-    Returns an empty string only when both pdfplumber and OCR yield nothing.
     """
     text = ""
+    source = "none"
     try:
         out: list[str] = []
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
@@ -103,6 +109,8 @@ def extract_text_layer(file_bytes: bytes) -> str:
                 if page_text:
                     out.append(f"--- עמוד {i} ---\n{page_text}")
         text = "\n\n".join(out).strip()
+        if text:
+            source = "layer"
     except Exception as e:
         logger.warning(f"pdfplumber extraction failed: {e}")
         text = ""
@@ -118,10 +126,18 @@ def extract_text_layer(file_bytes: bytes) -> str:
         ocr = _ocr_pdf(file_bytes)
         if len(ocr) > len(text):
             text = ocr
+            source = "ocr"
 
+    if not text:
+        source = "none"
     if len(text) > _MAX_TEXT_LAYER_CHARS:
         text = text[:_MAX_TEXT_LAYER_CHARS] + "\n\n[... text layer truncated ...]"
-    return text
+    return text, source
+
+
+def extract_text_layer(file_bytes: bytes) -> str:
+    """Back-compat wrapper — the text only. Prefer the `_with_source` variant."""
+    return extract_text_layer_with_source(file_bytes)[0]
 
 
 EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות ביטוח (הסכמי עמלות, חוזרים, טבלאות אחוזים) ומחלץ מהם נתונים מובנים.
@@ -334,8 +350,17 @@ def _value_appears_in_text(value: float, text: str) -> bool:
     return False
 
 
-def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[dict]:
+def _normalize_and_validate_rates(
+    rates: list[dict], text_layer: str, dropped: list[dict] | None = None,
+) -> list[dict]:
     """Normalise the model output and drop fabricated rate components.
+
+    Pass a list as `dropped` to collect WHY each row was rejected. Every reject
+    here used to be a `logger.warning` + `continue` with no user-visible
+    surface at all, so an agent who saw "חולצו 12 שיעורי עמלה" had no way to
+    learn that 30 more had been thrown away. The selection side has had
+    `explain_expected_commission` for exactly this reason; this is its
+    counterpart on the extraction side.
 
     Rules:
     - Legacy `rate_percent` (no components) is rewritten as a single
@@ -347,6 +372,17 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
       (prevents the AI from "summing" two components into a fake total).
     """
     normalized: list[dict] = []
+
+    def _drop(reason: str, r: dict, **extra) -> None:
+        if dropped is None:
+            return
+        dropped.append({
+            "company": (r.get("company") or None),
+            "product": (r.get("product") or None),
+            "reason": reason,
+            **extra,
+        })
+
     for r in rates:
         if not isinstance(r, dict):
             continue
@@ -361,6 +397,7 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
                 "(scope/היקף or clawback — not a נפרעים rate)",
                 r.get("company"), r.get("product"),
             )
+            _drop("non_commission_filter", r)
             continue
 
         components_raw = r.get("components")
@@ -387,6 +424,7 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
                         "scope=%s value=%s (scope/clawback component)",
                         r.get("company"), r.get("product"), scope_raw, rp,
                     )
+                    _drop("non_commission_scope", r, percent=rp, scope=str(scope_raw))
                     continue
                 if not _value_appears_in_text(rp, text_layer):
                     logger.warning(
@@ -394,6 +432,7 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
                         "(not found literally in pdf text layer — dropped)",
                         r.get("company"), r.get("product"), kind, rp,
                     )
+                    _drop("value_not_in_text", r, percent=rp, kind=kind)
                     continue
                 comp = {"kind": kind, "rate_percent": rp}
                 scope = c.get("scope")
@@ -415,6 +454,7 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
                 "viz_extraction.empty_rate_row dropped company=%s product=%s",
                 r.get("company"), r.get("product"),
             )
+            _drop("no_usable_component", r)
             continue
 
         # total_rate_percent: keep only if literally in text
@@ -456,6 +496,34 @@ def _normalize_and_validate_rates(rates: list[dict], text_layer: str) -> list[di
             "effective_to": r.get("effective_to"),
         })
     return normalized
+
+
+# A signed agreement often carries no rate table at all: it defers the numbers
+# to a נספח (appendix) that is a physically separate sheet, and the scan the
+# agent has is only the body. Measured on the live ילין לפידות agreement — 5
+# scanned pages whose §4.1 reads "כמפורט בנספח א' להסכם זה", with no נספח א'
+# attached. "0 rates" is then the CORRECT answer, and the only useful thing the
+# app can do is name the missing document instead of showing a blank shelf.
+_APPENDIX_RE = re.compile(
+    r"נספח\s*(?:ה?תמורה|[א-ה]['׳]?)"
+)
+_APPENDIX_CONTEXT_RE = re.compile(r"תמורה|עמלה|עמלות|שיעור")
+
+
+def _appendix_reference(*texts: str | None) -> str | None:
+    """Return the appendix label an agreement defers its rates to, if any.
+
+    Requires a compensation word near the mention, so a נספח about privacy or
+    signatures doesn't get reported as the missing rate table.
+    """
+    for text in texts:
+        if not text:
+            continue
+        for m in _APPENDIX_RE.finditer(text):
+            window = text[max(0, m.start() - 120): m.end() + 120]
+            if _APPENDIX_CONTEXT_RE.search(window):
+                return m.group(0).strip()
+    return None
 
 
 def _looks_like_rate_table(text_layer: str) -> bool:
@@ -510,7 +578,9 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-    text_layer = await asyncio.to_thread(extract_text_layer, file_bytes)
+    text_layer, text_source = await asyncio.to_thread(
+        extract_text_layer_with_source, file_bytes
+    )
     has_text_layer = len(text_layer) >= _MIN_TEXT_LAYER_CHARS
 
     pdf_b64 = base64.standard_b64encode(file_bytes).decode("ascii")
@@ -587,7 +657,10 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
             if not isinstance(rates, list):
                 rates = []
 
-            normalized = _normalize_and_validate_rates(rates, text_layer if has_text_layer else "")
+            dropped: list[dict] = []
+            normalized = _normalize_and_validate_rates(
+                rates, text_layer if has_text_layer else "", dropped
+            )
 
             # Fallback: main pass returned no rates but the text layer clearly
             # holds a rate table (the מנורה miss). Run one focused rates-only
@@ -600,7 +673,9 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
                 )
                 try:
                     fb_rates = await _extract_rates_only(client, text_layer, filename)
-                    normalized = _normalize_and_validate_rates(fb_rates, text_layer)
+                    dropped = []
+                    rates = fb_rates
+                    normalized = _normalize_and_validate_rates(fb_rates, text_layer, dropped)
                     logger.info(
                         "viz_extraction.empty_rates_fallback file=%s recovered=%d rows",
                         filename, len(normalized),
@@ -615,13 +690,44 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
                     filename,
                 )
 
+            full_content = (tool_input.get("full_content") or "").strip() or None
+
+            # Why the shelf is about to not move. Without this the UI has
+            # nothing to say and stays silent (see `stores/chat.js`), which
+            # reads to the agent as "the upload did nothing".
+            appendix = _appendix_reference(text_layer, full_content)
+            zero_reason = None
+            if not normalized:
+                if dropped:
+                    zero_reason = "all_rows_dropped"
+                elif appendix:
+                    zero_reason = "appendix_missing"
+                elif _looks_like_rate_table(text_layer):
+                    zero_reason = "rate_table_present_but_unparsed"
+                elif text_source == "none":
+                    zero_reason = "no_readable_text"
+                else:
+                    zero_reason = "no_rates_in_document"
+
             return {
                 "doc_type": tool_input.get("doc_type") or "other",
                 "companies": [str(c).strip() for c in companies if c],
                 "summary": (tool_input.get("summary") or "").strip() or None,
-                "full_content": (tool_input.get("full_content") or "").strip() or None,
+                "full_content": full_content,
                 "rates": normalized,
                 "text_layer": text_layer or None,
+                "text_source": text_source,
+                "extraction": {
+                    "proposed": len(rates),
+                    "kept": len(normalized),
+                    "dropped": dropped,
+                    # False ⇒ `_value_appears_in_text` could not run, so nothing
+                    # here was checked against the document's own words.
+                    "verified": bool(has_text_layer),
+                    "text_source": text_source,
+                    "appendix_ref": appendix,
+                    "zero_reason": zero_reason,
+                },
             }
         except (ValueError, anthropic.APIError, anthropic.APIStatusError) as e:
             last_error = e

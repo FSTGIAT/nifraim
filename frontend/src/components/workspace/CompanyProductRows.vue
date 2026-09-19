@@ -8,6 +8,7 @@
       </span>
       <span>פרמיה</span>
       <span>צבירה</span>
+      <span>עמלה</span>
       <span>לקוחות</span>
     </div>
 
@@ -18,7 +19,7 @@
           class="cpr-row" :class="{ 'cpr-row--in': shown }"
           :style="{ transitionDelay: Math.min(i, 12) * 30 + 'ms' }"
           @click="$emit('drill', p)">
-        <span class="cpr-name" :title="p.product">{{ p.product }}</span>
+        <span class="cpr-name" :title="p.label || p.product">{{ p.label || p.product }}</span>
         <span class="cpr-track">
           <span class="cpr-bar cpr-bar--prem" :style="{ width: bar(p.premium, maxPrem) }"></span>
           <span class="cpr-bar cpr-bar--acc" :style="{ width: bar(p.accumulation, maxAcc) }"></span>
@@ -34,6 +35,11 @@
         </span>
         <span class="cpr-val ltr-number" :class="{ 'cpr-zero': !p.accumulation }">
           {{ p.accumulation ? money(p.accumulation) : '—' }}
+        </span>
+        <!-- "and what does this pay me?" — QA 2026-09-18. Priced through
+             rate_select, so it agrees with the dashboard and the AI. -->
+        <span class="cpr-val cpr-comm ltr-number" :class="{ 'cpr-zero': !p.commission }">
+          {{ p.commission ? money(p.commission) : '—' }}
         </span>
         <span class="cpr-clients ltr-number">{{ p.clients }}</span>
       </li>
@@ -82,7 +88,7 @@ watch(() => props.rows, play)
 .cpr-list { list-style: none; display: flex; flex-direction: column; }
 .cpr-row {
   display: grid;
-  grid-template-columns: minmax(96px, 1.2fr) 1.3fr 92px 108px 58px;
+  grid-template-columns: minmax(96px, 1.1fr) 1fr 88px 104px 88px 54px;
   align-items: center; gap: 12px;
   padding: 8px; border-bottom: 1px solid var(--border-subtle);
   opacity: 0; transform: translateY(4px);
@@ -121,6 +127,7 @@ watch(() => props.rows, play)
 .cpr-val { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; }
 .cpr-zero { color: var(--text-muted); font-weight: 500; }
 .cpr-clients { font-size: 12px; color: var(--text-muted); text-align: left; }
+.cpr-comm { color: var(--chart-3, var(--text)); }
 .cpr-none { font-size: 13px; color: var(--text-muted); padding: 14px 4px; }
 
 @media (prefers-reduced-motion: reduce) {

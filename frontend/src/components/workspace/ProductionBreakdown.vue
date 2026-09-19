@@ -19,23 +19,36 @@
         </div>
       </div>
       <p class="pb-hint">בחר חברה בגרף כדי לראות את החלוקה הפנימית שלה</p>
+      <!-- EVERY company gets a bar, including one whose value on the active
+           measure is 0. The chart used to plot only `metric > 0` and demote
+           the rest to chips below it, so with צבירה selected (the default) a
+           book holding הראל, מנורה, כלל and איילון rendered two bars — which
+           reads as "those companies are missing", not as "they report the
+           other measure". Both numbers now ride on every row. -->
       <apexchart v-if="shownCompanies.length" type="bar" :height="companyHeight"
                  :options="companyOptions" :series="companySeries" />
-      <p v-else class="pb-none">אף חברה לא מדווחת {{ coMetric === 'premium' ? 'פרמיה' : 'צבירה' }}</p>
+      <p v-else class="pb-none">אין נתוני פרודוקציה להצגה</p>
 
-      <!-- Named, not dropped: each of these is clickable into its own
-           breakdown, so a company is never invisible just because it reports
-           the other measure. -->
-      <div v-if="otherCompanies.length" class="pb-others">
-        <span class="pb-others-lead">
-          ללא {{ coMetric === 'premium' ? 'פרמיה' : 'צבירה' }} מדווחת:
-        </span>
-        <button v-for="c in otherCompanies" :key="c.company" class="pb-other"
-                @click="openCompany = c.company">
-          {{ c.company }}
-          <span class="ltr-number">{{ money(c[coMetric === 'premium' ? 'accumulation' : 'premium']) }}</span>
-          <span class="pb-other-unit">{{ otherMetricLabel }}</span>
-        </button>
+      <!-- A zero bar has to say WHY it is zero. The three causes need
+           different actions and must not read alike. -->
+      <div v-if="zeroCompanies.length" class="pb-zeros">
+        <div v-for="c in zeroCompanies" :key="c.company" class="pb-zero"
+             @click="openCompany = c.company">
+          <span class="pb-zero-name">{{ c.company }}</span>
+          <span class="pb-zero-nums">
+            <span class="pb-zero-unit">צבירה</span>
+            <span class="ltr-number">{{ c.accumulation ? money(c.accumulation) : '—' }}</span>
+            <span class="pb-zero-sep">·</span>
+            <span class="pb-zero-unit">פרמיה</span>
+            <span class="ltr-number">{{ c.premium ? money(c.premium) : '—' }}</span>
+            <template v-if="c.commission">
+              <span class="pb-zero-sep">·</span>
+              <span class="pb-zero-unit">עמלה</span>
+              <span class="ltr-number">{{ money(c.commission) }}</span>
+            </template>
+          </span>
+          <span class="pb-zero-why">{{ zeroReason(c) }}</span>
+        </div>
       </div>
 
       <!-- Why the chart has fewer bars than the agent has portals. Two
@@ -106,7 +119,7 @@
         <div class="pb-split">
           <section v-for="cat in CATS" :key="cat.key">
             <h5>{{ cat.label }}</h5>
-            <CompanyProductRows :rows="openCompanyRow.products[cat.key]"
+            <CompanyProductRows :rows="labelled(cat.key, openCompanyRow.products[cat.key])"
                                 @drill="drill(cat.key, $event.product, openCompanyRow.company)" />
           </section>
         </div>
@@ -117,9 +130,26 @@
     <DataModal :open="drillOpen" :title="drillTitle"
                :subtitle="drillLoading ? '' : `${drillClients.length} לקוחות`"
                @close="closeDrill">
+      <!-- Filters requested by QA 2026-09-18: cut the drill by חברה, by מוצר
+           and by ת.ז. Company/product narrow the SERVER query (the same
+           params the chart already uses); the text box filters in place so
+           typing an id stays instant. -->
+      <div class="pb-filters">
+        <select v-model="fCompany" @change="refetchDrill">
+          <option :value="null">כל החברות</option>
+          <option v-for="c in companies" :key="c.company" :value="c.company">{{ c.company }}</option>
+        </select>
+        <select v-model="fProduct" @change="refetchDrill">
+          <option :value="null">כל המוצרים</option>
+          <option v-for="o in drillProductOptions" :key="o.key" :value="o.key">{{ o.label }}</option>
+        </select>
+        <input v-model="fQuery" type="search" placeholder="חיפוש לפי ת.ז או שם" />
+        <button v-if="fCompany || fProduct || fQuery" class="pb-filters-clear"
+                @click="clearFilters">נקה</button>
+      </div>
       <p v-if="drillLoading" class="pb-none">טוען…</p>
-      <p v-else-if="!drillClients.length" class="pb-none">אין לקוחות להצגה</p>
-      <ClientRows v-else :rows="drillClients" :identical="drillIdentical" />
+      <p v-else-if="!filteredDrill.length" class="pb-none">אין לקוחות להצגה</p>
+      <ClientRows v-else :rows="filteredDrill" :identical="drillIdentical" />
     </DataModal>
   </div>
 </template>
@@ -132,6 +162,31 @@ import CompanyProductRows from './CompanyProductRows.vue'
 import ClientRows from './ClientRows.vue'
 import { assignCompanyColors, CHART_PALETTE } from '../../utils/chartPalette'
 import { money, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
+
+// The פיננסים card is titled "לפי אפיק", and an agent expects to read
+// גמל / השתלמות / פוליסות חיסכון there. `product_taxonomy` already produces
+// those keys, but two real savings families arrive under names that mean
+// nothing on a savings axis: Harel prices its savings policies as `מגוון`,
+// and Phoenix's MU book files accumulation-bearing policies as `חיים`.
+//
+// This maps the LABEL only. The raw key is what `/breakdown/clients` filters
+// on, so it is what still gets sent on a drill — and the backend taxonomy is
+// deliberately left alone (`product_taxonomy.py` carries an explicit
+// "Do not 'fix' it" for accumulation-bearing life policies).
+// Labels must stay DISTINCT: the backend already emits a real
+// `פוליסת חיסכון` bucket (₪50.5M live), so renaming `חיים` onto it would put
+// two differently-sized bars under one identical name. These say what the
+// product is without pretending it is the same thing.
+const FINANCIAL_LABELS = {
+  'חיים': 'ביטוח חיים עם חיסכון',
+  'ביטוח חיים': 'ביטוח חיים עם חיסכון',
+  'מגוון': 'מגוון — פוליסת חיסכון',
+}
+
+function productLabel(catKey, product) {
+  if (catKey !== 'financial') return product
+  return FINANCIAL_LABELS[product] || product
+}
 
 const CATS = [
   { key: 'insurance', label: 'ביטוח', title: 'ביטוח — לפי מוצר',
@@ -159,12 +214,34 @@ const drillIdentical = ref(null)
 // a book where only one insurer reports a balance rendered a chart with a
 // single bar and no hint that three other companies existed, which reads as
 // broken rather than as "these three report premium, not a balance".
+// Every company, ordered by the measure on screen — none dropped. The two
+// measures are kept side by side because insurers populate only one of them
+// and the agent asked to see both per company (QA 2026-09-18 item 8).
 const shownCompanies = computed(() =>
-  companies.value.filter(c => Number(c[coMetric.value]) > 0),
+  [...companies.value].sort((a, b) => {
+    const m = Number(b[coMetric.value] || 0) - Number(a[coMetric.value] || 0)
+    if (m) return m
+    const other = coMetric.value === 'premium' ? 'accumulation' : 'premium'
+    return Number(b[other] || 0) - Number(a[other] || 0)
+  }),
 )
-const otherCompanies = computed(() =>
-  companies.value.filter(c => !(Number(c[coMetric.value]) > 0)),
+// Companies whose bar is zero on the ACTIVE measure — each gets a named reason
+// rather than an unexplained empty row.
+const zeroCompanies = computed(() =>
+  shownCompanies.value.filter(c => !(Number(c[coMetric.value]) > 0)),
 )
+
+function zeroReason(c) {
+  const other = coMetric.value === 'premium' ? 'accumulation' : 'premium'
+  if (Number(c[other]) > 0) {
+    return coMetric.value === 'premium'
+      ? 'מדווחת צבירה, לא פרמיה'
+      : 'מדווחת פרמיה, לא צבירה'
+  }
+  // Neither measure — the file itself came without money columns. Live: הראל
+  // ships 1,729 production rows with פרמיה and צבירה both empty.
+  return c.rate_reason || 'הקובץ הגיע ללא נתוני פרמיה וצבירה'
+}
 // Money held on the OTHER side of the split — the reason an empty card is not
 // the same as an empty book.
 const crossAccumulation = computed(
@@ -180,12 +257,13 @@ const noReport = computed(
 const notReceived = computed(
   () => missing.value.filter(m => m.reason !== 'no_report').map(m => m.company),
 )
-const otherMetricLabel = computed(
-  () => (coMetric.value === 'premium' ? 'צבירה' : 'פרמיה'),
-)
 const openCompanyRow = computed(
   () => companies.value.find(c => c.company === openCompany.value) || null,
 )
+function labelled(catKey, rows) {
+  return (rows || []).map(p => ({ ...p, label: productLabel(catKey, p.product) }))
+}
+
 const companyModalTitle = computed(
   () => openCompanyRow.value ? `${openCompanyRow.value.company} — לפי מוצר` : '',
 )
@@ -235,7 +313,13 @@ const companyOptions = computed(() => ({
     y: {
       formatter: (v, o) => {
         const c = shownCompanies.value[o.dataPointIndex]
-        return `${money(v)} · ${c?.clients ?? 0} לקוחות · ${c?.count ?? 0} מוצרים`
+        if (!c) return money(v)
+        const other = coMetric.value === 'premium' ? 'accumulation' : 'premium'
+        const otherLabel = coMetric.value === 'premium' ? 'צבירה' : 'פרמיה'
+        const parts = [`${money(v)}`, `${otherLabel} ${money(c[other] || 0)}`]
+        if (c.commission) parts.push(`עמלה ${money(c.commission)}`)
+        parts.push(`${c.clients ?? 0} לקוחות`, `${c.count ?? 0} מוצרים`)
+        return parts.join(' · ')
       },
     },
   },
@@ -272,7 +356,7 @@ function productOptions(cat) {
     },
     legend: { show: false },
     xaxis: {
-      categories: rows.map(p => p.product),
+      categories: rows.map(p => productLabel(cat.key, p.product)),
       labels: { formatter: axisMoney, style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B' } },
     },
     yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B', fontSize: '13px' } } },
@@ -288,15 +372,67 @@ function productOptions(cat) {
   }
 }
 
-async function drill(category, product, company) {
+const fCompany = ref(null)
+const fProduct = ref(null)
+const fQuery = ref('')
+const drillCategory = ref(null)
+
+// Every product available in the drilled category, with the same display
+// mapping the charts use.
+const drillProductOptions = computed(() => {
+  const key = drillCategory.value
+  if (!key) return []
+  return (products.value[key] || []).map(p => ({
+    key: p.product, label: productLabel(key, p.product),
+  }))
+})
+
+// The ת.ז / name box filters the loaded list — no round-trip per keystroke.
+const filteredDrill = computed(() => {
+  const q = fQuery.value.trim()
+  if (!q) return drillClients.value
+  return drillClients.value.filter(
+    c => (c.id_number || '').includes(q) || (c.name || '').includes(q),
+  )
+})
+
+function clearFilters() {
+  fCompany.value = null
+  fProduct.value = null
+  fQuery.value = ''
+  refetchDrill()
+}
+
+async function refetchDrill() {
+  await drill(drillCategory.value, fProduct.value, fCompany.value, true)
+}
+
+async function drill(category, product, company, keepFilters = false) {
+  // Close the company modal first — both overlays are z-index 1010, so
+  // opening the client list on top of it stacked two dimmed layers and the
+  // Esc key closed only the upper one.
+  openCompany.value = null
   drillOpen.value = true
   drillLoading.value = true
   drillIdentical.value = null
   drillClients.value = []
-  drillTitle.value = company ? `${company} · ${product}` : product
+  drillCategory.value = category
+  if (!keepFilters) {
+    fCompany.value = company || null
+    fProduct.value = product || null
+    fQuery.value = ''
+  }
+  const shownProduct = product ? productLabel(category, product) : null
+  drillTitle.value = company
+    ? `${company}${shownProduct ? ' · ' + shownProduct : ''}`
+    : (shownProduct || 'כל הלקוחות')
   try {
     const res = await api.get('/production/breakdown/clients', {
-      params: { category, product, company: company || undefined },
+      params: {
+        category: category || undefined,
+        product: product || undefined,
+        company: company || undefined,
+      },
     })
     drillClients.value = res.data.clients || []
     drillIdentical.value = res.data.identical_value || null
@@ -354,19 +490,42 @@ onMounted(async () => {
 .pb-absent-note { opacity: 0.8; }
 .pb-absent--warn .pb-absent-lead { color: var(--amber); }
 
-.pb-others {
+/* One line per company whose bar is zero on the active measure — both
+   numbers and the reason, so an empty bar is never just an empty bar. */
+.pb-zeros {
+  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column;
+}
+.pb-zero {
+  display: grid; grid-template-columns: minmax(90px, 1fr) auto 1.2fr;
+  align-items: baseline; gap: 12px;
+  padding: 6px 4px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.pb-zero:hover { background: var(--border-subtle); }
+.pb-zero-name { font-size: 12.5px; color: var(--text); font-weight: 600; }
+.pb-zero-nums { display: flex; align-items: baseline; gap: 5px; font-size: 12px; color: var(--text); }
+.pb-zero-unit { font-size: 10px; color: var(--text-muted); }
+.pb-zero-sep { color: var(--text-muted); opacity: 0.6; margin: 0 3px; }
+.pb-zero-why { font-size: 11.5px; color: var(--text-muted); text-align: left; }
+
+/* Drill filters */
+.pb-filters {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle);
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
 }
-.pb-others-lead { font-size: 11px; color: var(--text-muted); }
-.pb-other {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  padding: 4px 10px; border-radius: 12px;
-  border: 1px solid var(--border-subtle); background: none;
-  font-family: inherit; font-size: 12px; color: var(--text); cursor: pointer;
+.pb-filters select, .pb-filters input {
+  font-family: inherit; font-size: 12.5px; color: var(--text);
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle); background: var(--card-bg);
 }
-.pb-other:hover { border-color: var(--text-muted); background: var(--border-subtle); }
-.pb-other-unit { font-size: 10px; color: var(--text-muted); }
+.pb-filters input { flex: 1; min-width: 150px; }
+.pb-filters select { max-width: 190px; }
+.pb-filters-clear {
+  border: none; background: none; font-family: inherit; font-size: 12px;
+  color: var(--text-muted); cursor: pointer; text-decoration: underline;
+}
+.pb-filters-clear:hover { color: var(--text); }
 
 .pb-empty { padding: 10px 0 4px; }
 .pb-empty-lead { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }

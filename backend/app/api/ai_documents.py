@@ -13,9 +13,11 @@ import os
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select, desc, and_, delete as sql_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +60,30 @@ def _parse_iso_date(value) -> date | None:
         return date.fromisoformat(str(value).strip()[:10])
     except (ValueError, TypeError):
         return None
+
+
+async def _prefetch_rates_by_key(
+    db: AsyncSession, user_id, rates: list[dict],
+) -> dict[tuple, CommissionRate]:
+    """Existing rate rows for this document's companies, keyed the way
+    `uq_commission_rates_keys` is — so an upsert UPDATES a row that is already
+    there instead of colliding with it."""
+    companies_in_doc = {
+        (r.get("company") or "").strip() for r in rates if r.get("company")
+    }
+    if not companies_in_doc:
+        return {}
+    rows = (await db.execute(
+        select(CommissionRate).where(
+            CommissionRate.user_id == user_id,
+            CommissionRate.company_name.in_(companies_in_doc),
+        )
+    )).scalars().all()
+    return {
+        (r.company_name, r.product, r.payment_frequency, r.rate,
+         r.effective_from, r.rate_scope): r
+        for r in rows
+    }
 
 
 def _upsert_rates_from_doc(
@@ -261,12 +287,41 @@ async def upload_document(
                     CommissionRate.source_document_id == existing.id,
                 ))
                 await db.flush()
-                _upsert_rates_from_doc(db, user.id, existing.id, extracted["rates"], {})
+                # Prefetch this doc's companies the way the first-upload path
+                # does. Passing {} here made every component an INSERT, so a
+                # key already held by a SEEDED row or by a second agreement
+                # (the delete above only removes THIS doc's rows) raised
+                # IntegrityError — and the handler below then committed on a
+                # poisoned transaction and 500'd. Re-uploading the same file is
+                # routine during QA, and undated agreements miss the sha cache
+                # every single time, so this path runs constantly.
+                existing_by_key = await _prefetch_rates_by_key(
+                    db, user.id, extracted["rates"]
+                )
+                _upsert_rates_from_doc(
+                    db, user.id, existing.id, extracted["rates"], existing_by_key
+                )
             await db.commit()
             await db.refresh(existing)
         except Exception as e:
-            existing.error = str(e)[:1000]
+            # Roll back BEFORE touching the session again — the failure may
+            # have left the transaction unusable, and committing on top of it
+            # raises PendingRollbackError, which surfaced to the agent as a
+            # bare 500 / "העלאה נכשלה" instead of the real error.
+            logger.warning("Re-extraction failed for %s: %s", existing.id, e)
+            await db.rollback()
+            refetched = (await db.execute(
+                select(AiDocument).where(
+                    AiDocument.user_id == user.id,
+                    AiDocument.sha256 == sha,
+                )
+            )).scalar_one_or_none()
+            if refetched is None:
+                raise HTTPException(status_code=500, detail="עיבוד המסמך נכשל") from e
+            refetched.error = str(e)[:1000]
             await db.commit()
+            await db.refresh(refetched)
+            return refetched
         return existing
 
     # Run the extraction up-front (synchronous in the request lifetime).
@@ -307,23 +362,8 @@ async def upload_document(
     # Upsert extracted rates into commission_rates (only when extraction
     # succeeded and the doc actually has rate entries).
     if status_val == "ready" and extracted.get("rates"):
-        companies_in_doc = {
-            (r.get("company") or "").strip()
-            for r in extracted["rates"]
-            if r.get("company")
-        }
-        if companies_in_doc:
-            existing_rates_q = await db.execute(
-                select(CommissionRate).where(
-                    CommissionRate.user_id == user.id,
-                    CommissionRate.company_name.in_(companies_in_doc),
-                )
-            )
-            existing_by_key: dict[tuple[str, str | None, str | None, Decimal, date | None, str | None], CommissionRate] = {
-                (r.company_name, r.product, r.payment_frequency, r.rate, r.effective_from, r.rate_scope): r
-                for r in existing_rates_q.scalars().all()
-            }
-            _upsert_rates_from_doc(db, user.id, doc.id, extracted["rates"], existing_by_key)
+        existing_by_key = await _prefetch_rates_by_key(db, user.id, extracted["rates"])
+        _upsert_rates_from_doc(db, user.id, doc.id, extracted["rates"], existing_by_key)
 
     try:
         await db.commit()
@@ -379,6 +419,38 @@ async def list_documents(
         .order_by(desc(AiDocument.uploaded_at))
     )
     return q.scalars().all()
+
+
+@router.get("/{doc_id}/file")
+async def get_document_file(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_paid_user),
+):
+    """Serve the stored agreement PDF so the shelf can show the source.
+
+    An agreement's rates are only as trustworthy as the document behind them,
+    and until now the PDF was write-only: `_save_pdf_to_disk` kept it so chat
+    could re-attach it to Claude, but nothing let the AGENT open it. A shelf
+    row saying "0.34%" with no way to see where that came from is not
+    auditable — and for the rows that extracted NOTHING it is the only way to
+    check the file really is an appendix-less scan.
+    """
+    doc = (await db.execute(
+        select(AiDocument).where(
+            and_(AiDocument.id == doc_id, AiDocument.user_id == user.id)
+        )
+    )).scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="מסמך לא נמצא")
+    if not doc.file_path or not os.path.exists(doc.file_path):
+        # Documents uploaded before the PDF was persisted, or a wiped disk.
+        raise HTTPException(status_code=404, detail="קובץ ה-PDF אינו זמין עוד בשרת")
+    return FileResponse(
+        doc.file_path, media_type="application/pdf", filename=doc.filename,
+        # inline so the browser's viewer opens it instead of downloading.
+        headers={"Content-Disposition": f'inline; filename*=UTF-8\'\'{quote(doc.filename)}'},
+    )
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)

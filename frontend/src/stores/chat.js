@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { extractionOutcome } from '../utils/extractionReport'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref([])
@@ -148,10 +149,13 @@ export const useChatStore = defineStore('chat', () => {
             if (data.companies_mentioned?.length) {
               lines.push(`חברות: ${data.companies_mentioned.join(', ')}`)
             }
+            // Always say what happened to the rates — including "nothing, and
+            // here is why". Silence on the zero case is what made a correct
+            // "this agreement has no rate table" read as a broken upload.
             const rates = data.structured_data?.rates || []
-            if (rates.length) {
-              lines.push(`חולצו **${rates.length}** שיעורי עמלה — נוספו לטבלת השיעורים.`)
-            }
+            lines.push(
+              extractionOutcome(data.structured_data?.extraction, rates).text,
+            )
           }
           messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
           finish(true, data)

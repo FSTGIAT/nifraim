@@ -1,4 +1,6 @@
+import os
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.models.record import ClientRecord
+from app.models.ai_document import AiDocument
 from app.models.commission_rate import CommissionRate
 from app.models.upload import FileUpload
 from app.schemas.record import (
@@ -17,6 +20,7 @@ from app.schemas.record import (
 )
 from app.api.deps import get_paid_user as get_current_user
 from app.services.rate_select import explain_expected_commission
+from app.utils.company_norm import company_stem
 from app.utils.hebrew_mappings import DEFAULT_COMMISSION_RATES
 
 router = APIRouter()
@@ -39,6 +43,101 @@ def _out(r: CommissionRate) -> CommissionRateOut:
         effective_from=r.effective_from,
         effective_to=r.effective_to,
     )
+
+
+@router.get("/agreements")
+async def list_agreements(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One card per company: which agreement PDF backs its rates.
+
+    The shelf shows rates but never showed the DOCUMENT they came from, so an
+    agent could not check a surprising percentage against the page it was read
+    off — and an agreement that extracted **nothing** left no trace on the
+    shelf at all. Live for this user that was 6 of 16 uploads (ילין, מור,
+    מיטב, מגדל…), each invisible.
+
+    A company is keyed by `company_stem` so 'מנורה מבטחים' and
+    'מנורה מבטחים ביטוח בע"מ' share one card, matching how `select_rate`
+    actually resolves a company.
+    """
+    rates = list((await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )).scalars().all())
+    docs = list((await db.execute(
+        select(AiDocument)
+        .where(AiDocument.user_id == user.id)
+        .order_by(AiDocument.uploaded_at.desc())
+    )).scalars().all())
+
+    # doc_id -> {stem: count} from the rates that actually link back to it.
+    rates_by_doc: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    label_for_stem: dict[str, str] = {}
+    rates_by_stem: dict[str, int] = defaultdict(int)
+    for r in rates:
+        stem = company_stem(r.company_name) or (r.company_name or "")
+        if not stem:
+            continue
+        rates_by_stem[stem] += 1
+        # Longest raw spelling wins as the label — it is the most informative
+        # and matches what the agreement itself printed.
+        if len(r.company_name or "") > len(label_for_stem.get(stem, "")):
+            label_for_stem[stem] = r.company_name
+        if r.source_document_id:
+            rates_by_doc[str(r.source_document_id)][stem] += 1
+
+    companies: dict[str, dict] = {}
+
+    def _bucket(stem: str) -> dict:
+        return companies.setdefault(stem, {
+            "company": label_for_stem.get(stem, stem),
+            "stem": stem,
+            "rates_total": rates_by_stem.get(stem, 0),
+            "documents": [],
+        })
+
+    for d in docs:
+        sd = d.structured_data or {}
+        extraction = sd.get("extraction") or {}
+        entry = {
+            "id": str(d.id),
+            "filename": d.filename,
+            "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "status": d.status,
+            "error": d.error,
+            # Whether the PDF is actually READABLE, not merely recorded.
+            # The column stays set after a disk wipe, so trusting it
+            # renders an enabled button that 404s.
+            "has_file": bool(d.file_path and os.path.exists(d.file_path)),
+            "rates": len(sd.get("rates") or []),
+            # Why it produced nothing, when it produced nothing. Documents
+            # extracted before this field existed simply carry None.
+            "zero_reason": extraction.get("zero_reason"),
+            "appendix_ref": extraction.get("appendix_ref"),
+            "verified": extraction.get("verified"),
+            "dropped": len(extraction.get("dropped") or []),
+        }
+        stems = set(rates_by_doc.get(str(d.id), {}))
+        if not stems:
+            # No rate links back — either it extracted nothing, or it predates
+            # source_document_id. Fall back to the companies Claude named.
+            stems = {
+                company_stem(c) or c
+                for c in (d.companies_mentioned or []) if c
+            }
+        for stem in (stems or {""}):
+            if not stem:
+                continue
+            b = _bucket(stem)
+            b["documents"].append({**entry, "rates": rates_by_doc.get(str(d.id), {}).get(stem, entry["rates"])})
+
+    # Companies with rates but no document at all (seeded defaults).
+    for stem in rates_by_stem:
+        _bucket(stem)
+
+    out = sorted(companies.values(), key=lambda c: (-c["rates_total"], c["company"]))
+    return {"companies": out, "total_documents": len(docs)}
 
 
 @router.get("", response_model=list[CommissionRateOut])

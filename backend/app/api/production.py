@@ -22,6 +22,7 @@ from app.services.comparison_service import (
 )
 from app.services.rate_select import (
     accumulation_based,
+    company_candidates,
     expected_rate,
     select_rate,
     make_pick_rate,
@@ -82,16 +83,34 @@ async def _get_production_upload(db: AsyncSession, user_id: uuid.UUID) -> FileUp
 
 
 async def _get_production_upload_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    """Returns ALL active production upload IDs for the user — one per
-    company. The dashboard aggregates records across these so Migdal +
-    Menora + ... appear as one unified monthly production."""
-    result = await db.execute(
-        select(FileUpload.id).where(
-            FileUpload.user_id == user_id,
-            FileUpload.is_production == True,
-        )
-    )
-    return [row[0] for row in result.all()]
+    """The active production uploads that make up **this month's** book.
+
+    `is_production` is deliberately not a singleton — several companies'
+    files coexist so Migdal + Menora + … read as one unified production. But
+    "every row flagged is_production" is NOT the same set: a merged `מאוחד`
+    file is derived from per-company uploads that the batch then deletes, and
+    older merges from previous months stay flagged. Summing them all stacks
+    several months of the same book on top of each other.
+
+    Measured live 2026-09-18 — three uploads were flagged at once
+    (`פרודוקציה אפריל`, `מאוחד יוני 26`, `מאוחד ספטמבר 26`):
+
+        all is_production   5,080 rows · 890 clients · 21 companies · ₪383.4M
+        this month only     2,238 rows · 408 clients ·  5 companies · ₪53.3M
+
+    Premium came out **3.25× too high**, which is what "הפרמיה ברמה שנתית"
+    on the QA report actually was — one client appeared under two ID
+    spellings with the same premium in two files. The KPI tiles were already
+    right (they select properly), so the same screen showed ₪53.3M at the top
+    and ₪383M in the chart below it.
+
+    `_select_unified_uploads` is the existing answer to exactly this question
+    and carries its own live incident; it was simply never applied on this
+    path, which is why `/export.xlsx`, `/rate-audit` and `/trend` were correct
+    while `/breakdown`, `/analytics` and `/clients` were not.
+    """
+    uploads = await _get_all_production_uploads(db, user_id)
+    return [u.id for u in _select_unified_uploads(uploads)]
 
 
 async def _get_all_production_uploads(db: AsyncSession, user_id: uuid.UUID) -> list[FileUpload]:
@@ -126,6 +145,11 @@ def _display_name(first, last, id_number) -> str:
 # two-bucket split reported one misleading sentence for all of them (QA #7).
 UNCOVERED_BUCKETS = ("no_company", "no_rate", "risk_no_premium", "no_base")
 
+# Per-client cap on the unpaid drill-down rows. The unpaid LIST is already
+# truncated to 50 clients while `unpaid_total` carries the true count; adding a
+# per-policy array multiplies the payload, so it gets its own ceiling.
+UNPAID_ITEMS_PER_CLIENT = 40
+
 
 def _uncovered_bucket(rate: float, route: str, is_accum: bool,
                       premium: float, accum: float, expected: float) -> str | None:
@@ -150,6 +174,27 @@ def _uncovered_bucket(rate: float, route: str, is_accum: bool,
     if expected <= 0:
         return "risk_no_premium" if (accum > 0 and premium <= 0) else "no_base"
     return None
+
+
+# A rate is FIRM only when `select_rate` reached it through semantic evidence —
+# a route ending in `:product` (the agreement names this product) or `:residue`
+# (the product was smuggled into the company column). Every other route
+# (`:default`, `:median`) is a fallback guess and must never be presented as a
+# claimed debt. `get_rate_audit` has used this test for its paid_firm /
+# expected_firm split since the מנורה ₪21K phantom-debt incident; the
+# expected-vs-actual trend pairs on the same basis, so it lives in ONE place.
+def _is_firm_route(route: str | None) -> bool:
+    return bool((route or "").endswith((":product", ":residue")))
+
+
+def _trend_rate(cache, user_rates, company, product, product_type, is_accum):
+    """Memoised `select_rate`. The answer depends only on this key."""
+    key = (company, product, product_type, is_accum)
+    hit = cache.get(key)
+    if hit is None:
+        hit = select_rate(user_rates, company, product, product_type, is_accum)
+        cache[key] = hit
+    return hit
 
 
 
@@ -1057,7 +1102,8 @@ async def get_production_alerts(
     comm_ids = [u.id for u in comm_uploads]
     if not prod_ids and not comm_ids:
         return {"unpaid": [], "client_movers": [], "company_movers": [],
-                "covered_companies": [], "previous_period": None}
+                "covered_companies": [], "no_value_companies": [],
+                "previous_period": None}
 
     # ── who was paid, and for which companies do we have a report at all ──
     paid_ids: set[str] = set()
@@ -1106,11 +1152,25 @@ async def get_production_alerts(
                 "name": _display_name(r.first_name, r.last_name, r.id_number),
                 "companies": set(), "products": 0,
                 "premium": 0.0, "accumulation": 0.0,
+                # The per-policy detail behind the counter. Without it the modal
+                # can say "3 מוצרים" but not WHICH policy went unpaid, which is
+                # the only form of the answer the agent can act on with the
+                # insurer.
+                "items": [],
             })
             e["companies"].add(stem)
             e["products"] += 1
             e["premium"] += float(r.total_premium or 0)
             e["accumulation"] += float(r.accumulation or 0)
+            if len(e["items"]) < UNPAID_ITEMS_PER_CLIENT:
+                e["items"].append({
+                    "product": r.product or "",
+                    "product_type": r.product_type or r.fund_type or "",
+                    "policy_number": r.fund_policy_number or "",
+                    "company": stem,
+                    "premium": round(float(r.total_premium or 0), 2),
+                    "accumulation": round(float(r.accumulation or 0), 2),
+                })
 
     unpaid_list = [
         {**u, "companies": sorted(u["companies"]),
@@ -1200,10 +1260,41 @@ async def get_production_alerts(
             "commission": round(comm_now.get(stem, 0.0), 2),
         })
 
+    # ── companies whose production arrived with NO money at all ───────────
+    # A production file with rows but zero פרמיה AND zero צבירה passes every
+    # cheap check: the portal "succeeded", the file exists, the row count even
+    # went UP. Live (kikohib, 2026-09-15): הראל's agents-portal מוצרי צבירה leg
+    # returned nothing, so 1,729 vault-only rows landed carrying ₪0 — the vault
+    # reports hold product PRESENCE by design and the money lives in the leg
+    # that failed. The 2026-08-09 run had 1,298 rows carrying ₪13,220,694.
+    # Nothing flagged it. This is that flag.
+    no_value_companies: list[dict] = []
+    if prod_ids:
+        totals: dict[str, dict] = {}
+        for company, premium, accum in (await db.execute(
+            select(
+                ClientRecord.receiving_company,
+                ClientRecord.total_premium,
+                ClientRecord.accumulation,
+            ).where(ClientRecord.upload_id.in_(prod_ids))
+        )).all():
+            stem = company_stem(company)
+            if not stem:
+                continue
+            e = totals.setdefault(stem, {"rows": 0, "value": 0.0})
+            e["rows"] += 1
+            e["value"] += float(premium or 0) + float(accum or 0)
+        no_value_companies = sorted(
+            ({"company": stem, "rows": v["rows"]}
+             for stem, v in totals.items() if v["rows"] and v["value"] <= 0),
+            key=lambda c: -c["rows"],
+        )
+
     return {
         "unpaid": unpaid_list[:50],
         "unpaid_total": len(unpaid_list),
         "checked_companies": checked,
+        "no_value_companies": no_value_companies,
         # Naming the companies the check COULD run for is what stops a short
         # list reading as "almost everyone was paid".
         "covered_companies": sorted(covered),
@@ -1322,7 +1413,7 @@ async def get_rate_audit(
         paid = expected = accum_base = prem_base = 0.0
         paid_firm = expected_firm = 0.0
         accum_firm = prem_firm = 0.0
-        no_rate_rows = estimated_rows = 0
+        no_rate_rows = estimated_rows = no_company_rows = 0
         per_product: dict[str, dict] = {}
 
         for r in recs:
@@ -1353,7 +1444,16 @@ async def get_rate_audit(
                 row_exp = premium * rate
             if rate <= 0:
                 no_rate_rows += 1
-            is_estimate = not (route or "").endswith((":product", ":residue"))
+                # `select_rate` returns 0 for two structurally different
+                # reasons and the UI rendered one sentence for both:
+                #   route "none"            → the shelf has NO row for this
+                #                             insurer at all → upload an agreement
+                #   "<tier>:no_sane_rate"   → rows exist but every one failed the
+                #                             magnitude guards → the agreement is
+                #                             there, the rate isn't usable
+                if route == "none":
+                    no_company_rows += 1
+            is_estimate = not _is_firm_route(route)
             expected += row_exp
             if rate > 0 and is_estimate:
                 estimated_rows += 1
@@ -1445,7 +1545,15 @@ async def get_rate_audit(
             # No agreement covers ANY row → there is nothing to compare against,
             # and a 0 expected must not be rendered as "-100% underpaid".
             "no_agreement": no_rate_rows == len(recs),
+            # Which of the two zero-rate causes dominates, so the chip can say
+            # the true thing instead of always "אין הסכם עמלות".
+            "no_rate_reason": (
+                None if no_rate_rows == 0
+                else ("no_agreement" if no_company_rows >= no_rate_rows else "no_sane_rate")
+            ),
             "rows_without_rate": no_rate_rows,
+            # This company DID report נפרעים this period.
+            "no_commission_data": False,
             "products": sorted(per_product.values(), key=lambda x: -x["paid"]),
             "unrated_products": [
                 pp["product"] for pp in
@@ -1457,12 +1565,93 @@ async def get_rate_audit(
             "vat_verified": basis["verified"],
             "vat_reason": basis["reason"],
         })
+    # ── Companies that SHOULD be on this list and silently aren't ──────────
+    # The list above is built exclusively from נפרעים rows, so a company whose
+    # נפרעים download failed does not render at all — and "absent" is
+    # indistinguishable from "this insurer isn't mine". Live (kikohib,
+    # 2026-09-15): הראל's two agents-portal legs both returned nothing, so an
+    # insurer with 1,729 production rows and 53 agreement rows vanished from
+    # the panel with no trace. Silence is the bug.
+    #
+    # Include a company only when it has BOTH production rows and agreement
+    # rows — otherwise there is genuinely nothing to compare and the row would
+    # be noise. These entries carry no money on either side and contribute
+    # nothing to any gap; `comparable: False` keeps them out of every alert.
+    seen_brands = set(grouped.keys())
+    prod_uploads = await _get_all_production_uploads(db, user.id)
+    if prod_uploads:
+        prod_rows = (await db.execute(
+            select(ClientRecord.receiving_company)
+            .where(ClientRecord.upload_id.in_(
+                [u.id for u in _select_unified_uploads(prod_uploads)]
+            ))
+        )).all()
+        prod_counts: dict[str, int] = defaultdict(int)
+        for (company,) in prod_rows:
+            brand = company_stem(company) or (company or "")
+            if brand and brand not in seen_brands:
+                prod_counts[brand] += 1
+        for brand, n in prod_counts.items():
+            # `company_candidates` is the same candidate search `select_rate`
+            # runs, so "has an agreement" here means exactly what it means
+            # when a rate is picked.
+            cands, _tier = company_candidates(user_rates, brand)
+            if not cands:
+                continue
+            out.append({
+                "company": brand,
+                "records": n,
+                "paid": 0.0, "expected": 0.0,
+                "paid_firm": 0.0, "expected_firm": 0.0,
+                "gap": 0.0, "gap_pct": None,
+                "rows_estimated": 0,
+                "comparable": False,
+                "base": 0.0, "base_kind": None,
+                "implied_rate": None, "implied_rate_all": None,
+                "effective_agreed_rate": None,
+                "no_agreement": False,
+                "no_rate_reason": None,
+                "rows_without_rate": 0,
+                # The whole point of the row: no נפרעים arrived for this
+                # company this period, so nothing could be audited.
+                "no_commission_data": True,
+                "products": [], "unrated_products": [],
+                "vat_verified": False, "vat_reason": None,
+            })
+
     out.sort(key=lambda c: -c["paid"])
     periods = [u.period_month for u in picked if u.period_month]
     return {
         "companies": out,
         "period": max(periods).strftime("%Y-%m") if periods else None,
     }
+
+
+def _commission_reason(co: dict) -> str | None:
+    """Why a company's commission column reads ₪0 — `None` when it earns.
+
+    Invariant 1 of the commission-calculation skill: a rate that doesn't match
+    must be REPORTED, never silently skipped. The three causes need different
+    actions from the agent, so they must not collapse into one "₪0":
+
+      * no agreement for the company at all      → upload its agreement
+      * an agreement, but no rate of the right
+        magnitude for these products             → the נפרעים line is missing
+      * a rate matched and the file carries no
+        premium/accumulation to apply it to      → a DOWNLOAD problem
+
+    The third is הראל live: 1,729 production rows, every money column empty.
+    """
+    if co["commission"] > 0:
+        return None
+    routes = co.get("routes") or {}
+    if not routes:
+        return None
+    if all(r == "none" for r in routes):
+        return "אין הסכם עמלות לחברה הזו"
+    if all(r == "none" or r.endswith(":no_sane_rate") for r in routes):
+        return "אין בהסכם שיעור שמתאים למוצרים האלה"
+    return "הקובץ אינו כולל פרמיה או צבירה לחישוב"
 
 
 @router.get("/breakdown")
@@ -1506,8 +1695,17 @@ async def get_production_breakdown(
         ).where(ClientRecord.upload_id.in_(uids))
     )).all()
 
+    # The agreement shelf, so every cell can also answer "and what does this
+    # PAY me?" — QA 2026-09-18 asked for the commission beside the balance.
+    # Priced through `rate_select` rather than a local loop: it is the single
+    # source of truth and three surfaces already have to agree with it.
+    user_rates = list((await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )).scalars().all())
+
     def _cell():
-        return {"premium": 0.0, "accumulation": 0.0, "count": 0, "clients": set()}
+        return {"premium": 0.0, "accumulation": 0.0, "count": 0,
+                "clients": set(), "commission": 0.0, "priced": 0}
 
     companies: dict[str, dict] = {}
     products: dict[str, dict[str, dict]] = {"insurance": {}, "financial": {}}
@@ -1529,21 +1727,43 @@ async def get_production_breakdown(
         co = companies.setdefault(brand, {
             "company": brand, "premium": 0.0, "accumulation": 0.0,
             "count": 0, "clients": set(), "entities": set(),
+            "commission": 0.0, "priced": 0, "routes": {},
             "products": {"insurance": {}, "financial": {}},
         })
+        # Expected monthly commission for THIS record. Same contract as
+        # `explain_expected_commission`: accumulation basis is ÷12, premium
+        # basis is not, and a rate of 0 contributes nothing (the route says
+        # why, and is carried up so a ₪0 can explain itself).
+        is_accum = accumulation_based(ptype, acc)
+        rate, route = select_rate(user_rates, company, pname, ptype, is_accum)
+        if rate > 0:
+            exp = acc * rate / 12.0 if is_accum else (prem * rate if prem > 0 else 0.0)
+        else:
+            exp = 0.0
+
         co["premium"] += prem
         co["accumulation"] += acc
         co["count"] += 1
+        co["commission"] += exp
         co["entities"].add(company)
+        if exp > 0:
+            co["priced"] += 1
+        co["routes"][route] = co["routes"].get(route, 0) + 1
         cell = co["products"][category].setdefault(product, _cell())
         cell["premium"] += prem
         cell["accumulation"] += acc
         cell["count"] += 1
+        cell["commission"] += exp
+        if exp > 0:
+            cell["priced"] += 1
 
         pc = products[category].setdefault(product, _cell())
         pc["premium"] += prem
         pc["accumulation"] += acc
         pc["count"] += 1
+        pc["commission"] += exp
+        if exp > 0:
+            pc["priced"] += 1
 
         if idn:
             co["clients"].add(idn)
@@ -1557,7 +1777,11 @@ async def get_production_breakdown(
         out = [
             {"product": name, "premium": round(c["premium"], 2),
              "accumulation": round(c["accumulation"], 2),
-             "count": c["count"], "clients": len(c["clients"])}
+             "count": c["count"], "clients": len(c["clients"]),
+             "commission": round(c["commission"], 2),
+             # How many of this cell's rows the shelf could actually price —
+             # the difference between "earns nothing" and "not priced yet".
+             "priced": c["priced"]}
             for name, c in cells.items()
         ]
         out.sort(key=lambda r: (-r[sort_key], -r["count"], r["product"]))
@@ -1571,6 +1795,9 @@ async def get_production_breakdown(
             "accumulation": round(co["accumulation"], 2),
             "count": co["count"],
             "clients": len(co["clients"]),
+            "commission": round(co["commission"], 2),
+            "priced": co["priced"],
+            "rate_reason": _commission_reason(co),
             # Which legal entities rolled up here — so the agent can see that
             # "מנורה" is two companies without the charts fragmenting.
             "entities": sorted(co["entities"]),
@@ -1618,6 +1845,7 @@ async def get_breakdown_clients(
     category: str | None = None,
     product: str | None = None,
     company: str | None = None,
+    q: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1644,11 +1872,22 @@ async def get_breakdown_clients(
             ClientRecord.total_premium,
             ClientRecord.accumulation,
             ClientRecord.product_status,
+            # QA 2026-09-18 asked for these three in the client panel.
+            ClientRecord.track,
+            ClientRecord.management_fee,
+            ClientRecord.management_fee_amount,
         ).where(ClientRecord.upload_id.in_(uids))
     )).all()
 
+    user_rates = list((await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )).scalars().all())
+
+    needle = (q or "").strip()
+
     clients: dict[str, dict] = {}
-    for idn, first, last, co, ptype, ftype, pname, premium, accum, status in rows:
+    for (idn, first, last, co, ptype, ftype, pname, premium, accum, status,
+         track, mgmt_fee, mgmt_fee_amount) in rows:
         if not idn:
             continue
         prem = float(premium or 0)
@@ -1664,23 +1903,47 @@ async def get_breakdown_clients(
             continue
         if company and brand != company:
             continue
+        name = f"{first or ''} {last or ''}".strip()
+        # Free-text filter over the identity the agent actually types: the
+        # ת"ז or any part of the name.
+        if needle and needle not in idn and needle not in name:
+            continue
+
+        is_accum = accumulation_based(ptype, acc)
+        rate, route = select_rate(user_rates, co, pname, ptype, is_accum)
+        if rate > 0:
+            exp = acc * rate / 12.0 if is_accum else (prem * rate if prem > 0 else 0.0)
+        else:
+            exp = 0.0
+
         c = clients.setdefault(idn, {
-            "id_number": idn, "name": f"{first or ''} {last or ''}".strip(),
-            "premium": 0.0, "accumulation": 0.0, "products": [],
+            "id_number": idn, "name": name,
+            "premium": 0.0, "accumulation": 0.0, "commission": 0.0,
+            "products": [],
         })
         c["premium"] += prem
         c["accumulation"] += acc
+        c["commission"] += exp
         c["products"].append({
             "product": prod, "raw_product": pname or ptype or ftype or "",
             "company": brand, "category": cat,
             "premium": round(prem, 2), "accumulation": round(acc, 2),
             "status": status,
+            "commission": round(exp, 2),
+            # Rate as a PERCENT for display; the DB stores a fraction.
+            "rate_percent": round(rate * 100, 4) if rate > 0 else None,
+            "track": track or None,
+            "management_fee": float(mgmt_fee) if mgmt_fee is not None else None,
+            "management_fee_amount": (
+                float(mgmt_fee_amount) if mgmt_fee_amount is not None else None
+            ),
         })
 
     out = list(clients.values())
     for c in out:
         c["premium"] = round(c["premium"], 2)
         c["accumulation"] = round(c["accumulation"], 2)
+        c["commission"] = round(c["commission"], 2)
     out.sort(key=lambda c: (-(c["accumulation"] + c["premium"]), c["name"]))
 
     # A figure repeated identically across many clients is almost never a real
@@ -1900,6 +2163,14 @@ async def get_commission_trend(
     if not periods:
         periods = sorted(by_period)
 
+    user_rates = list((await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )).scalars().all())
+    # `select_rate` token-scores every candidate product on each call; caching on
+    # (company, product, product_type, basis) keeps this endpoint from going
+    # quadratic across every period at once.
+    trend_rate_cache: dict[tuple, tuple] = {}
+
     points = []
     for period in periods:
         upload = by_period[period]
@@ -1910,13 +2181,22 @@ async def get_commission_trend(
                 ClientRecord.commission_paid,
                 ClientRecord.commission_before_fee,
                 ClientRecord.actual_amount,
+                ClientRecord.product,
+                ClientRecord.product_type,
+                ClientRecord.fund_type,
+                ClientRecord.accumulation,
+                ClientRecord.total_premium,
             ).where(ClientRecord.upload_id == upload.id)
         )).all()
 
         by_company: dict[str, float] = defaultdict(float)
         clients: set[str] = set()
         total = 0.0
-        for idn, company, paid, before_fee, actual in rows:
+        grouped: dict[str, list] = defaultdict(list)
+        for r in rows:
+            idn, company, paid, before_fee, actual = r[0], r[1], r[2], r[3], r[4]
+            stem = company_stem(company) or (company or "—")
+            grouped[stem].append(r)
             amount = float(_get_commission({
                 "commission_paid": paid,
                 "commission_before_fee": before_fee,
@@ -1924,11 +2204,56 @@ async def get_commission_trend(
             }) or 0)
             if not amount:
                 continue
-            stem = company_stem(company) or (company or "—")
             by_company[stem] += amount
             total += amount
             if idn:
                 clients.add(idn)
+
+        # ── The CHECKABLE pair, per company ────────────────────────────────
+        # "How much should have arrived, and how much did" needs both sides on
+        # the SAME rows, priced by a rate the agreement actually names. That is
+        # what `get_rate_audit` computes for the latest period; this is the same
+        # arithmetic per period so the trend can draw the pair month by month.
+        #
+        # ⚠️ It is deliberately NOT production × rates. On this book, production
+        # rows for מנורה and הפניקס reach a rate only through `exact:median` —
+        # a fallback, not an agreement line — and that route put מנורה at
+        # ₪29,489 expected against ₪8,033 paid: the ₪21K phantom debt the firm
+        # gate exists to prevent. The נפרעים row carries the base the insurer
+        # actually remitted on, so the comparison is real.
+        paid_firm_by_company: dict[str, float] = {}
+        expected_firm_by_company: dict[str, float] = {}
+        for stem, recs in grouped.items():
+            vat = detect_vat_basis([
+                {"commission_paid": r[2], "commission_before_fee": r[3],
+                 "actual_amount": r[4]}
+                for r in recs
+            ])
+            p_firm = e_firm = 0.0
+            for r in recs:
+                accum = float(r[8] or 0)
+                premium = float(r[9] or 0)
+                ptype = r[7] or r[6]
+                is_accum = accumulation_based(ptype, accum)
+                rate, route = _trend_rate(
+                    trend_rate_cache, user_rates, r[1], r[5], ptype, is_accum
+                )
+                base = accum if is_accum else premium
+                # No base = nothing to price. Counting such a row's PAID side
+                # while its expected side is 0 fabricates a surplus: live on the
+                # demo book, הפניקס 2025-09 showed paid_firm ₪43,932 against
+                # expected_firm ₪0 purely because those נפרעים rows carry no
+                # premium. A row has to contribute to BOTH sides or neither.
+                if rate <= 0 or base <= 0 or not _is_firm_route(route):
+                    continue
+                p_firm += ex_vat_commission({
+                    "commission_paid": r[2], "commission_before_fee": r[3],
+                    "actual_amount": r[4],
+                }, vat)
+                e_firm += (accum * rate / 12.0) if is_accum else (premium * rate)
+            if e_firm > 0 or p_firm > 0:
+                paid_firm_by_company[stem] = round(p_firm, 2)
+                expected_firm_by_company[stem] = round(e_firm, 2)
 
         points.append({
             "period_month": period,
@@ -1937,6 +2262,12 @@ async def get_commission_trend(
             "unique_clients": len(clients),
             "by_company": {k: round(v, 2) for k, v in
                            sorted(by_company.items(), key=lambda kv: -kv[1])},
+            # Same rows on both sides, firm rates only — the pair the
+            # "בפועל מול צפוי" view draws.
+            "paid_firm_by_company": paid_firm_by_company,
+            "expected_firm_by_company": expected_firm_by_company,
+            "total_paid_firm": round(sum(paid_firm_by_company.values()), 2),
+            "total_expected_firm": round(sum(expected_firm_by_company.values()), 2),
         })
     return points
 
@@ -2052,6 +2383,11 @@ async def get_expected_commission_trend(
 
     # period_month → company → expected_total
     per_period: dict = defaultdict(lambda: defaultdict(float))
+    # Same shape, but FIRM rows only (`_is_firm_route`). The expected-vs-actual
+    # view pairs on this, never on `per_period`: a `:default`/`:median` rate is
+    # a fallback guess, and drawing it beside what the insurer actually paid
+    # turns a guess into an accusation.
+    per_period_firm: dict = defaultdict(lambda: defaultdict(float))
     per_period_clients: dict = defaultdict(set)
     upload_to_period = {u.id: u.period_month for u in latest_by_period.values()}
 
@@ -2096,6 +2432,8 @@ async def get_expected_commission_trend(
             excluded[period][company][bucket] += 1
             continue
         per_period[period][company] += exp
+        if _is_firm_route(route):
+            per_period_firm[period][company] += exp
         if id_number:
             per_period_clients[period].add(id_number)
 
@@ -2103,10 +2441,17 @@ async def get_expected_commission_trend(
     for period in sorted(per_period.keys()):
         by_company = {c: round(v, 2) for c, v in per_period[period].items() if v > 0}
         total = round(sum(by_company.values()), 2)
+        by_company_firm = {
+            c: round(v, 2) for c, v in per_period_firm[period].items() if v > 0
+        }
         out.append({
             "period_month": period.isoformat(),
             "period_label": period.strftime("%Y-%m"),
             "total_expected": total,
+            # FIRM subset — always ⊆ by_company. The only basis on which
+            # "צפוי" may be drawn beside "בפועל".
+            "total_expected_firm": round(sum(by_company_firm.values()), 2),
+            "by_company_firm": by_company_firm,
             "unique_clients": len(per_period_clients[period]),
             "by_company": by_company,
             # Companies present in this month's production that contribute

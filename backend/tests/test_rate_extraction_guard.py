@@ -98,6 +98,68 @@ def test_flat_components_carries_scope():
     assert mod is not None  # module imports cleanly (upsert consumes scope)
 
 
+# ── Reporting: a rejected row must be nameable, not just logged ──────────
+# Every reject here used to be `logger.warning` + `continue`, so an agent who
+# saw "חולצו 12 שיעורי עמלה" had no way to learn that 30 more were thrown away.
+
+
+def test_dropped_rows_are_reported_with_a_reason():
+    rates = [
+        {"company": "מיטב", "product": "מענק גיוס חדש — עמלת היקף",
+         "components": [{"kind": "single", "rate_percent": 0.6}]},
+        {"company": "מיטב", "product": "קופות גמל",
+         "components": [{"kind": "single", "rate_percent": 0.25}]},
+    ]
+    dropped: list[dict] = []
+    out = _normalize_and_validate_rates(rates, "", dropped)
+    assert len(out) == 1 and out[0]["product"] == "קופות גמל"
+    assert len(dropped) == 1, dropped
+    assert dropped[0]["reason"] == "non_commission_filter"
+    assert dropped[0]["product"] == "מענק גיוס חדש — עמלת היקף"
+
+
+def test_value_not_in_text_is_reported_not_just_dropped():
+    # With a text layer present the literal-value guard is active: 0.25 appears,
+    # 9.99 does not.
+    text = "עמלת נפרעים בשיעור 0.25% מהצבירה"
+    rates = [
+        {"company": "ילין לפידות", "product": "קופות גמל",
+         "components": [{"kind": "single", "rate_percent": 0.25}]},
+        {"company": "ילין לפידות", "product": "מוצר מומצא",
+         "components": [{"kind": "single", "rate_percent": 9.99}]},
+    ]
+    dropped: list[dict] = []
+    out = _normalize_and_validate_rates(rates, text, dropped)
+    assert len(out) == 1, out
+    reasons = {d["reason"] for d in dropped}
+    # The fabricated component is reported, and so is the row it emptied.
+    assert "value_not_in_text" in reasons, dropped
+    assert any(d.get("percent") == 9.99 for d in dropped), dropped
+
+
+# ── The ילין case: an agreement that defers its rates to a missing נספח ──
+# Measured on the real file — 5 scanned pages, §4.1 "כמפורט בנספח א' להסכם זה",
+# and no נספח א' attached. "0 rates" is CORRECT; saying nothing is the bug.
+
+
+def test_appendix_reference_detected_in_real_yelin_wording():
+    from app.services.document_extraction import _appendix_reference
+
+    body = ("המשווק יהיה זכאי לתמורה חודשית בגין לקוחות מזכים "
+            "כמפורט בנספח א' להסכם זה ובהתאם להוראות כדלקמן")
+    assert _appendix_reference(body) == "נספח א'"
+    assert _appendix_reference("כמפורט בסעיף 4 להסכם זה ולנספח התמורה שצורף") == "נספח התמורה"
+
+
+def test_unrelated_appendix_is_not_reported_as_the_rate_table():
+    from app.services.document_extraction import _appendix_reference
+
+    # A privacy appendix must not be offered as the missing rate sheet.
+    assert _appendix_reference("נספח ב - שמירה על סודיות ואבטחת מידע") is None
+    assert _appendix_reference("") is None
+    assert _appendix_reference(None) is None
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

@@ -15,6 +15,14 @@
             <span v-if="uploadingDoc" class="btn-spin" aria-hidden="true"></span>
             {{ uploadingDoc ? 'מעבד הסכם…' : 'העלאת הסכם עמלות' }}
           </button>
+          <!-- Opens the agreement bookcase. It lives behind a button rather
+               than on the page: at 12 insurers the shelf was taller than the
+               rates it exists to explain. -->
+          <button v-if="agreementCompanies.length" class="btn-icon" @click="shelfOpen = true"
+                  title="מסמכי ההסכמים" aria-label="מסמכי ההסכמים">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16"/><path d="M8 7v13"/><path d="M12 5v15"/><path d="m16.5 6.5 4 13.5"/></svg>
+            <span class="btn-icon-count ltr-number">{{ agreementDocTotal }}</span>
+          </button>
           <button v-if="rates.length > 0 && !addingNew" class="btn-ghost" @click="startNew">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             הוסף שורה ידנית
@@ -29,6 +37,38 @@
           </div>
         </Transition>
         <Transition name="fade"><p v-if="uploadError" class="hero-upload-error">שגיאה בהעלאה: {{ uploadError }}</p></Transition>
+
+        <!-- What the last upload actually did. A PDF that yields no rates used
+             to leave this whole area unchanged, so a correct "this agreement
+             holds no rate table" was indistinguishable from a broken upload. -->
+        <Transition name="fade">
+          <div v-if="lastUpload" class="up-result" :class="'up-result--' + lastUpload.tone">
+            <div class="up-result-head">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <template v-if="lastUpload.tone === 'ok'">
+                  <path d="M20 6L9 17l-5-5" />
+                </template>
+                <template v-else>
+                  <circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="13" />
+                  <line x1="12" y1="16.5" x2="12.01" y2="16.5" />
+                </template>
+              </svg>
+              <span>{{ lastUpload.headline }}</span>
+              <button class="up-result-x" @click="lastUpload = null" aria-label="סגור">&times;</button>
+            </div>
+            <p v-if="lastUpload.detail" class="up-result-detail">{{ lastUpload.detail }}</p>
+            <ul v-if="lastUpload.dropped.length" class="up-dropped">
+              <li v-for="(d, i) in lastUpload.dropped.slice(0, 8)" :key="i">
+                <span class="up-dropped-name">{{ d.product || d.company || '—' }}</span>
+                <span class="up-dropped-why">{{ dropReasonLabel(d.reason) }}</span>
+              </li>
+              <li v-if="lastUpload.dropped.length > 8" class="up-dropped-more">
+                ועוד {{ lastUpload.dropped.length - 8 }}…
+              </li>
+            </ul>
+          </div>
+        </Transition>
       </div>
       <TabHeroLoop scene="commission-shelf" class="shelf-art" />
     </header>
@@ -111,6 +151,92 @@
       </button>
     </div>
 
+    <!-- ── The agreement shelf: every signed PDF standing on a board ────
+         The previous version was a grid of equal cards, so a company with no
+         agreement got the same footprint as one with four — live that was 8
+         empty boxes out of 12 tiles. On a shelf an absent agreement is an
+         empty SLOT: smaller than a binder, and something to act on. -->
+    <DataModal :open="shelfOpen" title="מסמכי ההסכמים" size="xl"
+               :subtitle="`${agreementDocTotal} מסמכים · ${agreementCompanies.length} חברות`"
+               @close="shelfOpen = false">
+      <div class="agshelf">
+      <div class="agshelf-board">
+        <div class="agshelf-row">
+          <template v-for="co in agreementCompanies" :key="co.stem">
+            <!-- One binder per COMPANY. One per document repeated the same
+                 name four times across the shelf and truncated all of them. -->
+            <button v-if="co.documents.length" class="binder"
+                    :class="{ 'binder--open': openBinder === co.stem }"
+                    :title="co.company" @click="clickBinder(co)">
+              <span class="binder-art" :style="{ backgroundImage: `url(${binderArt(co.company)})` }"></span>
+              <span v-if="co.documents.length > 1" class="binder-count ltr-number">
+                {{ co.documents.length }}
+              </span>
+              <span v-if="co.documents.some(d => !d.rates)" class="binder-flag"
+                    title="מסמך שלא חולצו ממנו שיעורים">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="9"/></svg>
+              </span>
+              <span class="binder-face">
+                <span class="binder-rates ltr-number">{{ co.rates_total }}</span>
+                <span class="binder-open">שיעורים</span>
+              </span>
+              <span class="binder-label">{{ co.company }}</span>
+            </button>
+
+            <!-- An insurer with rates but nothing signed behind them. -->
+            <button v-else class="slot" @click="triggerUpload" :disabled="uploadingDoc"
+                    :title="`העלה הסכם עבור ${co.company}`">
+              <span class="slot-plus">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </span>
+              <span class="slot-note">העלה הסכם</span>
+              <span class="binder-label">{{ co.company }}</span>
+            </button>
+          </template>
+        </div>
+        <div class="agshelf-edge" aria-hidden="true"></div>
+      </div>
+
+      <!-- The picked binder's documents. Opening in place under the board
+           keeps the shelf as the index and this as the contents. -->
+      <div v-if="openCompanyDocs" class="agpick">
+        <div class="agpick-head">
+          <strong>{{ openCompanyDocs.company }}</strong>
+          <span class="agpick-sub">
+            <span class="ltr-number">{{ openCompanyDocs.documents.length }}</span> מסמכים ·
+            <span class="ltr-number">{{ openCompanyDocs.rates_total }}</span> שיעורים
+          </span>
+          <button class="agpick-x" @click="openBinder = null" aria-label="סגור">&times;</button>
+        </div>
+        <ul class="agpick-list">
+          <li v-for="d in openCompanyDocs.documents" :key="d.id">
+            <button class="agpick-open" :disabled="!d.has_file || pdfLoading === d.id"
+                    :title="d.has_file ? 'פתח את ה-PDF' : 'הקובץ אינו זמין בשרת'"
+                    @click="openPdf(d)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span class="agpick-name">{{ d.filename }}</span>
+            </button>
+            <span class="agpick-rates ltr-number" :class="{ 'agpick-rates--zero': !d.rates }">
+              {{ d.rates }} שיעורים
+            </span>
+            <p v-if="!d.rates" class="agpick-why">{{ docReason(d) }}</p>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Why a binder on the shelf carries no rates. Listed under the board
+           so the shelf itself stays quiet. -->
+      <ul v-if="zeroDocs.length" class="agshelf-notes">
+        <li v-for="d in zeroDocs" :key="d.id">
+          <strong>{{ d.company }}</strong>
+          <span class="agnote-file">{{ d.filename }}</span>
+          <span class="agnote-why">{{ docReason(d) }}</span>
+        </li>
+      </ul>
+      <p v-if="pdfError" class="agshelf-err">{{ pdfError }}</p>
+      </div>
+    </DataModal>
+
     <!-- ── The opened shelf's agreements (companies + rates) ── -->
     <section v-if="!loading && activeCategory" class="shelf-open" :class="`tint-${activeCategory.key}`">
       <div class="shelf-open-head">
@@ -191,6 +317,8 @@ import api from '../../api/client.js'
 import { chartColor } from '../../utils/chartPalette.js'
 import { useChatStore } from '../../stores/chat.js'
 import TabHeroLoop from '../workspace/TabHeroLoop.vue'
+import DataModal from '../workspace/DataModal.vue'
+import { extractionOutcome, dropReasonLabel } from '../../utils/extractionReport.js'
 
 const emit = defineEmits(['rates-changed'])
 
@@ -383,8 +511,103 @@ async function fetchCoverage() {
   catch (e) { coverage.value = null }
 }
 
-onMounted(() => { fetchRates(); fetchCoverage() })
+onMounted(() => { fetchRates(); fetchCoverage(); fetchAgreements() })
 async function fetchRates() { loading.value = true; try { const res = await api.get('/commission-rates'); rates.value = res.data } finally { loading.value = false } }
+
+const lastUpload = ref(null)
+
+// ── Source documents per company ────────────────────────────────────────
+const agreementCompanies = ref([])
+const agreementDocTotal = ref(0)
+const pdfLoading = ref(null)
+const pdfError = ref('')
+
+async function fetchAgreements() {
+  try {
+    const res = await api.get('/commission-rates/agreements')
+    agreementCompanies.value = res.data.companies || []
+    agreementDocTotal.value = res.data.total_documents || 0
+  } catch (e) {
+    agreementCompanies.value = []
+  }
+}
+
+// Six translucent binders ship with the shelf art. A company always gets the
+// SAME one, so the shelf looks like a real set of files rather than reshuffling
+// on every load.
+const BINDERS = import.meta.glob('../../assets/commission-shelf/books/*.webp', { eager: true, import: 'default' })
+const BINDER_LIST = Object.keys(BINDERS).sort().map(k => BINDERS[k])
+
+function binderArt(company) {
+  let h = 0
+  for (const ch of String(company || '')) h = (h * 31 + ch.charCodeAt(0)) % 100000
+  return BINDER_LIST[h % (BINDER_LIST.length || 1)]
+}
+
+const shelfOpen = ref(false)
+const openBinder = ref(null)
+
+const openCompanyDocs = computed(
+  () => agreementCompanies.value.find(c => c.stem === openBinder.value) || null,
+)
+
+function clickBinder(co) {
+  // One document: open it. Several: show which, rather than guessing.
+  if (co.documents.length === 1 && co.documents[0].has_file) {
+    openBinder.value = null
+    openPdf(co.documents[0])
+    return
+  }
+  openBinder.value = openBinder.value === co.stem ? null : co.stem
+}
+
+// Every document that yielded no rates, with its company — the binder shows a
+// flag, this says what to do about it.
+const zeroDocs = computed(() =>
+  agreementCompanies.value.flatMap(co =>
+    co.documents.filter(d => !d.rates).map(d => ({ ...d, company: co.company })),
+  ),
+)
+
+const DOC_REASONS = {
+  appendix_missing: 'ההסכם מפנה לנספח התמורה שאינו כלול בקובץ',
+  all_rows_dropped: 'כל השורות שנמצאו הן עמלת היקף/החזר — לא נפרעים',
+  rate_table_present_but_unparsed: 'יש טבלה במסמך אך לא זוהו ממנה שורות נפרעים',
+  no_readable_text: 'לא ניתן לקרוא טקסט מהקובץ (סריקה)',
+  no_rates_in_document: 'אין במסמך טבלת שיעורי נפרעים',
+}
+
+function docReason(d) {
+  if (d.status === 'error') return d.error || 'העיבוד נכשל'
+  if (d.zero_reason) {
+    const base = DOC_REASONS[d.zero_reason] || d.zero_reason
+    return d.appendix_ref ? `${base} (${d.appendix_ref})` : base
+  }
+  // Uploaded before the extraction report existed — don't invent a cause.
+  return 'לא חולצו שיעורים — פתחו את ה-PDF לבדיקה'
+}
+
+// The PDF needs the Bearer token, so it can't be a plain <a href>. Fetch it
+// as a blob through the same axios client and hand the browser an object URL.
+async function openPdf(d) {
+  if (!d.has_file) return
+  pdfError.value = ''
+  pdfLoading.value = d.id
+  try {
+    const res = await api.get(`/ai/documents/${d.id}/file`, { responseType: 'blob' })
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+    const w = window.open(url, '_blank')
+    if (!w) pdfError.value = 'הדפדפן חסם את החלון — אפשרו חלונות קופצים לאתר.'
+    // Give the new tab time to take the URL before releasing it.
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (e) {
+    pdfError.value = e?.response?.status === 404
+      ? 'קובץ ה-PDF אינו זמין עוד בשרת — העלו אותו שוב.'
+      : 'לא ניתן לפתוח את ה-PDF.'
+  } finally {
+    pdfLoading.value = null
+  }
+}
 
 function triggerUpload() { if (!uploadingDoc.value) fileInput.value?.click() }
 async function onAgreementFile(e) {
@@ -392,16 +615,29 @@ async function onAgreementFile(e) {
   if (e.target) e.target.value = ''
   if (!file) return
   const before = new Set(rates.value.map(r => r.id))
-  await chat.uploadDocument(file)
+  lastUpload.value = null
+  const doc = await chat.uploadDocument(file)
   await ratesChanged()
   const fresh = rates.value.filter(r => !before.has(r.id))
   if (fresh.length) activeShelf.value = categorize(fresh[0])
+
+  if (doc && doc.status !== 'error') {
+    const ex = doc.structured_data?.extraction
+    const out = extractionOutcome(ex, doc.structured_data?.rates || [])
+    const [headline, ...rest] = out.text.split('\n\n')
+    lastUpload.value = {
+      tone: out.tone,
+      headline: headline.replace(/\*\*/g, ''),
+      detail: rest.join(' ').replace(/\*\*/g, ''),
+      dropped: ex?.dropped || [],
+    }
+  }
 }
 
 // Any write to the shelf changes what the rates cover, so the banner has to be
 // recomputed with them — otherwise it keeps reporting the gaps the agent just
 // closed by uploading an agreement.
-async function ratesChanged() { await fetchRates(); fetchCoverage(); emit('rates-changed') }
+async function ratesChanged() { await fetchRates(); fetchCoverage(); fetchAgreements(); emit('rates-changed') }
 
 async function seedRates() { seeding.value = true; try { await api.post('/commission-rates/seed'); await ratesChanged() } finally { seeding.value = false } }
 
@@ -423,6 +659,249 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 </script>
 
 <style scoped>
+/* ── The agreement shelf ──────────────────────────────────────────────
+   The binder artwork is lit glass on a dark reflective floor, so the board
+   under it is dark too — the same two values `.shelf-media--fallback`
+   already uses. Orange appears once, on the upload action, and nowhere as
+   decoration. */
+/* No upload button here — the hero already owns that action, and a second
+   one in this tab's brand colour would be two CTAs for one job. */
+.agshelf { margin: 0; }
+
+/* Opens the bookcase. Icon-only: it sits beside the tab's single primary
+   action and must not compete with it. `--chart-4` is this tab's identity
+   colour; orange is reserved for brand actions and is wrong here. */
+.btn-icon {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--bg-surface); color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: all 0.18s var(--transition);
+}
+.btn-icon:hover { border-color: var(--chart-4); color: var(--chart-4); }
+.btn-icon-count { font-size: 11px; opacity: 0.75; }
+
+.agshelf-board {
+  position: relative; border-radius: var(--radius-md); overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.07), transparent 60%),
+    linear-gradient(160deg, #2b2f3a, #1c2029);
+}
+/* A bookcase, not a scroller. A single row hid whatever did not fit — live,
+   three insurers with no agreement sat off-screen to the left, which is the
+   opposite of what an empty slot is for. Rows wrap, and a plank is drawn
+   under each one by repeating the gradient at the row pitch. */
+.agshelf-row {
+  --binder-h: 140px;
+  --row-gap: 50px;
+  --row-pitch: calc(var(--binder-h) + var(--row-gap));
+  display: flex; flex-wrap: wrap; align-items: flex-end;
+  column-gap: 16px; row-gap: var(--row-gap);
+  padding: 24px 20px 0;
+  background-image: repeating-linear-gradient(180deg,
+    transparent 0 calc(var(--binder-h) - 3px),
+    rgba(255,255,255,0.20) calc(var(--binder-h) - 3px) calc(var(--binder-h) - 1px),
+    rgba(0,0,0,0.34) calc(var(--binder-h) - 1px) calc(var(--binder-h) + 6px),
+    transparent calc(var(--binder-h) + 6px) var(--row-pitch));
+  background-origin: content-box;
+  background-clip: content-box;
+  background-repeat: repeat-y;
+}
+/* The board's front edge — what makes the binders read as standing ON
+   something rather than floating in a dark box. */
+/* The board's front edge — a lit lip, then the thickness of the plank. It is
+   what makes the row read as a shelf and not a dark panel with pictures. */
+.agshelf-edge {
+  height: 16px;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.22) 0 2px,
+    rgba(255,255,255,0.09) 2px 5px,
+    rgba(0,0,0,0.38) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28);
+}
+
+.binder, .slot {
+  position: relative; flex: 0 0 auto;
+  width: 96px; height: 140px; padding: 0;
+  border: none; background: none; cursor: pointer; font-family: inherit;
+}
+/* The artwork is a lit binder photographed on black. `screen` drops that
+   black into the board instead of stamping a dark tile onto it, so the
+   binder reads as standing on the shelf rather than pasted over it. */
+.binder-art {
+  position: absolute; inset: 0;
+  /* Cropped above the photographed floor and faded out at the base, so the
+     binder meets the board instead of sitting in a lighter rectangle of its
+     own studio backdrop. */
+  background-size: 132% auto; background-position: center 30%;
+  mix-blend-mode: screen;
+  /* `screen` only hides a TRUE black. The photos are shot on a dark grey
+     studio floor, which under screen stayed lighter than the board and drew
+     a rectangle around every binder. Crushing the blacks first removes the
+     backdrop; the radial mask feathers whatever survives at the edges. */
+  filter: contrast(1.42) brightness(0.96);
+  -webkit-mask-image: radial-gradient(74% 72% at 50% 44%, #000 52%, transparent 100%);
+  mask-image: radial-gradient(74% 72% at 50% 44%, #000 52%, transparent 100%);
+}
+/* Contact shadow — the binder casts onto the board it stands on. */
+.binder::after {
+  content: ''; position: absolute; left: 6%; right: 6%; bottom: -2px; height: 12px;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(0,0,0,0.55), transparent 72%);
+  pointer-events: none;
+}
+.binder-count {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 10px;
+  background: rgba(255,255,255,0.92); color: #1c2029;
+  font-size: 11px; font-weight: 800;
+}
+
+/* The face only appears on hover/focus — at rest the shelf is just binders. */
+.binder-face {
+  position: absolute; inset: 0; z-index: 1; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border-radius: 4px; background: rgba(10,13,18,0.72);
+  opacity: 0; transition: opacity 0.18s ease;
+}
+.binder:hover .binder-face,
+.binder:focus-visible .binder-face,
+.binder--open .binder-face { opacity: 1; }
+.binder--open { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+.binder-rates { font-size: 21px; font-weight: 800; color: #fff; line-height: 1; }
+.binder-rates--zero { color: var(--amber); }
+.binder-open { font-size: 10.5px; font-weight: 600; color: rgba(255,255,255,0.86); }
+
+.binder-label, .slot .binder-label {
+  /* Below the plank the binder stands on, not on top of it. */
+  position: absolute; top: 100%; right: -8px; left: -8px; padding-top: 13px;
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.84);
+  text-align: center; line-height: 1.4;
+  /* Two lines, because insurer legal names are long and one truncated line
+     turned four different companies into "…מגדל מקפת קרנו". */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.binder-flag {
+  position: absolute; top: 6px; left: 6px; z-index: 2;
+  display: grid; place-items: center; width: 19px; height: 19px;
+  border-radius: 50%; background: var(--amber); color: #1c2029;
+}
+
+/* An insurer with no signed agreement: a gap on the shelf, not a card. */
+.slot {
+  /* The flex ITEM is a full binder tall so every row of the bookcase is one
+     line tall — a shorter item made its row shorter than the plank pitch and
+     the plank was then drawn through the middle of the next row.
+     The visible gap is shorter, drawn at the base: agreements the agent HAS
+     are the content, and the gaps should recede rather than outnumber them
+     at equal weight (live: 9 empty slots against 3 binders). */
+  height: var(--binder-h, 140px);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  gap: 5px; padding-bottom: 26px;
+  border: none; background: none; color: rgba(255,255,255,0.5);
+}
+.slot::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 98px;
+  border: 1.5px dashed rgba(255,255,255,0.17); border-radius: 5px;
+  background: rgba(255,255,255,0.025);
+}
+.slot > * { position: relative; z-index: 1; }
+.slot::after { content: none; }
+.slot:hover::before { border-color: var(--chart-4); background: rgba(255,255,255,0.06); }
+.slot:hover { color: rgba(255,255,255,0.9); }
+.slot-note { font-size: 10.5px; font-weight: 600; }
+.slot .binder-label { color: rgba(255,255,255,0.5); }
+
+/* The final row's labels sit below its plank and still need room, or the
+   board clips them. */
+.agshelf-row { padding-bottom: 44px; }
+
+/* ── The picked binder's documents ── */
+.agpick {
+  margin-top: 12px; padding: 12px 14px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.agpick-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; }
+.agpick-head strong { font-size: 13.5px; color: var(--text); }
+.agpick-sub { font-size: 11.5px; color: var(--text-muted); }
+.agpick-x {
+  margin-right: auto; border: none; background: none; cursor: pointer;
+  font-size: 18px; line-height: 1; color: var(--text-muted); font-family: inherit;
+}
+.agpick-x:hover { color: var(--text); }
+.agpick-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.agpick-list li { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; align-items: center; }
+.agpick-open {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 6px 9px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle); background: none;
+  font-family: inherit; font-size: 12.5px; color: var(--text);
+  cursor: pointer; text-align: right;
+}
+.agpick-open:hover:not(:disabled) { background: var(--border-subtle); border-color: var(--text-muted); }
+.agpick-open:disabled { opacity: 0.55; cursor: not-allowed; }
+.agpick-open svg { flex-shrink: 0; color: var(--text-muted); }
+.agpick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+.agpick-rates { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.agpick-rates--zero { color: var(--amber); font-weight: 700; }
+.agpick-why { grid-column: 1 / -1; font-size: 11.5px; color: var(--amber); line-height: 1.6; }
+
+.agshelf-notes {
+  list-style: none; margin-top: 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.agshelf-notes li {
+  display: grid; grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.1fr) minmax(0, 1.4fr);
+  align-items: baseline; gap: 4px 12px;
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+}
+.agshelf-notes strong { color: var(--text); font-weight: 700; }
+.agnote-file, .agnote-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agnote-file { unicode-bidi: plaintext; opacity: 0.85; }
+.agnote-why { color: var(--amber); }
+@media (max-width: 760px) {
+  .agshelf-notes li { grid-template-columns: 1fr; }
+  .agnote-file, .agnote-why { white-space: normal; }
+}
+.agshelf-err { margin-top: 10px; font-size: 12px; color: var(--danger, #c23934); }
+
+@media (prefers-reduced-motion: reduce) {
+  .binder-face { transition: none; }
+}
+
+/* Outcome of the last agreement upload — including the zero-rate case, which
+   previously left every surface here unchanged. */
+.up-result {
+  margin-top: 10px; padding: 10px 12px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);
+  background: var(--border-subtle); font-size: 12.5px; line-height: 1.65;
+}
+.up-result--warn { background: var(--amber-light); border-color: transparent; }
+.up-result--warn .up-result-head { color: var(--amber); }
+.up-result--ok .up-result-head { color: var(--text); }
+.up-result-head {
+  display: flex; align-items: center; gap: 7px;
+  font-weight: 700;
+}
+.up-result-head svg { flex-shrink: 0; }
+.up-result-x {
+  margin-right: auto; border: none; background: none; cursor: pointer;
+  font-size: 17px; line-height: 1; color: inherit; opacity: 0.55; font-family: inherit;
+}
+.up-result-x:hover { opacity: 1; }
+.up-result-detail { margin-top: 5px; color: var(--text); }
+.up-dropped { list-style: none; margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.up-dropped li {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+.up-dropped-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-dropped-why { margin-right: auto; flex-shrink: 0; }
+.up-dropped-more { opacity: 0.8; }
+
 /* ══ מדף ההסכמים — horizontal picture accordion (your reference), RTL, pastel. ══ */
 .rate-shelf { position: relative; }
 

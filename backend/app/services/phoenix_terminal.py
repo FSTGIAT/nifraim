@@ -11,11 +11,35 @@ The `.MBT` files are already decoded by `services/mimshak/mbt.py` (built for the
 Migdal Mimshak path). Here we ASSEMBLE them into production-schema records
 (`company_source="הפניקס"`) so they aggregate into the unified production file.
 
-LIFE.MBT column map (133 pipe-delimited cells, pinned from real exports):
+**The two files do NOT share a layout** — measured on a real export
+(`LIFE.MBT` 133 cells/row, `LIFEHLTH.MBT` 58). One shared index map was being
+applied to both, and on the 58-cell file it read:
+
+    [19] → 14612.00 on EVERY row (uniq=1 of 109)   ← not a premium at all
+    [74] → out of range → accumulation silently None
+
+`api/production.py` already documents the downstream symptom from its own side
+("~76 clients each carrying exactly ₪14,612 of monthly health premium"), and
+`ClientRows.vue` renders a warning for it. Same number, same cause.
+
+LIFE.MBT (133 cells):
     [9]  policy number (full, leading-zero padded)   [10] id_number (9-digit + pad)
     [14] customer name "first last" (Hebrew)          [15] start date DDMMYYYY
-    [16] end date                                     [19] annual premium
-    [74] policy value / accumulation (צבירה)          [111] total value
+    [16] end date                                     [74] policy value (צבירה)
+    [111] total value
+    premium: NOT resolved. [19]/[20] are the same 14612/14556 constants on 4 of
+    6 rows, and 6 rows cannot settle an index. Left None rather than guessed —
+    the precedent `phoenix_mu.py` and `harel_vault_prod.py` both set.
+
+LIFEHLTH.MBT (58 cells):
+    [43] payments per year (12 on all rows)
+    [48] annual premium        [49] premium per payment  → this is `סה"כ פרמיה`
+    no accumulation column.
+    [48] / ([49]x12) is a near-constant 0.9964 across 107 rows — an annual-
+    payment discount, i.e. two views of one premium. [49] is the per-payment
+    (monthly) figure, which is the unit `סה"כ פרמיה` is consumed as
+    (`rate_select` applies `premium x rate` with no /12). Worth re-checking
+    against Phoenix נפרעים the first time a terminal run lands in the book.
 """
 
 from __future__ import annotations
@@ -33,14 +57,18 @@ PRODUCTION_COLUMNS = [
     "סטטוס מוצר", "תאריך הצטרפות למוצר", "מספר סוכן",
 ]
 
-# LIFE.MBT cell indices (pinned against live exports — refine here if Phoenix
-# shifts columns).
-_C_POLICY = 9
-_C_ID = 10
-_C_NAME = 14
-_C_START = 15
-_C_PREMIUM = 19
-_C_ACCUM = 74
+# Per-FILE cell indices. `premium`/`accum` are None where the file has no such
+# column — emitting None is correct; emitting the wrong cell is not.
+_LAYOUTS = {
+    "LIFE.MBT": {
+        "cells": 133, "policy": 9, "id": 10, "name": 14, "start": 15,
+        "premium": None, "accum": 74,
+    },
+    "LIFEHLTH.MBT": {
+        "cells": 58, "policy": 9, "id": 10, "name": 14, "start": 15,
+        "premium": 49, "accum": None,
+    },
+}
 
 
 def _split_name(full: str) -> tuple[str, str]:
@@ -77,6 +105,34 @@ def is_phoenix_mbt_set(folder: Path) -> bool:
     return folder.is_dir() and (folder / "LIFE.MBT").exists()
 
 
+def _verified_premium_index(policies: dict, layout: dict, fname: str) -> int | None:
+    """The layout's premium index, or None when the column is a constant.
+
+    Guards the failure mode this module was fixed for: a single index map
+    applied to two different layouts read a fixed 14612.00 out of every
+    LIFEHLTH row. One number repeated across a whole book is never a set of
+    per-policy premiums, so refuse it rather than publish it.
+    """
+    idx = layout.get("premium")
+    if idx is None:
+        return None
+    seen: set[str] = set()
+    for rec in policies.values():
+        cells = rec.get("cells") or []
+        if idx < len(cells):
+            seen.add((cells[idx] or "").strip())
+        if len(seen) > 1:
+            return idx
+    if len(policies) > 3 and len(seen) <= 1:
+        logger.warning(
+            "phoenix_terminal: %s cell[%d] is constant %r across %d rows — "
+            "not a premium; emitting None. Phoenix may have shifted columns.",
+            fname, idx, next(iter(seen), ""), len(policies),
+        )
+        return None
+    return idx
+
+
 def parse_phoenix_mbt_set(folder: Path) -> dict:
     """Assemble the .MBT set into production-schema records.
 
@@ -102,35 +158,46 @@ def parse_phoenix_mbt_set(folder: Path) -> dict:
         except Exception as e:
             logger.warning("phoenix_terminal: %s parse failed: %s", fname, e)
             continue
+
+        layout = _LAYOUTS[fname]
+        # A money column that holds the SAME value on every row of the file is
+        # a header/constant, not a per-policy amount. Refuse it instead of
+        # shipping one number to hundreds of clients — that is exactly the
+        # failure this layout split fixes, so it must not silently return if
+        # Phoenix shifts its columns again.
+        premium_idx = _verified_premium_index(policies, layout, fname)
+
         for policy_id, rec in policies.items():
             cells = rec.get("cells") or []
 
-            def cell(i: int) -> str:
+            def cell(i: int | None) -> str:
+                if i is None:
+                    return ""
                 return cells[i] if i < len(cells) else ""
 
-            id_raw = cell(_C_ID).strip()
+            id_raw = cell(layout["id"]).strip()
             id_number = (id_raw.lstrip("0") or id_raw) if id_raw else ""
             if not id_number or not id_number.isdigit():
                 continue
-            # Prefer PERSON name when available, else LIFE's embedded name.
+            # Prefer PERSON name when available, else the file's embedded name.
             person = persons.get(id_number)
             if person and (person.get("first_name_he") or person.get("last_name_he")):
                 first = person.get("first_name_he") or ""
                 last = person.get("last_name_he") or ""
             else:
-                first, last = _split_name(mbt._maybe_reverse_hebrew(cell(_C_NAME)))
+                first, last = _split_name(mbt._maybe_reverse_hebrew(cell(layout["name"])))
             records.append({
                 "יצרן": "הפניקס",
                 "סוג מוצר": product,
                 "מוצר": "ביטוח חיים",
-                "מס' חשבון/פוליסה": cell(_C_POLICY).lstrip("0") or cell(_C_POLICY),
+                "מס' חשבון/פוליסה": cell(layout["policy"]).lstrip("0") or cell(layout["policy"]),
                 "מספר ת.ז": id_number,
                 "שם פרטי לקוח": first,
                 "שם משפחה לקוח": last,
-                'סה"כ פרמיה': _num(cell(_C_PREMIUM)),
-                "צבירה": _num(cell(_C_ACCUM)),
+                'סה"כ פרמיה': _num(cell(premium_idx)),
+                "צבירה": _num(cell(layout["accum"])),
                 "סטטוס מוצר": "פעיל",
-                "תאריך הצטרפות למוצר": _ddmmyyyy(cell(_C_START)),
+                "תאריך הצטרפות למוצר": _ddmmyyyy(cell(layout["start"])),
                 "מספר סוכן": None,
             })
 
