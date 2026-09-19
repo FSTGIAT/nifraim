@@ -35,6 +35,15 @@ COLUMNS_INSURANCE_PRODUCTS: list[str] = [
     "נכון ליום",
     # Source-portal account (trailing — see COLUMNS_SAVINGS_PRODUCTS note).
     "מספר חשבון",
+    # Trailing, and NOT in the insurer reference layout. A risk policy can also
+    # carry a VALUE — Phoenix's חיים book holds ₪1,774,008 — and this sheet had
+    # nowhere to put it, so the amount was silently dropped into the merged file.
+    # Money-safe to add, unlike the mirror-image column on מוצרי חיסכון (see the
+    # note there): `rate_select.accumulation_based` returns False for pure-risk
+    # types whatever the accumulation is, so all 270 such rows (₪4,629,486)
+    # contribute exactly ₪0 to expected commission before and after. The column
+    # restores the agent's DATA without moving a money number.
+    "צבירה",
 ]
 
 
@@ -116,6 +125,18 @@ COLUMNS_SAVINGS_PRODUCTS: list[str] = [
     # Source-portal account (הראל מספר-חשבון etc.) — trailing so positional
     # index() lookups above are unaffected; blank for companies with one account.
     "מספר חשבון",
+    # NOT ADDED (deliberately): `סה"כ פרמיה`.
+    # This sheet has no premium column, so a savings-family row that also carries
+    # a premium loses it on the way into the merged file — measured 2026-09-13 on
+    # the 06-2026 books: ₪2,018,369 (הפניקס פנסיה ₪1,032,221 · פיננסים וזמן פרישה
+    # ₪970,000 · ביטוח מנהלים ₪16,148). Adding the column is mechanically safe
+    # (trailing, and `_parse_production` maps by header NAME), but it is NOT
+    # money-safe: `rate_select.accumulation_based` excludes פנסיה precisely
+    # because "production carries no pension premium, so it correctly contributes
+    # 0 rather than an inflated accum × rate". Restoring the column would push
+    # ₪1,048,369 of פנסיה + ביטוח מנהלים premium into the PREMIUM-based
+    # expected-commission branch, which that design says must stay at ₪0.
+    # Decide the commission question first, then add the column — not the reverse.
 ]
 
 

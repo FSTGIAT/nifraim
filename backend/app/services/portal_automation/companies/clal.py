@@ -690,12 +690,36 @@ class ClalPortal(BasePortalAutomation):
             # selector clicked, or the click didn't register a download event,
             # invoke the frame's (or page's) own download() directly — this is
             # what the anchor would have run anyway.
-            if not clicked or not holder.get("dl"):
+            #
+            # ⚠️ The download event is ASYNCHRONOUS — it needs a browser round-trip
+            # after the click. Checking `holder["dl"]` with no wait therefore
+            # ALWAYS looked empty, so the JS fallback re-fired `download()` on a
+            # click that had already worked (and, with no `break`, on BOTH the
+            # frame and the page = up to 3 invocations). InfoBay answers the
+            # duplicate concurrent requests for the same box with an EMPTY body,
+            # which is why every box arrived as `0B magic= ascii=''` and then hit
+            # ingest as a bare `.exe` (live: kikohib batch 49052722, 2026-08-30 —
+            # 3 boxes, all 0 bytes). Give the click a chance to register FIRST;
+            # only fall back if it genuinely produced nothing.
+            if clicked:
+                for _ in range(10):  # ~4s for the download event to attach
+                    if holder.get("dl"):
+                        break
+                    await asyncio.sleep(0.4)
+            if not holder.get("dl"):
                 for _tgt in (fr, p):
                     try:
                         await _tgt.evaluate("typeof download==='function' && download()")
                     except Exception:
                         continue
+                    # Stop at the first target that fired — a second invocation
+                    # is the very thing that empties the response.
+                    for _ in range(10):
+                        if holder.get("dl"):
+                            break
+                        await asyncio.sleep(0.4)
+                    if holder.get("dl"):
+                        break
             for _ in range(30):  # boxes can be a few MB
                 if holder.get("dl"):
                     break
@@ -720,6 +744,20 @@ class ClalPortal(BasePortalAutomation):
                 )
             except Exception:
                 pass
+            # An EMPTY transfer is a download failure, not a box we failed to
+            # unpack. Returning the 0-byte path sent a bare `.exe` to ingest,
+            # which rejected it with `Unsupported file extension 'exe'` — a
+            # symptom that reads like a parser gap and hides the real cause.
+            # Never allow `.exe` through ingest to "fix" that; fail here, loudly.
+            if not data:
+                try:
+                    box_path.unlink()
+                except Exception:
+                    pass
+                self.partial_errors.append(
+                    f"{base_name}: התיבה ירדה ריקה (0 בתים) — ההורדה לא הועברה"
+                )
+                return None
             # Extract the payload. InfoBay .exe boxes are self-extracting ZIPs;
             # Python's zipfile scans for the End-Of-Central-Directory record, so a
             # ZIP-SFX opens directly from the .exe bytes — pure-Python, portable

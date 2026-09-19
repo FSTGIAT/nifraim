@@ -325,23 +325,35 @@ class ClalNifraimPortal(ClalPortal):
                 await page.wait_for_timeout(1500)
                 await _checkpoint(f"drill_{safe}")
 
-                # C.2 — click the "פוליסה" tab on the drill page, then wait for
+                # C.2 — click the PER-CLIENT tab on the drill page, then wait for
                 # the tab body (and its export button) to render.
                 # MUST be an EXACT text match: "פוליסה" is a substring of the
                 # sibling tab "סוכנים בפוליסה" (which sorts BEFORE it), so a
                 # :has-text() (substring) click lands on the wrong tab and
                 # exports agent-level aggregates with no client id. :text-is()
                 # matches the trimmed full text exactly.
-                await self._click_first_visible(
-                    page,
-                    [
-                        "tab-heading:text-is('פוליסה')",
-                        ".tab-head:text-is('פוליסה')",
-                        "li[heading='פוליסה']",
-                        "a:text-is('פוליסה')",
-                    ],
-                    timeout=8000,
-                )
+                #
+                # The per-client tab is NOT named the same for every type:
+                #   חיים / בריאות / פנסיה → "פוליסה"
+                #   גמל                   → "עמיתים"
+                # גמל's tabs are מעסיקים / עמיתים / סוכני משנה and it DEFAULTS to
+                # מעסיקים — an EMPLOYER-level summary (שם מעסיק / סה"כ צבירה /
+                # סך עמלה, **no ת"ז**). Hardcoding "פוליסה" matched nothing on the
+                # גמל drill, so the default employer tab stayed active and its
+                # export parsed as fmt=unknown, contributing 0 rows every month
+                # (live kikohib 2026-08-30 batch 49052722: `כלל עמלות גמל.xlsx`
+                # head=[…,'שם מעסיק','סכום דמי ניהול',…]). Same failure shape as
+                # אלטשולר: an aggregate report where the parser needs per-client.
+                _tab_names = ("עמיתים", "פוליסה") if "גמל" in label else ("פוליסה", "עמיתים")
+                _tab_sels: list[str] = []
+                for _t in _tab_names:
+                    _tab_sels += [
+                        f"tab-heading:text-is('{_t}')",
+                        f".tab-head:text-is('{_t}')",
+                        f"li[heading='{_t}']",
+                        f"a:text-is('{_t}')",
+                    ]
+                await self._click_first_visible(page, _tab_sels, timeout=8000)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:

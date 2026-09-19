@@ -694,7 +694,24 @@ def main():
                 if cur_sizes == last_sizes:
                     stable += 1
                     if stable >= 3:
+                        # Say WHICH KIND of change this was. `changed` fires on
+                        # (size, mtime) inequality, so an mtime-only touch — no
+                        # bytes transferred — also lands here, and a non-growing
+                        # size is then indistinguishable from a finished transfer:
+                        # it reports "DOWNLOADED/UPDATED (stable)" in ~4s and the
+                        # step exits 0. Reported live 2026-08-30 (kikohib): the
+                        # operator watched the terminal, saw the 'כ' never typed,
+                        # and the run still ingested 261 records. Same symptom the
+                        # 2026-07-14 QA reported (commit fa0b725).
+                        grew = [n for n in changed
+                                if before.get(n) is None or now[n][0] != before[n][0]]
+                        touched_only = [n for n in changed if n not in grew]
                         _log(f"  DOWNLOADED/UPDATED (stable): {sorted(changed)}")
+                        _log(f"     size-changed/new : {sorted(grew) or 'NONE'}")
+                        if touched_only:
+                            _log(f"     !! mtime-ONLY (no byte change): {sorted(touched_only)} "
+                                 f"— this is NOT proof of a transfer; if nothing is listed "
+                                 f"as size-changed/new, treat this run's MU as SUSPECT")
                         break
                 else:
                     stable = 0

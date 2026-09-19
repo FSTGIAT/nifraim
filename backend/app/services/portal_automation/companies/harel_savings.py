@@ -446,6 +446,15 @@ class HarelSavingsPortal(_HarelReportPortal):
                         popup = await pp.value
                     except Exception:
                         _logger.warning("harel_savings: no popup for %s", company_source)
+                        # These three failure paths all end as a bare "no rows" in
+                        # the per-account note, and they were logged ONLY to the
+                        # worker's local file — i.e. invisible from Railway, so a
+                        # zero-row Harel could not be told apart from "the agent
+                        # genuinely has nothing this month". Harel is the largest
+                        # production contributor (1298 rows on 2026-08-09) and it
+                        # returned no rows on BOTH accounts on 2026-08-30, so the
+                        # distinction matters. Mirror them to WORKER-LOG.
+                        _worker_note(f"harel_savings: {company_source} acct {acct or 'default'} → NO POPUP")
                         continue
                     raw_path = await _export_from_popup(popup, comp_label, f"{ai}_{gi}")
                     if raw_path:
@@ -453,8 +462,19 @@ class HarelSavingsPortal(_HarelReportPortal):
                             rows = _extract_production_rows(raw_path, company_source, run_id, SCREENSHOT_ROOT, account=acct or "")
                             company_rows.setdefault(company_source, []).extend(rows)
                             _logger.info("harel_savings: %s acct %s → +%d rows", company_source, acct, len(rows))
+                            if not rows:
+                                _worker_note(
+                                    f"harel_savings: {company_source} acct {acct or 'default'} → "
+                                    f"exported {Path(raw_path).name} but reshaped to 0 rows"
+                                )
                         except Exception as e:
                             _logger.warning("harel_savings: reshape failed for %s: %s", company_source, e)
+                            _worker_note(
+                                f"harel_savings: {company_source} acct {acct or 'default'} → "
+                                f"RESHAPE FAILED {type(e).__name__}: {str(e)[:120]}"
+                            )
+                    else:
+                        _worker_note(f"harel_savings: {company_source} acct {acct or 'default'} → NO EXPORT FILE")
                     try:
                         await popup.close()
                     except Exception:
@@ -584,6 +604,30 @@ class HarelSavingsPortal(_HarelReportPortal):
         except Exception as e:
             _logger.warning("harel: vault grab failed (agents-portal results kept): %s", e)
             self.partial_errors.append(f"כספת (ר.ת. מורחב): {str(e)[:120]}")
+
+        # ── The two legs are COMPLEMENTARY — one without the other is not a
+        # partial success, it is a SILENTLY WRONG production file. ──
+        # The vault (ר.ת. מורחב) reports carry product PRESENCE with NO
+        # accumulation, deliberately, because the agents leg (מוצרי צבירה) owns
+        # accumulation and shipping both would double-count. So when the agents
+        # leg yields nothing and the vault lands, Harel production comes out with
+        # MORE rows and ZERO ₪ — and every cheap check passes: the portal
+        # "succeeded", files exist, the row count went UP.
+        # Live (kikohib batch 49052722, 2026-08-30): agents leg dead on both
+        # accounts, vault fine → 1778 rows, accumulation 0. The 2026-08-09 run
+        # had 1298 rows carrying ₪13,220,694. Nothing flagged it.
+        if results and not out_paths:
+            self.partial_errors.append(
+                "הראל: רגל מוצרי צבירה לא החזירה שורות — הפרודוקציה מבוססת כספת בלבד "
+                "ולכן ללא צבירה כלל (המספרים הכספיים חסרים, לא רק חלקיים)"
+            )
+            try:
+                _worker_note(
+                    "harel_savings: AGENTS LEG EMPTY — production is vault-only "
+                    "⇒ accumulation will be 0 for ALL Harel rows"
+                )
+            except Exception:
+                pass
 
         if not results:
             raise RuntimeError(

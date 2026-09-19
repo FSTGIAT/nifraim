@@ -18,8 +18,9 @@
         <!-- The reason is the actionable part of the row, so it behaves like
              one: it names WHY the company can't be compared and opens the list
              of everyone in the same position, with what it would take to fix. -->
-        <button class="ar-reason" @click.stop="$emit('explain', c)">
-          {{ c.no_agreement ? 'אין הסכם עמלות' : 'אין שיעור למוצרים שלה' }}
+        <button class="ar-reason" :class="{ 'ar-reason--missing': c.no_commission_data }"
+                @click.stop="$emit('explain', c)">
+          {{ reasonText(c) }}
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
@@ -46,6 +47,25 @@ const GAP_MIN_SHEKEL = 100
 
 const props = defineProps({ rows: { type: Array, default: () => [] } })
 defineEmits(['pick', 'explain'])
+
+// Three distinct reasons a company can't be compared, and the agent acts on
+// each differently. They used to render as one sentence:
+//
+//   no_commission_data → the נפרעים report never arrived this period. This row
+//                        exists at all because the panel is built from נפרעים
+//                        rows, so such a company used to VANISH — live, הראל
+//                        has 1,729 production rows and 53 agreement rows and
+//                        was simply absent, indistinguishable from "not mine".
+//   no_agreement       → select_rate found no agreement row for this insurer
+//                        (route "none") → upload an agreement.
+//   no_sane_rate       → the agreement exists but every rate failed the
+//                        magnitude guards → the rate is there but unusable.
+function reasonText(c) {
+  if (c.no_commission_data) return 'לא התקבלו נפרעים החודש'
+  if (c.no_rate_reason === 'no_sane_rate') return 'אין שיעור למוצרים שלה'
+  if (c.no_agreement) return 'אין הסכם עמלות'
+  return 'אין שיעור למוצרים שלה'
+}
 
 const shown = ref(false)
 
@@ -108,6 +128,15 @@ onMounted(() => { requestAnimationFrame(() => { shown.value = true }) })
   cursor: pointer; align-self: flex-start;
 }
 .ar-reason:hover { color: var(--text); border-color: var(--text-muted); }
+
+/* A missing report is not the same class of problem as a missing agreement —
+   one is a failed download to retry, the other is paperwork to upload. */
+.ar-reason--missing {
+  color: var(--amber);
+  border-color: currentColor;
+  opacity: 0.85;
+}
+.ar-reason--missing:hover { color: var(--amber); opacity: 1; }
 
 .ar-amt { font-size: 13px; font-weight: 700; color: var(--text); text-align: left; }
 .ar-gap { font-size: 13px; font-weight: 700; text-align: left; }

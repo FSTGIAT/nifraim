@@ -104,6 +104,21 @@ _RE_NUM_MONTH = _re_month_helper.compile(
 _RE_DDMMYYYY_TAIL = _re_month_helper.compile(
     r"_(?P<day>[0-3]\d)(?P<month>0[1-9]|1[0-2])(?P<year>20\d{2})(?=\.|$)"
 )
+# SEPARATED DD-MM-YYYY, e.g. Menora's נפרעים zip
+# "דוח ניפרעים לסוכן__AmalotLife_613_10-06-2026_17-46-01_NS…zip".
+# This MUST be tried before `_RE_NUM_MONTH`, which happily reads the `10-06`
+# prefix as month=10 / year=06 and dates the file to OCTOBER 2006 — 799 real
+# Menora commission rows landed 20 years in the past on every single run.
+_RE_DDMMYYYY_SEP = _re_month_helper.compile(
+    r"(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])[-/._]"
+    r"(?P<month>0?[1-9]|1[0-2])[-/._](?P<year>20\d{2})(?!\d)"
+)
+# A standalone 6-digit YYYYMM token: "phoenix_production_202606.xlsx" → 2026-06.
+# Standalone on purpose — bounded by non-digits on both sides — so the `2019` in
+# a policy number can never be read as a year.
+_RE_YYYYMM = _re_month_helper.compile(
+    r"(?<!\d)(?P<year>20\d{2})(?P<month>0[1-9]|1[0-2])(?!\d)"
+)
 
 # How far back a DATA-derived period may sit before the upload before we stop
 # believing it. Production rows carry the policy's INCEPTION date, so an old book
@@ -119,7 +134,9 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
     processing_date values were in early May):
 
       1. Hebrew month name + year in filename ("פרודוקציה אפריל 26").
-      2. Numeric MM/YY or MM/YYYY in filename ("03/26", "12-2025").
+      2. Numeric dates in filename, most specific first: DDMMYYYY tail
+         ("_30042026.zip"), separated DD-MM-YYYY ("10-06-2026"), standalone
+         YYYYMM ("_202606"), then MM/YY or MM/YYYY ("03/26", "12-2025").
       3. Hebrew month only in filename ("אפריל.xlsx") — year inferred
          from uploaded_at when supplied (best guess), else current year.
       4. Records' data dates: PREFER sign_date (the period the client was
@@ -157,6 +174,19 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
                 if not too_old:
                     return cand
         m = _RE_DDMMYYYY_TAIL.search(filename)
+        if m:
+            try:
+                return _date(int(m.group("year")), int(m.group("month")), 1)
+            except ValueError:
+                pass
+        # Before _RE_NUM_MONTH — a full DD-MM-YYYY must not be read as MM-YY.
+        m = _RE_DDMMYYYY_SEP.search(filename)
+        if m:
+            try:
+                return _date(int(m.group("year")), int(m.group("month")), 1)
+            except ValueError:
+                pass
+        m = _RE_YYYYMM.search(filename)
         if m:
             try:
                 return _date(int(m.group("year")), int(m.group("month")), 1)
@@ -893,6 +923,28 @@ def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None) -> dic
             if id_str.endswith(".0"):
                 id_str = id_str[:-2]
             record["id_number"] = id_str
+
+        # Clean fund_policy_number — same float artifact as id_number above.
+        # pandas types an all-digit policy column as float64, so `str(val)` yields
+        # "3311459089.0". Every other parser strips this (_parse_agent_tracking,
+        # _parse_menora_nifraim, _parse_harel_savings…); _parse_production stripped
+        # it for id_number ONLY, and for the policy it stripped into the LOCAL
+        # `fpn` used by the track lookup — never writing it back to the record.
+        # That is why the merged PRODUCTION file carried ".0" on every non-null
+        # policy while the merged נפרעים file carried none (live: kikohib batch
+        # 49052722, 2026-08-30 — 620 of 1860 production rows, = exactly all of
+        # הפניקס 316 + מגדל 224 + מנורה 80; הראל's 1240 are NULL).
+        # ARCHITECTURE §5.2 matches products BY POLICY NUMBER, so "3311459089.0"
+        # can never equal the נפרעים side's "3311459089" → those rows are scored
+        # UNPAID and raise false debts.
+        # NOTE: aggregate._policy_str (commit eff285f) already cleans the WRITE
+        # side; this is the READ side of the same round-trip, which is why the
+        # fix appeared not to work and looked like a stale worker. It is not.
+        if record.get("fund_policy_number"):
+            _fpn = str(record["fund_policy_number"]).strip()
+            if _fpn.endswith(".0") and _fpn[:-2].isdigit():
+                _fpn = _fpn[:-2]
+            record["fund_policy_number"] = _fpn
 
         # Merge track from מסלולי השקעה lookup
         if track_lookup and record.get("id_number") and record.get("fund_policy_number"):

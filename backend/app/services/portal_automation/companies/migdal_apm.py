@@ -22,7 +22,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.services.portal_automation.base import BasePortalAutomation
+from app.services.portal_automation.base import (
+    BasePortalAutomation,
+    reporting_months,
+)
 from app.services.portal_automation._apm_helpers import apm_login_submit
 
 if TYPE_CHECKING:
@@ -36,6 +39,11 @@ PORTAL_URL = "https://apmaccess.migdal.co.il/my.policy"
 # every exported row (it's the agent, not a client).
 # TODO: promote to a per-credential field if a second agent ever uses this portal.
 OWNER_ID = "40336281"
+
+# Israeli insurers publish a reporting month on a fixed day of the FOLLOWING
+# month; Migdal's cycle runs on the 21st, same as הכשרה's. `reporting_months`
+# turns that into "which month should exist right now", newest-plausible first.
+CYCLE_CUTOFF_DAY = 21
 
 
 class MigdalApmPortal(BasePortalAutomation):
@@ -251,6 +259,22 @@ class MigdalApmPortal(BasePortalAutomation):
         await self._safe_screenshot(page, mid_dump)
         await self._dump_page_state(page, mid_dump)
 
+        # Step 5b: pin the export to the CYCLE reporting month.
+        #
+        # This report had no month step at all: it exported whatever period the
+        # portal happened to default to, and `_rename_with_period` then named the
+        # file after whatever came out. Live 2026-09-15 that was 08/2026 while
+        # every other company in the same batch landed on 07/2026, so the merged
+        # נפרעים file carried nine companies at 07 and מגדל alone at 08 — and the
+        # dashboard drew a 2026-08 column containing one insurer.
+        #
+        # 🚫 NEVER "pick the newest option". The picker offers a month whose
+        # cycle has not published yet; taking it downloads a thin or empty report
+        # that still looks like a successful run. Compute the month from the
+        # cycle, then step BACKWARD only — the same rule as הכשרה's חודש עיבוד
+        # (`hachshara.py`).
+        target_period = await self._select_report_month(page, run_id)
+
         # XHR fallback — some F5-fronted SPAs deliver the file via XHR, not
         # Content-Disposition. Listener attached BEFORE the click flow.
         xhr_capture: dict = {"bytes": None, "url": None}
@@ -320,44 +344,200 @@ class MigdalApmPortal(BasePortalAutomation):
         finally:
             page.remove_listener("response", _on_response)
 
+        # Did the portal actually give us the month we asked for? A picker that
+        # silently ignored the click, or a missing control, both produce a
+        # perfectly well-formed file for the WRONG period — and every downstream
+        # check passes. Say so in the run summary rather than letting a
+        # single-company month appear on the dashboard unexplained.
+        got = self._exported_month(target)
+        if got and target_period and got > target_period:
+            from app.services.portal_automation.runner import _worker_note
+            msg = (
+                f"מגדל נפרעים: התקבל חודש {got[1]:02d}/{got[0]} במקום "
+                f"{target_period[1]:02d}/{target_period[0]} (מחזור ה-{CYCLE_CUTOFF_DAY}) — "
+                "בחירת החודש בפורטל לא נתפסה"
+            )
+            self.partial_errors.append(msg)
+            try:
+                _worker_note(f"migdal_apm: {msg}")
+            except Exception:
+                pass
+
         # Rename with the report's Hebrew month so detect_period_month (filename-first)
         # resolves correctly. The parser maps חודש תחילת ביטוח → sign_date (policy
         # inception year, e.g. 2011), which would otherwise mislead period detection.
         final = self._rename_with_period(target)
         return [final]
 
+    async def _select_report_month(self, page: "Page", run_id: str) -> tuple[int, int] | None:
+        """Point the 'משולמים בעלים' report at the cycle's reporting month.
+
+        Returns the (year, month) we asked for, or None when no month control
+        was found. **Never raises.** A missing or renamed picker must degrade to
+        today's behaviour — the default export — not turn a working download
+        into a failed run. The mismatch is reported after the download instead.
+        """
+        from datetime import date
+
+        from app.services.portal_automation.runner import SCREENSHOT_ROOT, _worker_note
+
+        candidates = reporting_months(date.today(), CYCLE_CUTOFF_DAY)
+
+        # Dump BEFORE touching anything: the first live run is how we learn what
+        # this control actually is, and a dump taken after a failed click shows
+        # the wrong page.
+        month_dump = SCREENSHOT_ROOT / f"{run_id}_month_picker.png"
+        try:
+            await self._safe_screenshot(page, month_dump)
+            await self._dump_page_state(page, month_dump)
+        except Exception:
+            pass
+
+        # Anchored on the Hebrew label, never on a positional id: those shift as
+        # the form grows (הכשרה's live field is #mat-input-14).
+        field = None
+        for sel in (
+            "select[name*='חודש']",
+            "select[aria-label*='חודש']",
+            "input[placeholder*='לחודש'], input[aria-label*='לחודש']",
+            "input[placeholder*='חודש'], input[aria-label*='חודש']",
+            "select:near(:text('לחודש'))",
+            "select:near(:text('חודש'))",
+        ):
+            try:
+                loc = page.locator(sel).first
+                if await loc.count():
+                    field = loc
+                    break
+            except Exception:
+                continue
+
+        if field is None:
+            try:
+                _worker_note(
+                    "migdal_apm: no month control found — exporting the portal "
+                    f"default (see {month_dump.stem}.txt)"
+                )
+            except Exception:
+                pass
+            return None
+
+        async def _option_texts() -> list[str]:
+            for sel in ("option", "[role='option']", "mat-option", "li"):
+                try:
+                    loc = page.locator(sel)
+                    n = await loc.count()
+                    if n:
+                        return [((await loc.nth(i).inner_text()) or "").strip()
+                                for i in range(min(n, 60))]
+                except Exception:
+                    continue
+            return []
+
+        # A <select> takes select_option; anything else needs a click to open
+        # its overlay before the options exist.
+        tag = ""
+        try:
+            tag = (await field.evaluate("el => el.tagName") or "").lower()
+        except Exception:
+            pass
+        if tag != "select":
+            try:
+                await field.click(timeout=5000)
+                await page.wait_for_timeout(600)
+            except Exception:
+                pass
+
+        texts = await _option_texts()
+
+        def _matches(text: str, year: int, month: int) -> bool:
+            digits = re.sub(r"[^0-9]", "", text)
+            return (
+                f"{month:02d}/{year}" in text
+                or f"{month}/{year}" in text
+                or f"{year}-{month:02d}" in text
+                or digits in (f"{month:02d}{year}", f"{year}{month:02d}")
+            )
+
+        for year, month in candidates:
+            idx = next((i for i, t in enumerate(texts) if _matches(t, year, month)), None)
+            if idx is None:
+                continue
+            try:
+                if tag == "select":
+                    await field.select_option(index=idx)
+                else:
+                    for sel in ("[role='option']", "mat-option", "li"):
+                        loc = page.locator(sel)
+                        if await loc.count() > idx:
+                            await loc.nth(idx).click(timeout=5000)
+                            break
+                await page.wait_for_timeout(1200)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+                _worker_note(f"migdal_apm: reporting month set to {month:02d}/{year}")
+                return (year, month)
+            except Exception as e:
+                try:
+                    _worker_note(f"migdal_apm: month {month:02d}/{year} click failed: {e}")
+                except Exception:
+                    pass
+                break
+
+        try:
+            _worker_note(
+                "migdal_apm: cycle month "
+                f"{candidates[0][1]:02d}/{candidates[0][0]} not offered "
+                f"({len(texts)} options) — exporting the portal default"
+            )
+        except Exception:
+            pass
+        return None
+
     @staticmethod
-    def _rename_with_period(path: Path) -> Path:
-        """Rename a Migdal נפרעים export to 'מגדל נפרעים <חודש> <שנה>.xlsx' using the
-        report month (from the 'לחודש' column, falling back to latest 'תאריך תשלום').
-        Returns the original path unchanged if the month can't be determined."""
+    def _exported_month(path: Path) -> tuple[int, int] | None:
+        """(year, month) the exported report actually covers, or None.
+
+        Reads the explicit 'לחודש' column (MM/YYYY), falling back to the latest
+        'תאריך תשלום'. Used BOTH to name the file and to verify the portal gave
+        us the month we asked for."""
         try:
             import pandas as pd
-            from app.services.parser_service import _HE_MONTH_TO_INT
 
-            int_to_he = {v: k for k, v in _HE_MONTH_TO_INT.items()}
             df = pd.read_excel(path)
-
-            month = year = None
-            # Prefer the explicit "לחודש" column (MM/YYYY).
             for col in df.columns:
                 if str(col).strip() == "לחודש":
                     vals = df[col].dropna().astype(str)
                     if len(vals):
                         m = re.search(r"(\d{1,2})\s*[/.\-]\s*(\d{4})", vals.iloc[0])
                         if m:
-                            month, year = int(m.group(1)), int(m.group(2))
+                            return int(m.group(2)), int(m.group(1))
                     break
-            # Fallback: latest payment date (תאריך תשלום).
-            if month is None:
-                for col in df.columns:
-                    if "תאריך תשלום" in str(col):
-                        dts = pd.to_datetime(df[col], dayfirst=True, errors="coerce").dropna()
-                        if len(dts):
-                            month, year = int(dts.max().month), int(dts.max().year)
-                        break
+            for col in df.columns:
+                if "תאריך תשלום" in str(col):
+                    dts = pd.to_datetime(df[col], dayfirst=True, errors="coerce").dropna()
+                    if len(dts):
+                        return int(dts.max().year), int(dts.max().month)
+                    break
+        except Exception:
+            pass
+        return None
 
-            if month and year and month in int_to_he:
+    @classmethod
+    def _rename_with_period(cls, path: Path) -> Path:
+        """Rename a Migdal נפרעים export to 'מגדל נפרעים <חודש> <שנה>.xlsx' using the
+        month `_exported_month` read. Returns the path unchanged if unknown."""
+        try:
+            from app.services.parser_service import _HE_MONTH_TO_INT
+
+            got = cls._exported_month(path)
+            if not got:
+                return path
+            year, month = got
+            int_to_he = {v: k for k, v in _HE_MONTH_TO_INT.items()}
+            if month in int_to_he:
                 new_path = path.with_name(f"מגדל נפרעים {int_to_he[month]} {year}.xlsx")
                 path.rename(new_path)
                 return new_path

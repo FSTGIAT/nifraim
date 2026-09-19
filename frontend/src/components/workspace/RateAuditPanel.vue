@@ -46,7 +46,7 @@
           <span class="ra-alert-body">
             <span class="ra-alert-top">
               <span class="ra-alert-co">{{ a.company }}</span>
-              <span class="ra-alert-amt ltr-number">{{ a.amount }}</span>
+              <span v-if="a.amount" class="ra-alert-amt ltr-number">{{ a.amount }}</span>
             </span>
             <span class="ra-alert-txt">{{ a.text }}</span>
           </span>
@@ -102,7 +102,16 @@
           <span class="ra-ex-co">{{ c.company }}</span>
           <span class="ra-ex-amt ltr-number">{{ money(c.paid) }}</span>
           <span class="ra-ex-why">
-            <template v-if="c.no_agreement">אין הסכם עמלות במערכת</template>
+            <!-- A company whose נפרעים never arrived is NOT an agreement
+                 problem, and telling the agent to upload an agreement they
+                 already have sends them to the wrong place. -->
+            <template v-if="c.no_commission_data">
+              לא התקבל דוח נפרעים מהחברה בתקופה הזו — יש
+              <span class="ltr-number">{{ c.records }}</span>
+              רשומות פרודוקציה והסכם עמלות במערכת, אז אין מה להשוות מולן.
+              בדוק את ההורדה האוטומטית של החברה.
+            </template>
+            <template v-else-if="c.no_agreement">אין הסכם עמלות במערכת</template>
             <template v-else>
               יש הסכם, אך אין בו שיעור למוצרים האלה:
               <!-- Naming them is the difference between a status and a task. -->
@@ -129,7 +138,12 @@
           <tr v-for="c in companies" :key="c.company">
             <td>
               {{ c.company }}
-              <span v-if="c.no_agreement" class="ra-tag">אין הסכם</span>
+              <!-- Order matters: a company whose report never arrived is not a
+                   missing-rate problem, and it reaches this row with
+                   no_agreement=false, so it would fall into the generic
+                   "אין שיעור למוצרים" branch below. -->
+              <span v-if="c.no_commission_data" class="ra-tag">לא התקבלו נפרעים</span>
+              <span v-else-if="c.no_agreement" class="ra-tag">אין הסכם</span>
               <span v-else-if="!c.comparable" class="ra-tag">אין שיעור למוצרים</span>
               <span v-else-if="c.rows_estimated" class="ra-tag ltr-number">
                 {{ c.rows_estimated }} ללא שיעור מדויק
@@ -192,7 +206,12 @@ const shownAlerts = computed(
 )
 const hiddenAlerts = computed(() => Math.max(0, alerts.value.length - ALERTS_OPEN))
 
-const notComparable = computed(() => companies.value.filter(c => !c.comparable && c.paid > 0))
+// `paid > 0` kept the list to companies that at least reported. A company whose
+// נפרעים never arrived has paid == 0 by definition — the very case that used to
+// be invisible — so it has to be admitted explicitly.
+const notComparable = computed(() => companies.value.filter(
+  c => !c.comparable && (c.paid > 0 || c.no_commission_data),
+))
 
 function gapClass(c) {
   if (!c.comparable || c.gap_pct === null) return ''
@@ -247,6 +266,23 @@ const alerts = computed(() => {
         : `${noAgreement.length} חברות`,
       amount: money(total),
       text: `התקבלו עמלות ואין הסכם לבדוק אותן — ${noAgreement.map(c => c.company).join(', ')}`,
+      explain: true,
+    })
+  }
+
+  // A company with production and an agreement whose נפרעים simply never
+  // arrived. Worth its own line: the fix is a failed download, not paperwork,
+  // and until now this company wasn't on the panel at all.
+  const noReport = companies.value.filter(c => c.no_commission_data)
+  if (noReport.length) {
+    out.push({
+      key: 'noreport',
+      level: 'loss',
+      company: noReport.length === 1
+        ? noReport[0].company
+        : `${noReport.length} חברות`,
+      amount: '',
+      text: `לא התקבל דוח נפרעים החודש — ${noReport.map(c => c.company).join(', ')}`,
       explain: true,
     })
   }

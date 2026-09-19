@@ -307,6 +307,27 @@ def _newest_mu():
     return max(cands, key=os.path.getmtime) if cands else None
 
 
+def _mu_snapshot() -> dict:
+    """(mtime, size) for every MU file, taken BEFORE the export step.
+
+    The age check alone is not enough. `C:\\fnxbox` is a FIXED path and a file
+    downloaded on the 9th is named exactly what a file downloaded on the 30th
+    would be (`MU_NK_HAYV_MOSHE_2026_08` — the name carries the REPORTING month,
+    not the download date), so the filename can never distinguish them. If the
+    keystrokes go nowhere but something still touches the file, its mtime alone
+    refreshes and the 45-minute window passes on LAST RUN'S CONTENT.
+    Mirrors `_mbt_snapshot`, which has always done this for the .MBT path.
+    """
+    out = {}
+    for p in glob.glob(os.path.join(FNXBOX, "MU_NK_HAYV*")):
+        try:
+            st = os.stat(p)
+            out[p] = (st.st_mtime, st.st_size)
+        except OSError:
+            continue
+    return out
+
+
 def _convert_or_watch(before):
     """Produce fresh .MBT from the MU file. Either run the configured converter,
     or watch the .MBT folder for the agent's manual conversion."""
@@ -337,7 +358,7 @@ def _period_from_mu(mu_name: str) -> str:
     return f"{m.group(2)}-{m.group(1)}" if m else f"{datetime.utcnow():%m-%Y}"
 
 
-async def _parse_and_ingest(run_id):
+async def _parse_and_ingest(run_id, mu_before: dict | None = None):
     from sqlalchemy import select
     from app.database import async_session
     from app.models.portal_run import PortalRun
@@ -347,6 +368,31 @@ async def _parse_and_ingest(run_id):
     mu = _newest_mu()
     if not mu:
         raise RuntimeError(f"no MU_NK_HAYV file found in {FNXBOX}")
+
+    # PRIMARY freshness proof: the file set must have CHANGED across the export.
+    # This is independent of the wall clock, so it holds even when the age check
+    # would pass. Reported live 2026-08-30 (kikohib): the operator watched the
+    # terminal, saw the 'כ' never pressed and no transfer happen, while the run
+    # still reported success and ingested 261 records — the same 261 as the
+    # 2026-07-14 stale-ingest incident.
+    if mu_before is not None:
+        try:
+            st_now = os.stat(mu)
+            now_sig = (st_now.st_mtime, st_now.st_size)
+        except OSError:
+            now_sig = None
+        prev_sig = mu_before.get(mu)
+        _post_log(
+            f"MU freshness: {os.path.basename(mu)} before={prev_sig} after={now_sig} "
+            f"(files before={len(mu_before)})"
+        )
+        if now_sig is not None and prev_sig == now_sig:
+            raise RuntimeError(
+                f"{os.path.basename(mu)} is UNCHANGED across the export step "
+                f"(mtime+size identical to before the terminal ran) — no KERMIT "
+                f"transfer happened, the keystrokes went nowhere. Refusing to "
+                f"ingest last run's production."
+            )
 
     # The newest file on disk is NOT necessarily the one we just downloaded. If the
     # terminal keystrokes silently did nothing (a lost '13' → no KERMIT transfer), the
@@ -429,10 +475,15 @@ async def main():
         _ensure_win_deps()
         _close_stale_terminals()
         _run_login(username, password, token)
+        # Snapshot BEFORE the export so _parse_and_ingest can prove the MU file
+        # actually changed, rather than trusting a 45-minute age window on a
+        # fixed path whose filename cannot distinguish run dates.
+        _mu_before = _mu_snapshot()
+        _post_log(f"MU before export: {[(os.path.basename(k), v) for k, v in _mu_before.items()]}")
         _run_export()
         # MU_NK_HAYV is parsed DIRECTLY by app.services.phoenix_mu — no external
         # MU→.MBT converter / manual step anymore (see _parse_and_ingest).
-        await _parse_and_ingest(run_id)
+        await _parse_and_ingest(run_id, _mu_before)
     except Exception as e:
         _log(f"FAILED: {e}")
         _post_log(f"FAILED: {str(e)[:600]}")

@@ -92,15 +92,37 @@ class MigdalPortal(BasePortalAutomation):
             "button:has-text('התחבר'), button:has-text('Sign in'), button:has-text('כניסה')"
         )
 
-        # Step 3: OTP page — input#otp, "Sign in" button (verified against live portal).
-        await self._wait_visible(page, "input#otp", timeout=20000)
+        # Step 3: the Kiteworks passcode page (/tfa).
+        await self._wait_visible(page, self.OTP_FIELD, timeout=20000)
+
+    # The passcode field on https://mfte.migdal.co.il/tfa. It used to be
+    # `input#otp`; Kiteworks rebuilt that page and the input now carries NO id
+    # at all, so the old selector could never match and every run died on a
+    # bare 20s timeout at stage=login (kiko, 2026-09-14/15) — while the login
+    # itself had SUCCEEDED and the SMS had already been sent. Confirmed twice
+    # against the live page:
+    #     worker dump:  <input inputmode="tel" class="w-full p-1 focus-visible" name="password">
+    #     agent's own:  <input inputmode="tel" class="w-full p-1" name="password">
+    # `name` is a DECOY ("password", the same name the password step's field
+    # would have) — so match on inputmode + the ABSENCE of an id, which is what
+    # actually separates it from step 2's `input#password`. The page carries
+    # exactly one <input>. `input#otp` stays as a fallback in case Migdal rolls
+    # the old page back.
+    OTP_FIELD = "input[inputmode='tel']:not([id]), input#otp"
 
     async def submit_otp(self, page: "Page", otp: str) -> None:
-        await page.fill("input#otp", otp)
-        # OTP submit reuses the password-page button label ("התחבר"); keep the
-        # other labels as fallbacks in case the OTP page differs.
+        await page.fill(self.OTP_FIELD, otp)
+        # The submit button is "אמת" / "Verify" — NOT the password page's
+        # "התחבר". BOTH spellings are required: the same portal renders Hebrew
+        # or English depending on the session's language (the failed worker run
+        # captured אמת; the agent's own browser showed "Verify"), and the label
+        # is the only stable hook — the classes are Tailwind soup and there is
+        # no id. It is `disabled` + `pointer-events:none` until the field has a
+        # value, so fill FIRST; Playwright's click waits for actionability.
         await page.click(
-            "button:has-text('התחבר'), button:has-text('Sign in'), button:has-text('כניסה')"
+            "button:has-text('אמת'), button:has-text('Verify'), "
+            "button:has-text('התחבר'), button:has-text('Sign in'), "
+            "button:has-text('כניסה')"
         )
         # Migdal Safes System is an SPA — `networkidle` settles before the
         # hash route flips off /tfa, so dumping/clicking here would still
@@ -494,6 +516,9 @@ class MigdalPortal(BasePortalAutomation):
                     apm_page, download_dir, username=apm_user
                 )
                 results.extend(nif_files or [])
+                # The folded leg owns its own warnings (e.g. the reporting-month
+                # check). They die with the sub-plugin unless carried up here.
+                self.partial_errors.extend(apm.partial_errors)
                 _logger.info(
                     "migdal: also downloaded apmaccess נפרעים → %s",
                     [f.name for f in (nif_files or [])],

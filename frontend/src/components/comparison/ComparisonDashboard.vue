@@ -30,61 +30,6 @@
       <button class="ga-action" @click="onLegendClick('matched')">הצג לקוחות</button>
     </div>
 
-    <!-- HERO: Customer Status Distribution -->
-    <div class="hero-card">
-      <div class="hero-header">
-        <h2 class="hero-title">התפלגות לקוחות</h2>
-        <span class="hero-badge">{{ statusTotal }} לקוחות</span>
-      </div>
-      <div class="hero-body">
-        <apexchart
-          type="donut"
-          :height="340"
-          :options="statusDonutOptions"
-          :series="statusDonutSeries"
-          @dataPointSelection="onStatusClick"
-        />
-      </div>
-      <div class="hero-stats">
-        <div
-          v-for="(item, i) in statusItems"
-          :key="i"
-          class="hero-stat"
-          @click="onLegendClick(item.key)"
-        >
-          <span class="hero-stat-dot" :style="{ background: item.color }"></span>
-          <div class="hero-stat-info">
-            <span class="hero-stat-count">{{ item.count }}</span>
-            <span class="hero-stat-label">{{ item.label }}</span>
-          </div>
-          <span class="hero-stat-pct" :style="{ color: item.color }">{{ pctOf(item.count) }}%</span>
-        </div>
-      </div>
-
-      <!-- Same distribution per COMPANY. The merged נפרעים file covers every
-           company, so "how many are unpaid" is only half the answer — this
-           says at which company. Click a segment to drill straight in. -->
-      <div v-if="companyStatusRows.length > 1" class="hero-bycompany">
-        <div class="hbc-head">
-          <h3 class="hbc-title">לפי חברה</h3>
-          <span class="hbc-hint">לחצו על עמודה לצלילה לחברה</span>
-        </div>
-        <apexchart
-          type="bar"
-          :height="Math.max(190, companyStatusRows.length * 38 + 70)"
-          :options="companyStatusOptions"
-          :series="companyStatusSeries"
-        />
-        <p class="hbc-note">לקוח המחזיק מוצרים בכמה חברות נספר בכל אחת מהן.</p>
-      </div>
-    </div>
-
-    <!-- Company filter (when multiple commission files) -->
-    <div v-if="props.companySources.length > 1" class="company-filter-bar">
-      <button class="company-pill" :class="{ active: !companyFilter }" @click="companyFilter = null">הכל ({{ props.customers.length }})</button>
-      <button v-for="src in props.companySources" :key="src" class="company-pill" :class="{ active: companyFilter === src }" @click="companyFilter = src">{{ src }}</button>
-    </div>
-
     <!-- KPI Cards Row -->
     <div class="kpi-row">
       <div class="kpi-card kpi-blue">
@@ -189,7 +134,7 @@
           <div class="kpi-label">סה"כ חיוב לא משולם</div>
         </div>
       </div>
-      <div class="kpi-card kpi-green">
+      <div class="kpi-card kpi-green" title="לפי הדיווח האחרון מכל חברה">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="1" x2="12" y2="23"/>
@@ -198,7 +143,10 @@
         </div>
         <div class="kpi-data">
           <div class="kpi-value ltr-number">{{ formatAmount(totalCommission) }}</div>
-          <div class="kpi-label">עמלות שהתקבלו (לפי דיווח אחרון מכל חברה)</div>
+          <!-- The full qualifier lives in the card's title attribute: at six
+               equal columns this label wrapped to three lines and stretched
+               the whole row. -->
+          <div class="kpi-label">עמלות שהתקבלו</div>
         </div>
       </div>
       <div class="kpi-card kpi-cyan">
@@ -209,11 +157,67 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(totalBalance) }}</div>
+          <div class="kpi-value ltr-number" :title="formatAmount(totalBalance)">{{ formatCompact(totalBalance) }}</div>
           <div class="kpi-label">סה"כ יתרה</div>
         </div>
       </div>
     </div>
+
+    <!-- HERO: Customer Status Distribution -->
+    <div class="hero-card">
+      <div class="hero-header">
+        <h2 class="hero-title">התפלגות לקוחות</h2>
+        <span class="hero-badge">{{ statusTotal }} לקוחות</span>
+      </div>
+      <div class="hero-body">
+        <apexchart
+          type="donut"
+          :height="340"
+          :options="statusDonutOptions"
+          :series="statusDonutSeries"
+          @dataPointSelection="onStatusClick"
+        />
+      </div>
+      <div class="hero-stats">
+        <div
+          v-for="(item, i) in statusItems"
+          :key="i"
+          class="hero-stat"
+          @click="onLegendClick(item.key)"
+        >
+          <span class="hero-stat-dot" :style="{ background: item.color }"></span>
+          <div class="hero-stat-info">
+            <span class="hero-stat-count">{{ item.count }}</span>
+            <span class="hero-stat-label">{{ item.label }}</span>
+          </div>
+          <span class="hero-stat-pct" :style="{ color: item.color }">{{ pctOf(item.count) }}%</span>
+        </div>
+      </div>
+
+      <!-- Same distribution per COMPANY. The merged נפרעים file covers every
+           company, so "how many are unpaid" is only half the answer — this
+           says at which company. Click a segment to drill straight in. -->
+      <div v-if="companyStatusRows.length > 1" class="hero-bycompany">
+        <div class="hbc-head">
+          <h3 class="hbc-title">לפי חברה</h3>
+          <span class="hbc-hint">לחצו על עמודה לצלילה לחברה</span>
+        </div>
+        <apexchart
+          type="bar"
+          :height="Math.max(190, companyStatusRows.length * 38 + 70)"
+          :options="companyStatusOptions"
+          :series="companyStatusSeries"
+        />
+        <p class="hbc-note">לקוח המחזיק מוצרים בכמה חברות נספר בכל אחת מהן.</p>
+      </div>
+    </div>
+
+    <!-- Company filter (when multiple commission files) -->
+    <div v-if="props.companySources.length > 1" class="company-filter-bar">
+      <button class="company-pill" :class="{ active: !companyFilter }" @click="companyFilter = null">הכל ({{ props.customers.length }})</button>
+      <button v-for="src in props.companySources" :key="src" class="company-pill" :class="{ active: companyFilter === src }" @click="companyFilter = src">{{ src }}</button>
+    </div>
+
 
     <!-- Unpaid notification strip -->
     <Transition name="unpaid-strip">
@@ -1590,11 +1594,21 @@ function formatCompact(val) {
 }
 
 /* ── KPI Row ── */
+/* Six cards, six columns. This was repeat(5, 1fr) with six cards, so
+   "סה"כ יתרה" dropped onto a second line on every screen. An auto-fill
+   minmax() (the production tab's rule) only looks right at some widths — with
+   six cards it re-wraps as the container narrows, so the count is explicit. */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
   margin-bottom: 16px;
+}
+@media (max-width: 1240px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 720px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
 
 .kpi-card {

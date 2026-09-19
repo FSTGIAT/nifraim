@@ -195,6 +195,9 @@ def record_to_insurance_product_row(rec: dict, agent_number=None, as_of=None) ->
         "נכון ליום": _d(as_of),
         # Source-portal account carried per-row (Harel stores it in lead_source).
         "מספר חשבון": rec.get("lead_source") or "",
+        # A risk policy can carry a VALUE too (Phoenix חיים). Before this column
+        # existed the amount was dropped — see COLUMNS_INSURANCE_PRODUCTS.
+        "צבירה": round(_f(rec.get("accumulation")), 2),
     }
     return _row(COLUMNS_INSURANCE_PRODUCTS, vals)
 
