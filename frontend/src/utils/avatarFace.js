@@ -125,3 +125,64 @@ export function isBlinkFrame (frame, total) {
   const t = frame % total
   return (t > total * 0.42 && t < total * 0.42 + 5) || (t > total * 0.86 && t < total * 0.86 + 5)
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Monogram marks.
+ *
+ * The generated character above reads as a toy next to a commission table, so
+ * the account avatar is now a monogram. A flat disc with two letters on it is
+ * professional and dull, though — this gives every seed its own COMPOSITION
+ * while keeping the palette to a single tone.
+ *
+ * All variation is geometric and tonal: one shape, white at a low alpha, over
+ * the seed's flat colour. Nothing here can introduce a hue the app does not
+ * already own, which is exactly why it stays quiet at 24px and still looks
+ * deliberate at 126px.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+
+const MARKS = [
+  // a horizon, low
+  (r) => `<path d="M0 ${62 + r(10)} Q50 ${44 + r(14)} 100 ${60 + r(12)} L100 100 L0 100 Z" fill="rgba(255,255,255,.20)"/>`,
+  // a band across the corner
+  (r) => `<path d="M${-10 + r(20)} 100 L${58 + r(16)} 0 L100 0 L${34 + r(18)} 100 Z" fill="rgba(255,255,255,.17)"/>`,
+  // a wedge out of one corner
+  (r) => `<path d="M100 0 L100 ${52 + r(20)} L${40 - r(18)} 0 Z" fill="rgba(255,255,255,.21)"/>`,
+  // a disc bleeding off an edge
+  (r) => `<circle cx="${12 + r(20)}" cy="${78 + r(16)}" r="${40 + r(16)}" fill="rgba(255,255,255,.22)"/>`,
+  // a ring, clipped by the avatar's own circle
+  (r) => `<circle cx="${50 + r(18) - 9}" cy="${50 + r(18) - 9}" r="${40 + r(10)}"
+            fill="none" stroke="rgba(255,255,255,.22)" stroke-width="${7 + r(5)}"/>`,
+  // two bars, like a rising column
+  (r) => `<rect x="${8 + r(8)}" y="${52 + r(12)}" width="${16 + r(6)}" height="60" rx="7" fill="rgba(255,255,255,.18)"/>
+          <rect x="${72 - r(10)}" y="${34 + r(14)}" width="${16 + r(6)}" height="78" rx="7" fill="rgba(255,255,255,.14)"/>`,
+]
+
+/**
+ * Inner SVG for a seed's monogram backdrop, on a 0..100 viewBox.
+ * Deterministic: the same seed always draws the same mark.
+ */
+export function monogramMark (seed) {
+  const h = hashSeed(seed || 'nifraim')
+  // Its own little stream, so this never disturbs `avatarPalette`'s rng — that
+  // one's read order is load-bearing for AvatarLoop's orbs.
+  let s = h || 1
+  const r = (n) => {
+    s ^= s << 13; s >>>= 0
+    s ^= s >>> 17
+    s ^= s << 5; s >>>= 0
+    return Math.round((s / 0xffffffff) * n)
+  }
+  const pick = MARKS[h % MARKS.length]
+  const spin = (h >> 5) % 360
+  return `<g transform="rotate(${spin} 50 50)">${pick(r)}</g>`
+    // a soft light from the top-inline-start, on every mark, for a little depth
+    + `<circle cx="30" cy="26" r="46" fill="url(#avg)"/>`
+}
+
+/** The one gradient the marks share. Needs a unique id per document. */
+export const MONOGRAM_DEFS =
+  `<defs><radialGradient id="avg" cx="0.5" cy="0.5" r="0.5">` +
+  `<stop offset="0%" stop-color="rgba(255,255,255,.20)"/>` +
+  `<stop offset="100%" stop-color="rgba(255,255,255,0)"/>` +
+  `</radialGradient></defs>`

@@ -2,8 +2,8 @@ import React from 'react'
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
 // One source of truth for seed → palette + character, shared with Avatar.vue so
 // the picker's swatches match the avatar you actually get.
-import { avatarPalette } from '../utils/avatarSeed'
-import { faceSvg, isBlinkFrame } from '../utils/avatarFace'
+import { avatarTone, avatarImage } from '../utils/avatarSeed'
+import { monogramMark, MONOGRAM_DEFS } from '../utils/avatarFace'
 
 /**
  * Generative animated avatar for a single person.
@@ -29,27 +29,16 @@ export const AvatarLoop: React.FC<Props> = ({ seed = 'nifraim', initial = '?' })
   const frame = useCurrentFrame()
   const t = frame / AVATAR_LOOP_FRAMES // 0..1 over the loop
 
-  // `next` is the SAME rng stream the palette consumed, handed back mid-flight —
-  // the orbs below continue it, so this face matches the picker's swatch.
-  const { bgA, bgB, angle, next } = avatarPalette(seed)
-
-  // faceSvg re-derives from the seed independently (its own fresh stream), so it
-  // stays identical to what Avatar.vue draws for the same seed.
-  const face = faceSvg(seed, { blink: isBlinkFrame(frame, AVATAR_LOOP_FRAMES) })
+  // Same tone and same mark Avatar.vue draws for this seed, so the animated
+  // avatar and every static one are literally the same identity. What moves is
+  // the light across it, not the identity itself.
+  const tone = avatarTone(seed)
+  const mark = MONOGRAM_DEFS + monogramMark(seed)
+  // Same portrait Avatar.vue resolves for this seed, so the animated avatar
+  // and every static one are literally the same person.
+  const portrait = avatarImage(seed)
   const bob = Math.sin(t * TAU) * 1.2
 
-  // 3 orbs, each with its own orbit radius, phase and size — this is what makes
-  // two users with similar hues still read as different faces.
-  const orbs = Array.from({ length: 3 }, () => ({
-    size: 26 + next() * 34,
-    cx: 22 + next() * 56,
-    cy: 22 + next() * 56,
-    r: 6 + next() * 12,
-    phase: next() * TAU,
-    dir: next() > 0.5 ? 1 : -1,
-    hue: Math.floor(next() * 360),
-    op: 0.24 + next() * 0.22,
-  }))
 
   const sheen = Math.sin(t * Math.PI) // 0 -> 1 -> 0, seamless at the wrap
 
@@ -58,51 +47,61 @@ export const AvatarLoop: React.FC<Props> = ({ seed = 'nifraim', initial = '?' })
       style={{
         borderRadius: '50%',
         overflow: 'hidden',
-        background: `linear-gradient(${angle}deg, ${bgA}, ${bgB})`,
+        background: tone,
       }}
     >
-      {orbs.map((o, i) => {
-        const a = o.phase + o.dir * t * TAU
-        return (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              width: o.size,
-              height: o.size,
-              left: `${o.cx + Math.cos(a) * o.r}%`,
-              top: `${o.cy + Math.sin(a) * o.r}%`,
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
-              background: `hsl(${o.hue} 80% 70%)`,
-              opacity: o.op,
-              filter: 'blur(14px)',
-            }}
-          />
-        )
-      })}
-
       {/* Soft moving sheen, fading at both ends so the loop point is invisible. */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          background: `radial-gradient(circle at ${28 + t * 44}% ${22 + t * 30}%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0) 62%)`,
-          opacity: sheen * 0.75,
+          background: `radial-gradient(circle at ${30 + t * 40}% ${24 + t * 28}%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 58%)`,
+          opacity: sheen * 0.8,
         }}
       />
 
-      {/* The character. Same seed, same face as the static Avatar.vue — it just
-          blinks and breathes here. `bob` is a sub-pixel rise, deliberately tiny:
-          a big bounce reads as a toy, not a person. */}
+      {/* The mark and the initials. `bob` is a sub-pixel rise, deliberately
+          tiny: a big bounce reads as a toy, not a person — and this one is on
+          an account in a financial product. */}
       <AbsoluteFill style={{ transform: `translateY(${bob}px)` }}>
         <svg
           viewBox="0 0 100 100"
           width="100%"
           height="100%"
           style={{ display: 'block' }}
-          dangerouslySetInnerHTML={{ __html: face }}
+          dangerouslySetInnerHTML={{ __html: mark }}
         />
+        {portrait ? (
+          <img
+            src={portrait}
+            alt=""
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: '50%',
+            }}
+          />
+        ) : null}
+        {portrait ? null : (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'grid',
+              placeItems: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 38,
+              letterSpacing: '0.02em',
+              direction: 'ltr',
+            }}
+          >
+            {initial}
+          </div>
+        )}
       </AbsoluteFill>
     </AbsoluteFill>
   )

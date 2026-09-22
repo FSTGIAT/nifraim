@@ -14,16 +14,15 @@
       <button
         type="button"
         class="rail-face"
-        :aria-label="picking ? 'סגירת בחירת אווטאר' : 'שינוי אווטאר'"
-        :aria-expanded="picking"
-        title="שינוי אווטאר"
+        aria-label="עריכת אווטאר"
+        title="עריכת אווטאר"
         @click="picking = !picking"
       >
         <Avatar
           :name="user?.full_name || ''"
           :username="user?.username || ''"
           :avatar-seed="currentSeed"
-          :size="42"
+          :size="54"
         />
         <span class="rail-face-pen" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -37,26 +36,50 @@
       </div>
     </div>
 
-    <!-- The faces are GENERATED from a seed, not uploaded images: the same seed
-         drives the CSS avatar, the messenger and the animated Remotion one, so
-         a swatch is the real thing rather than a preview of it. Picking here
-         writes through the same endpoint the messenger's picker uses. -->
+    <!-- No dialog. Choosing a face is a small thing and a modal made it feel
+         like a form; the deck just opens where the face already is. -->
     <Transition name="rail-pick">
-      <div v-if="picking" class="rail-picker" role="radiogroup" aria-label="בחירת אווטאר">
-        <button
-          v-for="sd in seeds"
-          :key="sd"
-          type="button"
-          class="rail-swatch"
-          :class="{ 'is-on': sd === currentSeed }"
-          role="radio"
-          :aria-checked="sd === currentSeed"
-          :aria-label="'אווטאר ' + sd"
-          @click="pickAvatar(sd)"
-        >
-          <Avatar :avatar-seed="sd" :username="user?.username || ''" :name="user?.full_name || ''" :size="30" />
-        </button>
-        <p v-if="avatarError" class="rail-pick-err">{{ avatarError }}</p>
+      <div v-if="picking && open" class="rail-deck">
+        <!-- Two families, kept apart. Mixed into one deck you had to walk past
+             fourteen illustrations to reach the 3D ones. -->
+        <div class="rail-fam" role="tablist" aria-label="סגנון אווטאר">
+          <button
+            v-for="f in AVATAR_FAMILIES"
+            :key="f"
+            type="button"
+            role="tab"
+            class="rail-fam-btn"
+            :class="{ 'is-on': family === f }"
+            :aria-selected="family === f"
+            @click="family = f"
+          >{{ FAMILY_LABEL[f] }}</button>
+        </div>
+        <AvatarSwiper
+          ref="swiper"
+          :seeds="seeds"
+          :username="user?.username || ''"
+          :name="user?.full_name || ''"
+          :model-value="currentSeed"
+          :size="84"
+          style="--deck-size: 84px"
+          @front="front = $event"
+          @choose="saveAvatar"
+        />
+        <div class="rail-deck-bar">
+          <button type="button" class="rail-deck-arrow" aria-label="הקודם" @click="swiper?.step(-1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <button
+            type="button"
+            class="rail-deck-save"
+            :disabled="saving || !front || front === currentSeed"
+            @click="saveAvatar(front)"
+          >{{ saving ? 'שומר…' : (front === currentSeed ? 'הנוכחי' : 'בחר') }}</button>
+          <button type="button" class="rail-deck-arrow" aria-label="הבא" @click="swiper?.step(1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
+        </div>
+        <p v-if="avatarError" class="rail-deck-err">{{ avatarError }}</p>
       </div>
     </Transition>
 
@@ -94,7 +117,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import Avatar from '../Avatar.vue'
-import { candidateSeeds, seedFor } from '../../utils/avatarSeed.js'
+import { candidateSeeds, seedFor, avatarFamily, AVATAR_FAMILIES } from '../../utils/avatarSeed.js'
+import AvatarSwiper from './AvatarSwiper.vue'
 import { useMessengerStore } from '../../stores/messenger.js'
 
 const props = defineProps({
@@ -110,28 +134,41 @@ const open = ref(false)
    No new avatar system here on purpose. `utils/avatarSeed.js` is already the
    one source of truth — the CSS face, the messenger and the Remotion avatar
    all derive from the same seed, and that file says in as many words that a
-   second hash would make the swatch you tap "a lie". Uploaded or generated
-   photographs would be exactly that second system. */
+   second hash would make the swatch you tap "a lie". The picker itself lives
+   in its own modal: a deck of cards needs room the 76px rail does not have. */
 const messenger = useMessengerStore()
 const picking = ref(false)
+const swiper = ref(null)
+const front = ref('')
+const saving = ref(false)
 const avatarError = ref('')
-const seeds = computed(() => candidateSeeds(props.user?.username || ''))
+const FAMILY_LABEL = { flat: 'איור', soft: 'תלת־ממד' }
+// Opens on the family you are already wearing, so the first thing you see is
+// the face you are changing away from.
+const family = ref(avatarFamily(seedFor(props.user)))
+const seeds = computed(() => candidateSeeds(props.user?.username || '', family.value))
 const currentSeed = computed(() => seedFor(props.user))
 
-async function pickAvatar(sd) {
+async function saveAvatar(seed) {
+  if (!seed || saving.value) return
+  if (seed === currentSeed.value) { picking.value = false; return }
+  saving.value = true
   avatarError.value = ''
-  if (sd === currentSeed.value) { picking.value = false; return }
   try {
-    await messenger.changeAvatar(sd)
+    await messenger.changeAvatar(seed)
     picking.value = false
   } catch {
-    avatarError.value = 'שמירת האווטאר נכשלה'
+    avatarError.value = 'שמירה נכשלה'
+  } finally {
+    saving.value = false
   }
 }
 
-// The picker only makes sense while the rail is open — collapsed, the swatches
-// are clipped to a 76px column and you would be choosing blind.
+// Collapsed, the deck is clipped to a 76px column and you would be choosing
+// blind, so the rail closing closes it too.
 watch(open, (v) => { if (!v) picking.value = false })
+// Re-open on the family you are wearing, not on whichever tab was left behind.
+watch(picking, (v) => { if (v) family.value = avatarFamily(currentSeed.value) })
 
 // `home` is dropped here: this rail only exists on home, and `goHome()`
 // early-returns when it is already home — it would be a button that does
@@ -184,7 +221,7 @@ const ICONS = {
 }
 
 /* ── identity ─────────────────────────────────────────────────────────── */
-.rail-top { display: flex; align-items: center; gap: 11px; min-height: 42px; }
+.rail-top { display: flex; align-items: center; gap: 11px; min-height: 54px; }
 .rail-face {
   position: relative; flex: none; padding: 0; border: none;
   background: none; cursor: pointer; border-radius: 50%; line-height: 0;
@@ -194,31 +231,17 @@ const ICONS = {
    reads as a form field rather than as you. */
 .rail-face-pen {
   position: absolute; inset-inline-end: -3px; bottom: -3px;
-  width: 17px; height: 17px; border-radius: 50%;
+  width: 20px; height: 20px; border-radius: 50%;
   display: grid; place-items: center;
   background: var(--card-bg); border: 1px solid var(--border-subtle);
   color: var(--text-muted);
   opacity: 0; transform: scale(0.7);
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.rail-face-pen svg { width: 9px; height: 9px; }
+.rail-face-pen svg { width: 10px; height: 10px; }
 .rail:hover .rail-face-pen,
 .rail-face:focus-visible .rail-face-pen { opacity: 1; transform: none; }
 
-.rail-picker {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  width: 182px; margin-top: 12px;
-}
-.rail-swatch {
-  padding: 2px; border: 2px solid transparent; border-radius: 50%;
-  background: none; cursor: pointer; line-height: 0;
-  transition: border-color 0.16s ease, transform 0.16s ease;
-}
-.rail-swatch:hover { transform: scale(1.08); }
-.rail-swatch.is-on { border-color: var(--tab-production, #2F73C4); }
-.rail-pick-err { width: 100%; font-size: 11px; color: var(--red-deep, #C23934); }
-.rail-pick-enter-active, .rail-pick-leave-active { transition: opacity 0.18s ease; }
-.rail-pick-enter-from, .rail-pick-leave-to { opacity: 0; }
 /* The name block is laid out at the OPEN width at all times and clipped by the
    rail's overflow, so it never re-wraps as the rail grows — text reflowing
    mid-transition is the thing that makes a rail like this look cheap. */
@@ -237,6 +260,40 @@ const ICONS = {
   font-size: 10.5px; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+.rail-deck {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 182px; margin-top: 12px;
+}
+.rail-fam {
+  display: flex; gap: 3px; padding: 3px;
+  border-radius: 9px; background: var(--bg);
+}
+.rail-fam-btn {
+  padding: 5px 12px; border: none; border-radius: 7px;
+  background: none; color: var(--text-muted); cursor: pointer;
+  font-family: inherit; font-size: 11.5px; font-weight: 700;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.rail-fam-btn.is-on { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 3px rgba(24, 24, 24, 0.10); }
+
+.rail-deck-bar { display: flex; align-items: center; gap: 6px; }
+.rail-deck-arrow {
+  flex: none; width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid var(--border-subtle); border-radius: 50%;
+  background: var(--card-bg); color: var(--text-muted); cursor: pointer;
+}
+.rail-deck-arrow svg { width: 13px; height: 13px; }
+.rail-deck-arrow:hover { background: var(--bg); color: var(--text); }
+.rail-deck-save {
+  min-width: 68px; padding: 6px 14px; border: none; border-radius: 9px;
+  background: var(--tab-production, #2F73C4); color: #fff;
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.rail-deck-save:disabled { background: var(--bg); color: var(--text-muted); cursor: default; }
+.rail-deck-err { font-size: 11px; color: var(--red-deep, #C23934); }
+.rail-pick-enter-active, .rail-pick-leave-active { transition: opacity 0.18s ease; }
+.rail-pick-enter-from, .rail-pick-leave-to { opacity: 0; }
 
 .rail-rule {
   height: 1px; margin: 13px 0 11px;
@@ -288,7 +345,7 @@ const ICONS = {
 @media (max-width: 1180px) {
   .rail { left: 12px; padding: 12px 11px; width: 66px; }
   .rail--open { width: 66px; box-shadow: 0 10px 34px rgba(24, 24, 24, 0.07); }
-  .rail-who, .rail-label, .rail-picker { display: none; }
+  .rail-who, .rail-label, .rail-deck { display: none; }
   .rail-item { width: auto; justify-content: center; padding: 9px 0; }
   .rail-ico { width: 22px; }
 }

@@ -114,10 +114,10 @@
           <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" style="stop-color: var(--tab-production); stop-opacity: 0.1"/>
-                <stop offset="30%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.06"/>
-                <stop offset="60%" style="stop-color: var(--tab-recruits); stop-opacity: 0.09"/>
-                <stop offset="100%" style="stop-color: var(--tab-production); stop-opacity: 0.05"/>
+                <stop offset="0%" style="stop-color: var(--tab-production); stop-opacity: 0.2"/>
+                <stop offset="30%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.12"/>
+                <stop offset="60%" style="stop-color: var(--tab-recruits); stop-opacity: 0.18"/>
+                <stop offset="100%" style="stop-color: var(--tab-production); stop-opacity: 0.1"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -125,10 +125,10 @@
           <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-                <stop offset="0%" style="stop-color: var(--tab-recruits); stop-opacity: 0.08"/>
-                <stop offset="40%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.05"/>
-                <stop offset="70%" style="stop-color: var(--tab-production); stop-opacity: 0.07"/>
-                <stop offset="100%" style="stop-color: var(--tab-recruits); stop-opacity: 0.04"/>
+                <stop offset="0%" style="stop-color: var(--tab-recruits); stop-opacity: 0.16"/>
+                <stop offset="40%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.1"/>
+                <stop offset="70%" style="stop-color: var(--tab-production); stop-opacity: 0.14"/>
+                <stop offset="100%" style="stop-color: var(--tab-recruits); stop-opacity: 0.08"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -136,9 +136,9 @@
           <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.06"/>
-                <stop offset="50%" style="stop-color: var(--tab-production); stop-opacity: 0.04"/>
-                <stop offset="100%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.07"/>
+                <stop offset="0%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.12"/>
+                <stop offset="50%" style="stop-color: var(--tab-production); stop-opacity: 0.08"/>
+                <stop offset="100%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.14"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -738,8 +738,8 @@ async function openFundDetail(trackId) {
   height: 220px;
   top: 10%;
   right: -60px;
-  background: color-mix(in srgb, var(--tab-production) 5.5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-production) 7%, transparent);
+  background: color-mix(in srgb, var(--tab-production) 11.6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-production) 14.7%, transparent);
   animation: floatBob 8s ease-in-out infinite;
 }
 
@@ -748,8 +748,8 @@ async function openFundDetail(trackId) {
   height: 160px;
   bottom: 25%;
   left: -40px;
-  background: color-mix(in srgb, var(--tab-recruits) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-recruits) 6%, transparent);
+  background: color-mix(in srgb, var(--tab-recruits) 10.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-recruits) 12.6%, transparent);
   animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 
@@ -758,7 +758,7 @@ async function openFundDetail(trackId) {
   height: 90px;
   top: 30%;
   left: 8%;
-  background: color-mix(in srgb, var(--tab-commission) 6%, transparent);
+  background: color-mix(in srgb, var(--tab-commission) 12.6%, transparent);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 
@@ -767,8 +767,8 @@ async function openFundDetail(trackId) {
   height: 120px;
   top: 55%;
   right: 6%;
-  background: color-mix(in srgb, var(--tab-comparison) 4.5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-comparison) 5%, transparent);
+  background: color-mix(in srgb, var(--tab-comparison) 9.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-comparison) 10.5%, transparent);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 
@@ -777,7 +777,7 @@ async function openFundDetail(trackId) {
   height: 50px;
   top: 18%;
   right: 22%;
-  background: color-mix(in srgb, var(--tab-emails) 6%, transparent);
+  background: color-mix(in srgb, var(--tab-emails) 12.6%, transparent);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 
@@ -786,8 +786,8 @@ async function openFundDetail(trackId) {
   height: 280px;
   bottom: 8%;
   right: -90px;
-  background: color-mix(in srgb, var(--tab-maslaka) 4%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-maslaka) 5%, transparent);
+  background: color-mix(in srgb, var(--tab-maslaka) 8.4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-maslaka) 10.5%, transparent);
   animation: floatBob 12s ease-in-out infinite 0.5s;
 }
 
@@ -796,8 +796,8 @@ async function openFundDetail(trackId) {
   height: 65px;
   bottom: 35%;
   left: 18%;
-  background: color-mix(in srgb, var(--tab-ai) 7%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-ai) 6%, transparent);
+  background: color-mix(in srgb, var(--tab-ai) 14.7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-ai) 12.6%, transparent);
   animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
 }
 
