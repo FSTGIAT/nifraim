@@ -4,11 +4,16 @@
          where there's no tabs strip to dock it inside. Items fan DOWN from
          the trigger here — fanning left/across would push items off the
          viewport's left edge since the trigger sits at left:32px. -->
-    <CircleMenuIsland
+    <!-- Home gets a nav rail with the user on it; inside a tab the strip keeps
+         the round circle-menu button, because there the strip IS the
+         navigation and a rail would be a second answer to one question.
+         Mounted OUTSIDE the view Transition on purpose: inside `.home-view`
+         it would inherit `.view-receding` and fade away with the grid every
+         time a card launches. -->
+    <HomeSidebar
       v-if="viewMode === 'home'"
       :items="circleMenuItems"
-      layout="down"
-      class="ws-floating-menu"
+      :user="auth.user"
       @select="onMenuSelect"
     />
 
@@ -109,10 +114,10 @@
           <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-                <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-                <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-                <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+                <stop offset="0%" style="stop-color: var(--tab-production); stop-opacity: 0.1"/>
+                <stop offset="30%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.06"/>
+                <stop offset="60%" style="stop-color: var(--tab-recruits); stop-opacity: 0.09"/>
+                <stop offset="100%" style="stop-color: var(--tab-production); stop-opacity: 0.05"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -120,10 +125,10 @@
           <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-                <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-                <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-                <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-                <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+                <stop offset="0%" style="stop-color: var(--tab-recruits); stop-opacity: 0.08"/>
+                <stop offset="40%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.05"/>
+                <stop offset="70%" style="stop-color: var(--tab-production); stop-opacity: 0.07"/>
+                <stop offset="100%" style="stop-color: var(--tab-recruits); stop-opacity: 0.04"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -131,9 +136,9 @@
           <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-                <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-                <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+                <stop offset="0%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.06"/>
+                <stop offset="50%" style="stop-color: var(--tab-production); stop-opacity: 0.04"/>
+                <stop offset="100%" style="stop-color: var(--tab-maslaka); stop-opacity: 0.07"/>
               </linearGradient>
             </defs>
             <path fill="url(#hwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -276,6 +281,7 @@ import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import BatchResultsToast from '../components/workspace/BatchResultsToast.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
+import HomeSidebar from '../components/workspace/HomeSidebar.vue'
 import MessengerDock from '../components/workspace/MessengerDock.vue'
 import { useMessengerStore } from '../stores/messenger.js'
 import FundTrackVizPanel from '../components/workspace/FundTrackVizPanel.vue'
@@ -714,6 +720,12 @@ async function openFundDetail(trackId) {
   z-index: 1;
 }
 
+/* The ambient wash takes the TAB palette, one colour per blob, rather than
+   seven shades of orange. `tab_identity_system` is explicit that orange is the
+   brand ACTION colour and never an identity — an all-orange home was that
+   violation at full-screen size. Home is the index of every tab, so it reads
+   as all of them at once. (The upload empty states keep their orange circles
+   and waves; that pairing is pinned to uploads, not to this screen.) */
 .float-circle {
   position: fixed;
   border-radius: 50%;
@@ -726,8 +738,8 @@ async function openFundDetail(trackId) {
   height: 220px;
   top: 10%;
   right: -60px;
-  background: rgba(245, 124, 0, 0.045);
-  border: 1px solid rgba(245, 124, 0, 0.06);
+  background: color-mix(in srgb, var(--tab-production) 5.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-production) 7%, transparent);
   animation: floatBob 8s ease-in-out infinite;
 }
 
@@ -736,8 +748,8 @@ async function openFundDetail(trackId) {
   height: 160px;
   bottom: 25%;
   left: -40px;
-  background: rgba(245, 124, 0, 0.035);
-  border: 1px solid rgba(245, 124, 0, 0.05);
+  background: color-mix(in srgb, var(--tab-recruits) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-recruits) 6%, transparent);
   animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 
@@ -746,7 +758,7 @@ async function openFundDetail(trackId) {
   height: 90px;
   top: 30%;
   left: 8%;
-  background: rgba(245, 124, 0, 0.05);
+  background: color-mix(in srgb, var(--tab-commission) 6%, transparent);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 
@@ -755,8 +767,8 @@ async function openFundDetail(trackId) {
   height: 120px;
   top: 55%;
   right: 6%;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.04);
+  background: color-mix(in srgb, var(--tab-comparison) 4.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-comparison) 5%, transparent);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 
@@ -765,7 +777,7 @@ async function openFundDetail(trackId) {
   height: 50px;
   top: 18%;
   right: 22%;
-  background: rgba(255, 152, 0, 0.055);
+  background: color-mix(in srgb, var(--tab-emails) 6%, transparent);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 
@@ -774,8 +786,8 @@ async function openFundDetail(trackId) {
   height: 280px;
   bottom: 8%;
   right: -90px;
-  background: rgba(245, 124, 0, 0.025);
-  border: 1px solid rgba(245, 124, 0, 0.035);
+  background: color-mix(in srgb, var(--tab-maslaka) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-maslaka) 5%, transparent);
   animation: floatBob 12s ease-in-out infinite 0.5s;
 }
 
@@ -784,8 +796,8 @@ async function openFundDetail(trackId) {
   height: 65px;
   bottom: 35%;
   left: 18%;
-  background: rgba(255, 183, 77, 0.06);
-  border: 1px solid rgba(255, 183, 77, 0.05);
+  background: color-mix(in srgb, var(--tab-ai) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-ai) 6%, transparent);
   animation: floatBob 8.5s ease-in-out infinite reverse 1.5s;
 }
 
