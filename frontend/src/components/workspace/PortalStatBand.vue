@@ -39,6 +39,31 @@
         </div>
       </div>
     </div>
+
+    <span class="cockpit-sep" aria-hidden="true"></span>
+
+    <!-- Section 3 — the two workbooks the batch produces.
+         These used to be a download icon on EVERY portal card: 18 buttons for
+         2 files, and each one served the merged workbook for ALL companies
+         regardless of the card it sat on, so the icon on "אלטשולר" promised
+         Altshuler and delivered everyone. They belong beside the run stats —
+         this band already reports what the batch did; these are what it made. -->
+    <div class="files">
+      <span class="files-lead">הקבצים המאוחדים</span>
+      <div class="files-btns">
+        <button v-for="f in MERGED_FILES" :key="f.path" class="file-btn" type="button"
+                :disabled="busyFile === f.path" :title="f.hint" @click="download(f)">
+          <span v-if="busyFile === f.path" class="file-spin" aria-hidden="true"></span>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>{{ f.label }}</span>
+        </button>
+      </div>
+      <p v-if="fileError" class="files-err">{{ fileError }}</p>
+    </div>
   </div>
 </template>
 
@@ -46,8 +71,42 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
+import { downloadViaApi, XLSX_MIME } from '../../utils/downloadFile.js'
+
+
+// The run-all batch folds every company into exactly two workbooks
+// (services/portal_automation/aggregate.py), so there are exactly two things
+// to download here — not one per portal.
+const MERGED_FILES = [
+  { path: '/production/commission-export.xlsx', label: 'נפרעים',
+    fallback: 'נפרעים מאוחד.xlsx',
+    hint: 'כל דוחות הנפרעים מכל החברות בקובץ אחד' },
+  { path: '/production/export.xlsx', label: 'פרודוקציה',
+    fallback: 'פרודוקציה מאוחדת.xlsx',
+    hint: 'כל דוחות הפרודוקציה מכל החברות בקובץ אחד' },
+]
 
 const store = usePortalAutomationStore()
+
+const busyFile = ref(null)
+const fileError = ref('')
+
+async function download(f) {
+  if (busyFile.value) return
+  busyFile.value = f.path
+  fileError.value = ''
+  try {
+    await downloadViaApi(f.path, f.fallback, XLSX_MIME)
+  } catch (e) {
+    // 404 means the merge has not produced this workbook yet — say so, rather
+    // than leaving a button that appears to do nothing.
+    fileError.value = e?.response?.status === 404
+      ? `אין עדיין קובץ ${f.label} מאוחד — הריצו הורדה אוטומטית תחילה.`
+      : `ההורדה של ${f.label} נכשלה.`
+  } finally {
+    busyFile.value = null
+  }
+}
 
 const ICONS = {
   active: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>',
@@ -158,6 +217,55 @@ const tiles = computed(() => [
 .gauge-lbl { font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
 
 .cockpit-sep { width: 1px; align-self: stretch; margin: 6px 0; background: linear-gradient(180deg, transparent, rgba(24,24,24,0.1), transparent); }
+
+/* ── The merged workbooks ──
+   Sits at the end of the band (visually far-left in RTL), behind the same
+   hairline separator the gauge uses. Tokens come from the band's own blue
+   (--chart-9), not the hero's gold: this strip is information, and the two
+   downloads are its quietest element. */
+.files {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.files-lead {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--text-secondary, #6b7280);
+}
+.files-btns { display: flex; gap: 8px; }
+.file-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px; border-radius: 10px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--chart-9, #2F73C4) 22%, transparent);
+  color: var(--chart-9, #2F73C4);
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.file-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--chart-9, #2F73C4) 8%, #fff);
+  border-color: var(--chart-9, #2F73C4);
+  transform: translateY(-1px);
+}
+.file-btn:focus-visible { outline: 2px solid var(--chart-9, #2F73C4); outline-offset: 2px; }
+.file-btn:disabled { opacity: 0.6; cursor: progress; }
+.file-btn svg { opacity: 0.7; }
+.file-spin {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: fileSpin 0.7s linear infinite;
+}
+@keyframes fileSpin { to { transform: rotate(360deg); } }
+/* Only rendered on failure, so it never affects the band's resting height. */
+.files-err {
+  max-width: 230px;
+  font-size: 11.5px; font-weight: 600; line-height: 1.5;
+  color: var(--red-deep, #C23934);
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-spin { animation-duration: 2s; }
+  .file-btn:hover:not(:disabled) { transform: none; }
+}
 
 /* ── Stat tiles ── */
 .tiles {

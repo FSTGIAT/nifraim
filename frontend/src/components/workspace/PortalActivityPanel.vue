@@ -6,12 +6,24 @@
         <span class="acard__eyebrow">המחשב המקומי</span>
       </header>
       <div class="worker" :class="worker.online ? 'worker--on' : 'worker--off'">
-        <span class="worker__dot" aria-hidden="true"></span>
+        <!-- The icon carries the state, not just a coloured dot: colour alone
+             is not an accessible signal (ux `color-not-only`), and a grey dot
+             beside grey text was the whole of the old card. -->
+        <span class="worker__glyph">
+          <WorkerPulseIsland v-if="worker.online" color="var(--green-deep, #1B5E20)" />
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor"
+               stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="13" rx="2" />
+            <path d="M8 21h8M12 16v5" />
+            <template v-if="worker.online"><path d="m9 8 2 2 4-4" /></template>
+            <template v-else><path d="m9.5 7.5 5 5M14.5 7.5l-5 5" /></template>
+          </svg>
+        </span>
         <div class="worker__body">
           <span class="worker__state">{{ worker.online ? 'מחובר ופעיל' : 'מנותק' }}</span>
           <span class="worker__meta">
             <template v-if="worker.online">{{ worker.hostname || 'מחשב הסוכן' }}</template>
-            <template v-else-if="worker.last_seen">נראה לאחרונה {{ rel(worker.last_seen) }}</template>
+            <template v-else-if="lastSeenText">נראה לאחרונה {{ lastSeenText }}</template>
             <template v-else>המחשב לא דיווח עדיין</template>
           </span>
         </div>
@@ -74,6 +86,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
+import WorkerPulseIsland from './WorkerPulseIsland.vue'
 
 defineEmits(['view-results'])
 const store = usePortalAutomationStore()
@@ -118,6 +131,21 @@ function rel(iso) {
   return iso ? relativeHebrew(iso) : '—'
 }
 
+// A worker that never checked in comes back with a placeholder timestamp, and
+// `relativeHebrew` dutifully formats it as an absolute date once it is older
+// than a week — the card read "נראה לאחרונה 01.01.00", which is not a fact
+// about anything. Anything older than a year is "never reported", not a date.
+const YEAR_MS = 365 * 24 * 60 * 60 * 1000
+const lastSeenText = computed(() => {
+  const raw = worker.value?.last_seen
+  if (!raw) return ''
+  let str = String(raw)
+  if (/T\d{2}:\d{2}/.test(str) && !/([zZ]|[+-]\d{2}:?\d{2})$/.test(str)) str += 'Z'
+  const t = new Date(str).getTime()
+  if (isNaN(t) || Date.now() - t > YEAR_MS) return ''
+  return relativeHebrew(raw)
+})
+
 let poll = null
 onMounted(() => {
   store.fetchWorkerStatus()
@@ -153,23 +181,36 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
 
 /* Worker */
 .worker { display: flex; align-items: center; gap: 12px; }
-.worker__dot {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
+/* `state` and `meta` are inline spans and Vue's default `condense` whitespace
+   handling removes the newline between them, so without this they render as
+   one run-on string ("מנותקהמחשב לא דיווח עדיין"). */
+.worker__body {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
 }
-.worker--on .worker__dot {
-  background: var(--green);
-  box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5);
-  animation: worker-pulse 1.8s ease-out infinite;
+/* The icon tile replaces the bare dot. Both states share the geometry so the
+   card does not reflow when the worker connects; only colour and motion change
+   (ux `layout-shift-avoid`). The Remotion heartbeat lives inside this box and
+   is mounted only when online. */
+.worker__glyph {
+  position: relative; flex-shrink: 0;
+  width: 46px; height: 46px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: var(--bg); color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
-@keyframes worker-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0.5); }
-  70%  { box-shadow: 0 0 0 8px rgba(46, 132, 74, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(46, 132, 74, 0); }
+.worker__glyph svg { position: relative; z-index: 1; }
+.worker--on .worker__glyph {
+  background: color-mix(in srgb, var(--green, #2E844A) 12%, #fff);
+  border-color: color-mix(in srgb, var(--green, #2E844A) 28%, transparent);
+  color: var(--green-deep, #1B5E20);
 }
-.worker__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.worker--off .worker__glyph {
+  background: var(--bg);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
 .worker__state { font-size: 14px; font-weight: 800; color: var(--text); }
 .worker--off .worker__state { color: var(--text-muted); }
 .worker__meta { font-size: 11.5px; color: var(--text-muted); }
@@ -269,7 +310,8 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .worker--on .worker__dot { animation: none; }
+  /* The heartbeat itself is handled inside WorkerPulseIsland, which skips
+     Remotion entirely and paints a single static ring. */
   .batch__cta:hover { transform: none; }
 }
 </style>

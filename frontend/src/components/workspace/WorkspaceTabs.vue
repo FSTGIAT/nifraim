@@ -130,7 +130,7 @@ const tabs = [
   },
   {
     id: 'commission-rates',
-    label: 'טבלת עמלות',
+    label: 'מדף ההסכמים',
     description: 'ניהול שיעורי עמלות',
     accent: 'var(--tab-commission)',
     accentGlow: 'var(--tab-commission-wash)',

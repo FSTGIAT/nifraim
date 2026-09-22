@@ -42,6 +42,21 @@ export const TAB_ICONS = {
   'ai-library':
     '<path d="M232,56V200H160a32,32,0,0,0-32,32,32,32,0,0,0-32-32H24V56H96a32,32,0,0,1,32,32,32,32,0,0,1,32-32Z" opacity="0.2"/><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/><path d="M188,64 C190,80 196,86 212,88 C196,90 190,96 188,112 C186,96 180,90 164,88 C180,86 186,80 188,64 Z"/>',
 
+  // bank — the pension CLEARINGHOUSE (מסלקה פנסיונית). Drawn from primitives
+  // rather than vendored, so the geometry is verifiable here: a tinted
+  // pediment over its own outline, four columns, architrave and plinth.
+  // Without this entry AppIcon fell through to `|| ''` and rendered an empty
+  // 256×256 svg — the blank rounded square on the workspace card.
+  maslaka:
+    '<path d="M128,26,242,86H14Z" opacity="0.2"/>'
+    + '<path fill-rule="evenodd" d="M124.4,18.9a8,8,0,0,1,7.2,0l114,60A8,8,0,0,1,242,94H14a8,8,0,0,1-3.6-15.1ZM128,35,47.3,78H208.7Z"/>'
+    + '<rect x="44" y="106" width="20" height="68" rx="5"/>'
+    + '<rect x="90" y="106" width="20" height="68" rx="5"/>'
+    + '<rect x="146" y="106" width="20" height="68" rx="5"/>'
+    + '<rect x="192" y="106" width="20" height="68" rx="5"/>'
+    + '<rect x="28" y="186" width="200" height="16" rx="6"/>'
+    + '<rect x="16" y="214" width="224" height="16" rx="7"/>',
+
   // lightning — portal automation
   'portal-automation':
     '<path d="M96,240l16-80L48,136,160,16,144,96l64,24Z" opacity="0.2"/><path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7l-112,120a8,8,0,0,0,3,13l57.63,21.61L88.16,238.43a8,8,0,0,0,13.69,7l112-120A8,8,0,0,0,215.79,118.17ZM109.37,214l10.47-52.38a8,8,0,0,0-5-9.06L62,132.71l84.62-90.66L136.16,94.43a8,8,0,0,0,5,9.06l52.8,19.8Z"/>',

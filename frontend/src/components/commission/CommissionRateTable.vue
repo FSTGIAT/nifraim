@@ -5,7 +5,7 @@
       <div class="hero-copy">
         <span class="hero-eyebrow">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
-          טבלת עמלות
+          עמלות נפרעים
         </span>
         <h2 class="hero-title">מדף ההסכמים שלך</h2>
         <p v-if="!rates.length" class="hero-sub">העלו הסכם עמלות והשיעורים יופיעו כאן על המדף.</p>
