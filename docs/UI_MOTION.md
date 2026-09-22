@@ -1,4 +1,4 @@
-# App launch morph — pressing a home card opens its tab
+# App launch morph — pressing a card or a pill opens its tab
 
 > Scope: the iOS-springboard transition between the home card grid and a tab.
 > Written 2026-09-23. Companion to `docs/ARCHITECTURE.md`; the conventions it
@@ -36,8 +36,8 @@ the grid has to exist before the destination card can be measured.
 | File | Role |
 |---|---|
 | `composables/useLaunchMorph.js` | the whole motion: timing, keyframes, measuring |
-| `components/workspace/WorkspaceTabs.vue` | `onCardPress` — the card reports its own rect; `data-tab` for measuring on the way back |
-| `views/WorkspaceView.vue` | owns the surface, the glyph, `onCardSelect` / `goHome` |
+| `components/workspace/WorkspaceTabs.vue` | `onCardPress` / `onPillPress` → `geometryOf` — the pressed element reports its own rect; `data-tab` for measuring on the way back |
+| `views/WorkspaceView.vue` | owns the surface, the glyph, `onCardSelect` / `onPillSelect` / `goHome` |
 
 Timing knobs are the consts at the top of the composable: `OPEN_MS` 680,
 `CLOSE_MS` 460, `DIP` 0.955, `OPEN_ARRIVE` 0.62, `OPEN_DISSOLVE` 0.82,
@@ -73,9 +73,10 @@ frames exactly where the eye was following. `commit()` fires at
 `OPEN_ARRIVE + 0.02`, while the surface is stationary and opaque. Any hitch
 happens under cover.
 
-**`view-switch` is suppressed while the morph runs.** `WorkspaceView`'s slide
-would otherwise play underneath it — two animations arguing over one swap. The
-Transition's `name` binds to `view-none` for the duration.
+**Both Transitions are suppressed while the morph runs.** `view-switch`
+(home ↔ content) and `tab-switch` (tab ↔ tab) would otherwise play underneath
+it — two animations arguing over one swap. Each Transition's `name` binds to
+`view-none` for the duration.
 
 **Dismiss waits for the card, not for a frame count.** The grid sits behind an
 `out-in` Transition and is not in the DOM the frame after `commit`. The
@@ -106,10 +107,27 @@ Without either, the travel is a featureless box growing and reads as a flash.
   `WorkspaceTabs.vue`; a tab missing an entry there gets no glyph tint and no
   ambient hover loop (that gap is how `maslaka` was found).
 
-## 5. Where it does NOT apply
+## 5. Two origins, one motion
 
-Only a press on a home card morphs. The strip pills, the setup wizard, the
-batch toast and the command menu have no rectangle to grow from, so
+| Press | Grows out of | Recedes behind it | Commit |
+|---|---|---|---|
+| Home card (`select-card`) | the card's rect, radius 14 | the home grid | `activeTab` + `viewMode = 'content'` |
+| Strip pill (`select-pill`) | the pill's rect, stadium radius | the tab you are leaving | `activeTab` only |
+
+Both go through `launch()`; the only difference is the rectangle and the
+`from` argument. A pill is much wider than tall, so its travel reads
+differently from a card's — which is correct, it came from somewhere else.
+
+**`from` must name the view, not be a boolean.** Receding "whichever view is
+mounted" scaled the *incoming* tab down the moment a card launch committed,
+because by then home was gone and content was up.
+
+A pill press on the tab already open is dropped in `onPillPress` — re-launching
+the view you are looking at is a flash with no information in it.
+
+### Where it does NOT apply
+
+The setup wizard, the batch toast and the command menu carry no rectangle, so
 `onCardSelect` falls through to a plain switch — the `payload.rect` check is
 what distinguishes them. `prefers-reduced-motion` skips the morph entirely and
 falls back to the existing `view-switch` slide.

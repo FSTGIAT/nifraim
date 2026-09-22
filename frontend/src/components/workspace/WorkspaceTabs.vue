@@ -54,7 +54,7 @@
         class="strip-pill"
         :class="{ active: modelValue === tab.id }"
         :style="{ '--accent': tab.accent, '--accent-wash': tab.accentGlow, '--accent-ink': tab.ink }"
-        @click="$emit('update:modelValue', tab.id)"
+        @click="onPillPress($event, tab.id)"
       >
         <span class="strip-icon">
           <AppIcon :name="tab.id" :size="15" />
@@ -90,20 +90,31 @@ const props = defineProps({
   modelValue: { type: String, required: true },
   viewMode: { type: String, default: 'home' },
 })
-const emit = defineEmits(['update:modelValue', 'select-card', 'go-home'])
+const emit = defineEmits(['update:modelValue', 'select-card', 'select-pill', 'go-home'])
 
 /* The card hands up the rectangle it occupies, so the view it opens can grow
    out of exactly that box — the iOS springboard gesture. Measured at press
    time because the grid wraps and the card moves with the window. */
 function onCardPress(e, id) {
-  const el = e.currentTarget
+  emit('select-card', geometryOf(e.currentTarget, id))
+}
+
+/* Same gesture from the mini-strip: the pill you press is the rectangle the
+   next tab grows out of. A pill is much wider than tall, so the travel reads
+   differently from a card's — which is right, it came from somewhere else. */
+function onPillPress(e, id) {
+  if (props.modelValue === id) return
+  emit('select-pill', geometryOf(e.currentTarget, id))
+}
+
+function geometryOf(el, id) {
   const r = el.getBoundingClientRect()
-  emit('select-card', {
+  return {
     tab: id,
     rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     radius: parseFloat(getComputedStyle(el).borderRadius) || 14,
     accent: ANIM_COLORS[id] || '',
-  })
+  }
 }
 
 /* Which home card is hovered → mounts ONE ambient Remotion loop at a time. */

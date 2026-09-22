@@ -93,7 +93,7 @@
          one transition. -->
     <Transition :name="morphRunning ? 'view-none' : 'view-switch'" mode="out-in">
       <!-- HOME MODE -->
-      <div v-if="viewMode === 'home'" key="home" class="home-view" :class="{ 'home-view--receding': morphReceding }">
+      <div v-if="viewMode === 'home'" key="home" class="home-view" :class="{ 'view-receding': morphReceding === 'home' }">
         <!-- Floating blur circles -->
         <div class="float-circle fc-1"></div>
         <div class="float-circle fc-2"></div>
@@ -152,10 +152,11 @@
       </div>
 
       <!-- CONTENT MODE -->
-      <div v-else key="content">
+      <div v-else key="content" :class="{ 'view-receding': morphReceding === 'content' }">
         <WorkspaceTabs
           v-model="activeTab"
           :view-mode="viewMode"
+          @select-pill="onPillSelect"
           @go-home="goHome"
         >
           <template #strip-end>
@@ -170,7 +171,9 @@
 
         <main class="workspace-main">
           <div class="tab-content">
-            <Transition name="tab-switch" mode="out-in">
+            <!-- Same rule as the view switch: while the morph is running it
+                 owns the swap, or the tab slide plays underneath it. -->
+            <Transition :name="morphRunning ? 'view-none' : 'tab-switch'" mode="out-in">
               <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
@@ -376,7 +379,7 @@ function onCardSelect(payload) {
   // (the setup wizard, the batch toast, the command menu) has no rectangle to
   // grow from and just switches.
   if (rect && viewMode.value === 'home') {
-    morph.launch({ rect, radius: payload.radius, accent: payload.accent, tabId, commit })
+    morph.launch({ rect, radius: payload.radius, accent: payload.accent, tabId, from: 'home', commit })
   } else {
     commit()
   }
@@ -388,6 +391,22 @@ function onCardSelect(payload) {
       comparisonStore.autoCompare(productionStore.currentFile.id, uploadId).catch(() => {})
     }
   }
+}
+
+/* A pill press in the mini-strip. Same launch, different rectangle: it grows
+   out of the pill rather than out of a home card, and the tab you are leaving
+   is what falls back behind it. */
+function onPillSelect(payload) {
+  const tabId = payload.tab
+  if (tabId === activeTab.value) return
+  morph.launch({
+    rect: payload.rect,
+    radius: payload.radius,
+    accent: payload.accent,
+    tabId,
+    from: 'content',
+    commit: () => { activeTab.value = tabId },
+  })
 }
 
 function goHome() {
@@ -890,8 +909,8 @@ async function openFundDetail(trackId) {
   height: 3px;
   background: var(--launch-accent, transparent);
 }
-/* The springboard falls back as the app comes forward. */
-.home-view--receding {
+/* The view you are leaving falls back as the app comes forward. */
+.view-receding {
   transform: scale(0.965);
   opacity: 0.45;
   transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.42s ease;
@@ -899,7 +918,7 @@ async function openFundDetail(trackId) {
 .view-none-enter-active,
 .view-none-leave-active { animation: none; transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .home-view--receding { transform: none; opacity: 1; transition: none; }
+  .view-receding { transform: none; opacity: 1; transition: none; }
 }
 
 /* View switch transitions */

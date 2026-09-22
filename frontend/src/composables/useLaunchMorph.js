@@ -108,8 +108,14 @@ export function useLaunchMorph() {
   const tab = ref('')
   /** The transform the surface mounts with, before the animation takes over. */
   const seed = ref(null)
-  /** The home grid recedes behind the launching app, as the springboard does. */
-  const receding = ref(false)
+  /**
+   * Which view falls back behind the launching app: '' | 'home' | 'content'.
+   * A card launches out of the home grid; a strip pill launches out of the
+   * tab you are already in. Naming the target matters — leaving it a boolean
+   * receded whichever view happened to be mounted, so a card launch scaled the
+   * INCOMING tab down the moment it committed.
+   */
+  const receding = ref('')
 
   let current = null
 
@@ -188,7 +194,7 @@ export function useLaunchMorph() {
    * Launch: card rect → viewport. `commit` swaps the view underneath, fired
    * once the surface has arrived and is holding still.
    */
-  async function launch({ rect, radius = 14, accent: ink = '', tabId = '', commit }) {
+  async function launch({ rect, radius = 14, accent: ink = '', tabId = '', from = 'home', commit }) {
     if (!rect || prefersReduced()) {
       commit?.()
       return
@@ -197,7 +203,7 @@ export function useLaunchMorph() {
     tab.value = tabId
     seedFrom(rect, radius)
     running.value = true
-    receding.value = true
+    receding.value = from
     // Let the surface mount at the card's position before it moves.
     await nextFrame()
 
@@ -206,7 +212,7 @@ export function useLaunchMorph() {
     setTimeout(() => commit?.(), Math.round(OPEN_MS * (OPEN_ARRIVE + 0.02)))
     await done
     running.value = false
-    receding.value = false
+    receding.value = ''
     tab.value = ''
   }
 
