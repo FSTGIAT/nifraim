@@ -148,7 +148,7 @@
                 <!-- Avatar picker. Each swatch is the real gradient for that
                      seed (shared math), so what you tap is what you get. -->
                 <p class="msgr-settings-label">האווטאר שלך</p>
-                <p class="msgr-settings-hint">בחרו מראה. כל מי שמתכתב איתכם יראה אותו.</p>
+                <p class="msgr-settings-hint">בחרו מראה. כל מי שמתכתב איתכם יראה אותו. גללו לעוד.</p>
                 <div class="msgr-avatars" role="radiogroup" aria-label="בחירת אווטאר">
                   <button
                     v-for="s in avatarChoices"
@@ -680,12 +680,26 @@ function onEsc () {
 .msgr-settings-rule { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
 
 /* -------------------------------------------------------- avatar picker */
-/* 4×2 rather than 8×1: eight 40px swatches plus borders overflow 380px. */
+/* 4 across rather than 8×1: eight 40px swatches plus borders overflow 380px.
+   The set has since grown from 8 portraits to 30, which is eight rows — the
+   panel's `overflow: hidden` then sliced the top and bottom rows in half and
+   there was no way to reach the ones past the fold. It scrolls now, with
+   enough padding that a selected swatch's ring is never clipped by the
+   scrollport, and a height that deliberately cuts mid-row so it reads as
+   scrollable rather than as finished. */
 .msgr-avatars {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   justify-items: center;
+  max-height: 172px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  overscroll-behavior: contain;
+}
+.msgr-avatars::-webkit-scrollbar { width: 6px; }
+.msgr-avatars::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 3px;
 }
 .msgr-avatar-swatch {
   display: grid; place-items: center;

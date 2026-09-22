@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -114,6 +115,16 @@ async def health():
                 pool_info[attr] = None
     return {"status": "ok", "pool": pool_info}
 
+
+# Python 3.11's mimetypes table has no .webp (verified: `guess_type("x.webp")`
+# returns (None, None) on python:3.11-slim, which is what the image runs), so
+# Starlette fell back to `text/plain` for every webp the app serves — the
+# onboarding artwork, the portal/emails illustrations and the avatar
+# portraits. Browsers sniff the RIFF header and render them anyway, which is
+# why it went unnoticed, but a wrong Content-Type breaks caching heuristics
+# and anything stricter than a browser.
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("image/avif", ".avif")
 
 # Serve Vue frontend static files in production
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
