@@ -15,7 +15,7 @@ appears in no standard, and would have been rejected before anyone read it.
     │   ├─ SUG-MIMSHAK = 6                 6 = ממשק אירועים
     │   ├─ MISPAR-GIRSAT-XML = 007
     │   ├─ TAARICH-BITZUA                  YYYYMMDDHHMMSS
-    │   ├─ KOD-SVIVAT-AVODA                1 in the real production sample
+    │   ├─ KOD-SVIVAT-AVODA                1 = TEST, 2 = PRODUCTION (per the XSD)
     │   ├─ NetuneiGoremSholech             us
     │   └─ NetuneiGoremNimaan              the מסלקה (ח.פ 514813450)
     ├─ GufHamimshak
@@ -200,10 +200,14 @@ def build_events_request(
         raise ValueError(f"action {action_code} requires a customer id")
 
     now = when or datetime.now()
-    # KOD-SVIVAT-AVODA: the real production sample from an agent carries "1".
-    # Still worth confirming with Swiftness — sending production traffic into the
-    # test environment is silent, and this is the field that decides it.
-    env = environment_code or ("1" if not settings.MASLAKA_TEST_ENVIRONMENT else "2")
+    # KOD-SVIVAT-AVODA: **1 = TEST, 2 = PRODUCTION**, per the XSD's own
+    # <xsd:documentation>. This fallback used to carry the INVERTED mapping —
+    # the same inversion that made four live sends unanswerable on 2026-09-10.
+    # It survived the fix because `environment()` was corrected and this third
+    # copy was not, and every production caller passes `environment_code`
+    # explicitly, so no test ever exercised it. Defer to the one helper instead
+    # of restating the rule: a rule written down twice is a rule that goes wrong.
+    env = environment_code or environment()[0]
 
     root = ET.Element("Mimshak", {"xmlns:xsi": XSI_NS})
 
@@ -343,20 +347,12 @@ def build_events_request(
 
 
 # ─── The wire clock is Israel local time, ALWAYS ────────────────────────────
-ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
-
-
-def maslaka_now() -> datetime:
-    """Wall-clock time in Israel, naive — the clock every מסלקה timestamp uses.
-
-    `TAARICH-BITZUA` and the filename's 14-digit stamp are read by an Israeli
-    regulatory system as Israel local time. Neither `datetime.now()` nor
-    `utcnow()` is safe to use here: the Gateway VM runs UTC (so `now()` is 3h
-    behind in summer) and the dev box runs IDT (so `utcnow()` is 3h behind
-    there too). On 2026-09-10 we sent one file stamped 17:38 while the clock in
-    Israel read 20:39. Convert explicitly or the value is wrong on some host.
-    """
-    return datetime.now(ISRAEL_TZ).replace(tzinfo=None)
+# Re-exported from `filenames`, NOT redefined. The payload stamp and the
+# filename stamp must be the same instant, and the surest way to guarantee that
+# is for there to be only one function. Two copies of this rule is how the
+# 2026-09-22 filename bug happened (UTC name over an Israel-time payload), and
+# three copies of the environment rule is how the 09-10 sends went out inverted.
+from app.services.maslaka.filenames import ISRAEL_TZ, maslaka_now  # noqa: E402,F401
 
 
 # ─── One source of truth for test-vs-production ─────────────────────────────

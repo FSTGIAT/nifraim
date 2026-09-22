@@ -31,7 +31,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.services.maslaka import orchestration
-from app.services.maslaka.events import ACTION_CODES, build_events_request
+from app.services.maslaka.events import ACTION_CODES, build_events_request, maslaka_now
 from app.services.maslaka.filenames import build_filename, parse_filename
 from app.services.maslaka.xsd import schema_for, validate as xsd_validate
 from app.services.mimshak import parse_mimshak_dat
@@ -391,6 +391,7 @@ async def preview_request(
         sequence=int(payload.get("sequence") or 1),
         product_family="000",                  # only אחזקות/טרום-ייעוץ files name a family
         file_type="DAT" if env == "PRD" else "TST",
+        when=maslaka_now(),                    # Israel clock, never the host's
     )
 
     # State what is still missing rather than letting a rendered request imply

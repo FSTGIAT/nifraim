@@ -114,6 +114,7 @@ Invariants:
 
 | I need to change / understand… | Go to |
 |---|---|
+| **AI chat charts (viz) — why a graph did/didn't open, latency** | `docs/AI_VIZ.md` → `ai_service.stream_chat`, `ai_viz_fallback.py`, `AiVizPanel.vue` |
 | **Parse a new insurer Excel format** | `services/parser_service.py` + `utils/hebrew_mappings.py` (see CLAUDE.md "How to Add a Parser") |
 | **Hebrew → DB column mapping / format signatures** | `utils/hebrew_mappings.py` |
 | **Which reporting month a file is *for*** | `parser_service.py::detect_period_month` |
@@ -395,6 +396,8 @@ reCAPTCHA.
    `parser_service.py::detect_period_month`
 
 ## 6. Claude (AI) invariants
+
+> Chat charts (`<<VIZ:…>>` → `AiVizPanel`): see [`docs/AI_VIZ.md`](AI_VIZ.md) — the panel is mounted once at the `WorkspaceView` root; chat model is `claude-sonnet-5` → `claude-haiku-4-5`.
 
 1. **Forced tool_use** (`tool_choice=save_extracted_document`) → validated dict,
    never text-JSON. Model `claude-sonnet-4-6` → Haiku fallback. — `document_extraction.py`

@@ -171,7 +171,7 @@ export function MailFlowLoop() {
         </g>
         {/* paper plane */}
         <g transform={`translate(${px} ${py}) rotate(-24)`} opacity={planeOp}>
-          <g transform={`scaleY(${flap})`}>
+          <g transform={`scale(1 ${flap})`}>
             <path d="M-18 0 L18 -12 L2 2 L18 12 Z" fill={ACC} />
             <path d="M-18 0 L2 2 L4 12 Z" fill={INK} />
           </g>

@@ -45,6 +45,24 @@
         <div class="toolbar-end">
           <!-- History: last 3 commission files behind a clean icon popover.
                Clicking a file opens its comparison. -->
+          <!-- Products paid at a rate that disagrees with the agreement.
+               This was a full-width purple band above the dashboard; every
+               figure it carried now rides in the tooltip, and the band's one
+               action is the click. -->
+          <button
+            v-if="mismatch.count"
+            class="toolbar-icon"
+            type="button"
+            :title="mismatchTitle"
+            :aria-label="mismatchTitle"
+            @click="dashRef?.showMismatchCustomers()"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <span class="toolbar-icon-badge ltr-number">{{ mismatch.count }}</span>
+          </button>
           <RecentFilesPopover @select="onCommissionFileSelect" />
         </div>
       </div>
@@ -94,6 +112,8 @@
             :periodFilesCount="displayResult?.period_files_count || 0"
             :periodFilesExcluded="displayResult?.period_files_excluded || 0"
             @initial-company-applied="drillCompany = null"
+            @mismatch="mismatch = $event"
+            ref="dashRef"
           />
         </div>
       </Transition>
@@ -116,6 +136,7 @@ import { useComparisonStore } from '../../stores/comparison.js'
 import { useUploadsStore } from '../../stores/uploads.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
+
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
 import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
 import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
@@ -124,6 +145,22 @@ import EmptyStateGuide from './EmptyStateGuide.vue'
 defineEmits(['go-to-portal-automation'])
 
 const productionStore = useProductionStore()
+
+// Mismatch figures, lifted from the dashboard so the toolbar can carry them.
+const dashRef = ref(null)
+const mismatch = ref({ count: 0, under: 0, over: 0, overCount: 0 })
+
+const money = (n) => '\u20aa' + Math.round(Number(n) || 0).toLocaleString('en-US')
+
+// Every number the removed band showed, in the tooltip — a count alone would
+// have dropped "how much is missing", which is the part worth chasing.
+const mismatchTitle = computed(() => {
+  const m = mismatch.value
+  if (!m.count) return ''
+  let t = `${m.count} מוצרים שולמו בסכום שונה מהשיעור שבהסכם · חסר ${money(m.under)}`
+  if (m.overCount) t += ` · שולם ביתר ${money(m.over)}`
+  return t + ' — לחצו להצגת הלקוחות'
+})
 const comparisonStore = useComparisonStore()
 const uploadsStore = useUploadsStore()
 const portalAutomationStore = usePortalAutomationStore()
@@ -395,6 +432,32 @@ onMounted(async () => {
   border-radius: 6px;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Mismatch drill-in, beside the recent-files icon. Both are icon-sized
+   affordances on the same toolbar, so they share a footprint. */
+.toolbar-icon {
+  position: relative;
+  width: 36px; height: 36px; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg); color: var(--text-secondary, #6b7280);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.toolbar-icon:hover {
+  border-color: var(--purple, #7C4DBE);
+  color: var(--purple, #7C4DBE);
+  background: var(--card-bg);
+}
+.toolbar-icon:focus-visible { outline: 2px solid var(--purple, #7C4DBE); outline-offset: 2px; }
+.toolbar-icon-badge {
+  position: absolute; top: -6px; inset-inline-start: -6px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--purple, #7C4DBE); color: #fff;
+  font-size: 10.5px; font-weight: 800; line-height: 1;
+  border: 2px solid var(--card-bg);
 }
 
 .toolbar-end {

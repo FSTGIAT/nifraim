@@ -112,10 +112,40 @@ def main() -> None:
     check("2100 builds when given one", b"<KOD-EIRUA>2100</KOD-EIRUA>" in prod.xml)
 
     # Environment: this decides whether real traffic hits the live vault.
-    check("TST → KOD-SVIVAT-AVODA 2", text_of(x, "KOD-SVIVAT-AVODA") == "2")
+    # **1 = TEST, 2 = PRODUCTION**, per the XSD's own <xsd:documentation>.
+    # These two only prove the explicit argument is honoured — both labels used
+    # to state the mapping BACKWARDS, which is how the inverted default below
+    # went unnoticed for twelve days.
+    check("explicit 2 → KOD-SVIVAT-AVODA 2 (PRODUCTION)",
+          text_of(x, "KOD-SVIVAT-AVODA") == "2")
     prd = build_events_request(action_code="9100", customer_id_number="043417252",
                                environment_code="1", allow_placeholder_identity=True).xml.decode()
-    check("PRD → KOD-SVIVAT-AVODA 1", text_of(prd, "KOD-SVIVAT-AVODA") == "1")
+    check("explicit 1 → KOD-SVIVAT-AVODA 1 (TEST)",
+          text_of(prd, "KOD-SVIVAT-AVODA") == "1")
+
+    # THE regression guard that was missing. Every production caller passes
+    # `environment_code`, so the builder's own fallback was never exercised —
+    # and it still held the pre-2026-09-10 INVERTED mapping, emitting `2`
+    # (PRODUCTION) for the test vault. It must agree with `environment()`, and
+    # with the filename suffix that is derived from the same call.
+    from app.config import settings as _s
+    from app.services.maslaka.events import environment
+    _saved_env = _s.MASLAKA_TEST_ENVIRONMENT
+    try:
+        for _test_env, _want_code, _want_suffix in ((True, "1", "TST"), (False, "2", "DAT")):
+            _s.MASLAKA_TEST_ENVIRONMENT = _test_env
+            _d = build_events_request(action_code="9100", customer_id_number="043417252",
+                                      allow_placeholder_identity=True).xml.decode()
+            _label = "TST" if _test_env else "PRD"
+            check(f"default (no environment_code) on {_label} → {_want_code}",
+                  text_of(_d, "KOD-SVIVAT-AVODA") == _want_code,
+                  str(text_of(_d, "KOD-SVIVAT-AVODA")))
+            check(f"default on {_label} agrees with environment() and the .{_want_suffix} suffix",
+                  environment() == (_want_code, _want_suffix)
+                  and text_of(_d, "KOD-SVIVAT-AVODA") == environment()[0],
+                  str(environment()))
+    finally:
+        _s.MASLAKA_TEST_ENVIRONMENT = _saved_env
 
     # Identity refusal on any path that could transport.
     from app.config import settings
@@ -134,6 +164,35 @@ def main() -> None:
     name = build_filename(direction="001", sender_id="043417252", service="EVENTS",
                           version="007", sequence=1, file_type="TST")
     parsed = parse_filename(name)
+    # ── The filename clock ────────────────────────────────────────────────
+    # `build_filename` defaulted to `datetime.now()` — the HOST clock. The dev
+    # box runs IDT so it looked perfect here, while the UTC Gateway named two
+    # real files 174253/174254 on 2026-09-22 with 204253 inside them. These
+    # assertions are deliberately host-INDEPENDENT: comparing against utcnow()
+    # catches the regression on a UTC box and an Israeli one alike.
+    from datetime import datetime as _dt, timedelta as _td
+    from app.services.maslaka.filenames import maslaka_now as _fn_now
+    from app.services.maslaka.events import maslaka_now as _ev_now
+
+    _off = (_fn_now() - _dt.utcnow()).total_seconds() / 3600
+    check("filename clock is Israel local, not UTC (offset 2h or 3h)",
+          1.9 < _off < 3.1, f"offset {_off:.2f}h")
+    check("filenames and events agree on the clock",
+          abs((_fn_now() - _ev_now()).total_seconds()) < 2)
+
+    _stamp = _dt(2026, 9, 22, 20, 42, 53)
+    _nm = build_filename(direction="001", sender_id="558638623", service="EVENTS",
+                         version="007", sequence=1, file_type="TST", when=_stamp)
+    check("an explicit `when` lands verbatim in the name",
+          "20260922204253" in _nm, _nm)
+
+    # The real invariant: the NAME and TAARICH-BITZUA must be the same instant.
+    _r = build_events_request(action_code="9100", customer_id_number="043417252",
+                              when=_stamp, sequence=1, allow_placeholder_identity=True)
+    check("name timestamp == TAARICH-BITZUA in the payload",
+          text_of(_r.xml.decode(), "TAARICH-BITZUA") == "20260922204253",
+          str(text_of(_r.xml.decode(), "TAARICH-BITZUA")))
+
     check("filename parses", parsed is not None, name)
     check("sender zero-padded to 12 in the filename",
           parsed and parsed.sender_id == "000043417252", parsed.sender_id if parsed else "")

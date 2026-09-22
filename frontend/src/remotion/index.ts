@@ -11,6 +11,8 @@ export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
 export { AutomationHeroLoop, AUTOMATION_HERO_LOOP_FRAMES } from './AutomationHeroLoop'
 export { CardAmbientLoop, CARD_AMBIENT_LOOP_FRAMES } from './CardAmbientLoop'
 export { WorkerPulse, WORKER_PULSE_FRAMES } from './WorkerPulse'
+export { AiOrb, AI_ORB_FRAMES } from './AiOrb'
+export { PlusPulse, PLUS_PULSE_FRAMES } from './PlusPulse'
 export {
   TAB_HERO_SCENES,
   TAB_HERO_LOOP_FRAMES,

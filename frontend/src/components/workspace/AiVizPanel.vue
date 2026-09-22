@@ -26,6 +26,22 @@
             </div>
             <div class="ai-viz-actions">
               <button
+                v-if="native && native.table"
+                class="ai-viz-icon-btn"
+                :class="{ 'ai-viz-icon-btn--on': showTable }"
+                type="button"
+                :title="showTable ? 'הצג תרשים' : 'הצג כטבלה'"
+                :aria-pressed="showTable"
+                @click="showTable = !showTable"
+              >
+                <svg v-if="!showTable" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>
+                </svg>
+                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 3v18h18"/><path d="M7 16V11M12 16V7M17 16v-3"/>
+                </svg>
+              </button>
+              <button
                 v-if="!loading"
                 class="ai-viz-icon-btn"
                 type="button"
@@ -52,7 +68,10 @@
               <span>טוען תצוגה…</span>
             </div>
             <div v-if="error" class="ai-viz-error">{{ error }}</div>
-            <div ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
+            <!-- Registered types render natively (hover, table view, RTL);
+                 anything else — fund-track — still plays in Remotion. -->
+            <AiChart v-if="native" :key="chartKey" :viz="activeViz" :show-table="showTable" />
+            <div v-show="!native" ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
           </div>
 
           <!-- Carousel nav (only when 2+ viz blocks). RTL-aware: in Hebrew,
@@ -104,6 +123,8 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import api from '../../api/client.js'
+import AiChart from '../ai-charts/AiChart.vue'
+import { nativeChartFor } from '../ai-charts/registry.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -124,6 +145,10 @@ const vizList = computed(() => {
 })
 const activeIdx = ref(0)
 const activeViz = computed(() => vizList.value[activeIdx.value] || null)
+// Native (registered) chart for the active payload, or null → Remotion.
+const native = computed(() => nativeChartFor(activeViz.value))
+const showTable = ref(false)
+const chartKey = ref(0)
 
 function goTo(i) {
   if (i < 0 || i >= vizList.value.length || i === activeIdx.value) return
@@ -207,9 +232,25 @@ async function hydrateViz(rawViz) {
   }
 }
 
+function releaseReactRoot() {
+  if (reactRoot) {
+    try { reactRoot.unmount() } catch { /* ignore */ }
+    reactRoot = null
+    currentMountEl = null
+  }
+}
+
 async function render() {
-  if (!activeViz.value || !mountEl.value) return
+  if (!activeViz.value) return
   error.value = null
+  if (native.value) {
+    // A native chart owns the body; drop any Remotion player still mounted
+    // from a previous slide so it stops rendering off-screen.
+    releaseReactRoot()
+    chartKey.value += 1
+    return
+  }
+  if (!mountEl.value) return
   try {
     const stack = await ensureReactStack()
     if (!mountEl.value) return
@@ -278,6 +319,7 @@ async function render() {
 
 function replay() {
   replayCounter += 1
+  showTable.value = false
   render()
 }
 
@@ -292,6 +334,7 @@ function onEscape(e) {
 // Re-render when the active viz changes (either because the parent set a
 // new payload OR because the user clicked a carousel arrow/dot).
 watch(activeViz, () => {
+  showTable.value = false
   if (props.open) nextTick(() => render())
 })
 
@@ -399,6 +442,10 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ai-viz-icon-btn--on {
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
 }
 .ai-viz-icon-btn:hover {
   background: var(--tab-ai-wash);

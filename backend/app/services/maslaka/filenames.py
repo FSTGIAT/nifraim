@@ -28,6 +28,33 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# The wire clock is ISRAEL LOCAL TIME. The Gateway VM runs UTC and the dev box
+# runs IDT, so `datetime.now()` is right on one and three hours wrong on the
+# other — and the dev box is the one the tests run on, which is why this hid.
+# Measured live 2026-09-22: the Gateway named two files 174253/174254 while the
+# clock in Israel read 204253. Same constant as `events.maslaka_now()`.
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+
+
+def maslaka_now() -> datetime:
+    """Wall-clock time in Israel, naive — the clock EVERY מסלקה timestamp uses.
+
+    THE one definition: `events.maslaka_now` is an alias of this, not a copy.
+    It lives in this module because `filenames` is pure formatting with no
+    `settings` dependency, so `events` can import it but not the reverse.
+
+    `TAARICH-BITZUA`, `MISPAR-HAKOVETZ` and the filename's 14-digit stamp are
+    all read by an Israeli regulatory system as Israel local time. Neither
+    `datetime.now()` nor `utcnow()` is safe: the Gateway runs UTC and the dev
+    box runs IDT, so each is correct on exactly one of them — and the tests run
+    on the dev box, which is why the filename bug survived a green suite.
+
+    Not a per-user value: the מסלקה's clock is Israel's for every agent on
+    every host, so it is a domain constant, not configuration.
+    """
+    return datetime.now(ISRAEL_TZ).replace(tzinfo=None)
 
 # ── Direction (AAA) ─────────────────────────────────────────────────────────
 DIRECTIONS: dict[str, str] = {
@@ -213,7 +240,10 @@ def build_filename(
         raise ValueError("sender_id has no digits")
     if len(digits) > 12:
         raise ValueError(f"sender_id longer than 12 digits: {digits!r}")
-    ts = (when or datetime.now()).strftime("%Y%m%d%H%M%S")
+    # NEVER `datetime.now()` here: on the UTC Gateway that names the file three
+    # hours before TAARICH-BITZUA inside it. Callers should still pass `when`
+    # so the name and the payload share ONE timestamp, not two close ones.
+    ts = (when or maslaka_now()).strftime("%Y%m%d%H%M%S")
     stem = (
         f"{str(direction).zfill(3)}"
         f"{digits.zfill(12)}"

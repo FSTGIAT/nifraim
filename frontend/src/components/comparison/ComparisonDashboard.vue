@@ -1,35 +1,5 @@
 <template>
   <div class="bi-dashboard">
-    <!-- AI insight card (התמונה הכוללת) -->
-    <AiInsightCard
-      v-if="aiViewContext"
-      :view-context="aiViewContext"
-      @open-sheet="openAiSheet"
-    />
-
-    <!-- ALERT: payments that disagree with the agreement. Only firm rates
-         (an agreement line that names the product) reach here, so every row
-         is a claim the agent can actually take to the insurer. -->
-    <div v-if="mismatchAlert.count" class="gap-alert" role="alert">
-      <span class="ga-icon" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      </span>
-      <div class="ga-text">
-        <strong>
-          <span class="ltr-number">{{ mismatchAlert.count }}</span>
-          מוצרים שולמו בסכום שונה מהשיעור שבהסכם
-        </strong>
-        <span class="ga-sub">
-          חסר סה"כ <span class="ltr-number">{{ fmtMoney(mismatchAlert.under) }}</span>
-          <template v-if="mismatchAlert.overCount">
-            · שולם ביתר <span class="ltr-number">{{ fmtMoney(mismatchAlert.over) }}</span>
-          </template>
-          · מחושב לפי האחוז שבטבלת העמלות מול מה שדווח בנפרעים
-        </span>
-      </div>
-      <button class="ga-action" @click="onLegendClick('matched')">הצג לקוחות</button>
-    </div>
-
     <!-- KPI Cards Row -->
     <div class="kpi-row">
       <div class="kpi-card kpi-blue">
@@ -382,27 +352,11 @@
       </Transition>
     </Teleport>
 
-    <!-- AI conversation sheet (teleported to body) -->
-    <AiConversationSheet
-      v-model:open="aiSheetOpen"
-      :view-title="aiViewContext?.viewTitle || ''"
-      :view-context="aiViewContext?.viewContextString || ''"
-      :initial-question="aiInitialQuestion"
-      @latest-vizs="onLatestVizs"
-    />
-
-    <!-- AI Remotion viz — centered modal overlay. Mirrors ProductionComparison.vue
-         so vizs emitted from the chat sheet actually render here too. -->
-    <AiVizPanel
-      v-model:open="aiVizOpen"
-      :vizs="activeVizs"
-    />
-
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, toRef } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, toRef } from 'vue'
 import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
@@ -411,10 +365,8 @@ import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
 import { normalizeCompany } from '../../utils/companyNorm.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
-import AiInsightCard from '../workspace/AiInsightCard.vue'
-import AiConversationSheet from '../workspace/AiConversationSheet.vue'
-import AiVizPanel from '../workspace/AiVizPanel.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
+import { useAiContextStore } from '../../stores/aiContext.js'
 
 const props = defineProps({
   customers: { type: Array, required: true },
@@ -434,7 +386,7 @@ const props = defineProps({
   periodFilesExcluded: { type: Number, default: 0 },
 })
 
-const emit = defineEmits(['drill-customer', 'initial-company-applied'])
+const emit = defineEmits(['drill-customer', 'initial-company-applied', 'mismatch'])
 
 const authStore = useAuthStore()
 const productMetric = ref('count')
@@ -443,32 +395,25 @@ const commissionRates = ref([])
 const showUnpaidStrip = ref(false)
 const companyFilter = ref(null)
 
-// AI assistant — inline insight card + side conversation sheet (mirrors ProductionComparison.vue)
-const aiSheetOpen = ref(false)
-const aiInitialQuestion = ref('')
+// The AI no longer owns a card, a sheet or a viz panel here — one widget on
+// the workspace rail does, and the sheet lives with it. This view's only job
+// is to keep the store told what is on screen, and to stop claiming context
+// once it unmounts (otherwise the assistant would still describe a comparison
+// the agent has navigated away from).
+// The mismatch figures and their drill-in now live in the tab toolbar as one
+// icon, so the parent needs both. The strip they replaced spent a full-width
+// band restating a number the icon carries in a badge.
+defineExpose({ showMismatchCustomers: () => onLegendClick('matched') })
+
+const aiCtx = useAiContextStore()
 const aiViewContext = useAiViewContext({
   viewKey: 'commission-comparison',
   customers: toRef(props, 'customers'),
   categoryLabel: toRef(props, 'categoryLabel'),
   companySources: toRef(props, 'companySources'),
 })
-function openAiSheet(question) {
-  aiInitialQuestion.value = question || ''
-  aiSheetOpen.value = true
-}
-watch(aiSheetOpen, (isOpen) => {
-  if (!isOpen) {
-    aiInitialQuestion.value = ''
-    aiVizOpen.value = false
-  }
-})
-
-const aiVizOpen = ref(false)
-const activeVizs = ref(null)
-function onLatestVizs(vizs) {
-  activeVizs.value = vizs
-  if (Array.isArray(vizs) && vizs.length) aiVizOpen.value = true
-}
+watch(aiViewContext, (ctx) => aiCtx.publish(ctx), { immediate: true })
+onUnmounted(() => aiCtx.clear())
 
 onMounted(async () => {
   try {
@@ -772,6 +717,11 @@ const mismatchAlert = computed(() => {
   }
   return { count, under, over, overCount }
 })
+
+// The tab toolbar renders these as one icon with a badge, so they have to
+// travel up. `immediate` because the toolbar must be right on first paint,
+// not only after the next recompute.
+watch(mismatchAlert, (v) => emit('mismatch', v), { immediate: true, deep: true })
 
 // ── Same distribution, broken down BY COMPANY ────────────────────────────
 // The נפרעים side is now one merged file covering every company, so a single

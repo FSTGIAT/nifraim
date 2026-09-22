@@ -38,6 +38,33 @@
       <NotificationBell />
     </div>
 
+    <!-- The AI assistant — one widget on the right rail, on every tab. It
+         replaced `AiInsightCard`, a full-width summary band that sat above
+         each comparison and existed nowhere else. Views publish their context
+         to the aiContext store; this opens the one conversation sheet. -->
+    <!-- Content mode only. The home screen already has AiChatWidget — a full
+         assistant panel with its own sources and suggestions — so a second
+         entry point to the same AI would be two doors to one room. -->
+    <div v-if="viewMode === 'content'" class="ws-ai-anchor">
+      <AiAssistantWidget />
+    </div>
+
+    <!-- ONE sheet for the whole workspace. It used to be rendered per
+         dashboard, so each carried its own copy plus its own viz plumbing —
+         which already exists here. -->
+    <AiConversationSheet
+      v-model:open="aiCtx.open"
+      :view-title="aiCtx.viewTitle"
+      :view-context="aiCtx.viewContextString"
+      :initial-question="aiCtx.initialQuestion"
+      @latest-vizs="onLatestVizs"
+    />
+
+    <!-- ONE viz panel for both modes. It lived inside the home-only block, so
+         a chart the content-mode sheet received set aiVizOpen on a panel that
+         was never mounted — the answer arrived, the graph never opened. -->
+    <AiVizPanel v-model:open="aiVizOpen" :vizs="activeVizs" />
+
     <!-- User-to-user messenger — collapsed pill in the BOTTOM-RIGHT (the only
          free corner). Self-contained: it never touches the worker/automation
          plane, and its presence heartbeat is a person, not a Windows PC. -->
@@ -118,7 +145,6 @@
             @select-card="onCardSelect"
           />
           <AiChatWidget @navigate-tab="onCardSelect" @latest-vizs="onLatestVizs" />
-          <AiVizPanel v-model:open="aiVizOpen" :vizs="activeVizs" />
         </div>
       </div>
 
@@ -245,6 +271,9 @@ import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue
 import MaslakaTab from '../components/workspace/MaslakaTab.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 import AiVizPanel from '../components/workspace/AiVizPanel.vue'
+import AiAssistantWidget from '../components/workspace/AiAssistantWidget.vue'
+import AiConversationSheet from '../components/workspace/AiConversationSheet.vue'
+import { useAiContextStore } from '../stores/aiContext.js'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -266,6 +295,7 @@ function onActivationAddPortal() {
 // AI viz modal — opens whenever the top-level AiChatWidget surfaces viz
 // payload(s) (bar / donut / kpi / fund-track). Multi-viz: synthesis answers
 // can ship 2-3 blocks which AiVizPanel renders as a carousel.
+const aiCtx = useAiContextStore()
 const aiVizOpen = ref(false)
 const activeVizs = ref(null)
 function onLatestVizs(vizs) {
@@ -538,6 +568,16 @@ async function openFundDetail(trackId) {
   position: fixed;
   top: 44px;
   inset-inline-start: 18px;  /* RTL: visual-RIGHT */
+  z-index: 200;
+}
+/* Right rail, reading top to bottom: alerts · assistant · people. Offset far
+   enough below the bell that the two never read as one control, and well
+   clear of the messenger pill in the bottom corner. */
+.ws-ai-anchor {
+  position: fixed;
+  top: 108px;
+  inset-inline-start: 9px;   /* RTL: visual-RIGHT — 64px orb, so 9px keeps
+                                its CENTRE aligned with the 46px bell above */
   z-index: 200;
 }
 @media (max-width: 720px) {

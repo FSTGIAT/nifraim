@@ -130,42 +130,13 @@ D. **החזרי עמלה / ניכויי ביטולים** — אחוז שיוחז
 
 הבלוק יהפוך לאנימציה שמופיעה ליד הצ'אט — אל תזכיר אותו בטקסט הגלוי. אל תעטוף אותו ב-markdown.
 סוגים נתמכים:
-
-1) type=bar — רשימה של פריט→ערך (עד 10 שורות). השתמש כשיש ≥5 פריטים עם ערך מספרי משמעותי.
-   דוגמה:
-   <<VIZ:{{"type":"bar","title":"הירידה לפי לקוח ב-מיטב","unit":"₪","direction":"down","data":[{{"label":"יחזקאל קר","value":-3379182,"id":"50052083"}},{{"label":"דני לוי","value":-420000}}],"highlight_label":"יחזקאל קר","insight":"לקוח אחד = 75% מהירידה"}}>>
-
-2) type=kpi — מספר-גיבור יחיד עם תת-כותרת. השתמש כשהסיפור הוא "סכום אחד גדול" (סה\"כ / רווח).
-   דוגמה:
-   <<VIZ:{{"type":"kpi","title":"סך העמלות שהתקבלו","value":204671,"unit":"₪","subtitle":"408 עלייה · 1 ירידה","direction":"up"}}>>
-
-3) type=donut — התפלגות פרופורציונית (עד 8 פרוסות). השתמש כשהיחסים הם הסיפור.
-   דוגמה:
-   <<VIZ:{{"type":"donut","title":"פרמיה לפי חברה","unit":"₪","data":[{{"label":"הראל","value":83407}},{{"label":"מגדל","value":41200}}],"highlight_label":"הראל"}}>>
-
-4) type=fund-track — תצוגה מפוארת של מסלול קופת גמל/השתלמות מבלוק "נתוני שוק".
-   השתמש כשהמשתמש שואל על ביצועי מסלול ספציפי ("מה התשואה של מניות", "מי הקרן הכי טובה ב-50-60",
-   "תראה לי קופת גמל להשקעה — מניות"). זוהי תצוגת ה-wow המלאה: ממוצעי 4 תקופות + טופ 10 קרנות
-   + הדגשה זהובה על הראשונה + שורת תובנה.
-
-   המזהים החוקיים (track_id) — חובה להעביר אחד מהם בדיוק (ללא המצאה):
-   gemel-under50, gemel-50to60, gemel-over60, gemel-stocks,
-   hish-klali, hish-stocks,
-   polisa-klali, polisa-stocks,
-   gle-klali, gle-stocks.
-
-   הפורמט מינימלי במכוון — הלקוח שואב את שאר הנתונים מ-API:
-   <<VIZ:{{"type":"fund-track","track_id":"gemel-stocks","insight":"כלל תמר מובילה עם +31.7% בשנה האחרונה"}}>>
-
-   - track_id חובה. אם אין מסלול תואם, אל תפלוט viz מהסוג הזה.
-   - title רשות (אם מושמט הלקוח משתמש בשם מהמסד).
-   - insight רשות — משפט קצר אחד שמסכם את הסיפור (מי המנצח, גודל הפער, מגמה).
+@@VIZ_TYPES_SPEC@@
 
 הנחיות קשיחות:
 - **אל תפלוט viz** כאשר התשובה היא שאלת "כמה/מה/האם" פשוטה, אישור, סירוב, או טקסט קצר בלא פירוט מספרי.
 - **ערכים חייבים להגיע מהקשר בלבד** (מה שמופיע בבלוקים למעלה). אל תמציא מספרים.
 - השתמש ב-direction: "down" לירידות, "up" לעליות, אחרת השמט (ברירת המחדל: ניטרלי כתום).
-- שמור על 10 נקודות bar לכל היותר, 8 פרוסות donut.
+- שמור על 10 נקודות bar לכל היותר, 8 פרוסות donut, 24 נקודות trend.
 
 **FINAL CHECKLIST לפני שליחה** — אם השאלה היא "מי הכי X / top N / רשימת מובילים / השוואה בין חברות"
 ויש לך ≥5 שורות עם ערך מספרי בתשובה, **חובה** לסיים ב-`<<VIZ:…>>`. אחרת אתה מפר את חוזה הממשק
@@ -181,6 +152,70 @@ D. **החזרי עמלה / ניכויי ביטולים** — אחוז שיוחז
 === נתוני המשתמש ===
 {context}
 ==="""
+
+
+# ── Chart types the AI may emit ──────────────────────────────────────────────
+# The ONE backend place a chart type is declared. Keep in lockstep with the
+# frontend registry (frontend/src/components/ai-charts/registry.js): a type
+# listed here with no renderer there falls back to Remotion, then to nothing.
+# Adding a type → docs/AI_VIZ.md §6.
+VIZ_TYPES = [
+    {
+        "type": "bar",
+        "when": "דירוג / השוואה בין פריטים — לקוחות, חברות, מוצרים (2–10 שורות, ממוינות מהגדול לקטן).",
+        "example": {"type": "bar", "title": "10 הלקוחות המובילים לפי פרמיה", "unit": "₪",
+                    "data": [{"label": "עזר חיים", "value": 38300, "id": "50052083"}, {"label": "רוזה מני", "value": 36501}],
+                    "highlight_label": "עזר חיים", "insight": "שני הלקוחות המובילים = 24% מהפרמיה"},
+    },
+    {
+        "type": "trend",
+        "when": "שינוי לאורך זמן — ערך לפי חודש/רבעון/שנה (3–24 נקודות, מהישן לחדש). "
+                "השתמש בו לכל שאלה של 'מגמה', 'לפי חודש', 'איך השתנה'. label = שם התקופה הקצר.",
+        "example": {"type": "trend", "title": "עמלות שהתקבלו לפי חודש", "unit": "₪",
+                    "data": [{"label": "01/26", "value": 18200}, {"label": "02/26", "value": 19950}, {"label": "03/26", "value": 17400}],
+                    "insight": "מרץ ירד 13% מול פברואר"},
+    },
+    {
+        "type": "donut",
+        "when": "חלק מהשלם — התפלגות לפי חברה/מוצר/סטטוס (2–8 פלחים, ערכים חיוביים שמסתכמים לשלם).",
+        "example": {"type": "donut", "title": "פרמיה לפי חברה", "unit": "₪",
+                    "data": [{"label": "הראל", "value": 83407}, {"label": "מגדל", "value": 41200}],
+                    "highlight_label": "הראל", "insight": "הראל = 67% מהתיק"},
+    },
+    {
+        "type": "kpi",
+        "when": "מספר-גיבור יחיד — כשהסיפור הוא סכום אחד (סה\"כ / פער / אחוז).",
+        "example": {"type": "kpi", "title": "סך העמלות שהתקבלו", "value": 204671, "unit": "₪",
+                    "subtitle": "408 עלייה · 1 ירידה", "direction": "up"},
+    },
+    {
+        "type": "fund-track",
+        "when": "ביצועי מסלול קופת גמל/השתלמות מבלוק \"נתוני שוק\" (\"מה התשואה של מניות\", "
+                "\"מי הקרן הכי טובה ב-50-60\"). track_id חובה, אחד מ: gemel-under50, gemel-50to60, "
+                "gemel-over60, gemel-stocks, hish-klali, hish-stocks, polisa-klali, polisa-stocks, "
+                "gle-klali, gle-stocks. אם אין מסלול תואם — אל תפלוט viz מהסוג הזה. "
+                "הפורמט מינימלי במכוון — הלקוח שואב את שאר הנתונים מ-API.",
+        "example": {"type": "fund-track", "track_id": "gemel-stocks", "insight": "כלל תמר מובילה עם +31.7% בשנה האחרונה"},
+    },
+]
+
+
+def _viz_types_spec() -> str:
+    """Render VIZ_TYPES into the prompt. Braces are doubled because
+    SYSTEM_PROMPT goes through str.format(context=...) later."""
+    lines = []
+    for n, t in enumerate(VIZ_TYPES, 1):
+        ex = json.dumps(t["example"], ensure_ascii=False, separators=(",", ":"))
+        ex = ex.replace("{", "{{").replace("}", "}}")
+        lines.append(f"{n}) type={t['type']} — {t['when']}\n   דוגמה: <<VIZ:{ex}>>")
+    lines.append(
+        "כל type: title = מדד + היקף (\"10 הלקוחות המובילים לפי פרמיה\"), unit (\"₪\" / \"%\" / ריק), "
+        "ו-insight = משפט אחד עם המספר שמסביר את הסיפור."
+    )
+    return "\n".join(lines)
+
+
+SYSTEM_PROMPT = SYSTEM_PROMPT.replace("@@VIZ_TYPES_SPEC@@", _viz_types_spec())
 
 
 def _record_to_dict(r):
@@ -1965,10 +2000,13 @@ async def stream_chat(
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     # Try Sonnet twice (with backoff), then Haiku as fallback
+    # claude-sonnet-4-20250514 was retired (404) — every answer silently fell
+    # through two failed attempts + 3s of backoff to Haiku, the model weakest
+    # at honouring the <<VIZ:…>> contract. The SDK already retries 429/5xx.
     attempts = [
-        ("claude-sonnet-4-20250514", 0),
-        ("claude-sonnet-4-20250514", 2),
-        ("claude-haiku-4-5-20251001", 1),
+        ("claude-sonnet-5", 0),
+        ("claude-sonnet-5", 2),
+        ("claude-haiku-4-5", 1),
     ]
     last_error = None
 
@@ -1983,17 +2021,24 @@ async def stream_chat(
     # text (viz JSON excluded). Fed into validate_answer() just before the
     # `done` event so warnings surface on the same message.
     visible_text_chunks: list[str] = []
+    any_viz_emitted = False
 
     for model, delay in attempts:
         if delay:
             await asyncio.sleep(delay)
+        # A failed attempt may have streamed partial text; only the answer
+        # that completes should feed the validator and the viz fallback.
+        visible_text_chunks.clear()
         try:
             viz_state = "text"
             tail = ""      # chars held back in `text` state
             viz_buf = ""   # contents accumulated in `buffering_viz` state
             async with client.messages.stream(
                 model=model,
-                max_tokens=2048,
+                # 2048 truncated long Hebrew answers before the trailing
+                # <<VIZ:…>> marker, and Sonnet 5's adaptive thinking also
+                # draws from this budget.
+                max_tokens=8192,
                 system=system_prompt,
                 messages=messages,
             ) as stream:
@@ -2053,6 +2098,7 @@ async def stream_chat(
                             viz_state = "text"
                             viz_buf = ""
                             tail = after
+                final = await stream.get_final_message()
             # End-of-stream drain: the tail may contain one OR MORE remaining
             # `<<VIZ:…>>` blocks (the AI can emit 2-3 in a row for synthesis
             # answers). The chunk loop above only processes the first viz it
@@ -2081,9 +2127,12 @@ async def stream_chat(
                 except json.JSONDecodeError:
                     logger.warning(f"Bad viz JSON (drain): {viz_raw[:120]}")
                 tail = rest[close_idx + len(VIZ_CLOSE):]
+            if final.stop_reason == "max_tokens":
+                logger.warning(f"AI answer hit max_tokens (model={model}) — any trailing viz was cut")
+            any_viz_emitted = viz_emitted_in_this_attempt
             # Diagnostic so we can tell apart "AI didn't emit viz" vs "parser ate it" in prod logs.
             if not viz_emitted_in_this_attempt:
-                logger.warning(f"NO VIZ emitted for question[:80]={question[:80]!r}")
+                logger.warning(f"NO VIZ emitted for question[:80]={question[:80]!r} (model={model})")
             last_error = None
             break  # success
         except anthropic.AuthenticationError:
@@ -2102,6 +2151,18 @@ async def stream_chat(
     if last_error:
         logger.error(f"AI chat all attempts failed: {type(last_error).__name__}: {last_error}")
         yield f"data: {json.dumps({'text': 'שגיאה: לא ניתן לעבד את הבקשה כרגע. נסה שוב בעוד רגע.'}, ensure_ascii=False)}\n\n"
+
+    # Chart safety net: the model answered with tables but skipped the
+    # <<VIZ:…>> marker. Rebuild bar charts from those tables (values lifted
+    # from the visible answer — nothing invented). See ai_viz_fallback.py.
+    if not last_error and not any_viz_emitted and visible_text_chunks:
+        try:
+            from app.services.ai_viz_fallback import vizzes_from_answer
+            for viz in vizzes_from_answer(question, "".join(visible_text_chunks)):
+                yield f"data: {json.dumps({'viz': viz}, ensure_ascii=False)}\n\n"
+                logger.warning(f"VIZ fallback emitted: title={viz.get('title', '')[:50]}")
+        except Exception as e:
+            logger.warning("ai_viz_fallback failed: %s", e)
 
     # Numeric validator — flag currency amounts in the answer that don't
     # appear in the source context. Advisory: surfaces as a yellow chip on

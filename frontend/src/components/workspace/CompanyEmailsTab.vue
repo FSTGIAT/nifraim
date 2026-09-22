@@ -29,91 +29,52 @@
       </template>
     </EmptyStateGuide>
 
-    <!-- Add form -->
-    <div v-if="showAddForm" class="add-form">
-      <input v-model="addForm.company_name" placeholder="שם חברה" class="edit-input" />
-      <input v-model="addForm.email" type="email" placeholder="email@company.co.il" class="edit-input email-input" dir="ltr" />
-      <input v-model="addForm.contact_name" placeholder="איש קשר" class="edit-input" />
-      <input v-model="addForm.notes" placeholder="הערות" class="edit-input" />
-      <div class="add-form-actions">
-        <button class="icon-btn icon-btn--save" title="שמור" aria-label="שמור" @click="createContact">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        </button>
-        <button class="icon-btn icon-btn--cancel" title="בטל" aria-label="בטל" @click="showAddForm = false">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
+    <!-- One compact card, list-shaped: avatar · name/email · action.
+         The previous pass put every insurer on its own tile and filled the
+         page with 17 cards to say what a list says in a third of the space. -->
+    <div v-if="!loading && contacts.length" class="share">
+      <ul class="share-list">
+        <li v-for="contact in contacts" :key="contact.id" class="share-row">
+          <CompanyLogo :company="contact.company_name" :size="34" />
+          <div class="share-id">
+            <span class="share-name">{{ contact.company_name }}</span>
+            <a class="share-mail ltr-number" :href="'mailto:' + contact.email">{{ contact.email }}</a>
+          </div>
+          <span v-if="contact.contact_name" class="share-person">{{ contact.contact_name }}</span>
+          <div class="share-tools">
+            <button class="icon-btn" title="ערוך" aria-label="ערוך" @click="startEdit(contact)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+            </button>
+            <button class="icon-btn icon-btn--del" title="מחק" aria-label="מחק" @click="deleteContact(contact.id)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </li>
+      </ul>
+
+      <!-- Who you still cannot reach, as one quiet line rather than a wall of
+           tiles. Each name opens the form already knowing the company. -->
+      <p v-if="missingCompanies.length" class="share-missing">
+        <span class="share-missing-lead">ללא כתובת:</span>
+        <button v-for="co in missingCompanies" :key="co.label" class="share-chip"
+                @click="openAddForm(co.label)">{{ co.label }}</button>
+      </p>
+
+      <div class="share-foot">
+        <BigAddButton label="הוסף איש קשר" color="#D6336C" @click="openAddForm()" />
       </div>
     </div>
 
-    <table v-if="contacts.length > 0">
-      <thead>
-        <tr>
-          <th class="t-company">חברה</th>
-          <th>אימייל</th>
-          <th>איש קשר</th>
-          <th>הערות</th>
-          <th class="t-actions"><span class="sr-only">פעולות</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="contact in contacts"
-          :key="contact.id"
-          class="contact-row"
-          :style="{ '--row-accent': companyColor(contact.company_name) }"
-        >
-          <template v-if="editingId === contact.id">
-            <td><input v-model="editForm.company_name" class="edit-input" /></td>
-            <td><input v-model="editForm.email" type="email" class="edit-input email-input" dir="ltr" /></td>
-            <td><input v-model="editForm.contact_name" class="edit-input" /></td>
-            <td><input v-model="editForm.notes" class="edit-input" /></td>
-            <td class="actions actions--editing">
-              <button class="icon-btn icon-btn--save" title="שמור" aria-label="שמור" @click="saveEdit(contact.id)">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </button>
-              <button class="icon-btn icon-btn--cancel" title="בטל" aria-label="בטל" @click="editingId = null">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </td>
-          </template>
-          <template v-else>
-            <td class="t-company">
-              <span class="company-avatar" :style="avatarStyle(contact.company_name)" aria-hidden="true">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path :d="brandIcon(contact.company_name)" />
-                </svg>
-              </span>
-              <span class="company-name">{{ contact.company_name }}</span>
-            </td>
-            <td>
-              <a class="email-link" :href="'mailto:' + contact.email">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-                </svg>
-                <span class="ltr-number">{{ contact.email }}</span>
-              </a>
-            </td>
-            <td class="contact-cell">{{ contact.contact_name || '—' }}</td>
-            <td class="notes-cell">{{ contact.notes || '—' }}</td>
-            <td class="actions">
-              <button class="icon-btn icon-btn--edit" title="ערוך" aria-label="ערוך" @click="startEdit(contact)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-              </button>
-              <button class="icon-btn icon-btn--del" title="מחק" aria-label="מחק" @click="deleteContact(contact.id)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-              </button>
-            </td>
-          </template>
-        </tr>
-      </tbody>
-    </table>
+    <ContactFormModal
+      :show="formOpen"
+      :editing="editingContact"
+      :preset-company="presetCompany"
+      :companies="KNOWN_COMPANIES"
+      :taken="contacts.map(c => c.company_name)"
+      @close="closeForm"
+      @saved="onSaved"
+    />
 
-    <div v-if="contacts.length > 0 || showAddForm" class="footer-actions">
-      <button v-if="!showAddForm" class="btn-add" @click="openAddForm">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        הוסף איש קשר
-      </button>
-    </div>
   </div>
 </template>
 
@@ -122,27 +83,50 @@ import { ref, onMounted, reactive, computed } from 'vue'
 import api from '../../api/client.js'
 import EmptyStateGuide from './EmptyStateGuide.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
-import { brandForLabel } from '../../utils/companyBrand.js'
+import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
+import ContactFormModal from './ContactFormModal.vue'
+import CompanyLogo from './CompanyLogo.vue'
+import BigAddButton from './BigAddButton.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
 const contacts = ref([])
 const loading = ref(false)
 const seeding = ref(false)
-const showAddForm = ref(false)
-const editingId = ref(null)
+// The inline row-of-inputs became a modal, so the tab keeps only WHICH
+// contact is being edited and which company the form should start on.
+const formOpen = ref(false)
+const editingContact = ref(null)
+const presetCompany = ref('')
 
-const editForm = reactive({
-  company_name: '',
-  email: '',
-  contact_name: '',
-  notes: '',
+// Every insurer the app knows, deduplicated by display label — the brand map
+// carries one entry per PORTAL kind, so כלל appears three times (portal,
+// נפרעים, בריאות) for one company.
+const KNOWN_COMPANIES = (() => {
+  const seen = new Map()
+  for (const b of Object.values(COMPANY_BRAND)) {
+    // A label with an em-dash is a report variant ("כלל — עמלות"), not a company.
+    const label = String(b.label || '').split('—')[0].trim()
+    // Not an insurer this book needs an address for.
+    if (label.startsWith('אי.בי')) continue
+    if (label && !seen.has(label)) seen.set(label, { ...b, label })
+  }
+  return [...seen.values()]
+})()
+
+const knownTotal = computed(() => KNOWN_COMPANIES.length)
+
+/** Insurers with no address on file — the actionable half of this screen. */
+const missingCompanies = computed(() => {
+  const have = new Set(contacts.value.map(c => String(c.company_name || '').trim()))
+  return KNOWN_COMPANIES.filter(co =>
+    ![...have].some(h => h.includes(co.label) || co.label.includes(h)),
+  )
 })
 
-const addForm = reactive({
-  company_name: '',
-  email: '',
-  contact_name: '',
-  notes: '',
+const coveragePct = computed(() => {
+  const total = knownTotal.value
+  if (!total) return 0
+  return Math.min(100, Math.round((contacts.value.length / total) * 100))
 })
 
 // Same palette-color-per-company mechanism as the comparison summary and the
@@ -192,32 +176,27 @@ async function seedContacts() {
   }
 }
 
-function openAddForm() {
-  addForm.company_name = ''
-  addForm.email = ''
-  addForm.contact_name = ''
-  addForm.notes = ''
-  showAddForm.value = true
-}
-
-async function createContact() {
-  if (!addForm.company_name || !addForm.email) return
-  await api.post('/company-contacts', { ...addForm })
-  showAddForm.value = false
-  await fetchContacts()
+function openAddForm(company = '') {
+  editingContact.value = null
+  presetCompany.value = typeof company === 'string' ? company : ''
+  formOpen.value = true
 }
 
 function startEdit(contact) {
-  editingId.value = contact.id
-  editForm.company_name = contact.company_name
-  editForm.email = contact.email
-  editForm.contact_name = contact.contact_name || ''
-  editForm.notes = contact.notes || ''
+  presetCompany.value = ''
+  editingContact.value = contact
+  formOpen.value = true
 }
 
-async function saveEdit(id) {
-  await api.put(`/company-contacts/${id}`, { ...editForm })
-  editingId.value = null
+function closeForm() {
+  formOpen.value = false
+  editingContact.value = null
+  presetCompany.value = ''
+}
+
+// The modal owns the write; the tab only has to catch up afterwards.
+async function onSaved() {
+  closeForm()
   await fetchContacts()
 }
 
@@ -228,6 +207,66 @@ async function deleteContact(id) {
 </script>
 
 <style scoped>
+/* ── Share-style list ──────────────────────────────────────────────────
+   One card, rows of avatar · identity · action. The previous pass gave each
+   insurer its own tile, which spent a full screen saying what a list says in
+   a third of the height. */
+.share {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 14px);
+  background: var(--card-bg);
+  padding: 16px;
+}
+.share-sep { height: 1px; background: var(--border-subtle); margin: 14px 0; }
+
+.share-list { list-style: none; display: flex; flex-direction: column; }
+.share-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 4px; border-radius: 8px;
+}
+.share-row:hover { background: var(--bg); }
+.share-id { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.share-name {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-mail {
+  /* `.ltr-number` flips direction to ltr, which in this RTL column pushed the
+     address to the far edge — visually divorced from the company it belongs
+     to. Pin it to the column's start so name and address read as one block. */
+  align-self: flex-start;
+  font-size: 12px; color: var(--text-muted); text-decoration: none;
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.share-mail:hover { color: var(--tab-company-emails, #D6336C); }
+.share-person { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.share-tools { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s ease; }
+.share-row:hover .share-tools, .share-row:focus-within .share-tools { opacity: 1; }
+
+/* Who you cannot reach — one line, not a wall of tiles. */
+.share-missing {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border-subtle);
+}
+.share-missing-lead { font-size: 11.5px; color: var(--text-muted); }
+.share-chip {
+  padding: 3px 10px; border-radius: 11px; cursor: pointer;
+  border: 1px dashed color-mix(in srgb, var(--tab-company-emails, #D6336C) 32%, transparent);
+  background: none; color: var(--text-secondary, #6b7280);
+  font-family: inherit; font-size: 11.5px; font-weight: 600;
+}
+.share-chip:hover {
+  border-style: solid;
+  border-color: var(--tab-company-emails, #D6336C);
+  color: var(--tab-company-emails, #D6336C);
+}
+.share-foot { margin-top: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .share-tools { opacity: 1; }
+}
+
 .emails-card {
   position: relative;
   overflow: hidden;

@@ -3,6 +3,10 @@
     <Transition name="modal">
       <div v-if="open" class="cred-modal-overlay" @click.self="close">
         <div class="cred-modal" role="dialog" aria-modal="true" :aria-label="title">
+          <!-- Form first in the DOM so it lands on the RIGHT under
+               `direction: rtl`, with the photograph on the left — the same
+               shape as the customer-portal and contact modals. -->
+          <div class="cred-pane">
           <header class="cred-head">
             <div class="cred-head-titles">
               <span class="cred-badge" aria-hidden="true">
@@ -22,34 +26,50 @@
 
           <div v-if="formError" class="cred-error">{{ formError }}</div>
 
-          <div class="cred-body">
+          <div class="cred-body" :class="{ 'cred-body--tight': chosen }">
             <!-- ── Step 1 · company ── -->
             <section class="cred-section">
-              <div class="cred-step-head">
+              <!-- Head drops away once the company is settled: the row below
+                   carries the logo and the name, so the prompt "בחרו חברה"
+                   was 38px of screen asking a question already answered — and
+                   that was the height the login fields needed. -->
+              <div v-if="!chosen" class="cred-step-head">
                 <span class="cred-step-num">1</span>
                 <div class="cred-step-txt">
                   <h4 class="cred-step-title">{{ mode === 'edit' ? 'החברה' : 'בחרו חברה' }}</h4>
                   <p class="cred-step-sub">{{ mode === 'edit' ? 'לא ניתן לשנות חברה בעריכה' : 'לאיזו חברת ביטוח מתחברים?' }}</p>
                 </div>
               </div>
-              <div class="cred-grid">
+              <!-- Once a company is chosen the picker collapses to a single
+                   row. Leaving it open kept ~200px of chooser on screen for a
+                   decision already made, and pushed the login fields below the
+                   fold. In EDIT it is fixed outright — a picker you cannot use
+                   is just a disabled grid. -->
+              <div v-if="mode === 'edit' || selectedCompany" class="cred-fixed">
+                <CompanyLogo :company="selectedCompany" :size="34" />
+                <span class="cred-fixed-name">{{ selectedCompany }}</span>
+                <!-- Icon-only back, pointing right because that IS "back"
+                     under RTL. Same glyph the messenger dock uses. -->
                 <button
-                  v-for="c in companies"
-                  :key="c.company"
+                  v-if="mode !== 'edit'"
                   type="button"
-                  class="cred-tile"
-                  :class="{ 'cred-tile--on': selectedCompany === c.company, 'cred-tile--dim': mode === 'edit' && selectedCompany !== c.company }"
-                  :style="tileStyle(c.company, selectedCompany === c.company)"
-                  :disabled="mode === 'edit'"
-                  @click="selectCompany(c)"
+                  class="cred-change"
+                  aria-label="חזרה לבחירת חברה"
+                  title="חזרה לבחירת חברה"
+                  @click="clearCompany"
                 >
-                  <span class="cred-tile-mono" :style="monoStyle(c.company)">{{ mono(c.company) }}</span>
-                  <span class="cred-tile-name">{{ c.company }}</span>
-                  <span class="cred-tile-meta">{{ c.kinds.length }} {{ c.kinds.length === 1 ? 'דוח' : 'דוחות' }}</span>
-                  <span v-if="selectedCompany === c.company" class="cred-tile-check" :style="{ background: brand(c.company) }">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  </span>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m9 6 6 6-6 6" />
+                  </svg>
                 </button>
+              </div>
+              <div v-else class="cred-pick">
+                <CompanyPicker
+                  :companies="pickerItems"
+                  :initial="selectedCompany"
+                  confirm-label=""
+                  @select="onPickCompany"
+                />
               </div>
             </section>
 
@@ -181,6 +201,14 @@
               {{ saving ? 'שומר…' : (mode === 'add' ? 'הוסף פורטל' : 'שמור שינויים') }}
             </button>
           </footer>
+          </div>
+
+          <!-- Second in the DOM = left-hand side in RTL. Hidden below 900px,
+               where a decorative column would squeeze the company grid. -->
+          <aside class="cred-art" aria-hidden="true">
+            <img :src="artwork" alt="" />
+            <span class="cred-art-veil"></span>
+          </aside>
         </div>
       </div>
     </Transition>
@@ -191,6 +219,9 @@
 <script setup>
 import { computed, reactive, ref, watch, onMounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import CompanyLogo from './CompanyLogo.vue'
+import CompanyPicker from './CompanyPicker.vue'
+import artwork from '../../assets/automation/add-portal.webp'
 import { useMailboxStore } from '../../stores/mailbox.js'
 import { errorCopy, lastReceivedLabel } from '../../utils/mailboxCopy.js'
 import HachsharaMailModal from './HachsharaMailModal.vue'
@@ -361,6 +392,31 @@ function selectCompany(c) {
   form.portal_kind = c.kinds.length === 1 ? c.kinds[0].id : ''
 }
 
+// Items for the shared picker. The note keeps the report count the grid
+// showed — Phoenix carrying 4 reports behind one login is worth knowing
+// before you pick it.
+const pickerItems = computed(() =>
+  companies.value.map((c) => ({
+    label: c.company,
+    note: `${c.kinds.length} ${c.kinds.length === 1 ? 'דוח' : 'דוחות'}`,
+    noteOk: false,
+  })),
+)
+
+function onPickCompany(label) {
+  const c = companies.value.find((x) => x.company === label)
+  if (c) selectCompany(c)
+}
+
+// Back to the chooser. Clearing the kind too, so a half-configured portal
+// from the previous company cannot ride along into the next one.
+const chosen = computed(() => props.mode !== 'edit' && !!selectedCompany.value)
+
+function clearCompany() {
+  selectedCompany.value = ''
+  form.portal_kind = ''
+}
+
 watch(
   () => [props.open, props.mode, props.credential],
   ([isOpen, mode, cred]) => {
@@ -454,15 +510,37 @@ async function save() {
   font-family: 'Heebo', sans-serif;
   direction: rtl;
 }
+/* Two panes: the form on the right (first in the DOM under `direction: rtl`)
+   and the photograph on the left. Only the form pane scrolls, so the image
+   holds still while the steps move. */
 .cred-modal {
-  width: min(580px, 100%);
-  max-height: calc(100vh - 40px);
+  width: min(940px, 100%);
+  /* FIXED, not max: this card's step 2 changes shape per company (one portal
+     wants ת"ז + phone, another username + password), so a max-height made the
+     whole modal jump every time you moved through the picker. */
+  height: min(700px, calc(100vh - 40px));
   background: #fff;
   border-radius: 22px;
   box-shadow: 0 28px 64px rgba(24, 24, 24, 0.3), 0 4px 12px rgba(24, 24, 24, 0.1);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0.62fr;
   overflow: hidden;
+}
+.cred-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.cred-art { position: relative; overflow: hidden; background: var(--bg); }
+.cred-art img { width: 100%; height: 100%; object-fit: cover; object-position: center 55%; display: block; }
+/* A wash in the automation tab's own teal, so the photograph reads as part of
+   the product rather than dropped-in stock. */
+.cred-art-veil {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(200deg, color-mix(in srgb, var(--tab-portal-automation, #0E8C8A) 24%, transparent) 0%, transparent 52%),
+    linear-gradient(to left, rgba(255,255,255,0.26), transparent 38%);
+}
+@media (max-width: 900px) {
+  /* Below this the photo would squeeze the company grid; the grid is the job. */
+  .cred-modal { grid-template-columns: 1fr; width: min(580px, 100%); }
+  .cred-art { display: none; }
 }
 
 .cred-head {
@@ -496,7 +574,13 @@ async function save() {
   background: rgba(194, 57, 52, 0.08); border: 1px solid rgba(194, 57, 52, 0.2); border-radius: 10px;
 }
 
-.cred-body { padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 22px; overflow-y: auto; }
+/* Takes the leftover height and scrolls, so the card itself never grows. */
+.cred-body { padding: 20px 24px 8px; display: flex; flex-direction: column; gap: 22px; overflow-y: auto; flex: 1; min-height: 0; }
+/* Step 2 carries three sections instead of one, so the rhythm tightens to
+   keep the whole form inside the fixed-height card rather than under it. */
+.cred-body--tight { gap: 16px; }
+.cred-body--tight .cred-section { gap: 10px; }
+.cred-body--tight .cred-creds { gap: 11px; }
 .cred-section { display: flex; flex-direction: column; gap: 12px; }
 
 /* Numbered step heads — stronger hierarchy */
@@ -514,11 +598,29 @@ async function save() {
 .req { color: #C23934; font-weight: 800; }
 
 /* Company grid — pastel tiles */
-.cred-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(98px, 1fr));
-  gap: 10px;
+/* The picker takes the automation tab's teal. */
+.cred-pick { --pick-accent: var(--tab-portal-automation, #0E8C8A); }
+.cred-fixed {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 13px; border-radius: 12px;
+  background: color-mix(in srgb, var(--tab-portal-automation, #0E8C8A) 7%, var(--bg));
 }
+.cred-fixed-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.cred-change {
+  margin-inline-start: auto; flex: none;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--border-subtle); border-radius: 9px;
+  background: var(--bg-card, #fff); cursor: pointer; padding: 0;
+  color: var(--tab-portal-automation, #0E8C8A);
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.cred-change:hover {
+  background: color-mix(in srgb, var(--tab-portal-automation, #0E8C8A) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tab-portal-automation, #0E8C8A) 40%, transparent);
+  transform: translateX(2px);
+}
+.cred-change:active { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .cred-change { transition: none; } .cred-change:hover { transform: none; } }
 .cred-tile {
   position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 7px;

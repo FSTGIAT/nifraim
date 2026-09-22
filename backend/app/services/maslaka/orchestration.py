@@ -159,6 +159,7 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             sequence=sequence,
             product_family="000",         # only אחזקות/טרום-ייעוץ files name a family
             file_type=file_type,          # same call as env_code — they cannot disagree
+            when=now,                     # the SAME instant as TAARICH-BITZUA / MISPAR-HAKOVETZ
         )
 
         # Stash the encrypted outbound payload before we transport — if the
