@@ -282,6 +282,125 @@ export function ShelfLoop() {
   )
 }
 
+/* ═══════════════════ מסלקה פנסיונית — deep teal ═══════════════════ */
+export function ClearingHouseLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2C5F6B', SOFT = '#5E9BA8', MINT = '#8FD9C6', PALE = '#DCEEEF'
+
+  // Left: the managing bodies (גופים מנהלים). Centre: the clearing house.
+  // Right: the one complete pension picture it returns. Authored left-to-right;
+  // TabHeroLoop mirrors it so the flow reads right-to-left with the Hebrew UI.
+  const PROVIDERS = [54, 116, 178, 240] // tile centre-y
+  const HUB_X = 210, HUB_Y = 150
+
+  // provider → hub: each body answers once per 120-frame cycle (2 per loop)
+  const inbound = (i: number) => {
+    const p = loopPhase(frame + i * 30, 120)
+    const travel = interpolate(p, [0, 0.55], [0, 1], {
+      extrapolateRight: 'clamp',
+      easing: Easing.bezier(0.4, 0, 0.35, 1),
+    })
+    const op = interpolate(p, [0, 0.08, 0.46, 0.55], [0, 1, 1, 0], { extrapolateRight: 'clamp' })
+    return { travel, op }
+  }
+
+  // hub → card: the merged picture leaves once the answers are in
+  const outP = loopPhase(frame, 120)
+  const outTravel = interpolate(outP, [0.55, 0.9], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.3, 0, 0.3, 1),
+  })
+  const outOp = interpolate(outP, [0.55, 0.62, 0.84, 0.9], [0, 1, 1, 0], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+
+  // hub: 4 request pulses per loop, ring turns once per loop
+  const pulse = loopPhase(frame, 60)
+  const pulseR = interpolate(pulse, [0, 1], [46, 98])
+  const pulseOp = interpolate(pulse, [0, 0.16, 1], [0, 0.45, 0])
+  const ringAngle = loopPhase(frame, 240) * 360
+
+  // portfolio bars grow then settle back to the floor — no seam at the loop point
+  const barP = loopPhase(frame, 120)
+  const barH = (base: number, i: number) =>
+    interpolate(barP, [0.12 + i * 0.07, 0.64 + i * 0.07, 0.94, 1], [4, base, base, 4], {
+      extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+    })
+  const twinkle = 0.5 + 0.5 * Math.abs(Math.sin((frame / 240) * Math.PI * 4)) // 2 twinkles/loop
+
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* wiring (static) */}
+        {PROVIDERS.map((cy, i) => (
+          <line
+            key={`w${i}`}
+            x1={88} y1={cy} x2={166} y2={HUB_Y}
+            stroke={PALE} strokeWidth={3} strokeLinecap="round" strokeDasharray="5 8"
+          />
+        ))}
+        <line x1={258} y1={HUB_Y} x2={302} y2={HUB_Y} stroke={PALE} strokeWidth={3} strokeLinecap="round" strokeDasharray="5 8" />
+
+        {/* managing bodies */}
+        {PROVIDERS.map((cy, i) => (
+          <g key={`p${i}`}>
+            <path d={`M28 ${cy - 13} L58 ${cy - 28} L88 ${cy - 13} Z`} fill={i % 2 ? SOFT : ACC} />
+            <rect x={33} y={cy - 13} width={50} height={32} rx={7} fill={i % 2 ? SOFT : ACC} />
+            {[0, 1, 2].map((c) => (
+              <rect key={c} x={41 + c * 13} y={cy - 6} width={8} height={18} rx={3} fill={PALE} />
+            ))}
+          </g>
+        ))}
+
+        {/* answers travelling in to the clearing house */}
+        {PROVIDERS.map((cy, i) => {
+          const { travel, op } = inbound(i)
+          const x = 88 + travel * 78
+          const y = cy + travel * (HUB_Y - cy)
+          const s = 1 - 0.3 * travel
+          return (
+            <g key={`d${i}`} transform={`translate(${x} ${y}) scale(${s})`} opacity={op}>
+              <Doc w={22} h={30} fill={MINT} line={ACC} x={-11} y={-15} />
+            </g>
+          )
+        })}
+
+        {/* clearing house */}
+        <g transform={`translate(${HUB_X} ${HUB_Y})`}>
+          <circle r={pulseR} fill="none" stroke={MINT} strokeWidth={3} opacity={pulseOp} />
+          <circle
+            r={62} fill="none" stroke={MINT} strokeWidth={2.5}
+            strokeDasharray="5 11" transform={`rotate(${ringAngle})`}
+          />
+          <circle r={46} fill={ACC} />
+          <circle r={28} fill={PALE} />
+          {[-9, -1, 7].map((y, i) => (
+            <rect key={i} x={-13} y={y} width={26} height={5} rx={2.5} fill={i === 1 ? SOFT : ACC} />
+          ))}
+          <rect x={-13} y={-17} width={16} height={5} rx={2.5} fill={MINT} />
+        </g>
+
+        {/* the merged picture on its way out */}
+        <g transform={`translate(${258 + outTravel * 62} ${HUB_Y})`} opacity={outOp}>
+          <Doc w={26} h={34} fill={ACC} line={MINT} x={-13} y={-17} />
+        </g>
+
+        {/* one complete pension picture */}
+        <g>
+          <rect x={306} y={94} width={84} height={112} rx={14} fill={PALE} stroke={ACC} strokeWidth={3} />
+          <rect x={318} y={108} width={46} height={8} rx={4} fill={ACC} />
+          <rect x={318} y={122} width={30} height={6} rx={3} fill={SOFT} />
+          {[30, 46, 22, 38].map((base, i) => {
+            const h = barH(base, i)
+            return <rect key={i} x={317 + i * 17} y={190 - h} width={11} height={h} rx={4} fill={i % 2 ? MINT : ACC} />
+          })}
+          <rect x={317} y={190} width={62} height={3} rx={1.5} fill={SOFT} opacity={0.5} />
+          <Spark cx={384} cy={100} r={9} fill={MINT} k={twinkle} />
+        </g>
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
@@ -289,6 +408,7 @@ export const TAB_HERO_SCENES = {
   'company-emails': MailFlowLoop,
   recruits: PortfolioLoop,
   'commission-shelf': ShelfLoop,
+  maslaka: ClearingHouseLoop,
 } as const
 
 export type TabHeroScene = keyof typeof TAB_HERO_SCENES

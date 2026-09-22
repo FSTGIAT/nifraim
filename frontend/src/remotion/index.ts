@@ -10,6 +10,7 @@ export type { WelcomeCompositionProps } from './WelcomeComposition'
 export { AutomationIntro, AUTOMATION_INTRO_DURATION } from './AutomationIntro'
 export { AutomationHeroLoop, AUTOMATION_HERO_LOOP_FRAMES } from './AutomationHeroLoop'
 export { CardAmbientLoop, CARD_AMBIENT_LOOP_FRAMES } from './CardAmbientLoop'
+export { WorkerPulse, WORKER_PULSE_FRAMES } from './WorkerPulse'
 export {
   TAB_HERO_SCENES,
   TAB_HERO_LOOP_FRAMES,
@@ -18,6 +19,7 @@ export {
   MailFlowLoop,
   PortfolioLoop,
   ShelfLoop,
+  ClearingHouseLoop,
 } from './TabHeroLoops'
 export { NotificationsEmpty, NOTIFICATIONS_EMPTY_DURATION } from './NotificationsEmpty'
 export {

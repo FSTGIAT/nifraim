@@ -1,7 +1,7 @@
 <template>
   <!-- Reusable Remotion hero-loop island. Pass `scene` = a key from
        TAB_HERO_SCENES ('ai-library' | 'portal' | 'company-emails' |
-       'recruits' | 'commission-shelf'). Decorative only; hidden entirely
+       'recruits' | 'commission-shelf' | 'maslaka'). Decorative only; hidden entirely
        for prefers-reduced-motion or if the React stack fails to load. -->
   <div v-if="!hidden" class="tab-hero-loop" aria-hidden="true">
     <div
