@@ -45,7 +45,19 @@
               <div v-if="!editing" class="cfm-chosen">
                 <CompanyLogo :company="form.company_name" :size="28" />
                 <span>{{ form.company_name }}</span>
-                <button type="button" class="cfm-back" @click="step = 1">החלף חברה</button>
+                <!-- Icon-only back, pointing right because that IS "back"
+                     under RTL. Same glyph as the portal modal. -->
+                <button
+                  type="button"
+                  class="cfm-back"
+                  aria-label="חזרה לבחירת חברה"
+                  title="חזרה לבחירת חברה"
+                  @click="step = 1"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m9 6 6 6-6 6" />
+                  </svg>
+                </button>
               </div>
 
               <label v-else class="cfm-field">
@@ -118,6 +130,16 @@ const error = ref('')
 const step = ref(1)
 const customCompany = ref('')
 const emailEl = ref(null)
+
+// Companies that already hold an address. A Set of trimmed names, because
+// the `taken` list arrives from the server rows while the picker labels come
+// from KNOWN_COMPANIES, and the two disagree on padding.
+const takenSet = computed(
+  () => new Set(props.taken.map((t) => String(t || '').trim())),
+)
+function isTaken(label) {
+  return takenSet.value.has(String(label || '').trim())
+}
 
 // Items for the shared picker: the note tells you a company already has an
 // address, so you are not adding a duplicate without noticing.
@@ -252,10 +274,20 @@ async function submit() {
   font-size: 13.5px; font-weight: 700; color: var(--text);
 }
 .cfm-back {
-  margin-inline-start: auto; border: none; background: none; cursor: pointer;
-  font-family: inherit; font-size: 11.5px; font-weight: 600;
-  color: var(--tab-company-emails, #D6336C); text-decoration: underline;
+  margin-inline-start: auto; flex: none;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--card-bg); cursor: pointer; padding: 0;
+  color: var(--tab-company-emails, #D6336C);
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
 }
+.cfm-back:hover {
+  background: color-mix(in srgb, var(--tab-company-emails, #D6336C) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tab-company-emails, #D6336C) 40%, transparent);
+  transform: translateX(2px);
+}
+.cfm-back:active { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .cfm-back { transition: none; } .cfm-back:hover { transform: none; } }
 
 .cfm-field { display: block; margin-bottom: 14px; }
 .cfm-field > span { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
