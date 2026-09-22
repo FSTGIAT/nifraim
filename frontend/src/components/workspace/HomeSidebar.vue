@@ -11,18 +11,54 @@
   -->
   <aside class="rail" :class="{ 'rail--open': open }" @mouseenter="open = true" @mouseleave="open = false">
     <div class="rail-top">
-      <Avatar
-        :name="user?.full_name || ''"
-        :username="user?.username || ''"
-        :avatar-seed="user?.avatar_seed || ''"
-        :size="42"
-        class="rail-avatar"
-      />
+      <button
+        type="button"
+        class="rail-face"
+        :aria-label="picking ? 'סגירת בחירת אווטאר' : 'שינוי אווטאר'"
+        :aria-expanded="picking"
+        title="שינוי אווטאר"
+        @click="picking = !picking"
+      >
+        <Avatar
+          :name="user?.full_name || ''"
+          :username="user?.username || ''"
+          :avatar-seed="currentSeed"
+          :size="42"
+        />
+        <span class="rail-face-pen" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </span>
+      </button>
       <div class="rail-who">
         <span class="rail-name">{{ user?.full_name || user?.username || '' }}</span>
         <span class="rail-mail ltr-number">{{ user?.email || '' }}</span>
       </div>
     </div>
+
+    <!-- The faces are GENERATED from a seed, not uploaded images: the same seed
+         drives the CSS avatar, the messenger and the animated Remotion one, so
+         a swatch is the real thing rather than a preview of it. Picking here
+         writes through the same endpoint the messenger's picker uses. -->
+    <Transition name="rail-pick">
+      <div v-if="picking" class="rail-picker" role="radiogroup" aria-label="בחירת אווטאר">
+        <button
+          v-for="sd in seeds"
+          :key="sd"
+          type="button"
+          class="rail-swatch"
+          :class="{ 'is-on': sd === currentSeed }"
+          role="radio"
+          :aria-checked="sd === currentSeed"
+          :aria-label="'אווטאר ' + sd"
+          @click="pickAvatar(sd)"
+        >
+          <Avatar :avatar-seed="sd" :username="user?.username || ''" :name="user?.full_name || ''" :size="30" />
+        </button>
+        <p v-if="avatarError" class="rail-pick-err">{{ avatarError }}</p>
+      </div>
+    </Transition>
 
     <div class="rail-rule"></div>
 
@@ -56,8 +92,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Avatar from '../Avatar.vue'
+import { candidateSeeds, seedFor } from '../../utils/avatarSeed.js'
+import { useMessengerStore } from '../../stores/messenger.js'
 
 const props = defineProps({
   // The SAME list the circle menu uses, so the two can never drift apart.
@@ -67,6 +105,33 @@ const props = defineProps({
 defineEmits(['select'])
 
 const open = ref(false)
+
+/* ── avatar ──────────────────────────────────────────────────────────────
+   No new avatar system here on purpose. `utils/avatarSeed.js` is already the
+   one source of truth — the CSS face, the messenger and the Remotion avatar
+   all derive from the same seed, and that file says in as many words that a
+   second hash would make the swatch you tap "a lie". Uploaded or generated
+   photographs would be exactly that second system. */
+const messenger = useMessengerStore()
+const picking = ref(false)
+const avatarError = ref('')
+const seeds = computed(() => candidateSeeds(props.user?.username || ''))
+const currentSeed = computed(() => seedFor(props.user))
+
+async function pickAvatar(sd) {
+  avatarError.value = ''
+  if (sd === currentSeed.value) { picking.value = false; return }
+  try {
+    await messenger.changeAvatar(sd)
+    picking.value = false
+  } catch {
+    avatarError.value = 'שמירת האווטאר נכשלה'
+  }
+}
+
+// The picker only makes sense while the rail is open — collapsed, the swatches
+// are clipped to a 76px column and you would be choosing blind.
+watch(open, (v) => { if (!v) picking.value = false })
 
 // `home` is dropped here: this rail only exists on home, and `goHome()`
 // early-returns when it is already home — it would be a button that does
@@ -93,9 +158,12 @@ const ICONS = {
   top: 44px;
   left: 24px;
   z-index: 102;
-  /* Hugs its content. A full-height rail put sign-out down in the corner,
-     straight through the insights launcher's orbit, and left a tall empty
-     column in between. */
+  /* Tall, with sign-out pinned to its foot — but stopping clear of the
+     insights launcher. That orbit is a 280px box sitting 24px off the bottom
+     and it shares this column, so anything below 304px lands inside its ring.
+     Measured, not guessed: x 24..304 at every viewport height tried. */
+  bottom: 320px;
+  min-height: 286px;
   width: 76px;
   display: flex;
   flex-direction: column;
@@ -117,7 +185,40 @@ const ICONS = {
 
 /* ── identity ─────────────────────────────────────────────────────────── */
 .rail-top { display: flex; align-items: center; gap: 11px; min-height: 42px; }
-.rail-avatar { flex: none; }
+.rail-face {
+  position: relative; flex: none; padding: 0; border: none;
+  background: none; cursor: pointer; border-radius: 50%; line-height: 0;
+}
+.rail-face:focus-visible { outline: 2px solid var(--tab-production, #2F73C4); outline-offset: 3px; }
+/* The pencil only shows on approach — an avatar with a permanent edit badge
+   reads as a form field rather than as you. */
+.rail-face-pen {
+  position: absolute; inset-inline-end: -3px; bottom: -3px;
+  width: 17px; height: 17px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--card-bg); border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  opacity: 0; transform: scale(0.7);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.rail-face-pen svg { width: 9px; height: 9px; }
+.rail:hover .rail-face-pen,
+.rail-face:focus-visible .rail-face-pen { opacity: 1; transform: none; }
+
+.rail-picker {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  width: 182px; margin-top: 12px;
+}
+.rail-swatch {
+  padding: 2px; border: 2px solid transparent; border-radius: 50%;
+  background: none; cursor: pointer; line-height: 0;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+.rail-swatch:hover { transform: scale(1.08); }
+.rail-swatch.is-on { border-color: var(--tab-production, #2F73C4); }
+.rail-pick-err { width: 100%; font-size: 11px; color: var(--red-deep, #C23934); }
+.rail-pick-enter-active, .rail-pick-leave-active { transition: opacity 0.18s ease; }
+.rail-pick-enter-from, .rail-pick-leave-to { opacity: 0; }
 /* The name block is laid out at the OPEN width at all times and clipped by the
    rail's overflow, so it never re-wraps as the rail grows — text reflowing
    mid-transition is the thing that makes a rail like this look cheap. */
@@ -144,7 +245,7 @@ const ICONS = {
 
 /* ── items ────────────────────────────────────────────────────────────── */
 .rail-nav { display: flex; flex-direction: column; gap: 4px; }
-.rail-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.rail-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
 
 .rail-item {
   display: flex; align-items: center; gap: 12px;
@@ -187,7 +288,7 @@ const ICONS = {
 @media (max-width: 1180px) {
   .rail { left: 12px; padding: 12px 11px; width: 66px; }
   .rail--open { width: 66px; box-shadow: 0 10px 34px rgba(24, 24, 24, 0.07); }
-  .rail-who, .rail-label { display: none; }
+  .rail-who, .rail-label, .rail-picker { display: none; }
   .rail-item { width: auto; justify-content: center; padding: 9px 0; }
   .rail-ico { width: 22px; }
 }
