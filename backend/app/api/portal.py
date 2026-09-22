@@ -9,6 +9,7 @@ from app.models.portal_link import CustomerPortalLink
 from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.api.deps import get_current_user, get_portal_session
+from app.api.production import _get_production_upload_ids
 from app.schemas.portal import (
     PortalLinkCreate, PortalLinkOut,
     PortalAccessRequest, PortalAccessResponse,
@@ -170,22 +171,26 @@ async def get_customer_info(
     db: AsyncSession = Depends(get_db),
 ):
     """Agent endpoint — auto-fill customer name and email when generating a link."""
-    # Find from active production file
-    prod_result = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user.id,
-            FileUpload.is_production == True,
-        )
-    )
-    prod_upload = prod_result.scalar_one_or_none()
-    if not prod_upload:
+    # Search EVERY active production upload, not one.
+    #
+    # `is_production` is not a singleton — several companies' files coexist by
+    # design — so `scalar_one_or_none()` here raised MultipleResultsFound and
+    # the endpoint answered 500. Measured locally: 4 active uploads, so the
+    # auto-fill 500'd for any agent past their first company, which is every
+    # real agent. It fires on blur of the ת"ז field, so the failure was silent
+    # to the user: the name and email simply never filled in.
+    #
+    # Searching all of them is also more correct than picking one: a customer
+    # can sit in any company's file, so a single-file lookup would miss them.
+    upload_ids = await _get_production_upload_ids(db, user.id)
+    if not upload_ids:
         return {"name": "", "email": ""}
 
     id_stripped = str(id_number or "").lstrip("0") or "0"
     record_result = await db.execute(
         select(ClientRecord).where(
             ClientRecord.user_id == user.id,
-            ClientRecord.upload_id == prod_upload.id,
+            ClientRecord.upload_id.in_(upload_ids),
             or_(
                 ClientRecord.id_number == id_number,
                 ClientRecord.id_number == id_stripped,

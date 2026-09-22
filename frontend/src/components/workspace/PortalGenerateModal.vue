@@ -3,9 +3,15 @@
     <Transition name="modal">
       <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
         <div class="modal-card">
+          <!-- Form first in the DOM so it lands on the RIGHT under `direction:
+               rtl`, with the image on the left. -->
+          <div class="pane pane--form">
           <div class="modal-header">
-            <h3>יצירת קישור לפורטל לקוח</h3>
-            <button class="close-btn" @click="$emit('close')">
+            <div class="modal-heading">
+              <h3>יצירת קישור לפורטל לקוח</h3>
+              <p class="modal-sub">הלקוח יראה רק את התיק שלו, מאחורי סיסמה.</p>
+            </div>
+            <button class="close-btn" @click="$emit('close')" aria-label="סגור">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -105,6 +111,14 @@
               </div>
             </div>
           </Transition>
+          </div>
+
+          <!-- Second in the DOM = left-hand side in RTL. Hidden below 820px,
+               where a decorative column would push the form off-screen. -->
+          <aside class="pane pane--art" aria-hidden="true">
+            <img :src="artwork" alt="" />
+            <div class="art-veil"></div>
+          </aside>
         </div>
       </div>
     </Transition>
@@ -112,6 +126,8 @@
 </template>
 
 <script setup>
+import artwork from '../../assets/portal/create-portal.webp'
+
 import { ref, reactive, computed } from 'vue'
 import { usePortalStore } from '../../stores/portal.js'
 
@@ -218,6 +234,21 @@ async function sendEmail() {
 </script>
 
 <style scoped>
+/* Subtitle under the modal title — the screen never said what the link
+   actually gives the client. */
+.modal-heading { min-width: 0; }
+.modal-sub {
+  margin-top: 4px;
+  font-size: 12.5px; line-height: 1.6; color: var(--text-muted);
+}
+/* Fields pick up the tab colour on focus instead of the generic brand orange,
+   and the ring is 2px so the focus state stays visible (a11y focus-states). */
+.field input:focus {
+  outline: none;
+  border-color: var(--tab-portal, #4E9DD0);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tab-portal, #4E9DD0) 18%, transparent);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -229,15 +260,51 @@ async function sendEmail() {
   padding: 20px;
 }
 
+/* Two panes: the form on the right (first in the DOM under `direction: rtl`)
+   and the photograph on the left. The card itself no longer scrolls — only the
+   form pane does, so the image stays put while the fields move. */
 .modal-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0.82fr;
   background: var(--card-bg);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   width: 100%;
-  max-width: 480px;
+  max-width: 880px;
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: hidden;
+}
+.pane--form {
   padding: 28px;
+  overflow-y: auto;
+  min-width: 0;
+}
+.pane--art {
+  position: relative;
+  background: var(--bg);
+  overflow: hidden;
+}
+.pane--art img {
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: center 62%;
+  display: block;
+}
+/* A wash in the portal tab's own colour ties the photograph to the palette —
+   the image is the only photo in the workspace, so it needs the tint to read
+   as part of the product rather than dropped-in stock. */
+.art-veil {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(200deg,
+      color-mix(in srgb, var(--chart-2, #4E9DD0) 26%, transparent) 0%,
+      transparent 52%),
+    linear-gradient(to left, rgba(255,255,255,0.30), transparent 38%);
+  pointer-events: none;
+}
+@media (max-width: 820px) {
+  /* Below this the photo would squeeze the fields; the form is the job. */
+  .modal-card { grid-template-columns: 1fr; max-width: 480px; }
+  .pane--art { display: none; }
 }
 
 .modal-header {
@@ -307,8 +374,12 @@ form { display: flex; flex-direction: column; gap: 16px; }
 }
 
 .gen-pass-btn:hover, .toggle-pass:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--tab-portal, #4E9DD0);
+  color: var(--tab-portal-ink, #35719A);
+}
+.gen-pass-btn:focus-visible, .toggle-pass:focus-visible {
+  outline: 2px solid var(--tab-portal, #4E9DD0);
+  outline-offset: 2px;
 }
 
 .auto-hint {
@@ -347,12 +418,15 @@ form { display: flex; flex-direction: column; gap: 16px; }
   margin-top: 8px;
 }
 
+/* The portal tab's own colour (--chart-2 / --tab-portal). The old peach came
+   from `--primary`, which is the brand ACTION orange and belongs to no palette
+   on this screen. */
 .btn-primary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 24px;
-  background: var(--primary);
+  background: var(--tab-portal, #4E9DD0);
   color: white;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -362,7 +436,7 @@ form { display: flex; flex-direction: column; gap: 16px; }
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-deep);
+  background: var(--tab-portal-ink, #35719A);
 }
 
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
