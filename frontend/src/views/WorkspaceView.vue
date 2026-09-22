@@ -88,9 +88,12 @@
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
     <FundTrackVizPanel v-model:open="fundDetailOpen" :viz="fundDetailViz" />
 
-    <Transition name="view-switch" mode="out-in">
+    <!-- While the launch morph is running it owns the swap outright: the
+         slide would otherwise play underneath it, two animations arguing over
+         one transition. -->
+    <Transition :name="morphRunning ? 'view-none' : 'view-switch'" mode="out-in">
       <!-- HOME MODE -->
-      <div v-if="viewMode === 'home'" key="home" class="home-view">
+      <div v-if="viewMode === 'home'" key="home" class="home-view" :class="{ 'home-view--receding': morphReceding }">
         <!-- Floating blur circles -->
         <div class="float-circle fc-1"></div>
         <div class="float-circle fc-2"></div>
@@ -184,6 +187,22 @@
       </div>
     </Transition>
 
+    <!-- The launching app. One childless fixed box: it grows out of the card
+         you pressed and flattens its corners into the screen, then hands over
+         to the real view. Above the header (100) and tabs (90), below every
+         modal (1000+) so nothing can be launched over a dialog. -->
+    <div
+      v-if="morphRunning"
+      ref="morphSurface"
+      class="launch-surface"
+      :style="morphStyle"
+      aria-hidden="true"
+    >
+      <span v-if="morphTab" ref="morphGlyph" class="launch-glyph">
+        <AppIcon :name="morphTab" :size="22" />
+      </span>
+    </div>
+
     <!-- Post-login welcome wipe -->
     <WelcomeOverlay
       v-if="welcomeOpen"
@@ -274,6 +293,8 @@ import AiVizPanel from '../components/workspace/AiVizPanel.vue'
 import AiAssistantWidget from '../components/workspace/AiAssistantWidget.vue'
 import AiConversationSheet from '../components/workspace/AiConversationSheet.vue'
 import { useAiContextStore } from '../stores/aiContext.js'
+import { useLaunchMorph } from '../composables/useLaunchMorph.js'
+import AppIcon from '../components/icons/AppIcon.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -283,6 +304,23 @@ const portalAutomationStore = usePortalAutomationStore()
 const messengerStore = useMessengerStore()
 const activeTab = ref('production')
 const viewMode = ref('home')
+
+// ── iOS-style app launch ───────────────────────────────────────────────
+// Pressing a home card grows that card's rectangle into the view; going home
+// shrinks it back into the same card.
+const morph = useLaunchMorph()
+const morphRunning = morph.running
+const morphReceding = morph.receding
+const morphSurface = morph.surfaceEl
+const morphGlyph = morph.glyphEl
+const morphTab = morph.tab
+// The surface is always a full-viewport box; where it appears to be is
+// entirely the transform's business. This seed is only what it mounts with,
+// before the animation's `fill: both` takes over on the next frame.
+const morphStyle = computed(() => ({
+  ...(morph.seed.value || {}),
+  '--launch-accent': morph.accent.value || 'transparent',
+}))
 
 // Setup wizard → setup entry points
 const phoneForwardOpen = ref(false)
@@ -328,9 +366,20 @@ function onCardSelect(payload) {
   const tabId = typeof payload === 'string' ? payload : payload.tab
   const company = typeof payload === 'object' ? payload.company : null
   const uploadId = typeof payload === 'object' ? payload.uploadId : null
+  const rect = typeof payload === 'object' ? payload.rect : null
 
-  activeTab.value = tabId
-  viewMode.value = 'content'
+  const commit = () => {
+    activeTab.value = tabId
+    viewMode.value = 'content'
+  }
+  // Pressed on a home card → grow the view out of it. Every other caller
+  // (the setup wizard, the batch toast, the command menu) has no rectangle to
+  // grow from and just switches.
+  if (rect && viewMode.value === 'home') {
+    morph.launch({ rect, radius: payload.radius, accent: payload.accent, tabId, commit })
+  } else {
+    commit()
+  }
 
   // The merged comparison already covers every company, so there is no
   // category to select. Only compute when we have nothing cached at all.
@@ -342,7 +391,8 @@ function onCardSelect(payload) {
 }
 
 function goHome() {
-  viewMode.value = 'home'
+  if (viewMode.value === 'home') return
+  morph.dismiss({ tabId: activeTab.value, commit: () => { viewMode.value = 'home' } })
 }
 
 // ── Batch results toast → navigation ───────────────────────────────────
@@ -799,6 +849,57 @@ async function openFundDetail(trackId) {
 
 .tab-content {
   min-height: 400px;
+}
+
+/* ── iOS-style app launch ──────────────────────────────────────────────── */
+.launch-surface {
+  position: fixed;
+  /* Laid out at the full viewport and scaled DOWN to wherever it should be.
+     Animating a transform keeps the travel on the compositor; animating
+     left/top/width/height put a layout pass in every frame and you could see
+     it. `transform-origin` at the top-left corner is what makes the
+     translate a plain viewport coordinate, RTL or not. */
+  inset: 0;
+  transform-origin: 0 0;
+  z-index: 900;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  will-change: transform, opacity, border-radius;
+}
+/* The glyph rides inside the surface, so it inherits its scale — its own
+   animation counter-scales it back to a readable size. */
+.launch-glyph {
+  display: grid;
+  place-items: center;
+  color: var(--launch-accent, var(--text-muted));
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* A hairline of the tab's own colour rides up with the surface, so you can
+   see WHICH app is opening for the whole of the travel. */
+.launch-surface::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3px;
+  background: var(--launch-accent, transparent);
+}
+/* The springboard falls back as the app comes forward. */
+.home-view--receding {
+  transform: scale(0.965);
+  opacity: 0.45;
+  transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.42s ease;
+}
+.view-none-enter-active,
+.view-none-leave-active { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .home-view--receding { transform: none; opacity: 1; transition: none; }
 }
 
 /* View switch transitions */

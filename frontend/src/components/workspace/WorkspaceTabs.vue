@@ -7,8 +7,9 @@
         :key="tab.id"
        
         class="card"
+        :data-tab="tab.id"
         :style="{ '--i': idx, '--accent': tab.accent, '--accent-glow': tab.accentGlow, '--accent-ink': tab.ink }"
-        @click="$emit('select-card', tab.id)"
+        @click="onCardPress($event, tab.id)"
         @mouseenter="hoveredCard = tab.id"
         @mouseleave="hoveredCard = null"
       >
@@ -89,7 +90,21 @@ const props = defineProps({
   modelValue: { type: String, required: true },
   viewMode: { type: String, default: 'home' },
 })
-defineEmits(['update:modelValue', 'select-card', 'go-home'])
+const emit = defineEmits(['update:modelValue', 'select-card', 'go-home'])
+
+/* The card hands up the rectangle it occupies, so the view it opens can grow
+   out of exactly that box — the iOS springboard gesture. Measured at press
+   time because the grid wraps and the card moves with the window. */
+function onCardPress(e, id) {
+  const el = e.currentTarget
+  const r = el.getBoundingClientRect()
+  emit('select-card', {
+    tab: id,
+    rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+    radius: parseFloat(getComputedStyle(el).borderRadius) || 14,
+    accent: ANIM_COLORS[id] || '',
+  })
+}
 
 /* Which home card is hovered → mounts ONE ambient Remotion loop at a time. */
 const hoveredCard = ref(null)
@@ -106,6 +121,9 @@ const ANIM_COLORS = {
   portal: '#4E9DD0',
   'ai-library': '#B79CEB',
   'portal-automation': '#0E8C8A',
+  // --tab-maslaka → --chart-14. Was missing, so מסלקה got neither an ambient
+  // hover loop nor a launch hairline while every other card had both.
+  maslaka: '#2C5F6B',
 }
 
 /* Tab identity system — every tab owns ONE CHART_PALETTE color (tokens in
