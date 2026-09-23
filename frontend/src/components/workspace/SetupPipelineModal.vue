@@ -53,7 +53,7 @@
                     <span class="spm-step-titles">
                       <span class="spm-step-title">{{ s.title }}</span>
                       <span v-if="s.done && s.id === 'worker' && workerHost" class="spm-step-meta ltr-number">{{ workerHost }}</span>
-                      <span v-if="s.done" class="spm-step-donetag">{{ s.id === 'worker' ? 'מחובר' : 'הושלם' }}</span>
+                      <span v-if="s.done" class="spm-step-donetag">{{ s.id === 'worker' ? (workerOnline ? 'מחובר' : 'מותקן') : 'הושלם' }}</span>
                       <span v-else-if="s.id === firstIncompleteId" class="spm-step-nexttag" :style="{ background: ACCENTS[s.id].soft, color: ACCENTS[s.id].deep }">הצעד הבא</span>
                     </span>
                   </button>

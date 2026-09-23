@@ -28,10 +28,14 @@ export function useSetupPipeline() {
   const store = usePortalAutomationStore()
   const notifications = useNotificationsStore()
 
-  const workerDone = computed(() => !!store.workerStatus?.online)
+  // "Done" = ever achieved, not live state: a veteran whose PC is off, or whose
+  // last batch failed, has still finished setup and must not be re-onboarded.
+  const workerDone = computed(() => !!(store.workerStatus?.online || store.workerStatus?.ever_connected))
   const phoneDone = computed(() => !!store.phoneForward?.token)
   const credsDone = computed(() => (store.credentials?.length || 0) > 0)
-  const runDone = computed(() => ['success', 'partial'].includes(store.latestBatch?.status))
+  const runDone = computed(() =>
+    ['success', 'partial'].includes(store.latestBatch?.status) || !!store.setupStatus?.has_successful_run,
+  )
 
   // Phone comes first: the installer embeds the phone-forward token, so the
   // worker step can't be completed until the phone step is.
@@ -90,6 +94,7 @@ export function useSetupPipeline() {
       store.fetchCredentials().catch(() => {}),
       store.fetchLatestBatch().catch(() => {}),
       store.fetchWorkerStatus().catch(() => {}),
+      store.fetchSetupStatus().catch(() => {}),
     ])
   }
 

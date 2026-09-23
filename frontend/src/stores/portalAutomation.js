@@ -18,7 +18,16 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   // Local worker liveness (the agent's Israeli machine that runs the automation)
   const workerStatus = ref({ online: false, last_seen: null, hostname: null, current_job: null, update_pending: false })
 
+  // Sticky setup facts (e.g. "a batch ever succeeded") for the setup wizard.
+  const setupStatus = ref({ has_successful_run: false })
+
   let pollHandle = null
+
+  async function fetchSetupStatus() {
+    const res = await api.get('/portal-automation/setup-status')
+    setupStatus.value = res.data || { has_successful_run: false }
+    return setupStatus.value
+  }
 
   async function fetchWorkerStatus() {
     try {
@@ -503,6 +512,8 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
     error,
     workerStatus,
     fetchWorkerStatus,
+    setupStatus,
+    fetchSetupStatus,
     requestWorkerUpdate,
     fetchPortalKinds,
     fetchCredentials,

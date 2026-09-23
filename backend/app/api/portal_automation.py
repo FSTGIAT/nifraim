@@ -1297,10 +1297,15 @@ async def worker_status(
         select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
     )).scalar_one_or_none()
     if not row or not row.last_seen:
-        return {"online": False, "last_seen": None, "hostname": None, "current_job": None}
+        return {"online": False, "ever_connected": False, "last_seen": None, "hostname": None, "current_job": None}
     age = (datetime.utcnow() - row.last_seen).total_seconds()
     return {
         "online": age <= WORKER_ONLINE_WINDOW_S,
+        # Installed = a real worker heartbeated at least once. Only the worker's
+        # own beat writes hostname; installer telemetry rows leave it NULL. The
+        # setup wizard uses this, not `online` — a veteran's PC being off is not
+        # "setup incomplete".
+        "ever_connected": row.hostname is not None,
         "last_seen": row.last_seen.isoformat(),
         "age_seconds": int(age),
         "hostname": row.hostname,
@@ -1309,6 +1314,25 @@ async def worker_status(
         # (still pending). Cleared by the worker after it self-updates.
         "update_pending": row.update_requested_at is not None,
     }
+
+
+@router.get("/setup-status")
+async def setup_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Sticky setup facts for the setup wizard: has ANY run-all batch ever
+    succeeded. The latest batch alone can't answer it — a veteran whose last
+    batch failed or is still running would be sent back to onboarding."""
+    has_run = (await db.execute(
+        select(PortalRunBatch.id)
+        .where(
+            PortalRunBatch.user_id == user.id,
+            PortalRunBatch.status.in_(("success", "partial")),
+        )
+        .limit(1)
+    )).scalar_one_or_none() is not None
+    return {"has_successful_run": has_run}
 
 
 @router.post("/worker/request-update")
