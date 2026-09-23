@@ -33,15 +33,9 @@ export function useSetupPipeline() {
   const credsDone = computed(() => (store.credentials?.length || 0) > 0)
   const runDone = computed(() => ['success', 'partial'].includes(store.latestBatch?.status))
 
+  // Phone comes first: the installer embeds the phone-forward token, so the
+  // worker step can't be completed until the phone step is.
   const steps = computed(() => [
-    {
-      id: 'worker',
-      title: 'התקינו את המחשב',
-      body: 'התקנה חד-פעמית: ההורדות ירוצו ישירות מהמחשב שלך (כתובת IP ישראלית), וכל החברות יעבדו.',
-      cta: 'הורד מתקין',
-      hint: 'לחצו פעמיים על הקובץ שירד — תוך כ-20 שניות המחוון כאן יהפוך ל"מחובר".',
-      done: workerDone.value,
-    },
     {
       id: 'phone',
       title: 'חברו את הטלפון',
@@ -49,6 +43,14 @@ export function useSetupPipeline() {
       cta: 'חבר את הטלפון',
       hint: '',
       done: phoneDone.value,
+    },
+    {
+      id: 'worker',
+      title: 'התקינו את המחשב',
+      body: 'התקנה חד-פעמית: ההורדות ירוצו ישירות מהמחשב שלך (כתובת IP ישראלית), וכל החברות יעבדו.',
+      cta: 'הורד מתקין',
+      hint: 'לחצו פעמיים על הקובץ שירד — תוך כ-20 שניות המחוון כאן יהפוך ל"מחובר".',
+      done: workerDone.value,
     },
     {
       id: 'portal',

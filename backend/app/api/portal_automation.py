@@ -1384,8 +1384,35 @@ async def worker_log(token: str, request: Request, db: AsyncSession = Depends(ge
     # mirrored into the user's heartbeat row so GET /worker/status can show a
     # live install indicator in the setup wizard. last_seen stays ancient for a
     # brand-new row — "online" must only flip once the actual worker heartbeats.
-    if user and body.startswith("installer: "):
-        msg = "install: " + body[len("installer: "):][:180]
+    # A freshly installed worker that crashes before its FIRST heartbeat (bad
+    # .env, import error) is surfaced the same way — otherwise the wizard sits on
+    # "install done" with no reason. Never-heartbeated rows only, so a running
+    # worker's current_job is untouched.
+    # Its boot ("worker process starting") is mirrored too: the first import on
+    # a fresh machine can outlast the wizard's grace after 'done', so the wizard
+    # needs to know the worker is alive-but-booting. Only while the worker is
+    # OFFLINE — a running worker's self-update restart never touches the row;
+    # the worker's first heartbeat clears current_job.
+    worker_msg = None
+    is_fatal = "] FATAL: " in body[:200]
+    if user and (is_fatal or "] worker process starting" in body[:200]):
+        hb = (await db.execute(
+            select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
+        )).scalar_one_or_none()
+        offline = hb is not None and (
+            hb.last_seen is None
+            or (datetime.utcnow() - hb.last_seen).total_seconds() > WORKER_ONLINE_WINDOW_S
+        )
+        if offline and is_fatal:
+            last = body.strip().splitlines()[-1] if body.strip() else ""
+            worker_msg = "install: FATAL: המחשב הותקן אך לא הצליח לעלות — " + last[:140]
+        elif offline:
+            worker_msg = "install: booting"
+    if user and (body.startswith("installer: ") or worker_msg):
+        if worker_msg:
+            msg = worker_msg
+        else:
+            msg = "install: " + body[len("installer: "):][:180]
         row = (await db.execute(
             select(WorkerHeartbeat).where(WorkerHeartbeat.user_id == user.id)
         )).scalar_one_or_none()
@@ -1454,10 +1481,28 @@ $Email  = '__EMAIL__'
 $Install = Join-Path $env:LOCALAPPDATA 'Nifraim'
 $Log = Join-Path $env:TEMP 'nifraim_install.log'
 
+# One install at a time. A second double-click used to start a parallel install
+# that crashed on the first one's locked worker.zip and reported FATAL — the
+# wizard then showed an error while the real install was still running. The
+# OS frees the mutex if this process dies, so a killed install never blocks.
+$createdNew = $false
+$SetupMutex = New-Object System.Threading.Mutex($true, 'Local\NifraimWorkerSetup', [ref]$createdNew)
+if (-not $createdNew) {
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show(
+      'ההתקנה כבר רצה בחלון אחר. חכו שחלון ההתקנה הירוק יסתיים - אין צורך להפעיל שוב.',
+      'Nifraim', 'OK', 'Information')
+  } catch {}
+  exit 0
+}
+
 $Work = {
   function Up($m, $p) {
     if ($sync) { $sync.status = $m; if ($p) { $sync.pct = $p } }
-    try { Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ("installer: " + $m) -TimeoutSec 10 | Out-Null } catch {}
+    # UTF-8 BYTES: PowerShell 5.1 sends a string body as ISO-8859-1, so every
+    # Hebrew stage arrived as '?????' and the wizard could never match it.
+    try { Invoke-RestMethod -Uri "$Base/api/portal-automation/worker/log/$Token" -Method Post -Body ([Text.Encoding]::UTF8.GetBytes("installer: " + $m)) -ContentType 'text/plain; charset=utf-8' -TimeoutSec 10 | Out-Null } catch {}
   }
   function Get-RealPython {
     # The Microsoft Store ships a fake python.exe alias under WindowsApps that
@@ -1470,6 +1515,9 @@ $Work = {
     return $null
   }
   try {
+    # A server without WORKER_PUBLIC_DATABASE_URL hands us a placeholder; a
+    # worker started with it dies on import and the install looks "done" forever.
+    if ($DbUrl -notlike 'postgresql*') { throw 'הגדרת השרת חסרה (כתובת מסד נתונים לעובד). פנו לתמיכה.' }
     $pyExe = Get-RealPython
     if (-not $pyExe) {
       # Non-technical users won't have Python — install it for them, silently,
@@ -1647,9 +1695,15 @@ async def worker_installer_ps(token: str, request: Request, db: AsyncSession = D
     if not user:
         raise HTTPException(status_code=404, detail="not found")
     base = _external_base(request)
+    # Local dev has no WORKER_PUBLIC_DATABASE_URL; its own DATABASE_URL is
+    # localhost, which the Windows side of WSL reaches too. Deployed hosts never
+    # take this branch (the internal Railway URL is unreachable from a worker).
+    db_url = settings.WORKER_PUBLIC_DATABASE_URL
+    if not db_url and (request.url.hostname or "") in ("localhost", "127.0.0.1"):
+        db_url = settings.DATABASE_URL
     ps = _worker_installer_ps(
         base, token,
-        settings.WORKER_PUBLIC_DATABASE_URL or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
+        db_url or "<<WORKER_PUBLIC_DATABASE_URL not set>>",
         settings.PORTAL_CRED_FERNET_KEY or "",
         user.email,
         settings.MASLAKA_ENCRYPTION_KEY or "",

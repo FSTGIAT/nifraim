@@ -52,18 +52,28 @@
                     </span>
                     <span class="spm-step-titles">
                       <span class="spm-step-title">{{ s.title }}</span>
-                      <span v-if="s.done" class="spm-step-donetag">הושלם</span>
+                      <span v-if="s.done && s.id === 'worker' && workerHost" class="spm-step-meta ltr-number">{{ workerHost }}</span>
+                      <span v-if="s.done" class="spm-step-donetag">{{ s.id === 'worker' ? 'מחובר' : 'הושלם' }}</span>
                       <span v-else-if="s.id === firstIncompleteId" class="spm-step-nexttag" :style="{ background: ACCENTS[s.id].soft, color: ACCENTS[s.id].deep }">הצעד הבא</span>
                     </span>
                   </button>
 
                   <!-- Detail: only for the ACTIVE, NOT-DONE step — the mission card -->
-                  <div class="spm-step-detail" :class="{ 'spm-step-detail--open': s.id === selectedId && !s.done }">
+                  <div class="spm-step-detail" :class="{ 'spm-step-detail--open': s.id === selectedId && (!s.done || (s.id === 'worker' && justConnected)) }">
                     <div class="spm-step-detail-inner">
                       <p class="spm-step-body">{{ s.body }}</p>
 
                       <!-- Worker: honest walkthrough + live install telemetry -->
-                      <template v-if="s.id === 'worker'">
+                      <div v-if="s.id === 'worker' && justConnected" class="spm-connected" role="status">
+                        <span class="spm-connected-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </span>
+                        <div class="spm-connected-texts">
+                          <strong>המחשב מחובר!</strong>
+                          <span>ההורדות ירוצו מ-<span class="ltr-number">{{ workerHost || 'המחשב שלך' }}</span>. עוברים לצעד הבא…</span>
+                        </div>
+                      </div>
+                      <template v-else-if="s.id === 'worker'">
                         <div class="spm-mini-steps">
                           <div class="spm-mini-step">
                             <span class="spm-mini-num" :style="{ background: ACCENTS.worker.soft, color: ACCENTS.worker.deep }">1</span>
@@ -199,7 +209,7 @@ const stepAssets = Object.fromEntries(
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const selectedId = ref('worker')
+const selectedId = ref('phone')
 const celebrating = ref(false)
 const downloading = ref(false)
 const downloadedOnce = ref(false)
@@ -208,6 +218,12 @@ const nowTick = ref(Date.now())
 const workerHint = ref('')
 const redirectNote = ref('')
 const workerOnline = computed(() => !!store.workerStatus?.online)
+const workerHost = computed(() => store.workerStatus?.hostname || '')
+// The moment the computer connects, hold the worker step open on a clear
+// "connected" confirmation before moving on — a silent collapse-and-jump
+// left users unsure whether the install had worked.
+const justConnected = ref(false)
+let connectedTimer = null
 // The installer embeds the phone-forward token (for OTP relay + install
 // telemetry), so it can't be built until the phone step is done. Gate the
 // download on it and route the user to the phone step if it's missing.
@@ -235,7 +251,10 @@ const INSTALL_STAGES = {
   'מורידים דפדפן (כ-150MB — אל תסגרו)': { label: 'מוריד דפדפן (כ-150MB)…', pct: 72 },
   'מגדיר': { label: 'מגדיר את החיבור…', pct: 82 },
   'מפעיל': { label: 'מפעיל את החיבור…', pct: 92 },
-  'done': { label: 'כמעט שם — ממתין לחיבור הראשון…', pct: 97 },
+  'done': { label: 'כמעט שם — ממתין לחיבור הראשון…', pct: 96 },
+  // The worker process itself is up and importing (first run on a fresh PC can
+  // take a couple of minutes); its first heartbeat flips the pill to מחובר.
+  'booting': { label: 'המחשב עולה — החיבור הראשון לוקח עד 2-3 דקות…', pct: 98 },
   // Legacy label from pre-2026-07 installers still in the field:
   'מתקין רכיבים (כמה דקות)': { label: 'מתקין רכיבים (כמה דקות)…', pct: 55 },
 }
@@ -264,16 +283,34 @@ const stuck = computed(() => {
 // The installer can report it finished ('done') yet the worker never comes
 // online — then we'd sit at 97% "כמעט שם…" forever. Record when we first see
 // 'done' and, after a grace period without a connection, switch to the rescue.
+// The server keeps no timestamp for 'done', so a 'done' we did NOT watch happen
+// (no download and no live install stage this session) is stale — e.g. from an
+// earlier install whose worker then crashed. Start that one already expired.
 const doneSince = ref(0)
+const sawLiveInstall = ref(false)
+// Grace before the rescue: 'done' should be followed by 'booting' within
+// seconds; 'booting' may legitimately take minutes (first import on a new PC).
+const STALL_GRACE = { done: 45_000, booting: 240_000 }
+const waitingOn = ref(null)
 watch(rawInstallMsg, (m) => {
-  if (m === 'done' && !workerOnline.value) {
-    if (!doneSince.value) doneSince.value = Date.now()
+  if (m && !(m in STALL_GRACE)) sawLiveInstall.value = true
+  if (m in STALL_GRACE && !workerOnline.value) {
+    if (m !== waitingOn.value) {
+      if (waitingOn.value) sawLiveInstall.value = true // a transition we saw live
+      waitingOn.value = m
+      doneSince.value = 0
+    }
+    if (!doneSince.value) {
+      const watched = sawLiveInstall.value || downloadedAt.value > 0
+      doneSince.value = watched ? Date.now() : Date.now() - 3_600_000
+    }
   } else {
     doneSince.value = 0
   }
 }, { immediate: true })
 const installStalled = computed(() =>
-  !workerOnline.value && doneSince.value > 0 && nowTick.value - doneSince.value > 45_000,
+  !workerOnline.value && doneSince.value > 0
+    && nowTick.value - doneSince.value > (STALL_GRACE[waitingOn.value] || 45_000),
 )
 
 let tickTimer = null
@@ -367,17 +404,31 @@ watch(() => setupState.modalOpen, (open) => {
     setup.bootstrap().catch(() => {})
     if (!pollHeld) { setup.startWorkerPoll(); pollHeld = true }
     if (!tickTimer) tickTimer = setInterval(() => { nowTick.value = Date.now() }, 5000)
-    selectedId.value = setupState.requestedStep || firstIncompleteId.value || 'worker'
+    selectedId.value = setupState.requestedStep || firstIncompleteId.value || 'phone'
   } else {
     if (pollHeld) { setup.stopWorkerPoll(); pollHeld = false }
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
     if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null }
   }
+// immediate: the modal can MOUNT already open (remount / hot reload while the
+// wizard is up) — without it the status poll never starts and the pill stays
+// on "ממתין לחיבור" even after the worker connects.
+}, { immediate: true })
+
+watch(workerOnline, (on, was) => {
+  if (!on || was || !setupState.modalOpen) return
+  justConnected.value = true
+  selectedId.value = 'worker'
+  if (connectedTimer) clearTimeout(connectedTimer)
+  connectedTimer = setTimeout(() => {
+    justConnected.value = false
+    if (firstIncompleteId.value) selectedId.value = firstIncompleteId.value
+  }, 2600)
 })
 
 // ── Live completion while open: checkmark draws, then move to next mission ──
 watch(completedCount, (now, before) => {
-  if (!setupState.modalOpen || now <= before) return
+  if (!setupState.modalOpen || now <= before || justConnected.value) return
   if (advanceTimer) clearTimeout(advanceTimer)
   advanceTimer = setTimeout(() => {
     if (firstIncompleteId.value) selectedId.value = firstIncompleteId.value
@@ -394,6 +445,7 @@ watch(allDone, (done) => {
 })
 
 onBeforeUnmount(() => {
+  if (connectedTimer) clearTimeout(connectedTimer)
   if (advanceTimer) clearTimeout(advanceTimer)
   if (celebrateTimer) clearTimeout(celebrateTimer)
   if (tickTimer) clearInterval(tickTimer)
@@ -448,7 +500,9 @@ onBeforeUnmount(() => {
 .spm-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  min-height: 540px;
+  /* Tall enough for the biggest step, so opening/closing steps never resizes
+     and re-centres the card under the user's cursor. */
+  min-height: min(720px, calc(100vh - 40px));
 }
 
 .spm-main { padding: 30px 34px 26px 26px; }
@@ -548,6 +602,43 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   padding: 2px 9px;
 }
+.spm-step-meta {
+  flex-shrink: 0;
+  margin-right: auto;
+  font-size: 11.5px;
+  color: #2F5E41;
+  opacity: 0.8;
+}
+.spm-step-meta + .spm-step-donetag { margin-right: 0; }
+.spm-connected {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #EAF5EE;
+  border: 1px solid rgba(46, 132, 74, 0.28);
+  animation: spmConnectedIn 0.35s ease both;
+}
+.spm-connected-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-emerald, #2E844A);
+  color: #fff;
+}
+.spm-connected-texts { display: flex; flex-direction: column; gap: 2px; }
+.spm-connected-texts strong { font-size: 15px; color: #1F5A35; }
+.spm-connected-texts span { font-size: 13px; color: #2F5E41; }
+@keyframes spmConnectedIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .spm-connected { animation: none; } }
 .spm-step-nexttag {
   flex-shrink: 0;
   margin-right: auto;
