@@ -1,5 +1,5 @@
 <template>
-  <span class="clogo" :style="{ width: size + 'px', height: size + 'px' }">
+  <span class="clogo" :class="{ 'clogo--bare': !frame }" :style="{ width: size + 'px', height: size + 'px' }">
     <!-- The real mark when we have one. Vendored at build time rather than
          hotlinked, so no third-party request tells an outside service which
          insurers this agent works with. -->
@@ -20,6 +20,10 @@ import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
 const props = defineProps({
   company: { type: String, default: '' },
   size: { type: Number, default: 34 },
+  /* Draw the rounded tile. Off where the CALLER already supplies one — the
+     automation rows and the comparison table both wrap their mark in a
+     brand-tinted square, and a framed logo inside that is a tile in a tile. */
+  frame: { type: Boolean, default: true },
 })
 
 const LOGOS = import.meta.glob('../../assets/logos/*.png', { eager: true, import: 'default' })
@@ -38,14 +42,16 @@ const brand = computed(() => brandForLabel(props.company))
 const src = computed(() => {
   const label = String(props.company || '').trim()
   if (!label) return null
-  // Find the brand key whose label this contact's company name contains.
-  for (const [key, b] of Object.entries(COMPANY_BRAND)) {
-    const base = String(b.label || '').split('—')[0].trim()
-    if (!base) continue
-    if (label.includes(base) || base.includes(label)) {
-      const file = byKey[key] || byKey[key.split('_')[0]]
-      if (file) return file
-    }
+  // Resolve through `brandForLabel` rather than matching here. This used to run
+  // its own `includes` loop, which had no head-word rule: a production row
+  // saying `מיטב גמל ופנסיה בע"מ` does not contain `מיטב דש`, so it found no
+  // logo and fell back to the drawn glyph while the same company showed its
+  // real mark two panels over. One matcher, one answer.
+  const b = brandForLabel(label)
+  for (const [key, entry] of Object.entries(COMPANY_BRAND)) {
+    if (entry !== b) continue
+    const file = byKey[key] || byKey[key.split('_')[0]]
+    if (file) return file
   }
   return null
 })
@@ -66,4 +72,13 @@ watch(src, () => { failed.value = false })
    the logo looking lost inside its own frame. */
 .clogo img { width: 78%; height: 78%; object-fit: contain; display: block; }
 .clogo svg { width: 62%; height: 62%; }
+
+.clogo--bare {
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+/* Without a frame of its own the mark should fill the caller's. */
+.clogo--bare img { width: 100%; height: 100%; }
+.clogo--bare svg { width: 100%; height: 100%; }
 </style>

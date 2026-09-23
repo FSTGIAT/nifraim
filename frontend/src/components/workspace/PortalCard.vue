@@ -12,9 +12,14 @@
     <!-- ─── HEAD: brand tile + identity + status ─────────────── -->
     <header class="pcard__head">
       <span class="pcard__tile" :title="brand.label" aria-hidden="true">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-          <path :d="brand.iconPath" />
-        </svg>
+        <!-- `frame` off: this tile already IS the frame, tinted with the brand
+             colour. Resolved from the DISPLAY name, not `brand.label`: half
+             the portal kinds (harel_commissions, phoenix_sfe, …) are absent
+             from COMPANY_BRAND, so `brand.label` is literally '?' for them and
+             six cards fell back to the grey fallback glyph while the parent
+             group above showed the real logo. The display name always carries
+             the insurer — 'הראל — ריכוז תשלומי עמלות' matches on 'הראל'. -->
+        <CompanyLogo :company="portalLabel" :size="30" :frame="false" />
       </span>
       <div class="pcard__id">
         <span class="pcard__name">{{ portalLabel }}</span>
@@ -94,6 +99,7 @@ import { computed, ref } from 'vue'
 import PortalRunProgress from './PortalRunProgress.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 import { brandFor } from '../../utils/companyBrand.js'
+import CompanyLogo from './CompanyLogo.vue'
 import { nearestChartColor } from '../../utils/chartPalette.js'
 import api from '../../api/client.js'
 

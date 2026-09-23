@@ -83,9 +83,7 @@
                 :style="avatarStyle(row.company)"
                 aria-hidden="true"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path :d="brandIcon(row.company)" />
-                </svg>
+                <CompanyLogo :company="row.company" :size="18" :frame="false" />
               </span>
               <span class="crs-company">{{ row.company }}</span>
             </td>
@@ -151,9 +149,7 @@
         <button type="button" class="crs-card" @click="$emit('drill', row.company)">
           <div class="crs-card-top">
             <span class="crs-avatar" :style="avatarStyle(row.company)" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path :d="brandIcon(row.company)" />
-              </svg>
+              <CompanyLogo :company="row.company" :size="18" :frame="false" />
             </span>
             <span class="crs-company">{{ row.company }}</span>
             <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn ltr-number">{{ fmtInt(row.unpaid) }} לא שולמו</span>
@@ -190,6 +186,7 @@
 <script setup>
 import { computed } from 'vue'
 import { brandForLabel } from '../../utils/companyBrand.js'
+import CompanyLogo from '../workspace/CompanyLogo.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
 const props = defineProps({
@@ -325,10 +322,6 @@ const colorMap = computed(() =>
 
 function companyColor(company) {
   return colorMap.value.get(company) || 'var(--chart-2, #4E9DD0)'
-}
-
-function brandIcon(company) {
-  return brandForLabel(company).iconPath
 }
 
 function avatarStyle(company) {

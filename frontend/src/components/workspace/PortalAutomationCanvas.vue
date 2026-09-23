@@ -41,9 +41,11 @@
           @keydown.space.prevent="toggleGroup(g)"
         >
           <span class="group-icon" aria-hidden="true">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path :d="g.brand.iconPath" />
-            </svg>
+            <!-- The insurer's real mark. `frame` off because this span already
+                 IS the tile, tinted with the brand colour. CompanyLogo falls
+                 back to the same drawn glyph when a company has no vendored
+                 logo, so nothing can end up blank. -->
+            <CompanyLogo :company="g.label" :size="19" :frame="false" />
           </span>
           <span class="group-name">{{ g.label }}</span>
           <span class="group-count ltr-number">{{ g.creds.length }}</span>
@@ -99,6 +101,7 @@
 import { computed, ref } from 'vue'
 import PortalCard from './PortalCard.vue'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
+import CompanyLogo from './CompanyLogo.vue'
 import { nearestChartColor, assignNearestDistinct } from '../../utils/chartPalette.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 

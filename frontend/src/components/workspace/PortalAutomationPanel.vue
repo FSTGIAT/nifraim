@@ -25,9 +25,9 @@
       >
         <div class="cred-head">
           <span class="cred-ico" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <path :d="brandFor(cred.portal_kind).iconPath" />
-            </svg>
+            <!-- The DISPLAY name, not `brandFor(kind).label` — that registry
+                 has no entry for several kinds and returns '?' for them. -->
+            <CompanyLogo :company="portalLabel(cred.portal_kind)" :size="24" :frame="false" />
           </span>
           <div class="cred-head-txt">
             <strong>{{ portalLabel(cred.portal_kind) }}</strong>
@@ -60,6 +60,7 @@
 import { computed, onMounted } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor } from '../../utils/companyBrand.js'
+import CompanyLogo from './CompanyLogo.vue'
 import PortalRunProgress from './PortalRunProgress.vue'
 
 const props = defineProps({
