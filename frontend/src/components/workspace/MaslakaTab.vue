@@ -26,7 +26,7 @@
           <!-- The association is the agent's to finish, so its next step lives
                here in the hero, not in a checklist card. -->
           <button
-            v-if="needsAssoc && assoc && !loading"
+            v-if="needsAssoc && assoc && !loading && !wizardInline"
             class="mk-next"
             :class="{ 'mk-next--calm': assoc.status === 'submitted' && !assoc.reply_received_at }"
             type="button"
@@ -52,7 +52,19 @@
       <TabHeroLoop scene="maslaka" class="mk-hero-art" />
     </header>
 
+    <!-- The agent still has to act (details / form / resend after a return):
+         the wizard lives IN the page — it can't be dismissed into an empty tab,
+         and the tab strip stays usable. -->
     <MaslakaAssociationModal
+      v-if="wizardInline"
+      inline
+      open
+      :assoc="assoc"
+      @changed="loadAssociation"
+    />
+    <!-- Otherwise a popup, opened from the hero ("פרטי הבקשה" / "איך זוהה"). -->
+    <MaslakaAssociationModal
+      v-else
       :open="assocOpen"
       :assoc="assoc"
       @close="assocOpen = false"
@@ -333,6 +345,9 @@ const assocOpen = ref(false)
 const assocLoaded = ref(false)
 
 const needsAssoc = computed(() => assocLoaded.value && assoc.value?.status !== 'approved')
+// Statuses where the agent still has to act on the שיוך → wizard in the page.
+const wizardInline = computed(() =>
+  !!assoc.value && needsAssoc.value && ['not_started', 'form_downloaded', 'rejected'].includes(assoc.value.status))
 const blocked = computed(() => !!gate.value || needsAssoc.value)
 
 const chipText = computed(() => {
@@ -456,9 +471,6 @@ async function openCustomer(id) {
 
 onMounted(async () => {
   await Promise.all([loadInquiries(), loadAssociation()])
-  // A first-time agent lands straight in the wizard; anyone further along
-  // opens it from the card, so the tab never nags on every visit.
-  if (assoc.value?.status === 'not_started' && !assoc.value.agent_id_number) assocOpen.value = true
 })
 </script>
 

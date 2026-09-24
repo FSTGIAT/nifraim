@@ -1,12 +1,15 @@
 <template>
-  <Teleport to="body">
+  <!-- `inline`: rendered in the page itself, not as a popup — no overlay, no
+       ✕, no Escape. Used while the agent still has to act on the שיוך, so it
+       can't be dismissed into an empty tab, yet the tab strip stays usable. -->
+  <Teleport to="body" :disabled="inline">
     <Transition name="modal">
-      <div v-if="open" class="ma-overlay" data-own-drop @click.self="close">
+      <div v-if="open" :class="inline ? 'ma-inline' : 'ma-overlay'" data-own-drop @click.self="close">
         <div
           class="ma-card"
           dir="rtl"
-          role="dialog"
-          aria-modal="true"
+          :role="inline ? 'region' : 'dialog'"
+          :aria-modal="inline ? undefined : 'true'"
           aria-labelledby="ma-title"
           @keydown.escape="close"
         >
@@ -14,7 +17,7 @@
                the photograph on the left: the same two-pane card as the
                contact and portal modals. Only this pane scrolls. -->
           <div class="ma-form">
-          <button class="ma-close" type="button" aria-label="סגור" @click="close">
+          <button v-if="!inline" class="ma-close" type="button" aria-label="סגור" @click="close">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
@@ -75,11 +78,6 @@
                   />
                   <span v-if="showIdError" id="ma-id-err" class="ma-help ma-help--bad">עד 9 ספרות</span>
                   <span v-else id="ma-id-help" class="ma-help">המספר שהמסלקה מכירה אתכם לפיו</span>
-                </div>
-                <div class="ma-field">
-                  <label for="ma-lic">מספר רישיון סוכן</label>
-                  <input id="ma-lic" v-model="licence" dir="ltr" inputmode="numeric" autocomplete="off"
-                         placeholder="לא חובה" />
                 </div>
               </div>
             </section>
@@ -312,6 +310,8 @@ const props = defineProps({
   // GET /maslaka/association payload — the single source of truth; this
   // component never keeps its own copy of the status.
   assoc: { type: Object, default: null },
+  // In the page instead of a popup, and not dismissible (see the template).
+  inline: { type: Boolean, default: false },
 })
 const emit = defineEmits(['close', 'changed'])
 
@@ -325,7 +325,6 @@ const STEPS = [
 const step = ref(0)
 const name = ref('')
 const idNumber = ref('')
-const licence = ref('')
 const idTouched = ref(false)
 const file = ref(null)
 const dragOver = ref(false)
@@ -353,7 +352,6 @@ watch(() => props.open, (isOpen) => {
   const a = props.assoc || {}
   name.value = a.agent_name || ''
   idNumber.value = a.agent_id_number || ''
-  licence.value = a.agent_licence_number || ''
   idTouched.value = false
   file.value = null
   error.value = ''
@@ -385,6 +383,7 @@ function formatDate(iso) {
 }
 
 function close() {
+  if (props.inline) return          // in-page wizard: nothing to close
   if (!busy.value) emit('close')
 }
 
@@ -400,7 +399,6 @@ async function saveIdentity() {
     await api.post('/maslaka/association/identity', {
       agent_id_number: idDigits.value,
       agent_name: name.value.trim(),
-      agent_licence_number: licence.value.trim() || null,
     })
     emit('changed')
     step.value = 1
@@ -488,6 +486,8 @@ async function submit() {
   padding: 16px;
   background: rgba(0, 0, 0, 0.45);
 }
+.ma-inline { display: block; }
+.ma-inline .ma-card { width: 100%; box-shadow: var(--shadow-sm); border: 1px solid var(--border-subtle); }
 .ma-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 0.72fr;
