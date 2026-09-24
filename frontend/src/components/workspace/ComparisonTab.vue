@@ -15,15 +15,21 @@
         </div>
         <TabHeroLoop scene="comparison" flow="ltr" class="cmp-hero-art" />
       </div>
-      <BigAddButton
-        class="cmp-go-auto"
-        label="מעבר לאוטומציה"
-        color="var(--tab-comparison)"
-        :size="156"
-        @click="$emit('go-to-portal-automation')"
-      >
-        <AppIcon name="portal-automation" :size="54" />
-      </BigAddButton>
+      <div class="cmp-stage">
+        <div class="cmp-cta">
+          <BigAddButton
+            class="cmp-go-auto"
+            label="מעבר לאוטומציה"
+            color="var(--tab-comparison)"
+            :size="250"
+            @click="$emit('go-to-portal-automation')"
+          >
+            <AppIcon name="portal-automation" :size="84" />
+          </BigAddButton>
+          <!-- Same first-run hint as production, from the other corner. -->
+          <PointingHand from="bottom-left" color="var(--tab-comparison)" />
+        </div>
+      </div>
     </section>
 
     <template v-else-if="productionStore.currentFile || hasPersistedComparison">
@@ -154,6 +160,7 @@ import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSum
 import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import BigAddButton from './BigAddButton.vue'
+import PointingHand from './PointingHand.vue'
 import AppIcon from '../icons/AppIcon.vue'
 
 defineEmits(['go-to-portal-automation'])
@@ -358,7 +365,7 @@ onMounted(async () => {
   animation: slideUp 0.4s var(--transition);
 }
 
-.cmp-empty { display: flex; flex-direction: column; gap: 28px; }
+.cmp-empty { display: flex; flex-direction: column; gap: 18px; }
 .cmp-hero {
   position: relative;
   overflow: hidden;
@@ -399,7 +406,18 @@ onMounted(async () => {
   .cmp-hero-art { display: none; }
   .cmp-hero-titles { max-width: none; }
 }
-.cmp-go-auto { color: var(--tab-comparison); margin-top: 18px; }
+.cmp-go-auto { color: var(--tab-comparison); }
+.cmp-cta { position: relative; display: grid; place-items: center; }
+/* Same stage as the production empty state: tab-colour glow + faint dot grid. */
+.cmp-stage {
+  display: grid; place-items: center; min-height: 380px; padding: 30px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--tab-comparison) 16%, transparent) 0, transparent 46%),
+    radial-gradient(color-mix(in srgb, var(--tab-comparison) 16%, transparent) 1.2px, transparent 1.4px) 0 0 / 22px 22px,
+    var(--card-bg);
+}
+@media (max-width: 640px) { .cmp-stage { min-height: 300px; } }
 
 /* Slim warning strip — persisted comparison shown without an active production */
 .no-prod-notice {

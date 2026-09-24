@@ -532,6 +532,63 @@ export function AiInboxLoop() {
   )
 }
 
+/* ═══════════════════ PRODUCTION — cobalt ═══════════════════ */
+// A spreadsheet fills row by row, a file flies along the dashed path, and the
+// bars it feeds rise. Every motion completes whole cycles in 240 frames.
+export function ProductionLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7', MINT = '#8FD9C6'
+  const p = loopPhase(frame, 240)
+  const twinkle = 0.6 + 0.4 * Math.abs(Math.sin((frame / 240) * Math.PI * 4))
+
+  // sheet rows fill in (0–40%), hold, fade (90–100%)
+  const row = (i: number) => interpolate(p, [0.04 + i * 0.08, 0.12 + i * 0.08], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const sheetOp = interpolate(p, [0, 0.04, 0.9, 1], [0, 1, 1, 0])
+  // the file flies (40–62%)
+  const f = interpolate(p, [0.4, 0.62], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.4, 0, 0.6, 1) })
+  const fx = interpolate(f, [0, 1], [150, 262]), fy = interpolate(f, [0, 0.5, 1], [150, 104, 150])
+  const fileOp = interpolate(p, [0.39, 0.42, 0.6, 0.63], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  // bars rise (62–80%)
+  const bar = (i: number) => interpolate(p, [0.62 + i * 0.04, 0.74 + i * 0.04, 0.9, 1], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+  const HEIGHTS = [44, 70, 56, 92]
+
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* spreadsheet */}
+        <g transform="translate(40 78)" opacity={sheetOp}>
+          <rect width={112} height={144} rx={12} fill="#FFFFFF" stroke={SOFT} strokeWidth={3} />
+          <rect width={112} height={26} rx={12} fill={ACC} />
+          <rect y={14} width={112} height={12} fill={ACC} />
+          {[0, 1, 2, 3].map((i) => (
+            <g key={i} transform={`translate(12 ${40 + i * 24})`}>
+              <rect width={18} height={10} rx={3} fill={PALE} />
+              <rect x={26} width={62 * row(i)} height={10} rx={3} fill={i % 2 ? SOFT : ACC} opacity={0.85} />
+            </g>
+          ))}
+        </g>
+        {/* path */}
+        <path d="M150 150 Q 206 70 262 150" fill="none" stroke={PALE} strokeWidth={3} strokeDasharray="3 10"
+              strokeLinecap="round" strokeDashoffset={-loopPhase(frame, 30) * 26} />
+        {/* flying file */}
+        <g transform={`translate(${fx} ${fy})`} opacity={fileOp}>
+          <Doc x={-15} y={-20} w={30} h={40} fill={INK} line={PALE} />
+        </g>
+        {/* chart */}
+        <g transform="translate(262 222)">
+          <rect x={-6} y={0} width={132} height={4} rx={2} fill={SOFT} />
+          {HEIGHTS.map((h, i) => {
+            const k = bar(i)
+            return <rect key={i} x={i * 32} y={-h * k} width={22} height={h * k} rx={6} fill={i === 3 ? INK : ACC} opacity={0.45 + i * 0.18} />
+          })}
+        </g>
+        <Spark cx={372} cy={96} r={9} fill={ACC} k={twinkle} />
+        <Spark cx={206} cy={242} r={6} fill={MINT} k={2 - twinkle} />
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
@@ -542,6 +599,7 @@ export const TAB_HERO_SCENES = {
   maslaka: ClearingHouseLoop,
   comparison: ComparisonMatchLoop,
   mail: AiInboxLoop,
+  production: ProductionLoop,
 } as const
 
 export type TabHeroScene = keyof typeof TAB_HERO_SCENES

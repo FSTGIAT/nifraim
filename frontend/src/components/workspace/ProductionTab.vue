@@ -9,26 +9,42 @@
     </div>
 
     <template v-else>
-      <!-- No file: sage hero — manual upload triggered via the hero's icon button -->
-      <div v-if="!productionStore.currentFile" class="empty-stack">
-        <EmptyStateGuide
-          variant="inline"
-          title="פרודוקציה"
-          body="כאן מעלים את קובץ הפרודוקציה מהסוכנות — פשוט גוררים קובץ Excel. אפשר גם לתת להורדה האוטומטית להביא אותו בשבילכם."
-          cta-label="הפעל הורדה אוטומטית"
-          cta-step="run"
-        />
-        <ProductionHeroPanel
-          :landing="productionStore.landing"
-          :loading="productionStore.landingLoading"
-          @request-manual-upload="openFilePicker"
-        />
-        <ProductionTrendChart
-          :key="'trend-empty-' + (productionStore.history?.length || 0)"
-          @go-to-automation="$emit('go-to-portal-automation')"
-        />
-        <AiCapabilitiesGridIsland />
-      </div>
+      <!-- No production yet: the tab's identity hero + one extra-big door to
+           the automation (which is what fills this screen), on its own stage.
+           Manual upload stays as a small action in the hero; a file dropped
+           anywhere on the page uploads too. -->
+      <section v-if="!productionStore.currentFile" class="pt-empty">
+        <header class="pt-hero">
+          <div class="pt-hero-copy">
+            <span class="pt-kicker">פרודוקציה</span>
+            <h2 class="pt-hero-title"><span dir="ltr">Nifraim</span> <span class="pt-hero-title-acc">פרודוקציה</span></h2>
+            <button type="button" class="pt-manual" @click="openFilePicker">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" />
+              </svg>
+              העלאה ידנית
+            </button>
+          </div>
+          <TabHeroLoop scene="production" flow="ltr" class="pt-hero-art" />
+        </header>
+
+        <div class="pt-stage">
+          <div class="pt-cta">
+            <BigAddButton
+              label="מעבר להורדה אוטומטית"
+              color="var(--tab-production)"
+              :size="250"
+              @click="$emit('go-to-portal-automation')"
+            >
+              <AppIcon name="portal-automation" :size="84" />
+            </BigAddButton>
+            <!-- First-run hint: a hand glides in from the screen's bottom-right
+                 and taps the ring. Only on this empty state. -->
+            <PointingHand from="bottom-right" color="var(--tab-production)" />
+          </div>
+        </div>
+      </section>
 
       <!-- File exists: inner tabs + dashboard -->
       <template v-else>
@@ -266,16 +282,17 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, onMounted, watch } from 'vue'
+import { computed, reactive, ref, onMounted, watch, inject } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useVolumeStore } from '../../stores/volume.js'
 import ProductionDashboard from './ProductionDashboard.vue'
 import ProductionComparison from './ProductionComparison.vue'
 import VolumeComparison from './VolumeComparison.vue'
-import ProductionHeroPanel from './ProductionHeroPanel.vue'
-import AiCapabilitiesGridIsland from './AiCapabilitiesGridIsland.vue'
 import ProductionTrendChart from './ProductionTrendChart.vue'
-import EmptyStateGuide from './EmptyStateGuide.vue'
+import TabHeroLoop from './TabHeroLoop.vue'
+import BigAddButton from './BigAddButton.vue'
+import AppIcon from '../icons/AppIcon.vue'
+import PointingHand from './PointingHand.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 
 defineEmits(['go-to-comparison', 'go-to-portal-automation'])
@@ -385,6 +402,15 @@ function openFilePicker() {
   fileInputRef.value?.click()
 }
 
+// A file dropped anywhere on the page (WorkspaceView's overlay) uploads here
+// too — the empty state has no drop zone of its own.
+const droppedFiles = inject('droppedFiles', null)
+if (droppedFiles) {
+  watch(droppedFiles, (val) => {
+    if (val?.length) onFileSelected({ target: { files: val } })
+  })
+}
+
 function onFileSelected(e) {
   const files = e.target.files
   if (files && files.length > 0) {
@@ -436,10 +462,55 @@ async function handleCompare(currentId, previousId) {
   gap: 20px;
 }
 
-.empty-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* ── Empty state: hero + stage (same shape as השוואת נפרעים) ─────── */
+.pt-empty { display: flex; flex-direction: column; gap: 18px; }
+.pt-hero {
+  position: relative; overflow: hidden; display: flex; align-items: center; min-height: 170px;
+  padding: 22px 26px; background: var(--card-bg);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+}
+.pt-hero::before {
+  content: ''; position: absolute; inset-inline-end: -6%; top: -60%; width: 44%; height: 220%;
+  background: radial-gradient(circle, var(--tab-production-wash), transparent 70%); pointer-events: none;
+}
+.pt-hero-copy { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; max-width: 58%; }
+.pt-kicker {
+  align-self: flex-start; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  background: var(--tab-production-wash); color: var(--tab-production);
+}
+.pt-hero-title {
+  margin: 2px 0 0; font-family: 'Rubik', 'Heebo', sans-serif;
+  font-size: clamp(28px, 3.3vw, 40px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
+}
+.pt-hero-title-acc { color: var(--tab-production); }
+.pt-manual {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; margin-top: 4px;
+  height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 700; color: var(--tab-production);
+  background: var(--card-bg); border: 1px solid color-mix(in srgb, var(--tab-production) 35%, transparent);
+}
+.pt-manual:hover { background: var(--tab-production-wash); }
+.pt-manual:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+.pt-hero-art {
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
+  width: min(330px, 40%); aspect-ratio: 420 / 300; pointer-events: none;
+}
+/* The stage the big ring sits on: a soft glow in the tab colour over a faint
+   dot grid, so the button reads as the one thing on the screen. */
+.pt-stage {
+  display: grid; place-items: center; min-height: 380px; padding: 30px;
+  color: var(--tab-production);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--tab-production) 16%, transparent) 0, transparent 46%),
+    radial-gradient(color-mix(in srgb, var(--tab-production) 16%, transparent) 1.2px, transparent 1.4px) 0 0 / 22px 22px,
+    var(--card-bg);
+}
+.pt-cta { position: relative; display: grid; place-items: center; }
+@media (max-width: 640px) {
+  .pt-hero-art { display: none; }
+  .pt-hero-copy { max-width: none; }
+  .pt-stage { min-height: 300px; }
 }
 
 /* ── History panel (production by month) ───────────────────────────── */
