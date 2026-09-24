@@ -10,6 +10,10 @@
           aria-labelledby="ma-title"
           @keydown.escape="close"
         >
+          <!-- Form pane first in the DOM → the RIGHT side under `direction: rtl`,
+               the photograph on the left: the same two-pane card as the
+               contact and portal modals. Only this pane scrolls. -->
+          <div class="ma-form">
           <button class="ma-close" type="button" aria-label="סגור" @click="close">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -286,6 +290,12 @@
               <button v-else class="ma-secondary" type="button" @click="close">סגירה</button>
             </template>
           </footer>
+          </div>
+
+          <aside class="ma-art" aria-hidden="true">
+            <img :src="artwork" alt="" />
+            <div class="ma-art-veil"></div>
+          </aside>
         </div>
       </div>
     </Transition>
@@ -295,6 +305,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import api from '../../api/client.js'
+import artwork from '../../assets/maslaka/association.webp'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -478,16 +489,41 @@ async function submit() {
   background: rgba(0, 0, 0, 0.45);
 }
 .ma-card {
-  position: relative;
-  width: min(640px, 100%);
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0.72fr;
+  width: min(980px, 100%);
+  /* FIXED height, not max: the steps differ in length, and a max-height made
+     the card (and the photo) jump on every step. The form pane scrolls. */
+  height: min(660px, calc(100vh - 32px));
   background: var(--card-bg);
   border-radius: var(--radius-lg);
-  border-top: 4px solid var(--tab-maslaka);
   box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.ma-form {
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 4px solid var(--tab-maslaka);
+}
+.ma-form > .ma-foot { margin-top: auto; }
+.ma-art { position: relative; overflow: hidden; background: var(--bg); }
+.ma-art img { width: 100%; height: 100%; object-fit: cover; object-position: center 55%; display: block; }
+/* A wash in the מסלקה tab's own teal, so the photograph reads as part of the
+   product rather than dropped-in stock. */
+.ma-art-veil {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(200deg, color-mix(in srgb, var(--tab-maslaka) 26%, transparent) 0%, transparent 52%),
+    linear-gradient(to left, rgba(255, 255, 255, 0.26), transparent 38%);
+}
+@media (max-width: 860px) {
+  /* Below this the photo would squeeze the steps; the steps are the job. */
+  .ma-card { grid-template-columns: 1fr; width: min(640px, 100%); height: auto; max-height: calc(100vh - 32px); }
+  .ma-art { display: none; }
 }
 .ma-close {
   position: absolute;
