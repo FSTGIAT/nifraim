@@ -25,6 +25,19 @@ async def _send_email(msg: MIMEMultipart):
     await smtp.quit()
 
 
+async def send_raw_message(msg) -> None:
+    """Send an already-composed `email.message.Message`.
+
+    `_send_email` only ever carried MIMEMultipart bodies built in this module;
+    this is the seam for a caller that composes its own message — e.g. one with
+    a PDF attachment. Same transport, same Resend SMTP settings (port 2587:
+    Railway blocks 25 and 465).
+    """
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        raise ValueError("SMTP not configured")
+    await _send_email(msg)
+
+
 async def send_portal_email(to_email: str, customer_name: str, portal_url: str, password: str) -> bool:
     """Send portal link email to customer via SMTP."""
     if not settings.SMTP_HOST or not settings.SMTP_USER:

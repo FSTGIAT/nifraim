@@ -324,11 +324,21 @@ async def _ingest_feedback(
     scope_user_id: uuid.UUID | None,
 ) -> None:
     fb = adapter.parse_feedback(payload)
-    inquiry = await _find_inquiry_by_reference(db, fb.request_reference, scope_user_id=scope_user_id)
+    # The מסלקה correlates by echoing the FILENAME it is answering
+    # (`SHEM-HAKOVETZ`), not by any reference of ours — `request_reference`
+    # never appears on the wire. Try the filename first and keep the reference
+    # lookup for the legacy stub fixtures.
+    inquiry = None
+    if fb.acked_filename:
+        inquiry = await _find_inquiry_by_outbound_filename(
+            db, fb.acked_filename, scope_user_id=scope_user_id)
+    if inquiry is None and fb.request_reference:
+        inquiry = await _find_inquiry_by_reference(
+            db, fb.request_reference, scope_user_id=scope_user_id)
     if inquiry is None:
         logger.warning(
-            "maslaka.feedback: no inquiry for ref=%s (file=%s) — leaving unprocessed",
-            fb.request_reference, source_filename,
+            "maslaka.feedback: no inquiry for acked=%s ref=%s (file=%s) — leaving unprocessed",
+            fb.acked_filename, fb.request_reference, source_filename,
         )
         return
 
@@ -339,12 +349,17 @@ async def _ingest_feedback(
     )
 
     if fb.is_ack:
-        inquiry.providers_expected = fb.providers_expected
+        # SUG-MASHOV 1 = משוב א', a technical receipt: "well-formed, accepted".
+        # It is NOT the answer — the data arrives later as משוב ב' or holdings.
+        # Advancing past `acknowledged` here would report success on an inquiry
+        # that has returned no data at all.
+        if fb.providers_expected is not None:
+            inquiry.providers_expected = fb.providers_expected
         inquiry.acknowledged_at = datetime.utcnow()
         await _advance_status(
             db, inquiry, to_status="acknowledged", actor="system",
             event_type="ack_received",
-            detail=f"providers_expected={fb.providers_expected}",
+            detail=f"sug_mashov={fb.sug_mashov} providers_expected={fb.providers_expected}",
         )
     else:
         inquiry.error_code = fb.error_code or "defect"
@@ -661,6 +676,23 @@ async def _store_raw_payload(
     db.add(row)
     await db.flush()
     return row
+
+
+async def _find_inquiry_by_outbound_filename(
+    db: AsyncSession,
+    filename: str,
+    *,
+    scope_user_id: uuid.UUID | None,
+) -> PensionInquiry | None:
+    """Match a feedback file back to the request it answers, by the filename the
+    מסלקה echoes in `SHEM-HAKOVETZ`. `vault_outbound_filename` is what we
+    recorded when the worker transported it, so the two are the same string."""
+    if not filename:
+        return None
+    q = select(PensionInquiry).where(PensionInquiry.vault_outbound_filename == filename.strip())
+    if scope_user_id is not None:
+        q = q.where(PensionInquiry.user_id == scope_user_id)
+    return (await db.execute(q)).scalars().first()
 
 
 async def _find_inquiry_by_reference(

@@ -25,6 +25,7 @@ from app.models.yield_recommendation import YieldRecommendation
 from app.models.pension_inquiry import PensionInquiry
 from app.models.pension_holding import PensionHolding
 from app.models.pension_audit import PensionAuditLog, PensionRawPayload
+from app.models.maslaka_agent_link import MaslakaAgentLink
 from app.models.sms_otp_template import SmsOtpTemplate
 from app.models.worker_heartbeat import WorkerHeartbeat
 from app.models.dm_conversation import DmConversation
@@ -33,4 +34,4 @@ from app.models.dm_presence import DmPresence
 from app.models.mailbox_config import MailboxConfig
 from app.models.mailbox_message import MailboxProcessedMessage
 
-__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]
+__all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "MaslakaAgentLink", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]

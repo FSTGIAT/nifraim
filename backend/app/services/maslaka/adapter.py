@@ -59,12 +59,24 @@ class HoldingItem:
 
 @dataclass
 class FeedbackResult:
-    """Outcome of a Feedback v009 message — ack or defect."""
+    """Outcome of a Feedback v009 message — ack or defect.
+
+    `acked_filename` (`SHEM-HAKOVETZ`) is the REAL correlation key: the מסלקה
+    echoes the name of the file it is answering. There is no `RequestReference`
+    on the wire — that was our stub's invention. `request_reference` is kept
+    only so the old fixtures still parse.
+
+    `sug_mashov` is 1 = משוב א' (technical receipt) or 2 = משוב ב' (content).
+    A משוב א' ack means "the file is well-formed and accepted", NOT "here is
+    your data" — the data arrives later as משוב ב' or a holdings file.
+    """
     request_reference: str
     is_ack: bool
     providers_expected: int | None = None
     error_code: str | None = None
     error_detail: str | None = None
+    acked_filename: str | None = None
+    sug_mashov: str | None = None
     extras: dict[str, str] = field(default_factory=dict)
 
 
@@ -81,14 +93,25 @@ def classify_inbound(xml_bytes: bytes) -> str:
         logger.warning("maslaka.adapter.classify_inbound: parse error: %s", e)
         return "unknown"
 
+    # `SUG-MIMSHAK` inside the envelope is authoritative. Every real מסלקה file
+    # has root <Mimshak> — routing on the root tag (our stub looked for
+    # <Feedback>/<Holdings>, names we invented) classified all 12 of the first
+    # real FEDBKA acks as "unknown" on 2026-09-24 and left them in the inbox.
+    from app.services.maslaka.xsd import sug_mimshak
+
+    sm = sug_mimshak(xml_bytes)
+    if sm == "20":
+        return "feedback"
+    if sm in ("1", "2", "3"):        # the four holdings / טרום-ייעוץ families
+        return "holdings"
+
+    # Legacy stub fixtures (tests/fixtures/maslaka/*.xml) predate the real
+    # schema; keep them parsing so the fixture suite still means something.
     tag = _local_tag(root.tag).lower()
-    # TODO(XSD): real root elements + namespaces from Swiftness.
-    # Stub layout (matches our test fixtures):
     if tag == "feedback":
         return "feedback"
     if tag == "holdings":
         return "holdings"
-    # TODO(XSD): there may be intermediate envelope elements — adjust as needed.
     return "unknown"
 
 
@@ -151,14 +174,37 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
     """
     root = ET.fromstring(xml_bytes)
 
-    request_reference = _text_of(root, "RequestReference") or ""
-    status = (_text_of(root, "Status") or "").upper()  # TODO(XSD): real element
-    providers_raw = _text_of(root, "ProvidersExpected")
-    providers_expected = int(providers_raw) if (providers_raw or "").isdigit() else None
+    # ── The real wire format (measured against 12 live FEDBKA files, 2026-09-24,
+    # and the 8 vendor FEDBKA/FEDBKB samples) ──────────────────────────────
+    #   SHEM-HAKOVETZ  echoes the filename being answered  ← the correlation key
+    #   SUG-MASHOV     1 = משוב א' (technical) · 2 = משוב ב' (content)
+    #   RAMAT-MASHOV   1 = file level · 2 = record level
+    #   KOD-SHGIHA-BERAMAT-KOVETZ / -RESHUMA + TEUR-SHGIHA carry defects
+    # An ack is the ABSENCE of an error code, not the presence of an "OK"
+    # value — there is no status word on the wire to match against.
+    acked_filename = _text_of(root, "SHEM-HAKOVETZ") or None
+    sug_mashov = _text_of(root, "SUG-MASHOV") or None
 
-    is_ack = status in {"ACK", "OK", "ACCEPTED"}  # TODO(XSD): real value set
-    error_code = _text_of(root, "ErrorCode")
-    error_detail = _text_of(root, "ErrorDetail")
+    err_file = (_text_of(root, "KOD-SHGIHA-BERAMAT-KOVETZ") or "").strip()
+    err_rec = (_text_of(root, "KOD-SHGIHA-BERAMAT-RESHUMA") or "").strip()
+    error_code = err_file or err_rec or None
+    error_detail = (_text_of(root, "TEUR-SHGIHA") or "").strip() or None
+
+    providers_raw = _text_of(root, "KAMUT-RESHUMOT-TKINOT")
+    providers_expected = int(providers_raw) if (providers_raw or "").strip().isdigit() else None
+
+    if acked_filename is None:
+        # Legacy stub fixture — keep the old reading so those tests still pass.
+        request_reference = _text_of(root, "RequestReference") or ""
+        status = (_text_of(root, "Status") or "").upper()
+        is_ack = status in {"ACK", "OK", "ACCEPTED"}
+        error_code = _text_of(root, "ErrorCode")
+        error_detail = _text_of(root, "ErrorDetail")
+        providers_raw = _text_of(root, "ProvidersExpected")
+        providers_expected = int(providers_raw) if (providers_raw or "").isdigit() else None
+    else:
+        request_reference = ""
+        is_ack = error_code is None
 
     return FeedbackResult(
         request_reference=request_reference,
@@ -166,6 +212,8 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
         providers_expected=providers_expected,
         error_code=error_code if not is_ack else None,
         error_detail=error_detail if not is_ack else None,
+        acked_filename=acked_filename,
+        sug_mashov=sug_mashov,
     )
 
 

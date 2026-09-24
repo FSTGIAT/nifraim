@@ -769,12 +769,17 @@ graph TD
 
 ---
 
-## 12. Maslaka Gateway — the clearinghouse is a THIRD plane, and it is OFF
+## 12. Maslaka Gateway — the clearinghouse is a THIRD plane, and it is LIVE
 
 The מסלקה הפנסיונית is **not a REST API**. It is an asynchronous, file-based vault
 exchange: we drop an XML request into an `OUT` folder, their **Transporter** agent syncs it
 to the clearinghouse, and their answer lands in an `IN` folder minutes-to-days later. There
 is nothing to `await`.
+
+> **Status 2026-09-24: the exchange is PROVEN end-to-end.** Eleven files have been delivered
+> and the מסלקה has acknowledged **all** of them with zero defects. Sections below marked
+> *(historical)* describe the pre-go-live state and are kept only because the invariants they
+> explain still hold. **Response latency is ~2 DAYS, not minutes** — see §12.4.
 
 That forces a **third plane**. Railway has a foreign IP and no static egress; the מסלקה
 whitelists **one fixed IP** and installs onto **Windows Server**. So the vault cannot live
@@ -803,9 +808,10 @@ graph LR
 
 ### The Y/N switch — `MASLAKA_ENABLED`
 
-**Today it is `False` (= N), and that is deliberate.** The vaults are not open yet, the XSDs
-have not arrived, and `MASLAKA_AGENT_NUMBER` / `MASLAKA_AGENT_ID` are unset. While it is
-False:
+**Now `True` on both planes (flipped on Railway 2026-09-24).** The vault is open, the XSDs are
+vendored, and `MASLAKA_AGENT_*` are set. `MASLAKA_VAULT_HOST` stays **false on Railway** — that
+is the flag that matters, and it is what keeps the cloud from touching vault folders it cannot
+see. *(Historical: it was `False` until 2026-09-24, for the reasons below.)* While it is False:
 
 - the scheduler's poll + retention jobs never fire (`scheduler.py`), **and**
 - the two routes that would *transport* anything — `POST /api/maslaka/inquiry` and
@@ -853,8 +859,26 @@ means shipping a guessed XML tree at a regulator.
    worker started from a different directory silently gets a *different, empty* vault and
    looks healthy while exchanging nothing.
 5. **Transporter = Yes is what makes the code free.** `LocalVaultTransport` is pure
-   drop-a-file / read-a-file, and inbound is classified by **XML root element, not filename**
-   — so an external folder-syncing agent needs zero changes inside `services/maslaka/`.
+   drop-a-file / read-a-file, so an external folder-syncing agent needs zero changes inside
+   `services/maslaka/`.
+
+   ⚠️ **Inbound is classified by `SUG-MIMSHAK` inside the envelope — NOT by the root element.**
+   This invariant used to say "root element, not filename", and that was wrong: the stub
+   matched `<Feedback>` / `<Holdings>`, names *we invented*. Every real מסלקה file has root
+   `<Mimshak>`, so when the first 12 live acks arrived on 2026-09-24 all 12 classified as
+   `unknown`. They were not lost — `_route_inbound` leaves what it cannot parse in the inbox
+   rather than archiving it, which is the behaviour that saved them. `classify_inbound` now
+   reads `SUG-MIMSHAK`: `20` = feedback, `1|2|3` = the holdings / טרום-ייעוץ families.
+6. **An ack is the ABSENCE of an error code.** There is no status word on the wire. A feedback
+   file is a defect report iff `KOD-SHGIHA-BERAMAT-KOVETZ` or `-RESHUMA` is non-empty. The stub
+   looked for `Status in {ACK, OK, ACCEPTED}` — values that do not exist.
+7. **Feedback correlates by FILENAME.** `SHEM-HAKOVETZ` echoes the name of the file being
+   answered; match it against `PensionInquiry.vault_outbound_filename`. There is no
+   `RequestReference` on the wire — that too was our stub's invention.
+8. **משוב א' is a receipt, not the answer.** `SUG-MASHOV=1` means "well-formed, accepted"; the
+   data arrives later as משוב ב' (FEDBKB) or a holdings file. `_ingest_feedback` deliberately
+   stops at `acknowledged` — advancing further would report success on an inquiry holding no
+   data at all.
 
 ### The static IP is load-bearing — what to do when it changes
 
@@ -881,6 +905,120 @@ your own RDP access.
 Full setup + IP-change runbook: **`maslaka-gateway` skill**.
 
 ---
+
+### 12.3 The XSDs — the wire format is never inferred
+
+**All 18 official schemas are vendored** under `backend/tests/fixtures/maslaka/xsd/`, from
+<https://www.swiftness.co.il/agents/קבצים-עדכניים-לעבודה-מול-המסלקה/>. That directory is **the
+spec, not test data** — `services/maslaka/xsd.py` loads from it at runtime.
+
+| Interface | Version | Schema file | We SEND? |
+|---|---|---|---|
+| **ממשק אירועים (Events)** | **007** | `events_007.xsd` | **YES — the only one we send** |
+| משוב מנהלי והתראות (Feedback) | 009 | `feedback_009.xsd` | no — we RECEIVE (FEDBKA/FEDBKB) |
+| אחזקות / טרום-ייעוץ | 009 | `kupotgemel`, `karnotpensiahadashot`, `karnotpensiavatikot`, `hevrotbituah` | no — we RECEIVE |
+| יתרות פיצויים | 005 | `pitzuim_{9300_9302,9301_9303,9305_9306}_005.xsd` | no — employer/institution role |
+| ניוד | 003 | `niyud_{haavaraamit,hizuncaspi,hizunminhali,nispachpigurim,nispasha}_003.xsd` | no — fund-to-fund |
+| מעסיקים | **006** | `maasikim_{shotef,shliliim,mesakem,shnati}_006.xsd` | no — employer role |
+
+**A בעל רישיון sends EVENTS and nothing else.** The other 17 exist so we can *validate and parse
+what arrives*, or belong to roles we do not hold. "We have 18 schemas, let's send more of them"
+is not a diagnostic step.
+
+⚠️ **The savers page is stale; use the agents page.** `/savers/…` lists מעסיקים as **005**;
+`/agents/…` lists **006** (eff. 26/07/2026) and that is what is vendored. Swiftness support has
+also circulated a link to the **006** Events schema — do **not** downgrade from 007.
+
+**Validate against the XSD; never infer from samples.** Reverse-engineering from the 13 vendor
+samples produced four fatal defects that XSD validation caught in seconds — most notably
+`KOD-SVIVAT-AVODA`, which is **1 = TEST, 2 = PRODUCTION**, and which we had inverted. Every
+sample is a `.DAT` production file carrying `2`, so the samples fit both readings and could
+never have settled it; the schema's own `<xsd:documentation>` says it outright.
+`tests/test_maslaka_xsd_validation.py` validates all 10 action codes on every run.
+
+**Events action codes** (`KOD-EIRUA`), all schema-valid:
+
+| Code | Meaning | Needs customer | Sent live? |
+|---|---|---|---|
+| 1700 / 1900 | grant / cancel ייפוי כוח | yes | 1700 ✅ |
+| 2000 / 2100 / 2500 | production report: one-off / monthly / cancel | no* | 2000 ✅ |
+| 9100 / 9101 / 9102 | טרום-ייעוץ information request | yes | 9100 ✅ ×3 |
+| 9200 / 9201 | אחזקות information request | yes | not yet |
+
+\* semantically customer-less, but the XSD still makes `MISPAR-MEZAHE-LAKOACH` mandatory and
+not nillable. The builder **refuses** rather than invent one (`allow_placeholder_identity` is a
+preview-only escape). Whose identity belongs there is an open question for Swiftness.
+
+### 12.4 The live exchange — what was actually sent and answered
+
+| | |
+|---|---|
+| Vault | `558638623_558638623` · TEST `mft-trn.swiftness.co.il:20022` · PROD `mft.swiftness.co.il:20022` |
+| **We upload to** | their **`/FROM/`** |
+| **We poll** | their **`/TO/`** and `/REPORTS/` |
+
+The asymmetry is correct — the directory names are from the **מסלקה's** point of view. Do not
+"fix" it.
+
+**Eleven files sent, eleven acknowledged, zero defects.** Six on 2026-09-10 (hand-dropped, before
+the Gateway worker existed), five on 2026-09-22 (the first ever built and transported by the app
+itself). On 2026-09-24 at 09:37 UTC, **12 FEDBKA files** arrived: every one `SUG-MASHOV=1`, every
+error field empty. **Our XML is correct, confirmed by the regulator rather than by our own
+validator.**
+
+⚠️ **Turnaround is ~2 DAYS.** An 8m28s figure derived from three vendor FEDBKA samples was
+treated as an SLA and drove a false "their vault is dead" diagnosis across 2026-09-22. It is not
+an SLA — the circular's **3 business days** is the real number. **Silence for hours, or a day, is
+normal. Do not escalate it as an outage.**
+
+Bulwarx logs `File size (KB): 0.07421875` for **every** upload — 8+ different files, identical
+value. It tracks the remote path length, not the file. Our payloads are ~3.9 KB. It is not
+evidence about content.
+
+### 12.5 Two gates before customer data — do not confuse them
+
+| Gate | Who signs | How often | Unlocks |
+|---|---|---|---|
+| **שיוך לבית תוכנה** | the **agent** | once per agent | the agent may transact through our vault at all |
+| **ייפוי כוח** (event **1700**) | the **customer** | once per customer | a 9100 may return *that saver's* data |
+
+**Nifraim is a בית תוכנה** (ח.פ `558638623`): ONE מסלקה account and ONE vault for every agent on
+the platform. Each agent signs the מסלקה's `טופס שיוך לבית תוכנה` and sends it to
+`helpdesk@swiftness.co.il`; approval links them to our ח.פ. Modelled by
+`maslaka_agent_links` + `services/maslaka/association.py` + `/api/maslaka/association/*`.
+
+**Do NOT give each user their own `MASLAKA_AGENT_ID`.** The sender stays the global Nifraim ח.פ;
+the *acting agent* varies per request inside `YeshutGoremPoneLemislaka` (`SUG-PONE=3` מפיץ,
+`SUG-KOD-MEZAHE-PONE=3` ת.ז, `MISPAR-MEZAHE-PONE`, `SHEM-GOREM-PONE`) — a block we currently send
+**entirely nil**.
+
+**UNCONFIRMED, ask Swiftness:** as a בית תוכנה should `KOD-SHOLECH` become `6` (לשכת שירות) and
+the filename direction `006`, instead of today's `3` (מפיץ) / `001`? A vendor FEDBKA sample acks a
+`006000511511511EVENTS…` file, which supports it — but our `001`/`3` files were accepted with
+**zero defects**, so this is an *entitlement* question, not a validity fix.
+
+**The 1700 we sent is NOT a real ייפוי כוח.** The builder emits `<YipuiKoach/>` and
+`<mismachim/>` **empty** (self-closing — a regex for `<YipuiKoach>…</YipuiKoach>` reports them
+*absent*, which misleads; dump the tree instead). A valid one needs ~30 fields — licence number
+and type, both signature dates, validity, the full address block — plus a signed PDF attached as
+`…<seq>_001.PDF`. **This is the real blocker for customer data.**
+
+### 12.6 Clocks and filenames
+
+**The wire clock is ISRAEL LOCAL TIME, everywhere.** `filenames.maslaka_now()` is THE single
+definition; `events.py` imports it rather than keeping a copy. The Gateway runs **UTC** and the
+dev box runs **IDT**, so `datetime.now()` is correct on exactly one of them and `utcnow()` on the
+other — and **the tests run on the dev box**, which is why a UTC filename bug survived a fully
+green suite until a live Gateway send exposed it (`…174253…` in the name over `204253` in the
+payload). Any test that compares a timestamp to the host clock is blind to this; the guard
+asserts `maslaka_now() - utcnow()` is 2–3h, which is host-independent.
+
+**Filename grammar** (נספח ו'): `AAA` direction · `BBBBBBBBBBBB` sender zero-padded to 12 ·
+`CCCCCC` service · `PPP` product family · `VVV` version · 14-digit `YYYYMMDDHHMMSS` ·
+`EEEE` daily sequence · `.DAT` (production) or `.TST` (test). The suffix and
+`KOD-SVIVAT-AVODA` must agree — `environment()` returns both from one call so they cannot
+diverge. The sequence must be unique per sender per business day: identical sequence → identical
+name → the Transporter uploads one and **silently drops the rest**.
 
 *Regenerate this map when the two-plane topology, the OTP routing, the mail-intake
 routing, or the comparison/merge selection logic changes — those are the parts a new

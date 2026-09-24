@@ -37,3 +37,5 @@ paramiko==3.5.0
 pywin32>=306; sys_platform == "win32"
 Pillow>=10; sys_platform == "win32"
 lxml>=5.0
+pypdf==6.1.1
+reportlab==5.0.1

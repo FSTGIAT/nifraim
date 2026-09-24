@@ -144,6 +144,15 @@ class Settings(BaseSettings):
     # so it is explicit rather than derived from MASLAKA_ENABLED.
     MASLAKA_TEST_ENVIRONMENT: bool = True
     # Lifecycle + retention knobs.
+    # Where the signed שיוך form is delivered. Configurable ONLY so a dev box
+    # can point it somewhere harmless: local .env carries real Resend SMTP
+    # credentials, so a test against /association/submit genuinely emails the
+    # regulator. That happened once (2026-09-24). Default stays the real desk.
+    # Dev-only escape so the שיוך form's overlay coordinates can be calibrated
+    # against a filled sample. Serving a non-blank template leaks one agent's
+    # name and signature to every other agent — never set this in production.
+    MASLAKA_ALLOW_FILLED_TEMPLATE: bool = False
+    MASLAKA_HELPDESK_EMAIL: str = "helpdesk@swiftness.co.il"
     MASLAKA_RETENTION_DAYS: int = 90
     MASLAKA_INQUIRY_TIMEOUT_DAYS: int = 7
     MASLAKA_POLL_INTERVAL_MINUTES: int = 15

@@ -7,9 +7,10 @@ against records owned by the requesting user; missing → 404.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,8 @@ from app.services.maslaka.events import ACTION_CODES, build_events_request, masl
 from app.services.maslaka.filenames import build_filename, parse_filename
 from app.services.maslaka.xsd import schema_for, validate as xsd_validate
 from app.services.mimshak import parse_mimshak_dat
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -525,3 +528,170 @@ async def vault_state(user: User = Depends(get_current_user)):
     except Exception as e:                                   # noqa: BLE001
         state["error"] = f"{type(e).__name__}: {e}"
     return state
+
+
+# ─── Agent association (שיוך לבית תוכנה) ────────────────────────────────────
+# Nifraim is the מסלקה בית תוכנה: one vault, one account, every agent. Before an
+# agent may transact, the מסלקה must link them to our ח.פ — a paper form they
+# sign. These routes own that process. They are deliberately NOT behind
+# `require_maslaka_enabled`: an agent must be able to start the association even
+# in an environment where the clearinghouse feature itself is off, otherwise
+# onboarding deadlocks on the thing onboarding is meant to unlock.
+
+@router.get("/association")
+async def association_status(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Where this agent stands. Drives the מסלקה tab's gate — the single source
+    of truth, deliberately server-side (the onboarding flags went wrong exactly
+    because state lived in browser-local storage)."""
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(
+        db, user_id=user.id, agent_name=user.full_name
+    )
+    return {
+        "status": link.status,
+        "agent_id_number": link.agent_id_number,
+        "agent_name": link.agent_name or user.full_name,
+        "agent_licence_number": link.agent_licence_number,
+        "form_downloaded_at": link.form_downloaded_at.isoformat() if link.form_downloaded_at else None,
+        "submitted_at": link.submitted_at.isoformat() if link.submitted_at else None,
+        "approved_at": link.approved_at.isoformat() if link.approved_at else None,
+        "rejected_reason": link.rejected_reason,
+        "signed_pdf_filename": link.signed_pdf_filename,
+        "helpdesk_email": association.HELPDESK_EMAIL,
+        "beit_tochna": {
+            "name": association.BEIT_TOCHNA_NAME,
+            "id": association.BEIT_TOCHNA_ID,
+        },
+        "template_ready": association.BLANK_FORM.exists(),
+    }
+
+
+@router.post("/association/identity")
+async def association_identity(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record who the agent is. `agent_id_number` is what will ride on the wire
+    in `MISPAR-MEZAHE-PONE`; the SENDER stays the global Nifraim ח.פ."""
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    try:
+        await association.set_agent_identity(
+            db, link,
+            agent_id_number=str(payload.get("agent_id_number") or ""),
+            agent_name=str(payload.get("agent_name") or user.full_name or ""),
+            agent_licence_number=str(payload.get("agent_licence_number") or "") or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "agent_id_number": link.agent_id_number}
+
+
+@router.get("/association/form")
+async def association_form(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The מסלקה form, pre-filled with this agent's details.
+
+    Pre-filled rather than blank on purpose: the ח.פ `558638623` and the
+    לבית תוכנה tick are the two things an agent can get wrong, and a wrong ח.פ
+    associates them to somebody else.
+    """
+    from fastapi.responses import Response
+
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    if not link.agent_id_number:
+        raise HTTPException(status_code=400, detail="יש להזין מספר זהות לפני הורדת הטופס")
+    try:
+        pdf = association.build_prefilled_form(
+            agent_name=link.agent_name or user.full_name or "",
+            agent_id_number=link.agent_id_number,
+        )
+    except association.FormTemplateMissing as e:
+        # 503, not 500: nothing is broken in the code — a file is missing.
+        raise HTTPException(
+            status_code=503,
+            detail="טופס השיוך עדיין לא הוטמע במערכת. פנו לתמיכה.",
+        ) from e
+    await association.mark_form_downloaded(db, link)
+    return Response(
+        pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="maslaka-shiyuch.pdf"'},
+    )
+
+
+@router.post("/association/submit")
+async def association_submit(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    file: UploadFile = File(...),
+):
+    """Take the signed scan, store it encrypted, email it to the מסלקה helpdesk.
+
+    Delivery failure does NOT lose the upload: the form is stored and the row
+    flipped to `submitted` first, and a send error comes back as a note the
+    agent can act on. Losing a signed document because SMTP hiccuped would be
+    the worst outcome here.
+    """
+    from app.services.maslaka import association
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="הקובץ ריק")
+    if len(raw) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="הקובץ גדול מדי (מקסימום 15MB)")
+    if not raw.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="יש להעלות קובץ PDF חתום")
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    if not link.agent_id_number:
+        raise HTTPException(status_code=400, detail="יש להזין מספר זהות לפני שליחת הטופס")
+
+    await association.record_submission(
+        db, link, pdf_bytes=raw, filename=file.filename or "shiyuch.pdf",
+    )
+    try:
+        to = await association.deliver_to_helpdesk(
+            link=link, pdf_bytes=raw, agent_email=user.email,
+        )
+        note = f"נשלח ל-{to}"
+    except Exception as e:                                       # noqa: BLE001
+        logger.error("maslaka.association: delivery failed for %s: %s", user.id, e)
+        note = f"הטופס נשמר אך המשלוח נכשל: {e}"
+    link.delivery_note = note[:500]
+    await db.commit()
+    return {"status": link.status, "delivery_note": note}
+
+
+@router.post("/association/approve")
+async def association_approve(
+    payload: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark the association approved (or rejected).
+
+    Manual today: the approval arrives as an email from the מסלקה, and reading
+    the agent's mailbox to spot it is a separate project (the existing mail
+    integration is read-only and covers different providers). Keep this route
+    even once that lands — an automated watcher always needs an override.
+    """
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    reason = (payload or {}).get("rejected_reason")
+    if reason:
+        await association.mark_rejected(db, link, str(reason))
+    else:
+        await association.mark_approved(db, link)
+    return {"status": link.status, "approved_at":
+            link.approved_at.isoformat() if link.approved_at else None}
