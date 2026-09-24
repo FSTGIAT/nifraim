@@ -278,6 +278,16 @@ def start_scheduler():
         id="hachshara_mail_poll",
         replace_existing=True,
     )
+    # מסלקה שיוך approval — watches submitted agents' inboxes for the helpdesk's
+    # answer. Gated by MASLAKA_APPROVAL_WATCH_ENABLED.
+    if settings.MASLAKA_APPROVAL_WATCH_ENABLED:
+        from app.services.maslaka.approval_watch import run_approval_watch
+        scheduler.add_job(
+            run_approval_watch,
+            IntervalTrigger(minutes=settings.MASLAKA_APPROVAL_WATCH_MINUTES),
+            id="maslaka_approval_watch",
+            replace_existing=True,
+        )
     scheduler.start()
     asyncio.create_task(_refresh_funds_if_stale())
     logger.info(

@@ -169,6 +169,13 @@ async def record_submission(
     link.submitted_at = datetime.utcnow()
     link.status = SUBMITTED
     link.rejected_reason = None
+    # A resubmission (after a rejection) is a new conversation: forget the last
+    # reply so the watcher does not re-apply it to the new form.
+    link.reply_message_id = None
+    link.reply_received_at = None
+    link.reply_subject = None
+    link.reply_snippet = None
+    link.decided_via = None
     if delivery_note:
         link.delivery_note = delivery_note
     await db.commit()
@@ -282,42 +289,83 @@ def _shape_hebrew(text: str) -> str:
 async def deliver_to_helpdesk(
     *, link: MaslakaAgentLink, pdf_bytes: bytes, agent_email: str,
 ) -> str:
-    """Email the signed form to the מסלקה helpdesk.
+    """Email the signed form to the מסלקה helpdesk; returns a description of
+    where it went (the route shows it as `נשלח ל-<this>`).
 
-    Sent from our own address with the AGENT as `Reply-To`, so Swiftness's reply
-    reaches the agent rather than a no-reply mailbox. Sending genuinely *as* the
-    agent needs `Mail.Send` (M365, via their tenant admin) or Gmail SMTP — the
-    existing mailbox integration is read-only by design (`Mail.Read, never
-    Mail.ReadWrite`). That is Part B, a separate project.
+    **From the agent's own mailbox** when they have connected one that can send
+    (`mail_intake.send`) — the helpdesk corresponds with the agent, and its
+    approval lands in the inbox Nifraim already watches. Otherwise from our
+    `no-reply@` with the agent as `Reply-To`.
+
+    A connected mailbox whose send FAILS raises rather than falling back: a
+    silent fallback would tell the agent the form left their mailbox when it did
+    not. The route has already stored the form, so nothing is lost.
     """
     from email.message import EmailMessage
+    from email.utils import make_msgid
 
     from app.services.email_service import send_raw_message
+    from app.services.mail_intake import MailIntakeError
+    from app.services.mail_intake.send import NoSendableMailbox, send_as_agent
 
+    to = helpdesk_email()   # always through the override seam — dev must never mail the regulator
     subject = f"בקשת שיוך לבית תוכנה — {link.agent_name or ''} ת\"ז {link.agent_id_number or ''}"
-    body = (
-        f"שלום,\n\n"
-        f"מצורפת בקשת שיוך לבית תוכנה חתומה.\n\n"
+    details = (
         f"שם הסוכן: {link.agent_name or ''}\n"
         f"מספר מזהה: {link.agent_id_number or ''}\n"
         f"בית תוכנה: {BEIT_TOCHNA_NAME} (ח.פ {BEIT_TOCHNA_ID})\n\n"
-        f"נא לאשר את השיוך. לתשובה ניתן להשיב למייל זה — התשובה תגיע ישירות לסוכן.\n\n"
-        f"תודה,\n{BEIT_TOCHNA_NAME}\n"
     )
 
-    msg = EmailMessage()
+    def _compose(body: str) -> EmailMessage:
+        msg = EmailMessage()
+        # Our own ID, remembered on the link, so the approval watcher never reads
+        # the form we sent as the helpdesk's answer (dev: helpdesk == agent inbox).
+        msg["Message-ID"] = make_msgid(domain="nifraim.com")
+        link.sent_message_id = msg["Message-ID"]
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.set_content(body)
+        msg.add_attachment(
+            pdf_bytes, maintype="application", subtype="pdf",
+            filename=link.signed_pdf_filename or "shiyuch.pdf",
+        )
+        return msg
+
+    # 1. The agent's own mailbox — written in the agent's voice.
+    agent_msg = _compose(
+        "שלום,\n\n"
+        f"מצורפת בקשת שיוך לבית התוכנה {BEIT_TOCHNA_NAME}, חתומה.\n\n"
+        + details
+        + "אודה לאישור השיוך.\n\n"
+        f"תודה,\n{link.agent_name or ''}\n"
+    )
+    try:
+        if not settings.MASLAKA_SEND_AS_AGENT:
+            raise NoSendableMailbox("send-as-agent disabled by MASLAKA_SEND_AS_AGENT")
+        sender = await send_as_agent(link.user_id, agent_msg, display_name=link.agent_name)
+        return f"{to}, מהתיבה שלכם {sender}"
+    except NoSendableMailbox:
+        pass
+    except MailIntakeError as e:
+        raise RuntimeError(
+            "השליחה מתיבת המייל שלכם נכשלה"
+            + (" — סיסמת האפליקציה לא התקבלה" if e.code == "bad_app_password" else "")
+            + ". בדקו את חיבור תיבת המייל בהגדרות ונסו שוב."
+        ) from e
+
+    # 2. Fallback: Nifraim sends, the agent is Reply-To.
+    msg = _compose(
+        "שלום,\n\n"
+        "מצורפת בקשת שיוך לבית תוכנה חתומה.\n\n"
+        + details
+        + "נא לאשר את השיוך. לתשובה ניתן להשיב למייל זה — התשובה תגיע ישירות לסוכן.\n\n"
+        f"תודה,\n{BEIT_TOCHNA_NAME}\n"
+    )
     msg["From"] = settings.SMTP_FROM_EMAIL or "no-reply@nifraim.com"
-    msg["To"] = helpdesk_email()
     if agent_email:
         msg["Reply-To"] = agent_email
-    msg["Subject"] = subject
-    msg.set_content(body)
-    msg.add_attachment(
-        pdf_bytes, maintype="application", subtype="pdf",
-        filename=link.signed_pdf_filename or "shiyuch.pdf",
-    )
     await send_raw_message(msg)
-    return helpdesk_email()
+    return f"{to}, מ-Nifraim (לא מחוברת תיבת מייל שלכם)"
 
 
 def _template_filled_text() -> str:

@@ -153,6 +153,15 @@ class Settings(BaseSettings):
     # name and signature to every other agent — never set this in production.
     MASLAKA_ALLOW_FILLED_TEMPLATE: bool = False
     MASLAKA_HELPDESK_EMAIL: str = "helpdesk@swiftness.co.il"
+    # Approval watcher: reads SUBMITTED agents' connected inboxes for the helpdesk's
+    # answer (services/maslaka/approval_watch.py). Read-only; independent of the
+    # MASLAKA_ENABLED vault switch, like the association routes themselves.
+    # Send the שיוך form FROM the agent's own connected mailbox (mail_intake/send.py).
+    # Off → Nifraim no-reply@ with the agent as Reply-To. Gmail SMTP needs a host
+    # that allows outbound SMTP (Railway: Pro plan and above only).
+    MASLAKA_SEND_AS_AGENT: bool = True
+    MASLAKA_APPROVAL_WATCH_ENABLED: bool = True
+    MASLAKA_APPROVAL_WATCH_MINUTES: int = 10
     MASLAKA_RETENTION_DAYS: int = 90
     MASLAKA_INQUIRY_TIMEOUT_DAYS: int = 7
     MASLAKA_POLL_INTERVAL_MINUTES: int = 15

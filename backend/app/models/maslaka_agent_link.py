@@ -76,6 +76,19 @@ class MaslakaAgentLink(Base):
     signed_pdf_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     delivery_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── Approval watcher audit (services/maslaka/approval_watch.py) ──────────
+    # Message-ID of the form we sent — so the watcher never mistakes our own
+    # outgoing mail for the helpdesk's answer (in dev, helpdesk == agent inbox).
+    sent_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The helpdesk reply the watcher matched — recorded whether or not it could
+    # classify it, so an automated approval is always traceable to one email.
+    reply_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reply_received_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reply_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reply_snippet: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Who flipped the status: 'mailbox' (the watcher) or 'admin' (manual route).
+    decided_via: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
