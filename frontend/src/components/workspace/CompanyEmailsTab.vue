@@ -12,22 +12,21 @@
       <div class="spinner"></div>
     </div>
 
-    <EmptyStateGuide
-      v-if="contacts.length === 0 && !loading"
-      variant="full"
-      title="לא הוגדרו אימיילים"
-      body="שמירת כתובות אימייל של אנשי קשר בחברות הביטוח לשליחת בירורים ישירות מהמערכת. אפשר לטעון רשימה מוכנה או להוסיף ידנית."
-      cta-label="טען ברירת מחדל"
-      @cta="seedContacts"
-    >
-      <template #illustration>
-        <div class="esg-mail-icon">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
-          </svg>
-        </div>
-      </template>
-    </EmptyStateGuide>
+    <!-- Empty: the same ring the other Nifraim tabs use when there is no data —
+         one action (load the default insurer contacts), in the tab's colour. -->
+    <div v-if="contacts.length === 0 && !loading" class="emails-empty">
+      <BigAddButton
+        label="טעינת אנשי הקשר של החברות"
+        color="var(--tab-emails)"
+        :size="156"
+        @click="!seeding && seedContacts()"
+      >
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 6-10 7L2 6" />
+        </svg>
+      </BigAddButton>
+    </div>
 
     <!-- One compact card, list-shaped: avatar · name/email · action.
          The previous pass put every insurer on its own tile and filled the
@@ -81,7 +80,6 @@
 <script setup>
 import { ref, onMounted, reactive, computed } from 'vue'
 import api from '../../api/client.js'
-import EmptyStateGuide from './EmptyStateGuide.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
 import ContactFormModal from './ContactFormModal.vue'
@@ -537,17 +535,11 @@ td.t-company {
   background: var(--tab-emails-wash);
 }
 
-/* Icon for the empty-state guide (slotted into EmptyStateGuide) */
-.esg-mail-icon {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto;
-  background: var(--tab-emails-wash);
-  border-radius: 16px;
+.emails-empty {
   display: flex;
-  align-items: center;
   justify-content: center;
-  color: var(--tab-emails-ink);
+  padding: 48px 0 32px;
+  color: var(--tab-emails);
 }
 
 .loading {
