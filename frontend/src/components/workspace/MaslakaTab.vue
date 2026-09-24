@@ -7,11 +7,7 @@
     <header class="mk-hero">
       <div class="mk-hero-copy">
         <span class="mk-kicker">מסלקה פנסיונית</span>
-        <h2 class="mk-hero-title">כל המוצרים של הלקוח, מכל הגופים</h2>
-        <p class="mk-hero-sub">
-          בקשה אחת למסלקה הפנסיונית מחזירה את התמונה המלאה — גם מוצרים שלא מופיעים
-          באף דוח שאנחנו מורידים מהחברות.
-        </p>
+        <h2 class="mk-hero-title"><span dir="ltr">Nifraim</span> <span class="mk-hero-title-acc">המסלקה</span></h2>
         <div class="mk-hero-meta">
           <span v-if="blocked && !loading" class="mk-chip mk-chip--wait">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
@@ -76,216 +72,236 @@
       <p class="mk-gate-detail">{{ gate }}</p>
     </section>
 
-    <!-- Request a customer's picture -->
-    <section class="mk-card mk-ask" :class="{ 'mk-ask--off': blocked }">
-      <div class="mk-ask-head">
+    <!-- Waiting for the מסלקה to approve the שיוך: nothing below is usable
+         yet, so it is hidden — one big clock says where things stand. -->
+    <section v-if="needsAssoc && assoc?.status === 'submitted' && !loading" class="mk-card mk-wait">
+      <svg class="mk-clock" viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="mk-clock-halo" cx="100" cy="100" r="92" />
+        <circle class="mk-clock-face" cx="100" cy="100" r="78" />
+        <g class="mk-clock-ticks">
+          <line v-for="i in 12" :key="i" x1="100" y1="30" x2="100" :y2="i % 3 === 1 ? 44 : 38"
+                :transform="`rotate(${(i - 1) * 30} 100 100)`" />
+        </g>
+        <line class="mk-clock-hour" x1="100" y1="100" x2="100" y2="62" />
+        <line class="mk-clock-min" x1="100" y1="100" x2="100" y2="42" />
+        <circle class="mk-clock-pin" cx="100" cy="100" r="6" />
+      </svg>
+      <p class="mk-wait-title">ממתין לאישור המסלקה</p>
+      <p class="mk-wait-sub">נעדכן כאן ברגע שהאישור יגיע</p>
+    </section>
+
+    <template v-if="!needsAssoc">
+      <!-- Request a customer's picture -->
+      <section class="mk-card mk-ask" :class="{ 'mk-ask--off': blocked }">
+        <div class="mk-ask-head">
+          <h3 class="mk-card-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>בקשת מידע על לקוח</span>
+          </h3>
+          <span class="mk-ask-note">
+            הבקשה נשלחת פעם אחת, והתשובות מגיעות מכל הגופים המנהלים תוך ימי עסקים ספורים.
+          </span>
+        </div>
+
+        <div class="mk-fields">
+          <div class="mk-field">
+            <label for="mk-id">מספר זהות</label>
+            <input
+              id="mk-id"
+              v-model="idNumber"
+              dir="ltr"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="381788223"
+              maxlength="9"
+              :disabled="blocked"
+              :aria-invalid="showIdError"
+              :aria-describedby="showIdError ? 'mk-id-err' : 'mk-id-help'"
+              @blur="idTouched = true"
+              @keyup.enter="ask"
+            />
+            <span v-if="showIdError" id="mk-id-err" class="mk-help mk-help--bad">
+              מספר זהות הוא 9 ספרות
+            </span>
+            <span v-else id="mk-id-help" class="mk-help">9 ספרות, כולל ספרת ביקורת</span>
+          </div>
+
+          <div class="mk-field">
+            <label for="mk-name">שם הלקוח</label>
+            <input
+              id="mk-name"
+              v-model="customerName"
+              placeholder="לא חובה"
+              autocomplete="off"
+              :disabled="blocked"
+              aria-describedby="mk-name-help"
+              @keyup.enter="ask"
+            />
+            <span id="mk-name-help" class="mk-help">לזיהוי מהיר ברשימת הבקשות</span>
+          </div>
+
+          <button class="mk-primary" :disabled="!canAsk" @click="ask">
+            <span v-if="busy" class="mk-btn-spinner" aria-hidden="true"></span>
+            <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12h13" /><path d="m12 6 6 6-6 6" />
+            </svg>
+            <span>{{ busy ? 'שולח…' : 'בקש מידע' }}</span>
+          </button>
+        </div>
+
+        <p v-if="blocked && !loading" class="mk-ask-blocked">
+          {{ needsAssoc ? 'אפשר יהיה לשלוח בקשות אחרי שהמסלקה תאשר את השיוך.' : 'לא ניתן לשלוח בקשות עד שהשירות יופעל.' }}
+        </p>
+      </section>
+
+      <p v-if="askError" class="mk-error" role="alert">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
+        </svg>
+        <span>{{ askError }}</span>
+      </p>
+
+      <!-- Inquiries -->
+      <div v-if="loading" class="mk-loading"><div class="spinner"></div></div>
+
+      <section v-else-if="!inquiries.length" class="mk-card mk-empty">
+        <span class="mk-empty-art" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="52" height="52" fill="none" stroke="currentColor"
+               stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="12" y="10" width="40" height="44" rx="6" />
+            <path d="M22 24h20M22 34h20M22 44h12" />
+          </svg>
+        </span>
+        <p class="mk-empty-title">עדיין לא נשלחו בקשות מידע</p>
+        <p class="mk-empty-note">
+          הזינו מספר זהות של לקוח כדי למשוך את התמונה הפנסיונית המלאה שלו מכל הגופים המנהלים.
+        </p>
+      </section>
+
+      <section v-else class="mk-card mk-list">
         <h3 class="mk-card-title">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            <path d="M4 7h16M4 12h16M4 17h10" />
           </svg>
-          <span>בקשת מידע על לקוח</span>
+          <span>בקשות מידע</span>
+          <span class="mk-count ltr-number">{{ inquiries.length }}</span>
         </h3>
-        <span class="mk-ask-note">
-          הבקשה נשלחת פעם אחת, והתשובות מגיעות מכל הגופים המנהלים תוך ימי עסקים ספורים.
-        </span>
-      </div>
-
-      <div class="mk-fields">
-        <div class="mk-field">
-          <label for="mk-id">מספר זהות</label>
-          <input
-            id="mk-id"
-            v-model="idNumber"
-            dir="ltr"
-            inputmode="numeric"
-            autocomplete="off"
-            placeholder="381788223"
-            maxlength="9"
-            :disabled="blocked"
-            :aria-invalid="showIdError"
-            :aria-describedby="showIdError ? 'mk-id-err' : 'mk-id-help'"
-            @blur="idTouched = true"
-            @keyup.enter="ask"
-          />
-          <span v-if="showIdError" id="mk-id-err" class="mk-help mk-help--bad">
-            מספר זהות הוא 9 ספרות
-          </span>
-          <span v-else id="mk-id-help" class="mk-help">9 ספרות, כולל ספרת ביקורת</span>
-        </div>
-
-        <div class="mk-field">
-          <label for="mk-name">שם הלקוח</label>
-          <input
-            id="mk-name"
-            v-model="customerName"
-            placeholder="לא חובה"
-            autocomplete="off"
-            :disabled="blocked"
-            aria-describedby="mk-name-help"
-            @keyup.enter="ask"
-          />
-          <span id="mk-name-help" class="mk-help">לזיהוי מהיר ברשימת הבקשות</span>
-        </div>
-
-        <button class="mk-primary" :disabled="!canAsk" @click="ask">
-          <span v-if="busy" class="mk-btn-spinner" aria-hidden="true"></span>
-          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 12h13" /><path d="m12 6 6 6-6 6" />
-          </svg>
-          <span>{{ busy ? 'שולח…' : 'בקש מידע' }}</span>
-        </button>
-      </div>
-
-      <p v-if="blocked && !loading" class="mk-ask-blocked">
-        {{ needsAssoc ? 'אפשר יהיה לשלוח בקשות אחרי שהמסלקה תאשר את השיוך.' : 'לא ניתן לשלוח בקשות עד שהשירות יופעל.' }}
-      </p>
-    </section>
-
-    <p v-if="askError" class="mk-error" role="alert">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
-      </svg>
-      <span>{{ askError }}</span>
-    </p>
-
-    <!-- Inquiries -->
-    <div v-if="loading" class="mk-loading"><div class="spinner"></div></div>
-
-    <section v-else-if="!inquiries.length" class="mk-card mk-empty">
-      <span class="mk-empty-art" aria-hidden="true">
-        <svg viewBox="0 0 64 64" width="52" height="52" fill="none" stroke="currentColor"
-             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="12" y="10" width="40" height="44" rx="6" />
-          <path d="M22 24h20M22 34h20M22 44h12" />
-        </svg>
-      </span>
-      <p class="mk-empty-title">עדיין לא נשלחו בקשות מידע</p>
-      <p class="mk-empty-note">
-        הזינו מספר זהות של לקוח כדי למשוך את התמונה הפנסיונית המלאה שלו מכל הגופים המנהלים.
-      </p>
-    </section>
-
-    <section v-else class="mk-card mk-list">
-      <h3 class="mk-card-title">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 7h16M4 12h16M4 17h10" />
-        </svg>
-        <span>בקשות מידע</span>
-        <span class="mk-count ltr-number">{{ inquiries.length }}</span>
-      </h3>
-      <table class="mk-table">
-        <thead>
-          <tr>
-            <th>לקוח</th><th>מספר זהות</th><th>סטטוס</th>
-            <th>נשלח</th><th>גופים שהשיבו</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="q in inquiries" :key="q.id">
-            <td class="mk-name">{{ q.customer_name || '—' }}</td>
-            <td><span class="ltr-number">{{ q.customer_id_number }}</span></td>
-            <td>
-              <span class="mk-status" :class="`mk-status--${q.status}`">
-                <span class="mk-status-dot" aria-hidden="true"></span>
-                <span>{{ statusLabel(q.status) }}</span>
-              </span>
-            </td>
-            <td><span class="ltr-number">{{ formatDate(q.submitted_at) }}</span></td>
-            <td>
-              <span class="mk-providers">
-                <span class="ltr-number">
-                  {{ q.providers_received || 0 }}<template v-if="q.providers_expected">/{{ q.providers_expected }}</template>
+        <table class="mk-table">
+          <thead>
+            <tr>
+              <th>לקוח</th><th>מספר זהות</th><th>סטטוס</th>
+              <th>נשלח</th><th>גופים שהשיבו</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="q in inquiries" :key="q.id">
+              <td class="mk-name">{{ q.customer_name || '—' }}</td>
+              <td><span class="ltr-number">{{ q.customer_id_number }}</span></td>
+              <td>
+                <span class="mk-status" :class="`mk-status--${q.status}`">
+                  <span class="mk-status-dot" aria-hidden="true"></span>
+                  <span>{{ statusLabel(q.status) }}</span>
                 </span>
-                <span v-if="q.providers_expected" class="mk-meter" aria-hidden="true">
-                  <span class="mk-meter-fill" :style="{ width: providerPct(q) + '%' }"></span>
+              </td>
+              <td><span class="ltr-number">{{ formatDate(q.submitted_at) }}</span></td>
+              <td>
+                <span class="mk-providers">
+                  <span class="ltr-number">
+                    {{ q.providers_received || 0 }}<template v-if="q.providers_expected">/{{ q.providers_expected }}</template>
+                  </span>
+                  <span v-if="q.providers_expected" class="mk-meter" aria-hidden="true">
+                    <span class="mk-meter-fill" :style="{ width: providerPct(q) + '%' }"></span>
+                  </span>
                 </span>
-              </span>
-            </td>
-            <td class="mk-actions">
-              <button class="mk-ghost" @click="openCustomer(q.customer_id_number)">
-                <span>הצג נתונים</span>
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
-                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M14 6 8 12l6 6" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+              </td>
+              <td class="mk-actions">
+                <button class="mk-ghost" @click="openCustomer(q.customer_id_number)">
+                  <span>הצג נתונים</span>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                       stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14 6 8 12l6 6" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
-    <!-- Holdings for one customer -->
-    <p v-if="pictureError" class="mk-error" role="alert">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
-      </svg>
-      <span>{{ pictureError }}</span>
-    </p>
+      <!-- Holdings for one customer -->
+      <p v-if="pictureError" class="mk-error" role="alert">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
+        </svg>
+        <span>{{ pictureError }}</span>
+      </p>
 
-    <section v-if="picture" class="mk-card mk-picture">
-      <div class="mk-picture-head">
-        <div>
-          <h3 class="mk-picture-name">{{ picture.customer_name || picture.id_number }}</h3>
-          <span class="mk-picture-sub">התמונה הפנסיונית שהתקבלה מהמסלקה</span>
+      <section v-if="picture" class="mk-card mk-picture">
+        <div class="mk-picture-head">
+          <div>
+            <h3 class="mk-picture-name">{{ picture.customer_name || picture.id_number }}</h3>
+            <span class="mk-picture-sub">התמונה הפנסיונית שהתקבלה מהמסלקה</span>
+          </div>
+          <button class="mk-ghost" @click="picture = null">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+            <span>סגור</span>
+          </button>
         </div>
-        <button class="mk-ghost" @click="picture = null">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-          <span>סגור</span>
-        </button>
-      </div>
 
-      <div class="mk-kpis">
-        <div class="mk-kpi">
-          <span class="mk-kpi-n ltr-number">{{ money(picture.total_accumulation) }}</span>
-          <span class="mk-kpi-l">סך צבירה</span>
+        <div class="mk-kpis">
+          <div class="mk-kpi">
+            <span class="mk-kpi-n ltr-number">{{ money(picture.total_accumulation) }}</span>
+            <span class="mk-kpi-l">סך צבירה</span>
+          </div>
+          <div class="mk-kpi">
+            <span class="mk-kpi-n ltr-number">{{ picture.products_count }}</span>
+            <span class="mk-kpi-l">מוצרים</span>
+          </div>
+          <div class="mk-kpi">
+            <span class="mk-kpi-n ltr-number">{{ newToUs }}</span>
+            <span class="mk-kpi-l">לא נמצאו אצלנו</span>
+          </div>
         </div>
-        <div class="mk-kpi">
-          <span class="mk-kpi-n ltr-number">{{ picture.products_count }}</span>
-          <span class="mk-kpi-l">מוצרים</span>
-        </div>
-        <div class="mk-kpi">
-          <span class="mk-kpi-n ltr-number">{{ newToUs }}</span>
-          <span class="mk-kpi-l">לא נמצאו אצלנו</span>
-        </div>
-      </div>
 
-      <table class="mk-table mk-table--products">
-        <thead>
-          <tr><th>חברה</th><th>מוצר</th><th>מספר פוליסה</th><th>צבירה</th><th>סטטוס התאמה</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="(p, i) in picture.products" :key="i">
-            <td>{{ p.receiving_company || '—' }}</td>
-            <td>{{ p.product || p.product_type || '—' }}</td>
-            <td><span class="ltr-number">{{ p.fund_policy_number || '—' }}</span></td>
-            <td><span class="ltr-number">{{ money(p.accumulation) }}</span></td>
-            <td>
-              <!-- icon + text, never colour alone -->
-              <span class="mk-match" :class="p.match_status === 'matched' ? 'mk-match--ok' : 'mk-match--new'">
-                <svg v-if="p.match_status === 'matched'" viewBox="0 0 24 24" width="12" height="12" fill="none"
-                     stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="m5 13 4 4L19 7" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                     stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                <span>{{ p.match_status === 'matched' ? 'תואם לפרודוקציה' : 'לא נמצא אצלנו' }}</span>
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+        <table class="mk-table mk-table--products">
+          <thead>
+            <tr><th>חברה</th><th>מוצר</th><th>מספר פוליסה</th><th>צבירה</th><th>סטטוס התאמה</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="(p, i) in picture.products" :key="i">
+              <td>{{ p.receiving_company || '—' }}</td>
+              <td>{{ p.product || p.product_type || '—' }}</td>
+              <td><span class="ltr-number">{{ p.fund_policy_number || '—' }}</span></td>
+              <td><span class="ltr-number">{{ money(p.accumulation) }}</span></td>
+              <td>
+                <!-- icon + text, never colour alone -->
+                <span class="mk-match" :class="p.match_status === 'matched' ? 'mk-match--ok' : 'mk-match--new'">
+                  <svg v-if="p.match_status === 'matched'" viewBox="0 0 24 24" width="12" height="12" fill="none"
+                       stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m5 13 4 4L19 7" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                       stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  <span>{{ p.match_status === 'matched' ? 'תואם לפרודוקציה' : 'לא נמצא אצלנו' }}</span>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
   </div>
 </template>
 
@@ -511,12 +527,36 @@ onMounted(async () => {
   line-height: 1.2;
   color: var(--text);
 }
-.mk-hero-sub {
-  margin: 0;
-  max-width: 52ch;
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--text-muted);
+/* Wordmark — Rubik, same as the Mail Agent's "Nifraim Mail Agent". */
+.mk-hero-title {
+  font-family: 'Rubik', 'Heebo', sans-serif;
+  font-size: clamp(28px, 3.3vw, 40px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.mk-hero-title-acc { color: var(--tab-maslaka); }
+
+/* ── Waiting for approval: one extra-big clock ─────────────── */
+.mk-wait {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 36px 20px 40px; gap: 6px;
+}
+.mk-clock { width: min(260px, 60vw); height: auto; overflow: visible; }
+.mk-clock-halo { fill: var(--tab-maslaka-wash); transform-origin: 100px 100px; animation: mk-halo 3s ease-in-out infinite; }
+.mk-clock-face { fill: var(--card-bg); stroke: var(--tab-maslaka); stroke-width: 5; }
+.mk-clock-ticks line { stroke: var(--mk-accent-30); stroke-width: 4; stroke-linecap: round; }
+.mk-clock-hour, .mk-clock-min { stroke: var(--tab-maslaka); stroke-linecap: round; transform-origin: 100px 100px; }
+.mk-clock-hour { stroke-width: 8; animation: mk-spin-hand 48s linear infinite; }
+.mk-clock-min { stroke-width: 5; animation: mk-spin-hand 4s linear infinite; }
+.mk-clock-pin { fill: var(--tab-maslaka); }
+@keyframes mk-spin-hand { to { transform: rotate(360deg); } }
+@keyframes mk-halo { 50% { transform: scale(1.06); opacity: 0.6; } }
+.mk-wait-title { margin: 14px 0 0; font-size: 24px; font-weight: 800; color: var(--text); }
+.mk-wait-sub { margin: 0; font-size: 14px; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) {
+  .mk-clock-halo, .mk-clock-hour, .mk-clock-min { animation: none; }
+  .mk-clock-hour { transform: rotate(300deg); }
 }
 .mk-hero-meta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .mk-chip {
