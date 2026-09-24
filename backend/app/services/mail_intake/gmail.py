@@ -101,10 +101,14 @@ def _fetch_new_attachments_sync(
 
         uids = _search_uids(conn, last_seen_uid)
         attachments: list[FetchedAttachment] = []
-        highest = last_seen_uid
+        # The cursor advances past EVERY new message, but only messages Gmail
+        # says carry a Hachshara bundle are downloaded. Downloading all of them
+        # (the first run is 200 full bodies, attachments included) blew the
+        # read timeout on a real inbox and surfaced as mailbox_unreachable.
+        highest = max([last_seen_uid or 0, *uids]) or None
+        wanted = _gmail_filter(conn, uids)
 
-        for uid in uids:
-            highest = uid if highest is None else max(highest, uid)
+        for uid in wanted:
             msg = _fetch_message(conn, uid)
             if msg is None:
                 continue
@@ -129,8 +133,11 @@ def _fetch_new_attachments_sync(
 
 
 def _uidvalidity(conn: imaplib.IMAP4_SSL) -> int:
-    status, data = conn.response("UIDVALIDITY")
-    if status == "OK" and data and data[0]:
+    # imaplib's response(code) returns (code, data) — the first element is the
+    # response NAME ("UIDVALIDITY"), never "OK". Checking it for "OK" failed every
+    # Gmail mailbox right after a successful login, surfaced as mailbox_unreachable.
+    _, data = conn.response("UIDVALIDITY")
+    if data and data[0]:
         try:
             return int(data[0])
         except (TypeError, ValueError):
@@ -154,6 +161,28 @@ def _search_uids(conn: imaplib.IMAP4_SSL, last_seen_uid: int | None) -> list[int
     else:
         uids = uids[-_FIRST_RUN_LOOKBACK:]
     return sorted(uids)
+
+
+# Gmail's own search syntax over IMAP (X-GM-RAW) — matches attachment NAMES
+# server-side. Mirrors MAILBOX_ATTACHMENT_PATTERN (Ild_prod_<n>_<agent>_<date>.zip).
+_GMAIL_RAW_QUERY = '"filename:Ild_prod"'
+
+
+def _gmail_filter(conn: imaplib.IMAP4_SSL, uids: list[int]) -> list[int]:
+    """The subset of `uids` whose attachments look like a Hachshara bundle.
+    Falls back to all of them on a server without X-GM-RAW (non-Gmail IMAP)."""
+    if not uids:
+        return []
+    try:
+        status, data = conn.uid(
+            "SEARCH", None, "UID", f"{uids[0]}:{uids[-1]}", "X-GM-RAW", _GMAIL_RAW_QUERY,
+        )
+    except imaplib.IMAP4.error:
+        return uids
+    if status != "OK" or not data:
+        return uids
+    hits = {int(x) for x in (data[0] or b"").split()}
+    return [u for u in uids if u in hits]
 
 
 def _fetch_message(conn: imaplib.IMAP4_SSL, uid: int) -> Message | None:
