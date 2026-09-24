@@ -1,19 +1,20 @@
 # מסלקה form assets
 
-## `shiyuch_form_blank.pdf` — a PLACEHOLDER, and the wrong variant
+## `shiyuch_form_blank.pdf` — right variant, but a FILLED copy (placeholder)
 
-Currently vendored: **`בקשת שיוך לבית סוכן`**, the 1-page text form published at
-<https://www.swiftness.co.il/agents/טפסים-ונהלי-עבודה/>
-(`wp-content/uploads/2024/08/בקשת-שיוך-לבית-סוכן.pdf`). Genuinely blank, publicly
-published, nobody's signature on it.
+Currently vendored (2026-09-24, commit `85790d8`): the **2-page `טופס בקשה – שיוך לבית תוכנה או
+בית סוכן`**, the variant with the לבית תוכנה / לבית סוכן choice. This is the correct form for
+Nifraim (a **בית תוכנה**), and `FIELD_POSITIONS` is calibrated against it.
 
-⚠️ **It is the wrong variant.** Nifraim is a **בית תוכנה**, not a בית סוכן. The form agents
-actually sign is `טופס בקשה – שיוך לבית תוכנה או בית סוכן` — **2 pages**, with a
-לבית תוכנה / לבית סוכן choice this one does not have. That variant is not on the public forms
-page; get it from `helpdesk@swiftness.co.il`.
+⚠️ **It is not blank.** It is an agent's filled copy, so the blank-template guard refuses it
+unless `MASLAKA_ALLOW_FILLED_TEMPLATE=true`. That flag is set on production because kiko is the
+only agent, and he downloads his own form. **A second agent would get kiko's details underneath
+their own overlay.** Before anyone else signs up, either unset the flag or vendor the genuine blank
+from `helpdesk@swiftness.co.il`. That blank is not on the public forms page.
 
-Submitting the בית-סוכן form would ask the מסלקה to associate agents to the wrong kind of
-entity. Replace before anyone sends one.
+History: the 1-page `בקשת שיוך לבית סוכן`
+(<https://www.swiftness.co.il/agents/טפסים-ונהלי-עבודה/>) was vendored briefly and replaced
+because it is the wrong entity type.
 
 ## Why there is a guard
 

@@ -678,16 +678,40 @@ async def association_approve(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Mark the association approved (or rejected).
+    """Mark an association approved (or rejected). **ADMIN ONLY.**
 
     Manual today: the approval arrives as an email from the מסלקה, and reading
     the agent's mailbox to spot it is a separate project (the existing mail
     integration is read-only and covers different providers). Keep this route
     even once that lands — an automated watcher always needs an override.
+
+    The admin check is the point of the whole gate. Without it an agent could
+    approve their own association and unlock the מסלקה tab while the מסלקה had
+    never linked them to our ח.פ — every request they then made would be
+    unauthorised at the regulator, and the app would have said it was fine.
+    `user_id` therefore names WHOSE association to act on, and defaults to the
+    caller's own so an admin approving themselves needs no argument.
     """
     from app.services.maslaka import association
 
-    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="רק מנהל מערכת יכול לאשר שיוך — האישור מגיע מהמסלקה",
+        )
+    target_id = user.id
+    raw_target = (payload or {}).get("user_id")
+    if raw_target:
+        try:
+            target_id = uuid.UUID(str(raw_target))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="user_id לא תקין") from e
+    target = await db.get(User, target_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+
+    link = await association.get_or_create_link(
+        db, user_id=target.id, agent_name=target.full_name)
     reason = (payload or {}).get("rejected_reason")
     if reason:
         await association.mark_rejected(db, link, str(reason))
