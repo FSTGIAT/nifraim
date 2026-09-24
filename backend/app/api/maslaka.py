@@ -596,6 +596,16 @@ async def association_status(
         # Survives a reload: the wizard shows this after /submit, and without
         # it a failed delivery disappears the moment the page refreshes.
         "delivery_note": link.delivery_note,
+        # The approval watcher's audit trail. It records the helpdesk reply it
+        # matched WHETHER OR NOT it could classify it, so the wizard can show
+        # "התקבלה תשובה מהמסלקה" on an unclassified reply instead of leaving the
+        # agent staring at `submitted` while an answer sits in their inbox.
+        # `decided_via` says who flipped the status — 'mailbox' or 'admin'.
+        "reply_received_at": (
+            link.reply_received_at.isoformat() if link.reply_received_at else None),
+        "reply_subject": link.reply_subject,
+        "reply_snippet": link.reply_snippet,
+        "decided_via": link.decided_via,
         # The REAL destination, not the module constant. Reporting the constant
         # told a dev box it was mailing the regulator when the override sent it
         # elsewhere — and would say the same if someone pointed prod away.
@@ -750,6 +760,9 @@ async def association_approve(
 
     link = await association.get_or_create_link(
         db, user_id=target.id, agent_name=target.full_name)
+    # Attribute the decision. Without this an admin flip is indistinguishable
+    # from the watcher's, and "why is this agent approved?" has no answer.
+    link.decided_via = "admin"
     reason = (payload or {}).get("rejected_reason")
     if reason:
         await association.mark_rejected(db, link, str(reason))
