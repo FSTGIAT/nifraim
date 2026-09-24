@@ -596,7 +596,10 @@ async def association_status(
         # Survives a reload: the wizard shows this after /submit, and without
         # it a failed delivery disappears the moment the page refreshes.
         "delivery_note": link.delivery_note,
-        "helpdesk_email": association.HELPDESK_EMAIL,
+        # The REAL destination, not the module constant. Reporting the constant
+        # told a dev box it was mailing the regulator when the override sent it
+        # elsewhere — and would say the same if someone pointed prod away.
+        "helpdesk_email": association.helpdesk_email(),
         "beit_tochna": {
             "name": association.BEIT_TOCHNA_NAME,
             "id": association.BEIT_TOCHNA_ID,
