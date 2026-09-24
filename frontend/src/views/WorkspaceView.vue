@@ -463,8 +463,16 @@ const dropContextLabel = computed(() => {
   return 'קבצי Excel'
 })
 
+// A modal with its own drop zone marks itself `data-own-drop`. While one is
+// open the page-wide overlay stays off — otherwise it covers the modal, labels
+// the drag "Excel", and swallows the file (e.g. the signed מסלקה PDF).
+function modalOwnsDrop() {
+  return !!document.querySelector('[data-own-drop]')
+}
+
 function onDragEnter(e) {
   e.preventDefault()
+  if (modalOwnsDrop()) return
   dragCounter.value++
   if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
     isFullPageDrag.value = true

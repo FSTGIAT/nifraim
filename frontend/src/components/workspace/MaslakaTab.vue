@@ -13,28 +13,59 @@
           באף דוח שאנחנו מורידים מהחברות.
         </p>
         <div class="mk-hero-meta">
-          <span v-if="gate" class="mk-chip mk-chip--wait">
+          <span v-if="blocked && !loading" class="mk-chip mk-chip--wait">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
             </svg>
-            <span>השירות עדיין לא פעיל</span>
+            <span>{{ chipText }}</span>
           </span>
-          <span v-else-if="!loading" class="mk-chip mk-chip--live">
+          <span v-else-if="!loading && assocLoaded" class="mk-chip mk-chip--live">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 12h4l2.5-6 3 12L16 12h4" />
             </svg>
             <span>{{ inquiries.length ? `${inquiries.length} בקשות מידע` : 'מוכן לבקשת מידע' }}</span>
           </span>
+          <!-- The association is the agent's to finish, so its next step lives
+               here in the hero, not in a checklist card. -->
+          <button
+            v-if="needsAssoc && assoc && !loading"
+            class="mk-next"
+            :class="{ 'mk-next--calm': assoc.status === 'submitted' && !assoc.reply_received_at }"
+            type="button"
+            @click="assocOpen = true"
+          >
+            <span>{{ assocCta }}</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M14 6 8 12l6 6" />
+            </svg>
+          </button>
+          <!-- An approval the WATCHER decided stays inspectable: the agent is the
+               person best placed to notice a misread reply. -->
+          <button
+            v-if="assoc?.status === 'approved' && assoc.decided_via === 'mailbox' && !loading"
+            class="mk-why"
+            type="button"
+            @click="assocOpen = true"
+          >איך זוהה האישור?</button>
+          <span v-if="assocError" class="mk-hero-err">{{ assocError }}</span>
         </div>
       </div>
       <TabHeroLoop scene="maslaka" class="mk-hero-art" />
     </header>
 
-    <!-- Honest gate. The request would 503 today; say where we actually are
-         instead of offering a button that fails. -->
-    <section v-if="gate" class="mk-card mk-gate">
+    <MaslakaAssociationModal
+      :open="assocOpen"
+      :assoc="assoc"
+      @close="assocOpen = false"
+      @changed="loadAssociation"
+    />
+
+    <!-- Service gate (ours: feature flag → 503 on /inquiries). The per-agent
+         association gate is surfaced in the hero instead. -->
+    <section v-if="gate && !loading" class="mk-card mk-gate">
       <h3 class="mk-card-title">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -43,44 +74,10 @@
         <span>השירות עדיין לא פעיל</span>
       </h3>
       <p class="mk-gate-detail">{{ gate }}</p>
-      <!-- Updated 2026-09-10: the vault leg is DONE — files upload in ~150ms and
-           MASLAKA_AGENT_ID is issued. Only the sender activation is outstanding. -->
-      <ul class="mk-steps">
-        <li class="mk-step mk-step--done">
-          <span class="mk-step-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                 stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m5 13 4 4L19 7" />
-            </svg>
-          </span>
-          <span class="mk-step-text">כספת הבדיקות (TST) מחוברת — קבצים נשלחים בהצלחה</span>
-          <span class="mk-step-tag">הושלם</span>
-        </li>
-        <li class="mk-step mk-step--wait">
-          <span class="mk-step-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                 stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-            </svg>
-          </span>
-          <span class="mk-step-text">ממתינים להפעלה שלנו כבעל רישיון <strong>שולח</strong> אצל המסלקה</span>
-          <span class="mk-step-tag">בתהליך</span>
-        </li>
-        <li class="mk-step mk-step--req">
-          <span class="mk-step-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                 stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 11V7a4 4 0 0 1 8 0v4" /><rect x="5" y="11" width="14" height="9" rx="2" />
-            </svg>
-          </span>
-          <span class="mk-step-text">לכל לקוח נדרש ייפוי כוח חתום לפני בקשת מידע</span>
-          <span class="mk-step-tag">תנאי</span>
-        </li>
-      </ul>
     </section>
 
     <!-- Request a customer's picture -->
-    <section class="mk-card mk-ask" :class="{ 'mk-ask--off': !!gate }">
+    <section class="mk-card mk-ask" :class="{ 'mk-ask--off': blocked }">
       <div class="mk-ask-head">
         <h3 class="mk-card-title">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -105,7 +102,7 @@
             autocomplete="off"
             placeholder="381788223"
             maxlength="9"
-            :disabled="!!gate"
+            :disabled="blocked"
             :aria-invalid="showIdError"
             :aria-describedby="showIdError ? 'mk-id-err' : 'mk-id-help'"
             @blur="idTouched = true"
@@ -124,7 +121,7 @@
             v-model="customerName"
             placeholder="לא חובה"
             autocomplete="off"
-            :disabled="!!gate"
+            :disabled="blocked"
             aria-describedby="mk-name-help"
             @keyup.enter="ask"
           />
@@ -141,8 +138,8 @@
         </button>
       </div>
 
-      <p v-if="gate" class="mk-ask-blocked">
-        לא ניתן לשלוח בקשות עד שההפעלה אצל המסלקה תושלם.
+      <p v-if="blocked && !loading" class="mk-ask-blocked">
+        {{ needsAssoc ? 'אפשר יהיה לשלוח בקשות אחרי שהמסלקה תאשר את השיוך.' : 'לא ניתן לשלוח בקשות עד שהשירות יופעל.' }}
       </p>
     </section>
 
@@ -296,6 +293,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
+import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 
 const idNumber = ref('')
 const customerName = ref('')
@@ -309,6 +307,49 @@ const askError = ref('')
 // where the row the user clicked is — the page is too tall for a top banner.
 const pictureError = ref('')
 const gate = ref('')
+
+// ── Association (שיוך לבית תוכנה) ─────────────────────────────────────
+// Server-side status is the only source of truth — nothing here is cached
+// in localStorage.
+const assoc = ref(null)
+const assocError = ref('')
+const assocOpen = ref(false)
+const assocLoaded = ref(false)
+
+const needsAssoc = computed(() => assocLoaded.value && assoc.value?.status !== 'approved')
+const blocked = computed(() => !!gate.value || needsAssoc.value)
+
+const chipText = computed(() => {
+  if (needsAssoc.value) {
+    const st = assoc.value?.status
+    if (st === 'submitted') return assoc.value?.reply_received_at ? 'התקבלה תשובה מהמסלקה' : 'ממתין לאישור המסלקה'
+    if (st === 'rejected') return 'המסלקה החזירה את הטופס'
+    return 'נדרש חיבור למסלקה'
+  }
+  return 'השירות עדיין לא פעיל'
+})
+
+const assocCta = computed(() => {
+  const a = assoc.value
+  if (!a || !a.agent_id_number) return 'התחלת החיבור'
+  if (a.status === 'submitted') return a.reply_received_at ? 'לקריאת התשובה' : 'פרטי הבקשה'
+  if (a.status === 'rejected') return 'תיקון ושליחה מחדש'
+  return 'המשך בחיבור'
+})
+
+async function loadAssociation() {
+  try {
+    const { data } = await api.get('/maslaka/association')
+    assoc.value = data
+    assocError.value = ''
+  } catch {
+    // Fail closed: if we cannot confirm the association, the ask form stays off.
+    assoc.value = null
+    assocError.value = 'לא הצלחנו לבדוק את מצב החיבור למסלקה. רעננו את הדף ונסו שוב.'
+  } finally {
+    assocLoaded.value = true
+  }
+}
 
 const STATUS = {
   pending: 'ממתין לשליחה',
@@ -325,7 +366,7 @@ const idDigits = computed(() => idNumber.value.replace(/\D/g, ''))
 const idValid = computed(() => idDigits.value.length === 9)
 // Validate on blur, not on keystroke — no error while the user is still typing.
 const showIdError = computed(() => idTouched.value && !!idNumber.value && !idValid.value)
-const canAsk = computed(() => !gate.value && idValid.value && !busy.value)
+const canAsk = computed(() => !blocked.value && idValid.value && !busy.value)
 const newToUs = computed(
   () => (picture.value?.products || []).filter((p) => p.match_status !== 'matched').length,
 )
@@ -372,6 +413,12 @@ async function ask() {
     idTouched.value = false
     await loadInquiries()
   } catch (e) {
+    // 403 + X-Maslaka-Association-Status: the server's association gate held
+    // (status changed under the tab, e.g. an approval was revoked). Re-read the
+    // truth so the card and wizard reflect it, not just an error line.
+    if (e?.response?.status === 403 && e.response.headers?.['x-maslaka-association-status']) {
+      await loadAssociation()
+    }
     askError.value = e?.response?.data?.detail || 'הבקשה נכשלה'
   } finally {
     busy.value = false
@@ -391,7 +438,12 @@ async function openCustomer(id) {
   }
 }
 
-onMounted(loadInquiries)
+onMounted(async () => {
+  await Promise.all([loadInquiries(), loadAssociation()])
+  // A first-time agent lands straight in the wizard; anyone further along
+  // opens it from the card, so the tab never nags on every visit.
+  if (assoc.value?.status === 'not_started' && !assoc.value.agent_id_number) assocOpen.value = true
+})
 </script>
 
 <style scoped>
@@ -466,7 +518,7 @@ onMounted(loadInquiries)
   line-height: 1.55;
   color: var(--text-muted);
 }
-.mk-hero-meta { margin-top: 6px; }
+.mk-hero-meta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .mk-chip {
   display: inline-flex;
   align-items: center;
@@ -575,6 +627,61 @@ onMounted(loadInquiries)
 .mk-step--wait .mk-step-tag { background: var(--amber-light); color: var(--mk-amber-ink); }
 .mk-step--req .mk-step-mark { background: var(--tab-maslaka-wash); color: var(--tab-maslaka); }
 .mk-step--req .mk-step-tag { background: var(--tab-maslaka-wash); color: var(--tab-maslaka); }
+.mk-hero-err { font-size: 0.78rem; font-weight: 600; color: var(--red-deep); }
+.mk-next {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--tab-maslaka);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: filter 0.15s var(--transition), transform 0.15s var(--transition);
+}
+/* A ring that breathes out from the button — asks for the click without
+   moving the text. Calmed once the agent is only waiting on the מסלקה. */
+.mk-next::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-maslaka) 45%, transparent);
+  animation: mk-next-pulse 2.2s ease-out infinite;
+  pointer-events: none;
+}
+.mk-next--calm::after { animation: none; }
+.mk-why {
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tab-maslaka);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.mk-why:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.mk-next svg { transition: transform 0.2s var(--transition); }
+.mk-next:hover { filter: brightness(1.12); }
+.mk-next:hover svg { transform: translateX(-3px); }
+.mk-next:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 3px; }
+@keyframes mk-next-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-maslaka) 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--tab-maslaka) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-next::after { animation: none; }
+  .mk-next svg { transition: none; }
+}
 
 /* ── Ask form ───────────────────────────────────────────────── */
 .mk-ask-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
