@@ -80,8 +80,40 @@ def require_vault_host() -> None:
         )
 
 
+async def require_association_approved(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    """Third gate: this AGENT is linked to our ח.פ at the מסלקה.
+
+    `MASLAKA_ENABLED` says the feature is live and `MASLAKA_VAULT_HOST` says who
+    owns the folders — neither says anything about the caller. Without this an
+    agent whose שיוך was never approved could still create an inquiry, and the
+    Gateway worker would dutifully transport it: unauthorised traffic to a
+    regulator, under our ח.פ, with the app reporting success.
+
+    Client-side gating cannot cover this. The tab hides the form, but the route
+    is what has to refuse.
+    """
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(
+        db, user_id=user.id, agent_name=user.full_name)
+    if link.status != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "השיוך לבית התוכנה במסלקה טרם אושר — לא ניתן לשלוח בקשות מידע. "
+                "השלימו את טופס השיוך בלשונית המסלקה."
+            ),
+            headers={"X-Maslaka-Association-Status": link.status},
+        )
+
+
 # ─── Inquiry creation ──────────────────────────────────────────────────────
-@router.post("/inquiry", response_model=InquiryOut, dependencies=[Depends(require_maslaka_enabled)])
+@router.post("/inquiry", response_model=InquiryOut,
+             dependencies=[Depends(require_maslaka_enabled),
+                           Depends(require_association_approved)])
 async def create_inquiry_endpoint(
     payload: InquiryCreateRequest,
     db: AsyncSession = Depends(get_db),
@@ -561,6 +593,9 @@ async def association_status(
         "approved_at": link.approved_at.isoformat() if link.approved_at else None,
         "rejected_reason": link.rejected_reason,
         "signed_pdf_filename": link.signed_pdf_filename,
+        # Survives a reload: the wizard shows this after /submit, and without
+        # it a failed delivery disappears the moment the page refreshes.
+        "delivery_note": link.delivery_note,
         "helpdesk_email": association.HELPDESK_EMAIL,
         "beit_tochna": {
             "name": association.BEIT_TOCHNA_NAME,
