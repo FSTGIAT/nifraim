@@ -71,7 +71,12 @@ FIELD_POSITIONS: dict[str, tuple[float, float]] = {
     "agent_name": (266.0, 657.0),          # שם סוכן/סוכנות/מעסיק/מייצג
     "agent_id": (274.0, 620.0),            # מספר מזהה (ת"ז/ח.פ) — boxed digits
     "beit_tochna_checkbox": (447.0, 408.0),  # the לבית תוכנה tick
-    "beit_tochna_name": (241.0, 377.0),    # שם בית תוכנה/בית סוכן
+    # ON the ruled line (y≈355), not floating above it. Copying the filled
+    # sample put this 20pt high — the sample was typed loosely, so match the
+    # FORM's geometry here, not the sample's. Centred on the line span
+    # (x 210..367). Always "Nifraim.com": it is our side of the form and the
+    # one value an agent must never be left to type.
+    "beit_tochna_name": (255.0, 358.0),    # שם בית תוכנה/בית סוכן
     "beit_tochna_id": (239.0, 331.0),      # ח.פ/ת"ז בית תוכנה — boxed digits
     # Section 3, "האם לחבר בנוסף?" — deliberately NOT drawn. Choosing between
     # במקום and בנוסף replaces or keeps an agent's existing association, which
