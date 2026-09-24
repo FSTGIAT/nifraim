@@ -54,15 +54,37 @@ BLANK_FORM = ASSETS / "shiyuch_form_blank.pdf"
 # sliced scan, so there is nothing to anchor to programmatically — these are
 # measured by eye against the blank and live here so calibration is one edit.
 #
-# PLACEHOLDERS until the real blank form is vendored (see assets/maslaka/
-# README.md). `build_prefilled_form` refuses to run without it rather than
-# emitting a form with text in the wrong boxes.
+# CALIBRATED against the currently vendored blank (`בקשת שיוך לבית סוכן`, the
+# 1-page text variant published at swiftness.co.il/agents). Measured from the
+# label positions, which that variant exposes as real text:
+#
+#     שם הסוכן/סוכנות   y=645.7  x=431..506     ← fill to its LEFT (RTL)
+#     מספר מזהה          y=615.5  x=458.6
+#     שם בית הסוכן       y=499.9  x=393.3
+#     ח.פ בית הסוכן      y=469.8  x=444.6
+#
+# ⚠️ These DO NOT transfer to the בית תוכנה variant — that one is a 2-page scan
+# with different geometry and a checkbox this variant lacks. Recalibrate when it
+# is vendored; that is the whole reason these live in one dict.
 FIELD_POSITIONS: dict[str, tuple[float, float]] = {
-    "agent_name": (300.0, 690.0),
-    "agent_id": (300.0, 662.0),
-    "beit_tochna_checkbox": (243.0, 512.0),
-    "beit_tochna_name": (300.0, 487.0),
-    "beit_tochna_id": (300.0, 462.0),
+    "agent_name": (300.0, 645.0),
+    # Digit-box rows: (x of the FIRST box, baseline y). Measured by rendering
+    # the form to PNG and looking at it — the first attempt put both numbers
+    # below and left of their boxes, which extracting text could not reveal.
+    "agent_id": (336.0, 620.0),
+    # No בית-תוכנה/בית-סוכן choice exists on the 1-page variant; the tick is
+    # drawn off-page so it cannot land somewhere misleading.
+    "beit_tochna_checkbox": (-100.0, -100.0),
+    "beit_tochna_name": (250.0, 497.0),
+    "beit_tochna_id": (309.0, 474.0),
+}
+
+# Horizontal pitch of one digit box, in points, per row. The מסלקה prints these
+# as a row of empty squares; a plain drawString packs the digits together at the
+# left and they read as sitting outside the grid.
+BOX_PITCH: dict[str, float] = {
+    "agent_id": 11.4,
+    "beit_tochna_id": 11.9,
 }
 
 
@@ -192,10 +214,13 @@ def build_prefilled_form(*, agent_name: str, agent_id_number: str) -> bytes:
 
     c.setFont(font, 11)
     c.drawString(*FIELD_POSITIONS["agent_name"], _shape_hebrew(agent_name))
+    c.setFont("Helvetica", 10)
+    _draw_boxed_digits(c, agent_id_number, *FIELD_POSITIONS["agent_id"],
+                       pitch=BOX_PITCH["agent_id"])
+    _draw_boxed_digits(c, BEIT_TOCHNA_ID, *FIELD_POSITIONS["beit_tochna_id"],
+                       pitch=BOX_PITCH["beit_tochna_id"])
     c.setFont("Helvetica", 11)
-    c.drawString(*FIELD_POSITIONS["agent_id"], agent_id_number)
     c.drawString(*FIELD_POSITIONS["beit_tochna_name"], BEIT_TOCHNA_NAME)
-    c.drawString(*FIELD_POSITIONS["beit_tochna_id"], BEIT_TOCHNA_ID)
     # לבית תוכנה — always ticked; an agent joining Nifraim is never joining a
     # בית סוכן, and a mis-ticked box sends the association to the wrong entity.
     c.setFont("Helvetica-Bold", 12)
@@ -291,17 +316,23 @@ async def deliver_to_helpdesk(
 
 
 def _template_filled_text() -> str:
-    """Any text the template already carries.
+    """Text in the template that can only have come from a FILLED copy.
 
-    The genuine blank form is a pure SCAN — 14 sliced JPEGs on page 1 and not one
-    extractable character. So *any* extractable text means the file is somebody's
+    An earlier version of this flagged *any* extractable text, on the reasoning
+    that the blank is a pure scan. That was wrong: Swiftness also publish
+    text-based variants whose own labels extract as ~600 characters, so the rule
+    would have rejected a perfectly good blank. What never appears on a blank is
+    OUR side of the form — `Nifraim.com` and ח.פ 558638623 are written in by the
+    agent, so their presence is the actual signal that this is someone's
     completed copy. Measured 2026-09-24: the file first supplied as "clean" came
     back as `משה היב כהן / Nifraim.com / 24/09/2026`.
     """
     try:
         from pypdf import PdfReader
 
-        return "".join((pg.extract_text() or "") for pg in PdfReader(str(BLANK_FORM)).pages).strip()
+        text = "".join((pg.extract_text() or "") for pg in PdfReader(str(BLANK_FORM)).pages)
+        hits = [m for m in (BEIT_TOCHNA_NAME, BEIT_TOCHNA_ID) if m in text]
+        return " / ".join(hits)
     except Exception as e:                                       # noqa: BLE001
         logger.warning("maslaka.association: cannot inspect template: %s", e)
         return ""
@@ -325,7 +356,18 @@ def _assert_template_is_blank() -> None:
     found = _template_filled_text()
     if found:
         raise FormTemplateMissing(
-            "the vendored form is NOT blank — it still carries "
-            f"{found[:60]!r}. Serving it would leak one agent's details to "
-            "another. Replace it with the blank form from Swiftness."
+            f"the vendored form is NOT blank — it already contains {found!r}, "
+            "which only a completed copy carries. Serving it would leak one "
+            "agent's details to another. Replace it with the blank from Swiftness."
         )
+
+
+def _draw_boxed_digits(c, digits: str, x: float, y: float, *, pitch: float) -> None:
+    """One digit per printed box, advancing by the grid's own pitch.
+
+    The boxes are part of the scanned/printed form, so nothing aligns them for
+    us — the digits have to be stepped manually or they bunch up at the left and
+    read as written outside the grid.
+    """
+    for i, ch in enumerate(digits or ""):
+        c.drawString(x + i * pitch, y, ch)
