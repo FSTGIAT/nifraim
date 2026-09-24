@@ -325,6 +325,24 @@ export const useNotificationsStore = defineStore('notifications', () => {
       } catch (e) { /* keep going */ }
     }
 
+    // 4) AI mail agent — mail from watched senders waiting for the agent.
+    try {
+      const { data: mail } = await api.get('/mail-agent/summary')
+      if (mail?.open) {
+        const drafted = mail.by_status?.drafted || 0
+        collected.push({
+          id: 'mail-needs-review',
+          kind: 'mail_needs_review',
+          severity: 'info',
+          title: mail.open === 1 ? 'מייל אחד מחכה לכם' : `${mail.open} מיילים מחכים לכם`,
+          body: drafted ? `ה-AI הכין ${drafted === 1 ? 'טיוטת תשובה אחת' : `${drafted} טיוטות תשובה`} — עברו ואשרו לפני שליחה` : 'ה-AI סיכם אותם בלשונית דואר',
+          createdAt: mail.last_checked_at || new Date().toISOString(),
+          actions: ['open_mail'],
+          meta: { open: mail.open, drafted },
+        })
+      }
+    } catch (e) { /* mail agent unavailable — keep going */ }
+
     // 3) Sort by createdAt DESC (newest first), cap at 50 visible
     collected.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
     _setAlerts(collected.slice(0, 50))

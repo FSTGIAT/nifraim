@@ -17,6 +17,9 @@
       @select="onMenuSelect"
     />
 
+    <!-- Nifraim Mail Agent — opens from the rail / round menu / bell. -->
+    <MailAgentModal :open="mailAgentOpen" @close="mailAgentOpen = false" />
+
     <!-- Client lookup — opens from the menu's Search item. -->
     <ClientSearchModal v-model:open="searchOpen" />
 
@@ -293,6 +296,7 @@ import ComparisonTab from '../components/workspace/ComparisonTab.vue'
 import RecruitsTab from '../components/workspace/RecruitsTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
+import MailAgentModal from '../components/workspace/MailAgentModal.vue'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
@@ -523,7 +527,25 @@ function onKeydown(e) {
   }
 }
 
+// The bell's actions navigate by setting location.hash (#comparison, #automation,
+// #mail). Nothing read it, so those buttons silently did nothing. Map the hash
+// to a tab here, then clear it so the same button works twice.
+const HASH_TABS = { '#comparison': 'comparison', '#automation': 'portal-automation' }
+function onHashNav() {
+  if (window.location.hash === '#mail') {
+    mailAgentOpen.value = true
+    history.replaceState(null, '', window.location.pathname + window.location.search)
+    return
+  }
+  const tab = HASH_TABS[window.location.hash]
+  if (!tab) return
+  onCardSelect(tab)
+  history.replaceState(null, '', window.location.pathname + window.location.search)
+}
+
 onMounted(async () => {
+  window.addEventListener('hashchange', onHashNav)
+  onHashNav()
   await auth.fetchUser()
   // Microsoft sends the browser back here after the consent screen. Reopen the
   // settings panel so the agent sees the result instead of a bare workspace, and
@@ -559,6 +581,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('hashchange', onHashNav)
   document.removeEventListener('dragenter', onDragEnter)
   document.removeEventListener('dragleave', onDragLeave)
   document.removeEventListener('dragover', onDragOver)
@@ -577,11 +600,13 @@ const circleMenuItems = [
   { key: 'home',     label: 'בית',      icon: 'Home' },
   { key: 'search',   label: 'חיפוש',    icon: 'Search' },
   { key: 'settings', label: 'הגדרות',   icon: 'Settings' },
+  { key: 'mail',     label: 'Mail Agent', icon: 'Mail' },
   { key: 'help',     label: 'עזרה',     icon: 'HelpCircle' },
   { key: 'logout',   label: 'התנתקות',  icon: 'LogOut' },
 ]
 // Modals owned by WorkspaceView so they overlay everything (above ticker + menu).
 const searchOpen = ref(false)
+const mailAgentOpen = ref(false)
 const emailSettingsOpen = ref(false)
 // Set only on the return leg from Microsoft's consent screen.
 const backFromConsent = ref(false)
@@ -594,6 +619,7 @@ function onMenuSelect(key) {
   if (key === 'home')     { goHome(); return }
   if (key === 'search')   { searchOpen.value = true; return }
   if (key === 'settings') { emailSettingsOpen.value = true; return }
+  if (key === 'mail')     { mailAgentOpen.value = true; return }
   // help — TODO. No-op for now so the menu still closes.
 }
 

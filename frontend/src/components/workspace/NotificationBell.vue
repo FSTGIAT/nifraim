@@ -113,6 +113,7 @@
                     <button v-if="a.actions.includes('view_runs')" class="bp-action" type="button" @click="onOpenRuns()">פתח אוטומציה</button>
                     <button v-if="a.actions.includes('open_customer')" class="bp-action" type="button" @click="onOpenCustomer(a)">פתח לקוח</button>
                     <button v-if="a.actions.includes('open_comparison')" class="bp-action" type="button" @click="onOpenComparison(a)">פתח השוואה</button>
+                    <button v-if="a.actions.includes('open_mail')" class="bp-action bp-action--primary" type="button" @click="onOpenMail()">פתח דואר</button>
                     <button v-if="a.actions.includes('run_automation')" class="bp-action bp-action--primary" type="button" @click="onRunAutomation(a)">הרץ אוטומציה</button>
                     <button v-if="a.actions.includes('reopen_activation')" class="bp-action bp-action--primary" type="button" @click="onReopenActivation(a)">המשך הגדרה</button>
                     <button class="bp-action bp-action--ghost" type="button" @click="store.dismiss(a.id)">דחה</button>
@@ -275,6 +276,7 @@ function onSendEmail(a) {
 function onOpenRuns() { window.location.hash = '#automation'; close() }
 function onOpenCustomer(a) { store.dismiss(a.id); close() }
 function onOpenComparison() { window.location.hash = '#comparison'; close() }
+function onOpenMail() { window.location.hash = '#mail'; close() }
 function onRunAutomation() {
   // Jump to the automation tab — the user picks which credential to run.
   // (Auto-triggering a specific run would need a backend mapping company → credential.)

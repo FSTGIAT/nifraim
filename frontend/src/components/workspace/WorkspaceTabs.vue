@@ -128,6 +128,7 @@ const ANIM_COLORS = {
   comparison: '#2E844A',
   'commission-rates': '#8E44AD',
   'company-emails': '#D6336C',
+  mail: '#4E9DD0',
   recruits: '#0FA39B',
   portal: '#4E9DD0',
   'ai-library': '#B79CEB',

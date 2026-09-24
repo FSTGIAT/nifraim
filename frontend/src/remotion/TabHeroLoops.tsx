@@ -455,6 +455,83 @@ export function ComparisonMatchLoop() {
   )
 }
 
+/* ═══════════════════ MAIL AGENT / דואר — sky ═══════════════════ */
+// Envelopes fly into the AI core and come out the other side as sorted,
+// summarised cards — one of them writing its draft. Every motion runs a whole
+// number of cycles in 240 frames, so the loop seam is invisible.
+export function AiInboxLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#4E9DD0', INK = '#2F6C94', SOFT = '#A9CFEA', PALE = '#DDEDF8', MINT = '#8FD9C6'
+  const spin = loopPhase(frame, 240) * 360
+  const pulse = 1 + 0.08 * Math.sin((frame / 240) * Math.PI * 6)          // 3 pulses/loop
+  const twinkle = 0.6 + 0.4 * Math.abs(Math.sin((frame / 240) * Math.PI * 4))
+
+  // envelope i enters from the left and is absorbed by the core
+  const env = (offset: number, y0: number) => {
+    const p = loopPhase(frame + offset, 240)
+    const x = interpolate(p, [0, 0.42], [18, 176], { extrapolateRight: 'clamp', easing: Easing.bezier(0.4, 0, 0.6, 1) })
+    const y = interpolate(p, [0, 0.42], [y0, 150], { extrapolateRight: 'clamp' })
+    const sc = interpolate(p, [0.3, 0.42], [1, 0.35], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    const op = interpolate(p, [0, 0.06, 0.36, 0.43, 1], [0, 1, 1, 0, 0])
+    return { x, y, sc, op }
+  }
+  const e1 = env(0, 86), e2 = env(80, 150), e3 = env(160, 214)
+
+  // the matching output card slides in after its envelope is absorbed
+  const card = (offset: number) => {
+    const p = loopPhase(frame + offset, 240)
+    const slide = interpolate(p, [0.45, 0.58], [-26, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+    const op = interpolate(p, [0.45, 0.56, 0.92, 1], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    const check = interpolate(p, [0.6, 0.68], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    const type = interpolate(p, [0.58, 0.86], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    return { slide, op, check, type }
+  }
+  const c1 = card(0), c2 = card(80), c3 = card(160)
+
+  const Env = ({ x, y, sc, op }: { x: number; y: number; sc: number; op: number }) => (
+    <g transform={`translate(${x} ${y}) scale(${sc})`} opacity={op}>
+      <rect x={-22} y={-15} width={44} height={30} rx={6} fill={ACC} />
+      <path d="M-22 -10 L0 5 L22 -10" fill="none" stroke={PALE} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  )
+  const Card = ({ y, c, draft }: { y: number; c: ReturnType<typeof card>; draft?: boolean }) => (
+    <g transform={`translate(${300 + c.slide} ${y})`} opacity={c.op}>
+      <rect x={-54} y={-22} width={108} height={44} rx={10} fill="#FFFFFF" stroke={SOFT} strokeWidth={2} />
+      <circle cx={-36} cy={0} r={9} fill={PALE} />
+      <circle cx={-36} cy={0} r={9} fill={MINT} opacity={c.check} />
+      <path d="M-40 0 l3 3 l6 -6" fill="none" stroke="#FFFFFF" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" opacity={c.check} />
+      <rect x={-20} y={-9} width={draft ? 60 * c.type : 58} height={5} rx={2.5} fill={draft ? INK : SOFT} />
+      <rect x={-20} y={3} width={draft ? 40 * c.type : 40} height={5} rx={2.5} fill={PALE} />
+    </g>
+  )
+
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* guide rails: in → core → out */}
+        <path d="M24 150 H180 M240 150 H250" stroke={PALE} strokeWidth={3} strokeDasharray="3 10" strokeLinecap="round"
+              strokeDashoffset={-loopPhase(frame, 30) * 26} />
+        <Env {...e1} /><Env {...e2} /><Env {...e3} />
+        {/* AI core */}
+        <g transform="translate(210 150)">
+          <circle r={58} fill="none" stroke={SOFT} strokeWidth={2} strokeDasharray="4 9" transform={`rotate(${spin})`} opacity={0.8} />
+          <g transform={`scale(${pulse})`}>
+            <rect x={-38} y={-38} width={76} height={76} rx={20} fill={INK} />
+            <rect x={-38} y={-38} width={76} height={76} rx={20} fill="none" stroke={ACC} strokeWidth={3} />
+            <Spark cx={0} cy={0} r={20} fill="#FFFFFF" />
+          </g>
+        </g>
+        {/* sorted output */}
+        <Card y={92} c={c1} />
+        <Card y={150} c={c2} draft />
+        <Card y={208} c={c3} />
+        <Spark cx={262} cy={60} r={8} fill={ACC} k={twinkle} />
+        <Spark cx={150} cy={250} r={6} fill={MINT} k={2 - twinkle} />
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
@@ -464,6 +541,7 @@ export const TAB_HERO_SCENES = {
   'commission-shelf': ShelfLoop,
   maslaka: ClearingHouseLoop,
   comparison: ComparisonMatchLoop,
+  mail: AiInboxLoop,
 } as const
 
 export type TabHeroScene = keyof typeof TAB_HERO_SCENES
