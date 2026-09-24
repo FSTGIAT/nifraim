@@ -1,6 +1,6 @@
 <template>
   <div class="production-tab">
-    <div v-if="productionStore.loading" class="loading-state">
+    <div v-if="productionStore.loading || !productionStore.currentLoaded" class="loading-state">
       <div class="loader">
         <div class="loader-ring"></div>
         <div class="loader-ring delay"></div>
@@ -291,9 +291,12 @@ onMounted(() => {
 })
 
 // When file loads, fetch analytics. When it's absent, fetch the landing data
-// so the sage hero hydrates immediately on first paint.
-watch(() => productionStore.currentFile, (newVal) => {
-  if (newVal) {
+// so the sage hero hydrates immediately on first paint. Only once
+// /production/current has answered — before that a null file is unknown, not
+// absent, and fetching /landing for an agent who has a file is wasted work.
+watch(() => [productionStore.currentLoaded, productionStore.currentFile], ([loaded, file]) => {
+  if (!loaded) return
+  if (file) {
     productionStore.fetchAnalytics()
   } else {
     productionStore.fetchLanding()

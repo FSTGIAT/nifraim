@@ -39,6 +39,7 @@ skipped. `select_rate` returns a `route` explaining every decision, and
 """
 from __future__ import annotations
 
+import functools
 from typing import Callable
 
 from app.utils.company_norm import company_residue, company_stem, normalize_company
@@ -188,14 +189,18 @@ _GENERIC_PRODUCT_TOKENS = frozenset({
 })
 
 
-def _tokens(s: str) -> set[str]:
+@functools.lru_cache(maxsize=16384)
+def _tokens(s: str) -> frozenset[str]:
     """Discriminating words of `s`. Leading ו is stripped ('והשתלמות' →
     'השתלמות') so a conjunction can't hide a match; tokens under 3 chars and
-    generic product words are dropped as noise."""
-    return {
+    generic product words are dropped as noise.
+
+    Memoised (called per record × rate) — hence frozenset: a cached value must
+    not be mutable by a caller."""
+    return frozenset(
         t for t in (tok.lstrip("ו") for tok in s.split())
         if len(t) >= 3 and t not in _GENERIC_PRODUCT_TOKENS
-    }
+    )
 
 
 def _token_score(a: str, b: str) -> int:

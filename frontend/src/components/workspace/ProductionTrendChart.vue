@@ -302,14 +302,12 @@ function mergeTrends(expPoints) {
 async function load() {
   loading.value = true
   try {
-    // EXPECTED commission per production month (primary) — updates the moment a
-    // production file lands. Decoupled from when נפרעים reports arrive. The latest
-    // period is topped up with ACTUAL received per company (/comparison/company-summary)
-    // so companies whose production has no priceable base (Phoenix life) still
-    // surface. Expected shape is { points, reason } (legacy: a bare array).
-    const [expRes, csRes] = await Promise.allSettled([
+    // EXPECTED commission per production month — updates the moment a
+    // production file lands, decoupled from when נפרעים reports arrive.
+    // Expected shape is { points, reason } (legacy: a bare array).
+    const [expRes, trRes] = await Promise.allSettled([
       api.get('/production/expected-trend'),
-      api.get('/comparison/company-summary'),
+      api.get('/production/trend'),
     ])
 
     let payload = { points: [], reason: null }
@@ -322,38 +320,40 @@ async function load() {
     const expPoints = Array.isArray(payload.points) ? payload.points : []
     reason.value = payload.reason || null
 
-    // Per-company actual received (₪) — { companyName: received }.
-    const receivedByCompany = {}
-    if (csRes.status === 'fulfilled') {
-      for (const c of (csRes.value.data?.companies || [])) {
-        const v = Number(c.received) || 0
-        if (v > 0) receivedByCompany[c.company] = v
-      }
-    }
-
     points.value = mergeTrends(expPoints)
 
     // Actual received per month per company — its own endpoint, never blended
     // into the expected series.
-    try {
-      const tr = await api.get('/production/trend')
-      actualPoints.value = (tr.data || []).map(pt => ({
-        ...pt,
-        by_company: collapseByCompany(pt.by_company),
-        // Both sides of the checkable pair get the same brand collapsing as
-        // `by_company`, or a legal-entity variant would land in one map and
-        // its brand in the other and the pair would silently miss.
-        paid_firm_by_company: collapseByCompany(pt.paid_firm_by_company),
-        expected_firm_by_company: collapseByCompany(pt.expected_firm_by_company),
-        total_expected: pt.total_commission,
-      }))
-    } catch (e) {
-      actualPoints.value = []
+    actualPoints.value = trRes.status === 'fulfilled'
+      ? (trRes.value.data || []).map(pt => ({
+          ...pt,
+          by_company: collapseByCompany(pt.by_company),
+          // Both sides of the checkable pair get the same brand collapsing as
+          // `by_company`, or a legal-entity variant would land in one map and
+          // its brand in the other and the pair would silently miss.
+          paid_firm_by_company: collapseByCompany(pt.paid_firm_by_company),
+          expected_firm_by_company: collapseByCompany(pt.expected_firm_by_company),
+          total_expected: pt.total_commission,
+        }))
+      : []
+
+    // The "התקבל בפועל" headline: each company's LATEST reported month, summed
+    // (commission_calculation_model — insurers report on different lags, so
+    // one calendar month undercounts and all months summed is a lifetime
+    // total). Read from the SAME series the bars draw. It used to come from
+    // /comparison/company-summary — the last saved comparison snapshot — which
+    // kept counting מגדל ₪3,214 after its rows were gone from every upload:
+    // ₪62,327 in the header against ₪59,113 in the bars, with no way to
+    // reconcile the two from the screen.
+    const latestByCompany = {}
+    for (const pt of actualPoints.value) {  // ascending by period — later wins
+      for (const [company, v] of Object.entries(pt.by_company || {})) {
+        if ((Number(v) || 0) > 0) latestByCompany[company] = Number(v)
+      }
     }
-    // Kept separate on purpose — this is what ARRIVED, not what is owed.
-    receivedTotal.value = Object.values(receivedByCompany)
-      .reduce((s, v) => s + (Number(v) || 0), 0)
-    receivedCompanies.value = collapseByCompany(receivedByCompany)
+    receivedTotal.value = Math.round(
+      Object.values(latestByCompany).reduce((s, v) => s + v, 0) * 100) / 100
+    receivedCompanies.value = latestByCompany
   } catch (err) {
     console.error('Failed to load commission trend', err)
     points.value = []

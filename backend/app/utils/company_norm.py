@@ -9,6 +9,7 @@ This module gives ONE deterministic normalizer used by both the backend
 classifier and the frontend switcher detector — so they always agree on
 "is this the same company?".
 """
+import functools
 import logging
 import re
 import unicodedata
@@ -37,6 +38,15 @@ _ALIASES = [
 ]
 
 
+# The helpers below are pure functions of the name string, and rate matching
+# calls them per production record × per agreement rate: kiko (2,238 records,
+# 301 rates) made ~676K `_match_stem` calls per request, 2.5s of CPU that
+# blocked the single worker for every other request (2026-09-24). A few
+# thousand distinct names exist per user, so memoising them is exact and cheap.
+_NAME_CACHE = 16384
+
+
+@functools.lru_cache(maxsize=_NAME_CACHE)
 def normalize_company(name: str | None) -> str:
     """Return a canonical comparable key for an insurance/saving company.
 
@@ -137,6 +147,7 @@ _stem_index: list[tuple[str, str]] = sorted(
 )
 
 
+@functools.lru_cache(maxsize=_NAME_CACHE)
 def _clean(name: str | None) -> str:
     """Quote/whitespace cleanup shared by the stem helpers and
     `canonical_company` — deliberately WITHOUT alias mapping or suffix
@@ -147,6 +158,7 @@ def _clean(name: str | None) -> str:
     return re.sub(r"\s+", " ", s)
 
 
+@functools.lru_cache(maxsize=_NAME_CACHE)
 def _match_stem(name: str | None) -> tuple[str, str] | None:
     """(matched_stem, primary_key) for the longest brand stem that `name`
     starts with, or None when the insurer isn't in `_LEGAL_ENTITIES`."""
@@ -172,6 +184,7 @@ def known_company_stem(name: str | None) -> str:
     return hit[1] if hit else ""
 
 
+@functools.lru_cache(maxsize=_NAME_CACHE)
 def company_stem(name: str | None) -> str:
     """The BRAND key for a company name, ignoring legal-entity and product
     wording: 'הראל', 'מנורה', 'מגדל', …
@@ -191,6 +204,7 @@ def company_stem(name: str | None) -> str:
     return hit[1] if hit else normalize_company(name)
 
 
+@functools.lru_cache(maxsize=_NAME_CACHE)
 def company_residue(name: str | None) -> str:
     """Whatever follows the brand stem — the PRODUCT information that legacy
     rate rows smuggled into the company column.

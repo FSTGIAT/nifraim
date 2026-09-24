@@ -26,6 +26,11 @@ export const useProductionStore = defineStore('production', () => {
   // Bumped on every refreshAll() so components with self-owned fetches
   // (e.g. the trend chart) know the production data changed underneath them.
   const trendTick = ref(0)
+  // False until the first /production/current answer. Before it, "no
+  // currentFile" means "don't know yet", not "no file": rendering the empty
+  // state in that gap mounted a trend chart (and fired /landing) that were
+  // thrown away a moment later, doubling the tab's heaviest requests.
+  const currentLoaded = ref(false)
 
   async function fetchCurrent() {
     loading.value = true
@@ -37,6 +42,7 @@ export const useProductionStore = defineStore('production', () => {
       error.value = e.response?.data?.detail || 'שגיאה בטעינת קובץ פרודוקציה'
     } finally {
       loading.value = false
+      currentLoaded.value = true
     }
   }
 
@@ -218,7 +224,7 @@ export const useProductionStore = defineStore('production', () => {
   }
 
   return {
-    currentFile, loading, uploading, justUploaded, error,
+    currentFile, currentLoaded, loading, uploading, justUploaded, error,
     analytics, analyticsLoading,
     history, comparisonResult, comparing,
     landing, landingLoading, trendTick,
