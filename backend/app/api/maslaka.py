@@ -566,7 +566,7 @@ async def association_status(
             "name": association.BEIT_TOCHNA_NAME,
             "id": association.BEIT_TOCHNA_ID,
         },
-        "template_ready": association.BLANK_FORM.exists(),
+        "template_ready": association.template_is_servable(),
     }
 
 

@@ -54,37 +54,37 @@ BLANK_FORM = ASSETS / "shiyuch_form_blank.pdf"
 # sliced scan, so there is nothing to anchor to programmatically — these are
 # measured by eye against the blank and live here so calibration is one edit.
 #
-# CALIBRATED against the currently vendored blank (`בקשת שיוך לבית סוכן`, the
-# 1-page text variant published at swiftness.co.il/agents). Measured from the
-# label positions, which that variant exposes as real text:
+# CALIBRATED against the 2-page `שיוך לבית תוכנה או בית סוכן` form, by rendering
+# a FILLED copy and measuring where the מסלקה's own values sit — that copy shows
+# the intended position of every field, which a blank cannot.
 #
-#     שם הסוכן/סוכנות   y=645.7  x=431..506     ← fill to its LEFT (RTL)
-#     מספר מזהה          y=615.5  x=458.6
-#     שם בית הסוכן       y=499.9  x=393.3
-#     ח.פ בית הסוכן      y=469.8  x=444.6
+# Conversion used (render scale 1.4 on A4 595.32 × 841.92):
+#     pdf_x = img_x / 1.4        pdf_y = 841.92 - img_y / 1.4
 #
-# ⚠️ These DO NOT transfer to the בית תוכנה variant — that one is a 2-page scan
-# with different geometry and a checkbox this variant lacks. Recalibrate when it
-# is vendored; that is the whole reason these live in one dict.
+# ⚠️ Specific to the 2-PAGE variant. The 1-page `בית סוכן` form has different
+# geometry and no בית-תוכנה choice; recalibrate if that one is ever vendored.
+# Always verify by rendering to PNG and LOOKING — text extraction reported an
+# earlier set as correct while both numbers sat visibly outside their boxes:
+#     import pypdfium2 as pdfium
+#     pdfium.PdfDocument("out.pdf")[0].render(scale=1.4).to_pil().save("out.png")
 FIELD_POSITIONS: dict[str, tuple[float, float]] = {
-    "agent_name": (300.0, 645.0),
-    # Digit-box rows: (x of the FIRST box, baseline y). Measured by rendering
-    # the form to PNG and looking at it — the first attempt put both numbers
-    # below and left of their boxes, which extracting text could not reveal.
-    "agent_id": (336.0, 620.0),
-    # No בית-תוכנה/בית-סוכן choice exists on the 1-page variant; the tick is
-    # drawn off-page so it cannot land somewhere misleading.
-    "beit_tochna_checkbox": (-100.0, -100.0),
-    "beit_tochna_name": (250.0, 497.0),
-    "beit_tochna_id": (309.0, 474.0),
+    "agent_name": (266.0, 657.0),          # שם סוכן/סוכנות/מעסיק/מייצג
+    "agent_id": (274.0, 620.0),            # מספר מזהה (ת"ז/ח.פ) — boxed digits
+    "beit_tochna_checkbox": (447.0, 408.0),  # the לבית תוכנה tick
+    "beit_tochna_name": (241.0, 377.0),    # שם בית תוכנה/בית סוכן
+    "beit_tochna_id": (239.0, 331.0),      # ח.פ/ת"ז בית תוכנה — boxed digits
+    # Section 3, "האם לחבר בנוסף?" — deliberately NOT drawn. Choosing between
+    # במקום and בנוסף replaces or keeps an agent's existing association, which
+    # is theirs to decide on paper, not ours to assume.
+    "connect_in_addition": (499.0, 140.0),
 }
 
-# Horizontal pitch of one digit box, in points, per row. The מסלקה prints these
-# as a row of empty squares; a plain drawString packs the digits together at the
-# left and they read as sitting outside the grid.
+# Horizontal pitch of one digit box, in points, per row. The מסלקה prints
+# identity numbers as a row of empty squares; a plain drawString bunches the
+# digits at the left and they read as written outside the grid.
 BOX_PITCH: dict[str, float] = {
-    "agent_id": 11.4,
-    "beit_tochna_id": 11.9,
+    "agent_id": 14.05,
+    "beit_tochna_id": 13.5,
 }
 
 
@@ -371,3 +371,20 @@ def _draw_boxed_digits(c, digits: str, x: float, y: float, *, pitch: float) -> N
     """
     for i, ch in enumerate(digits or ""):
         c.drawString(x + i * pitch, y, ch)
+
+
+def template_is_servable() -> bool:
+    """Can `build_prefilled_form` actually produce a form right now?
+
+    Not the same as "the file exists" — a present-but-filled template is refused
+    by the guard. The status endpoint reported `template_ready: true` off a bare
+    `.exists()` while the download 503'd, which is exactly the dishonest-green
+    the מסלקה tab's gate exists to avoid.
+    """
+    if not BLANK_FORM.exists():
+        return False
+    try:
+        _assert_template_is_blank()
+        return True
+    except FormTemplateMissing:
+        return False
