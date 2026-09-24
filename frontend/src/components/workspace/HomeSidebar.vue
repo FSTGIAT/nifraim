@@ -94,7 +94,10 @@
         :aria-label="it.label"
         @click="$emit('select', it.key)"
       >
-        <span class="rail-ico" v-html="ICONS[it.icon]"></span>
+        <span class="rail-ico">
+          <span v-html="ICONS[it.icon]"></span>
+          <span v-if="it.badge" class="rail-badge ltr-number">{{ it.badge > 9 ? '9+' : it.badge }}</span>
+        </span>
         <span class="rail-label">{{ it.label }}</span>
       </button>
     </nav>
@@ -321,8 +324,19 @@ const ICONS = {
   outline: 2px solid var(--tab-production, #2F73C4);
   outline-offset: 1px;
 }
-.rail-ico { flex: none; display: grid; place-items: center; width: 32px; height: 20px; }
+.rail-ico { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 20px; }
+.rail-ico > span:first-child { display: grid; place-items: center; }
 .rail-ico :deep(svg) { width: 18px; height: 18px; }
+/* Count of mail waiting for the agent's approval (Mail Agent item). */
+.rail-badge {
+  position: absolute; top: -7px; inset-inline-start: 0;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 10px; font-weight: 800; line-height: 1;
+  color: #fff; background: var(--tab-mail-ink); border: 2px solid var(--card-bg);
+  animation: rail-badge-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes rail-badge-in { from { transform: scale(0); } }
+@media (prefers-reduced-motion: reduce) { .rail-badge { animation: none; } }
 .rail-label {
   white-space: nowrap;
   opacity: 0; transform: translateX(6px);

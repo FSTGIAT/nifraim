@@ -81,7 +81,7 @@
     <!-- Insights hub: floating radial-orbital launcher in the BOTTOM-LEFT.
          Two nodes: 3-month commission comparison + yield/track recommendations.
          HOME view only — inside the tab content it would overlap the working
-         area on every tab, so it's gated like the floating CircleMenu. -->
+         area on every tab, so it's gated like the side rail. -->
     <RadialOrbitalIsland
       v-if="viewMode === 'home'"
       :items="radialItems"
@@ -167,14 +167,6 @@
           @select-pill="onPillSelect"
           @go-home="goHome"
         >
-          <template #strip-end>
-            <CircleMenuIsland
-              :items="circleMenuItems"
-              layout="down-left"
-              class="strip-circle-menu"
-              @select="onMenuSelect"
-            />
-          </template>
         </WorkspaceTabs>
 
         <main class="workspace-main">
@@ -272,7 +264,6 @@ import { useProductionStore } from '../stores/production.js'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useSetupPipeline } from '../composables/useSetupPipeline.js'
 import { openSetup } from '../utils/setupState.js'
-import CircleMenuIsland from '../components/workspace/CircleMenuIsland.vue'
 import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
 import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionModal.vue'
 import YieldRecommendationsModal from '../components/workspace/YieldRecommendationsModal.vue'
@@ -297,6 +288,7 @@ import RecruitsTab from '../components/workspace/RecruitsTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
 import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import MailAgentModal from '../components/workspace/MailAgentModal.vue'
+import { useMailAgentStore } from '../stores/mailAgent.js'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
@@ -545,6 +537,8 @@ function onHashNav() {
 
 onMounted(async () => {
   window.addEventListener('hashchange', onHashNav)
+  refreshMailBadge()
+  mailBadgeTimer = setInterval(refreshMailBadge, 2 * 60 * 1000)
   onHashNav()
   await auth.fetchUser()
   // Microsoft sends the browser back here after the consent screen. Reopen the
@@ -581,6 +575,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearInterval(mailBadgeTimer)
   window.removeEventListener('hashchange', onHashNav)
   document.removeEventListener('dragenter', onDragEnter)
   document.removeEventListener('dragleave', onDragLeave)
@@ -595,8 +590,8 @@ function handleLogout() {
   router.push('/login')
 }
 
-// CircleMenu — React island. Item `icon` is a lucide-react export name.
-const circleMenuItems = [
+// Side-rail menu items (HomeSidebar). `icon` names a glyph in its ICONS map.
+const baseMenuItems = [
   { key: 'home',     label: 'בית',      icon: 'Home' },
   { key: 'search',   label: 'חיפוש',    icon: 'Search' },
   { key: 'settings', label: 'הגדרות',   icon: 'Settings' },
@@ -607,6 +602,18 @@ const circleMenuItems = [
 // Modals owned by WorkspaceView so they overlay everything (above ticker + menu).
 const searchOpen = ref(false)
 const mailAgentOpen = ref(false)
+// The Mail Agent item carries a badge: mail waiting for the agent's approval
+// (a ready draft or a reply needed) — the same number as its big counter.
+const mailAgentStore = useMailAgentStore()
+const mailPending = computed(() => {
+  const b = mailAgentStore.summary?.by_status || {}
+  return (b.drafted || 0) + (b.needs_reply || 0)
+})
+const circleMenuItems = computed(() =>
+  baseMenuItems.map((it) => (it.key === 'mail' && mailPending.value ? { ...it, badge: mailPending.value } : it)))
+let mailBadgeTimer = null
+function refreshMailBadge() { mailAgentStore.fetchSummary().catch(() => {}) }
+watch(mailAgentOpen, (open) => { if (!open) refreshMailBadge() })
 const emailSettingsOpen = ref(false)
 // Set only on the return leg from Microsoft's consent screen.
 const backFromConsent = ref(false)
@@ -696,33 +703,6 @@ async function openFundDetail(trackId) {
   .ws-bell-anchor { top: 8px; }
 }
 
-/* Floating CircleMenu island — top-LEFT corner with breathing room so the
-   orbital items don't clip when they sweep outward. z-index stays below
-   modals (1000+) and onboarding (5000+). */
-.ws-floating-menu {
-  position: fixed;
-  top: 48px;
-  left: 32px;
-  z-index: 102;
-  direction: ltr;
-  pointer-events: none; /* let the inner React component own its own hitboxes */
-}
-.ws-floating-menu :deep(*) { pointer-events: auto; }
-@media (max-width: 720px) {
-  .ws-floating-menu { top: 12px; left: 12px; }
-}
-
-/* In-strip CircleMenu — sits inside <WorkspaceTabs> at the strip-end slot,
-   beside the home-pill (4-rect icon). `direction: ltr` keeps the orbital
-   items' transform math (negative-x = left) predictable inside an RTL page.
-   `position: relative` + high z-index so items can fan out LEFT, over any
-   sibling chrome that happens to live next to the strip. */
-.strip-circle-menu {
-  position: relative;
-  z-index: 95;
-  margin-inline-start: 6px;
-  direction: ltr;
-}
 
 /* Insights hub launcher — bottom-LEFT in viewport pixels (not RTL-flipped).
    Above the waves (z:0), below modals (1010+), onboarding (5000+), and the

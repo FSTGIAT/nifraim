@@ -74,8 +74,8 @@
         </svg>
       </button>
 
-      <!-- Mount-point for the CircleMenu (or anything else WorkspaceView
-           wants docked at the end of the strip, beside the home-pill). -->
+      <!-- Mount-point for anything WorkspaceView
+           wants docked at the end of the strip, beside the home-pill. -->
       <slot name="strip-end" />
     </div>
   </div>

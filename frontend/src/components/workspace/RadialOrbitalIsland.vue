@@ -4,7 +4,7 @@
 
 <script setup>
 // Vue → React bridge for the RadialOrbital launcher. Same chunk-split pattern
-// as CircleMenuIsland.vue + AiVizPanel.vue: dynamic-import react + the .tsx
+// as AiVizPanel.vue: dynamic-import react + the .tsx
 // component + lucide-react, mount once on mountEl, forward clicks via @select.
 //
 // Each item in `items` has shape: { id, title, iconName, energy? }. iconName
