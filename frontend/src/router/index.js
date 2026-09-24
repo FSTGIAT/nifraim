@@ -110,7 +110,10 @@ router.beforeEach(async (to, from, next) => {
       const { useSubscriptionStore } = await import('../stores/subscription.js')
       const subStore = useSubscriptionStore()
       const status = await subStore.fetchStatus()
-      if (!status || !status.is_active) {
+      // Only an ANSWERED `is_active: false` means expired. A failed call falls
+      // through (graceful degradation, below) — the backend still enforces
+      // paid access on its own routes.
+      if (!subStore.fetchFailed && !status?.is_active) {
         next('/subscription-expired')
         return
       }
