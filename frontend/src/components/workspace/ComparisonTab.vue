@@ -1,18 +1,30 @@
 <template>
   <div class="comparison-tab">
     <!-- No production file AND no persisted comparison data → full empty state -->
-    <EmptyStateGuide
+    <!-- Nothing to compare yet: the tab's identity hero (same pattern as the
+         other tabs) + one big pulsing door to the automation tab, which is
+         what fills this screen. The circle carries no visible label on purpose. -->
+    <section
       v-if="!productionStore.currentFile && !productionStore.loading && !hasPersistedComparison"
-      variant="full"
-      title="השוואת נפרעים"
-      body="לאחר העלאת פרודוקציה, כאן מעלים דוחות נפרעים מחברות הביטוח ומשווים מול הפרודוקציה. ההורדה האוטומטית ממלאת את המסך הזה לבד."
-      cta-label="הפעל הורדה אוטומטית"
-      cta-step="run"
+      class="cmp-empty"
     >
-      <template #illustration>
-        <img class="esg-cmp-art" :src="comparisonArt" alt="" aria-hidden="true" />
-      </template>
-    </EmptyStateGuide>
+      <div class="cmp-hero">
+        <div class="cmp-hero-titles">
+          <h3>השוואת נפרעים</h3>
+          <span class="cmp-hero-sub">כאן משווים את דוחות הנפרעים מחברות הביטוח מול הפרודוקציה. ההורדה האוטומטית ממלאת את המסך הזה לבד.</span>
+        </div>
+        <TabHeroLoop scene="comparison" flow="ltr" class="cmp-hero-art" />
+      </div>
+      <BigAddButton
+        class="cmp-go-auto"
+        label="מעבר לאוטומציה"
+        color="var(--tab-comparison)"
+        :size="156"
+        @click="$emit('go-to-portal-automation')"
+      >
+        <AppIcon name="portal-automation" :size="54" />
+      </BigAddButton>
+    </section>
 
     <template v-else-if="productionStore.currentFile || hasPersistedComparison">
       <!-- No active production, but persisted comparison data exists →
@@ -122,7 +134,8 @@
            closing "full picture" summary at the bottom of the tab. -->
       <CompanyReconciliationSummary
         :summary="comparisonStore.companySummary"
-        @drill="onDrillCompany"
+        :company-breakdown="dashRef?.companyBreakdownAll || []"
+        @show-customers="onShowCustomers"
       />
     </template>
   </div>
@@ -130,7 +143,6 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import comparisonArt from '../../assets/kling/hero.webp'
 import { useProductionStore } from '../../stores/production.js'
 import { useComparisonStore } from '../../stores/comparison.js'
 import { useUploadsStore } from '../../stores/uploads.js'
@@ -140,7 +152,9 @@ import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
 import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
 import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
-import EmptyStateGuide from './EmptyStateGuide.vue'
+import TabHeroLoop from './TabHeroLoop.vue'
+import BigAddButton from './BigAddButton.vue'
+import AppIcon from '../icons/AppIcon.vue'
 
 defineEmits(['go-to-portal-automation'])
 
@@ -306,11 +320,11 @@ async function onAutomationSuccess({ run }) {
 // inside the dashboard (via the initialCompany prop — the dashboard clears the
 // ref once applied so manual pill clicks aren't overridden later).
 const drillCompany = ref(null)
-async function onDrillCompany(company) {
-  // Company drill always targets the merged picture, not a single-file view.
-  comparisonStore.clearSingleFileView()
-  if (!comparisonStore.hasResult) await comparisonStore.fetchLatest()
-  if (comparisonStore.hasResult) drillCompany.value = company || null
+
+// Summary pie / table → the dashboard's customer-list modal. Opening a list
+// never filters the dashboard, so the KPIs above stay put.
+function onShowCustomers({ title, customers }) {
+  dashRef.value?.openCustomerList(title, customers)
 }
 
 // "צפה בתוצאות" from the run-all bar / dock inside the insights view →
@@ -344,15 +358,48 @@ onMounted(async () => {
   animation: slideUp 0.4s var(--transition);
 }
 
-/* Icon for the empty-state guide (slotted into EmptyStateGuide) */
-.esg-cmp-art {
-  display: block;
-  width: min(380px, 86%);
-  margin: 0 auto;
-  border-radius: 14px;
+.cmp-empty { display: flex; flex-direction: column; gap: 28px; }
+.cmp-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  min-height: 170px;
+  padding: 22px 26px;
+  background: var(--card-bg);
   border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md, 14px);
 }
+.cmp-hero-titles {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 58%;
+}
+.cmp-hero-titles h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.cmp-hero-sub { font-size: 13.5px; line-height: 1.5; color: var(--text-muted); max-width: 46ch; }
+.cmp-hero-art {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(330px, 40%);
+  aspect-ratio: 420 / 300;
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  .cmp-hero-art { display: none; }
+  .cmp-hero-titles { max-width: none; }
+}
+.cmp-go-auto { color: var(--tab-comparison); margin-top: 18px; }
 
 /* Slim warning strip — persisted comparison shown without an active production */
 .no-prod-notice {

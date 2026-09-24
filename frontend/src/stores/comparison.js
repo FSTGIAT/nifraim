@@ -168,6 +168,13 @@ export const useComparisonStore = defineStore('comparison', () => {
   const companySummary = ref(null)
   const fetchingSummary = ref(false)
 
+  // Why a company's customers count as not paid: its current open debts,
+  // grouped per customer with products and expected commission.
+  async function fetchCompanyUnpaid(company) {
+    const res = await api.get('/comparison/company-unpaid', { params: { company } })
+    return res.data
+  }
+
   async function fetchCompanySummary() {
     fetchingSummary.value = true
     try {
@@ -207,7 +214,7 @@ export const useComparisonStore = defineStore('comparison', () => {
     result, hasResult,
     uploading, error, filterStatus, searchQuery,
     lastComputedAt, fetchingLatest,
-    companySummary, fetchingSummary, fetchCompanySummary,
+    companySummary, fetchingSummary, fetchCompanySummary, fetchCompanyUnpaid,
     singleFileView, clearSingleFileView, refreshMerged,
     resetResult,
     uploadAndCompare, compareExisting, compareWithProduction, autoCompare,

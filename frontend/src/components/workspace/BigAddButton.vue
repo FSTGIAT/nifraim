@@ -10,15 +10,20 @@
     @focus="hover = true"
     @blur="hover = false"
   >
-    <span class="bigadd-ring">
+    <span class="bigadd-ring" :style="{ width: size + 'px', height: size + 'px' }">
       <!-- Remotion supplies the ring and halo; the plus itself is static SVG
            on top, because the target you are aiming at should not move. -->
       <span v-if="reduced" class="bigadd-static" :style="{ borderColor: color }"></span>
       <span v-else ref="mountEl" class="bigadd-mount"></span>
-      <svg class="bigadd-plus" width="34" height="34" viewBox="0 0 24 24" fill="none"
-           :stroke="color" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
-        <path d="M5 12h14" /><path d="M12 5v14" />
-      </svg>
+      <!-- Default glyph is the plus; a caller can slot its own (still static). -->
+      <span class="bigadd-glyph" :style="{ color }">
+        <slot>
+          <svg class="bigadd-plus" width="34" height="34" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 12h14" /><path d="M12 5v14" />
+          </svg>
+        </slot>
+      </span>
     </span>
   </button>
 </template>
@@ -29,6 +34,8 @@ import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 const props = defineProps({
   label: { type: String, default: 'הוסף' },
   color: { type: String, default: '#D6336C' },
+  // Ring diameter in px.
+  size: { type: Number, default: 76 },
 })
 defineEmits(['click'])
 
@@ -117,7 +124,6 @@ onBeforeUnmount(() => {
 }
 .bigadd-ring {
   position: relative;
-  width: 76px; height: 76px;
   display: grid; place-items: center;
 }
 .bigadd-mount { position: absolute; inset: 0; direction: ltr; }
@@ -125,7 +131,7 @@ onBeforeUnmount(() => {
   position: absolute; inset: 12%;
   border: 2px dashed currentColor; border-radius: 50%; opacity: 0.5;
 }
-.bigadd-plus { position: relative; z-index: 1; }
+.bigadd-glyph { position: relative; z-index: 1; display: grid; place-items: center; }
 .bigadd:focus-visible { outline: none; }
 .bigadd:focus-visible .bigadd-ring {
   outline: 2px solid currentColor; outline-offset: 4px; border-radius: 50%;

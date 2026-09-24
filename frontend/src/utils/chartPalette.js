@@ -42,6 +42,14 @@ export const CHART_PALETTE = [
   '#8FD9C6', // mint
 ]
 
+// Customer match status → palette colour. One source for every surface that
+// shows the three statuses (KPIs, status donut, per-company bars/pie).
+export const STATUS_COLORS = {
+  matched: CHART_PALETTE[9],          // forest green — paid
+  only_production: CHART_PALETTE[0],  // coral red — not paid
+  only_commission: CHART_PALETTE[1],  // sky blue — only in נפרעים
+}
+
 // Pick a color by index (wraps around for long category lists).
 export function chartColor(i) {
   return CHART_PALETTE[((i % CHART_PALETTE.length) + CHART_PALETTE.length) % CHART_PALETTE.length]

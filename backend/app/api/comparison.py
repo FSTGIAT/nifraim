@@ -622,7 +622,7 @@ async def company_summary(
         if k not in agg:
             agg[k] = {
                 "company": name or k,
-                "produced": 0, "matched": 0, "unpaid": 0,
+                "produced": 0, "matched": 0, "unpaid": 0, "unpaid_products": 0,
                 "received": 0.0, "gap": 0.0,
             }
         return agg[k]
@@ -638,6 +638,7 @@ async def company_summary(
         .limit(1)
     )
     row = row_q.scalar_one_or_none()
+    unpaid_ids = _current_unpaid_ids(row)
     if row and row.result_json:
         for cust in row.result_json.get("customers", []):
             for p in cust.get("production_products", []) or []:
@@ -646,31 +647,40 @@ async def company_summary(
             for p in cust.get("commission_products", []) or []:
                 b = _bucket(p.get("company"))
                 b["received"] += float(p.get("commission") or 0)
+            # Matched = production products actually paired with a נפרעים row.
+            # It used to be derived as produced − unpaid, which counted every
+            # unmatched product of a MATCHED customer as "matched" (הפניקס
+            # showed 240; the comparison pairs 53).
+            for m in (cust.get("product_matches") or {}).get("matched", []) or []:
+                b = _bucket(m.get("company") or (m.get("production") or {}).get("company"))
+                b["matched"] += 1
 
-    # unpaid count + gap (expected unpaid) from the canonical debts table
-    debts_q = await db.execute(
-        select(
-            Debt.company_name,
-            func.count().label("count"),
-            func.coalesce(func.sum(Debt.expected_amount), 0).label("gap"),
-        )
-        .where(Debt.user_id == user.id, Debt.status == "open")
-        .group_by(Debt.company_name)
-    )
-    for r in debts_q.all():
-        b = _bucket(r.company_name)
-        b["unpaid"] += int(r.count or 0)
-        b["gap"] += float(r.gap or 0)
+    # unpaid customers + gap (expected unpaid) from the canonical debts table,
+    # current debts only. Aggregated per NORMALIZED company in Python: grouping
+    # by the raw name counted one customer twice when their debts carry two
+    # spellings ('מגדל' / 'מגדל חברה לביטוח בע"מ').
+    debt_rows = (await db.execute(
+        select(Debt.company_name, Debt.customer_id_number, Debt.expected_amount)
+        .where(Debt.user_id == user.id, Debt.status == "open",
+               Debt.customer_id_number.in_(unpaid_ids or [""]))
+    )).all()
+    unpaid_sets: dict[str, set] = {}
+    for d in debt_rows:
+        b = _bucket(d.company_name)
+        unpaid_sets.setdefault(_key(d.company_name), set()).add(d.customer_id_number)
+        b["unpaid_products"] += 1
+        b["gap"] += float(d.expected_amount or 0)
+    for k, ids in unpaid_sets.items():
+        agg[k]["unpaid"] = len(ids)
 
     companies = []
-    totals = {"produced": 0, "matched": 0, "unpaid": 0, "received": 0.0, "expected": 0.0, "gap": 0.0}
+    totals = {"produced": 0, "matched": 0, "unpaid": 0, "unpaid_products": 0, "received": 0.0, "expected": 0.0, "gap": 0.0}
     for b in agg.values():
-        b["matched"] = max(b["produced"] - b["unpaid"], 0)
         b["expected"] = round(b["received"] + b["gap"], 2)
         b["received"] = round(b["received"], 2)
         b["gap"] = round(b["gap"], 2)
         companies.append(b)
-        for k in ("produced", "matched", "unpaid", "received", "expected", "gap"):
+        for k in ("produced", "matched", "unpaid", "unpaid_products", "received", "expected", "gap"):
             totals[k] += b[k]
 
     companies.sort(key=lambda x: x["gap"], reverse=True)
@@ -678,6 +688,82 @@ async def company_summary(
     totals["expected"] = round(totals["expected"], 2)
     totals["gap"] = round(totals["gap"], 2)
     return {"companies": companies, "totals": totals}
+
+
+def _current_unpaid_ids(row) -> list[str]:
+    """Customers that are unpaid (only_production) in the CURRENT comparison.
+
+    Open debts are never closed when the production file changes, so the table
+    used to add debts from long-replaced production uploads (live: 1,261 of
+    1,504 open debts, e.g. 'אקסלנס 193 not paid, 0 produced'). Only debts of
+    customers unpaid right now are counted or listed. Stale rows are left in the
+    table untouched — nothing is closed on a guess."""
+    if not row or not row.result_json:
+        return []
+    return [
+        str(c.get("id_number"))
+        for c in row.result_json.get("customers", [])
+        if c.get("match_status") == "only_production" and c.get("id_number")
+    ]
+
+
+@router.get("/company-unpaid")
+async def company_unpaid(
+    company: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Why a company's customers count as not paid: every current open debt
+    for that company, grouped per customer with its products and the expected
+    commission. Same filter as /company-summary, so the list length equals the
+    table's "לקוחות לא שולמו" and the ₪ sum equals its פער."""
+    from app.utils.company_norm import normalize_company
+
+    row = (await db.execute(
+        select(CommissionComparison)
+        .where(CommissionComparison.user_id == user.id)
+        .order_by(desc(CommissionComparison.computed_at))
+        .limit(1)
+    )).scalar_one_or_none()
+    unpaid_ids = _current_unpaid_ids(row)
+    if not unpaid_ids:
+        return {"company": company, "customers": [], "total_expected": 0}
+
+    key = normalize_company(company) or company
+    debts = (await db.execute(
+        select(Debt).where(
+            Debt.user_id == user.id, Debt.status == "open",
+            Debt.customer_id_number.in_(unpaid_ids),
+        ).order_by(Debt.customer_name)
+    )).scalars().all()
+
+    by_cust: dict[str, dict] = {}
+    for d in debts:
+        if (normalize_company(d.company_name) or d.company_name) != key:
+            continue
+        c = by_cust.setdefault(d.customer_id_number, {
+            "id_number": d.customer_id_number,
+            "name": d.customer_name,
+            "products": [],
+            "expected": 0.0,
+        })
+        exp = float(d.expected_amount or 0)
+        c["products"].append({
+            "product": d.product,
+            "policy_number": d.policy_number,
+            "premium": float(d.premium) if d.premium is not None else None,
+            "accumulation": float(d.accumulation) if d.accumulation is not None else None,
+            "expected": round(exp, 2),
+            "since": d.created_at.date().isoformat() if d.created_at else None,
+        })
+        c["expected"] = round(c["expected"] + exp, 2)
+
+    customers = sorted(by_cust.values(), key=lambda c: c["expected"], reverse=True)
+    return {
+        "company": company,
+        "customers": customers,
+        "total_expected": round(sum(c["expected"] for c in customers), 2),
+    }
 
 
 @router.patch("/mark-paid")

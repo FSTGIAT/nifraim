@@ -12,11 +12,11 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value">{{ commissionCustomerCount }}</div>
-          <div class="kpi-label">לקוחות בנפרעים</div>
+          <div class="kpi-value">{{ kpiTotalCustomers }}</div>
+          <div class="kpi-label">סה״כ לקוחות</div>
         </div>
       </div>
-      <div class="kpi-card kpi-amber" @click="onLegendClick('only_production')" style="cursor:pointer">
+      <div class="kpi-card kpi-amber" @click="openFilterModal('לא שולם', kpiUnpaid)" style="cursor:pointer">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -25,13 +25,13 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value">{{ effectiveUnpaidCustomers.length }}</div>
+          <div class="kpi-value">{{ kpiUnpaid.length }}</div>
           <div class="kpi-label">לא שולם</div>
         </div>
-        <div v-if="effectiveUnpaidCustomers.length > 0" class="kpi-actions">
+        <div v-if="kpiUnpaid.length > 0" class="kpi-actions">
           <button
             class="kpi-action-btn kpi-action-mail"
-            @click.stop="sendAllUnpaidMail"
+            @click.stop="sendAllUnpaidMail(kpiUnpaid)"
             title="שלח מייל על כל הלקוחות שלא שולמו"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -41,7 +41,7 @@
           </button>
           <button
             class="kpi-action-btn kpi-action-excel"
-            @click.stop="downloadUnpaidExcel"
+            @click.stop="downloadUnpaidExcel(kpiUnpaid)"
             title="הורד לאקסל"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -53,7 +53,7 @@
           </button>
         </div>
       </div>
-      <div class="kpi-card kpi-violet" @click="onLegendClick('only_commission')" style="cursor:pointer">
+      <div class="kpi-card kpi-violet" @click="openFilterModal('רק בנפרעים', kpiOnlyComm)" style="cursor:pointer">
         <div class="kpi-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
@@ -63,13 +63,13 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value">{{ onlyCommCustomers.length }}</div>
+          <div class="kpi-value">{{ kpiOnlyComm.length }}</div>
           <div class="kpi-label">רק בנפרעים</div>
         </div>
-        <div v-if="onlyCommCustomers.length > 0" class="kpi-actions">
+        <div v-if="kpiOnlyComm.length > 0" class="kpi-actions">
           <button
             class="kpi-action-btn kpi-action-mail"
-            @click.stop="sendOnlyCommissionMail"
+            @click.stop="sendOnlyCommissionMail(kpiOnlyComm)"
             title="שלח מייל על לקוחות שרק בנפרעים"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -79,7 +79,7 @@
           </button>
           <button
             class="kpi-action-btn kpi-action-excel"
-            @click.stop="downloadOnlyCommissionExcel"
+            @click.stop="downloadOnlyCommissionExcel(kpiOnlyComm)"
             title="הורד לאקסל"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -100,7 +100,7 @@
           </svg>
         </div>
         <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(totalUnpaidCharge) }}</div>
+          <div class="kpi-value ltr-number">{{ formatAmount(kpiUnpaidCharge) }}</div>
           <div class="kpi-label">סה"כ חיוב לא משולם</div>
         </div>
       </div>
@@ -142,7 +142,7 @@
       <div class="hero-body">
         <apexchart
           type="donut"
-          :height="340"
+          :height="270"
           :options="statusDonutOptions"
           :series="statusDonutSeries"
           @dataPointSelection="onStatusClick"
@@ -208,11 +208,11 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               הצג
             </button>
-            <button class="unpaid-strip-btn unpaid-strip-mail" @click="sendAllUnpaidMail">
+            <button class="unpaid-strip-btn unpaid-strip-mail" @click="sendAllUnpaidMail()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
               שלח מייל
             </button>
-            <button class="unpaid-strip-btn unpaid-strip-excel" @click="downloadUnpaidExcel">
+            <button class="unpaid-strip-btn unpaid-strip-excel" @click="downloadUnpaidExcel()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
               Excel
             </button>
@@ -362,8 +362,8 @@ import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { calcExpectedCommission } from '../../utils/commissionCalc.js'
-import { CHART_PALETTE } from '../../utils/chartPalette.js'
-import { normalizeCompany } from '../../utils/companyNorm.js'
+import { CHART_PALETTE, STATUS_COLORS } from '../../utils/chartPalette.js'
+import { companyStatusBreakdown } from '../../utils/companyStatusBreakdown.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
 import { useAiContextStore } from '../../stores/aiContext.js'
@@ -403,7 +403,6 @@ const companyFilter = ref(null)
 // The mismatch figures and their drill-in now live in the tab toolbar as one
 // icon, so the parent needs both. The strip they replaced spent a full-width
 // band restating a number the icon carries in a badge.
-defineExpose({ showMismatchCustomers: () => onLegendClick('matched') })
 
 const aiCtx = useAiContextStore()
 const aiViewContext = useAiViewContext({
@@ -483,23 +482,36 @@ const onlyProdCustomers = computed(() => displayCustomers.value.filter(c => c.ma
 const onlyCommCustomers = computed(() => displayCustomers.value.filter(c => c.match_status === 'only_commission'))
 
 // Item 5: For gemel, exclude customers where ALL production products have accumulation = 0/null
-const effectiveUnpaidCustomers = computed(() => {
-  if (!isGemel.value) return onlyProdCustomers.value
-  return onlyProdCustomers.value.filter(c => {
+function unpaidOf(onlyProd) {
+  if (!isGemel.value) return onlyProd
+  return onlyProd.filter(c => {
     const products = c.production_products || c.product_matches?.unmatched_production || []
     return products.some(p => p.accumulation != null && p.accumulation > 0)
   })
-})
+}
+const effectiveUnpaidCustomers = computed(() => unpaidOf(onlyProdCustomers.value))
 
-const commissionCustomerCount = computed(() => commissionCustomers.value.length)
+// ── KPI row: ALWAYS the whole book ──
+// The KPIs are the fixed frame of reference. They read props.customers, never
+// the company filter — a click on a chart, pill or summary drill used to
+// rewrite them. Total = the same three buckets the status donut sums, so the
+// headline and the donut agree (it used to count only נפרעים customers: 540
+// against the donut's 562).
+const kpiMatched = computed(() => props.customers.filter(c => c.match_status === 'matched'))
+const kpiUnpaid = computed(() => unpaidOf(props.customers.filter(c => c.match_status === 'only_production')))
+const kpiOnlyComm = computed(() => props.customers.filter(c => c.match_status === 'only_commission'))
+const kpiTotalCustomers = computed(() =>
+  kpiMatched.value.length + kpiUnpaid.value.length + kpiOnlyComm.value.length
+)
+const kpiCommissionCustomers = computed(() => [...kpiMatched.value, ...kpiOnlyComm.value])
 
 const totalCommission = computed(() =>
-  commissionCustomers.value.reduce((sum, c) => sum + (c.total_commission || 0), 0)
+  kpiCommissionCustomers.value.reduce((sum, c) => sum + (c.total_commission || 0), 0)
 )
 
 const totalBalance = computed(() => {
   let total = 0
-  for (const c of commissionCustomers.value) {
+  for (const c of kpiCommissionCustomers.value) {
     const matched = c.product_matches?.matched || []
     for (const p of matched) {
       total += (p.balance || 0)
@@ -561,11 +573,11 @@ function findRate(product) {
   return arr[0].rate
 }
 
-// KPI: total unpaid expected commission for effective unpaid customers
-const totalUnpaidCharge = computed(() => {
+// Unpaid expected commission for a list of unpaid customers.
+function unpaidChargeOf(list) {
   let expectedTotal = 0
   let rawTotal = 0
-  for (const c of effectiveUnpaidCustomers.value) {
+  for (const c of list) {
     for (const p of (c.production_products || [])) {
       const rate = findRate(p)
       if (rate) {
@@ -576,7 +588,10 @@ const totalUnpaidCharge = computed(() => {
     }
   }
   return expectedTotal || rawTotal
-})
+}
+// Strip below the charts follows the active filter; the KPI never does.
+const totalUnpaidCharge = computed(() => unpaidChargeOf(effectiveUnpaidCustomers.value))
+const kpiUnpaidCharge = computed(() => unpaidChargeOf(kpiUnpaid.value))
 
 // ─── Top Clients ───
 
@@ -680,11 +695,12 @@ function onTopClientClick(_event, _chartCtx, config) {
   if (client) openDetailFromFilter(client._raw)
 }
 
-// Status donut — all three statuses
+// Status donut — all three statuses. Colours come from the chart palette like
+// every other chart here (they were three off-palette brand hexes).
 const statusItems = computed(() => [
-  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: '#2E844A' },
-  { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: '#E8720A' },
-  { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: '#7F56D9' },
+  { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: STATUS_COLORS.matched },
+  { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: STATUS_COLORS.only_production },
+  { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: STATUS_COLORS.only_commission },
 ])
 
 // Total shown in the hero badge and used as the percentage denominator.
@@ -729,62 +745,23 @@ watch(mismatchAlert, (v) => emit('mismatch', v), { immediate: true, deep: true }
 // which is the actionable half. A customer is counted once per company they
 // hold a product with, so the per-company columns can sum to more than the
 // headline total; that's intended, not double counting.
-const companyStatusRows = computed(() => {
-  const unpaidIds = new Set(effectiveUnpaidCustomers.value.map(c => c.id_number))
-  const map = new Map()
-  const bump = (key, displayName, statusKey) => {
-    if (!map.has(key)) {
-      map.set(key, { company: displayName, matched: 0, only_production: 0, only_commission: 0 })
-    }
-    const row = map.get(key)
-    // Same insurer can arrive under several spellings (short 'מגדל' from the
-    // commission side vs legal 'מגדל חברה לביטוח בע"מ' from the merged
-    // production file). Show the shortest so the axis stays readable.
-    if (displayName.length < row.company.length) row.company = displayName
-    row[statusKey] += 1
-  }
-  for (const c of displayCustomers.value) {
-    // only_production customers with no exposure are excluded from "unpaid"
-    // in the headline, so they must be excluded here too or the two disagree.
-    if (c.match_status === 'only_production' && !unpaidIds.has(c.id_number)) continue
-    const products = [
-      ...(c.production_products || []),
-      ...(c.commission_products || []),
-      ...(c.product_matches?.matched || []),
-      ...(c.product_matches?.unmatched_production || []),
-      ...(c.product_matches?.unmatched_commission || []),
-    ]
-    // `company` FIRST — it is the SHORT brand name, resolved server-side by
-    // `_extract_short_company` from the record's own company column, and it is
-    // consistent across the production and commission sides. `company_full`
-    // is the raw legal name, so preferring it splits one insurer into two
-    // ('מגדל' and 'מגדל חברה לביטוח בע"מ') on this chart.
-    const names = products.map(p => p.company || p.company_full).filter(Boolean)
-    if (!names.length && c.company) names.push(c.company)
-    // Deduplicate on the NORMALIZED key, not the raw string. Two spellings of
-    // one insurer on the same customer would otherwise bump the same bar
-    // twice — that inflated מגדל from 73 customers to 145 on live data.
-    const byKey = new Map()
-    for (const raw of names) {
-      const name = String(raw).trim()
-      if (!name) continue
-      const k = normalizeCompany(name) || name
-      const prev = byKey.get(k)
-      if (!prev || name.length < prev.length) byKey.set(k, name)
-    }
-    if (!byKey.size) {
-      // No company on any of this customer's products. Bucket it rather than
-      // drop it — otherwise the per-company bars quietly total less than the
-      // headline and a customer disappears with no explanation.
-      bump('__none__', 'ללא שיוך חברה', c.match_status)
-    } else {
-      for (const [k, displayName] of byKey) bump(k, displayName, c.match_status)
-    }
-  }
-  return [...map.values()]
-    .map(r => ({ ...r, total: r.matched + r.only_production + r.only_commission }))
-    .filter(r => r.total > 0)
-    .sort((a, b) => b.total - a.total)
+const companyBreakdownAll = computed(() =>
+  companyStatusBreakdown(props.customers, new Set(kpiUnpaid.value.map(c => c.id_number)))
+)
+
+const companyStatusRows = computed(() =>
+  companyStatusBreakdown(displayCustomers.value, new Set(effectiveUnpaidCustomers.value.map(c => c.id_number)))
+)
+
+// Declared after everything it references (a const above its use is a TDZ
+// crash that `vite build` never catches).
+defineExpose({
+  showMismatchCustomers: () => onLegendClick('matched'),
+  // Lets the page-level company summary open the same customer list modal.
+  openCustomerList: (title, customers) => openFilterModal(title, customers),
+  // Whole-book per-company split for the page-level summary pie — built with
+  // the KPI's unpaid set so its numbers match the KPIs exactly.
+  companyBreakdownAll,
 })
 
 const companyStatusSeries = computed(() => [
@@ -1187,8 +1164,8 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-async function sendAllUnpaidMail() {
-  const customers = effectiveUnpaidCustomers.value
+async function sendAllUnpaidMail(list) {
+  const customers = Array.isArray(list) ? list : effectiveUnpaidCustomers.value
   if (!customers.length) return
 
   // Build customer lines with product details and premium
@@ -1233,12 +1210,12 @@ ${lines}
 בברכה,
 ${userName}`
 
-  downloadUnpaidExcel()
+  downloadUnpaidExcel(customers)
   await openMailCompose({ to: companyEmail, subject, body })
 }
 
-function downloadUnpaidExcel() {
-  const customers = effectiveUnpaidCustomers.value
+function downloadUnpaidExcel(list) {
+  const customers = Array.isArray(list) ? list : effectiveUnpaidCustomers.value
   if (!customers.length) return
 
   const rows = []
@@ -1279,8 +1256,8 @@ function downloadUnpaidExcel() {
 
 // ─── Only-commission mail & Excel ───
 
-async function sendOnlyCommissionMail() {
-  const customers = onlyCommCustomers.value
+async function sendOnlyCommissionMail(list) {
+  const customers = Array.isArray(list) ? list : onlyCommCustomers.value
   if (!customers.length) return
 
   const lines = customers.map(c => {
@@ -1323,12 +1300,12 @@ ${lines}
 בברכה,
 ${userName}`
 
-  try { downloadOnlyCommissionExcel() } catch { /* ignore Excel error */ }
+  try { downloadOnlyCommissionExcel(customers) } catch { /* ignore Excel error */ }
   await openMailCompose({ to: companyEmail, subject, body })
 }
 
-function downloadOnlyCommissionExcel() {
-  const customers = onlyCommCustomers.value
+function downloadOnlyCommissionExcel(list) {
+  const customers = Array.isArray(list) ? list : onlyCommCustomers.value
   if (!customers.length) return
 
   const rows = []
@@ -1422,7 +1399,7 @@ function formatCompact(val) {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #F57C00 0%, #F57C00 50%, #E8720A 50%, #E8720A 75%, #7F56D9 75%, #7F56D9 100%);
+  background: linear-gradient(90deg, #4A8B2C 0%, #4A8B2C 40%, #E04B48 40%, #E04B48 60%, #4E9DD0 60%, #4E9DD0 100%);
 }
 
 .hero-header {
@@ -1588,14 +1565,14 @@ function formatCompact(val) {
 }
 
 .kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
-.kpi-amber .kpi-icon { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
-.kpi-amber .kpi-value { color: #E8720A; }
+.kpi-amber .kpi-icon { background: rgba(224, 75, 72, 0.1); color: #E04B48; }
+.kpi-amber .kpi-value { color: #E04B48; }
 .kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
 .kpi-red .kpi-value { color: #C23934; }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
 .kpi-cyan .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
-.kpi-violet .kpi-value { color: #7F56D9; }
+.kpi-violet .kpi-icon { background: rgba(78, 157, 208, 0.12); color: #3A86BD; }
+.kpi-violet .kpi-value { color: #3A86BD; }
 
 .kpi-data { min-width: 0; }
 .kpi-value {

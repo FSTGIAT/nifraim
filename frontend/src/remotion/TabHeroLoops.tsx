@@ -401,6 +401,60 @@ export function ClearingHouseLoop() {
   )
 }
 
+/* ═══════════════════ COMPARISON — green ═══════════════════ */
+// Production records (right — read first in Hebrew) and נפרעים records (left)
+// pair up one row at a time: a link draws right→left, the pair turns solid,
+// and a check lands on it. Authored RTL natively — mount with flow="ltr" so
+// the check glyph is never mirrored.
+// Three rows × 80 frames = one 240-frame loop; every row resets at loop end.
+export function ComparisonMatchLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2E844A', INK = '#1F5A35', MINT = '#9BD3AE', PALE = '#E3F2E8'
+  const ROWS = [74, 136, 198]
+  const LX = 24, RX = 266, W = 130, H = 38
+
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* column headers */}
+        <rect x={RX} y={40} width={W * 0.62} height={12} rx={6} fill={INK} opacity={0.85} />
+        <rect x={LX} y={40} width={W * 0.62} height={12} rx={6} fill={ACC} opacity={0.85} />
+        {ROWS.map((y, i) => {
+          const local = frame - i * 80
+          const link = interpolate(local, [4, 34], [0, 1], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+            easing: Easing.bezier(0.4, 0, 0.2, 1),
+          })
+          const solid = interpolate(local, [30, 42], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+          const pop = interpolate(local, [36, 46, 54], [0, 1.18, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+          // everything eases back out in the loop's last 20 frames
+          const out = interpolate(frame, [220, 240], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+          const x1 = LX + W, x2 = RX, cy = y + H / 2
+          return (
+            <g key={i}>
+              <rect x={LX} y={y} width={W} height={H} rx={8} fill={PALE} />
+              <rect x={LX} y={y} width={W} height={H} rx={8} fill={MINT} opacity={solid * out} />
+              <rect x={LX + 16} y={cy - 4} width={70} height={8} rx={4} fill={ACC} opacity={0.6} />
+              <rect x={RX} y={y} width={W} height={H} rx={8} fill={PALE} />
+              <rect x={RX} y={y} width={W} height={H} rx={8} fill={MINT} opacity={solid * out} />
+              <rect x={RX + 16} y={cy - 4} width={56} height={8} rx={4} fill={INK} opacity={0.55} />
+              <line
+                x1={x2} y1={cy} x2={x2 - (x2 - x1) * link * out} y2={cy}
+                stroke={ACC} strokeWidth={4} strokeLinecap="round" strokeDasharray="2 8"
+              />
+              <g transform={`translate(${(x1 + x2) / 2} ${cy}) scale(${pop * out})`}>
+                <circle r={17} fill={ACC} />
+                <path d="M-7 0 l5 5 l9 -10" fill="none" stroke="#FFFFFF" strokeWidth={3.6}
+                      strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+            </g>
+          )
+        })}
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
@@ -409,6 +463,7 @@ export const TAB_HERO_SCENES = {
   recruits: PortfolioLoop,
   'commission-shelf': ShelfLoop,
   maslaka: ClearingHouseLoop,
+  comparison: ComparisonMatchLoop,
 } as const
 
 export type TabHeroScene = keyof typeof TAB_HERO_SCENES

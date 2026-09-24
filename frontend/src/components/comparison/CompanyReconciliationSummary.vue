@@ -23,31 +23,31 @@
       </div>
     </div>
 
-    <!-- Per-company "did not pay" donut — one slice per company with an open
-         gap, sized by unpaid ₪ (or unpaid-customer count when no gap amounts).
-         Colors reuse the exact per-company palette the table rows use. -->
-    <div v-if="donutMode !== 'none'" class="crs-chart">
+    <!-- Customers by company — every company, not only the ones with a gap.
+         Click a company → the donut becomes that company's matched / not paid
+         / only-in-נפרעים split; click a part → the customer list. Counts are
+         the same per-customer statuses the KPIs and status donut use. -->
+    <div v-if="pieRows.length" class="crs-chart">
       <div class="crs-chart-head">
-        <h4 class="crs-chart-title">לא שולם לפי חברה</h4>
-        <span class="crs-chart-sub">{{ donutMode === 'gap' ? 'לפי סכום פער' : 'לפי לקוחות שלא שולמו' }}</span>
+        <h4 class="crs-chart-title">{{ focusRow ? focusRow.company : 'לקוחות לפי חברה' }}</h4>
+        <span class="crs-chart-sub">{{ focusRow ? 'לחצו על חלק לרשימת הלקוחות' : 'לחצו על חברה לפירוט' }}</span>
+        <button v-if="focusRow" type="button" class="crs-back" @click="focusKey = null">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+          </svg>
+          חזרה לכל החברות
+        </button>
       </div>
       <div class="crs-chart-wrap">
         <apexchart
+          :key="focusKey || '__all__'"
           type="donut"
-          height="290"
+          height="300"
           width="100%"
           :options="donutOptions"
           :series="donutData.series"
         />
       </div>
-    </div>
-    <div v-else class="crs-chart crs-chart--clear" role="status">
-      <span class="crs-clear-icon" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
-      </span>
-      <p class="crs-clear-text">הכול נגבה — אין חברות עם פער פתוח</p>
     </div>
 
     <div class="crs-table-wrap">
@@ -55,9 +55,9 @@
         <thead>
           <tr>
             <th class="t-name">חברה</th>
-            <th>מופקים</th>
-            <th>תואמו</th>
-            <th>לא־שולמו</th>
+            <th>מוצרים מופקים</th>
+            <th>מוצרים תואמו</th>
+            <th>לקוחות לא שולמו</th>
             <th>התקבל</th>
             <th>צפי</th>
             <th>פער</th>
@@ -73,9 +73,9 @@
             tabindex="0"
             role="button"
             :aria-label="'פירוט ' + row.company"
-            @click="$emit('drill', row.company)"
-            @keydown.enter.prevent="$emit('drill', row.company)"
-            @keydown.space.prevent="$emit('drill', row.company)"
+            @click="openRow(row)"
+            @keydown.enter.prevent="openRow(row)"
+            @keydown.space.prevent="openRow(row)"
           >
             <td class="t-name">
               <span
@@ -90,7 +90,11 @@
             <td><span class="ltr-number">{{ fmtInt(row.produced) }}</span></td>
             <td><span class="ltr-number num-matched">{{ fmtInt(row.matched) }}</span></td>
             <td>
-              <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn ltr-number">{{ fmtInt(row.unpaid) }}</span>
+              <span
+                v-if="row.unpaid > 0"
+                class="crs-chip crs-chip--warn ltr-number"
+                :title="fmtInt(row.unpaid_products) + ' מוצרים'"
+              >{{ fmtInt(row.unpaid) }}</span>
               <span v-else class="ltr-number num-muted">0</span>
             </td>
             <td><span class="ltr-number">{{ fmtMoney(row.received) }}</span></td>
@@ -146,13 +150,13 @@
     <!-- Stacked cards below ~720px (table hidden, same data) -->
     <ul class="crs-cards">
       <li v-for="row in rows" :key="'c-' + row.company">
-        <button type="button" class="crs-card" @click="$emit('drill', row.company)">
+        <button type="button" class="crs-card" @click="openRow(row)">
           <div class="crs-card-top">
             <span class="crs-avatar" :style="avatarStyle(row.company)" aria-hidden="true">
               <CompanyLogo :company="row.company" :size="18" :frame="false" />
             </span>
             <span class="crs-company">{{ row.company }}</span>
-            <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn ltr-number">{{ fmtInt(row.unpaid) }} לא שולמו</span>
+            <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn ltr-number">{{ fmtInt(row.unpaid) }} לקוחות לא שולמו</span>
             <svg class="crs-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="m15 18-6-6 6-6" />
             </svg>
@@ -180,40 +184,66 @@
         </button>
       </li>
     </ul>
+    <UnpaidCompanyModal
+      :open="unpaidModal.open"
+      :company="unpaidModal.company"
+      :data="unpaidModal.data"
+      :loading="unpaidModal.loading"
+      :error="unpaidModal.error"
+      @close="unpaidModal.open = false"
+    />
   </section>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { brandForLabel } from '../../utils/companyBrand.js'
 import CompanyLogo from '../workspace/CompanyLogo.vue'
-import { assignNearestDistinct } from '../../utils/chartPalette.js'
+import UnpaidCompanyModal from './UnpaidCompanyModal.vue'
+import { useComparisonStore } from '../../stores/comparison.js'
+import { assignNearestDistinct, STATUS_COLORS } from '../../utils/chartPalette.js'
+import { normalizeCompany } from '../../utils/companyNorm.js'
 
 const props = defineProps({
   summary: { type: Object, default: null }, // { companies: [...], totals: {...} }
+  // companyStatusBreakdown() rows over the whole book (see utils/).
+  companyBreakdown: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['drill'])
+const emit = defineEmits(['show-customers'])
 
 const rows = computed(() => props.summary?.companies || [])
 const totals = computed(() => props.summary?.totals || null)
 
-// ── "לא שולם לפי חברה" donut ───────────────────────────────────────────────
-// Prefer sizing slices by the open gap (₪); if no company carries a gap amount
-// but some have unpaid customers, size by that count instead. Cap the slices so
-// the donut stays legible (no-pie-overuse) — the rest roll into "אחרות".
-const MAX_SLICES = 6
+// ── "לקוחות לפי חברה" donut (two levels) ─────────────────────────────────
+// Up to 10 companies get their own slice (palette slots 1-11 are validated);
+// the rest roll into "אחרות", which drills like a company would not — it has
+// no single breakdown — so clicking it does nothing.
+const MAX_SLICES = 10
+const STATUS_ORDER = [
+  { key: 'matched', label: 'נמצא בשניהם' },
+  { key: 'only_production', label: 'לא שולם' },
+  { key: 'only_commission', label: 'רק בנפרעים' },
+]
 
-const unpaidByGap = computed(() =>
-  rows.value.filter((r) => Number(r.gap) > 0).sort((a, b) => b.gap - a.gap)
+const pieRows = computed(() => props.companyBreakdown || [])
+
+// Every insurer always gets a slice. One with no data in this comparison is a
+// small grey slice — no %, tooltip "אין נתונים", not clickable — so the agent
+// sees which companies haven't reported instead of them silently missing.
+const ALL_INSURERS = ['הפניקס', 'מגדל', 'מנורה', 'הראל', 'כלל', 'מור', 'אלטשולר', 'מיטב', 'הכשרה', 'ילין', 'אנליסט']
+const NO_DATA_COLOR = '#D5D5D8'
+function sameCompany(a, b) {
+  const na = normalizeCompany(a) || a
+  const nb = normalizeCompany(b) || b
+  return na === nb || na.startsWith(nb) || nb.startsWith(na)
+}
+const emptyCompanies = computed(() =>
+  ALL_INSURERS.filter((n) => !pieRows.value.some((r) => sameCompany(r.company, n)))
 )
-const unpaidByCount = computed(() =>
-  rows.value.filter((r) => Number(r.unpaid) > 0).sort((a, b) => b.unpaid - a.unpaid)
-)
-const donutMode = computed(() => {
-  if (unpaidByGap.value.length) return 'gap'
-  if (unpaidByCount.value.length) return 'count'
-  return 'none'
-})
+const focusKey = ref(null)
+const focusRow = computed(() => pieRows.value.find((r) => r.key === focusKey.value) || null)
+// A new comparison can drop the focused company — fall back to all companies.
+watch(pieRows, () => { if (focusKey.value && !focusRow.value) focusKey.value = null })
 
 // ApexCharts fills need concrete colors — resolve any CSS-var fallback to hex.
 function donutColor(company) {
@@ -222,32 +252,86 @@ function donutColor(company) {
 }
 
 const donutData = computed(() => {
-  const gap = donutMode.value === 'gap'
-  const src = gap ? unpaidByGap.value : unpaidByCount.value
-  const valOf = (r) => (gap ? Number(r.gap) : Number(r.unpaid))
-  const labels = []
-  const series = []
-  const colors = []
-  for (const r of src.slice(0, MAX_SLICES)) {
-    labels.push(r.company)
-    series.push(valOf(r))
-    colors.push(donutColor(r.company))
+  const r = focusRow.value
+  if (r) {
+    const parts = STATUS_ORDER.filter((s) => r[s.key] > 0)
+    return {
+      labels: parts.map((s) => s.label),
+      series: parts.map((s) => r[s.key]),
+      colors: parts.map((s) => STATUS_COLORS[s.key]),
+      keys: parts.map((s) => s.key),
+    }
   }
-  const tail = src.slice(MAX_SLICES)
+  const head = pieRows.value.slice(0, MAX_SLICES)
+  const tail = pieRows.value.slice(MAX_SLICES)
+  const labels = head.map((x) => x.company)
+  const series = head.map((x) => x.total)
+  const colors = head.map((x) => donutColor(x.company))
+  const keys = head.map((x) => x.key)
   if (tail.length) {
     labels.push('אחרות')
-    series.push(tail.reduce((s, r) => s + valOf(r), 0))
+    series.push(tail.reduce((sum, x) => sum + x.total, 0))
     colors.push('#B9B9BE')
+    keys.push(null)
   }
-  return { labels, series, colors }
+  // Grey no-data slices: a fixed ~3% sliver each, so they read as present but
+  // never compete with real data.
+  const dataSum = series.reduce((a, v) => a + v, 0)
+  const sliver = Math.max(1, Math.round(dataSum * 0.03))
+  for (const name of emptyCompanies.value) {
+    labels.push(name)
+    series.push(sliver)
+    colors.push(NO_DATA_COLOR)
+    keys.push('empty:' + name)
+  }
+  return { labels, series, colors, keys }
 })
 
-function fmtDonutVal(v) {
-  return donutMode.value === 'gap' ? fmtMoney(v) : fmtInt(v)
-}
+// Level 1 centre = number of companies, NOT a customer sum: a customer with
+// products at two companies sits in both slices, so the slices add up to more
+// than the book's distinct customers (821 vs the KPI's 562 on live data).
 const donutTotal = computed(() =>
-  donutData.value.series.reduce((s, v) => s + (Number(v) || 0), 0)
+  focusRow.value ? focusRow.value.total : pieRows.value.length + emptyCompanies.value.length
 )
+const isEmptySlice = (i) => String(donutData.value.keys[i] || '').startsWith('empty:')
+
+function onSlice(index) {
+  const key = donutData.value.keys[index]
+  if (!key || isEmptySlice(index)) return
+  const r = focusRow.value
+  // Deferred: the level change remounts the chart (:key), and doing that inside
+  // ApexCharts' own click handler makes it query a destroyed chart.
+  if (!r) { setTimeout(() => { focusKey.value = key }, 0); return }
+  const status = STATUS_ORDER.find((s) => s.key === key)
+  emit('show-customers', { title: `${r.company} — ${status.label}`, customers: r.customers[key] })
+}
+
+// Table row / card: a company with unpaid customers explains WHY (its unpaid
+// customers, their products and the expected commission); otherwise it opens
+// the company's customer list.
+const comparisonStore = useComparisonStore()
+const unpaidModal = ref({ open: false, company: '', data: null, loading: false, error: '' })
+async function openRow(row) {
+  if (!(row.unpaid > 0)) { openCompany(row.company); return }
+  unpaidModal.value = { open: true, company: row.company, data: null, loading: true, error: '' }
+  try {
+    const data = await comparisonStore.fetchCompanyUnpaid(row.company)
+    if (unpaidModal.value.company === row.company) unpaidModal.value.data = data
+  } catch {
+    unpaidModal.value.error = 'טעינת הפירוט נכשלה. נסו שוב.'
+  } finally {
+    unpaidModal.value.loading = false
+  }
+}
+
+// → that company's customers, every status.
+function openCompany(company) {
+  const k = normalizeCompany(company) || company
+  const r = pieRows.value.find((x) => x.key === k || x.company === company)
+  if (!r) return
+  const customers = [...r.customers.matched, ...r.customers.only_production, ...r.customers.only_commission]
+  emit('show-customers', { title: `${r.company} — כל הלקוחות`, customers })
+}
 
 const donutOptions = computed(() => ({
   chart: {
@@ -255,10 +339,7 @@ const donutOptions = computed(() => ({
     fontFamily: 'Heebo, sans-serif',
     toolbar: { show: false },
     events: {
-      dataPointSelection: (_e, _ctx, cfg) => {
-        const label = donutData.value.labels[cfg.dataPointIndex]
-        if (label && label !== 'אחרות') emit('drill', label)
-      },
+      dataPointSelection: (_e, _ctx, cfg) => onSlice(cfg.dataPointIndex),
     },
   },
   labels: donutData.value.labels,
@@ -266,7 +347,14 @@ const donutOptions = computed(() => ({
   stroke: { width: 2, colors: ['#ffffff'] },
   dataLabels: {
     enabled: true,
-    formatter: (pct) => `${Math.round(pct)}%`,
+    // % of REAL customers — the grey no-data slivers must not dilute it.
+    formatter: (_pct, o) => {
+      if (isEmptySlice(o.seriesIndex)) return ''
+      const v = Number(o.w.globals.series[o.seriesIndex]) || 0
+      const real = donutData.value.series.reduce((a, x, i) => a + (isEmptySlice(i) ? 0 : x), 0)
+      const pct = real ? (v / real) * 100 : 0
+      return pct < 4 ? '' : `${Math.round(pct)}%`
+    },
     style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', fontWeight: 700 },
     dropShadow: { enabled: false },
   },
@@ -277,35 +365,40 @@ const donutOptions = computed(() => ({
     labels: { colors: '#706E6B' },
     markers: { width: 10, height: 10, radius: 3 },
     itemMargin: { horizontal: 8, vertical: 3 },
+    onItemClick: { toggleDataSeries: false },
   },
   plotOptions: {
     pie: {
+      expandOnClick: false,
       donut: {
-        size: '68%',
+        size: '66%',
         labels: {
           show: true,
           name: { fontFamily: 'Heebo, sans-serif', fontSize: '12px', color: '#706E6B' },
           value: {
             fontFamily: 'Heebo, sans-serif',
-            fontSize: '18px',
+            fontSize: '20px',
             fontWeight: 700,
             color: '#181818',
-            formatter: (v) => fmtDonutVal(Number(v)),
+            formatter: (v, w) => {
+              const i = w?.globals?.series?.indexOf(Number(v))
+              return i != null && i >= 0 && isEmptySlice(i) ? 'אין נתונים' : fmtInt(Number(v))
+            },
           },
           total: {
             show: true,
-            label: donutMode.value === 'gap' ? 'סה״כ פער' : 'סה״כ לא שולמו',
+            label: focusRow.value ? 'לקוחות' : 'חברות',
             fontFamily: 'Heebo, sans-serif',
             fontSize: '12px',
             color: '#706E6B',
-            formatter: () => fmtDonutVal(donutTotal.value),
+            formatter: () => fmtInt(donutTotal.value),
           },
         },
       },
     },
   },
   tooltip: {
-    y: { formatter: (v) => fmtDonutVal(Number(v)) },
+    y: { formatter: (v, o) => (isEmptySlice(o?.dataPointIndex) ? 'אין נתונים' : `${fmtInt(Number(v))} לקוחות`) },
     style: { fontFamily: 'Heebo, sans-serif' },
   },
   states: { active: { filter: { type: 'none' } } },
@@ -314,11 +407,11 @@ const donutOptions = computed(() => ({
 // One distinct palette color per company, anchored to its brand hue — the
 // SAME assignment mechanism the automation canvas uses, so a company keeps
 // its color across tabs.
-const colorMap = computed(() =>
-  assignNearestDistinct(
-    rows.value.map((r) => ({ key: r.company, brand: brandForLabel(r.company).color }))
-  )
-)
+// Keyed over table rows AND pie companies so the donut and the table agree.
+const colorMap = computed(() => {
+  const names = [...new Set([...rows.value.map((r) => r.company), ...pieRows.value.map((r) => r.company)])]
+  return assignNearestDistinct(names.map((n) => ({ key: n, brand: brandForLabel(n).color })))
+})
 
 function companyColor(company) {
   return colorMap.value.get(company) || 'var(--chart-2, #4E9DD0)'
@@ -475,32 +568,24 @@ function fmtMoney(n) {
   margin: 0 auto;
 }
 
-.crs-chart--clear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px 0 18px;
-}
-
-.crs-clear-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+.crs-back {
+  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: var(--green-light, #EBF7EE);
-  color: var(--green-deep, #1B5E20);
-  flex-shrink: 0;
-}
-
-.crs-clear-text {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  background: var(--card-bg, #fff);
   color: var(--text-secondary, #3E3E3C);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
+.crs-back:hover { background: var(--bg, #F3F3F3); border-color: var(--text-muted, #706E6B); }
+.crs-back:focus-visible { outline: 2px solid var(--tab-comparison, #2E844A); outline-offset: 2px; }
 
 /* Table */
 .crs-table-wrap { overflow-x: auto; }
