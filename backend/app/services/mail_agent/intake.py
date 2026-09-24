@@ -24,6 +24,7 @@ from app.utils.crypto import decrypt, encrypt
 
 from . import context, usage
 from .draft import draft_reply
+from . import profile as style_profile
 from .llm import LlmUnavailable
 from .triage import triage
 
@@ -166,6 +167,7 @@ async def make_draft(db: AsyncSession, item: MailItem, sender: MailWatchSender |
             agent_name=(user.full_name if user and user.full_name else ""),
             sender_label=label, subject=item.subject or "", own_text=own,
             summary=item.summary or "", facts=facts,
+            profile=await style_profile.load(db, item.user_id), kind=kind,
         )
     except LlmUnavailable as e:
         logger.warning("mail_agent: draft unavailable for item %s: %s", item.id, e)

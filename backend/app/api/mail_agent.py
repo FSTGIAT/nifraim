@@ -21,6 +21,7 @@ from app.api.deps import get_paid_user
 from app.config import settings
 from app.database import get_db
 from app.models.company_contact import CompanyContact
+from app.models.mail_agent_profile import MailAgentProfile
 from app.models.mail_item import DISMISSED, DONE, OPEN_STATUSES, SENT, MailItem
 from app.models.mail_watch_sender import KINDS, MailWatchSender
 from app.models.mailbox_config import MailboxConfig
@@ -28,6 +29,7 @@ from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.models.user import User
 from app.services.mail_agent import intake, usage
+from app.services.mail_agent import profile as style_profile
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -335,3 +337,163 @@ async def poll_now(db: AsyncSession = Depends(get_db), user: User = Depends(get_
     except MailIntakeError as e:
         raise HTTPException(502, f"לא הצלחנו לקרוא את תיבת המייל ({e.code})")
     return {"new": stored}
+
+
+# ── writing-style profile (the first-run workshop) ─────────────────────────
+class ProfileIn(BaseModel):
+    signature: str | None = None
+    tone: str | None = None
+    address_form: str | None = None
+    writer_form: str | None = None
+    greeting: str | None = None
+    closing: str | None = None
+    customer_rules: str | None = None
+    insurer_rules: str | None = None
+    never_say: str | None = None
+    style_notes: str | None = None
+    examples: list[str] | None = None
+    learn_opt_in: bool | None = None
+    complete: bool = False          # "זה נשמע כמוני"
+    skip: bool = False              # "אחר כך"
+
+
+class PreviewIn(ProfileIn):
+    kind: str = "customer"
+
+
+# A made-up customer and made-up data: the preview must show the real drafting
+# path (same prompt, same rules), and a question with nothing to ground it
+# would only show [להשלים] gaps instead of the agent's voice.
+PREVIEW_SAMPLES = {
+    "customer": {
+        "sender_label": "דנה לוי <dana.levi@example.com>",
+        "subject": "שאלה על ביטוח הבריאות",
+        "text": "היי, רציתי לבדוק אם ביטוח הבריאות שלי בהראל עדיין בתוקף, ואם אפשר לצרף אליו את הבן שלי. תודה, דנה",
+        "summary": "הלקוחה שואלת אם ביטוח הבריאות בתוקף ואם אפשר לצרף את בנה.",
+        "facts": {"מוצרי הלקוחות הרלוונטיים (מהפרודוקציה)": [
+            {"לקוח": "דנה לוי", "חברה": "הראל", "מוצר": "ביטוח בריאות", "סטטוס": "פעיל"}]},
+    },
+    "insurer": {
+        "sender_label": "מחלקת עמלות <amalot@example.co.il>",
+        "subject": "בקשה להשלמת מסמכים",
+        "text": "שלום, לצורך בדיקת העמלה על פוליסה 123456 חסר לנו טופס הצטרפות חתום. נודה להעברתו. בברכה, מחלקת עמלות",
+        "summary": "מחלקת העמלות מבקשת טופס הצטרפות חתום לפוליסה 123456.",
+        "facts": {"חברות שיש להן קובץ נפרעים במערכת": ["הראל"]},
+    },
+}
+
+
+def _default_signature(user: User) -> str:
+    return "\n".join(x for x in (user.full_name, user.company_name, user.phone) if x)
+
+
+async def _can_learn(db: AsyncSession, user: User) -> bool:
+    cfg = await _mailbox(db, user)
+    if not (cfg and cfg.is_active and cfg.mail_host in ("google", "microsoft")):
+        return False
+    return bool((await db.execute(
+        select(func.count(MailWatchSender.id)).where(MailWatchSender.user_id == user.id))).scalar_one())
+
+
+async def _profile_out(db: AsyncSession, user: User) -> dict:
+    row = await style_profile.get_row(db, user.id)
+    data = style_profile.as_dict(row) or {}
+    if not data.get("signature"):
+        data["signature"] = _default_signature(user)
+    return {
+        "profile": data,
+        "needs_workshop": row is None or (row.completed_at is None and row.skipped_at is None),
+        "completed_at": row.completed_at.isoformat() + "Z" if row and row.completed_at else None,
+        "skipped_at": row.skipped_at.isoformat() + "Z" if row and row.skipped_at else None,
+        "learn_opt_in": row.learn_opt_in if row else None,
+        "learned_at": row.learned_at.isoformat() + "Z" if row and row.learned_at else None,
+        "can_learn": await _can_learn(db, user),
+    }
+
+
+@router.get("/profile")
+async def get_profile(db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    return await _profile_out(db, user)
+
+
+@router.put("/profile")
+async def put_profile(body: ProfileIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    row = await style_profile.get_row(db, user.id)
+    if row is None:
+        row = MailAgentProfile(user_id=user.id)
+        db.add(row)
+    style_profile.apply(row, body.model_dump(exclude_unset=True, exclude={"complete", "skip", "learn_opt_in"}))
+    if body.learn_opt_in is not None:
+        row.learn_opt_in = body.learn_opt_in
+    now = datetime.utcnow()
+    if body.complete:
+        row.completed_at = now
+    elif body.skip and row.completed_at is None:
+        row.skipped_at = now
+    row.updated_at = now
+    await db.commit()
+    return await _profile_out(db, user)
+
+
+async def _ai_guard(db: AsyncSession, user: User) -> None:
+    if not await usage.under_cap(db, user.id):
+        raise HTTPException(429, "הגעתם למכסת ה-AI היומית. נסו שוב מחר.")
+
+
+@router.post("/profile/learn")
+async def learn_profile(db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """Read the agent's own sent replies to watched senders and suggest a style.
+    Nothing is saved except the opt-in: the agent approves the suggestion."""
+    from app.services.mail_intake import MailIntakeError
+    from app.services.mail_agent.llm import LlmUnavailable
+
+    await _ai_guard(db, user)
+    try:
+        suggestion, model, u = await style_profile.learn(db, user.id)
+    except style_profile.NothingToLearn as e:
+        msg = {
+            "no_mailbox": "צריך קודם לחבר את תיבת המייל",
+            "no_senders": "צריך קודם לבחור ממי ה-AI קורא",
+            "no_sent": "לא מצאנו תשובות ששלחתם לשולחים שבחרתם בשנה האחרונה",
+            "not_enough": "לא מצאנו מספיק תשובות אישיות שכתבתם כדי ללמוד מהן. אפשר לדלג — הטון והכללים שבחרתם מספיקים",
+        }.get(str(e), "אין ממה ללמוד")
+        raise HTTPException(409, msg)
+    except MailIntakeError as e:
+        raise HTTPException(502, f"לא הצלחנו לקרוא את תיבת המייל ({e.code})")
+    except LlmUnavailable:
+        raise HTTPException(503, "שירות ה-AI לא זמין כרגע. נסו שוב בעוד כמה דקות.")
+    usage.record(db, user.id, "mail_style_learn", model, u)
+    row = await style_profile.get_row(db, user.id)
+    if row is None:
+        row = MailAgentProfile(user_id=user.id)
+        db.add(row)
+    row.learn_opt_in = True
+    row.learned_at = datetime.utcnow()
+    await db.commit()
+    return suggestion
+
+
+@router.post("/profile/preview")
+async def preview_profile(body: PreviewIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """Draft a reply to a made-up email with the (possibly unsaved) profile —
+    the exact drafting path the real mail goes through."""
+    from app.services.mail_agent.draft import draft_reply
+    from app.services.mail_agent.llm import LlmUnavailable
+
+    sample = PREVIEW_SAMPLES.get(body.kind)
+    if not sample:
+        raise HTTPException(400, "סוג לא תקין")
+    await _ai_guard(db, user)
+    prof = style_profile.sanitize(body.model_dump(exclude={"complete", "skip", "learn_opt_in", "kind"}))
+    try:
+        result, model, u = await draft_reply(
+            agent_name=_default_signature(user), sender_label=sample["sender_label"],
+            subject=sample["subject"], own_text=sample["text"], summary=sample["summary"],
+            facts=sample["facts"], profile=prof, kind=body.kind,
+        )
+    except LlmUnavailable:
+        raise HTTPException(503, "שירות ה-AI לא זמין כרגע. נסו שוב בעוד כמה דקות.")
+    usage.record(db, user.id, "mail_style_preview", model, u)
+    await db.commit()
+    return {"incoming": {k: sample[k] for k in ("sender_label", "subject", "text")},
+            "subject": result.get("subject"), "body": result.get("body"), "warnings": result.get("warnings") or []}

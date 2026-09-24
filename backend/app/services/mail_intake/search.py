@@ -23,7 +23,7 @@ import re
 import ssl
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from email.utils import parseaddr, parsedate_to_datetime
+from email.utils import getaddresses, parseaddr, parsedate_to_datetime
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +53,7 @@ class FoundMessage:
     in_reply_to: str | None = None
     references: str | None = None
     attachments: list[dict] = field(default_factory=list)   # [{name, size, content_type}]
+    to_addrs: list[str] = field(default_factory=list)          # lower-cased To + Cc
 
 
 def sender_matches(sender: str, matcher: str) -> bool:
@@ -102,6 +103,40 @@ async def find_messages_matching(
     return sorted(out, key=lambda m: m.received_at, reverse=True)
 
 
+async def find_sent_to(
+    db: AsyncSession, cfg: MailboxConfig, *, matchers: list[str], since: datetime,
+) -> list[FoundMessage]:
+    """The agent's OWN sent mail addressed to any of `matchers` (addresses /
+    @domains), newest first. Read-only; the Sent folder is found by flag."""
+    matchers = sorted({m.strip().lower() for m in matchers if m and m.strip()})
+    if not matchers:
+        return []
+    if cfg.mail_host == "google":
+        password = _google_password(cfg)
+        found: list[FoundMessage] = []
+        for i in range(0, len(matchers), _IMAP_SENDER_CHUNK):
+            found += await asyncio.to_thread(
+                _imap_search_sent, cfg.imap_host or "imap.gmail.com", cfg.imap_port or 993,
+                cfg.email_address, password, matchers[i:i + _IMAP_SENDER_CHUNK], since,
+            )
+    elif cfg.mail_host == "microsoft":
+        found = await _graph_sent(db, cfg, since)
+    else:
+        raise MailIntakeError(ERR_NOT_CONFIGURED, f"cannot read host {cfg.mail_host!r}")
+    seen: set[str] = set()
+    out = []
+    for m in found:
+        key = m.message_id or f"{m.provider_id}"
+        if key in seen or m.received_at < since:
+            continue
+        # IMAP TO is a substring match — keep only mail really sent to a watched sender.
+        if not any(sender_matches(a, x) for a in m.to_addrs for x in matchers):
+            continue
+        seen.add(key)
+        out.append(m)
+    return sorted(out, key=lambda m: m.received_at, reverse=True)
+
+
 async def fetch_attachment(
     db: AsyncSession, cfg: MailboxConfig, *, provider_id: str, filename: str,
 ) -> bytes | None:
@@ -134,7 +169,7 @@ def _google_password(cfg: MailboxConfig) -> str:
 
 
 # ── Gmail (IMAP) ─────────────────────────────────────────────────────────────
-def _imap_connect(host, port, address, password, folder) -> imaplib.IMAP4_SSL:
+def _imap_connect(host, port, address, password, folder: str | None) -> imaplib.IMAP4_SSL:
     try:
         conn = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=30)
     except (OSError, imaplib.IMAP4.error) as e:
@@ -144,7 +179,10 @@ def _imap_connect(host, port, address, password, folder) -> imaplib.IMAP4_SSL:
     except imaplib.IMAP4.error as e:
         _logout(conn)
         raise MailIntakeError(ERR_BAD_APP_PASSWORD) from e
-    status, _ = conn.select(folder, readonly=True)          # EXAMINE
+    if folder is None:                                      # caller will LIST first
+        return conn
+    # Quoted: "[Gmail]/Sent Mail" has a space; imaplib sends names verbatim.
+    status, _ = conn.select(_imap_quote(folder), readonly=True)   # EXAMINE
     if status != "OK":
         _logout(conn)
         raise MailIntakeError(ERR_MAILBOX_UNREACHABLE, "select failed")
@@ -158,40 +196,90 @@ def _logout(conn) -> None:
         pass
 
 
-def _imap_from_criteria(matchers: list[str]) -> list[str]:
+def _imap_quote(name: str) -> str:
+    if name.startswith('"'):
+        return name
+    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+_LIST_LINE = re.compile(rb'^\((?P<flags>[^)]*)\) (?:"[^"]*"|NIL) (?P<name>.+)$')
+
+
+def _imap_sent_folder(conn: imaplib.IMAP4_SSL) -> str | None:
+    """The Sent folder by its RFC 6154 \\Sent flag — Gmail localises the name
+    ("[Gmail]/דואר יוצא" on a Hebrew UI), so never assume "[Gmail]/Sent Mail".
+    Returns the raw (modified UTF-7) name, quoted as the server listed it."""
+    status, lines = conn.list()
+    if status != "OK":
+        return None
+    fallback = None
+    for line in lines or []:
+        if not isinstance(line, bytes):
+            continue
+        m = _LIST_LINE.match(line)
+        if not m:
+            continue
+        flags = m.group("flags").lower()
+        name = m.group("name").decode("ascii", "replace").strip()
+        if b"\\sent" in flags:
+            return name
+        if fallback is None and name.strip('"').lower() in ("sent", "sent items", "sent mail", "inbox.sent"):
+            fallback = name
+    return fallback
+
+
+def _imap_from_criteria(matchers: list[str], header: str = "FROM") -> list[str]:
     """FROM a  |  OR FROM a FROM b  |  OR FROM a OR FROM b FROM c … (IMAP prefix OR).
     IMAP FROM is a substring match, so "@domain" works as-is; the exact match
     happens afterwards in find_messages_matching."""
-    terms = [["FROM", f'"{m}"'] for m in matchers]
+    terms = [[header, f'"{m}"'] for m in matchers]
     crit = terms[-1]
     for t in reversed(terms[:-1]):
         crit = ["OR", *t, *crit]
     return crit
 
 
-def _imap_search(host, port, folder, address, password, matchers, since) -> list[FoundMessage]:
+def _imap_search(host, port, folder, address, password, matchers, since, header: str = "FROM") -> list[FoundMessage]:
     conn = _imap_connect(host, port, address, password, folder)
     try:
-        # SINCE is date-granular and server-local; widen by a day and filter
-        # precisely on the parsed Date afterwards.
-        since_str = (since - timedelta(days=1)).strftime("%d-%b-%Y")
-        status, data = conn.uid("SEARCH", None, *_imap_from_criteria(matchers), "SINCE", since_str)
-        if status != "OK" or not data or not data[0]:
-            return []
-        uids = data[0].split()[-MAX_MESSAGES:]
-        out: list[FoundMessage] = []
-        for uid in uids:
-            status, parts = conn.uid("FETCH", uid, "(BODY.PEEK[])")   # PEEK: stays unread
-            if status != "OK":
-                continue
-            raw = next((p[1] for p in parts if isinstance(p, tuple) and len(p) > 1), None)
-            if raw:
-                msg = _parse_rfc822(raw, provider_id=uid.decode())
-                if msg:
-                    out.append(msg)
-        return out
+        return _imap_search_conn(conn, matchers, since, header)
     finally:
         _logout(conn)
+
+
+def _imap_search_sent(host, port, address, password, matchers, since) -> list[FoundMessage]:
+    conn = _imap_connect(host, port, address, password, None)
+    try:
+        folder = _imap_sent_folder(conn)
+        if not folder:
+            return []
+        status, _ = conn.select(_imap_quote(folder), readonly=True)    # EXAMINE
+        if status != "OK":
+            return []
+        return _imap_search_conn(conn, matchers, since, "TO")
+    finally:
+        _logout(conn)
+
+
+def _imap_search_conn(conn, matchers, since, header) -> list[FoundMessage]:
+    # SINCE is date-granular and server-local; widen by a day and filter
+    # precisely on the parsed Date afterwards.
+    since_str = (since - timedelta(days=1)).strftime("%d-%b-%Y")
+    status, data = conn.uid("SEARCH", None, *_imap_from_criteria(matchers, header), "SINCE", since_str)
+    if status != "OK" or not data or not data[0]:
+        return []
+    uids = data[0].split()[-MAX_MESSAGES:]
+    out: list[FoundMessage] = []
+    for uid in uids:
+        status, parts = conn.uid("FETCH", uid, "(BODY.PEEK[])")   # PEEK: stays unread
+        if status != "OK":
+            continue
+        raw = next((p[1] for p in parts if isinstance(p, tuple) and len(p) > 1), None)
+        if raw:
+            msg = _parse_rfc822(raw, provider_id=uid.decode())
+            if msg:
+                out.append(msg)
+    return out
 
 
 def _imap_fetch_attachment(host, port, folder, address, password, uid, filename) -> bytes | None:
@@ -281,6 +369,7 @@ def _parse_rfc822(raw: bytes, *, provider_id: str | None = None) -> FoundMessage
             content = _decode_bytes(body.get_payload(decode=True) or b"", body.get_content_charset())
         text = _html_to_text(content) if body.get_content_type() == "text/html" else content
     name, addr = parseaddr(_header_text(compat, "From"))
+    to_addrs = [a.lower() for _, a in getaddresses([_header_text(compat, "To"), _header_text(compat, "Cc")]) if a]
     attachments = []
     for part in msg.iter_attachments():
         fn = part.get_filename()
@@ -302,6 +391,7 @@ def _parse_rfc822(raw: bytes, *, provider_id: str | None = None) -> FoundMessage
         in_reply_to=(str(msg["In-Reply-To"]).strip() if msg["In-Reply-To"] else None),
         references=(str(msg["References"]).strip() if msg["References"] else None),
         attachments=attachments,
+        to_addrs=to_addrs,
     )
 
 
@@ -360,6 +450,39 @@ async def _graph_search(db: AsyncSession, cfg: MailboxConfig, matchers: list[str
                 {"name": a.get("name"), "size": a.get("size"), "content_type": a.get("contentType")}
                 for a in (m.get("attachments") or []) if a.get("name")
             ],
+        ))
+    return out
+
+
+async def _graph_sent(db: AsyncSession, cfg: MailboxConfig, since: datetime) -> list[FoundMessage]:
+    access = await _graph_access(db, cfg)
+    params = {
+        "$filter": f"sentDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        "$orderby": "sentDateTime desc",
+        "$top": "100",
+        "$select": "id,subject,toRecipients,ccRecipients,sentDateTime,internetMessageId,body",
+    }
+    headers = {"Authorization": f"Bearer {access}", "Prefer": 'outlook.body-content-type="text"'}
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(f"{graph_path._GRAPH}/me/mailFolders/sentitems/messages", params=params, headers=headers)
+    if r.status_code >= 400:
+        raise MailIntakeError(ERR_MAILBOX_UNREACHABLE, f"graph {r.status_code}")
+    out: list[FoundMessage] = []
+    for m in r.json().get("value", []):
+        try:
+            sent = datetime.fromisoformat(m["sentDateTime"].replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        rcpts = [((x.get("emailAddress") or {}).get("address") or "").lower()
+                 for x in (m.get("toRecipients") or []) + (m.get("ccRecipients") or [])]
+        out.append(FoundMessage(
+            message_id=(m.get("internetMessageId") or "").strip(),
+            received_at=sent.astimezone(timezone.utc).replace(tzinfo=None),
+            subject=m.get("subject") or "",
+            from_addr=(cfg.email_address or "").lower(),
+            text=((m.get("body") or {}).get("content") or ""),
+            provider_id=m.get("id"),
+            to_addrs=[a for a in rcpts if a],
         ))
     return out
 

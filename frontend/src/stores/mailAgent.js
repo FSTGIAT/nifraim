@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref } from 'vue'
 import api from '../api/client.js'
 
@@ -15,6 +15,12 @@ export const useMailAgentStore = defineStore('mailAgent', () => {
   const polling = ref(false)
   const busy = ref('')              // which action is running on the selected item
   const error = ref('')
+  // Writing-style profile (the first-run workshop). `profileState` is the
+  // whole GET /profile payload; `workshopOpen` shows the workshop in place of
+  // the inbox inside the Mail Agent modal.
+  const profileState = ref(null)
+  const workshopOpen = ref(false)
+  const styleJustDone = ref(false)   // one-shot: the inbox plays the pencil "landing"
 
   function detail(e, fallback) {
     const d = e?.response?.data?.detail
@@ -132,9 +138,47 @@ export const useMailAgentStore = defineStore('mailAgent', () => {
     await Promise.all([fetchSummary(), fetchSuggestions()])
   }
 
+  async function fetchProfile() {
+    profileState.value = (await api.get('/mail-agent/profile')).data
+    return profileState.value
+  }
+
+  // PUT is partial: only the fields passed change. Throws with a readable detail.
+  async function saveProfile(patch) {
+    try {
+      profileState.value = (await api.put('/mail-agent/profile', patch)).data
+      return profileState.value
+    } catch (e) {
+      throw new Error(detail(e, 'השמירה נכשלה'))
+    }
+  }
+
+  async function learnStyle() {
+    try {
+      const { data } = await api.post('/mail-agent/profile/learn', null, { timeout: 120000 })
+      await fetchProfile()
+      return data
+    } catch (e) {
+      throw new Error(detail(e, 'הלמידה נכשלה'))
+    }
+  }
+
+  async function previewStyle(profile, kind) {
+    try {
+      return (await api.post('/mail-agent/profile/preview', { ...profile, kind }, { timeout: 120000 })).data
+    } catch (e) {
+      throw new Error(detail(e, 'לא הצלחנו לכתוב דוגמה'))
+    }
+  }
+
   return {
+    profileState, workshopOpen, styleJustDone, fetchProfile, saveProfile, learnStyle, previewStyle,
     summary, items, filter, selected, senders, suggestions, loading, polling, busy, error,
     fetchSummary, fetchItems, refreshAll, openItem, regenerate, saveDraft, send, dismiss,
     importFile, pollNow, fetchSenders, fetchSuggestions, addSender, removeSender,
   }
 })
+
+// Dev only: without this, an edit to this file hot-swaps the components but
+// keeps the OLD store instance — new actions show up as "is not a function".
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useMailAgentStore, import.meta.hot))

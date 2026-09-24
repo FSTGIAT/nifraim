@@ -10,7 +10,11 @@
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
-          <div class="mam-scroll">
+          <!-- First open (or "סגנון הכתיבה שלי"): the writing-style workshop
+               stands in for the inbox. Nothing renders until the profile is
+               known, so the inbox never flashes before the workshop. -->
+          <MailStyleWorkshop v-if="store.workshopOpen" @done="store.workshopOpen = false" />
+          <div v-else-if="profileKnown" class="mam-scroll">
             <MailTab />
           </div>
         </div>
@@ -20,21 +24,49 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import MailTab from './MailTab.vue'
+import MailStyleWorkshop from './MailStyleWorkshop.vue'
+import { useMailAgentStore } from '../../stores/mailAgent.js'
 
 const props = defineProps({ open: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
 
-function close() { emit('close') }
+const store = useMailAgentStore()
+const profileKnown = ref(false)
+
+watch(() => props.open, async (isOpen) => {
+  // The messenger pill (bottom-right, z 1400) sits exactly on this card's
+  // primary buttons; tuck it away while the agent is open.
+  document.body.classList.toggle('mam-open', isOpen)
+  if (!isOpen) { store.workshopOpen = false; profileKnown.value = false; return }
+  try {
+    const s = await store.fetchProfile()
+    if (s?.needs_workshop) store.workshopOpen = true
+  } catch { /* unpaid / offline: the inbox shows its own state */ }
+  profileKnown.value = true
+}, { immediate: true })
+
+// ✕ / Escape inside the workshop steps back to the inbox, not out of the agent.
+function close() {
+  if (store.workshopOpen) { store.workshopOpen = false; return }
+  emit('close')
+}
 // MailTab handles Escape first (capture) for its drawer / senders list and
 // marks the event; only an unused Escape closes the whole agent.
 function onKey(e) {
   if (e.key === 'Escape' && props.open && !e.defaultPrevented) close()
 }
 onMounted(() => window.addEventListener('keydown', onKey))
-onUnmounted(() => window.removeEventListener('keydown', onKey))
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKey)
+  document.body.classList.remove('mam-open')
+})
 </script>
+
+<style>
+body.mam-open .msgr-pill { visibility: hidden; }
+</style>
 
 <style scoped>
 .mam-overlay {

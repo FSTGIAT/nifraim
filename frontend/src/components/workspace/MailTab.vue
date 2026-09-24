@@ -39,6 +39,17 @@
             <span>שולחים</span>
             <span class="ml-count ltr-number">{{ summary.watched_senders }}</span>
           </button>
+          <!-- Once the workshop is done, the big animated door shrinks to this
+               pencil beside שולחים (it "lands" here right after finishing). -->
+          <button
+            v-if="styleDone" class="ml-icon-btn ml-icon-btn--only" :class="{ 'ml-pencil--land': pencilLand }"
+            type="button" title="סגנון הכתיבה שלי" aria-label="סגנון הכתיבה שלי" @click="store.workshopOpen = true"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
           <Transition name="fade"><span v-if="pollNote" class="ml-poll-note" role="status">{{ pollNote }}</span></Transition>
         </div>
       </div>
@@ -59,13 +70,19 @@
 
     <!-- Connected, nobody watched -->
     <section v-else-if="!summary.watched_senders" class="ml-empty">
-      <BigAddButton label="בחירת שולחים" color="var(--tab-mail)" :size="156" @click="openSenders">
-        <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.6"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0" /><path d="M19 8v6M16 11h6" />
-        </svg>
-      </BigAddButton>
-      <p class="ml-empty-title">ממי ה-AI יקרא?</p>
+      <div class="ml-doors">
+        <div class="ml-door">
+          <BigAddButton label="בחירת שולחים" color="var(--tab-mail)" :size="156" @click="openSenders">
+            <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0" /><path d="M19 8v6M16 11h6" />
+            </svg>
+          </BigAddButton>
+        </div>
+        <div v-if="!styleDone" class="ml-door">
+          <StyleDoor :nudge="styleSkipped" @click="store.workshopOpen = true" />
+        </div>
+      </div>
     </section>
 
     <template v-else>
@@ -118,6 +135,7 @@
             <span>{{ store.polling ? 'סורק…' : 'מאזין' }}</span>
             <span v-if="!store.polling" class="ml-listen-n ltr-number">{{ summary.watched_senders }}</span>
           </p>
+          <StyleDoor v-if="!styleDone" small :nudge="styleSkipped" @click="store.workshopOpen = true" />
           <div v-if="topSuggestions.length" class="ml-quick">
             <span class="ml-quick-label">להוסיף?</span>
             <button
@@ -349,6 +367,7 @@ import HachsharaMailModal from './HachsharaMailModal.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import Typewriter from '../common/Typewriter.vue'
 import MailListenRadar from './MailListenRadar.vue'
+import StyleDoor from './StyleDoor.vue'
 
 const store = useMailAgentStore()
 const summary = computed(() => store.summary)
@@ -362,6 +381,18 @@ const CATEGORY = {
 const STATUS = {
   new: 'חדש', needs_reply: 'דורש תשובה', drafted: 'טיוטה מוכנה', sent: 'נשלח', done: 'טופל', dismissed: 'הוסתר',
 }
+
+// "אחר כך" was pressed and the workshop never finished — keep a quiet nudge.
+const styleSkipped = computed(() => !!store.profileState && !store.profileState.completed_at)
+const styleDone = computed(() => !!store.profileState?.completed_at)
+// Right after "זה נשמע כמוני" the pencil plays a one-time landing.
+const pencilLand = ref(false)
+onMounted(() => {
+  if (!store.styleJustDone) return
+  store.styleJustDone = false
+  pencilLand.value = true
+  setTimeout(() => { pencilLand.value = false }, 4000)
+})
 
 const topSuggestions = computed(() => store.suggestions.slice(0, 3))
 
@@ -592,6 +623,20 @@ onMounted(async () => {
 .ml-icon-btn:hover:not(:disabled) { border-color: var(--ml-acc); color: var(--ml-ink); }
 .ml-icon-btn:disabled { opacity: 0.6; cursor: default; }
 .ml-icon-btn:focus-visible { outline: 2px solid var(--ml-acc); outline-offset: 2px; }
+.ml-icon-btn--only { padding-inline: 9px; }
+.ml-pencil--land { animation: ml-land 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes ml-land {
+  0% { transform: scale(2.6) translateY(40px); opacity: 0; box-shadow: 0 0 0 0 var(--ml-wash); }
+  55% { transform: scale(0.92); opacity: 1; box-shadow: 0 0 0 10px var(--ml-wash); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .ml-pencil--land { animation: none; } }
+/* Two doors in the empty state: the round one adds senders, the rectangle
+   opens the writing-style workshop. Same height, different shape. */
+.ml-doors { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 40px; }
+/* Door centred in its row, caption on a shared baseline — the round button's
+   box is taller than the ring it draws. */
+.ml-door { display: grid; grid-template-rows: 1fr auto; justify-items: center; align-items: center; }
 .ml-rot { animation: ml-spin 0.9s linear infinite; }
 .ml-poll-note { font-size: 12px; font-weight: 700; color: var(--ml-ink); }
 
