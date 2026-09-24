@@ -69,6 +69,9 @@ class MailboxConfig(Base):
     # production file looks exactly like a quiet month.
     last_received_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # AI mail agent's own cursor (received-after), independent of the Hachshara
+    # delta_link / last_seen_uid so the two readers never steal from each other.
+    mail_agent_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_status: Mapped[str | None] = mapped_column(String(32))
     # A stable ERROR CODE, never a provider message. imaplib error strings can
     # echo the failed LOGIN line — password included — and AADSTS codes mean

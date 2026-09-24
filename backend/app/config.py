@@ -170,6 +170,12 @@ class Settings(BaseSettings):
     # Hachshara doesn't expose production in its agent portal — it emails a
     # `Ild_prod_*.zip`. We fetch it from the agent's mailbox, routed by the MX
     # record of their address (see services/mail_intake/detect.py).
+    # AI mail agent (services/mail_agent): reads ONLY senders the agent added,
+    # drafts replies the agent approves. Capped per user per day.
+    MAIL_AGENT_ENABLED: bool = True
+    MAIL_AGENT_POLL_MINUTES: int = 10
+    MAIL_AGENT_DAILY_AI_CALLS: int = 50
+    MAIL_AGENT_RETENTION_DAYS: int = 90
     HACHSHARA_MAIL_ENABLED: bool = False           # gates the scheduler poll
     HACHSHARA_MAIL_POLL_INTERVAL_MINUTES: int = 15
     # Separate Fernet key from PORTAL_CRED_FERNET_KEY — blast-radius isolation.

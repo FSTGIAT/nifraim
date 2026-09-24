@@ -288,6 +288,21 @@ def start_scheduler():
             id="maslaka_approval_watch",
             replace_existing=True,
         )
+    # AI mail agent — polls watched senders, triages + drafts. The job itself
+    # returns early when MAIL_AGENT_ENABLED is off.
+    from app.services.mail_agent.intake import purge_old_bodies, run_mail_agent_poll
+    scheduler.add_job(
+        run_mail_agent_poll,
+        IntervalTrigger(minutes=settings.MAIL_AGENT_POLL_MINUTES),
+        id="mail_agent_poll",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        purge_old_bodies,
+        CronTrigger(hour=3, minute=40, timezone="Asia/Jerusalem"),
+        id="mail_agent_retention",
+        replace_existing=True,
+    )
     scheduler.start()
     asyncio.create_task(_refresh_funds_if_stale())
     logger.info(
