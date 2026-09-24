@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { extractionOutcome } from '../utils/extractionReport'
 
@@ -48,16 +48,16 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Server-side extraction takes ~20-40s and emits no progress events. We
-  // time the bar based on elapsed seconds, not iteration count, so it feels
-  // steady regardless of jitter in `setInterval`:
-  //   • 0-25s after bytes-done  → 10% → 90% (linear ≈ 3.2 pp/s — visibly moving)
-  //   • 25-55s                  → 90% → 95% (slow trickle, ~0.17 pp/s)
+  // Server-side extraction emits no progress events. We time the bar based on
+  // elapsed seconds, not iteration count, so it feels steady regardless of
+  // jitter in `setInterval`:
+  //   • 0-120s after bytes-done → 10% → 90%
+  //   • 120-240s                → 90% → 95% (slow trickle)
   //   • response arrives        → snap to 100%
-  // The previous version decayed the increment asymptotically; that looked
-  // like the bar was stuck around 93%, which it kind of was — math, not bug.
-  const EXTRACT_FAST_MS = 25_000   // reach 90% in ~25 seconds
-  const EXTRACT_SLOW_MS = 30_000   // 90 → 95 over the next 30 seconds
+  // Measured 74–238s per agreement in production (2026-09-24). The old 25s
+  // ramp parked the bar at 95% for minutes, which read as a hang.
+  const EXTRACT_FAST_MS = 120_000  // reach 90% in ~2 minutes
+  const EXTRACT_SLOW_MS = 120_000  // 90 → 95 over the next 2 minutes
   function _startExtractionRamp() {
     uploadStage.value = 'extracting'
     uploadProgress.value = Math.max(uploadProgress.value, 10)
@@ -87,6 +87,97 @@ export const useChatStore = defineStore('chat', () => {
     uploadingDoc.value = false
     uploadStage.value = 'uploading'
     uploadProgress.value = 0
+  }
+
+  // Add an uploaded document to the list and tell the AI chat what it holds.
+  function _announceDocument(data) {
+    documents.value = [data, ...documents.value.filter(d => d.id !== data.id)]
+    const lines = [`**מסמך נוסף לידע ה-AI:** ${data.filename}`]
+    if (data.status === 'error') {
+      lines.push(`שגיאה בעיבוד: ${data.error || 'לא ניתן לקרוא את המסמך'}`)
+    } else {
+      if (data.summary) lines.push(data.summary)
+      if (data.companies_mentioned?.length) {
+        lines.push(`חברות: ${data.companies_mentioned.join(', ')}`)
+      }
+      // Always say what happened to the rates — including "nothing, and
+      // here is why". Silence on the zero case is what made a correct
+      // "this agreement has no rate table" read as a broken upload.
+      const rates = data.structured_data?.rates || []
+      lines.push(
+        extractionOutcome(data.structured_data?.extraction, rates).text,
+      )
+    }
+    messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
+  }
+
+  // ── Multi-file queue (agreement shelf) ──
+  // Extraction is 1–4 min per agreement, and the shelf used to take one file at
+  // a time: kiko's 15 agreements were an hour of babysitting (2026-09-24). The
+  // queue runs QUEUE_CONCURRENCY uploads at once; the server bounds its own
+  // Anthropic concurrency, so a larger batch just waits its turn there.
+  const QUEUE_CONCURRENCY = 3
+  // [{ key, name, size, status: 'queued'|'extracting'|'done'|'error',
+  //    startedAt, finishedAt, doc, error }]
+  const docQueue = ref([])
+  const queueBusy = computed(() =>
+    docQueue.value.some(i => i.status === 'queued' || i.status === 'extracting'),
+  )
+
+  async function _postDocument(item) {
+    item.status = 'extracting'
+    item.startedAt = Date.now()
+    try {
+      const form = new FormData()
+      form.append('file', item.file)
+      // rates_only: the shelf needs the rates, not the long AI summary
+      // (which was the slowest part of every upload).
+      const res = await fetch('/api/ai/documents/upload?rates_only=true', {
+        method: 'POST', headers: authHeaders(), body: form,
+      })
+      let data = null
+      try { data = await res.json() } catch { /* ignore */ }
+      if (res.ok && data) {
+        _announceDocument(data)
+        item.doc = data
+        item.status = data.status === 'error' ? 'error' : 'done'
+        if (data.status === 'error') item.error = data.error || 'לא ניתן לקרוא את המסמך'
+      } else {
+        item.status = 'error'
+        item.error = (data && data.detail) || 'העלאה נכשלה'
+      }
+    } catch {
+      item.status = 'error'
+      item.error = 'תקלת רשת'
+    } finally {
+      item.finishedAt = Date.now()
+      item.file = null
+    }
+  }
+
+  // Upload several PDFs, QUEUE_CONCURRENCY at a time. Resolves with the
+  // queue items once every file has finished (successfully or not).
+  async function uploadDocuments(files) {
+    const items = Array.from(files || []).map((file, i) => reactive({
+      key: `${Date.now()}-${i}-${file.name}`,
+      name: file.name, size: file.size, file,
+      status: 'queued', startedAt: null, finishedAt: null, doc: null, error: null,
+    }))
+    if (!items.length) return []
+    docQueue.value = [...docQueue.value.filter(i => i.status === 'queued' || i.status === 'extracting'), ...items]
+    let next = 0
+    const worker = async () => {
+      while (next < items.length) {
+        const item = items[next++]
+        await _postDocument(item)
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(QUEUE_CONCURRENCY, items.length) }, worker))
+    return items
+  }
+
+  function clearDocQueue() {
+    docQueue.value = docQueue.value.filter(i => i.status === 'queued' || i.status === 'extracting')
   }
 
   function uploadDocument(file) {
@@ -140,24 +231,7 @@ export const useChatStore = defineStore('chat', () => {
         let data = null
         try { data = JSON.parse(xhr.responseText) } catch { /* ignore */ }
         if (xhr.status >= 200 && xhr.status < 300 && data) {
-          documents.value = [data, ...documents.value.filter(d => d.id !== data.id)]
-          const lines = [`**מסמך נוסף לידע ה-AI:** ${data.filename}`]
-          if (data.status === 'error') {
-            lines.push(`שגיאה בעיבוד: ${data.error || 'לא ניתן לקרוא את המסמך'}`)
-          } else {
-            if (data.summary) lines.push(data.summary)
-            if (data.companies_mentioned?.length) {
-              lines.push(`חברות: ${data.companies_mentioned.join(', ')}`)
-            }
-            // Always say what happened to the rates — including "nothing, and
-            // here is why". Silence on the zero case is what made a correct
-            // "this agreement has no rate table" read as a broken upload.
-            const rates = data.structured_data?.rates || []
-            lines.push(
-              extractionOutcome(data.structured_data?.extraction, rates).text,
-            )
-          }
-          messages.value.push({ role: 'assistant', content: lines.join('\n\n') })
+          _announceDocument(data)
           finish(true, data)
         } else {
           const msg = (data && data.detail) || 'העלאה נכשלה'
@@ -321,6 +395,10 @@ export const useChatStore = defineStore('chat', () => {
     fetchSources,
     loadDocuments,
     uploadDocument,
+    uploadDocuments,
+    docQueue,
+    queueBusy,
+    clearDocQueue,
     cancelUpload,
     removeDocument,
   }

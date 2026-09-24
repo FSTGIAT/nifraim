@@ -16,6 +16,7 @@ import base64
 import io
 import logging
 import re
+import time
 
 import anthropic
 import pdfplumber
@@ -82,7 +83,9 @@ def _ocr_pdf(file_bytes: bytes) -> str:
     return "\n\n".join(out).strip()
 
 
-def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
+def extract_text_layer_with_source(
+    file_bytes: bytes, timing: dict | None = None,
+) -> tuple[str, str]:
     """Pull the text layer from a PDF and say WHERE it came from.
 
     Returns `(text, source)` with source in {"layer", "ocr", "none"}.
@@ -93,12 +96,16 @@ def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
     caller has to know that happened in order to say so; see `extract_pdf`.
 
     Each page is separated with a marker so Claude can cite page numbers.
+    When `timing` is given, it receives `pages`, `t_layer` and `t_ocr` (secs).
     """
     text = ""
     source = "none"
+    pages = 0
+    t0 = time.monotonic()
     try:
         out: list[str] = []
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            pages = len(pdf.pages)
             for i, page in enumerate(pdf.pages, start=1):
                 try:
                     page_text = page.extract_text() or ""
@@ -114,6 +121,8 @@ def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
     except Exception as e:
         logger.warning(f"pdfplumber extraction failed: {e}")
         text = ""
+    t_layer = time.monotonic() - t0
+    t_ocr = 0.0
 
     # Scanned / image-only PDF (little or no embedded text) → Hebrew OCR. Only
     # when the embedded layer is essentially absent, so text-native PDFs stay
@@ -123,7 +132,9 @@ def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
             "Embedded text layer %d chars (< %d) — running Hebrew OCR fallback",
             len(text), _MIN_TEXT_LAYER_CHARS,
         )
+        t1 = time.monotonic()
         ocr = _ocr_pdf(file_bytes)
+        t_ocr = time.monotonic() - t1
         if len(ocr) > len(text):
             text = ocr
             source = "ocr"
@@ -132,6 +143,8 @@ def extract_text_layer_with_source(file_bytes: bytes) -> tuple[str, str]:
         source = "none"
     if len(text) > _MAX_TEXT_LAYER_CHARS:
         text = text[:_MAX_TEXT_LAYER_CHARS] + "\n\n[... text layer truncated ...]"
+    if timing is not None:
+        timing.update(pages=pages, t_layer=round(t_layer, 1), t_ocr=round(t_ocr, 1))
     return text, source
 
 
@@ -140,10 +153,18 @@ def extract_text_layer(file_bytes: bytes) -> str:
     return extract_text_layer_with_source(file_bytes)[0]
 
 
-EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות ביטוח (הסכמי עמלות, חוזרים, טבלאות אחוזים) ומחלץ מהם נתונים מובנים.
+# The extraction runs as TWO concurrent calls over the same document — one
+# writes the rates table, the other the summary/full_content. Measured on
+# kiko's 15 agreements (2026-09-24): upload time tracked how much Hebrew the
+# model WROTE (74s for a short summary, 238s for Menora's 10K-char
+# full_content + 51 rates), so doing both halves in one tool call serialised
+# them. The prompt is split along the same seam; each half is unchanged.
+_PROMPT_INTRO = """אתה קורא מסמכים של חברות ביטוח (הסכמי עמלות, חוזרים, טבלאות אחוזים) ומחלץ מהם נתונים מובנים.
 
 זוהי הקריאה היחידה שלך למסמך — לאחר מכן ה-AI יענה על שאלות המשתמש על המסמך אך ורק על בסיס הפלט שלך.
+"""
 
+_PROMPT_RATES = """
 ==========================================================================
 חלק 1 — טבלת ה-rates (הכי חשוב — מוזרם ישירות ל-DB; שגיאות כאן משבשות חישובי עמלה):
 ==========================================================================
@@ -184,7 +205,9 @@ EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות בי�
 **תוקף ההסכם** — על **כל** רשומת rate שים effective_from / effective_to (YYYY-MM-DD).
 חפש ב"תוקף"/"מועדי תוקף" (למשל "01/01/2025 עד 31/12/2026"). זה קובע איזה הסכם חל
 על איזו פוליסה (פוליסה משנת 2018 נשפטת לפי הסכם 2018). אם אין תאריכים — השאר ריק.
+"""
 
+_PROMPT_CONTENT = """
 ==========================================================================
 חלק 2 — full_content (סיכום מובנה בעברית Markdown, עד ~2500 מילים):
 ==========================================================================
@@ -201,6 +224,19 @@ EXTRACTION_SYSTEM_PROMPT = """אתה קורא מסמכים של חברות בי�
 
 `companies`: שמות חברות עיקריות בלבד. `summary`: 2–3 משפטים בעברית.
 """
+
+RATES_SYSTEM_PROMPT = (
+    _PROMPT_INTRO + _PROMPT_RATES
+    + "\nבקריאה זו החזר את שורות ה-rates, את doc_type ואת companies (שמות חברות "
+    "עיקריות בלבד), ו-summary של משפט אחד. אל תכתוב סיכום מלא.\n"
+)
+CONTENT_SYSTEM_PROMPT = (
+    _PROMPT_INTRO
+    + "\nבקריאה זו כתוב את full_content / summary / companies / doc_type בלבד — "
+    "טבלת ה-rates המובנית נשלפת בקריאה נפרדת, אך full_content עדיין חייב לתאר את "
+    "טבלאות העמלה כפי שמפורט למטה.\n"
+    + _PROMPT_CONTENT
+)
 
 
 EXTRACT_TOOL = {
@@ -307,6 +343,43 @@ RATES_ONLY_TOOL = {
         "type": "object",
         "required": ["rates"],
         "properties": {"rates": EXTRACT_TOOL["input_schema"]["properties"]["rates"]},
+    },
+}
+
+# The content half of the split extraction: everything EXTRACT_TOOL asks for
+# except rates[], which the concurrent rates call (RATES_ONLY_TOOL) returns.
+CONTENT_TOOL = {
+    "name": "save_document_content",
+    "description": EXTRACT_TOOL["description"],
+    "input_schema": {
+        "type": "object",
+        "required": ["doc_type", "companies", "summary", "full_content"],
+        "properties": {
+            k: v for k, v in EXTRACT_TOOL["input_schema"]["properties"].items()
+            if k != "rates"
+        },
+    },
+}
+
+# The rates call used by `extract_pdf`. Same rates schema, plus the few fields
+# that place the document on the shelf even when it yields no rates
+# (`/commission-rates/agreements` falls back to companies_mentioned) — so a
+# rates-only upload doesn't need the slow content call at all.
+RATES_DOC_TOOL = {
+    "name": "save_rates",
+    "description": RATES_ONLY_TOOL["description"],
+    "input_schema": {
+        "type": "object",
+        "required": ["doc_type", "companies", "rates"],
+        "properties": {
+            "doc_type": EXTRACT_TOOL["input_schema"]["properties"]["doc_type"],
+            "companies": EXTRACT_TOOL["input_schema"]["properties"]["companies"],
+            "summary": {
+                "type": "string",
+                "description": "משפט אחד בעברית: איזה הסכם זה (חברה, סוג, תקופה).",
+            },
+            "rates": EXTRACT_TOOL["input_schema"]["properties"]["rates"],
+        },
     },
 }
 
@@ -539,25 +612,26 @@ async def _extract_rates_only(
 
     Runs on the pdfplumber/OCR text alone (no PDF images → fast) with a tight
     rates-only schema. Returns the RAW rates list (caller normalizes)."""
-    resp = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=16384,
-        system=RATES_ONLY_SYSTEM_PROMPT,
-        tools=[RATES_ONLY_TOOL],
-        tool_choice={"type": "tool", "name": "save_rates"},
-        messages=[{
-            "role": "user",
-            "content": [{
-                "type": "text",
-                "text": (
-                    f"שם הקובץ: {filename}\n\n"
-                    "טקסט מלא של ההסכם:\n\n"
-                    f"{text_layer}\n\n"
-                    "חלץ כל שורת עמלת נפרעים מהטבלאות שלמעלה."
-                ),
+    async with _CLAUDE_SLOTS:
+        resp = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=16384,
+            system=RATES_ONLY_SYSTEM_PROMPT,
+            tools=[RATES_ONLY_TOOL],
+            tool_choice={"type": "tool", "name": "save_rates"},
+            messages=[{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": (
+                        f"שם הקובץ: {filename}\n\n"
+                        "טקסט מלא של ההסכם:\n\n"
+                        f"{text_layer}\n\n"
+                        "חלץ כל שורת עמלת נפרעים מהטבלאות שלמעלה."
+                    ),
+                }],
             }],
-        }],
-    )
+        )
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and getattr(block, "name", "") == "save_rates":
             raw = getattr(block, "input", None)
@@ -567,171 +641,249 @@ async def _extract_rates_only(
     return []
 
 
-async def extract_pdf(file_bytes: bytes, filename: str) -> dict:
+# Sonnet 4.6 reads complex Hebrew RTL agreements (scrambled pdfplumber text +
+# PDF images) far more reliably than 4.0, which silently returned `rates=[]`
+# on the Menora 2025 insurance agreement even though it set summary/doc_type.
+# max_tokens 16384: full_content alone is ~2500 words (~6K tokens) and a long
+# agreement's rates array can be as large again.
+_MODEL_LADDER = (
+    ("claude-sonnet-4-6", 0),
+    ("claude-sonnet-4-6", 2),
+    ("claude-haiku-4-5-20251001", 1),
+)
+
+# Every upload makes two concurrent calls, and the shelf uploads several files
+# at once — bound how many generations this process runs against Anthropic so a
+# batch of 15 agreements queues here instead of tripping rate limits.
+_CLAUDE_SLOTS = asyncio.Semaphore(6)
+
+
+async def _forced_tool_call(
+    client: "anthropic.AsyncAnthropic",
+    *,
+    label: str,
+    system: str,
+    tool: dict,
+    blocks: list[dict],
+    timing: dict,
+) -> dict:
+    """One forced tool call walked down `_MODEL_LADDER`. Returns the tool input
+    dict and records model/attempt/secs/tokens/stop under `timing[label]` —
+    without those numbers a slow upload can't be told apart from a retry storm."""
+    last_error: Exception | None = None
+    for attempt, (model, delay) in enumerate(_MODEL_LADDER, start=1):
+        if delay:
+            await asyncio.sleep(delay)
+        async with _CLAUDE_SLOTS:
+            t0 = time.monotonic()
+            try:
+                resp = await client.messages.create(
+                    model=model,
+                    max_tokens=16384,
+                    system=system,
+                    tools=[tool],
+                    tool_choice={"type": "tool", "name": tool["name"]},
+                    messages=[{"role": "user", "content": blocks}],
+                )
+            except anthropic.APIError as e:
+                last_error = e
+                logger.warning(
+                    "doc_extraction.%s attempt=%d model=%s failed after %.1fs: %s",
+                    label, attempt, model, time.monotonic() - t0, e,
+                )
+                continue
+            secs = time.monotonic() - t0
+        usage = getattr(resp, "usage", None)
+        timing[label] = {
+            "model": model,
+            "attempt": attempt,
+            "secs": round(secs, 1),
+            "in_tok": getattr(usage, "input_tokens", None),
+            "out_tok": getattr(usage, "output_tokens", None),
+            "stop": getattr(resp, "stop_reason", None),
+        }
+        for block in resp.content:
+            if getattr(block, "type", None) == "tool_use" and getattr(block, "name", "") == tool["name"]:
+                raw = getattr(block, "input", None)
+                if isinstance(raw, dict):
+                    return raw
+        last_error = ValueError(f"{model} did not return a {tool['name']} tool_use block")
+        logger.warning("doc_extraction.%s attempt=%d: %s", label, attempt, last_error)
+    raise ValueError(f"{label} extraction failed after all retries: {last_error}")
+
+
+async def extract_pdf(file_bytes: bytes, filename: str, rates_only: bool = False) -> dict:
     """Send a PDF to Claude and return parsed structured output.
 
-    Uses tool_use so the response is always a validated dict matching
-    EXTRACT_TOOL.input_schema. Includes the pdfplumber-extracted text layer
-    in the response under the `text_layer` key (consumed by chat to attach
-    deterministic text alongside the page-images on doc-oriented questions).
+    Two forced tool calls run concurrently over the same document — rates
+    (RATES_DOC_TOOL) and content (CONTENT_TOOL) — so the upload waits for the
+    longer of the two generations instead of their sum. Includes the
+    pdfplumber/OCR text layer under `text_layer` (chat re-attaches it on
+    doc-oriented questions).
+
+    `rates_only` skips the content call. The agreement shelf only needs the
+    rates, and the content call (5–9K tokens of Hebrew full_content) was the
+    slowest part of every upload: measured 117–209s against 4–100s for rates
+    on kiko's agreements (2026-09-24). Chat Q&A still works on such a document
+    — it re-attaches the stored PDF itself.
     """
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
+    t_start = time.monotonic()
+    timing: dict = {}
     text_layer, text_source = await asyncio.to_thread(
-        extract_text_layer_with_source, file_bytes
+        extract_text_layer_with_source, file_bytes, timing
     )
     has_text_layer = len(text_layer) >= _MIN_TEXT_LAYER_CHARS
 
     pdf_b64 = base64.standard_b64encode(file_bytes).decode("ascii")
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-    instruction_text = (
-        f"שם הקובץ: {filename}\n\n"
-        "קרא את המסמך וקרא ל-save_extracted_document עם כל השדות הנדרשים. "
-        "full_content צריך לכסות את כל הסעיפים החשובים, אבל תמציתית — עד ~2500 מילים."
+    # Retries are owned by `_MODEL_LADDER`; SDK-level retries on top of it
+    # would silently multiply one bad multi-minute generation. 600s: a full
+    # 16K-token generation at the measured ~45–55 tok/s is 300–370s, so a
+    # shorter timeout would cut off legitimate long agreements.
+    client = anthropic.AsyncAnthropic(
+        api_key=settings.ANTHROPIC_API_KEY, max_retries=0, timeout=600,
     )
-    if has_text_layer:
-        instruction_text += (
-            "\n\n**מצורף שכבת הטקסט המלאה של ה-PDF (pdfplumber)**. "
-            "השתמש בה כמקור אמת לשמות מוצרים, מספרים, ושמות סעיפים — "
-            "ב-PDF המצורף יש גם תמונות עמוד אם תזדקק להן לפריסת טבלאות."
+
+    def _blocks(instruction: str) -> list[dict]:
+        if has_text_layer:
+            instruction += (
+                "\n\n**מצורף שכבת הטקסט המלאה של ה-PDF (pdfplumber)**. "
+                "השתמש בה כמקור אמת לשמות מוצרים, מספרים, ושמות סעיפים — "
+                "ב-PDF המצורף יש גם תמונות עמוד אם תזדקק להן לפריסת טבלאות."
+            )
+        blocks: list[dict] = [{
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+        }]
+        if has_text_layer:
+            blocks.append({
+                "type": "text",
+                "text": f"### שכבת טקסט מה-PDF (לקריאה דטרמיניסטית):\n\n{text_layer}",
+            })
+        blocks.append({"type": "text", "text": f"שם הקובץ: {filename}\n\n{instruction}"})
+        return blocks
+
+    t_claude = time.monotonic()
+    rates_call = _forced_tool_call(
+        client, label="rates", system=RATES_SYSTEM_PROMPT, tool=RATES_DOC_TOOL,
+        blocks=_blocks(
+            "קרא את המסמך וקרא ל-save_rates עם כל שורות עמלת הנפרעים שבו."
+        ),
+        timing=timing,
+    )
+    if rates_only:
+        rates_input = await rates_call
+        content_input = {}
+    else:
+        content_input, rates_input = await asyncio.gather(
+            _forced_tool_call(
+                client, label="content", system=CONTENT_SYSTEM_PROMPT, tool=CONTENT_TOOL,
+                blocks=_blocks(
+                    "קרא את המסמך וקרא ל-save_document_content עם כל השדות הנדרשים. "
+                    "full_content צריך לכסות את כל הסעיפים החשובים, אבל תמציתית — עד ~2500 מילים."
+                ),
+                timing=timing,
+            ),
+            rates_call,
+        )
+    timing["t_claude"] = round(time.monotonic() - t_claude, 1)
+    # The content call owns doc_type/companies/summary when it runs; the
+    # rates call's copies fill in when it doesn't.
+    doc_fields = {**rates_input, **{k: v for k, v in content_input.items() if v}}
+
+    companies = doc_fields.get("companies") or []
+    if not isinstance(companies, list):
+        companies = []
+    rates = rates_input.get("rates") or []
+    if not isinstance(rates, list):
+        rates = []
+
+    dropped: list[dict] = []
+    normalized = _normalize_and_validate_rates(
+        rates, text_layer if has_text_layer else "", dropped
+    )
+
+    # Fallback: the rates call returned nothing usable but the text layer
+    # clearly holds a rate table (the מנורה miss). One more focused pass over
+    # the text alone to recover the table.
+    if not normalized and has_text_layer and _looks_like_rate_table(text_layer):
+        logger.warning(
+            "viz_extraction.empty_rates_fallback file=%s — rates pass returned 0 "
+            "rates but text layer has a rate table; running text-only rates pass",
+            filename,
+        )
+        try:
+            fb_rates = await _extract_rates_only(client, text_layer, filename)
+            dropped = []
+            rates = fb_rates
+            normalized = _normalize_and_validate_rates(fb_rates, text_layer, dropped)
+            logger.info(
+                "viz_extraction.empty_rates_fallback file=%s recovered=%d rows",
+                filename, len(normalized),
+            )
+        except (ValueError, anthropic.APIError) as e:
+            logger.warning("viz_extraction.empty_rates_fallback failed file=%s: %s", filename, e)
+
+    if not normalized and _looks_like_rate_table(text_layer):
+        logger.warning(
+            "viz_extraction.zero_rates_after_fallback file=%s — a rate table "
+            "appears present but no נפרעים rows were extracted; needs review",
+            filename,
         )
 
-    user_blocks: list[dict] = [
-        {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": pdf_b64,
-            },
+    full_content = (doc_fields.get("full_content") or "").strip() or None
+
+    # Why the shelf is about to not move. Without this the UI has
+    # nothing to say and stays silent (see `stores/chat.js`), which
+    # reads to the agent as "the upload did nothing".
+    appendix = _appendix_reference(text_layer, full_content)
+    zero_reason = None
+    if not normalized:
+        if dropped:
+            zero_reason = "all_rows_dropped"
+        elif appendix:
+            zero_reason = "appendix_missing"
+        elif _looks_like_rate_table(text_layer):
+            zero_reason = "rate_table_present_but_unparsed"
+        elif text_source == "none":
+            zero_reason = "no_readable_text"
+        else:
+            zero_reason = "no_rates_in_document"
+
+    timing["total"] = round(time.monotonic() - t_start, 1)
+    ct, rt = timing.get("content", {}), timing.get("rates", {})
+    # WARNING, not INFO: app INFO lines never reach Railway's log stream.
+    logger.warning(
+        "doc_extraction.timing file=%s pages=%s src=%s t_layer=%s t_ocr=%s "
+        "content=%ss/%s/att%s/in%s/out%s/%s rates=%ss/%s/att%s/in%s/out%s/%s "
+        "t_claude=%s total=%s",
+        filename, timing.get("pages"), text_source, timing.get("t_layer"), timing.get("t_ocr"),
+        ct.get("secs"), ct.get("model"), ct.get("attempt"), ct.get("in_tok"), ct.get("out_tok"), ct.get("stop"),
+        rt.get("secs"), rt.get("model"), rt.get("attempt"), rt.get("in_tok"), rt.get("out_tok"), rt.get("stop"),
+        timing.get("t_claude"), timing["total"],
+    )
+
+    return {
+        "doc_type": doc_fields.get("doc_type") or "other",
+        "companies": [str(c).strip() for c in companies if c],
+        "summary": (doc_fields.get("summary") or "").strip() or None,
+        "full_content": full_content,
+        "rates": normalized,
+        "text_layer": text_layer or None,
+        "text_source": text_source,
+        "extraction": {
+            "proposed": len(rates),
+            "kept": len(normalized),
+            "dropped": dropped,
+            # False ⇒ `_value_appears_in_text` could not run, so nothing
+            # here was checked against the document's own words.
+            "verified": bool(has_text_layer),
+            "text_source": text_source,
+            "appendix_ref": appendix,
+            "zero_reason": zero_reason,
+            "mode": "rates_only" if rates_only else "full",
+            "timing": timing,
         },
-    ]
-    if has_text_layer:
-        user_blocks.append({
-            "type": "text",
-            "text": f"### שכבת טקסט מה-PDF (לקריאה דטרמיניסטית):\n\n{text_layer}",
-        })
-    user_blocks.append({"type": "text", "text": instruction_text})
-
-    # Sonnet 4.6 reads complex Hebrew RTL agreements (scrambled pdfplumber text +
-    # PDF images) far more reliably than 4.0, which silently returned `rates=[]`
-    # on the Menora 2025 insurance agreement even though it set summary/doc_type.
-    # max_tokens bumped to 16384 because the tool call has to fit
-    # full_content (~2500 words ≈ 6K tokens) AND a potentially long rates array.
-    attempts = [
-        ("claude-sonnet-4-6", 0),
-        ("claude-sonnet-4-6", 2),
-        ("claude-haiku-4-5-20251001", 1),
-    ]
-    last_error: Exception | None = None
-
-    for model, delay in attempts:
-        if delay:
-            await asyncio.sleep(delay)
-        try:
-            resp = await client.messages.create(
-                model=model,
-                max_tokens=16384,
-                system=EXTRACTION_SYSTEM_PROMPT,
-                tools=[EXTRACT_TOOL],
-                tool_choice={"type": "tool", "name": "save_extracted_document"},
-                messages=[{"role": "user", "content": user_blocks}],
-            )
-
-            tool_input: dict | None = None
-            for block in resp.content:
-                if getattr(block, "type", None) == "tool_use" and getattr(block, "name", "") == "save_extracted_document":
-                    raw = getattr(block, "input", None)
-                    if isinstance(raw, dict):
-                        tool_input = raw
-                        break
-            if tool_input is None:
-                raise ValueError("Model did not return a tool_use block")
-
-            companies = tool_input.get("companies") or []
-            if not isinstance(companies, list):
-                companies = []
-            rates = tool_input.get("rates") or []
-            if not isinstance(rates, list):
-                rates = []
-
-            dropped: list[dict] = []
-            normalized = _normalize_and_validate_rates(
-                rates, text_layer if has_text_layer else "", dropped
-            )
-
-            # Fallback: main pass returned no rates but the text layer clearly
-            # holds a rate table (the מנורה miss). Run one focused rates-only
-            # pass over the text to recover the table.
-            if not normalized and has_text_layer and _looks_like_rate_table(text_layer):
-                logger.warning(
-                    "viz_extraction.empty_rates_fallback file=%s — main pass returned 0 "
-                    "rates but text layer has a rate table; running rates-only pass",
-                    filename,
-                )
-                try:
-                    fb_rates = await _extract_rates_only(client, text_layer, filename)
-                    dropped = []
-                    rates = fb_rates
-                    normalized = _normalize_and_validate_rates(fb_rates, text_layer, dropped)
-                    logger.info(
-                        "viz_extraction.empty_rates_fallback file=%s recovered=%d rows",
-                        filename, len(normalized),
-                    )
-                except (ValueError, anthropic.APIError, anthropic.APIStatusError) as e:
-                    logger.warning("viz_extraction.empty_rates_fallback failed file=%s: %s", filename, e)
-
-            if not normalized and _looks_like_rate_table(text_layer):
-                logger.warning(
-                    "viz_extraction.zero_rates_after_fallback file=%s — a rate table "
-                    "appears present but no נפרעים rows were extracted; needs review",
-                    filename,
-                )
-
-            full_content = (tool_input.get("full_content") or "").strip() or None
-
-            # Why the shelf is about to not move. Without this the UI has
-            # nothing to say and stays silent (see `stores/chat.js`), which
-            # reads to the agent as "the upload did nothing".
-            appendix = _appendix_reference(text_layer, full_content)
-            zero_reason = None
-            if not normalized:
-                if dropped:
-                    zero_reason = "all_rows_dropped"
-                elif appendix:
-                    zero_reason = "appendix_missing"
-                elif _looks_like_rate_table(text_layer):
-                    zero_reason = "rate_table_present_but_unparsed"
-                elif text_source == "none":
-                    zero_reason = "no_readable_text"
-                else:
-                    zero_reason = "no_rates_in_document"
-
-            return {
-                "doc_type": tool_input.get("doc_type") or "other",
-                "companies": [str(c).strip() for c in companies if c],
-                "summary": (tool_input.get("summary") or "").strip() or None,
-                "full_content": full_content,
-                "rates": normalized,
-                "text_layer": text_layer or None,
-                "text_source": text_source,
-                "extraction": {
-                    "proposed": len(rates),
-                    "kept": len(normalized),
-                    "dropped": dropped,
-                    # False ⇒ `_value_appears_in_text` could not run, so nothing
-                    # here was checked against the document's own words.
-                    "verified": bool(has_text_layer),
-                    "text_source": text_source,
-                    "appendix_ref": appendix,
-                    "zero_reason": zero_reason,
-                },
-            }
-        except (ValueError, anthropic.APIError, anthropic.APIStatusError) as e:
-            last_error = e
-            logger.warning(f"PDF extraction attempt with {model} failed: {e}")
-            continue
-
-    raise ValueError(f"Failed to extract PDF after all retries: {last_error}")
+    }

@@ -10,10 +10,11 @@
         <h2 class="hero-title">מדף ההסכמים שלך</h2>
         <p v-if="!rates.length" class="hero-sub">העלו הסכם עמלות והשיעורים יופיעו כאן על המדף.</p>
         <div class="hero-actions">
-          <button class="btn-accent" @click="triggerUpload" :disabled="uploadingDoc">
-            <svg v-if="!uploadingDoc" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <span v-if="uploadingDoc" class="btn-spin" aria-hidden="true"></span>
-            {{ uploadingDoc ? 'מעבד הסכם…' : 'העלאת הסכם עמלות' }}
+          <button class="btn-accent" @click="triggerUpload" :disabled="queueBusy">
+            <svg v-if="!queueBusy" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span v-if="queueBusy" class="btn-spin" aria-hidden="true"></span>
+            <template v-if="queueBusy">מעבד הסכמים <span class="ltr-number">{{ queueDone }}/{{ docQueue.length }}</span></template>
+            <template v-else>העלאת הסכמי עמלות</template>
           </button>
           <!-- Opens the agreement bookcase. It lives behind a button rather
                than on the page: at 12 insurers the shelf was taller than the
@@ -28,12 +29,27 @@
             הוסף שורה ידנית
           </button>
           <button v-if="rates.length === 0" class="btn-ghost" @click="seedRates" :disabled="seeding">{{ seeding ? 'טוען…' : 'טען ברירת מחדל' }}</button>
-          <input ref="fileInput" type="file" accept="application/pdf" class="hidden-file" @change="onAgreementFile" />
+          <input ref="fileInput" type="file" accept="application/pdf" multiple class="hidden-file" @change="onAgreementFile" />
         </div>
+        <!-- One row per agreement in the batch. Each takes 1–4 minutes to read,
+             so the row shows a real elapsed clock instead of a bar that pretends
+             to know how far along the model is. -->
         <Transition name="fade">
-          <div v-if="uploadingDoc" class="hero-upload">
-            <div class="hu-bar"><div class="hu-fill" :style="{ width: uploadProgress + '%' }"></div></div>
-            <span class="hu-label">{{ uploadStage === 'uploading' ? 'מעלה קובץ…' : uploadStage === 'complete' ? 'הושלם — מרענן' : 'מחלץ שיעורי עמלה…' }}</span>
+          <div v-if="docQueue.length" class="up-queue">
+            <ul class="uq-list" aria-live="polite">
+              <li v-for="it in docQueue" :key="it.key" class="uq-row" :class="'uq-row--' + it.status">
+                <span class="uq-icon" aria-hidden="true">
+                  <span v-if="it.status === 'extracting'" class="uq-spin"></span>
+                  <svg v-else-if="it.status === 'done'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg v-else-if="it.status === 'error'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+                <span class="uq-name" :title="it.name">{{ it.name.replace(/\.pdf$/i, '') }}</span>
+                <span class="uq-meta">{{ queueMeta(it) }}</span>
+              </li>
+            </ul>
+            <p v-if="queueBusy" class="uq-note">קריאת הסכם לוקחת עד כ-2 דקות. אפשר לעבור לטאב אחר בינתיים.</p>
+            <button v-else-if="docQueue.length > 1" class="uq-clear" @click="chat.clearDocQueue()">נקה רשימה</button>
           </div>
         </Transition>
         <Transition name="fade"><p v-if="uploadError" class="hero-upload-error">שגיאה בהעלאה: {{ uploadError }}</p></Transition>
@@ -184,7 +200,7 @@
             </button>
 
             <!-- An insurer with rates but nothing signed behind them. -->
-            <button v-else class="slot" @click="triggerUpload" :disabled="uploadingDoc"
+            <button v-else class="slot" @click="triggerUpload" :disabled="queueBusy"
                     :title="`העלה הסכם עבור ${co.company}`">
               <span class="slot-plus">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -311,7 +327,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import api from '../../api/client.js'
 import { chartColor } from '../../utils/chartPalette.js'
@@ -336,7 +352,30 @@ const newForm = reactive({ company_name: '', product: '', rate: 0, rate_kind: 's
 const activeShelf = ref(null)
 
 const chat = useChatStore()
-const { uploadingDoc, uploadProgress, uploadStage, uploadError } = storeToRefs(chat)
+const { uploadError, docQueue, queueBusy } = storeToRefs(chat)
+const queueDone = computed(() => docQueue.value.filter(i => i.status === 'done' || i.status === 'error').length)
+
+// Seconds ticker for the queue's elapsed clocks — runs only while something is
+// being read.
+const now = ref(Date.now())
+let nowTimer = null
+watch(queueBusy, (busy) => {
+  clearInterval(nowTimer)
+  nowTimer = busy ? setInterval(() => { now.value = Date.now() }, 1000) : null
+}, { immediate: true })
+onBeforeUnmount(() => clearInterval(nowTimer))
+
+function mmss(ms) {
+  const sec = Math.max(0, Math.round(ms / 1000))
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+function queueMeta(it) {
+  if (it.status === 'queued') return 'ממתין בתור'
+  if (it.status === 'extracting') return `קורא את ההסכם ${mmss(now.value - it.startedAt)}`
+  if (it.status === 'error') return it.error || 'העלאה נכשלה'
+  const out = extractionOutcome(it.doc?.structured_data?.extraction, it.doc?.structured_data?.rates || [])
+  return out.text.split('\n\n')[0].replace(/\*\*/g, '')
+}
 const fileInput = ref(null)
 
 const ART = import.meta.glob('../../assets/commission-shelf/*.webp', { eager: true, import: 'default' })
@@ -609,18 +648,21 @@ async function openPdf(d) {
   }
 }
 
-function triggerUpload() { if (!uploadingDoc.value) fileInput.value?.click() }
+function triggerUpload() { if (!queueBusy.value) fileInput.value?.click() }
 async function onAgreementFile(e) {
-  const file = e.target.files && e.target.files[0]
+  const files = Array.from((e.target && e.target.files) || [])
   if (e.target) e.target.value = ''
-  if (!file) return
+  if (!files.length) return
   const before = new Set(rates.value.map(r => r.id))
   lastUpload.value = null
-  const doc = await chat.uploadDocument(file)
+  const items = await chat.uploadDocuments(files)
   await ratesChanged()
   const fresh = rates.value.filter(r => !before.has(r.id))
   if (fresh.length) activeShelf.value = categorize(fresh[0])
 
+  // A batch reports per file in the queue rows; the detailed card (with the
+  // dropped-rows list) is for a single agreement.
+  const doc = items.length === 1 ? items[0].doc : null
   if (doc && doc.status !== 'error') {
     const ex = doc.structured_data?.extraction
     const out = extractionOutcome(ex, doc.structured_data?.rates || [])
@@ -922,10 +964,19 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .btn-ghost:hover:not(:disabled) { border-color: var(--chart-4); color: var(--chart-4); }
 .btn-ghost:disabled { opacity: 0.5; cursor: default; }
 .hidden-file { display: none; }
-.hero-upload { display: flex; align-items: center; gap: 10px; margin-top: 12px; max-width: 420px; }
-.hu-bar { flex: 1 1 auto; height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--chart-2) 14%, white); overflow: hidden; }
-.hu-fill { height: 100%; border-radius: 999px; background: var(--chart-4); transition: width 0.3s var(--transition); }
-.hu-label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.up-queue { margin-top: 12px; max-width: 520px; display: flex; flex-direction: column; gap: 6px; }
+.uq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.uq-row { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border-subtle); font-size: 12.5px; }
+.uq-icon { flex-shrink: 0; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.uq-row--done .uq-icon { color: var(--green); }
+.uq-row--error .uq-icon, .uq-row--error .uq-meta { color: var(--red); }
+.uq-row--extracting .uq-icon { color: var(--chart-4); }
+.uq-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--chart-4) 30%, transparent); border-top-color: var(--chart-4); animation: spin 0.8s linear infinite; }
+.uq-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
+.uq-meta { flex-shrink: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.uq-note { margin: 2px 0 0; font-size: 11.5px; color: var(--text-muted); }
+.uq-clear { align-self: flex-start; border: none; background: none; padding: 2px 0; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; text-decoration: underline; }
+.uq-clear:hover { color: var(--chart-4); }
 .hero-upload-error { margin: 8px 0 0; font-size: 12px; color: var(--red); font-weight: 600; }
 
 /* ══ Coverage banner — how much of the portfolio the shelf actually prices ══ */
@@ -1089,6 +1140,6 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
   .col-email, .col-freq, .col-paidto { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .shelf-panel, .shelf-media, .company-binder, .hu-fill { transition: none !important; animation: none !important; }
+  .shelf-panel, .shelf-media, .company-binder, .uq-spin { transition: none !important; animation: none !important; }
 }
 </style>

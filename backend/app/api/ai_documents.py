@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select, desc, and_, delete as sql_delete
 from sqlalchemy.exc import IntegrityError
@@ -201,6 +201,9 @@ def _upsert_rates_from_doc(
 @router.post("/upload", response_model=AiDocumentOut)
 async def upload_document(
     file: UploadFile = File(...),
+    # The agreement shelf wants the rates only — skip the full_content call,
+    # the slowest part of extraction. Chat attachments keep the full read.
+    rates_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_paid_user),
 ):
@@ -215,6 +218,7 @@ async def upload_document(
     if not is_pdf:
         raise HTTPException(status_code=400, detail="כרגע נתמכים רק קבצי PDF")
 
+    started_at = datetime.now(timezone.utc)
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="הקובץ ריק")
@@ -254,12 +258,20 @@ async def upload_document(
         # into full_content, rates[] empty). Force a fresh run so the improved
         # prompt + rates-only fallback recover them.
         rates_missing = (not cached_rates) and (existing.extracted_text or "").count("%") >= 15
-        if (existing.status == "ready" and cached_full and has_file
-                and looks_complete and has_text_layer and rates_have_dates
-                and not rates_missing):
+        # A rates-only caller doesn't need full_content, so its absence (the
+        # normal state of a shelf-uploaded agreement) is no reason to re-run.
+        content_ok = rates_only or (cached_full and looks_complete)
+        if (existing.status == "ready" and has_file and content_ok
+                and has_text_layer and rates_have_dates and not rates_missing):
             return existing
+        # End the read transaction before the multi-minute Claude call — see
+        # the same commit on the first-upload path below.
+        await db.commit()
         try:
-            extracted = await extract_pdf(file_bytes, file.filename)
+            extracted = await extract_pdf(file_bytes, file.filename, rates_only=rates_only)
+            if rates_only and cached_full and not extracted.get("full_content"):
+                # Keep the full read an earlier chat upload paid for.
+                extracted["full_content"] = cached_full
             existing.doc_type = extracted.get("doc_type")
             existing.companies_mentioned = extracted.get("companies") or []
             existing.structured_data = extracted
@@ -325,9 +337,14 @@ async def upload_document(
         return existing
 
     # Run the extraction up-front (synchronous in the request lifetime).
-    # A typical commission agreement extraction takes 5–15 seconds.
+    # Measured 74–238s per agreement (kiko, 2026-09-24). Commit first: the auth
+    # + dedupe SELECTs opened a transaction, and holding it across the Claude
+    # call parked a pooled connection idle-in-transaction for minutes per
+    # upload — with several uploads in flight that starves every other request.
+    # The session opens a fresh transaction on its next statement.
+    await db.commit()
     try:
-        extracted = await extract_pdf(file_bytes, file.filename)
+        extracted = await extract_pdf(file_bytes, file.filename, rates_only=rates_only)
         status_val = "ready"
         err = None
     except Exception as e:
@@ -340,6 +357,9 @@ async def upload_document(
         filename=file.filename[:255],
         sha256=sha,
         size_bytes=len(file_bytes),
+        # Explicit: the server default (now()) would stamp the post-extraction
+        # transaction, and processed_at − uploaded_at is the extraction time.
+        uploaded_at=started_at,
         doc_type=extracted.get("doc_type"),
         companies_mentioned=extracted.get("companies") or [],
         structured_data=extracted,
