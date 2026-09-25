@@ -248,6 +248,82 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         await db.commit()
 
 
+# ─── The agent's bodies, and automatic monthly production ──────────────────
+async def agent_bodies(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """Every body a production report can be asked from, with how many of the
+    agent's own customers sit there (from their records) and whether a monthly
+    subscription (2100) is already open."""
+    from app.services.maslaka.code_tables import PROVIDER_CODE_TO_COMPANY, provider_code_for_company
+
+    counts: dict[str, int] = {}
+    rows = (await db.execute(
+        select(ClientRecord.receiving_company,
+               func.count(func.distinct(func.ltrim(ClientRecord.id_number, "0"))))
+        .where(ClientRecord.user_id == user_id)
+        .group_by(ClientRecord.receiving_company)
+    )).all()
+    for company, n in rows:
+        code = provider_code_for_company(company)
+        if code:
+            counts[code] = counts.get(code, 0) + int(n or 0)
+
+    monthly = set((await db.execute(
+        select(PensionInquiry.target_yatzran_id).where(
+            PensionInquiry.user_id == user_id,
+            PensionInquiry.interface_code == "events_v007:2100",
+            PensionInquiry.status.notin_(("failed", "expired")),
+        )
+    )).scalars().all())
+
+    out = [
+        {"id": code, "name": name, "clients": counts.get(code, 0), "monthly": code in monthly}
+        for code, name in PROVIDER_CODE_TO_COMPANY.items()
+    ]
+    out.sort(key=lambda b: (-b["clients"], b["name"]))
+    return out
+
+
+async def ensure_monthly_subscriptions(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Open a monthly production subscription (2100) with every body the agent
+    has customers at and is not yet subscribed to. Runs ONLY for an approved
+    agent who consented (`auto_production`). Returns how many were created —
+    as `pending` rows; the Gateway sends them."""
+    from app.models.maslaka_agent_link import MaslakaAgentLink
+    from app.services.maslaka.code_tables import label_for_provider
+
+    link = (await db.execute(
+        select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == user_id)
+    )).scalar_one_or_none()
+    if link is None or link.status != LINK_APPROVED or not link.auto_production or not link.agent_id_number:
+        return 0
+    created = 0
+    for b in await agent_bodies(db, user_id):
+        if b["clients"] > 0 and not b["monthly"]:
+            await create_inquiry(
+                db, user_id=user_id, customer_id_number=link.agent_id_number,
+                customer_name=label_for_provider(b["id"]), action_code="2100",
+                target_yatzran_id=b["id"],
+            )
+            created += 1
+    if created:
+        logger.info("maslaka.auto_production: user %s — opened %d monthly subscription(s)", user_id, created)
+    return created
+
+
+async def ensure_all_monthly_subscriptions(db: AsyncSession) -> int:
+    """Daily sweep: every consenting approved agent gets subscriptions for any
+    body that has appeared in their records since."""
+    from app.models.maslaka_agent_link import MaslakaAgentLink
+    users = (await db.execute(select(MaslakaAgentLink.user_id).where(
+        MaslakaAgentLink.status == LINK_APPROVED,
+        MaslakaAgentLink.auto_production == True,  # noqa: E712
+    ))).scalars().all()
+    total = 0
+    for uid in users:
+        total += await ensure_monthly_subscriptions(db, uid)
+    return total
+
+
 # ─── When should the answer arrive? ────────────────────────────────────────
 # Straight from Swiftness's published rules, so the agent is never left staring
 # at "נשלח" with no idea whether silence is normal:
@@ -845,8 +921,25 @@ async def get_enriched_picture(
         .order_by(PensionInquiry.created_at.desc())
     )).scalars().first()
 
+    # The name comes from a CUSTOMER request (9100/9101) or the agent's own
+    # records — never from a production request, whose name field is the insurer.
+    name = (last_inquiry.customer_name
+            if last_inquiry and (last_inquiry.interface_code or "").endswith((":9100", ":9101"))
+            else None)
+    if not name:
+        rec = (await db.execute(
+            select(ClientRecord.first_name, ClientRecord.last_name).where(
+                ClientRecord.user_id == user_id,
+                func.ltrim(ClientRecord.id_number, "0") == normalized,
+            ).limit(1)
+        )).first()
+        if rec:
+            name = " ".join(x for x in (rec[0], rec[1]) if x) or None
+    as_of = max((h.created_at for h in holdings if getattr(h, "created_at", None)), default=None)
+
     return {
-        "customer_name": last_inquiry.customer_name if last_inquiry else None,
+        "customer_name": name,
+        "as_of": as_of.isoformat() if as_of else None,
         "id_number": normalized,
         "products": products,
         "kpi": {

@@ -186,6 +186,11 @@ async def mark_approved(db: AsyncSession, link: MaslakaAgentLink) -> None:
     link.approved_at = datetime.utcnow()
     link.rejected_reason = None
     await db.commit()
+    # The agent consented (on the שיוך form step) to monthly production reports:
+    # open them now — approval is the moment the מסלקה lets us ask.
+    if link.auto_production:
+        from app.services.maslaka import orchestration
+        await orchestration.ensure_monthly_subscriptions(db, link.user_id)
 
 
 async def mark_rejected(db: AsyncSession, link: MaslakaAgentLink, reason: str) -> None:

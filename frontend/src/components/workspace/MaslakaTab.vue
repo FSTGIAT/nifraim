@@ -111,10 +111,10 @@
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
             </svg>
-            <span>בקשת מידע על לקוח</span>
+            <span>חיפוש לקוח</span>
           </h3>
           <span class="mk-ask-note">
-            הבקשה נשלחת פעם אחת, והתשובות מגיעות מכל הגופים המנהלים תוך ימי עסקים ספורים.
+            מציג מיד את מה שכבר התקבל מהמסלקה. לקוח שעדיין לא במאגר — נשלחת עבורו בקשה, והתשובה מגיעה תוך כמה שעות.
           </span>
         </div>
 
@@ -161,7 +161,7 @@
                  stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 12h13" /><path d="m12 6 6 6-6 6" />
             </svg>
-            <span>{{ busy ? 'שולח…' : 'בקש מידע' }}</span>
+            <span>{{ busy ? 'מחפש…' : 'חפש לקוח' }}</span>
           </button>
         </div>
 
@@ -170,6 +170,7 @@
         </p>
       </section>
 
+      <p v-if="askNote" class="mk-help mk-ask-sent" role="status">{{ askNote }}</p>
       <p v-if="askError" class="mk-error" role="alert">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -193,6 +194,12 @@
             כל הלקוחות שלך אצל הגופים שבחרת, בבקשה אחת לכל גוף. לא נדרש ייפוי כוח.
           </span>
         </div>
+        <label v-if="assoc?.status === 'approved'" class="mk-auto">
+          <input type="checkbox" :checked="!!assoc?.auto_production" :disabled="autoBusy" @change="toggleAuto" />
+          <span>
+            <strong>מנוי חודשי אוטומטי</strong> — גוף חדש שיופיע אצלך יתווסף לבד, והנתונים יגיעו עד ה-15 בכל חודש.
+          </span>
+        </label>
 
         <div class="mk-seg" role="radiogroup" aria-label="תדירות">
           <button type="button" role="radio" :aria-checked="prodFreq === 'once'"
@@ -328,8 +335,14 @@
         <div class="mk-picture-head">
           <div>
             <h3 class="mk-picture-name">{{ picture.customer_name || picture.id_number }}</h3>
-            <span class="mk-picture-sub">התמונה הפנסיונית שהתקבלה מהמסלקה</span>
+            <span class="mk-picture-sub">
+              התמונה הפנסיונית שהתקבלה מהמסלקה<template v-if="picture.as_of">, נכון ל-<span class="ltr-number">{{ formatDate(picture.as_of) }}</span></template>
+            </span>
           </div>
+          <div class="mk-picture-actions">
+          <button class="mk-ghost" :disabled="updateBusy || updateSent" @click="requestUpdate">
+            <span>{{ updateSent ? 'נשלחה בקשת עדכון' : (updateBusy ? 'שולח…' : 'בקש עדכון מהמסלקה') }}</span>
+          </button>
           <button class="mk-ghost" @click="picture = null">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
                  stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
@@ -337,15 +350,16 @@
             </svg>
             <span>סגור</span>
           </button>
+          </div>
         </div>
 
         <div class="mk-kpis">
           <div class="mk-kpi">
-            <span class="mk-kpi-n ltr-number">{{ money(picture.total_accumulation) }}</span>
+            <span class="mk-kpi-n ltr-number">{{ money(picture.kpi?.total_accumulation) }}</span>
             <span class="mk-kpi-l">סך צבירה</span>
           </div>
           <div class="mk-kpi">
-            <span class="mk-kpi-n ltr-number">{{ picture.products_count }}</span>
+            <span class="mk-kpi-n ltr-number">{{ picture.kpi?.product_count ?? picture.products?.length ?? 0 }}</span>
             <span class="mk-kpi-l">מוצרים</span>
           </div>
           <div class="mk-kpi">
@@ -583,19 +597,39 @@ async function sendProd() {
   }
 }
 
+const askNote = ref('')
+const updateBusy = ref(false)
+const updateSent = ref(false)
+
+// Search is DB-first: show what the monthly production files and earlier
+// answers already brought in, instantly. Only a customer we have nothing on
+// triggers a 9100 to the מסלקה (answer within hours).
 async function ask() {
   if (!canAsk.value) return
   askError.value = ''
+  askNote.value = ''
   busy.value = true
+  const id = idDigits.value
+  const name = customerName.value.trim() || null
   try {
-    await api.post('/maslaka/inquiry', {
-      customer_id_number: idDigits.value,
-      customer_name: customerName.value.trim() || null,
-    })
+    try {
+      const { data } = await api.get(`/maslaka/customer/${encodeURIComponent(id)}`)
+      picture.value = data
+      pictureError.value = ''
+      updateSent.value = false
+      idNumber.value = ''
+      customerName.value = ''
+      idTouched.value = false
+      return
+    } catch (e) {
+      if (e?.response?.status !== 404) throw e
+    }
+    await api.post('/maslaka/inquiry', { customer_id_number: id, customer_name: name })
+    askNote.value = 'הלקוח עדיין לא במאגר — נשלחה בקשה למסלקה. התשובה צפויה תוך כמה שעות, והיא תופיע ברשימה למטה.'
     idNumber.value = ''
     customerName.value = ''
     idTouched.value = false
-    await loadInquiries()
+    await loadInquiries({ silent: true })
   } catch (e) {
     // 403 + X-Maslaka-Association-Status: the server's association gate held
     // (status changed under the tab, e.g. an approval was revoked). Re-read the
@@ -603,9 +637,47 @@ async function ask() {
     if (e?.response?.status === 403 && e.response.headers?.['x-maslaka-association-status']) {
       await loadAssociation()
     }
-    askError.value = e?.response?.data?.detail || 'הבקשה נכשלה'
+    askError.value = e?.response?.data?.detail || 'החיפוש נכשל'
   } finally {
     busy.value = false
+  }
+}
+
+async function requestUpdate() {
+  if (!picture.value || updateBusy.value) return
+  updateBusy.value = true
+  try {
+    await api.post('/maslaka/inquiry', {
+      customer_id_number: picture.value.id_number,
+      customer_name: picture.value.customer_name || null,
+    })
+    updateSent.value = true
+    await loadInquiries({ silent: true })
+  } catch (e) {
+    pictureError.value = e?.response?.data?.detail || 'שליחת בקשת העדכון נכשלה'
+  } finally {
+    updateBusy.value = false
+  }
+}
+
+// Automatic monthly production (consent on the שיוך form; switchable here).
+const autoBusy = ref(false)
+async function toggleAuto(ev) {
+  const enabled = ev.target.checked
+  autoBusy.value = true
+  prodError.value = ''
+  try {
+    const { data } = await api.post('/maslaka/association/auto-production', { enabled })
+    if (assoc.value) assoc.value.auto_production = data.auto_production
+    if (data.created) {
+      prodDone.value = `נפתחו ${data.created} מנויים חודשיים חדשים.`
+      await Promise.all([loadInquiries({ silent: true }), loadProdBodies()])
+    }
+  } catch (e) {
+    ev.target.checked = !enabled
+    prodError.value = e?.response?.data?.detail || 'השינוי נכשל'
+  } finally {
+    autoBusy.value = false
   }
 }
 
@@ -1142,4 +1214,12 @@ onMounted(async () => {
 .mk-link:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
 .mk-prod-foot { margin-top: 14px; align-items: flex-end; }
 .mk-prod-done { color: var(--text); margin-top: 10px; }
+.mk-ask-sent { color: var(--text); margin-top: 8px; }
+.mk-auto {
+  display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; cursor: pointer;
+  font-size: 0.8rem; line-height: 1.5; color: var(--text-secondary);
+}
+.mk-auto strong { color: var(--text); font-weight: 600; }
+.mk-auto input { accent-color: var(--tab-maslaka); margin-top: 3px; }
+.mk-picture-actions { display: flex; gap: 8px; align-items: center; }
 </style>

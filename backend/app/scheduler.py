@@ -178,6 +178,22 @@ async def run_hachshara_mail_poll() -> None:
         logger.info("hachshara_mail.poll: ingested %d file(s)", total)
 
 
+async def run_maslaka_auto_subscriptions() -> None:
+    """Daily: every approved agent who consented to automatic monthly production
+    gets a subscription (2100) for any body that has appeared in their records.
+    Only creates `pending` rows — the Gateway sends them — so it runs on the API
+    host (not gated by MASLAKA_VAULT_HOST)."""
+    if not settings.MASLAKA_ENABLED:
+        return
+    try:
+        async with async_session() as db:
+            n = await maslaka_orchestration.ensure_all_monthly_subscriptions(db)
+            if n:
+                logger.info("maslaka.auto_subscriptions: opened %d monthly subscription(s)", n)
+    except Exception:
+        logger.exception("maslaka.auto_subscriptions failed")
+
+
 async def run_maslaka_retention() -> None:
     """Daily retention sweep — null out `pension_raw_payloads.ciphertext` past
     `MASLAKA_RETENTION_DAYS`. Audit + lifecycle rows are preserved."""
@@ -258,6 +274,14 @@ def start_scheduler():
     )
     # Pension clearinghouse — only fires when MASLAKA_ENABLED is on, so safe
     # to register unconditionally.
+    scheduler.add_job(
+        run_maslaka_auto_subscriptions,
+        CronTrigger(hour=6, minute=20, timezone="Asia/Jerusalem"),
+        id="maslaka_auto_subscriptions",
+        replace_existing=True,
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
+    )
     scheduler.add_job(
         run_maslaka_poll,
         IntervalTrigger(minutes=settings.MASLAKA_POLL_INTERVAL_MINUTES),

@@ -25,7 +25,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -66,6 +66,10 @@ class MaslakaAgentLink(Base):
     form_downloaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Consent to open monthly production subscriptions (2100) automatically on
+    # approval, and to add bodies that appear later. Recorded with its time.
+    auto_production: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    auto_production_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rejected_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # ── The signed form ─────────────────────────────────────────────────────

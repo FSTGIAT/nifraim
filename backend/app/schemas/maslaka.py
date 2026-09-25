@@ -106,6 +106,7 @@ class LastInquirySummary(BaseModel):
 
 class EnrichedPictureOut(BaseModel):
     customer_name: str | None
+    as_of: str | None = None
     id_number: str
     products: list[HoldingOut]
     kpi: EnrichedKpi

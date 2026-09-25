@@ -8,9 +8,10 @@ against records owned by the requesting user; missing → 404.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,39 +148,28 @@ async def production_report_bodies(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Every body a production report can be asked from, with how many of the
-    caller's own customers sit there (from their records) and whether a monthly
-    subscription (2100) is already open — so the UI can pre-select the agent's
-    actual insurers and never offer a duplicate subscription."""
-    from app.models.record import ClientRecord
-    from app.services.maslaka.code_tables import PROVIDER_CODE_TO_COMPANY, provider_code_for_company
+    """Every body a production report can be asked from, with the caller's own
+    customer count there and whether a monthly subscription is already open."""
+    return await orchestration.agent_bodies(db, user.id)
 
-    counts: dict[str, int] = {}
-    rows = (await db.execute(
-        select(ClientRecord.receiving_company,
-               func.count(func.distinct(func.ltrim(ClientRecord.id_number, "0"))))
-        .where(ClientRecord.user_id == user.id)
-        .group_by(ClientRecord.receiving_company)
-    )).all()
-    for company, n in rows:
-        code = provider_code_for_company(company)
-        if code:
-            counts[code] = counts.get(code, 0) + int(n or 0)
 
-    monthly = set((await db.execute(
-        select(PensionInquiry.target_yatzran_id).where(
-            PensionInquiry.user_id == user.id,
-            PensionInquiry.interface_code == "events_v007:2100",
-            PensionInquiry.status.notin_(("failed", "expired")),
-        )
-    )).scalars().all())
-
-    out = [
-        {"id": code, "name": name, "clients": counts.get(code, 0), "monthly": code in monthly}
-        for code, name in PROVIDER_CODE_TO_COMPANY.items()
-    ]
-    out.sort(key=lambda b: (-b["clients"], b["name"]))
-    return out
+@router.post("/association/auto-production")
+async def association_auto_production(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Turn automatic monthly production on/off for the caller. Turning it on for
+    an approved agent opens the missing subscriptions immediately. Turning it off
+    stops NEW subscriptions only — open ones keep their five-month commitment."""
+    from app.services.maslaka import association
+    enabled = bool(payload.get("enabled"))
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    link.auto_production = enabled
+    link.auto_production_at = datetime.utcnow() if enabled else link.auto_production_at
+    await db.commit()
+    created = await orchestration.ensure_monthly_subscriptions(db, user.id) if enabled else 0
+    return {"auto_production": enabled, "created": created}
 
 
 @router.post("/production-report", response_model=list[InquiryOut],
@@ -706,6 +696,7 @@ async def association_status(
         "reply_subject": link.reply_subject,
         "reply_snippet": link.reply_snippet,
         "decided_via": link.decided_via,
+        "auto_production": bool(link.auto_production),
         # The REAL destination, not the module constant. Reporting the constant
         # told a dev box it was mailing the regulator when the override sent it
         # elsewhere — and would say the same if someone pointed prod away.
@@ -782,8 +773,12 @@ async def association_submit(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
     file: UploadFile = File(...),
+    auto_production: bool = Form(False),
 ):
     """Take the signed scan, store it encrypted, email it to the מסלקה helpdesk.
+
+    `auto_production` records the agent's consent to monthly production reports:
+    on approval they open automatically (see association.mark_approved).
 
     Delivery failure does NOT lose the upload: the form is stored and the row
     flipped to `submitted` first, and a send error comes back as a note the
@@ -804,6 +799,9 @@ async def association_submit(
     if not link.agent_id_number:
         raise HTTPException(status_code=400, detail="יש להזין מספר זהות לפני שליחת הטופס")
 
+    if auto_production and not link.auto_production:
+        link.auto_production = True
+        link.auto_production_at = datetime.utcnow()
     await association.record_submission(
         db, link, pdf_bytes=raw, filename=file.filename or "shiyuch.pdf",
     )

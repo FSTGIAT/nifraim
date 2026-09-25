@@ -166,6 +166,14 @@
               <p v-if="assoc?.status === 'rejected'" class="ma-help">
                 שליחה חוזרת מחליפה את הטופס הקודם.
               </p>
+              <label class="ma-consent">
+                <input type="checkbox" v-model="autoProduction" />
+                <span>
+                  <strong>קבלת דוחות פרודוקציה אוטומטית כל חודש.</strong>
+                  מיד עם אישור המסלקה נרשום אותך למנוי חודשי אצל כל הגופים שיש לך בהם לקוחות,
+                  והנתונים יגיעו לבד עד ה-15 בכל חודש. לפי כללי המסלקה, מנוי חודשי מחייב לפחות 5 חודשים.
+                </span>
+              </label>
             </section>
 
             <!-- ── 4. Waiting / rejected ─────────────────────────── -->
@@ -323,6 +331,8 @@ const STEPS = [
 ]
 
 const step = ref(0)
+// Consent to automatic monthly production (2100) on approval — see the upload step.
+const autoProduction = ref(true)
 const name = ref('')
 const idNumber = ref('')
 const idTouched = ref(false)
@@ -462,6 +472,7 @@ async function submit() {
   try {
     const fd = new FormData()
     fd.append('file', file.value)
+    fd.append('auto_production', autoProduction.value ? 'true' : 'false')
     const { data } = await api.post('/maslaka/association/submit', fd)
     deliveryNote.value = data.delivery_note || ''
     file.value = null
@@ -793,4 +804,13 @@ async function submit() {
   .modal-enter-active, .modal-leave-active,
   .modal-enter-active .ma-card, .modal-leave-active .ma-card { transition: none; }
 }
+.ma-consent {
+  display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border-inline-start: 3px solid var(--tab-maslaka);
+  background: color-mix(in srgb, var(--tab-maslaka) 7%, transparent);
+  font-size: 0.8rem; line-height: 1.55; color: var(--text-secondary);
+}
+.ma-consent strong { color: var(--text); font-weight: 600; }
+.ma-consent input { accent-color: var(--tab-maslaka); margin-top: 3px; flex-shrink: 0; }
 </style>
