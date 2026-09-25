@@ -52,6 +52,9 @@ class PensionInquiry(Base):
     # TAARICH-NECHONUT-MEIDA sent on the request (YYYYMMDD) — the as-of date
     # asked for. NULL = the rules' default (end of the request month).
     information_date: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # MISPAR-MISLAKA — the GUID the מסלקה assigns to this request, learned from
+    # the receipt (FEDBKA). Every data file answering the request carries it.
+    mislaka_number: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     # Correlation id we put into outbound XML so feedback/holdings responses
     # can be matched back. Unique per row.

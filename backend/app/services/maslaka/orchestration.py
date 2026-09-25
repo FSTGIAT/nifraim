@@ -339,6 +339,7 @@ async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None)
     process files matching their own inquiries (this happens naturally
     since `request_reference` is unique per inquiry).
     """
+    await backfill_mislaka_numbers(db)
     transport = get_transport()
     files = await transport.list_inbox()
     stats = {
@@ -383,9 +384,15 @@ async def _ingest_one(
         stats["feedback_ingested"] += 1
         await transport.archive(vf.name)
     elif kind == "holdings":
-        await _ingest_holdings(db, payload, source_filename=vf.name, scope_user_id=user_id)
-        stats["holdings_ingested"] += 1
-        await transport.archive(vf.name)
+        # Archive ONLY when every customer in the file was routed. An unmatched
+        # data file used to be archived anyway — i.e. silently dropped from the
+        # inbox. It stays put now, and the next poll retries it (e.g. after the
+        # receipt carrying its GUID has been ingested).
+        if await _ingest_holdings(db, payload, source_filename=vf.name, scope_user_id=user_id):
+            stats["holdings_ingested"] += 1
+            await transport.archive(vf.name)
+        else:
+            stats["unknown"] += 1
     else:
         stats["unknown"] += 1
         logger.warning("maslaka.poll: unknown XML type, leaving in inbox: %s", vf.name)
@@ -423,6 +430,24 @@ async def _ingest_feedback(
         source_filename=source_filename, plaintext=payload,
     )
 
+    # MISPAR-MISLAKA: the GUID the מסלקה gave this request. Every insurer's data
+    # file carries it — without it, an answer cannot find its request.
+    if fb.mislaka_number and not inquiry.mislaka_number:
+        inquiry.mislaka_number = fb.mislaka_number
+
+    if fb.sug_mashov == "2":
+        # משוב ב' is an INSURER's content answer (e.g. "no such member") — it
+        # counts as that body having answered, and is never a failure of the
+        # whole request (other bodies may still return data).
+        inquiry.providers_received = (inquiry.providers_received or 0) + 1
+        await audit.log_event(
+            db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+            customer_id_number=inquiry.customer_id_number,
+            event_type="content_feedback", actor="system",
+            detail=f"משוב ב': {fb.error_code or 'ok'} {fb.error_detail or ''}"[:500],
+        )
+        return
+
     if fb.is_ack:
         # SUG-MASHOV 1 = משוב א', a technical receipt: "well-formed, accepted".
         # It is NOT the answer — the data arrives later as משוב ב' or holdings.
@@ -452,115 +477,224 @@ async def _ingest_holdings(
     *,
     source_filename: str,
     scope_user_id: uuid.UUID | None,
-) -> None:
-    ref, items = adapter.parse_holdings(payload)
-    inquiry = await _find_inquiry_by_reference(db, ref, scope_user_id=scope_user_id)
-    if inquiry is None:
+) -> bool:
+    """Ingest a REAL holdings / CONSLT answer. Returns True when every customer
+    in it was routed to a request (the caller archives only then).
+
+    Parsing is `services/mimshak` — the parser proven on Swiftness's CONSLT
+    samples and on Migdal/Clal (tests/test_maslaka_conslt_parse.py). The old
+    `adapter.parse_holdings` read tags our stub invented and found nothing.
+
+    Routing, per customer (`adapter.holdings_index`):
+      1. MISPAR-MISLAKA → the request whose receipt carried that GUID;
+      2. else the authorised agent (PerutMeyupeKoach) → that agent's approved
+         link → their open request for this customer (9100) or this body
+         (2000/2100).
+    """
+    from app.models.maslaka_agent_link import MaslakaAgentLink
+    from app.services.mimshak import parse_mimshak_dat
+    from app.services.maslaka.code_tables import label_for_provider
+
+    index = adapter.holdings_index(payload)
+    records = parse_mimshak_dat(payload, source_filename).get("records", [])
+    if not records:
+        logger.warning("maslaka.holdings: %s parsed to 0 records — leaving in inbox", source_filename)
+        return False
+
+    guids = {v["guid"] for v in index.values() if v.get("guid")}
+    by_guid: dict[str, PensionInquiry] = {}
+    if guids:
+        q = select(PensionInquiry).where(PensionInquiry.mislaka_number.in_(guids))
+        if scope_user_id is not None:
+            q = q.where(PensionInquiry.user_id == scope_user_id)
+        for inq in (await db.execute(q)).scalars().all():
+            by_guid[inq.mislaka_number] = inq
+
+    open_statuses = ("submitted", "acknowledged", "partial")
+
+    async def by_agent(cust: str, keys: dict) -> PensionInquiry | None:
+        agent = keys.get("agent_id")
+        if not agent:
+            return None
+        links = (await db.execute(select(MaslakaAgentLink).where(
+            MaslakaAgentLink.status == LINK_APPROVED,
+            func.ltrim(MaslakaAgentLink.agent_id_number, "0") == agent,
+        ))).scalars().all()
+        if len(links) != 1:
+            return None                      # none, or ambiguous — never guess
+        uid = links[0].user_id
+        if scope_user_id is not None and uid != scope_user_id:
+            return None
+        base = select(PensionInquiry).where(
+            PensionInquiry.user_id == uid, PensionInquiry.status.in_(open_statuses),
+        ).order_by(PensionInquiry.created_at.desc())
+        hit = (await db.execute(base.where(PensionInquiry.customer_id_number == cust))).scalars().first()
+        if hit is None and keys.get("yatzran"):
+            hit = (await db.execute(base.where(
+                PensionInquiry.target_yatzran_id == keys["yatzran"],
+                PensionInquiry.interface_code.in_(("events_v007:2000", "events_v007:2100")),
+            ))).scalars().first()
+        return hit
+
+    routed: dict[uuid.UUID, tuple[PensionInquiry, list[dict]]] = {}
+    unrouted: set[str] = set()
+    for rec in records:
+        cust = str(rec.get("id_number") or "").lstrip("0")
+        if not cust:
+            continue
+        keys = index.get(cust, {})
+        inq = by_guid.get(keys.get("guid") or "") or await by_agent(cust, keys)
+        if inq is None:
+            unrouted.add(cust)
+            continue
+        routed.setdefault(inq.id, (inq, []))[1].append(rec | {"_yatzran": keys.get("yatzran")})
+
+    if unrouted:
         logger.warning(
-            "maslaka.holdings: no inquiry for ref=%s (file=%s) — leaving unprocessed",
-            ref, source_filename,
+            "maslaka.holdings: %s — %d customer(s) not routable yet (guid/agent unknown): %s — leaving in inbox",
+            source_filename, len(unrouted), sorted(unrouted)[:5],
         )
-        return
+        # Nothing has been written for this file yet (routing happens before any
+        # insert), so there is nothing to undo — and a rollback here would also
+        # discard receipts ingested earlier in the same poll.
+        return False
 
-    raw = await _store_raw_payload(
-        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
-        direction="inbound", interface_code="holdings_v009",
-        source_filename=source_filename, plaintext=payload,
-    )
-
-    inserted = 0
-    for it in items:
-        row_data = sanitize_record(it.to_dict())
-        h = PensionHolding(
-            user_id=inquiry.user_id,
-            inquiry_id=inquiry.id,
-            raw_payload_id=raw.id,
-            match_status="clearinghouse_only",  # reconciled below
-            **row_data,
+    for inq, recs in routed.values():
+        raw = await _store_raw_payload(
+            db, user_id=inq.user_id, inquiry_id=inq.id,
+            direction="inbound", interface_code="holdings_v009",
+            source_filename=source_filename, plaintext=payload,
         )
-        db.add(h)
-        inserted += 1
+        for rec in recs:
+            yat = rec.get("_yatzran")
+            db.add(PensionHolding(
+                user_id=inq.user_id,
+                inquiry_id=inq.id,
+                raw_payload_id=raw.id,
+                match_status="clearinghouse_only",
+                **sanitize_record({
+                "customer_id_number": str(rec.get("id_number") or "").lstrip("0"),
+                "receiving_company": rec.get("receiving_company") or label_for_provider(yat),
+                "provider_code": yat,
+                "product": rec.get("product"),
+                "product_type": rec.get("product_type"),
+                "fund_policy_number": rec.get("fund_policy_number"),
+                "accumulation": rec.get("accumulation"),
+                "total_premium": rec.get("total_premium"),
+                })))
+        await db.flush()
+        matched = await reconcile_to_client_records(db, inquiry=inq)
 
-    await db.flush()
-
-    # Reconcile against active production ClientRecords.
-    matched = await reconcile_to_client_records(db, inquiry=inquiry)
-
-    inquiry.providers_received += 1
-    await audit.log_event(
-        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
-        customer_id_number=inquiry.customer_id_number,
-        event_type="holdings_ingested", actor="system",
-        detail=f"inserted={inserted} matched={matched} file={source_filename}",
-    )
-
-    expected = inquiry.providers_expected or 1
-    if inquiry.providers_received >= expected:
-        inquiry.completed_at = datetime.utcnow()
-        await _advance_status(
-            db, inquiry, to_status="complete", actor="system",
-            event_type="status_changed",
-            detail=f"received {inquiry.providers_received}/{expected}",
+        inq.providers_received = (inq.providers_received or 0) + 1
+        await audit.log_event(
+            db, user_id=inq.user_id, inquiry_id=inq.id,
+            customer_id_number=inq.customer_id_number,
+            event_type="holdings_ingested", actor="system",
+            detail=f"{source_filename}: {len(recs)} product(s), {matched} matched to production",
         )
-    else:
-        # Multi-file responses — record intermediate progress.
-        await _advance_status(
-            db, inquiry, to_status="partial", actor="system",
-            event_type="status_changed",
-            detail=f"received {inquiry.providers_received}/{expected}",
+        # A monthly subscription (2100) stays open: a new file comes every month.
+        if inq.interface_code == "events_v007:2100":
+            if inq.status != "partial":
+                await _advance_status(db, inq, to_status="partial", actor="system",
+                                      event_type="holdings_received", detail=source_filename)
+            continue
+        # A 9100 goes to EVERY body, and each answers in its own file — so with
+        # no known count, one file means "partial", never "complete". The expiry
+        # sweep turns a partial request complete once its window closes.
+        expected = inq.providers_expected
+        if expected and inq.providers_received >= expected:
+            inq.completed_at = datetime.utcnow()
+            await _advance_status(db, inq, to_status="complete", actor="system",
+                                  event_type="holdings_received",
+                                  detail=f"received {inq.providers_received}/{expected}")
+        elif inq.status != "partial":
+            await _advance_status(db, inq, to_status="partial", actor="system",
+                                  event_type="holdings_received",
+                                  detail=f"received {inq.providers_received}/{expected}")
+    return True
+
+
+# ─── GUID backfill ─────────────────────────────────────────────────────────
+async def backfill_mislaka_numbers(db: AsyncSession) -> int:
+    """Recover MISPAR-MISLAKA for requests whose receipt was ingested before
+    the GUID was kept (everything before 2026-09-25 afternoon). The receipts
+    are stored encrypted; decrypting needs MASLAKA_ENCRYPTION_KEY, which only
+    the Gateway holds — so this runs there, at the start of every poll."""
+    from app.utils.crypto import decrypt_bytes
+    rows = (await db.execute(
+        select(PensionInquiry.id, PensionRawPayload.ciphertext)
+        .join(PensionRawPayload, PensionRawPayload.inquiry_id == PensionInquiry.id)
+        .where(
+            PensionInquiry.mislaka_number.is_(None),
+            PensionInquiry.vault_outbound_filename.is_not(None),
+            PensionRawPayload.direction == "inbound",
+            PensionRawPayload.interface_code == "feedback_v009",
         )
+    )).all()
+    found = 0
+    for inq_id, ciphertext in rows:
+        try:
+            guid = adapter.parse_feedback(decrypt_bytes(ciphertext, key_env=MASLAKA_KEY)).mislaka_number
+        except Exception:
+            continue
+        if guid:
+            inq = await db.get(PensionInquiry, inq_id)
+            if inq and not inq.mislaka_number:
+                inq.mislaka_number = guid
+                found += 1
+    if found:
+        await db.commit()
+        logger.info("maslaka.backfill: recovered MISPAR-MISLAKA for %d request(s)", found)
+    return found
 
 
-# ─── Reconciliation ────────────────────────────────────────────────────────
 async def reconcile_to_client_records(db: AsyncSession, *, inquiry: PensionInquiry) -> int:
     """Match this inquiry's holdings against the user's active production
-    ClientRecords. Mirrors the id-matching idiom from `portal_service.py:119-132`
-    (`or_()` with leading-zero variants + `func.ltrim`). Returns the number of
-    holdings that flipped to `matched`."""
-    prod_result = await db.execute(
-        select(FileUpload).where(
+    ClientRecords, by EACH holding's own customer + policy number.
+
+    Keyed per holding, not by `inquiry.customer_id_number`: for a production
+    request (2000/2100) that is the AGENT's own ID, and would match nothing.
+    And across every active production upload — companies coexist as separate
+    active uploads, so `scalar_one_or_none()` here used to raise."""
+    holdings_rows = (await db.execute(
+        select(PensionHolding).where(PensionHolding.inquiry_id == inquiry.id)
+    )).scalars().all()
+    ids = {(h.customer_id_number or "").lstrip("0") for h in holdings_rows} - {""}
+    if not ids:
+        return 0
+
+    upload_ids = (await db.execute(
+        select(FileUpload.id).where(
             FileUpload.user_id == inquiry.user_id,
             FileUpload.is_production == True,  # noqa: E712
         )
-    )
-    prod_upload = prod_result.scalar_one_or_none()
-    if prod_upload is None:
+    )).scalars().all()
+    if not upload_ids:
         return 0
-
-    id_stripped = inquiry.customer_id_number  # already normalized in create_inquiry
-    id_raw = id_stripped  # we don't have a non-normalized variant — fine, ltrim handles it
 
     prod_rows = (await db.execute(
         select(ClientRecord).where(
             ClientRecord.user_id == inquiry.user_id,
-            ClientRecord.upload_id == prod_upload.id,
-            or_(
-                ClientRecord.id_number == id_raw,
-                ClientRecord.id_number == id_stripped,
-                func.ltrim(ClientRecord.id_number, "0") == id_stripped,
-            ),
+            ClientRecord.upload_id.in_(upload_ids),
+            func.ltrim(ClientRecord.id_number, "0").in_(ids),
         )
     )).scalars().all()
 
-    if not prod_rows:
-        return 0
+    def pkey(v):
+        v = (v or "").strip()
+        return v.lstrip("0") or v
 
-    # Build a {fund_policy_number: ClientRecord} index for the production side.
-    prod_by_policy: dict[str, ClientRecord] = {}
+    prod_by = {}
     for r in prod_rows:
-        key = (r.fund_policy_number or "").strip().lstrip("0") or (r.fund_policy_number or "")
-        if key:
-            prod_by_policy.setdefault(key, r)
-
-    holdings_rows = (await db.execute(
-        select(PensionHolding).where(PensionHolding.inquiry_id == inquiry.id)
-    )).scalars().all()
+        k = pkey(r.fund_policy_number)
+        if k:
+            prod_by.setdefault(((r.id_number or "").lstrip("0"), k), r)
 
     matched = 0
     for h in holdings_rows:
-        key = (h.fund_policy_number or "").strip().lstrip("0") or (h.fund_policy_number or "")
-        if key and key in prod_by_policy:
-            h.matched_client_record_id = prod_by_policy[key].id
+        r = prod_by.get(((h.customer_id_number or "").lstrip("0"), pkey(h.fund_policy_number)))
+        if r is not None:
+            h.matched_client_record_id = r.id
             h.match_status = "matched"
             matched += 1
     await db.flush()
@@ -582,6 +716,16 @@ async def expire_stale_inquiries(db: AsyncSession) -> int:
 
     flipped = 0
     for inq in candidates:
+        # Production reports keep their own clock. A monthly subscription (2100)
+        # never expires; a one-off (2000) is due by the 15th of the next month,
+        # so a flat 7-day timeout would expire it two weeks before its answer.
+        code = (inq.interface_code or "").rpartition(":")[2]
+        if code == "2100":
+            continue
+        if code == "2000":
+            due, _ = expected_answer_by(inq)
+            if due is not None and now < due.replace(tzinfo=None) + timedelta(days=7):
+                continue
         # If we received at least one holdings file, treat it as complete
         # rather than throwing the partial picture away.
         final = "complete" if (inq.providers_received or 0) > 0 else "expired"

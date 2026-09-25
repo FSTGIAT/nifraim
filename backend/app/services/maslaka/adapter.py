@@ -66,6 +66,9 @@ class FeedbackResult:
     on the wire — that was our stub's invention. `request_reference` is kept
     only so the old fixtures still parse.
 
+    `mislaka_number` (`MISPAR-MISLAKA`) is the GUID the מסלקה gave the request;
+    the insurers' data files carry it, so it is how an answer finds its request.
+
     `sug_mashov` is 1 = משוב א' (technical receipt) or 2 = משוב ב' (content).
     A משוב א' ack means "the file is well-formed and accepted", NOT "here is
     your data" — the data arrives later as משוב ב' or a holdings file.
@@ -76,6 +79,7 @@ class FeedbackResult:
     error_code: str | None = None
     error_detail: str | None = None
     acked_filename: str | None = None
+    mislaka_number: str | None = None
     sug_mashov: str | None = None
     extras: dict[str, str] = field(default_factory=dict)
 
@@ -207,6 +211,7 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
         is_ack = error_code is None
 
     return FeedbackResult(
+        mislaka_number=(_text_of(root, "MISPAR-MISLAKA") or "").strip().upper() or None,
         request_reference=request_reference,
         is_ack=is_ack,
         providers_expected=providers_expected,
@@ -215,6 +220,45 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
         acked_filename=acked_filename,
         sug_mashov=sug_mashov,
     )
+
+
+def holdings_index(xml_bytes: bytes) -> dict[str, dict]:
+    """Per-customer routing keys from a REAL holdings / CONSLT (Mimshak) file.
+
+    Measured on Swiftness's four CONSLT samples (ING/KGM/PNN/PNO):
+      Mimshak/YeshutYatzran/Mutzarim/Mutzar/NetuneiMutzar/MISPAR-MISLAKA   ← request GUID
+      Mimshak/YeshutYatzran/Mutzarim/Mutzar/NetuneiMutzar/KOD-MEZAHE-YATZRAN
+      …/Mutzar/HeshbonotOPolisot/HeshbonOPolisa/NetuneiAmitOmevutach/MISPAR-ZIHUY ← customer
+      …/Mutzar/HeshbonotOPolisot/HeshbonOPolisa/PerutMeyupeKoach/MISPAR-ZIHUY     ← authorised agent
+    One file can answer SEVERAL requests (the KGM sample carries five GUIDs), so
+    routing is per customer, never per file.
+
+    Returns {customer_id (no leading zeros): {"guid", "agent_id", "yatzran"}}.
+    """
+    root = ET.fromstring(xml_bytes)
+    out: dict[str, dict] = {}
+
+    def first(elem: ET.Element, path: list[str]) -> str | None:
+        cur = [elem]
+        for name in path:
+            cur = [c for e in cur for c in e if _local_tag(c.tag) == name]
+            if not cur:
+                return None
+        return (cur[0].text or "").strip() or None
+
+    for mutzar in (e for e in root.iter() if _local_tag(e.tag) == "Mutzar"):
+        guid = (first(mutzar, ["NetuneiMutzar", "MISPAR-MISLAKA"]) or "").upper() or None
+        yatzran = first(mutzar, ["NetuneiMutzar", "KOD-MEZAHE-YATZRAN"])
+        for pol in (e for e in mutzar.iter() if _local_tag(e.tag) == "HeshbonOPolisa"):
+            cust = first(pol, ["NetuneiAmitOmevutach", "MISPAR-ZIHUY"])
+            if not cust:
+                continue
+            cust = cust.lstrip("0")
+            if not cust:
+                continue
+            agent = (first(pol, ["PerutMeyupeKoach", "MISPAR-ZIHUY"]) or "").lstrip("0") or None
+            out.setdefault(cust, {"guid": guid, "agent_id": agent, "yatzran": yatzran})
+    return out
 
 
 def parse_holdings(xml_bytes: bytes) -> tuple[str, list[HoldingItem]]:
