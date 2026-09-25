@@ -191,16 +191,29 @@
             <span>דוחות פרודוקציה</span>
           </h3>
           <span class="mk-ask-note">
-            כל הלקוחות שלך אצל הגופים שבחרת, בבקשה אחת לכל גוף. לא נדרש ייפוי כוח.
+            הנתונים על כל הלקוחות שלך מגיעים מהמסלקה לבד, פעם בחודש, ונשמרים במערכת.
           </span>
+        </div>
+
+        <div class="mk-prod-status" :class="{ 'mk-prod-status--off': !activeMonthly }">
+          <span class="mk-prod-dot" aria-hidden="true"></span>
+          <span v-if="activeMonthly">
+            <strong>מנוי חודשי פעיל אצל <span class="ltr-number">{{ activeMonthly }}</span> גופים</strong>
+            · הדוח הבא עד <span class="ltr-number">{{ nextDue }}</span>
+          </span>
+          <span v-else><strong>אין מנוי חודשי פעיל</strong> · הפעילו את המנוי האוטומטי כדי לקבל את הנתונים כל חודש</span>
         </div>
         <label v-if="assoc?.status === 'approved'" class="mk-auto">
           <input type="checkbox" :checked="!!assoc?.auto_production" :disabled="autoBusy" @change="toggleAuto" />
           <span>
-            <strong>מנוי חודשי אוטומטי</strong> — גוף חדש שיופיע אצלך יתווסף לבד, והנתונים יגיעו עד ה-15 בכל חודש.
+            <strong>מנוי אוטומטי</strong> — גוף חדש שיופיע אצלך יתווסף לבד. לפי כללי המסלקה, כל מנוי מחייב לפחות 5 חודשים.
           </span>
         </label>
 
+        <button type="button" class="mk-link mk-manual-toggle" :aria-expanded="showManual" @click="showManual = !showManual">
+          {{ showManual ? 'סגור בקשה ידנית' : 'בקשה ידנית' }}
+        </button>
+        <div v-if="showManual" class="mk-manual">
         <div class="mk-seg" role="radiogroup" aria-label="תדירות">
           <button type="button" role="radio" :aria-checked="prodFreq === 'once'"
                   :class="{ 'is-on': prodFreq === 'once' }" @click="prodFreq = 'once'">חד-פעמי</button>
@@ -245,6 +258,7 @@
           </button>
         </div>
         <p v-if="prodDone" class="mk-help mk-prod-done" role="status">{{ prodDone }}</p>
+        </div>
         <p v-if="prodError" class="mk-help mk-help--bad" role="alert">{{ prodError }}</p>
       </section>
 
@@ -545,6 +559,15 @@ const prodBusy = ref(false)
 const prodError = ref('')
 const prodDone = ref('')
 const showAllBodies = ref(false)
+const showManual = ref(false)
+const activeMonthly = computed(() => prodBodies.value.filter((b) => b.monthly).length)
+// Monthly production reports arrive by the 15th: the next 15th from today.
+const nextDue = computed(() => {
+  const d = new Date(nowTs.value)
+  const due = d.getDate() < 15 ? new Date(d.getFullYear(), d.getMonth(), 15)
+                               : new Date(d.getFullYear(), d.getMonth() + 1, 15)
+  return due.toLocaleDateString('he-IL')
+})
 
 const visibleBodies = computed(() =>
   showAllBodies.value ? prodBodies.value : prodBodies.value.filter((b) => b.clients > 0 || prodSel.value.includes(b.id)),
@@ -1222,4 +1245,16 @@ onMounted(async () => {
 .mk-auto strong { color: var(--text); font-weight: 600; }
 .mk-auto input { accent-color: var(--tab-maslaka); margin-top: 3px; }
 .mk-picture-actions { display: flex; gap: 8px; align-items: center; }
+.mk-prod-status {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  padding: 10px 12px; border-radius: 8px;
+  background: color-mix(in srgb, var(--tab-maslaka) 8%, transparent);
+  font-size: 0.85rem; color: var(--text-secondary);
+}
+.mk-prod-status strong { color: var(--text); font-weight: 600; }
+.mk-prod-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tab-maslaka); flex-shrink: 0; }
+.mk-prod-status--off { background: var(--bg); }
+.mk-prod-status--off .mk-prod-dot { background: var(--text-muted); }
+.mk-manual-toggle { display: inline-block; margin-top: 2px; }
+.mk-manual { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
 </style>
