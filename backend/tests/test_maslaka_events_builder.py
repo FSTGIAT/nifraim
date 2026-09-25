@@ -89,27 +89,51 @@ def main() -> None:
     # MISPAR-MISLAKA is the מסלקה's GUID, returned on the FEDBKB. Never ours.
     check("MISPAR-MISLAKA is empty outbound", text_of(x, "MISPAR-MISLAKA") == "")
 
-    # Ongoing vs one-off is a flag, not a separate code.
+    # BAKASHA-MITMASHECHET is 1 = חד"פ / 2 = מתמשכת, and per the field spec it is
+    # mandatory ONLY for 9100/1 (and 9300/2). It used to carry "1" on the ONGOING
+    # codes — the opposite meaning — and nil on 9100 where it is required.
     ongoing = build_events_request(action_code="9201", customer_id_number="043417252",
                                    allow_placeholder_identity=True).xml.decode()
-    check("9201 sets BAKASHA-MITMASHECHET", text_of(ongoing, "BAKASHA-MITMASHECHET") == "1")
-    check("9100 does not", text_of(x, "BAKASHA-MITMASHECHET") == "")
+    check("9100 marks BAKASHA-MITMASHECHET 1 (one-off)", text_of(x, "BAKASHA-MITMASHECHET") == "1")
+    check("9201 leaves it nil (not relevant)", text_of(ongoing, "BAKASHA-MITMASHECHET") == "")
 
-    # Production-report subscriptions are per MANUFACTURER — no customer at all.
+    # MISPAR-MEZAHE-RESHUMA follows the spec layout: file no (34) + customer
+    # (16, zero-padded) + employee (16 zeros) + event (4) + numerator (4).
+    _ref = text_of(x, "MISPAR-MEZAHE-RESHUMA") or ""
+    check("record reference is 74 chars", len(_ref) == 74, str(len(_ref)))
+    check("record reference starts with MISPAR-HAKOVETZ",
+          _ref[:34] == text_of(x, "MISPAR-HAKOVETZ"), _ref[:34])
+    check("record reference carries the customer, zero-padded to 16",
+          _ref[34:50] == "0000000043417252", _ref[34:50])
+    check("record reference carries the event code", _ref[66:70] == "9100", _ref[66:70])
+
+    # Production reports are per MANUFACTURER, and their subject is the AGENT
+    # (SUG-LAKOACH 3 = מפיץ, field spec) — not a saver.
     check("2100 needs no customer", ACTION_CODES["2100"].needs_customer is False)
-    # Corrected 2026-09-10 against the official XSD: "needs no customer" is about
-    # the REQUEST's semantics (it is per-יצרן, not per-saver), but the schema
-    # still makes MISPAR-MEZAHE-LAKOACH minOccurs=1 and NOT nillable. Building
-    # without an identifier produced an invalid file, so the builder now refuses
-    # instead of emitting one. Whose ID belongs there is open with Swiftness.
     try:
-        build_events_request(action_code="2100", allow_placeholder_identity=True)
-        check("2100 refuses to build with no identifier", False, "it built anyway")
+        build_events_request(action_code="2000", allow_placeholder_identity=True,
+                             acting_agent_id="040336281", acting_agent_name="משה כהן")
+        check("2000 refuses to build with no יצרן", False, "it built anyway")
     except ValueError as e:
-        check("2100 refuses to build with no identifier", "MISPAR-MEZAHE-LAKOACH" in str(e))
-    prod = build_events_request(action_code="2100", customer_id_number="558638623",
-                                allow_placeholder_identity=True)
-    check("2100 builds when given one", b"<KOD-EIRUA>2100</KOD-EIRUA>" in prod.xml)
+        check("2000 refuses to build with no יצרן", "yatzran_id" in str(e))
+    try:
+        build_events_request(action_code="2000", yatzran_id="514956465",
+                             allow_placeholder_identity=True)
+        check("2000 refuses to build with no acting agent", False, "it built anyway")
+    except ValueError as e:
+        check("2000 refuses to build with no acting agent", "MISPAR-MEZAHE-LAKOACH" in str(e))
+    prod = build_events_request(action_code="2000", yatzran_id="514956465",
+                                acting_agent_id="40336281", acting_agent_name="משה כהן",
+                                allow_placeholder_identity=True).xml.decode()
+    check("2000: SUG-LAKOACH is 3 (מפיץ)", text_of(prod, "SUG-LAKOACH") == "3")
+    check("2000: the subject is the agent, zero-padded to 9",
+          text_of(prod, "MISPAR-MEZAHE-LAKOACH") == "040336281")
+    check("2000: SHEM-MAASIK carries the מפיץ name", text_of(prod, "SHEM-MAASIK") == "משה כהן")
+    check("2000: KOD-MEZAHE-YATZRAN names the body",
+          text_of(prod, "KOD-MEZAHE-YATZRAN") == "514956465")
+    check("acting agent rides in YeshutGoremPoneLemislaka",
+          text_of(prod, "SUG-PONE") == "3" and text_of(prod, "MISPAR-MEZAHE-PONE") == "040336281")
+    check("9100 carries no Mutzar block", "<Mutzar>" not in x)
 
     # Environment: this decides whether real traffic hits the live vault.
     # **1 = TEST, 2 = PRODUCTION**, per the XSD's own <xsd:documentation>.

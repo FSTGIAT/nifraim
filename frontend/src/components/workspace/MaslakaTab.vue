@@ -178,6 +178,69 @@
         <span>{{ askError }}</span>
       </p>
 
+
+      <!-- Production reports: the agent's whole book, per body — no ייפוי כוח needed -->
+      <section v-if="!blocked && !loading" class="mk-card mk-prod">
+        <div class="mk-ask-head">
+          <h3 class="mk-card-title">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 5-6" />
+            </svg>
+            <span>דוחות פרודוקציה</span>
+          </h3>
+          <span class="mk-ask-note">
+            כל הלקוחות שלך אצל הגופים שבחרת, בבקשה אחת לכל גוף. לא נדרש ייפוי כוח.
+          </span>
+        </div>
+
+        <div class="mk-seg" role="radiogroup" aria-label="תדירות">
+          <button type="button" role="radio" :aria-checked="prodFreq === 'once'"
+                  :class="{ 'is-on': prodFreq === 'once' }" @click="prodFreq = 'once'">חד-פעמי</button>
+          <button type="button" role="radio" :aria-checked="prodFreq === 'monthly'"
+                  :class="{ 'is-on': prodFreq === 'monthly' }" @click="prodFreq = 'monthly'">מנוי חודשי</button>
+        </div>
+        <p class="mk-prod-terms" :class="{ 'mk-prod-terms--commit': prodFreq === 'monthly' }">
+          <template v-if="prodFreq === 'once'">הדוח מגיע עד ה-15 בחודש הבא, עם נתונים לסוף החודש.</template>
+          <template v-else>דוח חדש עד ה-15 בכל חודש. לפי כללי המסלקה, מנוי חודשי מחייב לפחות 5 חודשים.</template>
+        </p>
+
+        <div v-if="!prodBodies.length" class="mk-help">טוען גופים…</div>
+        <ul v-else class="mk-bodies">
+          <li v-for="b in visibleBodies" :key="b.id">
+            <label class="mk-body" :class="{ 'is-off': bodyLocked(b) }">
+              <input type="checkbox" :value="b.id" v-model="prodSel" :disabled="bodyLocked(b)" />
+              <span class="mk-body-name">{{ b.name }}</span>
+              <span class="mk-body-meta">
+                <template v-if="bodyLocked(b)">מנוי פעיל</template>
+                <template v-else-if="b.clients"><span class="ltr-number">{{ b.clients }}</span> לקוחות</template>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <button v-if="hiddenBodies" type="button" class="mk-link" @click="showAllBodies = !showAllBodies">
+          {{ showAllBodies ? 'הצג רק גופים עם לקוחות' : `הצג עוד ${hiddenBodies} גופים` }}
+        </button>
+
+        <div class="mk-fields mk-prod-foot">
+          <div class="mk-field">
+            <label for="mk-asof">נכון לתאריך</label>
+            <input id="mk-asof" v-model="prodDate" type="date" dir="ltr" aria-describedby="mk-asof-help" />
+            <span id="mk-asof-help" class="mk-help">לא חובה. ריק = סוף החודש הנוכחי</span>
+          </div>
+          <button class="mk-primary" :disabled="!canSendProd" @click="sendProd">
+            <span v-if="prodBusy" class="mk-btn-spinner" aria-hidden="true"></span>
+            <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 12h13" /><path d="m12 6 6 6-6 6" />
+            </svg>
+            <span>{{ prodButtonLabel }}</span>
+          </button>
+        </div>
+        <p v-if="prodDone" class="mk-help mk-prod-done" role="status">{{ prodDone }}</p>
+        <p v-if="prodError" class="mk-help mk-help--bad" role="alert">{{ prodError }}</p>
+      </section>
+
       <!-- Inquiries -->
       <div v-if="loading" class="mk-loading"><div class="spinner"></div></div>
 
@@ -213,12 +276,18 @@
           </thead>
           <tbody>
             <tr v-for="q in inquiries" :key="q.id">
-              <td class="mk-name">{{ q.customer_name || '—' }}</td>
+              <td class="mk-name">
+                <span>{{ q.customer_name || '—' }}</span>
+                <span v-if="kindLabel(q)" class="mk-kind">{{ kindLabel(q) }}</span>
+              </td>
               <td><span class="ltr-number">{{ q.customer_id_number }}</span></td>
               <td>
                 <span class="mk-status" :class="`mk-status--${q.status}`">
                   <span class="mk-status-dot" aria-hidden="true"></span>
                   <span>{{ statusLabel(q.status) }}</span>
+                </span>
+                <span v-if="expectedText(q)" class="mk-eta" :class="{ 'mk-eta--late': isLate(q) }">
+                  {{ expectedText(q) }}
                 </span>
               </td>
               <td><span class="ltr-number">{{ formatDate(q.submitted_at) }}</span></td>
@@ -318,7 +387,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
@@ -393,6 +462,26 @@ const STATUS = {
 }
 function statusLabel(s) { return STATUS[s] || s }
 
+// Request type, from the action code the server records (events_v007:<code>).
+const KIND = { '9100': 'מידע על לקוח', '9101': 'מידע על לקוח', '2000': 'דוח פרודוקציה', '2100': 'דוח פרודוקציה חודשי' }
+function kindLabel(q) { return KIND[(q.interface_code || '').split(':')[1]] || '' }
+
+// When the answer is due under Swiftness's rules — computed by the server
+// (expected_by). "Now" ticks every minute so a row turns late on its own.
+const nowTs = ref(Date.now())
+function isLate(q) {
+  return !!q.expected_by && !(q.providers_received > 0) && nowTs.value > new Date(q.expected_by).getTime()
+}
+function expectedText(q) {
+  if (!q.expected_by || q.providers_received > 0) return ''
+  const due = new Date(q.expected_by)
+  if (isLate(q)) return 'חלף הזמן הצפוי'
+  if (q.expected_basis === 'production_15th') return `מועד אחרון לפי כללי המסלקה: ${due.toLocaleDateString('he-IL')}`
+  const sameDay = due.toDateString() === new Date(nowTs.value).toDateString()
+  const hhmm = due.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+  return sameDay ? `מידע צפוי עד ${hhmm} היום` : `מידע צפוי עד ${due.toLocaleDateString('he-IL')} ${hhmm}`
+}
+
 const idDigits = computed(() => idNumber.value.replace(/\D/g, ''))
 const idValid = computed(() => idDigits.value.length === 9)
 // Validate on blur, not on keystroke — no error while the user is still typing.
@@ -417,8 +506,10 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('he-IL')
 }
 
-async function loadInquiries() {
-  loading.value = true
+async function loadInquiries({ silent = false } = {}) {
+  // The minute refresh is silent: flipping `loading` would swap the table for
+  // a spinner every 60s.
+  if (!silent) loading.value = true
   try {
     const { data } = await api.get('/maslaka/inquiries')
     inquiries.value = data
@@ -426,7 +517,69 @@ async function loadInquiries() {
     // A 503 here means the feature is gated, not that the request failed.
     if (e?.response?.status === 503) gate.value = e.response.data.detail
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
+  }
+}
+
+
+// ── Production reports (2000 one-off / 2100 monthly), one request per body ──
+const prodBodies = ref([])
+const prodSel = ref([])
+const prodFreq = ref('once')
+const prodDate = ref('')
+const prodBusy = ref(false)
+const prodError = ref('')
+const prodDone = ref('')
+const showAllBodies = ref(false)
+
+const visibleBodies = computed(() =>
+  showAllBodies.value ? prodBodies.value : prodBodies.value.filter((b) => b.clients > 0 || prodSel.value.includes(b.id)),
+)
+const hiddenBodies = computed(() => prodBodies.value.length - prodBodies.value.filter((b) => b.clients > 0).length)
+// A body that already has an open monthly subscription can't get a second one.
+function bodyLocked(b) { return prodFreq.value === 'monthly' && b.monthly }
+const prodTargets = computed(() => prodSel.value.filter((id) => {
+  const b = prodBodies.value.find((x) => x.id === id)
+  return b && !bodyLocked(b)
+}))
+const canSendProd = computed(() => !blocked.value && !prodBusy.value && prodTargets.value.length > 0)
+const prodButtonLabel = computed(() => {
+  if (prodBusy.value) return 'שולח…'
+  const n = prodTargets.value.length
+  if (prodFreq.value === 'monthly') return n === 1 ? 'הרשמה למנוי לגוף אחד' : `הרשמה למנוי ל-${n} גופים`
+  return n === 1 ? 'בקש דוח מגוף אחד' : `בקש דוחות מ-${n} גופים`
+})
+
+async function loadProdBodies() {
+  try {
+    const { data } = await api.get('/maslaka/production-report/bodies')
+    prodBodies.value = data
+    if (!prodSel.value.length) prodSel.value = data.filter((b) => b.clients > 0).map((b) => b.id)
+  } catch {
+    prodBodies.value = []
+  }
+}
+
+async function sendProd() {
+  if (!canSendProd.value) return
+  prodError.value = ''
+  prodDone.value = ''
+  prodBusy.value = true
+  try {
+    const { data } = await api.post('/maslaka/production-report', {
+      yatzran_ids: prodTargets.value,
+      frequency: prodFreq.value,
+      information_date: prodDate.value ? prodDate.value.replaceAll('-', '') : null,
+    })
+    const n = data.length
+    prodDone.value = prodFreq.value === 'monthly'
+      ? (n === 1 ? 'נרשם מנוי חודשי לגוף אחד.' : `נרשם מנוי חודשי ל-${n} גופים.`) + ' הבקשות מופיעות ברשימה למטה.'
+      : (n === 1 ? 'נשלחה בקשה אחת.' : `נשלחו ${n} בקשות.`) + ' הן מופיעות ברשימה למטה.'
+    await Promise.all([loadInquiries({ silent: true }), loadProdBodies()])
+  } catch (e) {
+    prodError.value = e?.response?.data?.detail || 'השליחה נכשלה. נסו שוב.'
+  } finally {
+    prodBusy.value = false
   }
 }
 
@@ -469,7 +622,19 @@ async function openCustomer(id) {
   }
 }
 
+const OPEN = new Set(['pending', 'submitted', 'acknowledged', 'partial'])
+let refreshTimer = null
+function startRefresh() {
+  refreshTimer = setInterval(() => {
+    nowTs.value = Date.now()
+    if (inquiries.value.some((q) => OPEN.has(q.status))) loadInquiries({ silent: true })
+  }, 60000)
+}
+onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+
 onMounted(async () => {
+  startRefresh()
+  loadProdBodies()
   await Promise.all([loadInquiries(), loadAssociation()])
 })
 </script>
@@ -838,6 +1003,17 @@ onMounted(async () => {
 .mk-table tbody tr:hover { background: var(--tab-maslaka-wash); }
 .mk-table tbody tr:last-child td { border-bottom: none; }
 .mk-name { font-weight: 600; color: var(--text); }
+.mk-name > span:first-child { display: block; }
+.mk-kind {
+  display: inline-block; margin-top: 3px;
+  font-size: 0.7rem; font-weight: 500; color: var(--text-secondary);
+}
+.mk-eta {
+  display: block; margin: 4px auto 0; max-width: 170px;
+  font-size: 0.72rem; line-height: 1.35; color: var(--text-secondary);
+  white-space: normal;
+}
+.mk-eta--late { color: var(--red-deep); font-weight: 600; }
 .mk-table td:nth-child(2), .mk-table td:nth-child(4), .mk-table td:nth-child(5),
 .mk-table th:nth-child(2), .mk-table th:nth-child(4), .mk-table th:nth-child(5) {
   text-align: center; width: 100px;
@@ -925,4 +1101,45 @@ onMounted(async () => {
   .mk-primary, .mk-field input, .mk-ghost, .mk-table tbody tr { transition: none; }
   .mk-primary:hover:not(:disabled) { transform: none; }
 }
+
+/* ── Production reports ── */
+.mk-seg {
+  display: inline-flex; padding: 3px; gap: 3px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+}
+.mk-seg button {
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+  font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+  padding: 6px 16px; border-radius: 999px;
+}
+.mk-seg button.is-on { background: var(--tab-maslaka); color: #fff; }
+.mk-seg button:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 1px; }
+.mk-prod-terms { margin: 0 0 14px; font-size: 0.8rem; color: var(--text-muted); }
+.mk-prod-terms--commit {
+  color: var(--text); font-weight: 600;
+  padding: 8px 12px; border-radius: 8px;
+  border-inline-start: 3px solid var(--tab-maslaka);
+  background: color-mix(in srgb, var(--tab-maslaka) 8%, transparent);
+}
+.mk-bodies {
+  list-style: none; margin: 0 0 8px; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px;
+}
+.mk-body {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+}
+.mk-body:hover { border-color: var(--tab-maslaka); }
+.mk-body:has(input:checked) { border-color: var(--tab-maslaka); background: color-mix(in srgb, var(--tab-maslaka) 6%, transparent); }
+.mk-body.is-off { cursor: not-allowed; opacity: 0.6; }
+.mk-body input { accent-color: var(--tab-maslaka); margin: 0; flex-shrink: 0; }
+.mk-body-name { font-size: 0.82rem; color: var(--text); flex: 1; min-width: 0; }
+.mk-body-meta { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+.mk-link {
+  border: 0; background: none; padding: 0; cursor: pointer; font: inherit;
+  font-size: 0.78rem; color: var(--tab-maslaka); text-decoration: underline;
+}
+.mk-link:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.mk-prod-foot { margin-top: 14px; align-items: flex-end; }
+.mk-prod-done { color: var(--text); margin-top: 10px; }
 </style>

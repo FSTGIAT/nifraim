@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.pension_inquiry import PensionInquiry, ALLOWED_TRANSITIONS
+from app.models.maslaka_agent_link import MaslakaAgentLink, APPROVED as LINK_APPROVED
 from app.models.pension_holding import PensionHolding
 from app.models.pension_audit import PensionRawPayload
 from app.models.record import ClientRecord
@@ -54,17 +55,28 @@ async def create_inquiry(
     user_id: uuid.UUID,
     customer_id_number: str,
     customer_name: str | None = None,
+    action_code: str | None = None,
+    target_yatzran_id: str | None = None,
+    information_date: str | None = None,
 ) -> PensionInquiry:
     """Create a `pending` inquiry row. Does NOT send anything to the vault —
     that's `submit_inquiry` (run in a background task). Splitting create/submit
-    lets the API return immediately with a row the client can poll."""
+    lets the API return immediately with a row the client can poll.
+
+    For a production report (2000/2100) `customer_id_number` is the AGENT's own
+    ID and `target_yatzran_id` the body asked — see events.build_events_request."""
+    action_code = action_code or DEFAULT_ACTION_CODE
+    if action_code not in ACTION_CODES:
+        raise ValueError(f"unknown action code {action_code!r}")
     normalized = (customer_id_number or "").lstrip("0") or "0"
     inquiry = PensionInquiry(
         user_id=user_id,
         customer_id_number=normalized,
         customer_name=customer_name,
         status="pending",
-        interface_code=f"events_v007:{DEFAULT_ACTION_CODE}",
+        interface_code=f"events_v007:{action_code}",
+        target_yatzran_id=target_yatzran_id,
+        information_date=information_date,
         request_reference=uuid.uuid4().hex,
         expires_at=datetime.utcnow() + timedelta(days=settings.MASLAKA_INQUIRY_TIMEOUT_DAYS),
     )
@@ -90,7 +102,11 @@ async def create_inquiry(
 # alembic heads — allocating without a schema change is the smaller risk. The
 # lock is transaction-scoped, so it releases on the commit inside submit_inquiry.
 # Gaps are fine: Swiftness's own samples jump 6501 → 6535 → 6555.
-DEFAULT_ACTION_CODE = "9100"   # טרום ייעוץ, one-off. No UI picker yet.
+DEFAULT_ACTION_CODE = "9100"
+
+
+class AssociationNotApproved(RuntimeError):
+    """The requesting user's שיוך לבית תוכנה is not approved by the מסלקה."""   # טרום ייעוץ, one-off. No UI picker yet.
 
 
 async def _allocate_daily_sequence(db: AsyncSession, *, sender_id: str, when: datetime) -> int:
@@ -140,6 +156,20 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         # and fail as a generic transport_error. Validate against the table.
         _parsed = (inquiry.interface_code or "").rpartition(":")[2]
         action_code = _parsed if _parsed in ACTION_CODES else DEFAULT_ACTION_CODE
+
+        # The worker is the last host before a regulator, so it re-checks the
+        # agent's association itself rather than trusting that the API did.
+        # A feature flag is not an authorisation, and neither is a row that
+        # merely reached this queue.
+        link = (await db.execute(
+            select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == inquiry.user_id)
+        )).scalar_one_or_none()
+        if link is None or link.status != LINK_APPROVED or not link.agent_id_number:
+            raise AssociationNotApproved(
+                f"user {inquiry.user_id} has no APPROVED שיוך לבית תוכנה "
+                f"(status={getattr(link, 'status', None)!r}) — refusing to send on their behalf"
+            )
+
         req = build_events_request(
             action_code=action_code,
             customer_id_number=inquiry.customer_id_number,
@@ -149,6 +179,10 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             when=now,
             environment_code=env_code,
             file_number=build_file_number(sender_id=sender_id, sequence=sequence, when=now),
+            acting_agent_id=link.agent_id_number,
+            acting_agent_name=link.agent_name,
+            yatzran_id=inquiry.target_yatzran_id,
+            information_date=inquiry.information_date,
         )
         xml_bytes = req.xml
         filename = build_filename(
@@ -183,6 +217,15 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         inquiry.submitted_at = datetime.utcnow()
         await db.commit()
         logger.info("maslaka.submit_inquiry: %s → submitted (vault file %s)", inquiry.id, filename)
+    except AssociationNotApproved as e:
+        logger.error("maslaka.submit_inquiry: %s — %s", inquiry_id, e)
+        inquiry.error_code = "association_not_approved"
+        inquiry.error_detail = str(e)[:500]
+        await _advance_status(
+            db, inquiry, to_status="failed", actor="system",
+            event_type="association_not_approved", detail=str(e)[:500],
+        )
+        await db.commit()
     except MaslakaIdentityNotConfigured as e:
         # Not a transport problem — the deployment has no clearinghouse identity.
         # Label it as itself so the operator fixes the env instead of chasing SFTP.
@@ -203,6 +246,38 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             event_type="transport_error", detail=str(e)[:500],
         )
         await db.commit()
+
+
+# ─── When should the answer arrive? ────────────────────────────────────────
+# Straight from Swiftness's published rules, so the agent is never left staring
+# at "נשלח" with no idea whether silence is normal:
+#   * 9100/9101 (all / one body, טרום ייעוץ): משוב א' within 3 hours; the savers
+#     Q&A: since 22.5.2022 the full "all products" answer is expected within
+#     3–4 hours of sending (legal ceiling: 3 business days, V9M.pdf).
+#   * 2000 one-off production report: "המענה יתקבל עד ל-15 בחודש העוקב להגשת
+#     הבקשה" (clalei_prod_1.pdf §13.1); 2100 monthly — the same 15th, monthly.
+_FAST_INFO_CODES = {"9100", "9101"}
+_PRODUCTION_CODES = {"2000", "2100"}
+_OPEN_STATUSES = {"submitted", "acknowledged", "partial"}
+
+
+def expected_answer_by(inquiry: PensionInquiry) -> tuple[datetime | None, str | None]:
+    """(due time as tz-aware UTC, short basis) — or (None, None) when not applicable."""
+    from zoneinfo import ZoneInfo
+    if inquiry.status not in _OPEN_STATUSES or not inquiry.submitted_at:
+        return None, None
+    code = (inquiry.interface_code or "").rpartition(":")[2]
+    utc = ZoneInfo("UTC")
+    sent = inquiry.submitted_at.replace(tzinfo=utc)       # stored naive UTC
+    if code in _FAST_INFO_CODES:
+        return sent + timedelta(hours=4), "info_hours"
+    if code in _PRODUCTION_CODES:
+        il = ZoneInfo("Asia/Jerusalem")
+        local = sent.astimezone(il)
+        y, m = (local.year + 1, 1) if local.month == 12 else (local.year, local.month + 1)
+        due = datetime(y, m, 15, 23, 59, tzinfo=il)
+        return due.astimezone(utc), "production_15th"
+    return None, None
 
 
 # ─── Poll + ingest ─────────────────────────────────────────────────────────

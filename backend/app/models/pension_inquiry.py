@@ -46,6 +46,12 @@ class PensionInquiry(Base):
     # Lifecycle.
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
     interface_code: Mapped[str | None] = mapped_column(String(20), nullable=True)  # e.g. "events_v007"
+    # ח.פ of the institutional body a production report (2000/2100) is asked
+    # from — those are "מיצרן ספציפי", one body per request. NULL for 9100.
+    target_yatzran_id: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    # TAARICH-NECHONUT-MEIDA sent on the request (YYYYMMDD) — the as-of date
+    # asked for. NULL = the rules' default (end of the request month).
+    information_date: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
     # Correlation id we put into outbound XML so feedback/holdings responses
     # can be matched back. Unique per row.

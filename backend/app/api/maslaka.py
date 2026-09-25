@@ -27,6 +27,7 @@ from app.schemas.maslaka import (
     InquiryDetailOut,
     InquiryOut,
     PollStatsOut,
+    ProductionReportRequest,
 )
 from pathlib import Path
 
@@ -139,6 +140,101 @@ async def create_inquiry_endpoint(
         customer_name=payload.customer_name,
     )
     return _serialize_inquiry(inquiry)
+
+
+@router.get("/production-report/bodies")
+async def production_report_bodies(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Every body a production report can be asked from, with how many of the
+    caller's own customers sit there (from their records) and whether a monthly
+    subscription (2100) is already open — so the UI can pre-select the agent's
+    actual insurers and never offer a duplicate subscription."""
+    from app.models.record import ClientRecord
+    from app.services.maslaka.code_tables import PROVIDER_CODE_TO_COMPANY, provider_code_for_company
+
+    counts: dict[str, int] = {}
+    rows = (await db.execute(
+        select(ClientRecord.receiving_company,
+               func.count(func.distinct(func.ltrim(ClientRecord.id_number, "0"))))
+        .where(ClientRecord.user_id == user.id)
+        .group_by(ClientRecord.receiving_company)
+    )).all()
+    for company, n in rows:
+        code = provider_code_for_company(company)
+        if code:
+            counts[code] = counts.get(code, 0) + int(n or 0)
+
+    monthly = set((await db.execute(
+        select(PensionInquiry.target_yatzran_id).where(
+            PensionInquiry.user_id == user.id,
+            PensionInquiry.interface_code == "events_v007:2100",
+            PensionInquiry.status.notin_(("failed", "expired")),
+        )
+    )).scalars().all())
+
+    out = [
+        {"id": code, "name": name, "clients": counts.get(code, 0), "monthly": code in monthly}
+        for code, name in PROVIDER_CODE_TO_COMPANY.items()
+    ]
+    out.sort(key=lambda b: (-b["clients"], b["name"]))
+    return out
+
+
+@router.post("/production-report", response_model=list[InquiryOut],
+             dependencies=[Depends(require_maslaka_enabled),
+                           Depends(require_association_approved)])
+async def create_production_report_endpoint(
+    payload: ProductionReportRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Queue a one-off production report (2000) of the caller's book — one
+    `pending` inquiry per institutional body. Sends nothing; the Gateway
+    worker claims them like any other inquiry.
+
+    The subject of a production request is the AGENT (SUG-LAKOACH 3 = מפיץ),
+    so the row carries the agent's own linked ת"ז, never a customer's.
+    """
+    from app.services.maslaka import association
+    from app.services.maslaka.code_tables import is_known_provider, label_for_provider
+
+    link = await association.get_or_create_link(
+        db, user_id=user.id, agent_name=user.full_name)
+    ids: list[str] = []
+    for raw in payload.yatzran_ids:
+        code = "".join(ch for ch in str(raw) if ch.isdigit())
+        if not is_known_provider(code):
+            raise HTTPException(status_code=400, detail=f"ח.פ יצרן לא מוכר: {raw}")
+        if code not in ids:
+            ids.append(code)
+
+    if payload.frequency == "monthly":
+        already = set((await db.execute(
+            select(PensionInquiry.target_yatzran_id).where(
+                PensionInquiry.user_id == user.id,
+                PensionInquiry.interface_code == "events_v007:2100",
+                PensionInquiry.status.notin_(("failed", "expired")),
+            )
+        )).scalars().all())
+        ids = [c for c in ids if c not in already]
+        if not ids:
+            raise HTTPException(status_code=409, detail="כבר קיים מנוי חודשי לכל הגופים שנבחרו")
+
+    out = []
+    for code in ids:
+        inquiry = await orchestration.create_inquiry(
+            db,
+            user_id=user.id,
+            customer_id_number=link.agent_id_number,
+            customer_name=label_for_provider(code),
+            action_code="2100" if payload.frequency == "monthly" else "2000",
+            target_yatzran_id=code,
+            information_date=payload.information_date,
+        )
+        out.append(_serialize_inquiry(inquiry))
+    return out
 
 
 # ─── Inquiry listing + detail ──────────────────────────────────────────────
@@ -464,7 +560,11 @@ async def preview_request(
 
 # ─── Internal: serializer ──────────────────────────────────────────────────
 def _serialize_inquiry(inq: PensionInquiry) -> InquiryOut:
+    expected_by, expected_basis = orchestration.expected_answer_by(inq)
     return InquiryOut(
+        expected_by=expected_by,
+        expected_basis=expected_basis,
+        information_date=getattr(inq, "information_date", None),
         id=str(inq.id),
         user_id=str(inq.user_id),
         customer_id_number=inq.customer_id_number,

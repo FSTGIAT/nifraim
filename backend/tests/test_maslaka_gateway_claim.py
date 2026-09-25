@@ -36,6 +36,54 @@ def check(label: str, ok: bool, detail: str = "") -> None:
         FAILURES.append(label)
 
 
+class _ApprovedLink:
+    """Give `user` an APPROVED שיוך for the test, then put their row back.
+
+    Since 2026-09-25 the worker itself refuses to send for an agent whose
+    association is not approved, so every claim test needs one. The row is the
+    shared dev DB's real state — snapshot and restore it, never leave it changed.
+    """
+
+    def __init__(self, user_id, *, status="approved"):
+        self.user_id = user_id
+        self.status = status
+        self._snapshot = None
+        self._created = False
+
+    async def __aenter__(self):
+        from sqlalchemy import select
+        from app.database import async_session
+        from app.models.maslaka_agent_link import MaslakaAgentLink
+        async with async_session() as db:
+            link = (await db.execute(select(MaslakaAgentLink).where(
+                MaslakaAgentLink.user_id == self.user_id))).scalar_one_or_none()
+            if link is None:
+                link = MaslakaAgentLink(user_id=self.user_id, status="not_started")
+                db.add(link)
+                self._created = True
+            else:
+                self._snapshot = (link.status, link.agent_id_number, link.agent_name)
+            link.status = self.status
+            link.agent_id_number = "040336281"
+            link.agent_name = "סוכן בדיקה"
+            await db.commit()
+        return self
+
+    async def __aexit__(self, *exc):
+        from sqlalchemy import delete, select
+        from app.database import async_session
+        from app.models.maslaka_agent_link import MaslakaAgentLink
+        async with async_session() as db:
+            if self._created:
+                await db.execute(delete(MaslakaAgentLink).where(
+                    MaslakaAgentLink.user_id == self.user_id))
+            else:
+                link = (await db.execute(select(MaslakaAgentLink).where(
+                    MaslakaAgentLink.user_id == self.user_id))).scalar_one()
+                link.status, link.agent_id_number, link.agent_name = self._snapshot
+            await db.commit()
+
+
 async def test_claim_and_skip_locked() -> None:
     from sqlalchemy import delete, select
     from app.config import settings
@@ -81,7 +129,9 @@ async def test_claim_and_skip_locked() -> None:
             if not user:
                 print("  SKIP — no user in local db")
                 return
-
+        approval = _ApprovedLink(user.id)
+        await approval.__aenter__()
+        async with async_session() as db:
             inq = await orchestration.create_inquiry(
                 db, user_id=user.id, customer_id_number="058661554", customer_name="בדיקה",
             )
@@ -154,6 +204,8 @@ async def test_claim_and_skip_locked() -> None:
 
     finally:
         settings.MASLAKA_AGENT_NUMBER = "TEST-AGENT-1"
+        if "approval" in locals():
+            await approval.__aexit__(None, None, None)
         if created:
             async with async_session() as db:
                 await db.execute(delete(PensionRawPayload).where(PensionRawPayload.inquiry_id.in_(created)))
@@ -198,6 +250,9 @@ async def test_worker_tick() -> None:
             if not user:
                 print("  SKIP — no user in local db")
                 return
+        approval = _ApprovedLink(user.id)
+        await approval.__aenter__()
+        async with async_session() as db:
             inq = await orchestration.create_inquiry(
                 db, user_id=user.id, customer_id_number="99887766", customer_name="tick",
             )
@@ -269,6 +324,94 @@ async def test_worker_tick() -> None:
         check("second tick does not re-poll inside the interval",
               maslaka_worker._last_poll_at == before)
     finally:
+        if "approval" in locals():
+            await approval.__aexit__(None, None, None)
+        if created:
+            async with async_session() as db:
+                await db.execute(delete(PensionRawPayload).where(PensionRawPayload.inquiry_id.in_(created)))
+                await db.execute(delete(PensionAuditLog).where(PensionAuditLog.inquiry_id.in_(created)))
+                await db.execute(delete(PensionInquiry).where(PensionInquiry.id.in_(created)))
+                await db.commit()
+        shutil.rmtree(vault, ignore_errors=True)
+        reset_transport_for_tests()
+
+
+async def test_association_gate_and_production_report() -> None:
+    """The worker re-checks the שיוך, and a 2000 reaches the outbox correctly.
+
+    Two things carry weight: an agent whose association is NOT approved gets a
+    `failed` row and NO file (the API gate alone is not trusted), and a 2000
+    built through the real claim path names the יצרן and the acting agent.
+    """
+    from sqlalchemy import delete, select
+    from app.config import settings
+    from app.database import async_session
+    from app.models.pension_audit import PensionAuditLog, PensionRawPayload
+    from app.models.pension_inquiry import PensionInquiry
+    from app.models.user import User
+    from app.services.maslaka import orchestration
+    from app.services.maslaka.transport import reset_transport_for_tests
+
+    vault = Path(tempfile.mkdtemp(prefix="maslaka_gate_"))
+    settings.MASLAKA_TRANSPORT = "local"
+    settings.MASLAKA_LOCAL_OUTBOX = str(vault / "outbox")
+    settings.MASLAKA_LOCAL_INBOX = str(vault / "inbox")
+    settings.MASLAKA_LOCAL_ARCHIVE = str(vault / "archive")
+    settings.MASLAKA_AGENT_NUMBER = "TEST-AGENT-1"
+    settings.MASLAKA_AGENT_ID = "123456789"
+    reset_transport_for_tests()
+    outbox = Path(settings.MASLAKA_LOCAL_OUTBOX)
+
+    created: list[uuid.UUID] = []
+    try:
+        async with async_session() as db:
+            user = (await db.execute(select(User).limit(1))).scalars().first()
+            if not user:
+                print("  SKIP — no user in local db")
+                return
+
+        async with _ApprovedLink(user.id, status="submitted"):
+            async with async_session() as db:
+                inq = await orchestration.create_inquiry(
+                    db, user_id=user.id, customer_id_number="040336281",
+                    action_code="2000", target_yatzran_id="514956465",
+                )
+                created.append(inq.id)
+            async with async_session() as db:
+                await orchestration.claim_and_submit_one(db)
+                row = await db.get(PensionInquiry, inq.id)
+                await db.refresh(row)
+            check("unapproved agent: row fails as association_not_approved",
+                  row.status == "failed" and row.error_code == "association_not_approved",
+                  f"{row.status}/{row.error_code}")
+            files = [p for p in outbox.iterdir() if p.is_file()] if outbox.exists() else []
+            check("unapproved agent: NOTHING written to the outbox", not files,
+                  ", ".join(p.name for p in files))
+
+        async with _ApprovedLink(user.id):
+            async with async_session() as db:
+                inq2 = await orchestration.create_inquiry(
+                    db, user_id=user.id, customer_id_number="040336281",
+                    action_code="2000", target_yatzran_id="514956465",
+                )
+                created.append(inq2.id)
+            check("2000 row records its action code", inq2.interface_code == "events_v007:2000",
+                  str(inq2.interface_code))
+            async with async_session() as db:
+                await orchestration.claim_and_submit_one(db)
+                row2 = await db.get(PensionInquiry, inq2.id)
+                await db.refresh(row2)
+            check("approved agent: 2000 submitted", row2.status == "submitted",
+                  f"{row2.status}/{row2.error_code}/{row2.error_detail}")
+            files = [p for p in outbox.iterdir() if p.is_file()]
+            body = files[0].read_text(encoding="utf-8") if files else ""
+            check("2000 payload names the יצרן",
+                  "<KOD-MEZAHE-YATZRAN>514956465</KOD-MEZAHE-YATZRAN>" in body)
+            check("2000 payload carries the acting agent",
+                  "<MISPAR-MEZAHE-PONE>040336281</MISPAR-MEZAHE-PONE>" in body)
+            check("2000 payload subject is the מפיץ",
+                  "<SUG-LAKOACH>3</SUG-LAKOACH>" in body)
+    finally:
         if created:
             async with async_session() as db:
                 await db.execute(delete(PensionRawPayload).where(PensionRawPayload.inquiry_id.in_(created)))
@@ -325,6 +468,8 @@ if __name__ == "__main__":
         await test_claim_and_skip_locked()
         print("\nWorker _tick() — drain + poll cadence:")
         await test_worker_tick()
+        print("\nAssociation gate on the worker + a 2000 end-to-end:")
+        await test_association_gate_and_production_report()
 
     asyncio.run(_db_tests())
     print("\n" + ("ALL PASS" if not FAILURES else f"{len(FAILURES)} FAILURE(S): " + "; ".join(FAILURES)))

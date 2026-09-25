@@ -98,6 +98,10 @@ ACTION_CODES: dict[str, ActionCode] = {
 }
 
 
+# "דוחות פרודוקציה מיצרן ספציפי" — each needs the יצרן in NetuneiMutzar.
+# (2500, the cancel, names the subscription by MISPAR-MISLAKA-LEBITUL instead.)
+PRODUCTION_REPORT_CODES = frozenset({"2000", "2100"})
+
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
 
@@ -161,16 +165,46 @@ def build_events_request(
     when: datetime | None = None,
     environment_code: str | None = None,
     allow_placeholder_identity: bool = False,
+    acting_agent_id: str | None = None,
+    acting_agent_name: str | None = None,
+    yatzran_id: str | None = None,
+    information_date: str | None = None,
 ) -> EventsRequest:
     """Build one ממשק אירועים v007 request.
 
     `allow_placeholder_identity` exists only for the preview console: it lets the
     UI render exactly what we WOULD send before Swiftness has issued our agent
     number. It must never be set on a path that transports.
+
+    The SENDER is always Nifraim (the בית תוכנה, global settings). The agent the
+    request is made FOR — `acting_agent_id` / `_name`, their ת"ז — rides in
+    `YeshutGoremPoneLemislaka`. Without it the מסלקה sees a request from
+    Nifraim on behalf of nobody, and cannot tie it to an agent it has linked.
+
+    `yatzran_id` is the institutional body's ח.פ (`KOD-MEZAHE-YATZRAN`). A
+    production report (2000/2100) is "מיצרן ספציפי" — one body per request —
+    so it is mandatory there.
     """
     action = ACTION_CODES.get(action_code)
     if action is None:
         raise ValueError(f"unknown action code {action_code!r}")
+
+    _agent_digits = "".join(ch for ch in (acting_agent_id or "") if ch.isdigit())
+    _yatzran = "".join(ch for ch in (yatzran_id or "") if ch.isdigit())
+    if action.code in PRODUCTION_REPORT_CODES and not _yatzran:
+        raise ValueError(
+            f"action {action.code} ({action.label}) is a production report from ONE "
+            "specific יצרן — pass yatzran_id (the body's ח.פ). A request naming no "
+            "יצרן is technically acked and can never return a report."
+        )
+    # TAARICH-NECHONUT-MEIDA (YYYYMMDD). The field spec allows it on production
+    # requests but documents it only for 9300-series; sending 20260831 on a 2000
+    # is a deliberate probe for "can a past month be requested" (2026-09-25).
+    if information_date is not None:
+        from datetime import datetime as _dt
+        _dt.strptime(information_date, "%Y%m%d")        # raises on a bad date
+    if _yatzran and len(_yatzran) > 9:
+        raise ValueError(f"yatzran_id must be a ח.פ of up to 9 digits, got {yatzran_id!r}")
 
     agent_id = settings.MASLAKA_AGENT_ID
     agent_name = settings.MASLAKA_AGENT_NUMBER
@@ -183,19 +217,23 @@ def build_events_request(
         agent_id = agent_id or "<ת.ז. הסוכן>"
         agent_name = agent_name or "<שם הסוכן>"
 
-    if not action.needs_customer and not customer_id_number:
-        # The XSD makes YeshutLakoachMeidaBsisi/MISPAR-MEZAHE-LAKOACH minOccurs=1
-        # and NOT nillable, with no alternative branch — so even a per-יצרן
-        # production-report subscription (2000/2100/2500) must name an identity
-        # here. What identity that is — the בעל רישיון's own ח.פ, or the
-        # יצרן's — is NOT settled by the schema and must be confirmed with
-        # Swiftness. Refuse rather than guess: an invalid file gets silence, and
-        # a plausible-but-wrong identity gets someone else's data.
-        raise ValueError(
-            f"action {action.code} ({action.label}) still requires an identifier in "
-            "MISPAR-MEZAHE-LAKOACH — the XSD has no customer-less branch. Pass "
-            "customer_id_number explicitly once Swiftness confirms whose ID belongs there."
-        )
+    # Production requests (2000-2500): the "customer" block describes the מפיץ
+    # itself. Settled by the Events v007 FIELD SPEC (event_interface_v7-6-30.xlsx,
+    # SUG-LAKOACH): "ערך 3 ישמש עבור פעולות 2000, 2001, 2100 … 2500", and
+    # SHEM-MAASIK carries "במקרה של בקשות פרודוקציה את שם המפיץ". So the
+    # identity here is the acting AGENT's — never Nifraim's ח.פ, never the
+    # יצרן's. No agent → refuse: a production report for nobody is useless and
+    # one for the wrong agent is someone else's book.
+    distributor_request = not action.needs_customer
+    if distributor_request:
+        if not customer_id_number:
+            customer_id_number = acting_agent_id
+        if not customer_id_number:
+            raise ValueError(
+                f"action {action.code} ({action.label}) requires an identifier in "
+                "MISPAR-MEZAHE-LAKOACH — for a production request that is the "
+                "acting agent (מפיץ). Pass acting_agent_id."
+            )
     if action.needs_customer and not customer_id_number:
         raise ValueError(f"action {action_code} requires a customer id")
 
@@ -223,9 +261,10 @@ def build_events_request(
     _sender_for_file_no = "".join(
         ch for ch in str(settings.MASLAKA_AGENT_ID or "") if ch.isdigit()
     ) or "0"
-    _sub(header, "MISPAR-HAKOVETZ", file_number or build_file_number(
+    file_number = file_number or build_file_number(
         sender_id=_sender_for_file_no, sequence=sequence, when=now,
-    ))
+    )
+    _sub(header, "MISPAR-HAKOVETZ", file_number)
     _sub(header, "MISPAR-SIDURI", str(int(sequence)).zfill(4))
 
     sender = _sub(header, "NetuneiGoremSholech")
@@ -256,8 +295,14 @@ def build_events_request(
 
     body = _sub(root, "GufHamimshak")
     pone = _sub(body, "YeshutGoremPoneLemislaka")
+    # The acting agent. SUG-PONE 3 = מפיץ, SUG-KOD-MEZAHE-PONE 3 = ת.ז. Nil when
+    # no agent is given (the preview console), which is what every send before
+    # 2026-09-25 carried.
+    _sub(pone, "SUG-PONE", "3" if _agent_digits else None)
+    _sub(pone, "SUG-KOD-MEZAHE-PONE", "3" if _agent_digits else None)
+    _sub(pone, "MISPAR-MEZAHE-PONE", _agent_digits.zfill(9) if _agent_digits else None)
+    _sub(pone, "SHEM-GOREM-PONE", (acting_agent_name or "").strip() or None)
     for tag in (
-        "SUG-PONE", "SUG-KOD-MEZAHE-PONE", "MISPAR-MEZAHE-PONE", "SHEM-GOREM-PONE",
         "MISPAR-MEZAHE-METAFEL", "SHEM-PRATI-PONE-LEMISLAKA",
         "SHEM-MISHPACHA-PONE-LEMISLAKA", "MISPAR-TELEPHONE-KAVI-PONE-LEMISLAKA",
         "E-MAIL-PONE-LEMISLAKA", "MISPAR-CELLULARI", "MISPAR-ZIHUI-PNIMI-ETZEL-YATZRAN",
@@ -265,7 +310,8 @@ def build_events_request(
         _sub(pone, tag)
 
     customer = _sub(pone, "YeshutLakoachMeidaBsisi")
-    _sub(customer, "SUG-LAKOACH", "1")
+    # 1 = עמית/מבוטח; 3 = מפיץ, the spec's value for every production request.
+    _sub(customer, "SUG-LAKOACH", "3" if distributor_request else "1")
     _sub(customer, "SUG-MEZAHE-LAKOACH", "3")   # 3 = ת.ז.
     # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
     # including any leading zero, and `043417252` is a real one. Stripping would
@@ -275,27 +321,32 @@ def build_events_request(
     # The 12-digit padding is a separate thing, and belongs to the FILENAME.
     _digits = "".join(ch for ch in (customer_id_number or "") if ch.isdigit())
     _sub(customer, "MISPAR-MEZAHE-LAKOACH", _digits.zfill(9) if _digits else "")
-    _sub(customer, "SHEM-PRATI-LAKOACH", customer_first_name)
-    _sub(customer, "SHEM-MISHPACHA-LAKOACH", customer_last_name)
-    for tag in ("SHEM-MAASIK", "KOD-MEZAHE-MAASIK-ETZEL-YATZRAN", "KOD-MEDINA", "TAARICH-LEIDA"):
+    _sub(customer, "SHEM-PRATI-LAKOACH", None if distributor_request else customer_first_name)
+    _sub(customer, "SHEM-MISHPACHA-LAKOACH", None if distributor_request else customer_last_name)
+    # SHEM-MAASIK is mandatory for SUG-LAKOACH 3: "את שם המפיץ".
+    _sub(customer, "SHEM-MAASIK",
+         ((acting_agent_name or "").strip() or None) if distributor_request else None)
+    for tag in ("KOD-MEZAHE-MAASIK-ETZEL-YATZRAN", "KOD-MEDINA", "TAARICH-LEIDA"):
         _sub(customer, tag)
 
     eirua = _sub(customer, "Eirua")
     kod = _sub(eirua, "KodEirua")
     _sub(kod, "KOD-EIRUA", action.code)
-    # MISPAR-MEZAHE-RESHUMA is FIXED-WIDTH 74. Every one of the 13 real EVENTS
-    # samples is exactly 74 characters; an 18-char value would have come back a
-    # defect. The first 14 are the timestamp in all of them — the remaining 60
-    # differ per file and their internal composition is not documented in
-    # anything we hold, so we fill deterministically: sender, action, sequence,
-    # then zero padding. Length and uniqueness are right; the internal layout is
-    # an assumption to re-check against the Events XSD when it arrives.
+    # MISPAR-MEZAHE-RESHUMA is 74 chars, and its layout IS documented — in the
+    # Events v007 field spec (event_interface_v7-6-30.xlsx), not the XSD:
+    #   מספר הקובץ (34) · מס' מזהה לקוח, 16 עם אפסים מובילים ·
+    #   מס' מזהה עובד, 16 (אפסים — only 9301/3 on an employer's behalf) ·
+    #   קוד אירוע (4) · נומרטור (4)
+    # Until 2026-09-25 we filled it with timestamp+sender+padding — right length,
+    # wrong content — and the technical ack (FEDBKA) did not object. Follow the
+    # spec anyway: this is the key a content answer is correlated on.
     record_ref = (
-        now.strftime("%Y%m%d%H%M%S")                       # 14
-        + "".join(ch for ch in str(agent_id) if ch.isdigit()).zfill(12)   # 12
-        + action.code.zfill(4)                             # 4
-        + str(int(sequence)).zfill(4)                      # 4
-    ).ljust(74, "0")[:74]
+        str(file_number)[:34].ljust(34, "0")
+        + "".join(ch for ch in (customer_id_number or "") if ch.isdigit()).zfill(16)[-16:]
+        + "0" * 16
+        + action.code.zfill(4)
+        + str(int(sequence)).zfill(4)[-4:]
+    )
     _sub(kod, "MISPAR-MEZAHE-RESHUMA", record_ref)
     # Left empty on an opening request: MISPAR-MISLAKA is the GUID the מסלקה
     # ASSIGNS, and it comes back to us on the FEDBKB. It is the correlation key
@@ -303,15 +354,17 @@ def build_events_request(
     _sub(kod, "MISPAR-MISLAKA")
     _sub(kod, "MISPAR-MISLAKA-LPNIIYA-CHOZORET")
     _sub(kod, "OFEN-HAAVARAT-MEIDA-MIMISLLAKA-LELAKOACH", "1")
-    for tag in (
-        "TAARICH-NECHONUT-MEIDA", "MAANE-ACHZAKOT", "DOCH-BEINAIM",
-        "MISPAR-MISLAKA-LEBITUL",
-    ):
+    _sub(kod, "TAARICH-NECHONUT-MEIDA", information_date)
+    for tag in ("MAANE-ACHZAKOT", "DOCH-BEINAIM", "MISPAR-MISLAKA-LEBITUL"):
         _sub(kod, tag)
-    # An ongoing request (9201, 2100) is flagged here rather than by a different code.
-    ongoing = action.code in ("9201", "2100", "2101")
-    _sub(kod, "BAKASHA-MITMASHECHET", "1" if ongoing else "")
-    _sub(kod, "TADIRUT-BAKASHA", "1" if ongoing else "")
+    # BAKASHA-MITMASHECHET: **1 = חד"פ, 2 = מתמשכת**, and per the field spec it
+    # is "שדה חובה בבקשות 9100/1, 9300/2. השדה אינו רלוונטי בבקשות אחרות" — and a
+    # מפיץ may NOT file an ongoing 9100/1. This used to send "1" for the ONGOING
+    # codes (9201/2100), i.e. the opposite meaning, and nil for 9100 where it is
+    # mandatory. Frequency is carried by the code itself for 2100/2200/…, so
+    # TADIRUT-BAKASHA (only for ongoing 9100/1 / 9300/2) stays nil.
+    _sub(kod, "BAKASHA-MITMASHECHET", "1" if action.code in ("9100", "9101") else None)
+    _sub(kod, "TADIRUT-BAKASHA")
     for tag in ("HAZHARAT-MAASIK-H-P-KASUR", "ISUR-OVED-PIZUIM"):
         _sub(kod, tag)
     _sub(kod, "RIANUN-FISHING", "1" if action.code == "9102" else "2")
@@ -328,8 +381,19 @@ def build_events_request(
     # They must be excluded from _mark_nils for exactly that reason.
     _nil_exempt = (_sub(kod, "YipuiKoach"), _sub(kod, "mismachim"))
 
+    # Mutzar/NetuneiMutzar names the יצרן. The field spec: "בבלוק זה יוגדר קוד
+    # מזהה של היצרן" — NOT sent for 9100/9102 (all bodies) or 2500 (cancel).
+    # For a production report KOD-MEZAHE-YATZRAN is its only field; the XSD
+    # still wants SUG-MUTZAR-PENSIONI present (nillable).
+    if _yatzran:
+        netunei = _sub(_sub(kod, "Mutzar"), "NetuneiMutzar")
+        _sub(netunei, "KOD-MEZAHE-YATZRAN", _yatzran.zfill(9))
+        _sub(netunei, "SUG-MUTZAR-PENSIONI")
+
     closing = _sub(root, "ReshumatSgira")
-    _sub(closing, "MISPAR-YESHUYUT-LAKOACH-BAKOVETZ", "1" if action.needs_customer else "0")
+    # One YeshutLakoachMeidaBsisi block per file, whether it describes a saver
+    # or (for production requests) the מפיץ.
+    _sub(closing, "MISPAR-YESHUYUT-LAKOACH-BAKOVETZ", "1")
     _sub(closing, "MISPAR-BAKASHOT", "1")
 
     # The real file is indented two spaces; match it so a byte-level diff against

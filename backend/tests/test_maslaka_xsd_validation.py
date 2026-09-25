@@ -48,22 +48,43 @@ def main() -> None:
     print("\nEvery action code must build a schema-valid request:")
     now = maslaka_now()
     for code, action in sorted(ACTION_CODES.items()):
-        # 2000/2100/2500 have no customer, but the XSD still demands an identity
-        # in MISPAR-MEZAHE-LAKOACH. Pass the sender's own ח.פ so the SHAPE is
-        # covered; whose ID actually belongs there is an open question for
-        # Swiftness and the builder refuses to invent one.
+        # 2000/2100/2500: the subject is the acting agent (SUG-LAKOACH 3), and
+        # 2000/2100 also name ONE יצרן (Mutzar/NetuneiMutzar).
         req = build_events_request(
             action_code=code,
-            customer_id_number="043417252" if action.needs_customer else "558638623",
+            customer_id_number="043417252" if action.needs_customer else None,
             customer_first_name="רועי", customer_last_name="גיאת",
             sequence=1, when=now, environment_code=environment()[0],
             file_number=build_file_number(sender_id="558638623", sequence=1, when=now),
             allow_placeholder_identity=True,
+            acting_agent_id="040336281", acting_agent_name="משה כהן",
+            yatzran_id="514956465" if code in ("2000", "2100") else None,
         )
         doc = etree.fromstring(req.xml)
         ok = schema.validate(doc)
         detail = "" if ok else schema.error_log[0].message[:90]
         check(f"{code} ({action.label}) validates", ok, detail)
+
+    print("\nProduction requests with an as-of date (TAARICH-NECHONUT-MEIDA) and monthly 2100:")
+    for code, info_date in (("2000", "20260831"), ("2100", None), ("2100", "20260831")):
+        req = build_events_request(
+            action_code=code, sequence=1, when=now, environment_code=environment()[0],
+            file_number=build_file_number(sender_id="558638623", sequence=1, when=now),
+            allow_placeholder_identity=True, acting_agent_id="040336281",
+            acting_agent_name="משה כהן", yatzran_id="514956465", information_date=info_date,
+        )
+        ok = schema.validate(etree.fromstring(req.xml))
+        check(f"{code} information_date={info_date} validates", ok,
+              "" if ok else schema.error_log[0].message[:90])
+        if info_date:
+            check(f"{code} carries TAARICH-NECHONUT-MEIDA",
+                  f"<TAARICH-NECHONUT-MEIDA>{info_date}</TAARICH-NECHONUT-MEIDA>".encode() in req.xml)
+    try:
+        build_events_request(action_code="2000", yatzran_id="514956465", acting_agent_id="040336281",
+                             allow_placeholder_identity=True, information_date="20260231")
+        check("an impossible date (31.02) is refused", False, "it built anyway")
+    except ValueError:
+        check("an impossible date (31.02) is refused", True)
 
     print("\nMISPAR-HAKOVETZ is xsd:length 34 EXACTLY — including the default:")
     import re
