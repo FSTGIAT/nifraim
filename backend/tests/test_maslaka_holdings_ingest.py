@@ -111,6 +111,68 @@ async def main() -> None:
         check("unroutable → False (left in inbox)", ok is False)
         check("no rows written for it", len(after) == len(before), f"{len(before)} → {len(after)}")
 
+        print("\nNo GUID (our real receipts are file-level): a 9100 routes by the customer:")
+        async with async_session() as db:
+            inq2 = PensionInquiry(
+                user_id=user.id, customer_id_number="327824520", status="acknowledged",
+                interface_code="events_v007:9100", request_reference=f"test-hold-{uuid.uuid4().hex[:8]}",
+                submitted_at=datetime.utcnow(),
+            )
+            db.add(inq2)
+            # isolate the no-GUID path: close the first request and forget its GUID,
+            # so inq2 is the only open information request for this customer
+            first_req = await db.get(PensionInquiry, created[0])
+            first_req.status, first_req.mislaka_number = "complete", None
+            await db.commit()
+            created.append(inq2.id)
+        async with async_session() as db:
+            ok = await orchestration._ingest_holdings(db, ing, source_filename="ING2.DAT", scope_user_id=None)
+            await db.commit()
+            n = len((await db.execute(select(PensionHolding).where(PensionHolding.inquiry_id == inq2.id))).scalars().all())
+        check("9100 without GUID routed by customer ID", ok is True and n >= 1, f"ok={ok} rows={n}")
+
+        print("\nA production file routes by the insurer's ח.פ (one open request to it):")
+        kgm_bytes = sample("CONSLTKGM").read_bytes()
+        async with async_session() as db:
+            sub = PensionInquiry(
+                user_id=user.id, customer_id_number="40336281", status="acknowledged",
+                interface_code="events_v007:2100", request_reference=f"test-hold-{uuid.uuid4().hex[:8]}",
+                target_yatzran_id="570009449", submitted_at=datetime.utcnow(),
+            )
+            db.add(sub)
+            await db.commit()
+            created.append(sub.id)
+        async with async_session() as db:
+            ok = await orchestration._ingest_holdings(db, kgm_bytes, source_filename="KGM2.DAT", scope_user_id=None)
+            await db.commit()
+            rows = (await db.execute(select(PensionHolding).where(PensionHolding.inquiry_id == sub.id))).scalars().all()
+            own = (await db.execute(select(PensionHolding).where(PensionHolding.inquiry_id == inq2.id))).scalars().all()
+            subrow = await db.get(PensionInquiry, sub.id)
+        check("production file routed to the monthly subscription", ok is True and len(rows) >= 1, f"{len(rows)} rows")
+        # a customer who ALSO has an open 9100 gets his rows on that request; the
+        # rest go to the subscription — together, every customer in the file lands
+        stored = {r.customer_id_number for r in rows} | {r.customer_id_number for r in own}
+        check("every customer in it stored", stored >= set(kgm), f"{len(stored)} / {len(kgm)} customers")
+        check("2100 stays open (partial) — a new file comes monthly", subrow.status == "partial", subrow.status)
+
+        print("\nTwo agents with requests to the same insurer → ambiguous → left in the inbox:")
+        async with async_session() as db:
+            other = (await db.execute(select(User).where(User.id != user.id).limit(1))).scalars().first()
+        if other is not None:
+            async with async_session() as db:
+                dup = PensionInquiry(
+                    user_id=other.id, customer_id_number="99999999", status="acknowledged",
+                    interface_code="events_v007:2000", request_reference=f"test-hold-{uuid.uuid4().hex[:8]}",
+                    target_yatzran_id="570009449", submitted_at=datetime.utcnow(),
+                )
+                db.add(dup)
+                await db.commit()
+                created.append(dup.id)
+            async with async_session() as db:
+                ok = await orchestration._ingest_holdings(db, kgm_bytes, source_filename="KGM3.DAT", scope_user_id=None)
+                await db.commit()
+            check("ambiguous production file NOT guessed", ok is False, str(ok))
+
         print("\nExpiry: production requests keep their own clock:")
         async with async_session() as db:
             past = datetime.utcnow() - timedelta(days=1)

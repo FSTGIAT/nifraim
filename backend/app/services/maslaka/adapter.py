@@ -222,6 +222,17 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
     )
 
 
+def header_recipient_id(xml_bytes: bytes) -> str | None:
+    """MISPAR-ZIHUI-NIMAAN from the file header (KoteretKovetz/NetuneiGoremNimaan)."""
+    root = ET.fromstring(xml_bytes)
+    for e in root.iter():
+        if _local_tag(e.tag) == "NetuneiGoremNimaan":
+            for c in e:
+                if _local_tag(c.tag) == "MISPAR-ZIHUI-NIMAAN":
+                    return (c.text or "").strip() or None
+    return None
+
+
 def holdings_index(xml_bytes: bytes) -> dict[str, dict]:
     """Per-customer routing keys from a REAL holdings / CONSLT (Mimshak) file.
 

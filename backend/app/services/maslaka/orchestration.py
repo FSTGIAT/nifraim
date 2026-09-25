@@ -512,6 +512,62 @@ async def _ingest_holdings(
 
     open_statuses = ("submitted", "acknowledged", "partial")
 
+    # The file header's recipient (NetuneiGoremNimaan) — for a production file
+    # this is the מפיץ it is addressed to.
+    header_nimaan = (adapter.header_recipient_id(payload) or "").lstrip("0") or None
+
+    async def unique(q) -> PensionInquiry | None:
+        if scope_user_id is not None:
+            q = q.where(PensionInquiry.user_id == scope_user_id)
+        rows = (await db.execute(q.limit(2))).scalars().all()
+        return rows[0] if len(rows) == 1 else None     # 0 or ambiguous → never guess
+
+    async def by_customer(cust: str) -> PensionInquiry | None:
+        # 9100/9101 answer: the customer's ID identifies the request when exactly
+        # one open information request exists for that ID. Measured 2026-09-25:
+        # our PROD receipts are FILE-level (RAMAT-MASHOV=1) and carry NO
+        # MISPAR-MISLAKA, so the GUID route never fires for our own requests.
+        return await unique(select(PensionInquiry).where(
+            PensionInquiry.customer_id_number == cust,
+            PensionInquiry.interface_code.in_(("events_v007:9100", "events_v007:9101")),
+            PensionInquiry.status.in_(open_statuses),
+        ))
+
+    async def by_body(keys: dict) -> PensionInquiry | None:
+        # Production answer (2000/2100): the body's ח.פ, narrowed to the agent
+        # the header addresses when that is one of our approved agents; else the
+        # single open production request to that body. Two agents asking the same
+        # body with no header match → ambiguous → left in the inbox.
+        yat = keys.get("yatzran")
+        if not yat:
+            return None
+        q = select(PensionInquiry).where(
+            PensionInquiry.target_yatzran_id == yat,
+            PensionInquiry.interface_code.in_(("events_v007:2000", "events_v007:2100")),
+            PensionInquiry.status.in_(open_statuses),
+        )
+        if header_nimaan:
+            link_users = (await db.execute(select(MaslakaAgentLink.user_id).where(
+                MaslakaAgentLink.status == LINK_APPROVED,
+                func.ltrim(MaslakaAgentLink.agent_id_number, "0") == header_nimaan,
+            ))).scalars().all()
+            if len(link_users) == 1:
+                hit = (await db.execute(q.where(PensionInquiry.user_id == link_users[0])
+                                         .order_by(PensionInquiry.interface_code.desc(),
+                                                   PensionInquiry.created_at.desc()))).scalars().first()
+                if hit is not None:
+                    return hit
+        users = set((await db.execute(select(PensionInquiry.user_id).where(
+            PensionInquiry.target_yatzran_id == yat,
+            PensionInquiry.interface_code.in_(("events_v007:2000", "events_v007:2100")),
+            PensionInquiry.status.in_(open_statuses),
+        ))).scalars().all())
+        if len(users) != 1:
+            return None
+        # prefer the monthly subscription (it stays open), else the newest one-off
+        return (await db.execute(q.order_by(PensionInquiry.interface_code.desc(),
+                                            PensionInquiry.created_at.desc()))).scalars().first()
+
     async def by_agent(cust: str, keys: dict) -> PensionInquiry | None:
         agent = keys.get("agent_id")
         if not agent:
@@ -543,7 +599,10 @@ async def _ingest_holdings(
         if not cust:
             continue
         keys = index.get(cust, {})
-        inq = by_guid.get(keys.get("guid") or "") or await by_agent(cust, keys)
+        inq = (by_guid.get(keys.get("guid") or "")
+               or await by_agent(cust, keys)
+               or await by_customer(cust)
+               or await by_body(keys))
         if inq is None:
             unrouted.add(cust)
             continue
