@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session
+from app.models.mail_agent_gap import MailAgentGap
 from app.models.mail_item import DRAFTED, NEEDS_REPLY, NEW, MailItem
 from app.models.mail_watch_sender import MailWatchSender
 from app.models.mailbox_config import MailboxConfig
@@ -179,6 +180,14 @@ async def make_draft(db: AsyncSession, item: MailItem, sender: MailWatchSender |
     item.draft_body = result.get("body") or ""
     item.draft_warnings = result.get("warnings") or []
     item.draft_model = model
+    # Every gap, every draft — draft_warnings is overwritten on regeneration.
+    for m in result.get("missing") or []:
+        if str(m).strip():
+            db.add(MailAgentGap(
+                user_id=item.user_id, mail_item_id=item.id, missing=str(m).strip(),
+                category=item.category, sender_kind=kind, from_address=item.from_address,
+                linked_company=item.linked_company, summary=item.summary, draft_model=model,
+            ))
     item.draft_edited = False
     item.status = DRAFTED
     return True

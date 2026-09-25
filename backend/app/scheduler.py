@@ -320,6 +320,9 @@ def start_scheduler():
         IntervalTrigger(minutes=settings.MAIL_AGENT_POLL_MINUTES),
         id="mail_agent_poll",
         replace_existing=True,
+        # First check shortly after boot, not a full interval later — otherwise
+        # every deploy/restart leaves new mail unread for MAIL_AGENT_POLL_MINUTES.
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
     )
     scheduler.add_job(
         purge_old_bodies,

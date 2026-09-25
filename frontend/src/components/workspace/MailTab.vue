@@ -186,120 +186,134 @@
       </section>
     </template>
 
-    <!-- The open mail — a drawer, so the inbox stays in view behind it. -->
+    <!-- The open mail — an envelope opens (Remotion, one-shot), then the
+         reply is a plain letter card to read, edit and send. -->
     <Teleport to="body">
-      <Transition name="drawer">
-        <div v-if="sel" class="ml-drawer-overlay" @click.self="store.selected = null">
-          <aside class="ml-drawer" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="ml-d-title"
-                 @keydown.escape="store.selected = null">
-            <header class="ml-d-head">
-              <span class="ml-avatar">{{ initial(sel) }}</span>
-              <div class="ml-d-titles">
-                <h4 id="ml-d-title">{{ nameOf(sel) }}</h4>
-                <span class="ml-d-sub">{{ sel.subject || '(ללא נושא)' }}</span>
-              </div>
-              <button class="ml-x" type="button" aria-label="סגור" @click="store.selected = null">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
-            </header>
-
-            <div class="ml-d-body">
-              <!-- What the AI understood — typed in, once -->
-              <section class="ml-ai">
-                <span class="ml-ai-badge">
-                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                    <path fill="currentColor" d="M12 2c.6 4.6 2.4 6.4 7 7-4.6.6-6.4 2.4-7 7-.6-4.6-2.4-6.4-7-7 4.6-.6 6.4-2.4 7-7Z" />
-                  </svg>
-                  {{ CATEGORY[sel.category] || 'סיכום' }}
-                </span>
-                <p class="ml-ai-summary">
-                  <Typewriter v-if="sel.summary" :key="sel.id" :text="sel.summary" :speed="14" :loop="false" cursor="" />
-                  <template v-else>{{ skippedText(sel) }}</template>
-                </p>
-                <div v-if="entityChips.length" class="ml-entities">
-                  <span v-for="(c, i) in entityChips" :key="i" class="ml-entity">
-                    <span class="ml-entity-k">{{ c.k }}</span><span class="ltr-number">{{ c.v }}</span>
-                  </span>
+      <Transition name="lt">
+        <div v-if="sel" class="ml-letter-overlay" @click.self="closeLetter">
+          <MailEnvelopeIntro
+            v-if="!introDone" :key="sel.id" :name="nameOf(sel)" :initial="initial(sel)"
+            @done="introDone = true"
+          />
+          <Transition :name="navDir ? `letter-${navDir}` : 'letter'" mode="out-in" appear>
+            <article
+              v-if="introDone" :key="sel.id" class="ml-letter" dir="rtl" role="dialog" aria-modal="true"
+              aria-labelledby="ml-l-title"
+            >
+              <header class="ml-l-head">
+                <span class="ml-avatar">{{ initial(sel) }}</span>
+                <div class="ml-d-titles">
+                  <h4 id="ml-l-title">{{ sel.status === 'sent' ? 'נשלח אל' : 'תשובה אל' }} {{ nameOf(sel) }}</h4>
+                  <span class="ml-d-sub ltr-number">{{ sel.from_address }}</span>
                 </div>
-              </section>
+                <nav v-if="queuePos >= 0 && queue.length > 1" class="ml-l-nav" aria-label="מעבר בין מיילים">
+                  <button type="button" class="ml-l-arrow" :disabled="!prevId || !!store.busy" aria-label="המייל הקודם"
+                          @click="goTo(prevId, 'prev')">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+                  </button>
+                  <span class="ml-l-pos"><span class="ltr-number">{{ queuePos + 1 }}</span> מתוך <span class="ltr-number">{{ queue.length }}</span></span>
+                  <button type="button" class="ml-l-arrow" :disabled="!nextId || !!store.busy" aria-label="המייל הבא"
+                          @click="goTo(nextId, 'next')">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
+                  </button>
+                </nav>
+                <button class="ml-x" type="button" aria-label="סגור" @click="closeLetter">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+              </header>
 
-              <section v-if="sel.attachments?.length" class="ml-files">
-                <div v-for="a in sel.attachments" :key="a.name" class="ml-file">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
-                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" />
-                  </svg>
-                  <span class="ml-file-name" dir="auto">{{ a.name }}</span>
-                  <button
-                    v-if="isImportable(a.name)" type="button" class="ml-btn ml-btn--soft"
-                    :disabled="!!store.busy || !!sel.imported_upload_id" @click="onImport(a.name)"
-                  >{{ sel.imported_upload_id ? 'יובא' : (store.busy === 'import' ? 'מייבא…' : 'ייבוא') }}</button>
-                </div>
-              </section>
-
-              <!-- The reply -->
-              <section class="ml-reply">
+              <div class="ml-l-body">
                 <template v-if="sel.status === 'sent'">
-                  <p class="ml-sent">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"
+                  <div class="ml-stamp" :class="{ 'ml-stamp--land': justSent }" role="status">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"
                          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
-                    נשלח <span class="ltr-number">{{ longTime(sel.sent_at) }}</span>
-                  </p>
-                  <pre class="ml-body">{{ sel.draft_body }}</pre>
+                    <span class="ml-stamp-word">נשלח</span>
+                    <span class="ml-stamp-date ltr-number">{{ longTime(sel.sent_at) }}</span>
+                  </div>
+                  <p class="ml-l-subject">{{ sel.draft_subject }}</p>
+                  <pre class="ml-l-sent">{{ sel.draft_body }}</pre>
                 </template>
 
                 <template v-else-if="sel.draft_body || editing">
-                  <ul v-if="sel.draft_warnings?.length" class="ml-warn">
-                    <li v-for="(w, i) in sel.draft_warnings" :key="i">{{ w }}</li>
-                  </ul>
-                  <input v-model="draftSubject" class="ml-input" type="text" aria-label="נושא" />
-                  <textarea v-model="draftBody" class="ml-input ml-textarea" rows="12" aria-label="התשובה"></textarea>
-                  <p v-if="hasPlaceholder" class="ml-hint">השלימו את החלקים שמסומנים [להשלים] לפני שליחה.</p>
-                  <p v-if="store.error" class="ml-error" role="alert">{{ store.error }}</p>
+                  <label class="ml-l-field">
+                    <span class="ml-l-label">נושא</span>
+                    <input v-model="draftSubject" class="ml-l-subject-in" type="text" />
+                  </label>
+                  <textarea
+                    v-model="draftBody" class="ml-l-text" rows="12" aria-label="התשובה"
+                    placeholder="כתבו כאן את התשובה"
+                  ></textarea>
+                  <p v-for="(w, i) in visibleWarnings" :key="i" class="ml-l-note ml-l-note--warn" role="alert">{{ w }}</p>
+                  <p v-if="hasPlaceholder" class="ml-l-note">השלימו את החלקים שמסומנים [להשלים] לפני שליחה.</p>
                 </template>
 
-                <p v-else class="ml-calm ml-calm--muted">ה-AI לא זיהה שצריך לענות.</p>
-              </section>
+                <div v-else class="ml-l-empty">
+                  <p>אין עדיין תשובה למייל הזה.</p>
+                  <p v-if="skippedText(sel)" class="ml-l-empty-why">{{ skippedText(sel) }}</p>
+                </div>
 
-              <details class="ml-original">
-                <summary>המייל המקורי</summary>
-                <pre class="ml-body">{{ sel.body || '(נמחק לאחר תקופת השמירה)' }}</pre>
-              </details>
-            </div>
+                <p v-if="store.error" class="ml-error" role="alert">{{ store.error }}</p>
 
-            <footer v-if="sel.status !== 'sent'" class="ml-d-foot">
-              <template v-if="sel.draft_body || editing">
-                <button
-                  type="button" class="ml-btn ml-btn--primary"
-                  :disabled="!!store.busy || !draftBody.trim() || hasPlaceholder || !summary.can_send"
-                  :title="!summary.can_send ? 'שליחה נתמכת כרגע מ-Gmail בלבד' : ''"
-                  @click="onSend"
-                >
-                  <span v-if="store.busy === 'send'" class="ml-spinner" aria-hidden="true"></span>
-                  <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"
-                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="m22 2-7 20-4-9-9-4z" /><path d="M22 2 11 13" />
-                  </svg>
-                  <span>{{ store.busy === 'send' ? 'שולח…' : 'אישור ושליחה' }}</span>
-                </button>
-                <button type="button" class="ml-btn ml-btn--ghost" :disabled="!!store.busy || !dirty" @click="onSave">
-                  {{ store.busy === 'save' ? 'שומר…' : 'שמירה' }}
-                </button>
-                <button type="button" class="ml-btn ml-btn--ghost" :disabled="!!store.busy" @click="onRegenerate">
-                  {{ store.busy === 'draft' ? 'כותב…' : 'טיוטה חדשה' }}
-                </button>
-              </template>
-              <template v-else>
-                <button type="button" class="ml-btn ml-btn--primary" :disabled="!!store.busy" @click="onRegenerate">
-                  {{ store.busy === 'draft' ? 'כותב…' : 'הכנת תשובה' }}
-                </button>
-                <button type="button" class="ml-btn ml-btn--ghost" :disabled="!!store.busy" @click="startManual">כתיבה ידנית</button>
-              </template>
-              <span class="ml-gap"></span>
-              <button type="button" class="ml-btn ml-btn--text" :disabled="!!store.busy" @click="onDone">טופל</button>
-            </footer>
-          </aside>
+                <section v-if="sel.attachments?.length" class="ml-files">
+                  <div v-for="a in sel.attachments" :key="a.name" class="ml-file">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" />
+                    </svg>
+                    <span class="ml-file-name" dir="auto">{{ a.name }}</span>
+                    <button
+                      v-if="isImportable(a.name)" type="button" class="ml-btn ml-btn--soft"
+                      :disabled="!!store.busy || !!sel.imported_upload_id" @click="onImport(a.name)"
+                    >{{ sel.imported_upload_id ? 'יובא' : (store.busy === 'import' ? 'מייבא…' : 'ייבוא') }}</button>
+                  </div>
+                </section>
+
+                <details class="ml-original">
+                  <summary>המייל של {{ nameOf(sel) }}</summary>
+                  <pre class="ml-body">{{ sel.body || '(נמחק לאחר תקופת השמירה)' }}</pre>
+                </details>
+              </div>
+
+              <footer v-if="sel.status !== 'sent'" class="ml-l-foot">
+                <template v-if="sel.draft_body || editing">
+                  <button
+                    type="button" class="ml-btn ml-btn--primary ml-l-send"
+                    :disabled="!!store.busy || !draftBody.trim() || hasPlaceholder || !summary.can_send"
+                    :title="!summary.can_send ? 'שליחה נתמכת כרגע מ-Gmail בלבד' : ''"
+                    @click="onSend"
+                  >
+                    <span v-if="store.busy === 'send'" class="ml-spinner" aria-hidden="true"></span>
+                    <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="m22 2-7 20-4-9-9-4z" /><path d="M22 2 11 13" />
+                    </svg>
+                    <span>{{ store.busy === 'send' ? 'שולח…' : 'שליחה' }}</span>
+                  </button>
+                  <button type="button" class="ml-btn ml-btn--ghost" :disabled="!!store.busy" @click="onNotSend">
+                    {{ store.busy === 'dismiss' ? 'סוגר…' : 'לא לשלוח' }}
+                  </button>
+                  <span class="ml-gap"></span>
+                  <button type="button" class="ml-btn ml-btn--text" :disabled="!!store.busy" @click="onRegenerate">
+                    {{ store.busy === 'draft' ? 'כותב…' : 'טיוטה חדשה' }}
+                  </button>
+                  <button type="button" class="ml-btn ml-btn--text" :disabled="!!store.busy || !dirty" @click="onSave">
+                    {{ store.busy === 'save' ? 'שומר…' : 'שמירה' }}
+                  </button>
+                </template>
+                <template v-else>
+                  <button type="button" class="ml-btn ml-btn--primary" :disabled="!!store.busy" @click="onRegenerate">
+                    {{ store.busy === 'draft' ? 'כותב…' : 'הכנת תשובה' }}
+                  </button>
+                  <button type="button" class="ml-btn ml-btn--ghost" :disabled="!!store.busy" @click="startManual">כתיבה ידנית</button>
+                  <span class="ml-gap"></span>
+                  <button type="button" class="ml-btn ml-btn--text" :disabled="!!store.busy" @click="onNotSend">לא לשלוח</button>
+                </template>
+              </footer>
+            </article>
+          </Transition>
         </div>
       </Transition>
     </Teleport>
@@ -365,7 +379,8 @@ import AppIcon from '../icons/AppIcon.vue'
 import BigAddButton from './BigAddButton.vue'
 import HachsharaMailModal from './HachsharaMailModal.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
-import Typewriter from '../common/Typewriter.vue'
+import MailEnvelopeIntro from './MailEnvelopeIntro.vue'
+import { getUserFlag, setUserFlag } from '../../utils/userFlags.js'
 import MailListenRadar from './MailListenRadar.vue'
 import StyleDoor from './StyleDoor.vue'
 
@@ -374,10 +389,6 @@ const summary = computed(() => store.summary)
 const sel = computed(() => store.selected)
 const ready = computed(() => !!summary.value?.mailbox_connected && !!summary.value?.watched_senders)
 
-const CATEGORY = {
-  commission_reply: 'תשובת עמלות', report_file: 'קובץ / דוח', customer_question: 'שאלת לקוח',
-  info: 'לידיעה', other: 'מייל',
-}
 const STATUS = {
   new: 'חדש', needs_reply: 'דורש תשובה', drafted: 'טיוטה מוכנה', sent: 'נשלח', done: 'טופל', dismissed: 'הוסתר',
 }
@@ -453,18 +464,42 @@ watch(sel, (s) => {
   draftBody.value = s?.draft_body || ''
   editing.value = false
 })
+// The envelope opens once per mail, ever (remembered per user in this browser),
+// and only for mail still waiting on the agent — reopening it, or moving
+// through the queue, goes straight to the letter.
+const SEEN_KEY = 'mail_envelope_seen'
+function seenIds() {
+  try { return JSON.parse(getUserFlag(SEEN_KEY) || '[]') } catch { return [] }
+}
+function markSeen(id) {
+  const ids = seenIds().filter((x) => x !== id)
+  ids.push(id)
+  setUserFlag(SEEN_KEY, JSON.stringify(ids.slice(-300)))
+}
+const introDone = ref(true)
+const justSent = ref(false)
+const navDir = ref('')             // '' | 'next' | 'prev' — picks the slide direction
+watch(() => sel.value?.id, (id, was) => {
+  justSent.value = false
+  if (!id) { navDir.value = ''; return }
+  const seen = seenIds().includes(id)
+  markSeen(id)
+  if (was && navDir.value) return
+  introDone.value = reduced || seen || !['drafted', 'needs_reply', 'new'].includes(sel.value.status)
+})
+
+// Position of the open mail in the waiting queue, and its neighbours.
+const queuePos = computed(() => queue.value.findIndex((i) => i.id === sel.value?.id))
+const nextId = computed(() => queue.value[queuePos.value + 1]?.id || null)
+const prevId = computed(() => (queuePos.value > 0 ? queue.value[queuePos.value - 1].id : null))
+// Where to land after this mail leaves the queue: the next one, else the one before.
+function followingId() { return nextId.value || prevId.value }
 
 const dirty = computed(() => !!sel.value && (draftSubject.value !== (sel.value.draft_subject || '') || draftBody.value !== (sel.value.draft_body || '')))
 const hasPlaceholder = computed(() => draftBody.value.includes('[להשלים'))
-const entityChips = computed(() => {
-  const e = sel.value?.entities || {}
-  const out = []
-  for (const v of e.id_numbers || []) out.push({ k: 'ת.ז', v })
-  for (const v of e.policy_numbers || []) out.push({ k: 'פוליסה', v })
-  if (e.company) out.push({ k: 'חברה', v: e.company })
-  for (const v of e.amounts_quoted || []) out.push({ k: 'סכום', v })
-  return out
-})
+// "חסר מידע" lines are not shown — they're logged server-side (mail_agent_gaps)
+// as the backlog for new agent tools. Prefix is set in services/mail_agent/draft.py.
+const visibleWarnings = computed(() => (sel.value?.draft_warnings || []).filter((w) => !w.startsWith('חסר מידע:')))
 
 // ── helpers ──
 function nameOf(it) { return it.from_name || it.from_address }
@@ -520,15 +555,37 @@ function startManual() { editing.value = true; draftSubject.value = `Re: ${sel.v
 const onSave = () => store.saveDraft(sel.value.id, draftSubject.value, draftBody.value)
 const onRegenerate = () => store.regenerate(sel.value.id)
 const onImport = (name) => store.importFile(sel.value.id, name)
-async function onSend() {
-  if (await store.send(sel.value.id, draftSubject.value, draftBody.value)) await store.fetchItems()
+function closeLetter() { store.selected = null }
+// Moving away never loses an edit: an unsaved draft is saved first.
+async function goTo(id, dir = 'next') {
+  if (!id || store.busy) return
+  if (dirty.value && sel.value?.status !== 'sent') await store.saveDraft(sel.value.id, draftSubject.value, draftBody.value)
+  navDir.value = dir
+  await store.openItem(id)
 }
-async function onDone() {
-  await store.dismiss(sel.value.id, true)
+// On success the letter flips to its sent view: the postmark lands, then the
+// next waiting mail slides in (or the letter closes when the queue is empty).
+async function onSend() {
+  const id = sel.value.id
+  const after = followingId()
+  if (!(await store.send(id, draftSubject.value, draftBody.value))) return
+  justSent.value = true
+  setTimeout(async () => {
+    if (store.selected?.id !== id) return
+    if (after) await goTo(after, 'next')
+    else closeLetter()
+    store.fetchItems()
+  }, reduced ? 900 : 1500)
+}
+async function onNotSend() {
+  const id = sel.value.id
+  const after = followingId()
+  if (after) await goTo(after, 'next')       // move first, so the letter never closes in between
+  await store.dismiss(id, false)
   await store.fetchItems()
 }
 
-// Escape closes the innermost layer first (drawer → senders list), whatever
+// Escape closes the innermost layer first (letter → senders list), whatever
 // has focus. Capture phase + preventDefault so the Mail Agent modal (which
 // listens after us) knows the key was already used.
 function onKey(e) {
@@ -545,12 +602,31 @@ onMounted(async () => {
   await store.refreshAll()
   if (summary.value?.mailbox_connected) await Promise.all([store.fetchSenders(), store.fetchSuggestions()])
 })
+
+// The server polls the mailbox on its own schedule; re-read its results so new
+// mail shows up without pressing בדיקה. Read-only — never triggers poll-now.
+// Skipped while the browser tab is hidden or a manual check/action is running.
+const AUTO_REFRESH_MS = 60_000
+async function quietRefresh() {
+  if (document.hidden || store.polling || store.busy) return
+  try { await store.refreshAll() } catch { /* next tick retries */ }
+}
+function onVisible() { if (!document.hidden) quietRefresh() }
+let refreshTimer = null
+onMounted(() => {
+  refreshTimer = setInterval(quietRefresh, AUTO_REFRESH_MS)
+  document.addEventListener('visibilitychange', onVisible)
+})
+onUnmounted(() => {
+  clearInterval(refreshTimer)
+  document.removeEventListener('visibilitychange', onVisible)
+})
 </script>
 
 <style scoped>
-/* The drawer and the senders modal are teleported to <body>, outside .ml —
+/* The letter and the senders modal are teleported to <body>, outside .ml —
    they need the tab's tokens declared on their own roots too. */
-.ml, .ml-drawer-overlay, .ml-overlay {
+.ml, .ml-letter-overlay, .ml-overlay {
   --ml-ink: var(--tab-mail-ink);
   --ml-acc: var(--tab-mail);
   --ml-wash: var(--tab-mail-wash);
@@ -654,7 +730,6 @@ onMounted(async () => {
 .ml-avatar--sm { width: 28px; height: 28px; font-size: 12px; }
 .ml-avatar--ghost { background: var(--bg); color: var(--text-muted); }
 .ml-error { margin: 0; font-size: 13px; font-weight: 600; color: var(--red-deep); }
-.ml-hint { margin: 0; font-size: 12.5px; color: color-mix(in srgb, var(--amber) 62%, #000); }
 .ml-loading { display: flex; justify-content: center; padding: 24px; }
 .ml-calm { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 700; color: color-mix(in srgb, var(--green) 82%, #000); }
 .ml-calm--muted { color: var(--text-muted); font-weight: 500; }
@@ -806,16 +881,33 @@ button.ml-big-n:disabled { cursor: progress; }
 .ml-status--needs_reply, .ml-status--drafted, .ml-status--new { background: var(--ml-acc); }
 .ml-status--sent, .ml-status--done { background: var(--green); }
 
-/* ── Drawer ─────────────────────────────────────────────────── */
-.ml-drawer-overlay { position: fixed; inset: 0; z-index: 1010; background: rgba(0, 0, 0, 0.32); }
-.ml-drawer {
-  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: min(560px, 100%);
-  display: flex; flex-direction: column; background: var(--card-bg); box-shadow: var(--shadow-lg);
-  border-inline-start: 3px solid var(--ml-acc);
+/* ── Letter (the open mail) ─────────────────────────────────── */
+.ml-letter-overlay {
+  position: fixed; inset: 0; z-index: 1010; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(15, 30, 45, 0.5);
 }
-.ml-d-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border-subtle); }
+.ml-letter {
+  position: relative; width: min(680px, 100%); max-height: calc(100dvh - 32px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+}
+/* Air-mail edge — the same stripe that rims the envelope in the intro. */
+.ml-letter::before {
+  content: ''; flex-shrink: 0; height: 6px;
+  background: repeating-linear-gradient(-45deg, var(--ml-acc) 0 12px, var(--ml-ink) 12px 24px);
+}
+.ml-l-head { display: flex; align-items: center; gap: 12px; padding: 18px 24px 12px; }
+.ml-l-nav { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--ml-wash); }
+.ml-l-pos { padding: 0 6px; font-size: 13px; font-weight: 700; color: var(--ml-ink); white-space: nowrap; }
+.ml-l-arrow {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  color: var(--ml-ink); background: none; border: none; border-radius: 50%; cursor: pointer;
+}
+.ml-l-arrow:hover:not(:disabled) { background: var(--card-bg); }
+.ml-l-arrow:focus-visible { outline: 2px solid var(--ml-acc); outline-offset: 1px; }
+.ml-l-arrow:disabled { opacity: 0.35; cursor: default; }
 .ml-d-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.ml-d-titles h4 { margin: 0; font-size: 16px; font-weight: 800; color: var(--text); }
+.ml-d-titles h4 { margin: 0; font-size: 17px; font-weight: 800; color: var(--text); }
 .ml-d-sub { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-x {
   display: inline-flex; padding: 6px; background: none; border: none; border-radius: var(--radius-sm);
@@ -823,43 +915,76 @@ button.ml-big-n:disabled { cursor: progress; }
 }
 .ml-x:hover { background: var(--bg); color: var(--text); }
 .ml-x--abs { position: absolute; top: 16px; inset-inline-end: 16px; }
-.ml-d-body { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
-.ml-d-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px 20px; border-top: 1px solid var(--border-subtle); }
+.ml-l-body { flex: 1; overflow-y: auto; padding: 4px 24px 18px; display: flex; flex-direction: column; gap: 12px; }
+.ml-l-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle); background: var(--bg);
+}
 .ml-gap { flex: 1; }
+.ml-l-send { min-height: 44px; padding-inline: 22px; }
 
-.ml-ai { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--ml-wash); border-radius: var(--radius-md); }
-.ml-ai-badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 800; color: var(--ml-ink); }
-.ml-ai-summary { margin: 0; min-height: 1.6em; font-size: 15px; line-height: 1.65; color: var(--text); }
-.ml-entities { display: flex; gap: 6px; flex-wrap: wrap; }
-.ml-entity { display: inline-flex; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 12px; background: var(--card-bg); color: var(--text-secondary); }
-.ml-entity-k { color: var(--text-muted); }
+.ml-l-field {
+  display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);
+}
+.ml-l-label { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.ml-l-subject-in {
+  flex: 1; min-width: 0; padding: 4px 0; font-family: inherit; font-size: 15px; font-weight: 700; color: var(--text);
+  background: none; border: none; border-bottom: 2px solid transparent;
+}
+.ml-l-subject-in:focus { outline: none; border-bottom-color: var(--ml-acc); }
+.ml-l-text {
+  min-height: 260px; resize: vertical; padding: 12px 2px; font-family: inherit; font-size: 16px; line-height: 1.75;
+  color: var(--text); background: none; border: none; border-radius: var(--radius-sm);
+}
+.ml-l-text:focus { outline: 2px solid var(--ml-wash); outline-offset: 2px; }
+.ml-l-note { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ml-ink); }
+.ml-l-note--warn {
+  padding: 8px 12px; color: color-mix(in srgb, var(--amber) 62%, #000); background: var(--amber-light); border-radius: var(--radius-sm);
+}
+.ml-l-empty { padding: 28px 0; text-align: center; color: var(--text-secondary); font-size: 15px; }
+.ml-l-empty p { margin: 0; }
+.ml-l-empty-why { margin-top: 4px !important; font-size: 13px; color: var(--text-muted); }
+.ml-l-subject { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+.ml-l-sent {
+  margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 15px; line-height: 1.75; color: var(--text);
+}
+
+/* Postmark — lands when a reply is sent, stays on sent letters. */
+.ml-stamp {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
+  color: var(--ml-ink); border: 2px solid currentColor; border-radius: 999px; transform: rotate(-4deg);
+  box-shadow: inset 0 0 0 3px var(--card-bg), inset 0 0 0 4px currentColor;
+}
+.ml-stamp-word { font-size: 15px; font-weight: 800; }
+.ml-stamp-date { font-size: 12px; font-weight: 600; opacity: 0.8; }
+.ml-stamp--land { animation: ml-stamp-land 0.42s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes ml-stamp-land {
+  from { opacity: 0; transform: rotate(-4deg) scale(1.6); }
+  to { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
 
 .ml-files { display: flex; flex-direction: column; gap: 6px; }
 .ml-file { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-muted); }
 .ml-file-name { flex: 1; min-width: 0; font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ml-reply { display: flex; flex-direction: column; gap: 10px; }
-.ml-sent { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--green) 82%, #000); }
-.ml-warn {
-  margin: 0; padding: 10px 14px; padding-inline-start: 28px; font-size: 12.5px; line-height: 1.55;
-  color: color-mix(in srgb, var(--amber) 62%, #000); background: var(--amber-light); border-radius: var(--radius-sm);
-}
-.ml-input {
-  font-family: inherit; font-size: 14px; line-height: 1.6; color: var(--text); padding: 9px 12px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg);
-}
-.ml-input:focus { outline: none; border-color: var(--ml-acc); box-shadow: 0 0 0 3px var(--ml-wash); }
-.ml-textarea { resize: vertical; min-height: 220px; }
 .ml-original summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
 .ml-body {
   margin: 8px 0 0; padding: 12px 14px; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
   font-family: inherit; font-size: 13px; line-height: 1.65; color: var(--text-secondary); background: var(--bg); border-radius: var(--radius-sm);
 }
 
-.drawer-enter-active, .drawer-leave-active { transition: background-color 0.25s ease; }
-.drawer-enter-active .ml-drawer, .drawer-leave-active .ml-drawer { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.drawer-enter-from, .drawer-leave-to { background-color: transparent; }
-.drawer-enter-from .ml-drawer, .drawer-leave-to .ml-drawer { transform: translateX(-100%); }
+/* Queue navigation: RTL reading flow — "next" enters from the left. */
+.letter-next-enter-active, .letter-prev-enter-active { transition: opacity 0.2s ease-out, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1); }
+.letter-next-leave-active, .letter-prev-leave-active { transition: opacity 0.14s ease-in, transform 0.14s ease-in; }
+.letter-next-enter-from, .letter-prev-leave-to { opacity: 0; transform: translateX(-36px); }
+.letter-next-leave-to, .letter-prev-enter-from { opacity: 0; transform: translateX(36px); }
+.lt-enter-active { transition: opacity 0.22s ease-out; }
+.lt-leave-active { transition: opacity 0.16s ease-in; }
+.lt-enter-from, .lt-leave-to { opacity: 0; }
+.letter-enter-active { transition: opacity 0.24s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.letter-enter-from { opacity: 0; transform: translateY(14px) scale(0.97); }
+.lt-leave-active .ml-letter { transition: transform 0.16s ease-in; }
+.lt-leave-to .ml-letter { transform: scale(0.97); }
 
 /* ── Watch-list modal ───────────────────────────────────────── */
 .ml-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
@@ -890,6 +1015,9 @@ button.ml-big-n:disabled { cursor: progress; }
   .ml-stage { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .ml-letter-overlay { padding: 0; align-items: flex-end; }
+  .ml-letter { max-height: 94dvh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .ml-l-head, .ml-l-body, .ml-l-foot { padding-inline: 16px; }
   .ml-hero-art { display: none; }
   .ml-hero-copy { max-width: none; }
   .ml-add { grid-template-columns: 1fr 1fr; }
@@ -898,6 +1026,8 @@ button.ml-big-n:disabled { cursor: progress; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ml-hero--scan::after, .ml-card::after, .ml-rot, .ml-spinner { animation: none; }
-  .ml-card, .card-enter-active, .drawer-enter-active .ml-drawer, .drawer-leave-active .ml-drawer { transition: none; }
+  .ml-card, .card-enter-active, .letter-enter-active, .lt-leave-active .ml-letter,
+  [class*='letter-next-'], [class*='letter-prev-'] { transition: none; }
+  .ml-stamp--land { animation: none; }
 }
 </style>
