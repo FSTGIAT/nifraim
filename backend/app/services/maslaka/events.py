@@ -175,6 +175,9 @@ def build_events_request(
     acting_agent_name: str | None = None,
     yatzran_id: str | None = None,
     information_date: str | None = None,
+    consent_customer_signed: str | None = None,
+    consent_agent_signed: str | None = None,
+    sender_is_agent: bool = False,
 ) -> EventsRequest:
     """Build one ממשק אירועים v007 request.
 
@@ -231,6 +234,14 @@ def build_events_request(
     # יצרן's. No agent → refuse: a production report for nobody is useless and
     # one for the wrong agent is someone else's book.
     distributor_request = not action.needs_customer
+    # Production as the LICENSEE itself (see orchestration.submit_inquiry): the
+    # agent is sender AND subject — rules 118 (sender = filename ID), 144
+    # (subject = sender) and 128 (a ת"ז subject carries both names) together.
+    agent_sender = bool(sender_is_agent and distributor_request and _agent_digits)
+    _first, _, _last = (acting_agent_name or "").strip().partition(" ")
+    if agent_sender and not (_first and _last.strip()):
+        raise ValueError(f"agent-as-sender needs the agent's first AND last name "
+                         f"(rule 128) — got {acting_agent_name!r}")
     if distributor_request:
         if not customer_id_number:
             customer_id_number = acting_agent_id
@@ -264,9 +275,9 @@ def build_events_request(
     # (`%Y%m%d%H%M%S%f`) is 20 chars and made every request built without an
     # explicit file_number schema-invalid. Default to the real shape instead:
     # a bad default is worse than a missing argument, because it looks fine.
-    _sender_for_file_no = "".join(
+    _sender_for_file_no = _agent_digits if agent_sender else ("".join(
         ch for ch in str(settings.MASLAKA_AGENT_ID or "") if ch.isdigit()
-    ) or "0"
+    ) or "0")
     file_number = file_number or build_file_number(
         sender_id=_sender_for_file_no, sequence=sequence, when=now,
     )
@@ -280,9 +291,15 @@ def build_events_request(
     # The sender is ALWAYS the vault owner (Nifraim). Rule 118 — "מספר זיהוי גורם
     # שולח לא זהה למספר זהוי בשם הקובץ/למספר זיהוי הלקוח שטען את הקובץ" —
     # rejected seq 0034, which put the acting agent's ת"ז here.
-    _sub(sender, "SUG-MEZAHE-SHOLECH", settings.MASLAKA_SENDER_ID_TYPE or "1")
-    _sub(sender, "MISPAR-ZIHUI-SHOLECH", agent_id)
-    _sub(sender, "SHEM-GOREM-SHOLECH", agent_name)
+    # With agent_sender the file is named for the agent too, which rule 118 accepts.
+    if agent_sender:
+        _sub(sender, "SUG-MEZAHE-SHOLECH", "3")  # 3 = ת"ז
+        _sub(sender, "MISPAR-ZIHUI-SHOLECH", _agent_digits.zfill(9))
+        _sub(sender, "SHEM-GOREM-SHOLECH", acting_agent_name.strip())
+    else:
+        _sub(sender, "SUG-MEZAHE-SHOLECH", settings.MASLAKA_SENDER_ID_TYPE or "1")
+        _sub(sender, "MISPAR-ZIHUI-SHOLECH", agent_id)
+        _sub(sender, "SHEM-GOREM-SHOLECH", agent_name)
     _sub(sender, "SHEM-PRATI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_FIRST_NAME)
     _sub(sender, "SHEM-MISHPACHA-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_LAST_NAME)
     # MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH and E-MAIL are NOT nillable. The
@@ -338,7 +355,7 @@ def build_events_request(
     # YeshutGoremPoneLemislaka above. A ח.פ subject needs no personal names
     # (rule 128 applies only to a ת"ז subject).
     _sub(customer, "SUG-MEZAHE-LAKOACH",
-         (settings.MASLAKA_SENDER_ID_TYPE or "1") if distributor_request else "3")
+         (settings.MASLAKA_SENDER_ID_TYPE or "1") if (distributor_request and not agent_sender) else "3")
     # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
     # including any leading zero, and `043417252` is a real one. Stripping would
     # send an 8-digit identifier for every saver whose ת"ז starts with 0 — about
@@ -346,11 +363,16 @@ def build_events_request(
     # carry `381788223`, so the bug would not have shown until live traffic.
     # The 12-digit padding is a separate thing, and belongs to the FILENAME.
     if distributor_request:
-        customer_id_number = "".join(ch for ch in str(agent_id) if ch.isdigit())
+        customer_id_number = _agent_digits if agent_sender else "".join(
+            ch for ch in str(agent_id) if ch.isdigit())
     _digits = "".join(ch for ch in (customer_id_number or "") if ch.isdigit())
     _sub(customer, "MISPAR-MEZAHE-LAKOACH", _digits.zfill(9) if _digits else "")
-    _sub(customer, "SHEM-PRATI-LAKOACH", None if distributor_request else customer_first_name)
-    _sub(customer, "SHEM-MISHPACHA-LAKOACH", None if distributor_request else customer_last_name)
+    if agent_sender:
+        _sub(customer, "SHEM-PRATI-LAKOACH", _first[:20])
+        _sub(customer, "SHEM-MISHPACHA-LAKOACH", _last.strip()[:30])
+    else:
+        _sub(customer, "SHEM-PRATI-LAKOACH", None if distributor_request else customer_first_name)
+        _sub(customer, "SHEM-MISHPACHA-LAKOACH", None if distributor_request else customer_last_name)
     # SHEM-MAASIK is mandatory for SUG-LAKOACH 3: "את שם המפיץ".
     _sub(customer, "SHEM-MAASIK",
          ((acting_agent_name or "").strip() or None) if distributor_request else None)
@@ -407,7 +429,39 @@ def build_events_request(
     # YipuiKoach and mismachim are minOccurs=1 and NOT nillable, but every child
     # is minOccurs=0 — so an EMPTY container is valid and a missing one is not.
     # They must be excluded from _mark_nils for exactly that reason.
-    _nil_exempt = (_sub(kod, "YipuiKoach"), _sub(kod, "mismachim"))
+    yipui = _sub(kod, "YipuiKoach")
+    _nil_exempt = (yipui, _sub(kod, "mismachim"))
+    # 9100/9101 are "טרום ייעוץ (נספח א' לחוזר ייפוי כח)": the field spec makes
+    # BakashatMefitzLeinianYipuiKoach mandatory for them, and BOTH signature
+    # dates mandatory "גם אם לא צורף מסמך". SUG-BAKASHAT 1 = one-off נספח א';
+    # with 1, SUG-/MISPAR-RISHAYON must NOT be sent. We attach nothing
+    # (TZURAF 2, MISMACH-ZIHUI 2, ATAR-MEUVTACH 2). The dates are a declaration
+    # to a regulator — they come from the signed form, never from "today".
+    if action.code in ("9100", "9101") and not allow_placeholder_identity:
+        for _lbl, _d in (("consent_customer_signed", consent_customer_signed),
+                         ("consent_agent_signed", consent_agent_signed)):
+            if not _d:
+                raise ValueError(
+                    f"action {action.code} needs the נספח א' signature dates "
+                    f"({_lbl}, YYYYMMDD) from the signed form")
+            datetime.strptime(_d, "%Y%m%d")
+    if action.code in ("9100", "9101") and consent_customer_signed and consent_agent_signed:
+        bm = _sub(yipui, "BakashatMefitzLeinianYipuiKoach")
+        _sub(bm, "TZURAF-MISMACH-YIPUI-KOACH", "2")
+        _sub(bm, "KOD-ZIHUI-YIPUI-KOACH-BEMISLAKA")
+        _sub(bm, "MISMACH-ZIHUI", "2")
+        _sub(bm, "SUG-BAKASHAT-MEFITZ-LEEINIAN-YIPUI-KOACH", "1")
+        _sub(bm, "KAYAM-MUTZAR-MUCHRAG")
+        _sub(bm, "TAARICH-CHTIMA-LAKOACH", consent_customer_signed)
+        _sub(bm, "TAARICH-CHTIMA-BAAL-RISHAION", consent_agent_signed)
+        for tag in ("TOKEF-YIPUI-KOACH", "MOED-PKIHA", "HARSHAA-LEMASHKANTA"):
+            _sub(bm, tag)
+        _sub(bm, "ATAR-MEUVTACH", "2")
+        for tag in ("ERETZ", "SHEM-YISHUV", "SEMEL-YESHUV", "SHEM-RECHOV", "MISPAR-BAIT",
+                    "MISPAR-KNISA", "MISPAR-DIRA", "MIKUD", "TA-DOAR", "NISPACH-D",
+                    "BITUL-ARSHAA", "SUG-RISHAYON", "MISPAR-RISHAYON",
+                    "MISPAR-SOHEN-PNIMI-ETZEL-MOSDI"):
+            _sub(bm, tag)
 
     # Mutzar/NetuneiMutzar names the יצרן. The field spec: "בבלוק זה יוגדר קוד
     # מזהה של היצרן" — NOT sent for 9100/9102 (all bodies) or 2500 (cancel).

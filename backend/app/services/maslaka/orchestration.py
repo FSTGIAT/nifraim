@@ -34,7 +34,7 @@ from app.models.record import ClientRecord
 from app.models.upload import FileUpload
 from app.services.maslaka import adapter, audit
 from app.services.maslaka.events import (
-    ACTION_CODES, build_events_request, build_file_number, environment,
+    ACTION_CODES, PRODUCTION_REPORT_CODES, build_events_request, build_file_number, environment,
     maslaka_now,
     MaslakaIdentityNotConfigured,
 )
@@ -141,22 +141,6 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         # all — the מסלקה identifies a file by its NAME before it parses any
         # XML, so every request the app sent on its own would have been
         # discarded without content-level feedback.
-        sender_id = settings.MASLAKA_AGENT_ID or ""
-        # Israel local, explicitly — see events.maslaka_now(). The filename
-        # stamp, TAARICH-BITZUA and the allocator's business-day window all use
-        # this one clock; the "business day" the sequence resets on is an
-        # ISRAELI day, not a UTC one.
-        now = maslaka_now()
-        env_code, file_type = environment()
-        sequence = await _allocate_daily_sequence(db, sender_id=sender_id, when=now)
-
-        # `rpartition` on a colon-less value returns the WHOLE string, so rows
-        # created before the action code was recorded (interface_code =
-        # "events_v007") would otherwise pass "events_v007" as an action code
-        # and fail as a generic transport_error. Validate against the table.
-        _parsed = (inquiry.interface_code or "").rpartition(":")[2]
-        action_code = _parsed if _parsed in ACTION_CODES else DEFAULT_ACTION_CODE
-
         # The worker is the last host before a regulator, so it re-checks the
         # agent's association itself rather than trusting that the API did.
         # A feature flag is not an authorisation, and neither is a row that
@@ -169,6 +153,25 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
                 f"user {inquiry.user_id} has no APPROVED שיוך לבית תוכנה "
                 f"(status={getattr(link, 'status', None)!r}) — refusing to send on their behalf"
             )
+
+        _parsed = (inquiry.interface_code or "").rpartition(":")[2]
+        action_code = _parsed if _parsed in ACTION_CODES else DEFAULT_ACTION_CODE
+        # A PRODUCTION request is the licensee asking for its OWN customers
+        # (חוזר מבנה אחיד: "בקשה של בעל רישיון… עבור לקוחותיו"). Sent as
+        # Nifraim every insurer answered 1032 ("בעל רישיון לא קיים בחברה" /
+        # "לא ניתן לספק דוח פרודוקציה עבור המפיץ הפונה", 2026-09-25). So the
+        # agent is the file's sender — in the FILENAME too, since rule 118
+        # accepts "the ID in the filename OR the uploader".
+        production = action_code in PRODUCTION_REPORT_CODES
+        sender_id = (link.agent_id_number if production else settings.MASLAKA_AGENT_ID) or ""
+        # Israel local, explicitly — see events.maslaka_now(). The filename
+        # stamp, TAARICH-BITZUA and the allocator's business-day window all use
+        # this one clock; the "business day" the sequence resets on is an
+        # ISRAELI day, not a UTC one.
+        now = maslaka_now()
+        env_code, file_type = environment()
+        sequence = await _allocate_daily_sequence(db, sender_id=sender_id, when=now)
+
 
         req = build_events_request(
             action_code=action_code,
@@ -183,6 +186,8 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             acting_agent_name=link.agent_name,
             yatzran_id=inquiry.target_yatzran_id,
             information_date=inquiry.information_date,
+            sender_is_agent=production,
+            **(await _consent_dates(db, inquiry)),
         )
         xml_bytes = req.xml
         filename = build_filename(
@@ -481,7 +486,24 @@ async def _ingest_feedback(
     source_filename: str,
     scope_user_id: uuid.UUID | None,
 ) -> None:
-    fb = adapter.parse_feedback(payload)
+    # One file can answer many requests (per-record blocks, each with its own
+    # MISPAR-MISLAKA) — apply every one, not just the first.
+    records = adapter.parse_feedback_records(payload)
+    stored = False
+    for fb in records:
+        stored = await _apply_feedback(db, fb, payload, source_filename=source_filename,
+                                       scope_user_id=scope_user_id, store_payload=not stored) or stored
+
+
+async def _apply_feedback(
+    db: AsyncSession,
+    fb,
+    payload: bytes,
+    *,
+    source_filename: str,
+    scope_user_id: uuid.UUID | None,
+    store_payload: bool,
+) -> bool:
     # The מסלקה correlates by echoing the FILENAME it is answering
     # (`SHEM-HAKOVETZ`), not by any reference of ours — `request_reference`
     # never appears on the wire. Try the filename first and keep the reference
@@ -490,21 +512,30 @@ async def _ingest_feedback(
     if fb.acked_filename:
         inquiry = await _find_inquiry_by_outbound_filename(
             db, fb.acked_filename, scope_user_id=scope_user_id)
+    # A משוב ב' echoes the מסלקה's OWN distribution file in SHEM-HAKOVETZ (e.g.
+    # 104000514813450EVENTS…), never ours — only MISPAR-MISLAKA (the GUID the
+    # FEDBKA gave our request) links it back. Measured 2026-09-25 (Altshuler, 1032).
+    if inquiry is None and fb.mislaka_number:
+        q = select(PensionInquiry).where(PensionInquiry.mislaka_number == fb.mislaka_number)
+        if scope_user_id is not None:
+            q = q.where(PensionInquiry.user_id == scope_user_id)
+        inquiry = (await db.execute(q)).scalars().first()
     if inquiry is None and fb.request_reference:
         inquiry = await _find_inquiry_by_reference(
             db, fb.request_reference, scope_user_id=scope_user_id)
     if inquiry is None:
         logger.warning(
-            "maslaka.feedback: no inquiry for acked=%s ref=%s (file=%s) — leaving unprocessed",
-            fb.acked_filename, fb.request_reference, source_filename,
+            "maslaka.feedback: no inquiry for acked=%s guid=%s (file=%s) — leaving unprocessed",
+            fb.acked_filename, fb.mislaka_number, source_filename,
         )
-        return
+        return False
 
-    await _store_raw_payload(
-        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
-        direction="inbound", interface_code="feedback_v009",
-        source_filename=source_filename, plaintext=payload,
-    )
+    if store_payload:
+        await _store_raw_payload(
+            db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+            direction="inbound", interface_code="feedback_v009",
+            source_filename=source_filename, plaintext=payload,
+        )
 
     # MISPAR-MISLAKA: the GUID the מסלקה gave this request. Every insurer's data
     # file carries it — without it, an answer cannot find its request.
@@ -520,9 +551,21 @@ async def _ingest_feedback(
             db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
             customer_id_number=inquiry.customer_id_number,
             event_type="content_feedback", actor="system",
-            detail=f"משוב ב': {fb.error_code or 'ok'} {fb.error_detail or ''}"[:500],
+            detail=f"משוב ב': {fb.maane_code or fb.error_code or 'ok'} "
+                   f"{fb.maane_detail or fb.error_detail or ''}"[:500],
         )
-        return
+        # A request to ONE body (2000/2100/9101) that gets a content answer
+        # instead of data is closed by it — show the insurer's own reason.
+        _code = (inquiry.interface_code or "").rpartition(":")[2]
+        if inquiry.target_yatzran_id and _code != "9100" and (fb.maane_code or fb.error_code):
+            inquiry.error_code = (fb.maane_code or fb.error_code)[:50]
+            inquiry.error_detail = (fb.maane_detail or fb.error_detail or "")[:500]
+            await _advance_status(
+                db, inquiry, to_status="failed", actor="system",
+                event_type="content_refusal",
+                detail=f"משוב ב' {inquiry.error_code}: {inquiry.error_detail}",
+            )
+        return True
 
     if fb.is_ack:
         # SUG-MASHOV 1 = משוב א', a technical receipt: "well-formed, accepted".
@@ -545,6 +588,7 @@ async def _ingest_feedback(
             event_type="defect_received",
             detail=f"{fb.error_code}: {fb.error_detail}",
         )
+    return True
 
 
 async def _ingest_holdings(
@@ -1022,6 +1066,38 @@ async def _advance_status(
         from_status=prev, to_status=to_status,
         detail=detail,
     )
+
+
+CONSENT_EVENT = "consent_recorded"
+
+
+async def record_consent(db: AsyncSession, inquiry: PensionInquiry, *,
+                         customer_signed: str, agent_signed: str, actor: str = "agent", note: str = "") -> None:
+    """Record the נספח א' signature dates a 9100/9101 declares to the מסלקה.
+    Kept in the audit log (no schema change): it IS a declaration, so it
+    belongs on the audit trail with who recorded it."""
+    for d in (customer_signed, agent_signed):
+        datetime.strptime(d, "%Y%m%d")
+    await audit.log_event(
+        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+        customer_id_number=inquiry.customer_id_number, event_type=CONSENT_EVENT,
+        actor=actor, detail=f"customer_signed={customer_signed} agent_signed={agent_signed} {note}".strip(),
+    )
+
+
+async def _consent_dates(db: AsyncSession, inquiry: PensionInquiry) -> dict:
+    from app.models.pension_audit import PensionAuditLog
+    row = (await db.execute(
+        select(PensionAuditLog.detail).where(
+            PensionAuditLog.inquiry_id == inquiry.id,
+            PensionAuditLog.event_type == CONSENT_EVENT,
+        ).order_by(PensionAuditLog.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if not row:
+        return {}
+    kv = dict(p.split("=", 1) for p in row.split() if "=" in p)
+    return {"consent_customer_signed": kv.get("customer_signed"),
+            "consent_agent_signed": kv.get("agent_signed")}
 
 
 async def _store_raw_payload(

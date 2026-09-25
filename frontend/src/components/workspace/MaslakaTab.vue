@@ -310,6 +310,9 @@
                 <span v-if="expectedText(q)" class="mk-eta" :class="{ 'mk-eta--late': isLate(q) }">
                   {{ expectedText(q) }}
                 </span>
+                <span v-if="q.status === 'failed' && q.error_code" class="mk-reason" :title="q.error_detail || ''">
+                  <span class="ltr-number">{{ q.error_code }}</span> {{ reasonText(q) }}
+                </span>
               </td>
               <td><span class="ltr-number">{{ formatDate(q.submitted_at) }}</span></td>
               <td>
@@ -424,6 +427,17 @@ const idNumber = ref('')
 const customerName = ref('')
 const idTouched = ref(false)
 const inquiries = ref([])
+// The code's meaning (from the מסלקה's feedback spec, server-side) plus the
+// insurer's own wording when it adds something — never the same text twice.
+function reasonText(q) {
+  const meaning = q.error_meaning || ''
+  const detail = (q.error_detail || '').replace(/^"+|"+$/g, '').trim()
+  if (!meaning) return detail
+  if (!detail || detail === meaning || detail.includes(meaning) || q.error_code === '105') {
+    return q.error_code === '105' && detail ? detail : meaning
+  }
+  return `${meaning} — ${detail}`
+}
 const picture = ref(null)
 const loading = ref(true)
 const busy = ref(false)
@@ -1109,6 +1123,11 @@ onMounted(async () => {
   white-space: normal;
 }
 .mk-eta--late { color: var(--red-deep); font-weight: 600; }
+.mk-reason {
+  display: block; margin: 4px auto 0; max-width: 220px;
+  font-size: 0.72rem; line-height: 1.35; color: var(--red-deep);
+  white-space: normal;
+}
 .mk-table td:nth-child(2), .mk-table td:nth-child(4), .mk-table td:nth-child(5),
 .mk-table th:nth-child(2), .mk-table th:nth-child(4), .mk-table th:nth-child(5) {
   text-align: center; width: 100px;

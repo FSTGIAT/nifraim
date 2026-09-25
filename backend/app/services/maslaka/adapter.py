@@ -81,6 +81,10 @@ class FeedbackResult:
     acked_filename: str | None = None
     mislaka_number: str | None = None
     sug_mashov: str | None = None
+    # משוב ב' — the INSURER's content answer: MaaneMiYazran/MAANE-BERAMAT-RESHUMA
+    # (e.g. 1032 "לא ניתן לספק דוח פרודוקציה עבור המפיץ הפונה") + its PERUT text.
+    maane_code: str | None = None
+    maane_detail: str | None = None
     extras: dict[str, str] = field(default_factory=dict)
 
 
@@ -243,7 +247,48 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
         error_detail=error_detail if not is_ack else None,
         acked_filename=acked_filename,
         sug_mashov=sug_mashov,
+        maane_code=(_text_of(root, "MAANE-BERAMAT-RESHUMA") or "").strip() or None,
+        maane_detail=rec_detail or None if acked_filename is not None else None,
     )
+
+
+def parse_feedback_records(xml_bytes: bytes) -> list[FeedbackResult]:
+    """Every record-level answer in a feedback file.
+
+    feedback_009.xsd lets ONE file carry many answers: repeated
+    YeshutGoremPoneLemislaka (one per answering body) × repeated
+    MashovBeramatReshuma (one per request). Menora's 2026-09-25 FEDBKB carried
+    four (two bodies × our 2000 + 2100) — reading only the first silently left
+    three requests showing a false `acknowledged`. Each record is routed by its
+    own MISPAR-MISLAKA. A file with no record blocks (file-level FEDBKA) yields
+    the single file-level result."""
+    root = ET.fromstring(xml_bytes)
+    base = parse_feedback(xml_bytes)
+    out: list[FeedbackResult] = []
+    for rec in root.iter():
+        if _local_tag(rec.tag) != "MashovBeramatReshuma":
+            continue
+        err = (_text_of(rec, "KOD-SHGIHA-BERAMAT-RESHUMA") or "").strip() or None
+        status = (_text_of(rec, "STATUS-RESHUMA") or "").strip()
+        details = [
+            (d.text or "").strip() for d in rec.iter()
+            if _local_tag(d.tag) == "PERUT-SHGIHA-BERAMAT-RESHUMA" and (d.text or "").strip()
+        ]
+        detail = " | ".join(dict.fromkeys(details)) or None
+        is_ack = err is None and status != "2"
+        out.append(FeedbackResult(
+            mislaka_number=(_text_of(rec, "MISPAR-MISLAKA") or "").strip().upper() or None,
+            request_reference="",
+            is_ack=is_ack,
+            providers_expected=base.providers_expected,
+            error_code=None if is_ack else (err or "record_rejected"),
+            error_detail=None if is_ack else detail,
+            acked_filename=base.acked_filename,
+            sug_mashov=base.sug_mashov,
+            maane_code=(_text_of(rec, "MAANE-BERAMAT-RESHUMA") or "").strip() or None,
+            maane_detail=detail,
+        ))
+    return out or [base]
 
 
 def header_recipient_id(xml_bytes: bytes) -> str | None:

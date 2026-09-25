@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lxml import etree  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.services.maslaka.adapter import parse_feedback  # noqa: E402
+from app.services.maslaka.adapter import parse_feedback, parse_feedback_records  # noqa: E402
 from app.services.maslaka.events import MaslakaIdentityNotConfigured, build_events_request  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures" / "maslaka"
@@ -40,6 +40,29 @@ check("file-level code 3", r.error_code == "3", str(r.error_code))
 check("detail names the nillable violation", "nillable" in (r.error_detail or ""))
 check("correlates to our filename",
       r.acked_filename == "001000558638623EVENTS000007202609250916410001.DAT")
+
+print("live משוב ב' 1032 (Altshuler answering our 2100, 2026-09-25)")
+b = parse_feedback((FIX / "live_fedbkb_1032_altshuler_20260925.DAT").read_bytes())
+check("is a content answer (SUG-MASHOV 2)", b.sug_mashov == "2")
+check("insurer answer code 1032", b.maane_code == "1032", str(b.maane_code))
+check("reason text carried", "דוח פרודוקציה" in (b.maane_detail or ""), str(b.maane_detail))
+check("GUID is the only link back", b.mislaka_number == "8A47219D-44C9-4FF8-A81D-9543ADE494B1"
+      and not (b.acked_filename or "").startswith("001000558638623"))
+
+print("one משוב ב' file, FOUR answers (Menora, 2 bodies × 2000+2100)")
+recs = parse_feedback_records((FIX / "live_fedbkb_menora_4records_20260925.DAT").read_bytes())
+check("all four records parsed", len(recs) == 4, str(len(recs)))
+check("each has its own GUID", len({r.mislaka_number for r in recs}) == 4)
+check("each carries 1032 + its reason",
+      all(r.maane_code == "1032" and r.maane_detail == "בעל רישיון לא קיים בחברה" for r in recs))
+one = parse_feedback_records((FIX / "live_fedbka_rejected_nil_20260925.DAT").read_bytes())
+check("file-level FEDBKA still yields one result", len(one) == 1 and one[0].error_code == "3")
+
+print("code meanings (events_feedback_v9-4-11.xlsx)")
+from app.services.maslaka.feedback_codes import describe  # noqa: E402
+check("1032", describe("1032") == "לא ניתן לספק דוח פרודוקציה עבור המפיץ הפונה")
+check("105 / 3 / own codes", describe("105") == "אחר" and describe("3") == "מבנה XML לא חוקי"
+      and describe("identity_not_configured") is None)
 
 print("vendor samples stay clean")
 for f in sorted(glob.glob(str(FIX / "swiftness_samples" / "*FEDBK*"))):
@@ -81,7 +104,19 @@ try:
           (_t("SUG-MEZAHE-LAKOACH"), _t("MISPAR-MEZAHE-LAKOACH")) == ("1", "558638623"))
     check("2000 agent carried in PONE",
           (_t("SUG-PONE"), _t("SUG-KOD-MEZAHE-PONE"), _t("MISPAR-MEZAHE-PONE")) == ("3", "3", "040336281"))
+    # Production as the LICENSEE (every insurer answered 1032 to Nifraim-as-subject):
+    # sender = subject = the agent's ת"ז with names; filename/file number carry it too.
+    ax = build_events_request(**kw, sender_is_agent=True).xml
+    _a = etree.fromstring(ax)
+    _at = lambda tag: _a.find(".//" + tag).text  # noqa: E731
+    check("agent-sender 2000: sender = subject = agent ת\"ז",
+          (_at("SUG-MEZAHE-SHOLECH"), _at("MISPAR-ZIHUI-SHOLECH"), _at("SUG-MEZAHE-LAKOACH"),
+           _at("MISPAR-MEZAHE-LAKOACH")) == ("3", "040336281", "3", "040336281"))
+    check("agent-sender 2000: names present (rule 128)",
+          (_at("SHEM-PRATI-LAKOACH"), _at("SHEM-MISHPACHA-LAKOACH")) == ("משה", "כהן"))
+    check("agent-sender 2000: file number carries the agent", "0000000040336281" in _at("MISPAR-HAKOVETZ"))
     schema = etree.XMLSchema(etree.parse(str(FIX / "xsd" / "events_007.xsd")))
+    check("agent-sender 2000 is XSD-valid", schema.validate(_a), str(schema.error_log)[:200])
     ok = schema.validate(etree.fromstring(xml))
     check("with contact set, the 2000 is XSD-valid", ok, str(schema.error_log)[:200])
 finally:

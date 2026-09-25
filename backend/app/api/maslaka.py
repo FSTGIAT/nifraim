@@ -550,6 +550,7 @@ async def preview_request(
 
 # ─── Internal: serializer ──────────────────────────────────────────────────
 def _serialize_inquiry(inq: PensionInquiry) -> InquiryOut:
+    from app.services.maslaka import feedback_codes
     expected_by, expected_basis = orchestration.expected_answer_by(inq)
     return InquiryOut(
         expected_by=expected_by,
@@ -569,6 +570,7 @@ def _serialize_inquiry(inq: PensionInquiry) -> InquiryOut:
         expires_at=inq.expires_at,
         error_code=inq.error_code,
         error_detail=inq.error_detail,
+        error_meaning=feedback_codes.describe(inq.error_code),
         providers_expected=inq.providers_expected,
         providers_received=inq.providers_received,
         created_at=inq.created_at,

@@ -43,6 +43,8 @@ class InquiryOut(BaseModel):
     expires_at: datetime | None
     error_code: str | None
     error_detail: str | None
+    # What error_code means, from the מסלקה's feedback spec (feedback_codes.py).
+    error_meaning: str | None = None
     providers_expected: int | None
     providers_received: int
     created_at: datetime
