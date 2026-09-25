@@ -29,6 +29,7 @@ Nothing here sends anything; `orchestration.submit_inquiry` owns transport.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
@@ -136,6 +137,11 @@ def _mark_nils(elem: ET.Element, exempt: set[int] | None = None) -> None:
         return
     if len(elem) == 0 and not (elem.text or "").strip():
         elem.set("xsi:nil", "true")
+
+
+# 9-digit Israeli landline: 0 + area code 2/3/4/8/9 + 7 digits (spec example
+# 031234567; Swiftness's own header carries 037706000).
+LANDLINE_RE = re.compile(r"0[23489][0-9]{7}")
 
 
 class MaslakaIdentityNotConfigured(RuntimeError):
@@ -271,18 +277,31 @@ def build_events_request(
     _sub(sender, "KOD-SHOLECH", "3")            # 3 = בעל רישיון
     # Must match the KIND of MISPAR-ZIHUI-SHOLECH below: 1 = ח.פ, 3 = ת"ז.
     # Nifraim is registered on the vault form under ח.פ, so "1".
+    # The sender is ALWAYS the vault owner (Nifraim). Rule 118 — "מספר זיהוי גורם
+    # שולח לא זהה למספר זהוי בשם הקובץ/למספר זיהוי הלקוח שטען את הקובץ" —
+    # rejected seq 0034, which put the acting agent's ת"ז here.
     _sub(sender, "SUG-MEZAHE-SHOLECH", settings.MASLAKA_SENDER_ID_TYPE or "1")
     _sub(sender, "MISPAR-ZIHUI-SHOLECH", agent_id)
     _sub(sender, "SHEM-GOREM-SHOLECH", agent_name)
     _sub(sender, "SHEM-PRATI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_FIRST_NAME)
     _sub(sender, "SHEM-MISHPACHA-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_LAST_NAME)
-    # The XSD makes this minOccurs=1, NOT nillable, pattern [0-9]+ — so an empty
-    # value or xsi:nil is a hard violation, not a blank field. We have no landline
-    # on file, so fall back to the mobile: a real reachable number beats an
-    # invalid file. Set MASLAKA_CONTACT_PHONE to a real landline when we have one.
+    # MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH and E-MAIL are NOT nillable. The
+    # Gateway's .env lacked them, so 43 of 43 files (09-10 → 09-25) went out nil
+    # and came back KOD-SHGIHA=3 — while the dev box, whose .env has them, passed.
+    # The landline must be a real LANDLINE: the XSD only says [0-9]+, but the
+    # מסלקה's validation rule 116 rejects a mobile in it ("בפורמט לא תקין",
+    # measured 2026-09-25 with 0508882597). Field spec example: 031234567 — a
+    # 9-digit 0X number. So no mobile fallback: refuse rather than send a file
+    # we know they reject.
     _landline = "".join(ch for ch in (settings.MASLAKA_CONTACT_PHONE or "") if ch.isdigit())
-    _mobile = "".join(ch for ch in (settings.MASLAKA_CONTACT_MOBILE or "") if ch.isdigit())
-    _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", _landline or _mobile)
+    if not LANDLINE_RE.fullmatch(_landline) or not (settings.MASLAKA_CONTACT_EMAIL or "").strip():
+        if not allow_placeholder_identity:
+            raise MaslakaIdentityNotConfigured(
+                "MASLAKA_CONTACT_PHONE must be a real 9-digit landline (e.g. 031234567 — a "
+                "mobile fails the מסלקה's rule 116) and MASLAKA_CONTACT_EMAIL must be set on "
+                f"the host that builds the file (got phone={_landline!r})."
+            )
+    _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", _landline)
     _sub(sender, "E-MAIL-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_EMAIL)
     _sub(sender, "MISPAR-CELLULARI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_MOBILE)
     _sub(sender, "MISPAR-ZIHUI-ETZEL-YATZRAN-NIMAAN")
@@ -312,13 +331,22 @@ def build_events_request(
     customer = _sub(pone, "YeshutLakoachMeidaBsisi")
     # 1 = עמית/מבוטח; 3 = מפיץ, the spec's value for every production request.
     _sub(customer, "SUG-LAKOACH", "3" if distributor_request else "1")
-    _sub(customer, "SUG-MEZAHE-LAKOACH", "3")   # 3 = ת.ז.
+    # Rule 144 — "בבקשת פרודוקציה סוג מזהה לקוח ומספר מזהה לקוח צריך להיות זהה
+    # לסוג מזהה שולח ומספר מזהה שולח" (seq 0033) — and rule 118 pins the sender
+    # to the vault owner (seq 0034). So a production request's subject is
+    # Nifraim's own ח.פ; the agent whose book it is rides in
+    # YeshutGoremPoneLemislaka above. A ח.פ subject needs no personal names
+    # (rule 128 applies only to a ת"ז subject).
+    _sub(customer, "SUG-MEZAHE-LAKOACH",
+         (settings.MASLAKA_SENDER_ID_TYPE or "1") if distributor_request else "3")
     # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
     # including any leading zero, and `043417252` is a real one. Stripping would
     # send an 8-digit identifier for every saver whose ת"ז starts with 0 — about
     # a tenth of them — and the sample this builder was modelled on happened to
     # carry `381788223`, so the bug would not have shown until live traffic.
     # The 12-digit padding is a separate thing, and belongs to the FILENAME.
+    if distributor_request:
+        customer_id_number = "".join(ch for ch in str(agent_id) if ch.isdigit())
     _digits = "".join(ch for ch in (customer_id_number or "") if ch.isdigit())
     _sub(customer, "MISPAR-MEZAHE-LAKOACH", _digits.zfill(9) if _digits else "")
     _sub(customer, "SHEM-PRATI-LAKOACH", None if distributor_request else customer_first_name)

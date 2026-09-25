@@ -167,6 +167,11 @@ def build_events_request(
 
 
 # ─── Inbound parsers ───────────────────────────────────────────────────────
+# feedback_009.xsd KOD-SHGIHA: 15 = valid file received, 5 = receipt of an
+# error notice. Every other file-level code is a rejection.
+FILE_LEVEL_OK_CODES = frozenset({"5", "15"})
+
+
 def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
     """Parse a Feedback v009 message.
 
@@ -178,21 +183,40 @@ def parse_feedback(xml_bytes: bytes) -> FeedbackResult:
     """
     root = ET.fromstring(xml_bytes)
 
-    # ── The real wire format (measured against 12 live FEDBKA files, 2026-09-24,
-    # and the 8 vendor FEDBKA/FEDBKB samples) ──────────────────────────────
+    # ── The real wire format (feedback_009.xsd + 43 live FEDBKA files) ───────
     #   SHEM-HAKOVETZ  echoes the filename being answered  ← the correlation key
     #   SUG-MASHOV     1 = משוב א' (technical) · 2 = משוב ב' (content)
     #   RAMAT-MASHOV   1 = file level · 2 = record level
-    #   KOD-SHGIHA-BERAMAT-KOVETZ / -RESHUMA + TEUR-SHGIHA carry defects
-    # An ack is the ABSENCE of an error code, not the presence of an "OK"
-    # value — there is no status word on the wire to match against.
+    # File-level verdict: MashovBeramatKovetz/KOD-SHGIHA + one or more
+    #   PerutShgihaBeramatKovetz/PERUT-SHGIHA-BERAMAT-KOVETZ.
+    # Record-level: KOD-SHGIHA-BERAMAT-RESHUMA (+ PERUT-SHGIHA-BERAMAT-RESHUMA).
+    #
+    # There is NO `KOD-SHGIHA-BERAMAT-KOVETZ` and NO `TEUR-SHGIHA` in the schema.
+    # Reading those names made every rejection (KOD-SHGIHA=3, "מבנה XML לא
+    # חוקי") look like a clean ack — 43 of 43 files, 09-10 → 09-25 — while
+    # nothing could ever come back. Read the tags the XSD actually defines.
     acked_filename = _text_of(root, "SHEM-HAKOVETZ") or None
     sug_mashov = _text_of(root, "SUG-MASHOV") or None
 
-    err_file = (_text_of(root, "KOD-SHGIHA-BERAMAT-KOVETZ") or "").strip()
+    err_file = None
+    file_details: list[str] = []
+    for e in root.iter():
+        if _local_tag(e.tag) == "MashovBeramatKovetz":
+            code = (_text_of(e, "KOD-SHGIHA") or "").strip()
+            # 15 = "אישור קבלת קובץ תקין", 5 = "אישור על קבלת הודעת שגיאה" —
+            # the two file-level codes that are receipts, not defects.
+            if code and code not in FILE_LEVEL_OK_CODES:
+                err_file = code
+            file_details += [
+                (d.text or "").strip() for d in e.iter()
+                if _local_tag(d.tag) == "PERUT-SHGIHA-BERAMAT-KOVETZ" and (d.text or "").strip()
+            ]
     err_rec = (_text_of(root, "KOD-SHGIHA-BERAMAT-RESHUMA") or "").strip()
     error_code = err_file or err_rec or None
-    error_detail = (_text_of(root, "TEUR-SHGIHA") or "").strip() or None
+    rec_detail = (
+        _text_of(root, "PERUT-SHGIHA-BERAMAT-RESHUMA") or _text_of(root, "PERUT-SHGIHA") or ""
+    ).strip()
+    error_detail = " | ".join(dict.fromkeys(file_details + ([rec_detail] if rec_detail else []))) or None
 
     providers_raw = _text_of(root, "KAMUT-RESHUMOT-TKINOT")
     providers_expected = int(providers_raw) if (providers_raw or "").strip().isdigit() else None

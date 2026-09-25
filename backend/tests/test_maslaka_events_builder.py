@@ -126,8 +126,13 @@ def main() -> None:
                                 acting_agent_id="40336281", acting_agent_name="משה כהן",
                                 allow_placeholder_identity=True).xml.decode()
     check("2000: SUG-LAKOACH is 3 (מפיץ)", text_of(prod, "SUG-LAKOACH") == "3")
-    check("2000: the subject is the agent, zero-padded to 9",
-          text_of(prod, "MISPAR-MEZAHE-LAKOACH") == "040336281")
+    # Rule 144 (live, seq 0033): a production request's subject = its sender
+    # (the vault owner, rule 118). The agent is carried in PONE, zero-padded.
+    check("2000: the subject equals the sender (rule 144)",
+          text_of(prod, "MISPAR-MEZAHE-LAKOACH") == text_of(prod, "MISPAR-ZIHUI-SHOLECH").zfill(9)
+          and text_of(prod, "SUG-MEZAHE-LAKOACH") == text_of(prod, "SUG-MEZAHE-SHOLECH"))
+    check("2000: the agent rides in PONE, zero-padded to 9",
+          text_of(prod, "MISPAR-MEZAHE-PONE") == "040336281")
     check("2000: SHEM-MAASIK carries the מפיץ name", text_of(prod, "SHEM-MAASIK") == "משה כהן")
     check("2000: KOD-MEZAHE-YATZRAN names the body",
           text_of(prod, "KOD-MEZAHE-YATZRAN") == "514956465")

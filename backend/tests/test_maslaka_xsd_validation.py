@@ -26,6 +26,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# The sender contact is host config (.env), and the landline + e-mail are
+# non-nillable — pin them so this test validates the file, not this box's .env.
+from app.config import settings as _settings  # noqa: E402
+_settings.MASLAKA_CONTACT_PHONE = _settings.MASLAKA_CONTACT_PHONE or "031234567"
+_settings.MASLAKA_CONTACT_EMAIL = _settings.MASLAKA_CONTACT_EMAIL or "test@example.com"
+
 XSD_DIR = Path(__file__).parent / "fixtures" / "maslaka" / "xsd"
 SAMPLES = Path(__file__).parent / "fixtures" / "maslaka" / "swiftness_samples"
 FAILURES: list[str] = []
