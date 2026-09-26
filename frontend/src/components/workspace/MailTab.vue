@@ -190,14 +190,15 @@
          reply is a plain letter card to read, edit and send. -->
     <Teleport to="body">
       <Transition name="lt">
-        <div v-if="sel" class="ml-letter-overlay" @click.self="closeLetter">
+        <div v-if="sel" class="ml-letter-overlay" :class="{ 'ml-letter-overlay--closing': closing }" @click.self="closeLetter">
           <MailEnvelopeIntro
-            v-if="!introDone" :key="sel.id" :name="nameOf(sel)" :initial="initial(sel)"
-            @done="introDone = true"
+            v-if="!introDone || closing" :key="sel.id + (closing ? ':close' : '')"
+            :name="nameOf(sel)" :initial="initial(sel)" :reverse="closing"
+            @done="closing ? finishClose() : (introDone = true)"
           />
           <Transition :name="navDir ? `letter-${navDir}` : 'letter'" mode="out-in" appear>
             <article
-              v-if="introDone" :key="sel.id" class="ml-letter" dir="rtl" role="dialog" aria-modal="true"
+              v-if="introDone" :key="sel.id" class="ml-letter" :class="{ 'ml-letter--folding': closing }" dir="rtl" role="dialog" aria-modal="true"
               aria-labelledby="ml-l-title"
             >
               <header class="ml-l-head">
@@ -545,7 +546,19 @@ function startManual() { editing.value = true; draftSubject.value = `Re: ${sel.v
 const onSave = () => store.saveDraft(sel.value.id, draftSubject.value, draftBody.value)
 const onRegenerate = () => store.regenerate(sel.value.id)
 const onImport = (name) => store.importFile(sel.value.id, name)
-function closeLetter() { store.selected = null }
+// Closing mirrors the opening: the letter folds back into its envelope, which
+// sinks away, and only then is the mail deselected. A second close request
+// mid-animation (Escape, overlay click) skips straight to closed.
+const closing = ref(false)
+function closeLetter() {
+  if (!store.selected) return
+  if (reduced || closing.value) { finishClose(); return }
+  closing.value = true
+}
+function finishClose() {
+  closing.value = false
+  store.selected = null
+}
 // Moving away never loses an edit: an unsaved draft is saved first.
 async function goTo(id, dir = 'next') {
   if (!id || store.busy) return
@@ -580,13 +593,21 @@ async function onNotSend() {
 // listens after us) knows the key was already used.
 function onKey(e) {
   if (e.key !== 'Escape') return
-  if (store.selected) { store.selected = null; e.preventDefault() }
+  if (store.selected) { closeLetter(); e.preventDefault() }
   else if (sendersOpen.value) { sendersOpen.value = false; e.preventDefault() }
 }
 onMounted(() => window.addEventListener('keydown', onKey, true))
 onUnmounted(() => window.removeEventListener('keydown', onKey, true))
 
 onMounted(async () => {
+  // Warm the envelope's chunks: a mail opened without the intro (queue arrows,
+  // already-sent) would otherwise load them on close and show an empty beat.
+  if (!reduced) {
+    Promise.all([
+      import('react-dom/client'), import('react'), import('@remotion/player'),
+      import('../../remotion/MailEnvelopeIntro'),
+    ]).catch(() => {})
+  }
   store.selected = null
   store.filter = 'all'
   await store.refreshAll()
@@ -877,9 +898,18 @@ button.ml-big-n:disabled { cursor: progress; }
   padding: 16px; background: rgba(15, 30, 45, 0.5);
 }
 .ml-letter {
-  position: relative; width: min(680px, 100%); max-height: calc(100dvh - 32px);
+  position: relative; z-index: 1; width: min(680px, 100%); max-height: calc(100dvh - 32px);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+}
+/* Closing: the real letter shrinks onto the envelope's letter (same centre,
+   ~316px wide at the envelope's risen position) and fades, then Remotion
+   carries it into the pocket. Values match ENVELOPE_CLOSE_HOLD (8f ≈ 270ms). */
+.ml-letter--folding {
+  pointer-events: none;
+  transform: translateY(-78px) scale(0.46);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.16s ease-in 0.14s;
 }
 /* Air-mail edge — the same stripe that rims the envelope in the intro. */
 .ml-letter::before {
@@ -969,6 +999,9 @@ button.ml-big-n:disabled { cursor: progress; }
 .letter-next-enter-from, .letter-prev-leave-to { opacity: 0; transform: translateX(-36px); }
 .letter-next-leave-to, .letter-prev-enter-from { opacity: 0; transform: translateX(36px); }
 .lt-enter-active { transition: opacity 0.22s ease-out; }
+/* While the envelope sinks, the backdrop lifts with it rather than waiting
+   for the envelope to finish (that left a beat of empty dark overlay). */
+.ml-letter-overlay--closing { background: rgba(15, 30, 45, 0); transition: background 0.6s ease-in 0.6s; }
 .lt-leave-active { transition: opacity 0.16s ease-in; }
 .lt-enter-from, .lt-leave-to { opacity: 0; }
 .letter-enter-active { transition: opacity 0.24s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }

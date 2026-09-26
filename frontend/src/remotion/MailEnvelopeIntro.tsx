@@ -4,7 +4,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring, Eas
 /**
  * MailEnvelopeIntro
  * -----------------
- * One-shot opening played when the agent opens a mail the AI answered: the
+ * Opening (and, with `reverse`, closing) played around an AI-answered mail: the
  * envelope rises, the flap swings open, the reply slides out with its lines
  * "writing in", then the envelope drops away and the letter settles where
  * the real (editable) letter card takes over in MailTab.vue.
@@ -18,10 +18,20 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, spring, Eas
  */
 
 export const ENVELOPE_INTRO_FRAMES = 46 // ~1.5s @ 30fps
+// Closing: the opening's frames 31→0 played backwards (the letter drops into
+// the pocket, flap shuts, envelope sinks), after an 8-frame hold on frame 31 —
+// the hold is where the REAL letter card shrinks onto this one (MailTab.vue),
+// so the handoff has no blank frame. The settle phase (31→45) is skipped: the
+// real letter does that part itself.
+export const ENVELOPE_CLOSE_HOLD = 8
+// The sealed envelope also fades out over the last ENVELOPE_CLOSE_FADE frames
+// (the reversed spring alone leaves it opaque until the cut → a visible pop).
+export const ENVELOPE_CLOSE_FRAMES = ENVELOPE_CLOSE_HOLD + 30
+const ENVELOPE_CLOSE_FADE = 10
 export const ENVELOPE_W = 640
 export const ENVELOPE_H = 440
 
-type Props = { name: string; initial: string }
+type Props = { name: string; initial: string; reverse?: boolean }
 
 const ACC = 'var(--tab-mail, #4E9DD0)'
 const INK = 'var(--tab-mail-ink, #2F6C94)'
@@ -40,8 +50,12 @@ const inOut = Easing.bezier(0.65, 0, 0.35, 1)
 const EX = 140, EY = 176, EW = 360, EH = 214
 const CX = EX + EW / 2
 
-export const MailEnvelopeIntro: React.FC<Props> = ({ name, initial }) => {
-  const frame = useCurrentFrame()
+export const MailEnvelopeIntro: React.FC<Props> = ({ name, initial, reverse = false }) => {
+  // `reverse` = the closing: the same timeline played backwards, so the letter
+  // shrinks back into the pocket, the flap folds shut, the seal returns and
+  // the envelope sinks away — an exact mirror of the opening.
+  const raw = useCurrentFrame()
+  const frame = reverse ? Math.max(0, 31 - Math.max(0, raw - ENVELOPE_CLOSE_HOLD)) : raw
   const { fps } = useVideoConfig()
 
   // 1. arrive
@@ -70,8 +84,12 @@ export const MailEnvelopeIntro: React.FC<Props> = ({ name, initial }) => {
   const flapTip = EY + 124 * flap
   const flapPath = `M${EX} ${EY} L${CX} ${flapTip} L${EX + EW} ${EY} Z`
 
+  const closeFade = reverse
+    ? interpolate(raw, [ENVELOPE_CLOSE_FRAMES - 1 - ENVELOPE_CLOSE_FADE, ENVELOPE_CLOSE_FRAMES - 1], [1, 0], { ...clamp, easing: inOut })
+    : 1
+
   return (
-    <AbsoluteFill style={{ background: 'transparent' }}>
+    <AbsoluteFill style={{ background: 'transparent', opacity: closeFade }}>
       <svg viewBox={`0 0 ${ENVELOPE_W} ${ENVELOPE_H}`} width="100%" height="100%">
         <defs>
           <clipPath id="mei-env">

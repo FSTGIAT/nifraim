@@ -1,16 +1,28 @@
 <template>
   <div class="recruits-tab">
-    <!-- Identity header — matches the other tabs (title right, turquoise hero left) -->
-    <div class="recruits-hero">
-      <div class="recruits-hero-titles">
-        <h3>ניהול תיק אישי</h3>
-        <span class="recruits-hero-sub">מעקב וניהול לקוחות מגויסים מול פרודוקציה ונפרעים</span>
+    <!-- Hero — the Mail Agent's shape (kicker, wordmark with the accent word,
+         counters, looping scene), in the portfolio's turquoise. -->
+    <header class="rc-hero">
+      <div class="rc-hero-copy">
+        <span class="rc-kicker">מגויסים</span>
+        <h2 class="rc-hero-title">ניהול תיק <span class="rc-hero-title-acc">אישי</span></h2>
+        <p class="rc-hero-sub">מעקב אחרי הלקוחות שגייסתם — מול הפרודוקציה והנפרעים.</p>
+        <div v-if="hasRecruits" class="rc-stats">
+          <div class="rc-stat">
+            <span class="rc-stat-n ltr-number">{{ recruitsStore.recruits.length }}</span>
+            <span class="rc-stat-l">מגויסים · {{ activeCatLabel }}</span>
+          </div>
+          <div v-if="recruitsStore.comparisonResult?.found != null" class="rc-stat rc-stat--hot">
+            <span class="rc-stat-n ltr-number">{{ recruitsStore.comparisonResult.found }}</span>
+            <span class="rc-stat-l">נמצאו בפרודוקציה</span>
+          </div>
+        </div>
       </div>
-      <TabHeroLoop scene="recruits" class="recruits-hero-art" />
-    </div>
+      <TabHeroLoop scene="recruits" class="rc-hero-art" />
+    </header>
 
     <!-- No production file warning -->
-    <div v-if="!productionStore.currentFile && !productionStore.loading" class="hint-banner">
+    <div v-if="!productionStore.currentFile && !productionStore.loading && (hasRecruits || hasAnyRecruits)" class="hint-banner">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/>
         <line x1="12" y1="16" x2="12" y2="12"/>
@@ -19,9 +31,13 @@
       <span>העלה קובץ פרודוקציה בלשונית "פרודוקציה" כדי לבדוק מגויסים מולו</span>
     </div>
 
-    <!-- First-use upload — clean turquoise card (matches the other tabs) -->
-    <div class="recruit-uploader" v-if="!hasRecruits && !hasAnyRecruits">
-      <div class="upload-card">
+    <!-- First use: a realistic photo that dissolves into the card (no frame),
+         the headline, the upload action and the format guide. The missing-
+         production warning lives here as a note instead of a separate bar. -->
+    <section v-if="!hasRecruits && !hasAnyRecruits" class="rc-welcome">
+      <div v-if="rcWelcomeArt" class="rc-photo" aria-hidden="true"><img :src="rcWelcomeArt" alt="" /></div>
+      <div class="rc-welcome-copy">
+      <h3 class="rc-welcome-title">העלו את קובץ הגיוס<br><span class="rc-welcome-acc">ונבדוק כל מגויס</span></h3>
       <!-- Loading state -->
       <div v-if="recruitsStore.uploading" class="upload-loading">
         <div class="loading-content">
@@ -101,8 +117,12 @@
           </div>
         </Transition>
       </div>
+      <p v-if="!productionStore.currentFile && !productionStore.loading" class="rc-note">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        כדי לבדוק את המגויסים צריך גם קובץ פרודוקציה — מעלים אותו בלשונית "פרודוקציה".
+      </p>
       </div>
-    </div>
+    </section>
 
     <!-- Upload loading card (centered, shown when uploading regardless of recruits) -->
     <div class="recruit-uploader" v-if="hasRecruits && recruitsStore.uploading">
@@ -450,6 +470,8 @@ const recruitsStore = useRecruitsStore()
 
 const fileInputRef = ref(null)
 const fileInputRef2 = ref(null)
+// Realistic photo for the first-use section; optional (glob → no crash if absent).
+const rcWelcomeArt = Object.values(import.meta.glob('../../assets/welcome/recruits-empty.webp', { eager: true, import: 'default' }))[0] || ''
 const hasRecruits = computed(() => recruitsStore.recruits.length > 0)
 const hasAnyRecruits = ref(false)
 const needPassword = ref(false)
@@ -652,6 +674,43 @@ watch(() => innerTab.value, (tab) => {
 </script>
 
 <style scoped>
+/* ── Hero (Mail Agent's shape, in the portfolio's turquoise) ── */
+.rc-hero {
+  position: relative; overflow: hidden; display: flex; align-items: center; min-height: 190px;
+  padding: 22px 24px; background: var(--card-bg);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+}
+.rc-hero::before {
+  content: ''; position: absolute; inset-inline-end: -6%; top: -60%; width: 44%; height: 220%;
+  background: radial-gradient(circle, var(--tab-recruits-wash), transparent 70%); pointer-events: none;
+}
+.rc-hero-copy { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 6px; max-width: 60%; min-width: 0; }
+.rc-kicker {
+  align-self: flex-start; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  background: var(--tab-recruits-wash); color: var(--tab-recruits-ink);
+}
+.rc-hero-title {
+  align-self: flex-start; margin: 4px 0 0;
+  font-family: 'Rubik', 'Heebo', sans-serif; font-size: clamp(28px, 3.3vw, 40px); font-weight: 700;
+  letter-spacing: -0.035em; line-height: 1.05; color: var(--text);
+}
+.rc-hero-title-acc { color: var(--tab-recruits-ink); }
+.rc-hero-sub { margin: 2px 0 0; font-size: 13.5px; color: var(--text-muted); }
+.rc-hero-art {
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
+  width: min(270px, 36%); aspect-ratio: 420 / 300; pointer-events: none; z-index: 0;
+}
+.rc-stats { display: flex; gap: 22px; margin-top: 10px; }
+.rc-stat { display: flex; flex-direction: column; align-items: flex-start; }
+.rc-stat-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
+.rc-stat--hot .rc-stat-n { color: var(--tab-recruits-ink); }
+.rc-stat-l { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+@media (max-width: 720px) {
+  .rc-hero { min-height: 0; }
+  .rc-hero-copy { max-width: 100%; }
+  .rc-hero-art, .rc-hero::before { display: none; }
+}
+
 .recruits-tab {
   animation: slideUp 0.4s var(--transition);
   display: flex;
@@ -672,52 +731,40 @@ watch(() => innerTab.value, (tab) => {
 }
 
 /* ── Identity header (mirrors emails/portal/shelf: title right, hero left) ── */
-.recruits-hero {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 150px;
-  padding: 18px 22px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md, 14px);
-  box-shadow: var(--shadow-sm);
+
+/* ── First use: photo dissolving into the card (same pattern as the
+   agreements welcome in CommissionRateTable.vue) ── */
+.rc-welcome {
+  position: relative; overflow: hidden; min-height: 360px; display: flex; align-items: center;
+  border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: var(--card-bg); box-shadow: var(--shadow-sm);
 }
-.recruits-hero-titles {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  max-width: 62%;
-  text-align: start;
+.rc-photo {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 62%; z-index: 0;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 50%, transparent 95%);
+          mask-image: linear-gradient(to right, #000 0%, #000 50%, transparent 95%);
 }
-.recruits-hero-titles h3 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text);
+.rc-photo img { width: 100%; height: 100%; object-fit: cover; object-position: left center; display: block; }
+.rc-welcome-copy { position: relative; z-index: 1; width: min(460px, 50%); padding: 36px 40px; display: flex; flex-direction: column; gap: 14px; }
+.rc-welcome-title {
+  margin: 0; font-family: 'Heebo', sans-serif; font-weight: 900;
+  font-size: clamp(28px, 3.2vw, 40px); line-height: 1.08; letter-spacing: -0.03em; color: var(--text);
 }
-.recruits-hero-sub {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.4;
+.rc-welcome-acc { color: var(--tab-recruits-ink); }
+.rc-welcome-copy .upload-btn { align-self: flex-start; width: auto; padding-inline: 22px; }
+.rc-welcome-copy .format-guide { align-self: stretch; }
+.rc-note {
+  margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.5;
+  color: var(--amber); /* dark gold warning ink */
 }
-.recruits-hero-art {
-  position: absolute;
-  inset-inline-end: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: min(240px, 34%);
-  aspect-ratio: 420 / 300;
-  pointer-events: none;
-  z-index: 0;
+.rc-note svg { flex-shrink: 0; margin-top: 2px; }
+@media (max-width: 860px) {
+  .rc-welcome { flex-direction: column; align-items: stretch; min-height: 0; }
+  .rc-photo { position: relative; width: 100%; height: 200px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+  .rc-welcome-copy { width: auto; padding: 4px 20px 24px; }
+  .rc-welcome-copy .upload-btn { align-self: stretch; }
 }
-@media (max-width: 640px) { .recruits-hero-art { display: none; } }
 
 /* ── Upload ── */
 .recruit-uploader {

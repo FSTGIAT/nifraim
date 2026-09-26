@@ -91,8 +91,11 @@
         :key="it.key"
         type="button"
         class="rail-item"
+        :class="{ 'rail-item--active': it.key === active }"
+        :data-rail-key="it.key"
         :aria-label="it.label"
-        @click="$emit('select', it.key)"
+        :aria-current="it.key === active ? 'page' : undefined"
+        @click="pick(it.key, $event)"
       >
         <span class="rail-ico">
           <span v-html="ICONS[it.icon]"></span>
@@ -128,8 +131,17 @@ const props = defineProps({
   // The SAME list the circle menu uses, so the two can never drift apart.
   items: { type: Array, default: () => [] },
   user: { type: Object, default: null },
+  // The rail item whose page/window is currently open (e.g. 'contacts').
+  active: { type: String, default: '' },
 })
-defineEmits(['select'])
+const emit = defineEmits(['select'])
+// Hand the icon's rectangle up with the key: pages and windows opened from
+// the rail launch OUT OF this icon (the iPhone-style morph), like home cards.
+function pick(key, e) {
+  const ico = e.currentTarget.querySelector('.rail-ico') || e.currentTarget
+  const r = ico.getBoundingClientRect()
+  emit('select', key, { left: r.left, top: r.top, width: r.width, height: r.height })
+}
 
 const open = ref(false)
 
@@ -188,6 +200,8 @@ const ICONS = {
   Search: `<svg viewBox="0 0 24 24" ${S}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
   Settings: `<svg viewBox="0 0 24 24" ${S}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
   Mail: `<svg viewBox="0 0 24 24" ${S}><path d="M13 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6"/><path d="m2 7 8.97 5.7a1.94 1.94 0 0 0 2.06 0L16.5 10"/><path fill="currentColor" stroke="none" d="M19 1c.34 2.2 1.3 3.16 3.5 3.5-2.2.34-3.16 1.3-3.5 3.5-.34-2.2-1.3-3.16-3.5-3.5C17.7 4.16 18.66 3.2 19 1Z"/></svg>`,
+  Contacts: `<svg viewBox="0 0 24 24" ${S}><path d="M16 2v2"/><path d="M7 22v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><path d="M8 2v2"/><circle cx="12" cy="11" r="3"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg>`,
+  Briefcase: `<svg viewBox="0 0 24 24" ${S}><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>`,
   HelpCircle: `<svg viewBox="0 0 24 24" ${S}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>`,
   LogOut: `<svg viewBox="0 0 24 24" ${S}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>`,
 }
@@ -320,6 +334,7 @@ const ICONS = {
   transition: background 0.16s ease, color 0.16s ease;
 }
 .rail-item:hover { background: var(--bg); color: var(--text); }
+.rail-item--active { background: var(--bg); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-subtle); }
 .rail-item:focus-visible {
   outline: 2px solid var(--tab-production, #2F73C4);
   outline-offset: 1px;

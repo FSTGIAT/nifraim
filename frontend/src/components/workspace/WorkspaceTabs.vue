@@ -53,6 +53,8 @@
        
         class="strip-pill"
         :class="{ active: modelValue === tab.id }"
+        :title="tab.label"
+        :aria-label="tab.label"
         :style="{ '--accent': tab.accent, '--accent-wash': tab.accentGlow, '--accent-ink': tab.ink }"
         @click="onPillPress($event, tab.id)"
       >
@@ -168,22 +170,6 @@ const tabs = [
     accent: 'var(--tab-commission)',
     accentGlow: 'var(--tab-commission-wash)',
     ink: 'var(--tab-commission)',
-  },
-  {
-    id: 'company-emails',
-    label: 'אימיילים לחברות',
-    description: 'אנשי קשר בחברות ביטוח',
-    accent: 'var(--tab-emails)',
-    accentGlow: 'var(--tab-emails-wash)',
-    ink: 'var(--tab-emails-ink)',
-  },
-  {
-    id: 'recruits',
-    label: 'ניהול תיק אישי',
-    description: 'מעקב וניהול לקוחות מגויסים',
-    accent: 'var(--tab-recruits)',
-    accentGlow: 'var(--tab-recruits-wash)',
-    ink: 'var(--tab-recruits-ink)',
   },
   {
     id: 'portal',
@@ -413,6 +399,7 @@ const tabs = [
    CONTENT MODE — Mini Strip
    ═══════════════════════════════════ */
 .strip-container {
+  container-type: inline-size; /* the strip adapts to ITS width (rail gutter included), not the viewport's */
   display: flex;
   justify-content: center;
   padding: 10px 16px 6px;
@@ -424,6 +411,7 @@ const tabs = [
 }
 
 .strip {
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -489,6 +477,15 @@ const tabs = [
 /* ═══════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════ */
+/* Not enough room for every label (the strip needs ~1220px with all of them):
+   inactive tabs go icon-only — label in the tooltip — and the active tab keeps
+   its name. Before this the strip was a fixed 1216px and overflowed the page
+   below ~1250px wide. */
+@container (max-width: 1240px) {
+  .strip-pill:not(.active) .strip-label { display: none; }
+  .strip-pill:not(.active) { padding: 7px 10px; }
+}
+
 @media (max-width: 960px) {
   .cards-grid {
     max-width: 700px;

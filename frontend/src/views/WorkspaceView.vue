@@ -1,24 +1,33 @@
 <template>
-  <div class="workspace">
+  <div class="workspace" :class="{ 'workspace--railed': viewMode === 'content' }">
     <!-- Floating action menu (React island). Visible only in home view,
          where there's no tabs strip to dock it inside. Items fan DOWN from
          the trigger here — fanning left/across would push items off the
          viewport's left edge since the trigger sits at left:32px. -->
-    <!-- Home gets a nav rail with the user on it; inside a tab the strip keeps
-         the round circle-menu button, because there the strip IS the
-         navigation and a rail would be a second answer to one question.
+    <!-- The nav rail (user · search · settings · Mail Agent · help · sign-out)
+         is on EVERY page, home and tabs alike — inside a tab it was the only
+         way to reach those items. Inside a tab, `.workspace--railed` reserves
+         a left gutter so the rail never sits on content.
          Mounted OUTSIDE the view Transition on purpose: inside `.home-view`
          it would inherit `.view-receding` and fade away with the grid every
          time a card launches. -->
     <HomeSidebar
-      v-if="viewMode === 'home'"
       :items="circleMenuItems"
+      :active="railActive"
       :user="auth.user"
       @select="onMenuSelect"
     />
 
     <!-- Nifraim Mail Agent — opens from the rail / round menu / bell. -->
-    <MailAgentModal :open="mailAgentOpen" @close="mailAgentOpen = false" />
+    <MailAgentModal :open="mailAgentOpen" @close="closeMailAgent" />
+
+    <!-- Rail windows — same shell as the Mail Agent, opened from the side rail. -->
+    <RailWindow :open="contactsOpen" label="אנשי קשר" accent="var(--tab-emails)" @close="closeContacts">
+      <CompanyEmailsTab />
+    </RailWindow>
+    <RailWindow :open="recruitsOpen" label="ניהול תיק אישי" accent="var(--tab-recruits)" width="1180px" @close="closeRecruits">
+      <RecruitsTab />
+    </RailWindow>
 
     <!-- Client lookup — opens from the menu's Search item. -->
     <ClientSearchModal v-model:open="searchOpen" />
@@ -177,8 +186,6 @@
               <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
-              <CompanyEmailsTab v-else-if="activeTab === 'company-emails'" key="company-emails" />
-              <RecruitsTab v-else-if="activeTab === 'recruits'" key="recruits" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
               <AiLibraryTab v-else-if="activeTab === 'ai-library'" key="ai-library" />
               <MaslakaTab v-else-if="activeTab === 'maslaka'" key="maslaka" />
@@ -286,8 +293,9 @@ import ProductionTab from '../components/workspace/ProductionTab.vue'
 import ComparisonTab from '../components/workspace/ComparisonTab.vue'
 import RecruitsTab from '../components/workspace/RecruitsTab.vue'
 import CommissionRatesTab from '../components/workspace/CommissionRatesTab.vue'
-import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import MailAgentModal from '../components/workspace/MailAgentModal.vue'
+import RailWindow from '../components/workspace/RailWindow.vue'
+import CompanyEmailsTab from '../components/workspace/CompanyEmailsTab.vue'
 import { useMailAgentStore } from '../stores/mailAgent.js'
 import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
@@ -348,7 +356,7 @@ function onLatestVizs(vizs) {
 
 // Tab order for keyboard arrow navigation (the floating on-screen arrow
 // buttons were removed — they covered content; ArrowLeft/ArrowRight remain)
-const tabOrder = ['production', 'comparison', 'commission-rates', 'company-emails', 'recruits', 'portal', 'portal-automation']
+const tabOrder = ['production', 'comparison', 'commission-rates', 'portal', 'portal-automation']
 
 const currentIndex = computed(() => tabOrder.indexOf(activeTab.value))
 const hasPrev = computed(() => currentIndex.value > 0)
@@ -372,6 +380,10 @@ function onCardSelect(payload) {
   const company = typeof payload === 'object' ? payload.company : null
   const uploadId = typeof payload === 'object' ? payload.uploadId : null
   const rect = typeof payload === 'object' ? payload.rect : null
+  // Old links (AI answers, empty-state CTAs) to the former emails tab now
+  // open the contacts window.
+  if (tabId === 'company-emails') { openContacts(null); return }
+  if (tabId === 'recruits') { openRecruits(null); return }
 
   const commit = () => {
     activeTab.value = tabId
@@ -409,6 +421,31 @@ function onPillSelect(payload) {
     from: 'content',
     commit: () => { activeTab.value = tabId },
   })
+}
+
+// אנשי קשר is a window, not a tab: it launches out of its rail icon (or just
+// appears, when opened from elsewhere without a rectangle) and folds back.
+function openContacts(rect) {
+  if (contactsOpen.value) return
+  morph.launch({ rect, radius: 8, accent: 'var(--tab-emails)', tabId: 'company-emails', from: 'modal', commit: () => { contactsOpen.value = true } })
+}
+function closeContacts() {
+  if (!contactsOpen.value) return
+  morph.dismiss({ tabId: 'company-emails', commit: () => { contactsOpen.value = false } })
+}
+
+function openRecruits(rect) {
+  if (recruitsOpen.value) return
+  morph.launch({ rect, radius: 8, accent: 'var(--tab-recruits)', tabId: 'recruits', from: 'modal', commit: () => { recruitsOpen.value = true } })
+}
+function closeRecruits() {
+  if (!recruitsOpen.value) return
+  morph.dismiss({ tabId: 'recruits', commit: () => { recruitsOpen.value = false } })
+}
+
+function closeMailAgent() {
+  if (!mailAgentOpen.value) return
+  morph.dismiss({ tabId: 'mail', commit: () => { mailAgentOpen.value = false } })
 }
 
 function goHome() {
@@ -596,6 +633,10 @@ const baseMenuItems = [
   { key: 'search',   label: 'חיפוש',    icon: 'Search' },
   { key: 'settings', label: 'הגדרות',   icon: 'Settings' },
   { key: 'mail',     label: 'Mail Agent', icon: 'Mail' },
+  // Company emails left the tabs: it is a contacts book, opened from the rail.
+  { key: 'contacts', label: 'אנשי קשר', icon: 'Contacts' },
+  // So did the personal portfolio (recruits) — a rail window too.
+  { key: 'recruits', label: 'ניהול תיק אישי', icon: 'Briefcase' },
   { key: 'help',     label: 'עזרה',     icon: 'HelpCircle' },
   { key: 'logout',   label: 'התנתקות',  icon: 'LogOut' },
 ]
@@ -621,12 +662,26 @@ const fundDetailOpen = ref(false)
 const fundDetailViz = ref(null)
 const fundTickerStore = useFundTickerStore()
 
-function onMenuSelect(key) {
+// Which rail item is "open" right now — highlights it in the rail.
+const contactsOpen = ref(false)
+const recruitsOpen = ref(false)
+const railActive = computed(() =>
+  mailAgentOpen.value ? 'mail' : contactsOpen.value ? 'contacts' : recruitsOpen.value ? 'recruits' : '')
+
+function onMenuSelect(key, rect) {
   if (key === 'logout')   { handleLogout(); return }
   if (key === 'home')     { goHome(); return }
   if (key === 'search')   { searchOpen.value = true; return }
   if (key === 'settings') { emailSettingsOpen.value = true; return }
-  if (key === 'mail')     { mailAgentOpen.value = true; return }
+  // Mail Agent and contacts open with the same iPhone-style launch as the home
+  // cards, growing out of their rail icon (and folding back into it on close).
+  if (key === 'mail') {
+    if (mailAgentOpen.value) return
+    morph.launch({ rect, radius: 8, accent: 'var(--tab-mail)', tabId: 'mail', from: 'modal', commit: () => { mailAgentOpen.value = true } })
+    return
+  }
+  if (key === 'contacts') { openContacts(rect); return }
+  if (key === 'recruits') { openRecruits(rect); return }
   // help — TODO. No-op for now so the menu still closes.
 }
 
@@ -884,6 +939,14 @@ async function openFundDetail(trackId) {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
+
+/* Inside a tab the fixed rail owns the left edge: keep content clear of it.
+   Rail = left 24 + 76 wide (≥1181px) / left 12 + 66 wide (721–1180px);
+   hidden ≤720px. The hover-open rail is an overlay on purpose — it doesn't
+   reflow the page. */
+.workspace--railed { padding-left: 112px; }
+@media (max-width: 1180px) { .workspace--railed { padding-left: 88px; } }
+@media (max-width: 720px) { .workspace--railed { padding-left: 0; } }
 
 .workspace-main {
   max-width: 1200px;

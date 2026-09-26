@@ -82,9 +82,22 @@ function frame(r, radius, opacity, vw, vh) {
  * also what the moment wants: coming back, the springboard is already there —
  * it does not re-deal itself card by card.
  */
+// Pages/windows that live in the side rail, not the card grid: they launch
+// from, and fold back into, their rail icon.
+const RAIL_KEY = { 'company-emails': 'contacts', recruits: 'recruits', mail: 'mail' }
+
+function measureRail(tabId) {
+  const key = RAIL_KEY[tabId]
+  const el = key && document.querySelector(`.rail-item[data-rail-key="${key}"] .rail-ico`)
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  if (!r.width || !r.height) return null
+  return { rect: { left: r.left, top: r.top, width: r.width, height: r.height }, radius: 8 }
+}
+
 export function measureCard(tabId) {
   const el = document.querySelector(`.card[data-tab="${tabId}"]`)
-  if (!el) return null
+  if (!el) return measureRail(tabId)
   for (const card of document.querySelectorAll('.card')) {
     for (const a of card.getAnimations?.() || []) {
       try { a.finish() } catch { /* an infinite animation cannot finish */ }

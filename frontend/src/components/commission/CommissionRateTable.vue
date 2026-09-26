@@ -136,7 +136,47 @@
       </nav>
     </div>
 
-    <div v-if="rates.length === 0 && !loading" class="empty">עדיין אין הסכמי עמלות. לחצו <strong>"העלאת הסכם עמלות"</strong> — נחלץ את השיעורים אוטומטית, או טענו ברירת מחדל.</div>
+    <!-- ── First run (no agreements yet): under the hero, not inside it. A
+         picture and one classic serif welcome line, and the
+         whole AI story in three word-long steps. The hero above keeps the
+         actions, so this adds no second primary button. ── -->
+    <section v-if="isWelcome" class="shelf-welcome">
+      <!-- Realistic photo as the section's own background (left, RTL end),
+           fading into the white under the text — no frame around it. -->
+      <div v-if="welcomeArt.still" class="sw-photo" aria-hidden="true">
+        <video v-if="welcomeArt.video && !reducedMotion" :src="welcomeArt.video" :poster="welcomeArt.still"
+               autoplay muted loop playsinline preload="auto" disablepictureinpicture></video>
+        <img v-else :src="welcomeArt.still" alt="" />
+      </div>
+      <div class="sw-copy">
+          <!-- First run: one classic serif welcome line, small Heebo copy, and
+               the whole AI story in three words-long steps. -->
+            <h2 class="sw-display">ברוכים הבאים<br><span class="sw-display-accent">למדף ההסכמים</span></h2>
+            <!-- The AI story as a slider: one step at a time, story-style bars.
+               Hover pauses; a bar jumps to its step. Reduced motion shows all
+               three lines, still. -->
+          <div v-if="!reducedMotion" class="sw-slider" aria-live="polite"
+               @mouseenter="swPaused = true" @mouseleave="swPaused = false">
+            <div class="sw-slide-track">
+              <Transition name="sw-slide" mode="out-in">
+                <p :key="swStep" class="sw-slide">
+                  <span class="sw-slide-num ltr-number">{{ String(swStep + 1).padStart(2, '0') }}</span>{{ SW_STEPS[swStep] }}
+                </p>
+              </Transition>
+            </div>
+            <div class="sw-bars">
+              <button v-for="(t, n) in SW_STEPS" :key="n" type="button" class="sw-bar"
+                      :class="{ 'sw-bar--done': n < swStep, 'sw-bar--on': n === swStep, 'sw-bar--paused': swPaused }"
+                      :aria-label="t" :aria-current="n === swStep ? 'step' : undefined" @click="swGo(n)">
+                <span :key="n === swStep ? swCycle : 'x'" class="sw-bar-fill"></span>
+              </button>
+            </div>
+          </div>
+          <ol v-else class="sw-steps-static">
+            <li v-for="(t, n) in SW_STEPS" :key="n"><span class="sw-slide-num ltr-number">{{ String(n + 1).padStart(2, '0') }}</span>{{ t }}</li>
+          </ol>
+      </div>
+    </section>
     <div v-if="loading" class="loading"><div class="spinner"></div></div>
 
     <!-- ── The shelf: a row of tall picture panels (your reference).
@@ -340,6 +380,34 @@ const emit = defineEmits(['rates-changed'])
 
 const rates = ref([])
 const loading = ref(false)
+// Welcome section (first run): only once the first fetch has answered "none",
+// so a user WITH agreements never sees it flash while the list loads.
+const ratesLoaded = ref(false)
+const isWelcome = computed(() => ratesLoaded.value && !loading.value && rates.value.length === 0)
+// Kling art for the welcome section; optional — glob so a missing file is no crash.
+const welcomeAssets = import.meta.glob('../../assets/welcome/shelf-empty.{webp,mp4}', { eager: true, import: 'default' })
+const welcomeArt = {
+  still: Object.entries(welcomeAssets).find(([k]) => k.endsWith('.webp'))?.[1] || '',
+  video: Object.entries(welcomeAssets).find(([k]) => k.endsWith('.mp4'))?.[1] || '',
+}
+const reducedMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+// Welcome slider — the three-step AI story, one step at a time.
+const SW_STEPS = ['מעלים PDF', 'ה-AI קורא את ההסכם', 'השיעורים על המדף']
+const SW_MS = 2800 // keep in sync with .sw-bar--on .sw-bar-fill animation
+const swStep = ref(0)
+const swCycle = ref(0) // re-keys the active bar so its fill restarts on every step
+const swPaused = ref(false)
+let swTimer = null
+function swGo(n) { swStep.value = n; swCycle.value++; swArm() }
+function swArm() {
+  clearTimeout(swTimer)
+  if (reducedMotion || !isWelcome.value) return
+  swTimer = setTimeout(() => { if (swPaused.value) return swArm(); swGo((swStep.value + 1) % SW_STEPS.length) }, SW_MS)
+}
+watch(isWelcome, (on) => { if (on) swGo(0); else clearTimeout(swTimer) }, { immediate: true })
+watch(swPaused, (p) => { if (!p) swArm() })
+onBeforeUnmount(() => clearTimeout(swTimer))
 const seeding = ref(false)
 const search = ref('')
 const yearFilter = ref('all')
@@ -551,7 +619,7 @@ async function fetchCoverage() {
 }
 
 onMounted(() => { fetchRates(); fetchCoverage(); fetchAgreements() })
-async function fetchRates() { loading.value = true; try { const res = await api.get('/commission-rates'); rates.value = res.data } finally { loading.value = false } }
+async function fetchRates() { loading.value = true; try { const res = await api.get('/commission-rates'); rates.value = res.data } finally { loading.value = false; ratesLoaded.value = true } }
 
 const lastUpload = ref(null)
 
@@ -951,6 +1019,60 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .shelf-hero .hero-copy { position: relative; z-index: 1; max-width: 62%; }
 .shelf-art { position: absolute; inset-inline-end: 8px; top: 50%; transform: translateY(-50%); width: min(300px, 34%); aspect-ratio: 420 / 300; pointer-events: none; z-index: 0; }
 @media (max-width: 720px) { .shelf-hero .hero-copy { max-width: 100%; } .shelf-art { display: none; } }
+
+/* ── Welcome (no agreements yet), under the hero: realistic photo + type ── */
+.shelf-welcome {
+  position: relative; overflow: hidden; margin-top: 4px; min-height: 380px;
+  display: flex; align-items: center;
+  border-radius: var(--radius-xl, 24px); border: 1px solid var(--border-subtle);
+  background: var(--card-bg);
+}
+/* The photo fills the left ~62% and dissolves toward the text: a mask, not a
+   frame, so it reads as part of the page rather than a picture on it. */
+.sw-photo {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 64%; z-index: 0;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 52%, transparent 96%);
+          mask-image: linear-gradient(to right, #000 0%, #000 52%, transparent 96%);
+}
+.sw-photo video, .sw-photo img { width: 100%; height: 100%; object-fit: cover; object-position: left center; display: block; }
+.sw-copy { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; width: min(520px, 50%); padding: 44px 48px; }
+/* App font, heavy/light contrast: 900 display over 400 body. */
+.sw-display {
+  margin: 0; font-family: 'Heebo', sans-serif; font-weight: 900;
+  font-size: clamp(32px, 3.8vw, 48px); line-height: 1.05; letter-spacing: -0.03em; color: var(--text);
+}
+.sw-display-accent { color: var(--tab-commission); }
+/* Slider: big step line + story-style progress bars, no icons. */
+.sw-slider { margin-top: 14px; width: min(380px, 100%); }
+.sw-slide-track { height: 40px; display: flex; align-items: center; overflow: hidden; }
+.sw-slide { margin: 0; display: flex; align-items: baseline; gap: 12px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; }
+.sw-slide-num { font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: var(--tab-commission); }
+.sw-slide-enter-active { transition: opacity 0.26s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.sw-slide-leave-active { transition: opacity 0.16s ease-in, transform 0.18s ease-in; }
+.sw-slide-enter-from { opacity: 0; transform: translateY(14px); }
+.sw-slide-leave-to { opacity: 0; transform: translateY(-10px); }
+.sw-bars { display: flex; gap: 6px; margin-top: 8px; }
+.sw-bar {
+  /* 16px hit area; the visible bar is the 4px track drawn inside it */
+  position: relative; flex: 1; height: 16px; padding: 0; border: none; background: none; cursor: pointer;
+}
+.sw-bar::before, .sw-bar-fill { position: absolute; inset-inline: 0; top: 6px; height: 4px; border-radius: 99px; }
+.sw-bar::before { content: ''; background: color-mix(in srgb, var(--tab-commission) 16%, white); }
+.sw-bar:focus-visible { outline: 2px solid var(--tab-commission); outline-offset: 2px; border-radius: 6px; }
+.sw-bar-fill { display: block; width: 0; inset-inline-end: auto; background: var(--tab-commission); }
+.sw-bar--done .sw-bar-fill { width: 100%; }
+.sw-bar--on .sw-bar-fill { animation: sw-fill 2.8s linear forwards; }
+.sw-bar--on.sw-bar--paused .sw-bar-fill { animation-play-state: paused; }
+@keyframes sw-fill { from { width: 0; } to { width: 100%; } }
+.sw-steps-static { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sw-steps-static li { display: flex; align-items: baseline; gap: 12px; font-size: 18px; font-weight: 700; color: var(--text); }
+@media (max-width: 900px) {
+  .shelf-welcome { flex-direction: column; align-items: stretch; min-height: 0; }
+  .sw-photo { position: relative; width: 100%; height: 220px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+  .sw-copy { width: auto; padding: 4px 22px 28px; }
+}
 .hero-copy { display: flex; flex-direction: column; gap: 7px; }
 .hero-eyebrow { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--chart-9); background: color-mix(in srgb, var(--chart-2) 12%, white); border: 1px solid color-mix(in srgb, var(--chart-2) 28%, white); padding: 4px 11px; border-radius: 999px; }
 .hero-title { margin: 2px 0 0; font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
