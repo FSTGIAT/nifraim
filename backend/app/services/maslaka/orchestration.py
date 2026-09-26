@@ -187,6 +187,8 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             yatzran_id=inquiry.target_yatzran_id,
             information_date=inquiry.information_date,
             sender_is_agent=production,
+            internal_agent_number=await _internal_agent_number(db, inquiry),
+            **(await _identity_override(db, inquiry)),
             **(await _consent_dates(db, inquiry)),
         )
         xml_bytes = req.xml
@@ -1083,6 +1085,68 @@ async def record_consent(db: AsyncSession, inquiry: PensionInquiry, *,
         customer_id_number=inquiry.customer_id_number, event_type=CONSENT_EVENT,
         actor=actor, detail=f"customer_signed={customer_signed} agent_signed={agent_signed} {note}".strip(),
     )
+
+
+AGENT_CODE_EVENT = "agent_code_recorded"
+
+
+async def record_internal_agent_number(db: AsyncSession, inquiry: PensionInquiry, *,
+                                       number: str, note: str = "") -> None:
+    """The agent's internal number at the target insurer (MISPAR-ZIHUI-PNIMI-
+    ETZEL-YATZRAN), declared on this request. Audit-logged, like consent."""
+    digits = "".join(ch for ch in number if ch.isalnum())
+    if not digits:
+        raise ValueError("empty internal agent number")
+    await audit.log_event(
+        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+        customer_id_number=inquiry.customer_id_number, event_type=AGENT_CODE_EVENT,
+        actor="agent", detail=f"internal_agent_number={digits} {note}".strip(),
+    )
+
+
+async def _internal_agent_number(db: AsyncSession, inquiry: PensionInquiry) -> str | None:
+    from app.models.pension_audit import PensionAuditLog
+    row = (await db.execute(
+        select(PensionAuditLog.detail).where(
+            PensionAuditLog.inquiry_id == inquiry.id,
+            PensionAuditLog.event_type == AGENT_CODE_EVENT,
+        ).order_by(PensionAuditLog.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if not row:
+        return None
+    kv = dict(p.split("=", 1) for p in row.split() if "=" in p)
+    return kv.get("internal_agent_number")
+
+
+IDENTITY_EVENT = "agent_identity_override"
+
+
+async def record_identity_override(db: AsyncSession, inquiry: PensionInquiry, *,
+                                   id_type: str, id_value: str, note: str = "") -> None:
+    """Send this request with the agent identified as `id_type` (e.g. 12 =
+    מספר בעל רישיון) instead of ת"ז. Audit-logged — it is a declaration."""
+    v = "".join(ch for ch in id_value if ch.isalnum())
+    if not (id_type.isdigit() and v):
+        raise ValueError("id_type must be numeric and id_value non-empty")
+    await audit.log_event(
+        db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+        customer_id_number=inquiry.customer_id_number, event_type=IDENTITY_EVENT,
+        actor="agent", detail=f"id_type={id_type} id_value={v} {note}".strip(),
+    )
+
+
+async def _identity_override(db: AsyncSession, inquiry: PensionInquiry) -> dict:
+    from app.models.pension_audit import PensionAuditLog
+    row = (await db.execute(
+        select(PensionAuditLog.detail).where(
+            PensionAuditLog.inquiry_id == inquiry.id,
+            PensionAuditLog.event_type == IDENTITY_EVENT,
+        ).order_by(PensionAuditLog.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    if not row:
+        return {}
+    kv = dict(p.split("=", 1) for p in row.split() if "=" in p)
+    return {"agent_id_type": kv.get("id_type"), "agent_id_value": kv.get("id_value")}
 
 
 async def _consent_dates(db: AsyncSession, inquiry: PensionInquiry) -> dict:

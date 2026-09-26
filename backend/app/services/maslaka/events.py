@@ -178,6 +178,9 @@ def build_events_request(
     consent_customer_signed: str | None = None,
     consent_agent_signed: str | None = None,
     sender_is_agent: bool = False,
+    internal_agent_number: str | None = None,
+    agent_id_type: str | None = None,
+    agent_id_value: str | None = None,
 ) -> EventsRequest:
     """Build one ממשק אירועים v007 request.
 
@@ -238,6 +241,12 @@ def build_events_request(
     # agent is sender AND subject — rules 118 (sender = filename ID), 144
     # (subject = sender) and 128 (a ת"ז subject carries both names) together.
     agent_sender = bool(sender_is_agent and distributor_request and _agent_digits)
+    # Identity override for the AGENT (sender = requester = subject in agent-sender
+    # mode): e.g. type 12 "מספר בעל רישיון" instead of 3 ת"ז — the XSD allows it on
+    # all three, and rule 144 needs type AND number equal, so they move together.
+    _ag_type = (agent_id_type or "3").strip()
+    _ag_val = ("".join(ch for ch in (agent_id_value or "") if ch.isalnum())
+               or (_agent_digits.zfill(9) if _agent_digits else ""))
     _first, _, _last = (acting_agent_name or "").strip().partition(" ")
     if agent_sender and not (_first and _last.strip()):
         raise ValueError(f"agent-as-sender needs the agent's first AND last name "
@@ -293,8 +302,8 @@ def build_events_request(
     # rejected seq 0034, which put the acting agent's ת"ז here.
     # With agent_sender the file is named for the agent too, which rule 118 accepts.
     if agent_sender:
-        _sub(sender, "SUG-MEZAHE-SHOLECH", "3")  # 3 = ת"ז
-        _sub(sender, "MISPAR-ZIHUI-SHOLECH", _agent_digits.zfill(9))
+        _sub(sender, "SUG-MEZAHE-SHOLECH", _ag_type)  # 3 = ת"ז (default), 12 = licence
+        _sub(sender, "MISPAR-ZIHUI-SHOLECH", _ag_val)
         _sub(sender, "SHEM-GOREM-SHOLECH", acting_agent_name.strip())
     else:
         _sub(sender, "SUG-MEZAHE-SHOLECH", settings.MASLAKA_SENDER_ID_TYPE or "1")
@@ -321,7 +330,11 @@ def build_events_request(
     _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", _landline)
     _sub(sender, "E-MAIL-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_EMAIL)
     _sub(sender, "MISPAR-CELLULARI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_MOBILE)
-    _sub(sender, "MISPAR-ZIHUI-ETZEL-YATZRAN-NIMAAN")
+    # "מספר סוכן פנימי בגוף מוסדי — רלוונטי במקרים בהם האירוע מועבר על ידי בעל
+    # רישיון לגוף מוסדי שלו יש הסכם עמו" (field spec, marked for production).
+    # Without it Phoenix answered 1032 "לא קיים הסכם עמלות" for the agent's ת"ז.
+    _internal = "".join(ch for ch in (internal_agent_number or "") if ch.isalnum()) or None
+    _sub(sender, "MISPAR-ZIHUI-ETZEL-YATZRAN-NIMAAN", _internal)
 
     nimaan = _sub(header, "NetuneiGoremNimaan")
     _sub(nimaan, "KOD-NIMAAN", "2")             # 2 = המסלקה
@@ -335,15 +348,16 @@ def build_events_request(
     # no agent is given (the preview console), which is what every send before
     # 2026-09-25 carried.
     _sub(pone, "SUG-PONE", "3" if _agent_digits else None)
-    _sub(pone, "SUG-KOD-MEZAHE-PONE", "3" if _agent_digits else None)
-    _sub(pone, "MISPAR-MEZAHE-PONE", _agent_digits.zfill(9) if _agent_digits else None)
+    _sub(pone, "SUG-KOD-MEZAHE-PONE", (_ag_type if agent_sender else "3") if _agent_digits else None)
+    _sub(pone, "MISPAR-MEZAHE-PONE", (_ag_val if agent_sender else _agent_digits.zfill(9)) if _agent_digits else None)
     _sub(pone, "SHEM-GOREM-PONE", (acting_agent_name or "").strip() or None)
     for tag in (
         "MISPAR-MEZAHE-METAFEL", "SHEM-PRATI-PONE-LEMISLAKA",
         "SHEM-MISHPACHA-PONE-LEMISLAKA", "MISPAR-TELEPHONE-KAVI-PONE-LEMISLAKA",
-        "E-MAIL-PONE-LEMISLAKA", "MISPAR-CELLULARI", "MISPAR-ZIHUI-PNIMI-ETZEL-YATZRAN",
+        "E-MAIL-PONE-LEMISLAKA", "MISPAR-CELLULARI",
     ):
         _sub(pone, tag)
+    _sub(pone, "MISPAR-ZIHUI-PNIMI-ETZEL-YATZRAN", _internal)
 
     customer = _sub(pone, "YeshutLakoachMeidaBsisi")
     # 1 = עמית/מבוטח; 3 = מפיץ, the spec's value for every production request.
@@ -355,7 +369,8 @@ def build_events_request(
     # YeshutGoremPoneLemislaka above. A ח.פ subject needs no personal names
     # (rule 128 applies only to a ת"ז subject).
     _sub(customer, "SUG-MEZAHE-LAKOACH",
-         (settings.MASLAKA_SENDER_ID_TYPE or "1") if (distributor_request and not agent_sender) else "3")
+         (settings.MASLAKA_SENDER_ID_TYPE or "1") if (distributor_request and not agent_sender)
+         else (_ag_type if agent_sender else "3"))
     # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
     # including any leading zero, and `043417252` is a real one. Stripping would
     # send an 8-digit identifier for every saver whose ת"ז starts with 0 — about
@@ -366,7 +381,8 @@ def build_events_request(
         customer_id_number = _agent_digits if agent_sender else "".join(
             ch for ch in str(agent_id) if ch.isdigit())
     _digits = "".join(ch for ch in (customer_id_number or "") if ch.isdigit())
-    _sub(customer, "MISPAR-MEZAHE-LAKOACH", _digits.zfill(9) if _digits else "")
+    _sub(customer, "MISPAR-MEZAHE-LAKOACH",
+         _ag_val if agent_sender else (_digits.zfill(9) if _digits else ""))
     if agent_sender:
         _sub(customer, "SHEM-PRATI-LAKOACH", _first[:20])
         _sub(customer, "SHEM-MISHPACHA-LAKOACH", _last.strip()[:30])
