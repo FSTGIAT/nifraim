@@ -478,9 +478,14 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
   // but leaves an in-flight batch (pending/running) polling in the background
   // so its completion still refreshes the app. Terminal batches are cleared.
   function reset({ keepBatch = false } = {}) {
-    _stopPolling()
-    activeRunId.value = null
-    activeRun.value = null
+    // A single run still in flight keeps polling too — the global progress
+    // widget (PortalRunProgressFloat) follows it across tabs.
+    const runLive = keepBatch && activeRun.value && ACTIVE.has(activeRun.value.status)
+    if (!runLive) {
+      _stopPolling()
+      activeRunId.value = null
+      activeRun.value = null
+    }
     const batchLive =
       keepBatch && activeBatch.value && !BATCH_TERMINAL.has(activeBatch.value.status)
     if (!batchLive) {

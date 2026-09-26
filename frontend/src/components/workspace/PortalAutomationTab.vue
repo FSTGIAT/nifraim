@@ -1,5 +1,10 @@
 <template>
-  <div class="auto-page">
+  <div ref="pageEl" class="auto-page">
+    <!-- Remotion: big meshing gears stacked down the page, turning slowly behind the
+         dashboard — very faint, decorative only. -->
+    <div v-if="store.credentials.length && !gearsReduced" class="auto-gears" aria-hidden="true">
+      <div ref="gearsEl" class="auto-gears-mount" :style="{ aspectRatio: `${1600} / ${800 * gearCount}` }"></div>
+    </div>
     <div class="auto-inner">
     <!-- Hero: title + one-click run-all + add portal, aggregating to one
          production + one נפרעים file → compare. -->
@@ -17,17 +22,42 @@
 
     <!-- ─── Dashboard: company panels + activity sidebar ────── -->
     <div v-else class="dash" :class="{ 'dash--empty': !store.credentials.length }">
-      <EmptyStateGuide
-        v-if="!store.credentials.length"
-        class="dash__guide"
-        style="--esg-accent: #0A6664; --esg-wash: var(--tab-automation-wash)"
-        variant="inline"
-        title="הורדה אוטומטית"
-        body="מגדירים פעם אחת שם משתמש וסיסמה לכל פורטל חברה, מחברים את הטלפון להעברת קוד האימות — ומכאן והלאה לחיצה אחת מורידה את כל הדוחות ומשווה אותם."
-        cta-label="פתח את אשף ההגדרה"
-        cta-step="portal"
-      />
+      <!-- No portal yet: one welcome section (realistic photo with a surreal
+           touch fading into the card + how it works as a slider). The hero
+           above keeps the actions (הוסף פורטל / הורדה אוטומטית). -->
+      <section v-if="!store.credentials.length" class="au-welcome">
+        <div v-if="auArt.still" class="au-welcome-photo" aria-hidden="true">
+          <video v-if="auArt.video && !auReduced" :src="auArt.video" :poster="auArt.still"
+                 autoplay muted loop playsinline preload="auto" disablepictureinpicture></video>
+          <img v-else :src="auArt.still" alt="" />
+        </div>
+        <div class="au-welcome-copy">
+          <h3 class="au-welcome-title">מחברים פעם אחת<br><span>והדוחות יורדים לבד</span></h3>
+          <div v-if="!auReduced" class="au-slider" aria-live="polite"
+               @mouseenter="auPaused = true" @mouseleave="auPaused = false">
+            <div class="au-slide-track">
+              <Transition name="au-slide" mode="out-in">
+                <div :key="auStep" class="au-slide">
+                  <span class="au-slide-n ltr-number">{{ String(auStep + 1).padStart(2, '0') }}</span>
+                  <div><strong>{{ AU_STEPS[auStep].title }}</strong><span>{{ AU_STEPS[auStep].text }}</span></div>
+                </div>
+              </Transition>
+            </div>
+            <div class="au-bars">
+              <button v-for="(st, n) in AU_STEPS" :key="n" type="button" class="au-bar"
+                      :class="{ 'au-bar--done': n < auStep, 'au-bar--on': n === auStep, 'au-bar--paused': auPaused }"
+                      :aria-label="st.title" :aria-current="n === auStep ? 'step' : undefined" @click="auGo(n)">
+                <span :key="n === auStep ? auCycle : 'x'" class="au-bar-fill"></span>
+              </button>
+            </div>
+          </div>
+          <ol v-else class="au-steps-static">
+            <li v-for="(st, n) in AU_STEPS" :key="n"><span class="au-slide-n ltr-number">{{ String(n + 1).padStart(2, '0') }}</span><div><strong>{{ st.title }}</strong><span>{{ st.text }}</span></div></li>
+          </ol>
+        </div>
+      </section>
       <PortalAutomationCanvas
+        v-if="store.credentials.length"
         class="dash__main"
         :credentials="store.credentials"
         :portal-label="portalLabel"
@@ -54,14 +84,9 @@
       @saved="onModalSaved"
     />
 
-    <!-- OTP modal — shared for any card's active run. -->
-    <PortalOtpModal
-      :open="otpModalOpen"
-      :run="store.activeRun"
-      :company-name="activeCredentialLabel"
-      @submit="onSubmitOtp"
-      @close="closeOtpModal"
-    />
+    <!-- The OTP step no longer pops a modal here — the run continues in the
+         background and PortalRunProgressFloat (global widget) owns manual
+         entry + cancel. -->
 
     <!-- ─── Error popup — replaces the inline error block on cards ─── -->
     <Teleport to="body">
@@ -103,15 +128,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import PortalCredentialModal from './PortalCredentialModal.vue'
 import PortalAutomationCanvas from './PortalAutomationCanvas.vue'
-import PortalOtpModal from './PortalOtpModal.vue'
 import PortalRunAllBar from './PortalRunAllBar.vue'
 import PortalStatBand from './PortalStatBand.vue'
 import PortalActivityPanel from './PortalActivityPanel.vue'
-import EmptyStateGuide from './EmptyStateGuide.vue'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 const props = defineProps({
   // When the activation checklist routes here, auto-open the add-credential modal.
@@ -119,6 +143,34 @@ const props = defineProps({
 })
 const emit = defineEmits(['go-to-comparison', 'opened'])
 const store = usePortalAutomationStore()
+
+// ── No-portal welcome: photo + how-it-works slider ──
+const auAssets = import.meta.glob('../../assets/welcome/automation-empty.{webp,mp4}', { eager: true, import: 'default' })
+const auArt = {
+  still: Object.entries(auAssets).find(([k]) => k.endsWith('.webp'))?.[1] || '',
+  video: Object.entries(auAssets).find(([k]) => k.endsWith('.mp4'))?.[1] || '',
+}
+const auReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const AU_STEPS = [
+  { title: 'מוסיפים פורטל', text: 'שם משתמש וסיסמה — פעם אחת לכל חברה.' },
+  { title: 'הטלפון מעביר את הקוד', text: 'קוד האימות מגיע לבד, בלי להקליד.' },
+  { title: 'לחיצה אחת', text: 'כל הדוחות יורדים מכל החברות.' },
+  { title: 'הכל מושווה', text: 'פרודוקציה ונפרעים מתעדכנים לבד.' },
+]
+const AU_MS = 2800 // keep in sync with .au-bar--on
+const auStep = ref(0)
+const auCycle = ref(0)
+const auPaused = ref(false)
+let auTimer = null
+function auArm() {
+  clearTimeout(auTimer)
+  if (auReduced) return
+  auTimer = setTimeout(() => { if (auPaused.value) return auArm(); auGo((auStep.value + 1) % AU_STEPS.length) }, AU_MS)
+}
+function auGo(n) { auStep.value = n; auCycle.value++; auArm() }
+watch(auPaused, (p) => { if (!p) auArm() })
+watch(() => store.credentials.length === 0, (empty) => { if (empty) auGo(0); else clearTimeout(auTimer) }, { immediate: true })
+onBeforeUnmount(() => clearTimeout(auTimer))
 
 // ─── Modal state ──────────────────────────────────────────
 const modalOpen = ref(false)
@@ -175,35 +227,6 @@ async function deleteCred(id) {
 }
 
 // ─── OTP modal (shared across all card runs) ──────────────
-const otpModalOpen = ref(false)
-const activeCredential = computed(() => {
-  const cid = store.activeRun?.credential_id
-  return store.credentials.find((c) => c.id === cid) || null
-})
-const activeCredentialLabel = computed(() => {
-  const cred = activeCredential.value
-  return cred ? portalLabel(cred.portal_kind) : ''
-})
-watch(() => store.activeRun?.status, (s) => {
-  if (s === 'awaiting_otp') otpModalOpen.value = true
-  // Same fix as PortalAutomationDock — close as soon as the run leaves
-  // awaiting_otp so phone-forward delivery doesn't leave a stale modal
-  // that 400s on submit. (See F3 in plan.)
-  if (['downloading', 'parsing', 'success', 'failed', 'timeout'].includes(s)) {
-    otpModalOpen.value = false
-  }
-})
-async function onSubmitOtp(otp) {
-  if (!store.activeRun?.id) return
-  try { await store.submitOtp(store.activeRun.id, otp) } catch (_) {}
-}
-async function closeOtpModal() {
-  // Close = cancel the run. Same flow as the dock OTP modal.
-  const id = store.activeRun?.id
-  otpModalOpen.value = false
-  if (id) await store.cancelRun(id)
-}
-
 onMounted(async () => {
   await store.fetchPortalKinds()
   await store.fetchCredentials()
@@ -221,6 +244,83 @@ watch(() => props.autoOpenAdd, (v) => {
     emit('opened')
   }
 })
+// ── Gear backdrop (Remotion via a React island, like SetupProgressCard) ──
+const gearsEl = ref(null)
+const pageEl = ref(null)
+// One gear per segment of page height — more portals, longer page, more gears.
+const gearCount = ref(1)
+const gearsReduced =
+  typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+let gearsRoot = null
+let gearsMods = null
+let pageObserver = null
+async function mountGears() {
+  if (!gearsEl.value || gearsRoot) return
+  try {
+    const [rdClient, react, player, comp] = await Promise.all([
+      import('react-dom/client'),
+      import('react'),
+      import('@remotion/player'),
+      import('../../remotion/AutomationGearsBackdrop'),
+    ])
+    if (!gearsEl.value || gearsRoot) return
+    gearsMods = { react, player, comp }
+    gearsRoot = rdClient.createRoot(gearsEl.value)
+    paintGears()
+    if (pageEl.value && typeof ResizeObserver !== 'undefined') {
+      pageObserver = new ResizeObserver(measureGears)
+      pageObserver.observe(pageEl.value)
+    }
+    measureGears()
+  } catch (e) {
+    console.error('[PortalAutomationTab] gears failed', e) // decorative — page works without it
+  }
+}
+function measureGears() {
+  const el = pageEl.value
+  if (!el || !gearsMods) return
+  const segPx = el.clientWidth * (gearsMods.comp.AUTOMATION_GEARS_SEGMENT_H / gearsMods.comp.AUTOMATION_GEARS_W)
+  // clientHeight, not scrollHeight: the absolute gear layer itself must not
+  // count, or each added gear would grow the page and add another.
+  const n = Math.max(1, Math.ceil(el.clientHeight / Math.max(1, segPx)))
+  if (n !== gearCount.value) {
+    gearCount.value = n
+    paintGears()
+  }
+}
+function paintGears() {
+  if (!gearsRoot || !gearsMods) return
+  const { react, player, comp } = gearsMods
+  gearsRoot.render(
+      react.createElement(player.Player, {
+        component: comp.AutomationGearsBackdrop,
+        inputProps: { color: CHART_PALETTE[11], count: gearCount.value },
+        durationInFrames: comp.AUTOMATION_GEARS_FRAMES,
+        fps: 30,
+        compositionWidth: comp.AUTOMATION_GEARS_W,
+        compositionHeight: comp.automationGearsHeight(gearCount.value),
+        autoPlay: true,
+        loop: true,
+        controls: false,
+        clickToPlay: false,
+        doubleClickToFullscreen: false,
+        showPosterWhenUnplayed: false,
+        acknowledgeRemotionLicense: true,
+        style: { width: '100%', height: '100%', backgroundColor: 'transparent' },
+      }),
+  )
+}
+function unmountGears() {
+  if (pageObserver) { pageObserver.disconnect(); pageObserver = null }
+  if (gearsRoot) {
+    try { gearsRoot.unmount() } catch { /* ignore */ }
+    gearsRoot = null
+  }
+}
+// The mount div only exists once there are portals — mount when it appears.
+watch(gearsEl, (el) => { if (el) mountGears(); else unmountGears() })
+onBeforeUnmount(unmountGears)
+
 onUnmounted(() => {
   // Soft reset — an in-flight run-all batch must keep polling in the
   // background so its completion still refreshes the whole app.
@@ -235,6 +335,20 @@ onUnmounted(() => {
   padding: 26px 20px 48px;
   overflow: hidden;
   background: transparent;
+}
+.auto-gears {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+/* Spans the page's width and scrolls with it; its height (aspect-ratio, set
+   inline) grows with the gear count so the stack runs the page's full length. */
+.auto-gears-mount {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  direction: ltr; /* RTL root would shift the Remotion composition */
 }
 .auto-inner {
   position: relative;
@@ -259,7 +373,52 @@ onUnmounted(() => {
   }
 }
 
-.dash__guide { margin-bottom: 0; } /* grid gap already spaces it */
+/* ── No portal yet: welcome (photo dissolving into the card + slider) ── */
+.au-welcome {
+  position: relative; overflow: hidden; min-height: 380px; display: flex; align-items: center;
+  border-radius: var(--radius-lg, 16px); border: 1px solid var(--border-subtle); background: var(--card-bg); box-shadow: var(--shadow-sm);
+}
+.au-welcome-photo {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 62%; z-index: 0; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 95%);
+          mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 95%);
+}
+.au-welcome-photo video, .au-welcome-photo img { width: 100%; height: 100%; object-fit: cover; object-position: left center; display: block; }
+.au-welcome-copy { position: relative; z-index: 1; width: min(440px, 48%); padding: 40px; display: flex; flex-direction: column; gap: 18px; }
+.au-welcome-title {
+  margin: 0; font-family: 'Heebo', sans-serif; font-weight: 900;
+  font-size: clamp(28px, 3.2vw, 40px); line-height: 1.08; letter-spacing: -0.03em; color: var(--text);
+}
+.au-welcome-title span { color: #0A6664; }
+.au-slider { display: flex; flex-direction: column; gap: 10px; width: min(380px, 100%); }
+.au-slide-track { min-height: 52px; }
+.au-slide, .au-steps-static li { display: flex; align-items: baseline; gap: 14px; }
+.au-slide-n { flex-shrink: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: #0A6664; }
+.au-slide div, .au-steps-static div { display: flex; flex-direction: column; gap: 2px; }
+.au-slide strong, .au-steps-static strong { font-size: 18px; font-weight: 700; color: var(--text); }
+.au-slide div span, .au-steps-static div span { font-size: 13.5px; color: var(--text-muted); }
+.au-slide-enter-active { transition: opacity 0.26s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.au-slide-leave-active { transition: opacity 0.16s ease-in, transform 0.18s ease-in; }
+.au-slide-enter-from { opacity: 0; transform: translateY(12px); }
+.au-slide-leave-to { opacity: 0; transform: translateY(-8px); }
+.au-bars { display: flex; gap: 6px; }
+.au-bar { position: relative; flex: 1; height: 16px; padding: 0; border: none; background: none; cursor: pointer; }
+.au-bar::before, .au-bar-fill { position: absolute; inset-inline: 0; top: 6px; height: 4px; border-radius: 99px; }
+.au-bar::before { content: ''; background: var(--tab-automation-wash); }
+.au-bar-fill { display: block; width: 0; inset-inline-end: auto; background: #0A6664; }
+.au-bar--done .au-bar-fill { width: 100%; }
+.au-bar--on .au-bar-fill { animation: au-fill 2.8s linear forwards; }
+.au-bar--on.au-bar--paused .au-bar-fill { animation-play-state: paused; }
+.au-bar:focus-visible { outline: 2px solid #0A6664; outline-offset: 2px; border-radius: 6px; }
+@keyframes au-fill { from { width: 0; } to { width: 100%; } }
+.au-steps-static { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 860px) {
+  .au-welcome { flex-direction: column; align-items: stretch; min-height: 0; }
+  .au-welcome-photo { position: relative; width: 100%; height: 200px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+  .au-welcome-copy { width: auto; padding: 6px 20px 26px; }
+}
 
 .error-banner {
   background: rgba(234, 0, 30, 0.08);

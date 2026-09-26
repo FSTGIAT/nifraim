@@ -171,7 +171,7 @@ function onBackdrop() {
   inset: 0;
   background: rgba(17, 12, 6, 0.42);
   backdrop-filter: blur(4px);
-  z-index: 1200;
+  z-index: 2100; /* above PortalRunProgressFloat (2000), which opens it */
   display: grid;
   place-items: center;
   padding: 20px;

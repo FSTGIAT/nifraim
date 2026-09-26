@@ -1,7 +1,49 @@
 <template>
   <Teleport to="body">
-    <Transition name="prf">
-      <div v-if="run" class="prf-shell" :class="shellClass">
+    <Transition name="prf" mode="out-in">
+      <!-- Minimized: an iPhone-style live pill. The run keeps going in the
+           background; tap to grow it back into the full progress card. -->
+      <button
+        v-if="(run && !expanded) || (!run && batchLive)"
+        key="pill"
+        type="button"
+        class="prf-pill"
+        :class="shellClass"
+        :aria-label="`${portalLabel} — ${pillStatus}. הצג התקדמות`"
+        @click="run && (expanded = true)"
+      >
+        <span class="prf-pill-ring" :style="ringStyle">
+          <!-- Spinning gear = "automation is running" on every screen -->
+          <span v-if="spinning" class="prf-pill-gear" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span v-else class="prf-pill-dot" :style="brandDotStyle"></span>
+        </span>
+        <span class="prf-pill-text">
+          <span class="prf-pill-name">{{ run ? portalLabel : 'הורדה מכל החברות' }}</span>
+          <span class="prf-pill-status">{{ run ? pillStatus : 'מתחיל…' }}</span>
+        </span>
+        <span v-if="batchCount" class="prf-elapsed ltr-number" title="חברות שהסתיימו">{{ batchCount }}</span>
+        <span v-if="run" class="prf-elapsed ltr-number">{{ elapsedLabel }}</span>
+        <span
+          v-if="isTerminal"
+          class="prf-close"
+          role="button"
+          tabindex="0"
+          aria-label="סגור"
+          @click.stop="dismiss"
+          @keydown.enter.stop.prevent="dismiss"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </span>
+      </button>
+
+      <div v-else-if="run" key="card" class="prf-shell" :class="shellClass">
         <!-- Animated gradient bar across the top (always running while active) -->
         <div class="prf-topbar">
           <div class="prf-topbar-fill" :style="{ width: progressPct + '%' }"></div>
@@ -20,6 +62,11 @@
             </div>
             <div class="prf-meta">
               <span class="prf-elapsed ltr-number">{{ elapsedLabel }}</span>
+              <button class="prf-close" @click="expanded = false" aria-label="מזער" title="מזער">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
               <button
                 v-if="isTerminal"
                 class="prf-close"
@@ -68,7 +115,16 @@
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
-            <span>הריצה ממשיכה ברקע — אפשר לעבור ללשונית אחרת. עד 3 דקות.</span>
+            <span>הריצה ממשיכה ברקע — אפשר למזער ולהמשיך לעבוד.</span>
+          </div>
+
+          <!-- OTP step: the code arrives by itself from the phone. Manual entry
+               and cancel are available here, never forced as a popup. -->
+          <div v-if="run.status === 'awaiting_otp'" class="prf-otp-actions">
+            <button type="button" class="prf-link" @click="otpOpen = true">הזנת קוד ידנית</button>
+            <button type="button" class="prf-cancel" :disabled="cancelling" @click="cancelRun">
+              {{ cancelling ? 'מבטל…' : 'בטל ריצה' }}
+            </button>
           </div>
 
           <!-- Terminal banners -->
@@ -89,6 +145,16 @@
         </div>
       </div>
     </Transition>
+
+    <PortalOtpModal
+      :open="otpOpen"
+      :run="run"
+      :company-name="portalLabel"
+      :credential-otp-method="cred?.otp_method || 'twilio'"
+      @submit="onSubmitOtp"
+      @close="otpOpen = false"
+      @open-phone-forward="otpOpen = false; emit('open-phone-forward')"
+    />
   </Teleport>
 </template>
 
@@ -96,8 +162,17 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor } from '../../utils/companyBrand.js'
+import PortalOtpModal from './PortalOtpModal.vue'
 
+const emit = defineEmits(['open-phone-forward'])
 const store = usePortalAutomationStore()
+
+// Minimized by default — the run works in the background. The choice is kept
+// for the session (not reset per run), so a batch doesn't collapse the card
+// every time it moves to the next company.
+const expanded = ref(false)
+const otpOpen = ref(false)
+const cancelling = ref(false)
 
 const STAGES = [
   { key: 'login',    label: 'כניסה' },
@@ -121,6 +196,17 @@ const run = computed(() => {
 
 const isActive = computed(() => run.value && ACTIVE.has(run.value.status))
 const isTerminal = computed(() => run.value && TERMINAL.has(run.value.status))
+
+// "Run all" batch — the widget also carries its progress (the strip that used
+// to live on the automation page), so it's visible on every screen.
+const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
+const batchLive = computed(() => !!store.activeBatch && !BATCH_TERMINAL.has(store.activeBatch.status))
+const batchCount = computed(() => {
+  const b = store.activeBatch
+  if (!batchLive.value || !b.total) return ''
+  return `${(b.succeeded || 0) + (b.failed || 0)}/${b.total}`
+})
+const spinning = computed(() => !!isActive.value || (batchLive.value && !isTerminal.value))
 
 // Cred + brand for the portal name/colour
 const cred = computed(() => {
@@ -156,6 +242,52 @@ const statusLine = computed(() => {
   }
 })
 
+// Short status for the minimized pill
+const pillStatus = computed(() => {
+  switch (run.value?.status) {
+    case 'awaiting_otp': return 'ממתין לקוד SMS'
+    case 'downloading':  return 'מוריד…'
+    case 'parsing':      return 'מעבד…'
+    case 'success':      return 'הושלם'
+    case 'failed':       return 'נכשל'
+    case 'timeout':      return 'פסק זמן'
+    default:             return 'מתחבר…'
+  }
+})
+
+// Progress ring around the pill's brand dot
+const ringStyle = computed(() => {
+  const s = run.value?.status
+  const c = s === 'success' ? 'var(--green, #2E844A)'
+    : (s === 'failed' || s === 'timeout') ? 'var(--red, #C23934)'
+    : 'var(--tab-automation, #0E8C8A)'
+  return { background: `conic-gradient(${c} ${progressPct.value * 3.6}deg, rgba(45, 37, 34, 0.10) 0deg)` }
+})
+
+// The manual-entry modal must not outlive the OTP step — once the phone
+// delivers the code, a manual submit would 400 ("Run is not awaiting OTP").
+watch(() => run.value?.status, (s) => {
+  if (s !== 'awaiting_otp') otpOpen.value = false
+})
+
+async function onSubmitOtp(otp) {
+  if (!run.value?.id) return
+  try { await store.submitOtp(run.value.id, otp) } catch (_) {}
+}
+
+async function cancelRun() {
+  const id = run.value?.id
+  if (!id || cancelling.value) return
+  cancelling.value = true
+  otpOpen.value = false
+  try {
+    await store.cancelRun(id)
+    await store.fetchCredentials()   // card pill shows the cancelled state
+  } finally {
+    cancelling.value = false
+  }
+}
+
 // Stage status (idle | active | done | failed)
 function stageStatus(name) {
   const r = run.value
@@ -185,16 +317,24 @@ const HARD_TIMEOUT_MS = 180 * 1000
 const elapsedMs = ref(0)
 let elapsedTimer = null
 
+// started_at is naive UTC from the backend — anchor it, or the browser reads it
+// as Israel time and the timer starts 3h ahead (seen: "185:10"). runNow seeds
+// the run without started_at, so fall back to when we first saw it.
+let seenAt = Date.now()
 function tickElapsed() {
   if (!run.value) { elapsedMs.value = 0; return }
-  const started = new Date(run.value.started_at).getTime()
-  elapsedMs.value = Math.max(0, Date.now() - started)
+  const raw = run.value.started_at
+  const started = raw
+    ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z').getTime()
+    : seenAt
+  elapsedMs.value = Number.isFinite(started) ? Math.max(0, Date.now() - started) : 0
 }
 
 watch(
   () => run.value?.id,
   (id) => {
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+    seenAt = Date.now()
     if (id) {
       tickElapsed()
       elapsedTimer = setInterval(tickElapsed, 250)
@@ -269,8 +409,7 @@ function shade(hex, pct) {
 .prf-shell {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 24px;
   width: min(440px, calc(100vw - 32px));
   z-index: 2000;
   font-family: 'Heebo', sans-serif;
@@ -573,23 +712,159 @@ function shade(hex, pct) {
 }
 .prf-banner svg { flex-shrink: 0; }
 
-/* ── Enter/leave ── */
+/* ── Minimized pill (iPhone live-activity style) ── */
+.prf-pill {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  transform-origin: 0 100%;
+  z-index: 2000;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  max-width: calc(100vw - 32px);
+  padding-block: 0;
+  padding-inline: 6px 12px;
+  font-family: 'Heebo', sans-serif;
+  direction: rtl;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(14, 140, 138, 0.20);
+  border-radius: 999px;
+  box-shadow: 0 14px 34px -8px rgba(45, 37, 34, 0.22), 0 4px 10px -4px rgba(45, 37, 34, 0.10);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-color 0.3s ease;
+}
+.prf-pill:hover { box-shadow: 0 18px 40px -8px rgba(45, 37, 34, 0.28), 0 4px 10px -4px rgba(45, 37, 34, 0.12); }
+.prf-pill:focus-visible { outline: 2px solid var(--tab-automation, #0E8C8A); outline-offset: 3px; }
+.prf-pill.prf-shell--otp { border-color: rgba(14, 140, 138, 0.45); }
+.prf-pill.prf-shell--ok  { border-color: rgba(46, 132, 74, 0.40); }
+.prf-pill.prf-shell--err { border-color: rgba(194, 57, 52, 0.40); }
+.prf-pill-ring {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: background 0.4s ease;
+}
+.prf-pill-gear {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--tab-automation, #0E8C8A);
+}
+.prf-pill-gear svg { animation: prf-gear-spin 2.6s linear infinite; }
+@keyframes prf-gear-spin { to { transform: rotate(360deg); } }
+.prf-pill-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+.prf-shell--otp .prf-pill-dot { animation: prf-pill-breathe 1.8s ease-in-out infinite; }
+@keyframes prf-pill-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(0.88); }
+}
+.prf-pill-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+.prf-pill-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2D2522;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.prf-pill-status {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tab-automation-ink, #0A6664);
+  white-space: nowrap;
+}
+.prf-shell--ok  .prf-pill-status { color: var(--green-deep, #1B5E20); }
+.prf-shell--err .prf-pill-status { color: var(--red-deep, #C23934); }
+
+/* ── OTP step actions (expanded card) ── */
+.prf-otp-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.prf-link {
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tab-automation-ink, #0A6664);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.prf-cancel {
+  border: 1px solid var(--border-subtle, #E5E7EB);
+  background: #fff;
+  color: rgba(45, 37, 34, 0.75);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.prf-cancel:hover:not(:disabled) {
+  background: rgba(234, 0, 30, 0.06);
+  border-color: rgba(234, 0, 30, 0.24);
+  color: var(--red-deep, #C23934);
+}
+.prf-cancel:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Enter/leave: grow out of / shrink into the bottom-left pill ── */
+.prf-shell { transform-origin: 0 100%; }
 .prf-enter-active {
   transition:
-    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 0.30s ease;
+    transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 0.22s ease;
 }
 .prf-leave-active {
   transition:
-    transform 0.30s cubic-bezier(0.4, 0, 0.7, 0),
-    opacity 0.25s ease;
+    transform 0.16s cubic-bezier(0.4, 0, 1, 1),
+    opacity 0.14s ease;
 }
 .prf-enter-from {
   opacity: 0;
-  transform: translateX(-50%) translateY(36px) scale(0.95);
+  transform: translateY(12px) scale(0.55);
 }
 .prf-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(20px) scale(0.95);
+  transform: translateY(8px) scale(0.6);
+}
+/* Narrow screens: MessengerDock's pill (bottom 20px, 52px tall) spans the
+   same strip — sit above it instead of on top of it. */
+@media (max-width: 560px) {
+  .prf-pill, .prf-shell { bottom: 84px; left: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prf-enter-active, .prf-leave-active { transition: opacity 0.15s ease; }
+  .prf-enter-from, .prf-leave-to { transform: none; }
+  .prf-shell--otp .prf-pill-dot { animation: none; }
+  .prf-pill-gear svg { animation-duration: 8s; }
 }
 </style>

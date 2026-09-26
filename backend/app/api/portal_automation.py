@@ -61,7 +61,7 @@ from app.services.portal_automation.companies import (
     WORKER_ONLY_PORTALS,
     login_fields_for,
 )
-from app.services.portal_automation.runner import run_automation, run_phone_change
+from app.services.portal_automation.runner import run_automation, run_phone_change, CANCELLED_MESSAGE
 from app.services.portal_automation.batch_runner import run_batch
 from app.utils.crypto import encrypt
 
@@ -773,7 +773,7 @@ async def cancel_run(
         return {"status": run.status, "noop": True}
     run.status = "failed"
     run.stage = None
-    run.error_message = "בוטל ע\"י המשתמש"
+    run.error_message = CANCELLED_MESSAGE
     run.finished_at = datetime.utcnow()
     await db.commit()
     return {"status": "failed", "cancelled": True}

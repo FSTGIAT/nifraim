@@ -41,7 +41,7 @@
     <!-- Portal-automation run progress — floats above everything while
          a run is in flight or just finished. Auto-dismisses on success
          after 5s; user can dismiss failures manually. -->
-    <PortalRunProgressFloat />
+    <PortalRunProgressFloat @open-phone-forward="phoneForwardOpen = true" />
 
     <!-- "Batch results ready" toast — shows when the run-all batch finishes
          while the user is anywhere but the automation tab. -->

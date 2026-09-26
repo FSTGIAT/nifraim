@@ -7,8 +7,8 @@
     <AutomationHeroLoopIsland class="hero-art" />
     <div class="hero-main">
       <div class="hero-copy">
-        <span class="hero-kicker">אוטומציה</span>
-        <h2 class="hero-title">פורטלי חברות הביטוח</h2>
+        <span class="hero-kicker">פורטלי חברות הביטוח</span>
+        <h2 class="hero-title hero-wordmark"><span dir="ltr">Nifraim</span> <span class="hero-wordmark-acc">אוטומציה</span></h2>
         <p class="hero-sub">
           <template v-if="activeCredCount">כל החברות במקום אחד — {{ heroSubText }}, בלחיצה אחת מורידים ומשווים את הכל.</template>
           <template v-else>מחברים פורטל אחד, וקוד האימות מגיע לבד מהטלפון — מכאן ההורדות רצות בשבילכם.</template>
@@ -16,7 +16,8 @@
         <div class="hero-actions">
           <button
             class="hero-run"
-            :disabled="anyRunning || !!store.activeBatchId"
+            :disabled="!store.credentials.length || anyRunning || !!store.activeBatchId"
+            :title="store.credentials.length ? undefined : 'הוסיפו פורטל קודם — אין עדיין ממה להוריד'"
             @click="onRunAll"
           >
             <svg viewBox="0 0 24 24" width="19" height="19" fill="none"
@@ -35,26 +36,12 @@
       </div>
     </div>
 
-    <!-- Live batch progress -->
-    <div v-if="batchLive && !batchDone" class="batch-progress">
-      <div class="batch-progress__head">
-        <span class="batch-spinner" aria-hidden="true"></span>
-        <span>מוריד ומאחד נתונים — {{ batch.succeeded + batch.failed }}/{{ batch.total || '…' }}</span>
-      </div>
-      <div class="batch-pills">
-        <span
-          v-for="run in (batch.runs || [])"
-          :key="run.id"
-          class="batch-pill"
-          :class="'batch-pill--' + statusTone(run.status)"
-        >
-          {{ labelForRun(run) }}
-        </span>
-      </div>
-    </div>
+    <!-- Live batch progress lives in the app-wide PortalRunProgressFloat
+         widget (spinning gear, bottom-left) so it's visible on every screen. -->
 
-    <!-- Batch finished → results-ready affordance -->
-    <div v-if="batchDone" class="batch-done" :class="'batch-done--' + batchDone.status">
+    <!-- Batch finished → results-ready affordance. Not on a failed batch —
+         there are no results to view; each card shows its own failure. -->
+    <div v-if="batchDone && batchDone.status !== 'failed'" class="batch-done" :class="'batch-done--' + batchDone.status">
       <div class="batch-done__text">
         <strong>{{ batchDoneTitle }}</strong>
         <span>{{ batchDone.succeeded }} הצליחו · {{ batchDone.failed }} נכשלו</span>
@@ -78,11 +65,6 @@ import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
 const emit = defineEmits(['view-results', 'add'])
 const store = usePortalAutomationStore()
 
-const BATCH_TERMINAL = new Set(['success', 'partial', 'failed'])
-const batch = computed(() => store.activeBatch)
-// activeBatch keeps its terminal payload until the next batch — only show
-// the live-progress strip while the batch is actually running.
-const batchLive = computed(() => !!batch.value && !BATCH_TERMINAL.has(batch.value.status))
 const batchDone = ref(null)
 const anyRunning = computed(() => !!store.activeRunId)
 const activeCredCount = computed(
@@ -115,16 +97,6 @@ const batchDoneTitle = computed(() => {
 
 function portalLabel(kind) {
   return store.portalKinds.find((k) => k.id === kind)?.label || brandFor(kind).label
-}
-function statusTone(status) {
-  if (status === 'success') return 'ok'
-  if (['failed', 'timeout'].includes(status)) return 'fail'
-  if (['running', 'awaiting_otp', 'downloading', 'parsing', 'pending'].includes(status)) return 'live'
-  return 'idle'
-}
-function labelForRun(run) {
-  const cred = store.credentials.find((c) => c.id === run.credential_id)
-  return cred ? portalLabel(cred.portal_kind) : 'פורטל'
 }
 
 async function onRunAll() {
@@ -209,6 +181,9 @@ watch(() => store.batchJustFinished, (b) => {
   color: var(--text-secondary, #6b7280); background: var(--bg, #F3F4F6);
   border-radius: 999px; padding: 4px 12px;
 }
+/* The product wordmark, same as "Nifraim המסלקה" (MaslakaTab .mk-hero-title). */
+.hero-title.hero-wordmark { font-family: 'Rubik', 'Heebo', sans-serif; font-size: clamp(28px, 3.3vw, 40px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.hero-wordmark-acc { color: #0A6664; }
 .hero-title {
   margin: 2px 0 0;
   font-size: clamp(22px, 2.6vw, 30px);

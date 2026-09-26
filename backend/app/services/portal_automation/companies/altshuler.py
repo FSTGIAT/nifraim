@@ -159,8 +159,13 @@ class AltshulerPortal(BasePortalAutomation):
                 await self._safe_screenshot(page, post)
                 await self._dump_page_state(page, post)
                 return
-            if err and ("שגוי" in err or "שגיא" in err or "לא נמצא" in err or "נסה" in err):
-                raise RuntimeError(f"אלטשולר: הכניסה נדחתה — {err}")
+            # "לא תואמים" = the portal's real wrong-details text (live 2026-09-26:
+            # "הפרטים שהזנת לא תואמים את המידע שמעודכן אצלנו") — without it a bad
+            # login fell through to a 5-min wait for an OTP that is never sent.
+            if err and ("שגוי" in err or "שגיא" in err or "לא נמצא" in err or "נסה" in err
+                        or "לא תואמים" in err):
+                first = err.split(" | ")[0].strip().splitlines()[0].strip()
+                raise RuntimeError(f"אלטשולר: הכניסה נדחתה — {first}")
             await page.wait_for_timeout(500)
 
         # Didn't clearly transition — dump and let the runner await OTP anyway;

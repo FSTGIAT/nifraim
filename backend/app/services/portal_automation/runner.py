@@ -362,6 +362,29 @@ class OtpTimeout(TimeoutError):
     asyncio's wait_for timeout so the caller can render a different error."""
 
 
+CANCELLED_MESSAGE = "בוטל ע\"י המשתמש"
+
+
+class RunCancelled(Exception):
+    """The user cancelled this run (POST /runs/{id}/cancel flips the row to
+    failed). The API can't abort the coroutine — the worker owns it — so the
+    runner checks the row itself and bails. Not an OtpTimeout: a cancelled run
+    must never enter the batch's OTP retry pass (live 2026-09-26: a cancelled
+    Altshuler run kept the batch "running" for ~10 min — 5 min OTP wait + retry)."""
+
+    def __init__(self) -> None:
+        super().__init__(CANCELLED_MESSAGE)
+
+
+async def _raise_if_cancelled(db: AsyncSession, run: PortalRun) -> None:
+    # Column select → reads the DB, not the (stale) in-memory ORM attribute.
+    row = (await db.execute(
+        select(PortalRun.status, PortalRun.error_message).where(PortalRun.id == run.id)
+    )).first()
+    if row and row.status == "failed" and row.error_message == CANCELLED_MESSAGE:
+        raise RunCancelled()
+
+
 async def _set_status(db: AsyncSession, run: PortalRun, *, status: str | None = None,
                       stage: str | None = None, error: str | None = None,
                       finished: bool = False, screenshot_path: str | None = None) -> None:
@@ -407,6 +430,46 @@ async def _db_utc_now(db: AsyncSession) -> datetime:
     return await db.scalar(select(func.timezone("UTC", func.now())))
 
 
+# Wording portals use for "the login details you typed are wrong". Deliberately
+# narrow: no bare "שגיאה" (Mor's reCAPTCHA reject is "אירעה שגיאה") and no
+# "נסה" (Meitav's captcha reject "נסה שנית" must keep its batch retry).
+_LOGIN_REJECT_PHRASES = (
+    "לא תואמים", "אינם תואמים", "אינו תואם", "לא תואם",
+    "שגוי", "שגויה", "שגויים",
+    "לא נמצא", "אינו קיים", "לא קיים", "לא זוהה",
+    "נחסם", "חסום",
+)
+_LOGIN_REJECT_JS = """() => {
+    const sel = "[role=alert], .error, .alert, .toast, .invalid-feedback, mat-error, " +
+                "[class*=error], [class*=Error], [class*=invalid]";
+    return [...document.querySelectorAll(sel)]
+        .filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
+        .map(e => (e.innerText || '').trim()).filter(Boolean)
+        .join(' | ').slice(0, 300);
+}"""
+
+
+class LoginRejected(RuntimeError):
+    """The portal visibly rejected the login details while we waited for an OTP
+    that will therefore never be sent."""
+
+
+async def _login_rejection_text(page) -> str:
+    """Visible wrong-details error on the page, or "". Never raises — a page
+    mid-navigation must not fail a healthy run."""
+    try:
+        text = await asyncio.wait_for(page.evaluate(_LOGIN_REJECT_JS), timeout=3)
+    except Exception:
+        return ""
+    # Several error boxes can hold the same message, each with help text under
+    # it ("מה אפשר לעשות?…") — keep just the first line that names the problem.
+    for seg in (text or "").split(" | "):
+        line = seg.strip().splitlines()[0].strip() if seg.strip() else ""
+        if any(p in seg for p in _LOGIN_REJECT_PHRASES):
+            return line if any(p in line for p in _LOGIN_REJECT_PHRASES) else seg.strip()[:200]
+    return ""
+
+
 async def _wait_for_otp(
     db: AsyncSession,
     run: PortalRun,
@@ -414,6 +477,8 @@ async def _wait_for_otp(
     since: datetime,
     portal_kind: str | None = None,
     timeout_s: int | None = None,
+    page=None,
+    company_label: str = "",
 ) -> str:
     """Poll otp_inbox for an OTP that arrived after `since`.
 
@@ -439,7 +504,18 @@ async def _wait_for_otp(
     """
     base = (portal_kind or "").split("_")[0] or None
     deadline = asyncio.get_event_loop().time() + (timeout_s or OTP_WAIT_TIMEOUT_S)
+    polls = 0
     while asyncio.get_event_loop().time() < deadline:
+        await _raise_if_cancelled(db, run)
+        # Every company, not per-plugin: if the portal is showing a wrong-details
+        # error, no SMS is coming — fail now instead of waiting the full timeout
+        # (live 2026-09-26: Altshuler's "לא תואמים" slipped past its own check).
+        polls += 1
+        if page is not None and polls % 3 == 0:
+            rejected = await _login_rejection_text(page)
+            if rejected:
+                prefix = f"{company_label}: " if company_label else ""
+                raise LoginRejected(f"{prefix}הכניסה נדחתה — {rejected}")
         stmt = (
             select(OtpInbox)
             .where(
@@ -907,7 +983,8 @@ async def _run_inner(
             if plugin.requires_otp:
                 await _set_status(db, run, status="awaiting_otp", stage="otp")
                 otp = await _wait_for_otp(
-                    db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind
+                    db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind,
+                    page=page, company_label=getattr(plugin, "company_label", ""),
                 )
                 try:
                     await plugin.submit_otp(page, otp)
@@ -1287,6 +1364,10 @@ async def run_automation(run_id: uuid.UUID) -> None:
                                    timeout=RUN_HARD_TIMEOUT_S)
             cred.last_run_status = "success"
             cred.last_error = None
+        except RunCancelled as e:
+            await _set_status(db, run, status="failed", error=str(e), finished=True)
+            cred.last_run_status = "failed"
+            cred.last_error = str(e)
         except OtpTimeout as e:
             # OTP-specific timeout — distinct from the run-wide hard timeout.
             await _set_status(db, run, status="failed", error=str(e), finished=True)

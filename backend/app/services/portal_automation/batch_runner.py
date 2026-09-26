@@ -37,6 +37,7 @@ from app.services.portal_automation.runner import (
     _mirror_to_folded,
     RUN_HARD_TIMEOUT_S,
     OtpTimeout,
+    RunCancelled,
 )
 
 # Wall-clock cap for a WORKER_ONLY portal (phoenix_terminal). Must exceed the
@@ -604,6 +605,12 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                     )
             if run.error_message:  # success-with-losses (see partial_notes above)
                 partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
+        except RunCancelled as e:
+            # User cancelled — count it failed, never retry it.
+            await _set_status(db, run, status="failed", error=str(e), finished=True)
+            cred.last_run_status = "failed"
+            cred.last_error = str(e)
+            batch.failed += 1
         except OtpTimeout as e:
             await _set_status(db, run, status="failed", error=str(e), finished=True)
             cred.last_run_status = "failed"
@@ -694,6 +701,9 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                         )
                 if run.error_message:  # success-with-losses (see partial_notes above)
                     partial_notes.append(f"{cred.portal_kind}: {run.error_message}")
+            except RunCancelled as e:
+                await _set_status(db, run, status="failed", error=str(e), finished=True)
+                cred.last_error = str(e)
             except OtpTimeout as e:
                 # Still no OTP — leave the pass-1 failed tally as-is.
                 await _set_status(db, run, status="failed", error=str(e), finished=True)
