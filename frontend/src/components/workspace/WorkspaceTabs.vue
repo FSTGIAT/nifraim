@@ -46,11 +46,15 @@
 
   <!-- CONTENT MODE: Compact mini-strip -->
   <div v-else class="strip-container">
-    <div class="strip">
+    <div ref="stripEl" class="strip">
+      <!-- The active tab's colour pill: ONE element that glides between tabs
+           (position + width + colour animate), under the pills' text. -->
+      <span class="strip-glider" :class="{ 'strip-glider--on': glider.ready }" aria-hidden="true"
+            :style="{ transform: `translateX(${glider.x}px)`, width: glider.w + 'px', background: glider.color }"></span>
       <button
         v-for="tab in tabs"
         :key="tab.id"
-       
+        :ref="(el) => setPillEl(tab.id, el)"
         class="strip-pill"
         :class="{ active: modelValue === tab.id }"
         :title="tab.label"
@@ -87,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import AppIcon from '../icons/AppIcon.vue'
 import CardAmbientIsland from './CardAmbientIsland.vue'
 
@@ -111,6 +115,43 @@ function onPillPress(e, id) {
   if (props.modelValue === id) return
   emit('select-pill', geometryOf(e.currentTarget, id))
 }
+
+// ── Sliding colour pill (content-mode strip) ──
+const stripEl = ref(null)
+const pillEls = new Map()
+function setPillEl(id, el) { if (el) pillEls.set(id, el); else pillEls.delete(id) }
+const glider = reactive({ x: 0, w: 0, color: 'transparent', ready: false })
+function placeGlider() {
+  const strip = stripEl.value
+  const el = pillEls.get(props.modelValue)
+  if (!strip || !el) { glider.ready = false; return }
+  const sr = strip.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  glider.x = r.left - sr.left - strip.clientLeft // measured from the padding box, not the border
+  glider.w = r.width
+  glider.color = tabs.find((t) => t.id === props.modelValue)?.ink || 'var(--text)'
+  // First placement jumps into position; only later moves glide.
+  if (!glider.ready) requestAnimationFrame(() => { glider.ready = true })
+}
+let stripRO = null
+// Place now, then again once transitions/reflow settle (safety net).
+watch(() => [props.modelValue, props.viewMode], () => {
+  nextTick(placeGlider)
+  setTimeout(placeGlider, 120)
+  setTimeout(placeGlider, 450)
+})
+watch(stripEl, (el) => {
+  stripRO?.disconnect()
+  glider.ready = false
+  if (el && typeof ResizeObserver !== 'undefined') {
+    // Labels collapse/expand with the container query → pill widths change.
+    stripRO = new ResizeObserver(() => placeGlider())
+    stripRO.observe(el)
+  }
+  nextTick(placeGlider)
+})
+onMounted(() => { document.fonts?.ready?.then(placeGlider) })
+onBeforeUnmount(() => stripRO?.disconnect())
 
 function geometryOf(el, id) {
   const r = el.getBoundingClientRect()
@@ -201,7 +242,7 @@ const tabs = [
     description: 'התחברות אוטומטית לפורטלים והורדת דוחות',
     accent: 'var(--tab-automation)',
     accentGlow: 'var(--tab-automation-wash)',
-    ink: 'var(--tab-automation)',
+    ink: '#0A6664', /* automation ink — the accent #0E8C8A is too light for white text on the pill */
   },
 ]
 </script>
@@ -411,25 +452,38 @@ const tabs = [
 }
 
 .strip {
+  position: relative;
   max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   background: var(--card-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 3px;
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 4px;
+  box-shadow: 0 6px 22px rgba(24, 24, 24, 0.06), 0 1px 2px rgba(24, 24, 24, 0.04);
+}
+/* The gliding pill. Sits under the pills (they are z-index 1). */
+.strip-glider {
+  position: absolute; top: 4px; bottom: 4px; left: 0; z-index: 0;
+  border-radius: 12px; pointer-events: none; opacity: 0;
+  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.14);
+}
+.strip-glider--on {
+  opacity: 1;
+  transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1), width 0.38s cubic-bezier(0.32, 0.72, 0, 1),
+              background-color 0.38s ease;
 }
 
 .strip-pill {
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 16px;
-  border-radius: 9px;
+  padding: 8px 16px;
+  border-radius: 12px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600; /* same weight active or not — a bolder active tab reflowed the strip under the pill */
   font-family: inherit;
   color: var(--text-muted);
   background: transparent;
@@ -440,16 +494,17 @@ const tabs = [
 }
 
 .strip-pill:hover:not(.active) {
-  color: var(--text-secondary);
-  background: rgba(0, 0, 0, 0.03);
+  color: var(--accent-ink, var(--accent));
+  background: var(--accent-wash);
 }
 
 .strip-pill.active {
-  background: var(--accent-wash);
-  color: var(--accent-ink, var(--accent));
-  font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--accent);
+  /* The colour comes from the gliding .strip-glider behind it. */
+  background: transparent;
+  color: #fff;
+  transition: color 0.25s ease 0.08s;
 }
+.strip-pill:focus-visible { outline: 2px solid var(--accent-ink, var(--accent)); outline-offset: 2px; }
 
 .strip-icon {
   display: flex;
