@@ -156,7 +156,15 @@
                   <p class="spm-celebrate-text">הכל מוכן! מעכשיו המערכת עובדת בשבילכם.</p>
                 </div>
                 <div v-else :key="selectedId" class="spm-visual-inner">
-                  <img v-if="stepAssets[selectedId]" :src="stepAssets[selectedId]" alt="" class="spm-visual-img" />
+                  <!-- Kling loop (first frame = last frame, so it loops without a
+                       seam); the still is its poster and the reduced-motion view. -->
+                  <video
+                    v-if="stepVideos[selectedId] && !reducedMotion"
+                    :src="stepVideos[selectedId]" :poster="stepAssets[selectedId]"
+                    class="spm-visual-img" autoplay muted loop playsinline preload="auto"
+                    aria-hidden="true" disablepictureinpicture
+                  ></video>
+                  <img v-else-if="stepAssets[selectedId]" :src="stepAssets[selectedId]" alt="" class="spm-visual-img" />
                   <component v-else :is="fallbackVisuals[selectedId]" />
                   <div class="spm-visual-scrim" :style="{ background: scrimBg }"></div>
                   <div class="spm-visual-caption">
@@ -199,6 +207,10 @@ const fallbackVisuals = { worker: WorkerVisual, phone: PhoneVisual, portal: Port
 const assetModules = import.meta.glob('../../assets/welcome/step-*.webp', { eager: true, import: 'default' })
 const stepAssets = Object.fromEntries(
   Object.entries(assetModules).map(([path, url]) => [path.match(/step-([a-z]+)\.webp$/)[1], url]),
+)
+const videoModules = import.meta.glob('../../assets/welcome/step-*.mp4', { eager: true, import: 'default' })
+const stepVideos = Object.fromEntries(
+  Object.entries(videoModules).map(([path, url]) => [path.match(/step-([a-z]+)\.mp4$/)[1], url]),
 )
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -497,6 +509,14 @@ onBeforeUnmount(() => {
   /* Tall enough for the biggest step, so opening/closing steps never resizes
      and re-centres the card under the user's cursor. */
   min-height: min(720px, calc(100vh - 40px));
+}
+/* Desktop: the card is a fixed frame and only the steps column scrolls. When
+   the whole card scrolled, the longest step (worker) stretched the picture
+   pane to ~970px, so the image zoomed in and its bottom scrolled away. */
+@media (min-width: 761px) {
+  .spm-card { overflow: hidden; }
+  .spm-layout { height: min(760px, calc(100vh - 40px)); }
+  .spm-main { overflow-y: auto; overscroll-behavior: contain; }
 }
 
 .spm-main { padding: 30px 34px 26px 26px; }
