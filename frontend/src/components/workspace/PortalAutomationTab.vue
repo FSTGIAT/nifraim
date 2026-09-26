@@ -20,6 +20,7 @@
       <EmptyStateGuide
         v-if="!store.credentials.length"
         class="dash__guide"
+        style="--esg-accent: #0A6664; --esg-wash: var(--tab-automation-wash)"
         variant="inline"
         title="הורדה אוטומטית"
         body="מגדירים פעם אחת שם משתמש וסיסמה לכל פורטל חברה, מחברים את הטלפון להעברת קוד האימות — ומכאן והלאה לחיצה אחת מורידה את כל הדוחות ומשווה אותם."
@@ -383,13 +384,13 @@ onUnmounted(() => {
 }
 .err-btn--secondary:hover { background: var(--card-bg); border-color: var(--text-muted); }
 .err-btn--primary {
-  background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+  background: #0A6664;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.30);
+  box-shadow: 0 4px 12px rgba(14, 140, 138, 0.30);
 }
 .err-btn--primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(245, 124, 0, 0.42);
+  box-shadow: 0 10px 22px rgba(14, 140, 138, 0.42);
 }
 
 .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }

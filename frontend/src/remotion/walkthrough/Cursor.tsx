@@ -61,8 +61,8 @@ export function Cursor({
             width: 36,
             height: 36,
             borderRadius: '50%',
-            background: '#F57C0033',
-            border: '2px solid #F57C00',
+            background: '#18181833',
+            border: '2px solid #181818',
             transform: `scale(${0.6 + press * 0.8})`,
             opacity: press,
           }}

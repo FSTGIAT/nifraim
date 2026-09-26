@@ -80,7 +80,7 @@ export const AVATAR_TONES = [
   '#4A8B2C', // forest
   '#8E44AD', // purple
   '#C42B60', // deep magenta
-  '#D9820F', // amber
+  '#7A7F2A', // amber
   '#A8412F', // clay
   '#3F5C8C', // slate blue
   '#5B6B4E', // moss

@@ -116,12 +116,12 @@ function formatVal(val) {
   gap: 10px;
   padding: 12px 16px;
   cursor: pointer;
-  background: rgba(232, 114, 10, 0.06);
+  background: rgba(201, 162, 39, 0.06);
   transition: background 0.2s ease;
 }
 
 .banner-header:hover {
-  background: rgba(232, 114, 10, 0.1);
+  background: rgba(201, 162, 39, 0.1);
 }
 
 .banner-icon {

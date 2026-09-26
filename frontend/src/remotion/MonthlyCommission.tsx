@@ -1,5 +1,5 @@
 // MonthlyCommission — Remotion composition. Three calendar months
-// (newest on the right in RTL), each with a paired bar group: צפוי (orange)
+// (newest on the right in RTL), each with a paired bar group: צפוי (production blue)
 // vs בפועל (green). Empty months show a dashed placeholder. A top KPI strip
 // shows totals + the aggregate gap. Designed to be readable as a single
 // composition rather than 3 disconnected cards.
@@ -24,9 +24,11 @@ export interface MonthlyCommissionProps {
 }
 
 const COLORS = {
-  expected: '#F57C00',
-  expectedDeep: '#E65100',
-  expectedSoft: 'rgba(245, 124, 0, 0.16)',
+  // Expected = production × agreed rates, so it wears the production-tab blue;
+  // actual (נפרעים) keeps the comparison-tab green.
+  expected: '#2F73C4',
+  expectedDeep: '#235A9C',
+  expectedSoft: 'rgba(47, 115, 196, 0.16)',
   actual: '#2E844A',
   actualDeep: '#1B5E20',
   actualSoft: 'rgba(46, 132, 74, 0.16)',
@@ -37,7 +39,7 @@ const COLORS = {
   textMuted: '#706E6B',
   border: '#E5E5E5',
   bg: '#FFFFFF',
-  bgWarm: '#FFFBF4',
+  bgWarm: '#F6FAF7',
 }
 
 function formatMoney(v: number | null | undefined): string {
@@ -117,7 +119,7 @@ export function MonthlyCommissionComposition(props: MonthlyCommissionProps) {
           width: 320,
           height: 320,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(245,124,0,0.14), transparent 70%)',
+          background: 'radial-gradient(circle, rgba(46,132,74,0.12), transparent 70%)',
           top: -110,
           insetInlineEnd: -90,
           pointerEvents: 'none',
@@ -298,7 +300,7 @@ export function MonthlyCommissionComposition(props: MonthlyCommissionProps) {
                     : 'הכל הועלה'}
             </div>
 
-            {/* Expected bar (orange) */}
+            {/* Expected bar (production blue) */}
             {m.production_uploaded ? (
               <>
                 <div
@@ -310,7 +312,7 @@ export function MonthlyCommissionComposition(props: MonthlyCommissionProps) {
                     height: expDrawn,
                     background: `linear-gradient(180deg, ${COLORS.expected} 0%, ${COLORS.expectedDeep} 100%)`,
                     borderRadius: '6px 6px 0 0',
-                    boxShadow: '0 -2px 8px rgba(245, 124, 0, 0.25)',
+                    boxShadow: '0 -2px 8px rgba(47, 115, 196, 0.25)',
                   }}
                 />
                 <div

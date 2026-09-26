@@ -491,11 +491,11 @@ onBeforeUnmount(() => {
 .ai-msg-warnings {
   margin-top: 8px;
   padding: 8px 10px;
-  background: #FFF3E0;
+  background: var(--amber-light);
   border: 1px solid #F0C869;
   border-radius: var(--radius-sm);
   font-size: 12px;
-  color: #E8720A;
+  color: var(--amber);
 }
 .ai-msg-warnings-title {
   display: inline-flex;
@@ -503,7 +503,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-weight: 700;
   margin-bottom: 4px;
-  color: #E8720A;
+  color: var(--amber);
 }
 .ai-msg-warnings ul {
   margin: 0;

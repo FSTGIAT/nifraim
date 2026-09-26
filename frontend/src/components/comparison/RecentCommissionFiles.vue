@@ -170,8 +170,8 @@ onMounted(() => {
   outline: none;
 }
 .rcf-card:focus-visible {
-  border-color: var(--primary, #F57C00);
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.18);
+  border-color: var(--tab-comparison);
+  box-shadow: 0 0 0 3px rgba(46, 132, 74, 0.18);
 }
 /* Cadence-style 3px brand stripe on the leading edge */
 .rcf-card::before {
@@ -182,13 +182,13 @@ onMounted(() => {
   width: 3px;
   background: var(--brand);
 }
-/* Top-edge orange wash on hover — matches the rest of the workspace */
+/* Top-edge tab-colour wash on hover — matches the rest of the workspace */
 .rcf-card::after {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #F57C00, transparent);
+  background: linear-gradient(90deg, transparent, var(--tab-comparison), transparent);
   opacity: 0;
   transition: opacity 0.18s;
 }
@@ -252,16 +252,16 @@ onMounted(() => {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .rcf-dl:hover:not(:disabled) {
-  background: rgba(245, 124, 0, 0.08);
-  color: var(--primary-deep, #E65100);
-  border-color: rgba(245, 124, 0, 0.32);
+  background: rgba(46, 132, 74, 0.08);
+  color: #2E844A;
+  border-color: rgba(46, 132, 74, 0.32);
 }
 .rcf-dl:disabled { cursor: default; opacity: 0.7; }
 .rcf-dl-spinner {
   width: 13px;
   height: 13px;
-  border: 1.6px solid rgba(245, 124, 0, 0.25);
-  border-top-color: var(--primary-deep, #E65100);
+  border: 1.6px solid rgba(46, 132, 74, 0.25);
+  border-top-color: #2E844A;
   border-radius: 50%;
   animation: rcfSpin 0.8s linear infinite;
 }

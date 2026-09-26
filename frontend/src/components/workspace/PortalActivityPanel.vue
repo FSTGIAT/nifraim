@@ -266,7 +266,7 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
 }
 .batch__pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .batch__pill--ok      { background: rgba(46,132,74,0.12); color: var(--green-deep); border-color: rgba(46,132,74,0.24); }
-.batch__pill--partial { background: rgba(232,114,10,0.13); color: var(--amber); border-color: rgba(232,114,10,0.26); }
+.batch__pill--partial { background: rgba(201, 162, 39,0.13); color: var(--amber); border-color: rgba(201, 162, 39,0.26); }
 .batch__pill--fail    { background: rgba(234,0,30,0.10); color: var(--red-deep); border-color: rgba(234,0,30,0.24); }
 .batch__pill--live    { background: var(--tab-automation-wash); color: var(--tab-automation); border-color: rgba(14, 140, 138, 0.3); }
 

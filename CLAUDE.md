@@ -545,8 +545,9 @@ pre-self-update worker), and gotchas (Phoenix terminal needs an ELEVATED worker 
 | **Store-driven API** | Components access API through Pinia stores (except self-contained CRUD tables) |
 | **Teleport modals** | All modals use `<Teleport to="body">` with overlay + card pattern |
 | **CSS variables** | Salesforce Lightning Design tokens in `App.vue` root styles — never hardcode colors |
+| **Colour rules** | **Load the `nifraim-style` skill before any UI work.** Orange is RETIRED (2026-09-26): actions use the tab's `--tab-*` colour inside a tab, ink `--primary` (#181818) outside; data/decoration use `CHART_PALETTE`. |
 | **Conditional amounts** | Only show financial values when > 0, never show dashes for empty |
-| **Empty state decoration** | Pre-upload / empty states use floating orange blur circles (`position: fixed`, `border-radius: 50%`, `rgba(245,124,0,...)`, `floatBob` animation) + animated SVG waves at page bottom (`position: fixed; bottom: 0`, 3 layers with gradient fills + shimmer sweep masked to wave shape). See `ProductionUploader.vue` and `CommissionUploader.vue` as reference. Use unique SVG gradient IDs per component (e.g. `wg1` vs `cwg1`). |
+| **Empty state decoration** | Pre-upload / empty states use floating blur circles **in the tab's own colour** (`position: fixed`, `border-radius: 50%`, `--tab-*` wash, `floatBob` animation) + animated SVG waves at page bottom (`position: fixed; bottom: 0`, 3 layers with gradient fills + shimmer sweep masked to wave shape). See `ProductionUploader.vue` and `CommissionUploader.vue` as reference. Use unique SVG gradient IDs per component (e.g. `wg1` vs `cwg1`). |
 
 ### Naming Conventions
 

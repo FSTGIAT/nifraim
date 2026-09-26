@@ -12,7 +12,7 @@ export interface VizBar {
   type: 'bar'
   title: string
   unit?: string
-  /** Direction for coloring: 'up' = emerald, 'down' = red-deep, else neutral primary orange */
+  /** Direction for coloring: 'up' = emerald, 'down' = red-deep, else neutral AI lavender ink (#6A48C9) */
   direction?: 'up' | 'down' | 'neutral'
   data: VizBarPoint[]
   /** label that should pulse / stand out */
@@ -76,7 +76,7 @@ export type Viz = VizBar | VizKpi | VizDonut | VizFundTrack
 export const VIZ_COLORS = {
   up: { main: '#2E844A', soft: 'rgba(46, 132, 74, 0.12)' },
   down: { main: '#C23934', soft: 'rgba(194, 57, 52, 0.12)' },
-  neutral: { main: '#F57C00', soft: 'rgba(245, 124, 0, 0.12)' },
+  neutral: { main: '#6A48C9', soft: 'rgba(106, 72, 201, 0.12)' }, // --tab-ai-ink
 } as const
 
 export function colorsFor(direction?: 'up' | 'down' | 'neutral') {

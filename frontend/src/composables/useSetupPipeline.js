@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useNotificationsStore } from '../stores/notifications.js'
 import { getUserFlag, setUserFlag } from '../utils/userFlags.js'
+import { CHART_PALETTE } from '../utils/chartPalette.js'
 
 /**
  * Single source of truth for the new-user setup pipeline ("אשף ההפעלה").
@@ -19,6 +20,20 @@ import { getUserFlag, setUserFlag } from '../utils/userFlags.js'
 const DONE_KEY = 'setup_completed'
 const CLOSED_KEY = 'setup_closed'
 const REMINDER_ID = 'activation-setup'
+
+// One hue per mission, shared by the wizard and the home card. Drawn from
+// CHART_PALETTE (never orange: --primary is the brand ACTION colour, and the
+// card's CTA is orange — an orange step read as one monochrome blob). `run`
+// wears the automation tab's identity (--tab-automation), since that is where
+// it lands. `deep` is the text ink — every accent-on-white fails or skirts
+// 4.5:1, so text uses `deep` (≥4.7:1 on `soft`). Literal hexes, not var(),
+// because the modal builds alpha variants by suffixing (`accent + '55'`).
+export const SETUP_ACCENTS = {
+  worker: { accent: CHART_PALETTE[3], deep: '#6C2E87', soft: '#F1E9F5', tint: '#FAF8FC' },  // purple
+  phone:  { accent: CHART_PALETTE[1], deep: '#35719A', soft: '#EAF3F9', tint: '#F8FBFD' },  // sky (= --tab-portal-ink)
+  portal: { accent: CHART_PALETTE[5], deep: '#B0245A', soft: '#FAE7ED', tint: '#FDF7F9' },  // magenta
+  run:    { accent: CHART_PALETTE[11], deep: '#0A6664', soft: '#E2F1F1', tint: '#F5FAFA' }, // teal (= --tab-automation)
+}
 
 // Worker heartbeat poll is shared (modal + card may both be mounted).
 let pollTimer = null

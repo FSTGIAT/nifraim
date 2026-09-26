@@ -37,7 +37,7 @@
       <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient id="ailwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#F9A937" stop-opacity="0.06"/>
+            <stop offset="0%" stop-color="#B79CEB" stop-opacity="0.06"/>
             <stop offset="50%" stop-color="#8FD9C6" stop-opacity="0.04"/>
             <stop offset="100%" stop-color="#3DB6B0" stop-opacity="0.07"/>
           </linearGradient>
@@ -753,7 +753,7 @@ function buildScaleMock() {
 .fc-3 {
   width: 90px; height: 90px;
   top: 30%; left: 8%;
-  background: color-mix(in srgb, var(--chart-3, #D9820F) 6%, transparent);
+  background: color-mix(in srgb, var(--chart-3) 6%, transparent);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 .fc-4 {
@@ -1109,7 +1109,7 @@ function buildScaleMock() {
 }
 /* Section accents ride the shared CHART_PALETTE tokens */
 .lib-icon--prod   { background: color-mix(in srgb, var(--chart-4, #8E44AD) 12%, white); color: var(--chart-4, #8E44AD); }
-.lib-icon--comm   { background: color-mix(in srgb, var(--chart-3, #D9820F) 16%, white); color: color-mix(in srgb, var(--chart-3, #D9820F) 65%, black); }
+.lib-icon--comm   { background: color-mix(in srgb, var(--chart-3) 16%, white); color: color-mix(in srgb, var(--chart-3) 65%, black); }
 .lib-icon--myfile { background: color-mix(in srgb, var(--chart-6, #D6336C) 12%, white); color: var(--chart-6, #D6336C); }
 .lib-icon--rates  { background: color-mix(in srgb, var(--chart-10, #4A8B2C) 12%, white); color: var(--chart-10, #4A8B2C); }
 

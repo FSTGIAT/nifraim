@@ -36,8 +36,8 @@ const table = computed(() => (entry.value?.table ? entry.value.table(props.viz) 
 .ai-chart-insight {
   margin: 20px 0 0;
   padding: 10px 14px;
-  border-inline-start: 3px solid var(--primary);
-  background: var(--primary-light, #FFF3E0);
+  border-inline-start: 3px solid var(--tab-ai);
+  background: var(--tab-ai-wash);
   border-radius: 8px;
   border-start-start-radius: 0; border-end-start-radius: 0;
   font-size: 14px; font-weight: 550; color: var(--text);

@@ -24,7 +24,7 @@ export const CHART_PALETTE = [
   // labels + table view these charts ship (never colour alone).
   '#E04B48', // coral red
   '#4E9DD0', // sky blue
-  '#D9820F', // golden amber
+  '#7A7F2A', // olive (was golden amber #D9820F — orange retired 2026-09-26; validator: all pass, same worst pairs)
   '#8E44AD', // purple
   '#6FA82C', // lime green
   '#D6336C', // magenta pink

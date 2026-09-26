@@ -380,7 +380,6 @@ import BigAddButton from './BigAddButton.vue'
 import HachsharaMailModal from './HachsharaMailModal.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import MailEnvelopeIntro from './MailEnvelopeIntro.vue'
-import { getUserFlag, setUserFlag } from '../../utils/userFlags.js'
 import MailListenRadar from './MailListenRadar.vue'
 import StyleDoor from './StyleDoor.vue'
 
@@ -464,28 +463,19 @@ watch(sel, (s) => {
   draftBody.value = s?.draft_body || ''
   editing.value = false
 })
-// The envelope opens once per mail, ever (remembered per user in this browser),
-// and only for mail still waiting on the agent — reopening it, or moving
-// through the queue, goes straight to the letter.
-const SEEN_KEY = 'mail_envelope_seen'
-function seenIds() {
-  try { return JSON.parse(getUserFlag(SEEN_KEY) || '[]') } catch { return [] }
-}
-function markSeen(id) {
-  const ids = seenIds().filter((x) => x !== id)
-  ids.push(id)
-  setUserFlag(SEEN_KEY, JSON.stringify(ids.slice(-300)))
-}
+// The envelope opens every time a mail still waiting on the agent is opened
+// from the list. Moving through the queue with the arrows, or opening a mail
+// that's already sent/skipped, goes straight to the letter. (It used to play
+// once per mail, ever — so a mail opened once never showed it again, which
+// read as "the envelope is missing".)
 const introDone = ref(true)
 const justSent = ref(false)
 const navDir = ref('')             // '' | 'next' | 'prev' — picks the slide direction
 watch(() => sel.value?.id, (id, was) => {
   justSent.value = false
   if (!id) { navDir.value = ''; return }
-  const seen = seenIds().includes(id)
-  markSeen(id)
   if (was && navDir.value) return
-  introDone.value = reduced || seen || !['drafted', 'needs_reply', 'new'].includes(sel.value.status)
+  introDone.value = reduced || !['drafted', 'needs_reply', 'new'].includes(sel.value.status)
 })
 
 // Position of the open mail in the waiting queue, and its neighbours.

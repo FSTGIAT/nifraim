@@ -54,7 +54,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['select', 'open-all'])
 
-const ORANGE_SHADES = ['#E65100', '#DD6B20', '#ED7D2D', '#F57C00', '#FF8E26', '#FF9F40', '#FFB266', '#FFC68C']
+// Single-measure ranking of OPEN DEBT → one-hue coral ramp (--chart-1, the
+// comparison tab's "unpaid" colour), deepest = largest. Not the tab green:
+// green means "paid" on this screen.
+const BAR_SHADES = ['#A8302E', '#C23D3A', '#E04B48', '#E66663', '#EC827F', '#F19E9C', '#F5B9B7', '#F9D3D2']
 
 const hasData = computed(() => props.items.length > 0)
 const chartHeight = computed(() => Math.max(220, 50 + props.items.length * 38))
@@ -95,7 +98,7 @@ const chartOptions = computed(() => ({
       dataLabels: { position: 'top' },
     },
   },
-  colors: ORANGE_SHADES.slice(0, props.items.length),
+  colors: BAR_SHADES.slice(0, props.items.length),
   dataLabels: {
     enabled: true,
     formatter: (val) => shortShekel(val),
@@ -139,7 +142,7 @@ const chartOptions = computed(() => ({
       return `
         <div style="padding:8px 10px;font-family:Heebo,sans-serif;direction:rtl">
           <div style="font-weight:700;margin-bottom:4px;color:#181818">${item.label || ''}</div>
-          <div style="font-family:ui-monospace,Menlo,monospace;color:#E65100;font-weight:700">${shortShekel(value)}</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;color:#2E844A;font-weight:700">${shortShekel(value)}</div>
           ${item.meta ? `<div style="font-size:11px;color:#706E6B;margin-top:2px">${item.meta}</div>` : ''}
         </div>`
     },
@@ -179,7 +182,7 @@ function onBarClick(_, __, opts) {
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent 0%, #F57C00 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--tab-comparison) 50%, transparent 100%);
 }
 
 .ic-head {
@@ -196,9 +199,9 @@ function onBarClick(_, __, opts) {
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  color: var(--primary-deep, #E65100);
-  background: rgba(245, 124, 0, 0.08);
-  border: 1px solid rgba(245, 124, 0, 0.22);
+  color: #2E844A;
+  background: rgba(46, 132, 74, 0.08);
+  border: 1px solid rgba(46, 132, 74, 0.22);
   padding: 3px 10px;
   border-radius: 999px;
   flex-shrink: 0;
@@ -232,7 +235,7 @@ function onBarClick(_, __, opts) {
   gap: 5px;
   background: transparent;
   border: none;
-  color: var(--primary-deep, #E65100);
+  color: #2E844A;
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -241,5 +244,5 @@ function onBarClick(_, __, opts) {
   border-radius: 6px;
   transition: background 0.15s;
 }
-.ic-cta:hover { background: rgba(245, 124, 0, 0.08); }
+.ic-cta:hover { background: rgba(46, 132, 74, 0.08); }
 </style>

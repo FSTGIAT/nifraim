@@ -1,14 +1,14 @@
 import { Easing, interpolate, spring, useVideoConfig } from 'remotion'
 
 const FONT = "'Heebo', sans-serif"
-const BRAND = '#F57C00'
-const BRAND_DEEP = '#E65100'
-const HAIRLINE = '#F2D9BC'
+const BRAND = '#181818'      // ink (--primary)
+const BRAND_DEEP = '#000000' // --primary-deep
+const HAIRLINE = '#E5E5E5'
 
 /**
  * Prominent caption banner at the TOP of a screenshot slide — Hebrew RTL.
- * The per-slide explanation is the headline: large, bold, ORANGE, on a faintly
- * tinted banner with a thick orange accent bar. Animates with a zoom-in pop on
+ * The per-slide explanation is the headline: large, bold, ink, on a faintly
+ * tinted banner with a thick ink accent bar. Animates with a zoom-in pop on
  * entry and a zoom-out push on exit so the viewer's eye is drawn to it.
  */
 export function Caption({
@@ -62,15 +62,15 @@ export function Caption({
           direction: 'rtl',
           fontFamily: FONT,
           maxWidth: 1700,
-          background: 'linear-gradient(180deg, #FFFFFF 0%, #FFF4E6 100%)',
+          background: 'linear-gradient(180deg, #FFFFFF 0%, #F3F3F3 100%)',
           border: `1.5px solid ${HAIRLINE}`,
           borderRadius: 20,
           padding: '20px 22px 20px 34px',
-          boxShadow: `0 22px 52px rgba(230,81,0,0.20), 0 4px 14px rgba(26,20,16,0.10)`,
+          boxShadow: `0 22px 52px rgba(24,24,24,0.16), 0 4px 14px rgba(26,20,16,0.10)`,
           overflow: 'hidden',
         }}
       >
-        {/* thick orange leading-edge accent bar */}
+        {/* thick ink leading-edge accent bar */}
         <div
           style={{
             flex: 'none',

@@ -175,7 +175,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { setupState, closeSetup } from '../../utils/setupState.js'
-import { useSetupPipeline } from '../../composables/useSetupPipeline.js'
+import { useSetupPipeline, SETUP_ACCENTS } from '../../composables/useSetupPipeline.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import api from '../../api/client.js'
 import WorkerVisual from './setup-visuals/WorkerVisual.vue'
@@ -189,13 +189,7 @@ const store = usePortalAutomationStore()
 const setup = useSetupPipeline()
 const { steps, completedCount, allDone, firstIncompleteId } = setup
 
-// Pastel accent per step — one hue per mission (mirrors SetupProgressCard).
-const ACCENTS = {
-  worker: { accent: '#E8930C', deep: '#9A5B00', soft: '#FDF1DC', tint: '#FFFAF1' },
-  phone:  { accent: '#4E9DD0', deep: '#2C6E9E', soft: '#E7F2FA', tint: '#F5FAFD' },
-  portal: { accent: '#8E6FD6', deep: '#5F429F', soft: '#EFEAFA', tint: '#F9F7FD' },
-  run:    { accent: '#1FA88C', deep: '#0E7A64', soft: '#E4F5F0', tint: '#F3FBF8' },
-}
+const ACCENTS = SETUP_ACCENTS
 const DONE = { accent: '#2E844A', soft: '#EAF5EE' }
 
 const fallbackVisuals = { worker: WorkerVisual, phone: PhoneVisual, portal: PortalVisual, run: RunVisual }
@@ -335,7 +329,7 @@ function markerStyle(s) {
 
 function ctaStyle(id) {
   const a = ACCENTS[id]
-  return { background: a.accent, boxShadow: `0 4px 12px ${a.accent}55` }
+  return { background: a.deep, boxShadow: `0 4px 12px ${a.accent}55` } // deep: white text on sky/teal accents fails 4.5:1
 }
 
 // Once the phone connects (token now exists), bounce the user back to the
@@ -387,7 +381,7 @@ async function downloadInstaller() {
 }
 
 function confettiStyle(n) {
-  const colors = ['#E8930C', '#4E9DD0', '#8E6FD6', '#1FA88C', '#2E844A']
+  const colors = [...Object.values(ACCENTS).map((a) => a.accent), DONE.accent]
   return {
     left: `${(n * 61) % 100}%`,
     background: colors[n % colors.length],
@@ -514,8 +508,8 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--primary-deep, #E65100);
-  background: var(--primary-light, #FFF3E0);
+  color: #0A6664; /* automation ink — orange is the CTA colour, not a label */
+  background: var(--tab-automation-wash);
   border-radius: 999px;
   padding: 4px 12px;
   margin-bottom: 10px;
@@ -546,10 +540,10 @@ onBeforeUnmount(() => {
   background: #EAF5EE;
   border-color: rgba(46, 132, 74, 0.16);
 }
-.spm-step--active.spm-step--worker { background: #FFFAF1; border-color: #E8930C; box-shadow: 0 8px 22px rgba(232, 147, 12, 0.14); }
-.spm-step--active.spm-step--phone  { background: #F5FAFD; border-color: #4E9DD0; box-shadow: 0 8px 22px rgba(78, 157, 208, 0.14); }
-.spm-step--active.spm-step--portal { background: #F9F7FD; border-color: #8E6FD6; box-shadow: 0 8px 22px rgba(142, 111, 214, 0.14); }
-.spm-step--active.spm-step--run    { background: #F3FBF8; border-color: #1FA88C; box-shadow: 0 8px 22px rgba(31, 168, 140, 0.14); }
+.spm-step--active.spm-step--worker { background: #FAF8FC; border-color: #8E44AD; box-shadow: 0 8px 22px rgba(142, 68, 173, 0.14); }
+.spm-step--active.spm-step--phone  { background: #F8FBFD; border-color: #4E9DD0; box-shadow: 0 8px 22px rgba(78, 157, 208, 0.14); }
+.spm-step--active.spm-step--portal { background: #FDF7F9; border-color: #D6336C; box-shadow: 0 8px 22px rgba(214, 51, 108, 0.14); }
+.spm-step--active.spm-step--run    { background: #F5FAFA; border-color: #0E8C8A; box-shadow: 0 8px 22px rgba(14, 140, 138, 0.14); }
 
 .spm-step-head {
   display: flex;
@@ -670,7 +664,7 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   color: var(--text-secondary, #3E3E3C);
   background: #fff;
-  border: 1px solid rgba(232, 147, 12, 0.14);
+  border: 1px solid rgba(142, 68, 173, 0.14);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -723,8 +717,8 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 700;
   background: #fff;
-  color: #9A5B00;
-  border: 1px solid rgba(232, 147, 12, 0.3);
+  color: #6C2E87;
+  border: 1px solid rgba(142, 68, 173, 0.3);
 }
 .spm-worker-pill--on { background: #EAF5EE; color: var(--accent-emerald, #2E844A); border-color: rgba(46, 132, 74, 0.3); }
 .spm-worker-dot { width: 8px; height: 8px; border-radius: 50%; background: #F0B429; animation: spm-blink 1.4s ease-in-out infinite; }
@@ -748,22 +742,22 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   padding: 11px 13px;
   border-radius: 11px;
-  background: #FDF1DC;
-  border: 1px solid rgba(232, 147, 12, 0.25);
+  background: #F1E9F5;
+  border: 1px solid rgba(142, 68, 173, 0.25);
   font-size: 12.5px;
   line-height: 1.55;
-  color: #6B4A0E;
+  color: #6C2E87;
 }
 .spm-install-texts { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.spm-install-bar { display: block; height: 6px; border-radius: 3px; background: rgba(232, 147, 12, 0.18); overflow: hidden; }
-.spm-install-fill { display: block; height: 100%; border-radius: 3px; background: #E8930C; transition: width 0.6s ease; }
+.spm-install-bar { display: block; height: 6px; border-radius: 3px; background: rgba(142, 68, 173, 0.18); overflow: hidden; }
+.spm-install-fill { display: block; height: 100%; border-radius: 3px; background: #8E44AD; transition: width 0.6s ease; }
 .spm-install-spinner {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2.5px solid rgba(232, 147, 12, 0.25);
-  border-top-color: #E8930C;
+  border: 2.5px solid rgba(142, 68, 173, 0.25);
+  border-top-color: #8E44AD;
   animation: spm-spin 0.9s linear infinite;
 }
 @keyframes spm-spin { to { transform: rotate(360deg); } }
@@ -782,8 +776,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  background: #FFF8E9;
-  border-color: rgba(232, 147, 12, 0.35);
+  background: var(--amber-light);
+  border-color: rgba(201, 162, 39, 0.35);
 }
 .spm-install--stuck ul { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 4px; }
 .spm-install--stuck code { background: #F4F0EA; padding: 0 5px; border-radius: 4px; font-size: 11px; direction: ltr; display: inline-block; }

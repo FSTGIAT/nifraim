@@ -65,13 +65,16 @@
       <div class="strip-divider"></div>
 
       <!-- Home button -->
-      <button class="strip-pill home-pill" @click="$emit('go-home')">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7"/>
-          <rect x="14" y="3" width="7" height="7"/>
-          <rect x="3" y="14" width="7" height="7"/>
-          <rect x="14" y="14" width="7" height="7"/>
-        </svg>
+      <button class="strip-pill home-pill" type="button" aria-label="מסך הבית" title="מסך הבית" @click="$emit('go-home')">
+        <span class="strip-icon">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+        </span>
       </button>
 
       <!-- Mount-point for anything WorkspaceView
@@ -475,15 +478,12 @@ const tabs = [
   flex-shrink: 0;
 }
 
-.home-pill {
-  padding: 7px 10px;
-  color: var(--text-muted);
-}
-
+.home-pill { padding: 7px 10px; }
 .home-pill:hover {
-  color: var(--primary);
-  background: var(--primary-glow);
+  color: var(--text);
+  background: var(--glass-hover);
 }
+.home-pill:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 
 /* ═══════════════════════════════════

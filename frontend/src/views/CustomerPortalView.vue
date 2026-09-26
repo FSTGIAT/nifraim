@@ -105,7 +105,7 @@ function onLogout() {
   --red: #EA001E;
   --red-deep: #C23934;
   --red-light: #FEF1EE;
-  --amber: #E8720A;
+  --amber: #8A6300;
   --amber-light: #FFF3E0;
   --shadow-sm: 0 1px 3px rgba(26, 39, 51, 0.06);
   --shadow-md: 0 2px 8px rgba(26, 39, 51, 0.07);

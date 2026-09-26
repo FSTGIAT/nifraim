@@ -36,7 +36,7 @@ export function KpiComposition(props: VizKpi) {
         direction: 'rtl',
         fontFamily: FONT,
         background:
-          'radial-gradient(circle at top left, rgba(245,124,0,0.08), transparent 60%), #ffffff',
+          'radial-gradient(circle at top left, rgba(183,156,235,0.08), transparent 60%), #ffffff',
         color: '#181818',
         display: 'flex',
         flexDirection: 'column',

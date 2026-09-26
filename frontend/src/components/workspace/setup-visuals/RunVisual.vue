@@ -2,21 +2,21 @@
   <div class="sv sv-run" aria-hidden="true">
     <svg viewBox="0 0 440 330" fill="none">
       <!-- dashboard window -->
-      <rect x="60" y="58" width="252" height="204" rx="14" fill="#fff" stroke="#EAD9C6" stroke-width="2.5"/>
-      <rect x="60" y="58" width="252" height="32" rx="14" fill="#FDF1E3"/>
-      <rect x="60" y="76" width="252" height="14" fill="#FDF1E3"/>
-      <circle cx="294" cy="74" r="4" fill="#F57C00"/>
-      <circle cx="280" cy="74" r="4" fill="#FFB74D"/>
-      <circle cx="266" cy="74" r="4" fill="#F5C08A"/>
+      <rect x="60" y="58" width="252" height="204" rx="14" fill="#fff" stroke="#A9BBBA" stroke-width="2.5"/>
+      <rect x="60" y="58" width="252" height="32" rx="14" fill="#BDCAC9"/>
+      <rect x="60" y="76" width="252" height="14" fill="#BDCAC9"/>
+      <circle cx="294" cy="74" r="4" fill="#0E8C8A"/>
+      <circle cx="280" cy="74" r="4" fill="#5FB3B1"/>
+      <circle cx="266" cy="74" r="4" fill="#6EC3C2"/>
 
       <!-- growing bars -->
       <g>
-        <rect class="svr-bar svr-bar-1" x="96" y="120" width="34" height="118" rx="8" fill="#FFB74D"/>
-        <rect class="svr-bar svr-bar-2" x="146" y="120" width="34" height="118" rx="8" fill="#F57C00"/>
-        <rect class="svr-bar svr-bar-3" x="196" y="120" width="34" height="118" rx="8" fill="#E65100"/>
-        <rect class="svr-bar svr-bar-4" x="246" y="120" width="34" height="118" rx="8" fill="#FFCC80"/>
+        <rect class="svr-bar svr-bar-1" x="96" y="120" width="34" height="118" rx="8" fill="#5FB3B1"/>
+        <rect class="svr-bar svr-bar-2" x="146" y="120" width="34" height="118" rx="8" fill="#0E8C8A"/>
+        <rect class="svr-bar svr-bar-3" x="196" y="120" width="34" height="118" rx="8" fill="#0A6664"/>
+        <rect class="svr-bar svr-bar-4" x="246" y="120" width="34" height="118" rx="8" fill="#9FD1D0"/>
       </g>
-      <line x1="84" y1="238" x2="292" y2="238" stroke="#EAD9C6" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="84" y1="238" x2="292" y2="238" stroke="#A9BBBA" stroke-width="2.5" stroke-linecap="round"/>
 
       <!-- check pops above bars -->
       <g class="svr-check svr-check-1">
@@ -38,17 +38,17 @@
 
       <!-- big play button -->
       <g class="svr-play">
-        <circle cx="352" cy="230" r="38" fill="#F57C00"/>
-        <circle class="svr-play-ring" cx="352" cy="230" r="38" stroke="#F57C00" stroke-width="3"/>
+        <circle cx="352" cy="230" r="38" fill="#0E8C8A"/>
+        <circle class="svr-play-ring" cx="352" cy="230" r="38" stroke="#0E8C8A" stroke-width="3"/>
         <path d="M341 212l32 18-32 18z" fill="#fff"/>
       </g>
 
       <!-- sparkles -->
       <g class="svr-spark svr-spark-1">
-        <path d="M348 92l4 9 9 4-9 4-4 9-4-9-9-4 9-4z" fill="#FFB74D"/>
+        <path d="M348 92l4 9 9 4-9 4-4 9-4-9-9-4 9-4z" fill="#5FB3B1"/>
       </g>
       <g class="svr-spark svr-spark-2">
-        <path d="M96 280l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#F5C08A"/>
+        <path d="M96 280l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#6EC3C2"/>
       </g>
     </svg>
   </div>

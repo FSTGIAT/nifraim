@@ -22,9 +22,10 @@ if (typeof window !== 'undefined' && import.meta.env?.DEV) {
   }
 }
 
-// Nifraim-tinted demo palette: brand orange replaces brown.
-const SHADER_COLORS_MAIN = ['#000000', '#E8660A', '#ffffff', '#3E2723', '#5D4037']
-const SHADER_COLORS_WIRE = ['#000000', '#ffffff', '#E8660A', '#000000']
+// Nifraim-tinted demo palette: cobalt (CHART_PALETTE #2F73C4) replaces brown.
+// Orange retired 2026-09-26.
+const SHADER_COLORS_MAIN = ['#000000', '#2F73C4', '#ffffff', '#1F3A5C', '#2C5F6B']
+const SHADER_COLORS_WIRE = ['#000000', '#ffffff', '#2F73C4', '#000000']
 
 // Tiny error boundary so a shader runtime error doesn't blank the hero.
 class ShaderBoundary extends React.Component<

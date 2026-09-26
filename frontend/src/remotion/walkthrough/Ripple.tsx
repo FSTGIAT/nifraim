@@ -1,6 +1,6 @@
 import { interpolate } from 'remotion'
 
-const BRAND = '#F57C00'
+const BRAND = '#181818' // ink (--primary); 6-digit hex — alpha is appended below
 
 /**
  * Click ripple + glow, centered on a canvas point. `frame` is the local frame

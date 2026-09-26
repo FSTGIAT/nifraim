@@ -476,7 +476,7 @@ function fmtCell(val) {
 
 .p-production-only {
   border-right: 3px solid var(--amber);
-  background: rgba(232, 114, 10, 0.03);
+  background: rgba(201, 162, 39, 0.03);
 }
 
 .p-commission {
@@ -519,7 +519,7 @@ function fmtCell(val) {
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(245, 124, 0, 0.06);
+  background: rgba(46, 132, 74, 0.06);
   color: var(--primary);
 }
 
@@ -528,9 +528,9 @@ function fmtCell(val) {
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 6px;
-  background: rgba(232, 114, 10, 0.08);
+  background: rgba(201, 162, 39, 0.08);
   color: var(--amber);
-  border: 1px solid rgba(232, 114, 10, 0.12);
+  border: 1px solid rgba(201, 162, 39, 0.12);
 }
 
 /* Amounts grid — right side */

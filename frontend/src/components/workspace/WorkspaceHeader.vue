@@ -510,7 +510,7 @@ onBeforeUnmount(() => {
 .settings-link-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(245, 124, 0, 0.04);
+  background: var(--primary-glow);
 }
 
 .settings-label {
@@ -654,8 +654,8 @@ onBeforeUnmount(() => {
 }
 
 .sub-status.cancelled {
-  background: rgba(232, 114, 10, 0.1);
-  color: #E8720A;
+  background: rgba(201, 162, 39, 0.1);
+  color: #8A6300;
 }
 
 .sub-status.expired {

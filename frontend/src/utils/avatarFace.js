@@ -20,7 +20,7 @@ import { hashSeed, makeRng } from './avatarSeed.js'
 
 const SKIN = ['#F5D0B0', '#EFC09A', '#E0A878', '#C98A5E', '#A26A45', '#7A4B2E']
 const HAIR = ['#2B2118', '#4A3423', '#7B4B2A', '#B5793B', '#C9A227', '#8E8E93', '#3E4A78', '#8E44AD']
-const CLOTH = ['#2F73C4', '#0E8C8A', '#8E44AD', '#E84A7F', '#3DB6B0', '#4A8B2C', '#F9A937']
+const CLOTH = ['#2F73C4', '#0E8C8A', '#8E44AD', '#E84A7F', '#3DB6B0', '#4A8B2C', '#C9A227']
 
 /** One deterministic 0..1 value per (seed, feature) — independent of the others. */
 const roll = (seed, feature) => makeRng(hashSeed(`${seed}:${feature}`))()

@@ -33,7 +33,7 @@ export const SplashedPushNotifications = forwardRef<SplashedPushNotificationsHan
       if (document.getElementById('splashed-toast-css')) return;
       const style = document.createElement('style');
       style.id = 'splashed-toast-css';
-      // Tuned to match the Nifraim cream + warm-orange palette. Smaller
+      // Tuned to match the Nifraim cream + ink palette (orange retired). Smaller
       // type scale and softer fills than the upstream component default.
       style.innerHTML = `
         .notificationContainer { display: flex; flex-direction: column; align-items: flex-end; position: fixed; bottom: 18px; right: 18px; max-width: 320px; gap: 8px; z-index: 999999; font-family: 'Heebo', sans-serif; }
@@ -54,7 +54,7 @@ export const SplashedPushNotifications = forwardRef<SplashedPushNotificationsHan
           min-width: 240px;
         }
         .timer { position: absolute; bottom: 0; left: 10%; right: 10%; width: 80%; height: 3px; background: var(--splashed-toast-timer-bg, rgba(26,20,16,0.08)); border-radius: 2px; overflow: hidden; }
-        .timerLeft, .timerRight { position: absolute; top: 0; height: 100%; left: 0; background-color: var(--splashed-toast-timer, var(--clr, #F57C00)); }
+        .timerLeft, .timerRight { position: absolute; top: 0; height: 100%; left: 0; background-color: var(--splashed-toast-timer, var(--clr, #181818)); }
         /* Splash decoration — same radial-gradient artwork, scaled down. */
         .toast:before {
           content: "";
@@ -73,7 +73,7 @@ export const SplashedPushNotifications = forwardRef<SplashedPushNotificationsHan
                       radial-gradient(circle at 40% 0.7rem, var(--clr) 0.09rem, #fff0 calc(0.09rem + 1px)),
                       radial-gradient(circle at 20% 1.1rem, var(--clr) 0.18rem, #fff0 calc(0.18rem + 1px)),
                       var(--drop),
-                      var(--toast-splash, rgba(245, 124, 0, 0.08));
+                      var(--toast-splash, rgba(24, 24, 24, 0.08));
           background-repeat: no-repeat;
           background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 1.15rem 1.15rem, 1.15rem 1.15rem, 100% 100%, 100% 100%;
           background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, calc(100% - 1.2rem) 2rem, calc(100% - 1.2rem) 2.05rem, 0 0, 0 0;
@@ -102,8 +102,8 @@ export const SplashedPushNotifications = forwardRef<SplashedPushNotificationsHan
         .toast p { position: relative; font-size: 0.78rem; line-height: 1.15rem; z-index: 1; margin: 0.22rem 0 0; font-weight: 500; color: var(--toast-body, #4A4035); }
         /* Palette — warm/cream backgrounds with the type accent reserved for the splash dot + left edge */
         .toast.success { --clr: #16A34A; --toast-splash: rgba(22, 163, 74, 0.10); border-inline-start: 3px solid #16A34A; }
-        .toast.help    { --clr: #F57C00; --toast-splash: rgba(245, 124, 0, 0.10); border-inline-start: 3px solid #F57C00; }
-        .toast.warning { --clr: #D97706; --toast-splash: rgba(217, 119, 6, 0.10); border-inline-start: 3px solid #D97706; }
+        .toast.help    { --clr: #181818; --toast-splash: rgba(24, 24, 24, 0.08); border-inline-start: 3px solid #181818; } /* ink (--primary); orange retired */
+        .toast.warning { --clr: #8A6300; --toast-splash: rgba(217, 119, 6, 0.10); border-inline-start: 3px solid #8A6300; }
         .toast.error   { --clr: #DC2626; --toast-splash: rgba(220, 38, 38, 0.10); border-inline-start: 3px solid #DC2626; }
         .closeButton {
           position: absolute;

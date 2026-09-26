@@ -242,10 +242,10 @@
           <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="rwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-                <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-                <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-                <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+                <stop offset="0%" stop-color="#0FA39B" stop-opacity="0.10"/>
+                <stop offset="30%" stop-color="#0FA39B" stop-opacity="0.06"/>
+                <stop offset="60%" stop-color="#0FA39B" stop-opacity="0.10"/>
+                <stop offset="100%" stop-color="#0FA39B" stop-opacity="0.05"/>
               </linearGradient>
             </defs>
             <path fill="url(#rwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -253,10 +253,10 @@
           <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="rwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-                <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-                <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-                <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-                <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+                <stop offset="0%" stop-color="#0FA39B" stop-opacity="0.08"/>
+                <stop offset="40%" stop-color="#0FA39B" stop-opacity="0.05"/>
+                <stop offset="70%" stop-color="#0FA39B" stop-opacity="0.08"/>
+                <stop offset="100%" stop-color="#0FA39B" stop-opacity="0.04"/>
               </linearGradient>
             </defs>
             <path fill="url(#rwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -264,9 +264,9 @@
           <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="rwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-                <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-                <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+                <stop offset="0%" stop-color="#0FA39B" stop-opacity="0.06"/>
+                <stop offset="50%" stop-color="#0FA39B" stop-opacity="0.04"/>
+                <stop offset="100%" stop-color="#0FA39B" stop-opacity="0.07"/>
               </linearGradient>
             </defs>
             <path fill="url(#rwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -751,8 +751,8 @@ watch(() => innerTab.value, (tab) => {
   height: 220px;
   top: 10%;
   right: -60px;
-  background: rgba(245, 124, 0, 0.045);
-  border: 1px solid rgba(245, 124, 0, 0.06);
+  background: rgba(15, 163, 155, 0.045);
+  border: 1px solid rgba(15, 163, 155, 0.06);
   animation: floatBob 8s ease-in-out infinite;
 }
 
@@ -761,8 +761,8 @@ watch(() => innerTab.value, (tab) => {
   height: 160px;
   bottom: 25%;
   left: -40px;
-  background: rgba(245, 124, 0, 0.035);
-  border: 1px solid rgba(245, 124, 0, 0.05);
+  background: rgba(15, 163, 155, 0.035);
+  border: 1px solid rgba(15, 163, 155, 0.05);
   animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 
@@ -771,7 +771,7 @@ watch(() => innerTab.value, (tab) => {
   height: 90px;
   top: 30%;
   left: 8%;
-  background: rgba(245, 124, 0, 0.05);
+  background: rgba(15, 163, 155, 0.05);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 
@@ -780,8 +780,8 @@ watch(() => innerTab.value, (tab) => {
   height: 120px;
   top: 55%;
   right: 6%;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.04);
+  background: rgba(15, 163, 155, 0.03);
+  border: 1px solid rgba(15, 163, 155, 0.04);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 
@@ -790,7 +790,7 @@ watch(() => innerTab.value, (tab) => {
   height: 50px;
   top: 18%;
   right: 22%;
-  background: rgba(255, 152, 0, 0.055);
+  background: rgba(15, 163, 155, 0.055);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 
@@ -799,8 +799,8 @@ watch(() => innerTab.value, (tab) => {
   height: 280px;
   bottom: 8%;
   right: -90px;
-  background: rgba(245, 124, 0, 0.025);
-  border: 1px solid rgba(245, 124, 0, 0.035);
+  background: rgba(15, 163, 155, 0.025);
+  border: 1px solid rgba(15, 163, 155, 0.035);
   animation: floatBob 12s ease-in-out infinite 0.5s;
 }
 
@@ -1308,7 +1308,7 @@ watch(() => innerTab.value, (tab) => {
   font-size: 13px; font-weight: 700; font-family: inherit;
   border: none; cursor: pointer; transition: all 0.2s;
 }
-.btn-upload-compact:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,124,0,0.2); }
+.btn-upload-compact:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(24, 24, 24, 0.2); }
 
 .prod-file-info {
   display: flex; align-items: center; gap: 8px;
@@ -1593,7 +1593,7 @@ watch(() => innerTab.value, (tab) => {
   border-color: var(--primary);
   background: var(--primary-light);
   color: var(--primary);
-  box-shadow: 0 2px 8px rgba(245, 124, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(24, 24, 24, 0.1);
 }
 
 .portal-badge {

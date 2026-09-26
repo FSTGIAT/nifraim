@@ -545,12 +545,12 @@ async function handleCompare(currentId, previousId) {
   padding: 12px 16px;
   cursor: pointer;
   user-select: none;
-  background: linear-gradient(180deg, rgba(245, 124, 0, 0.04), rgba(245, 124, 0, 0.01));
+  background: linear-gradient(180deg, rgba(47, 115, 196, 0.04), rgba(47, 115, 196, 0.01));
   transition: background 0.15s;
 }
-.month-head:hover { background: rgba(245, 124, 0, 0.07); }
+.month-head:hover { background: rgba(47, 115, 196, 0.07); }
 .month-chevron {
-  color: var(--primary, #F57C00);
+  color: var(--primary);
   transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
   flex-shrink: 0;
 }
@@ -564,8 +564,8 @@ async function handleCompare(currentId, previousId) {
 .month-count {
   font-size: 11.5px;
   font-weight: 700;
-  color: var(--primary-deep, #E65100);
-  background: rgba(245, 124, 0, 0.10);
+  color: var(--primary-deep);
+  background: rgba(47, 115, 196, 0.10);
   padding: 3px 9px;
   border-radius: 999px;
 }
@@ -590,14 +590,14 @@ async function handleCompare(currentId, previousId) {
   transition: background 0.15s;
 }
 .hist-file:last-child { border-bottom: none; }
-.hist-file:hover { background: rgba(245, 124, 0, 0.03); }
+.hist-file:hover { background: rgba(47, 115, 196, 0.03); }
 .hf-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 .hf-icon {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.12), rgba(255, 152, 0, 0.06));
-  color: var(--primary-deep, #E65100);
+  background: linear-gradient(135deg, rgba(47, 115, 196, 0.12), rgba(47, 115, 196, 0.06));
+  color: var(--primary-deep);
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -619,7 +619,7 @@ async function handleCompare(currentId, previousId) {
   align-items: center;
 }
 .hf-meta > span { white-space: nowrap; }
-.hf-time { color: var(--primary-deep, #E65100); font-weight: 600; }
+.hf-time { color: var(--primary-deep); font-weight: 600; }
 .hf-download {
   width: 30px;
   height: 30px;
@@ -633,8 +633,8 @@ async function handleCompare(currentId, previousId) {
   flex-shrink: 0;
 }
 .hf-download:hover {
-  background: rgba(245, 124, 0, 0.12);
-  color: var(--primary-deep, #E65100);
+  background: rgba(47, 115, 196, 0.12);
+  color: var(--primary-deep);
 }
 
 .loading-state {
@@ -929,7 +929,7 @@ async function handleCompare(currentId, previousId) {
 .cs-btn-primary:hover {
   background: var(--primary-deep);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 6px 20px rgba(24, 24, 24, 0.25);
 }
 
 .cs-btn-ghost {

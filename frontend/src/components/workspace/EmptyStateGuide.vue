@@ -14,10 +14,10 @@
       <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient :id="gid + 'a'" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-            <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+            <stop offset="0%" stop-color="#181818" stop-opacity="0.10"/>
+            <stop offset="30%" stop-color="#181818" stop-opacity="0.06"/>
+            <stop offset="60%" stop-color="#181818" stop-opacity="0.10"/>
+            <stop offset="100%" stop-color="#181818" stop-opacity="0.05"/>
           </linearGradient>
         </defs>
         <path :fill="`url(#${gid}a)`" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -25,10 +25,10 @@
       <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient :id="gid + 'b'" x1="100%" y1="0%" x2="0%" y2="0%">
-            <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-            <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-            <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-            <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+            <stop offset="0%" stop-color="#181818" stop-opacity="0.08"/>
+            <stop offset="40%" stop-color="#181818" stop-opacity="0.05"/>
+            <stop offset="70%" stop-color="#181818" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#181818" stop-opacity="0.04"/>
           </linearGradient>
         </defs>
         <path :fill="`url(#${gid}b)`" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -36,9 +36,9 @@
       <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
         <defs>
           <linearGradient :id="gid + 'c'" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-            <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-            <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+            <stop offset="0%" stop-color="#181818" stop-opacity="0.06"/>
+            <stop offset="50%" stop-color="#181818" stop-opacity="0.04"/>
+            <stop offset="100%" stop-color="#181818" stop-opacity="0.07"/>
           </linearGradient>
         </defs>
         <path :fill="`url(#${gid}c)`" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -128,12 +128,12 @@ function onCta() {
   width: 56px;
   height: 56px;
   margin: 0 auto;
-  background: var(--primary-light, #FFF3E0);
+  background: var(--esg-wash, var(--primary-light));
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary, #F57C00);
+  color: var(--esg-accent, var(--primary));
 }
 
 .esg-title {
@@ -157,16 +157,16 @@ function onCta() {
   padding: 10px 20px;
   border: none;
   border-radius: 10px;
-  background: var(--primary, #F57C00);
+  background: var(--esg-accent, var(--primary));
   color: #fff;
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(245, 124, 0, 0.28);
+  box-shadow: 0 3px 10px rgba(24, 24, 24, 0.28);
   transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
 }
-.esg-cta:hover { background: var(--primary-deep, #E65100); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(245, 124, 0, 0.34); }
+.esg-cta:hover { background: var(--esg-accent, var(--primary-deep)); filter: brightness(0.92); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(24, 24, 24, 0.34); }
 .esg-cta:active { transform: translateY(0); }
 
 /* ── INLINE variant ── */
@@ -215,13 +215,13 @@ function onCta() {
   pointer-events: none;
   z-index: 0;
 }
-.fc-1 { width: 220px; height: 220px; top: 10%; right: -60px; background: rgba(245, 124, 0, 0.045); border: 1px solid rgba(245, 124, 0, 0.06); animation: esgFloatBob 8s ease-in-out infinite; }
-.fc-2 { width: 160px; height: 160px; bottom: 25%; left: -40px; background: rgba(245, 124, 0, 0.035); border: 1px solid rgba(245, 124, 0, 0.05); animation: esgFloatBob 6.5s ease-in-out infinite reverse; }
-.fc-3 { width: 90px; height: 90px; top: 30%; left: 8%; background: rgba(245, 124, 0, 0.05); animation: esgFloatBob 10s ease-in-out infinite 2s; }
-.fc-4 { width: 120px; height: 120px; top: 55%; right: 6%; background: rgba(245, 124, 0, 0.03); border: 1px solid rgba(245, 124, 0, 0.04); animation: esgFloatBob 9s ease-in-out infinite 1s; }
-.fc-5 { width: 50px; height: 50px; top: 18%; right: 22%; background: rgba(255, 152, 0, 0.055); animation: esgFloatBob 7s ease-in-out infinite 3s; }
-.fc-6 { width: 280px; height: 280px; bottom: 8%; right: -90px; background: rgba(245, 124, 0, 0.025); border: 1px solid rgba(245, 124, 0, 0.035); animation: esgFloatBob 12s ease-in-out infinite 0.5s; }
-.fc-7 { width: 65px; height: 65px; bottom: 35%; left: 18%; background: rgba(255, 183, 77, 0.06); border: 1px solid rgba(255, 183, 77, 0.05); animation: esgFloatBob 8.5s ease-in-out infinite reverse 1.5s; }
+.fc-1 { width: 220px; height: 220px; top: 10%; right: -60px; background: rgba(24, 24, 24, 0.045); border: 1px solid rgba(24, 24, 24, 0.06); animation: esgFloatBob 8s ease-in-out infinite; }
+.fc-2 { width: 160px; height: 160px; bottom: 25%; left: -40px; background: rgba(24, 24, 24, 0.035); border: 1px solid rgba(24, 24, 24, 0.05); animation: esgFloatBob 6.5s ease-in-out infinite reverse; }
+.fc-3 { width: 90px; height: 90px; top: 30%; left: 8%; background: rgba(24, 24, 24, 0.05); animation: esgFloatBob 10s ease-in-out infinite 2s; }
+.fc-4 { width: 120px; height: 120px; top: 55%; right: 6%; background: rgba(24, 24, 24, 0.03); border: 1px solid rgba(24, 24, 24, 0.04); animation: esgFloatBob 9s ease-in-out infinite 1s; }
+.fc-5 { width: 50px; height: 50px; top: 18%; right: 22%; background: rgba(24, 24, 24, 0.055); animation: esgFloatBob 7s ease-in-out infinite 3s; }
+.fc-6 { width: 280px; height: 280px; bottom: 8%; right: -90px; background: rgba(24, 24, 24, 0.025); border: 1px solid rgba(24, 24, 24, 0.035); animation: esgFloatBob 12s ease-in-out infinite 0.5s; }
+.fc-7 { width: 65px; height: 65px; bottom: 35%; left: 18%; background: rgba(24, 24, 24, 0.06); border: 1px solid rgba(24, 24, 24, 0.05); animation: esgFloatBob 8.5s ease-in-out infinite reverse 1.5s; }
 
 @keyframes esgFloatBob {
   0%, 100% { transform: translateY(0) rotate(0deg); }

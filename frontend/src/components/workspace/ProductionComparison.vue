@@ -25,10 +25,10 @@
         <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
           <defs>
             <linearGradient id="pcwg1" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/>
-              <stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/>
-              <stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/>
-              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/>
+              <stop offset="0%" stop-color="#2F73C4" stop-opacity="0.10"/>
+              <stop offset="30%" stop-color="#2F73C4" stop-opacity="0.06"/>
+              <stop offset="60%" stop-color="#2F73C4" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="#2F73C4" stop-opacity="0.05"/>
             </linearGradient>
           </defs>
           <path fill="url(#pcwg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
@@ -36,10 +36,10 @@
         <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
           <defs>
             <linearGradient id="pcwg2" x1="100%" y1="0%" x2="0%" y2="0%">
-              <stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/>
-              <stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/>
-              <stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/>
-              <stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/>
+              <stop offset="0%" stop-color="#2F73C4" stop-opacity="0.08"/>
+              <stop offset="40%" stop-color="#2F73C4" stop-opacity="0.05"/>
+              <stop offset="70%" stop-color="#2F73C4" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="#2F73C4" stop-opacity="0.04"/>
             </linearGradient>
           </defs>
           <path fill="url(#pcwg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
@@ -47,9 +47,9 @@
         <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
           <defs>
             <linearGradient id="pcwg3" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/>
-              <stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/>
-              <stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/>
+              <stop offset="0%" stop-color="#2F73C4" stop-opacity="0.06"/>
+              <stop offset="50%" stop-color="#2F73C4" stop-opacity="0.04"/>
+              <stop offset="100%" stop-color="#2F73C4" stop-opacity="0.07"/>
             </linearGradient>
           </defs>
           <path fill="url(#pcwg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
@@ -1205,7 +1205,7 @@ onBeforeUnmount(() => {
 const CATEGORIES = [
   { key: 'new', label: 'חדשים', color: '#2E844A' },
   { key: 'removed', label: 'הוסרו', color: '#C23934' },
-  { key: 'changed', label: 'שונו', color: '#E8720A' },
+  { key: 'changed', label: 'שונו', color: '#8A6300' },
   { key: 'unchanged', label: 'ללא שינוי', color: '#706E6B' },
 ]
 
@@ -1340,7 +1340,7 @@ const changedByCompany = computed(() => {
 
 // ===== Changed Insights =====
 const CHANGE_TYPES = [
-  { field: 'פרמיה', label: 'פרמיה', color: '#F57C00' },
+  { field: 'פרמיה', label: 'פרמיה', color: '#2F73C4' },
   { field: 'צבירה', label: 'צבירה', color: '#2E844A' },
   { field: 'מוצרים', label: 'מוצרים', color: '#7F56D9' },
 ]
@@ -1976,46 +1976,46 @@ function formatVal(val) {
 .fc-1 {
   width: 220px; height: 220px;
   top: 10%; right: -60px;
-  background: rgba(245, 124, 0, 0.045);
-  border: 1px solid rgba(245, 124, 0, 0.06);
+  background: rgba(47, 115, 196, 0.045);
+  border: 1px solid rgba(47, 115, 196, 0.06);
   animation: floatBob 8s ease-in-out infinite;
 }
 
 .fc-2 {
   width: 160px; height: 160px;
   bottom: 25%; left: -40px;
-  background: rgba(245, 124, 0, 0.035);
-  border: 1px solid rgba(245, 124, 0, 0.05);
+  background: rgba(47, 115, 196, 0.035);
+  border: 1px solid rgba(47, 115, 196, 0.05);
   animation: floatBob 6.5s ease-in-out infinite reverse;
 }
 
 .fc-3 {
   width: 90px; height: 90px;
   top: 30%; left: 8%;
-  background: rgba(245, 124, 0, 0.05);
+  background: rgba(47, 115, 196, 0.05);
   animation: floatBob 10s ease-in-out infinite 2s;
 }
 
 .fc-4 {
   width: 120px; height: 120px;
   top: 55%; right: 6%;
-  background: rgba(245, 124, 0, 0.03);
-  border: 1px solid rgba(245, 124, 0, 0.04);
+  background: rgba(47, 115, 196, 0.03);
+  border: 1px solid rgba(47, 115, 196, 0.04);
   animation: floatBob 9s ease-in-out infinite 1s;
 }
 
 .fc-5 {
   width: 50px; height: 50px;
   top: 18%; right: 22%;
-  background: rgba(255, 152, 0, 0.055);
+  background: rgba(47, 115, 196, 0.055);
   animation: floatBob 7s ease-in-out infinite 3s;
 }
 
 .fc-6 {
   width: 280px; height: 280px;
   bottom: 8%; right: -90px;
-  background: rgba(245, 124, 0, 0.025);
-  border: 1px solid rgba(245, 124, 0, 0.035);
+  background: rgba(47, 115, 196, 0.025);
+  border: 1px solid rgba(47, 115, 196, 0.035);
   animation: floatBob 12s ease-in-out infinite 0.5s;
 }
 
@@ -2159,7 +2159,7 @@ function formatVal(val) {
 .btn-compare:hover:not(:disabled) {
   transform: translateY(-2px);
   background: var(--primary-deep);
-  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.2);
+  box-shadow: 0 8px 24px rgba(24, 24, 24, 0.2);
 }
 
 .btn-compare:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -2460,15 +2460,15 @@ function formatVal(val) {
   position: relative;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(145deg, rgba(245, 124, 0, 0.08) 0%, rgba(245, 124, 0, 0.02) 45%, #ffffff 100%),
+    linear-gradient(145deg, rgba(47, 115, 196, 0.08) 0%, rgba(47, 115, 196, 0.02) 45%, #ffffff 100%),
     #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.18);
+  border: 1px solid rgba(47, 115, 196, 0.18);
   padding: 20px 22px;
   display: flex;
   flex-direction: column;
   gap: 18px;
   overflow: hidden;
-  box-shadow: 0 6px 22px rgba(245, 124, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 6px 22px rgba(47, 115, 196, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .comm-panel-orb {
@@ -2477,7 +2477,7 @@ function formatVal(val) {
   top: -60px;
   width: 220px;
   height: 220px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.22), transparent 70%);
+  background: radial-gradient(circle, rgba(47, 115, 196, 0.22), transparent 70%);
   border-radius: 50%;
   pointer-events: none;
   filter: blur(4px);
@@ -2505,9 +2505,9 @@ function formatVal(val) {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-production);
   color: #ffffff;
-  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 6px 16px rgba(47, 115, 196, 0.32);
   flex-shrink: 0;
 }
 
@@ -2538,8 +2538,8 @@ function formatVal(val) {
   padding: 8px 14px;
   border-radius: var(--radius-md);
   background: #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.22);
-  box-shadow: 0 2px 6px rgba(245, 124, 0, 0.08);
+  border: 1px solid rgba(47, 115, 196, 0.22);
+  box-shadow: 0 2px 6px rgba(47, 115, 196, 0.08);
 }
 
 .comm-total-label {
@@ -2557,7 +2557,7 @@ function formatVal(val) {
 .comm-expected-label {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed rgba(245, 124, 0, 0.22);
+  border-top: 1px dashed rgba(47, 115, 196, 0.22);
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
@@ -2575,7 +2575,7 @@ function formatVal(val) {
   margin-top: 2px;
 }
 .comm-gap-label.comm-gap-neg {
-  color: #E65100;
+  color: #6B4D00; /* amber ink — underpayment warning, text-safe */
 }
 
 .comm-insights-grid {
@@ -2599,7 +2599,7 @@ function formatVal(val) {
   backdrop-filter: blur(4px);
   border-radius: var(--radius-md);
   padding: 14px 16px;
-  border: 1px solid rgba(245, 124, 0, 0.14);
+  border: 1px solid rgba(47, 115, 196, 0.14);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2630,11 +2630,11 @@ function formatVal(val) {
   background:
     repeating-linear-gradient(
       135deg,
-      rgba(245, 124, 0, 0.035) 0 12px,
+      rgba(47, 115, 196, 0.035) 0 12px,
       transparent 12px 24px
     ),
     rgba(255, 255, 255, 0.85);
-  border: 1px dashed rgba(245, 124, 0, 0.32);
+  border: 1px dashed rgba(47, 115, 196, 0.32);
   justify-content: space-between;
 }
 .comm-insight-block--locked .comm-block-title {
@@ -2690,7 +2690,7 @@ function formatVal(val) {
   padding: 9px 14px;
   border-radius: var(--radius-md);
   background: #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.32);
+  border: 1px solid rgba(47, 115, 196, 0.32);
   color: var(--primary-deep);
   font-family: inherit;
   font-size: 12px;
@@ -2700,11 +2700,11 @@ function formatVal(val) {
   justify-content: center;
 }
 .comm-locked-cta:hover {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-production);
   color: #ffffff;
   border-color: transparent;
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(245, 124, 0, 0.28);
+  box-shadow: 0 8px 18px rgba(47, 115, 196, 0.28);
 }
 .comm-locked-cta svg { opacity: 0.7; transition: transform 0.18s, opacity 0.18s; }
 .comm-locked-cta:hover svg { opacity: 1; }
@@ -2726,7 +2726,7 @@ function formatVal(val) {
   transition: flex 0.4s ease;
 }
 
-.cmsb-primary { background: linear-gradient(90deg, #F57C00, #FF9800); }
+.cmsb-primary { background: var(--tab-production); }
 .cmsb-muted   { background: linear-gradient(90deg, #DDDBDA, #E8E4DF); }
 .cmsb-up      { background: linear-gradient(90deg, #1B5E20, #2E844A); }
 .cmsb-down    { background: linear-gradient(90deg, #C23934, #EA001E); }
@@ -2855,16 +2855,16 @@ function formatVal(val) {
 
 /* ---- Variants: color only drives the stripe + icon tile ---- */
 
-/* Primary (has commission) — brand orange */
+/* Primary (has commission) — production tab colour */
 .comm-pill--primary { color: var(--primary); }
 .comm-pill--primary .comm-pill-icon {
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.12), rgba(245, 124, 0, 0.18));
+  background: linear-gradient(135deg, rgba(47, 115, 196, 0.12), rgba(47, 115, 196, 0.18));
   color: var(--primary);
-  box-shadow: inset 0 0 0 1px rgba(245, 124, 0, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(47, 115, 196, 0.18);
 }
 .comm-pill--primary:not(:disabled):hover {
-  border-color: rgba(245, 124, 0, 0.3);
-  background: linear-gradient(180deg, #ffffff 0%, rgba(245, 124, 0, 0.04) 100%);
+  border-color: rgba(47, 115, 196, 0.3);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(47, 115, 196, 0.04) 100%);
 }
 
 /* Muted (no commission) — stone gray, not shouty */
@@ -2917,7 +2917,7 @@ function formatVal(val) {
   padding: 9px 16px;
   border-radius: 999px;
   background: #ffffff;
-  border: 1px solid rgba(245, 124, 0, 0.38);
+  border: 1px solid rgba(47, 115, 196, 0.38);
   color: var(--primary);
   font-family: inherit;
   font-size: 12px;
@@ -2927,11 +2927,11 @@ function formatVal(val) {
 }
 
 .comm-panel-cta:hover {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-production);
   color: #ffffff;
   border-color: transparent;
   transform: translateY(-2px);
-  box-shadow: 0 10px 22px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 10px 22px rgba(47, 115, 196, 0.32);
 }
 
 /* ===== Scroll hint pill ===== */
@@ -2948,13 +2948,13 @@ function formatVal(val) {
   border-radius: 999px;
   background: #ffffff;
   color: var(--text);
-  border: 1px solid rgba(245, 124, 0, 0.35);
+  border: 1px solid rgba(47, 115, 196, 0.35);
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   box-shadow:
-    0 12px 30px rgba(245, 124, 0, 0.22),
+    0 12px 30px rgba(47, 115, 196, 0.22),
     0 4px 12px rgba(0, 0, 0, 0.08);
   transition: transform 0.2s, box-shadow 0.2s;
   direction: rtl;
@@ -2963,7 +2963,7 @@ function formatVal(val) {
 .scroll-hint:hover {
   transform: translateX(-50%) translateY(-3px);
   box-shadow:
-    0 16px 36px rgba(245, 124, 0, 0.3),
+    0 16px 36px rgba(47, 115, 196, 0.3),
     0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
@@ -2972,7 +2972,7 @@ function formatVal(val) {
   height: 8px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55);
+  box-shadow: 0 0 0 0 rgba(24, 24, 24, 0.55);
   animation: scrollHintPulse 1.6s ease-out infinite;
 }
 
@@ -2986,16 +2986,16 @@ function formatVal(val) {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-production);
   color: #ffffff;
-  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.35);
+  box-shadow: 0 4px 10px rgba(47, 115, 196, 0.35);
   animation: scrollHintBounce 1.4s ease-in-out infinite;
 }
 
 @keyframes scrollHintPulse {
-  0%   { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.55); }
-  70%  { box-shadow: 0 0 0 10px rgba(245, 124, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(24, 24, 24, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(24, 24, 24, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(24, 24, 24, 0); }
 }
 
 @keyframes scrollHintBounce {
@@ -3286,19 +3286,19 @@ function formatVal(val) {
   padding: 10px 14px;
   margin-top: 8px;
   border-radius: 8px;
-  background: rgba(232, 114, 10, 0.06);
-  border: 1px solid rgba(232, 114, 10, 0.15);
-  color: #E65100;
+  background: rgba(201, 162, 39, 0.06);
+  border: 1px solid rgba(201, 162, 39, 0.15);
+  color: #6B4D00;
   font-size: 12.5px;
   line-height: 1.5;
 }
-.no-commission-diff-note svg { flex-shrink: 0; color: #E8720A; }
+.no-commission-diff-note svg { flex-shrink: 0; color: #8A6300; }
 
 .kpi-no-diff-note {
   display: block;
   font-size: 10.5px;
-  color: #E65100;
-  background: rgba(232, 114, 10, 0.08);
+  color: #6B4D00;
+  background: rgba(201, 162, 39, 0.08);
   padding: 3px 8px;
   border-radius: 6px;
   margin-top: 4px;
@@ -3744,7 +3744,7 @@ function formatVal(val) {
 
 .dot-new { background: #2E844A; }
 .dot-removed { background: #C23934; }
-.dot-changed { background: #E8720A; }
+.dot-changed { background: #8A6300; }
 
 .td-name { font-weight: 600; }
 .td-id { font-size: 12px; color: var(--text-muted); }
@@ -3822,10 +3822,10 @@ function formatVal(val) {
 }
 .mail-preview-info {
   padding: 12px 20px;
-  background: #fff7ed;
+  background: var(--tab-production-wash);
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
-  color: #E65100;
+  color: var(--tab-production);
   line-height: 1.6;
 }
 .mail-preview-body {

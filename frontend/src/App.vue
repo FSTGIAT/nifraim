@@ -58,8 +58,8 @@ const navTabs = [
   --green: #2E844A;
   --green-deep: #1B5E20;
   --green-light: #EBF7EE;
-  --amber: #E8720A;
-  --amber-light: #FFF3E0;
+  --amber: #8A6300; /* warning = dark gold (was orange #E8720A; orange retired). Text-safe 5.9:1 */
+  --amber-light: #FBF4DC;
   --red: #EA001E;
   --red-deep: #C23934;
   --red-light: #FEF1EE;
@@ -77,11 +77,15 @@ const navTabs = [
   --text: #181818;
   --text-secondary: #3E3E3C;
   --text-muted: #706E6B;
-  --primary: #F57C00;
-  --primary-deep: #E65100;
-  --primary-glow: rgba(245, 124, 0, 0.1);
-  --primary-light: #FFF3E0;
-  --accent-cyan: #FF9800;
+  /* Global ACTION colour = ink (2026-09-26: orange retired app-wide).
+     Inside a tab, actions wear that tab's --tab-* colour; --primary is the
+     fallback for home / global chrome / cross-tab modals. Never reintroduce
+     orange here — see the nifraim-style skill. */
+  --primary: #181818;
+  --primary-deep: #000000;
+  --primary-glow: rgba(24, 24, 24, 0.08);
+  --primary-light: #F3F3F3;
+  --accent-cyan: #181818; /* legacy name, was orange; unused */
   --accent-violet: #7F56D9;
   --accent-rose: #E3066A;
   --accent-emerald: #2E844A;
@@ -90,7 +94,7 @@ const navTabs = [
      Use these for charts/categories; use the brand tokens above for chrome. */
   --chart-1: #E04B48;   /* coral red */
   --chart-2: #4E9DD0;   /* sky blue */
-  --chart-3: #D9820F;   /* golden amber */
+  --chart-3: #7A7F2A;   /* olive — replaced golden amber #D9820F (orange retired; re-validated) */
   --chart-4: #8E44AD;   /* purple */
   --chart-5: #6FA82C;   /* lime green */
   --chart-6: #D6336C;   /* magenta pink */
@@ -117,9 +121,9 @@ const navTabs = [
   --chart-absent: #9AA5B1;
 
   /* ── Tab identities (accent / wash / ink) ─────────────────────────
-     Each workspace tab owns ONE CHART_PALETTE color. Orange (--primary)
-     is the GLOBAL brand-action color (uploads, CTAs) — never a tab
-     identity. Ink = text-safe darkened accent where the accent itself
+     Each workspace tab owns ONE CHART_PALETTE color. --primary (ink)
+     is the GLOBAL action colour outside tabs — never a tab identity.
+     Orange is retired entirely. Ink = text-safe darkened accent where the accent itself
      fails 4.5:1 on white; tabs without an ink use the accent as ink. */
   --tab-production: var(--chart-9);
   --tab-production-wash: rgba(47, 115, 196, 0.10);
@@ -151,17 +155,17 @@ const navTabs = [
   --chart-8-deep: #8A6300;
 
   /* Schedule cadence accents — bright-bold so the automation tab pops:
-     daily=sky-blue, weekly=gold, monthly=purple. */
+     daily=sky-blue, weekly=magenta, monthly=purple. */
   --cadence-daily: var(--chart-2);          /* sky blue */
   --cadence-daily-soft: rgba(78, 157, 208, 0.14);
-  --cadence-weekly: var(--chart-3);         /* gold */
-  --cadence-weekly-soft: rgba(249, 169, 55, 0.14);
+  --cadence-weekly: var(--chart-6);         /* magenta — was chart-3 amber; orange retired */
+  --cadence-weekly-soft: rgba(214, 51, 108, 0.14);
   --cadence-monthly: var(--chart-4);        /* purple */
   --cadence-monthly-soft: rgba(142, 68, 173, 0.14);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.1);
-  --shadow-glow: 0 0 0 3px rgba(245, 124, 0, 0.15);
+  --shadow-glow: 0 0 0 3px rgba(24, 24, 24, 0.14);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

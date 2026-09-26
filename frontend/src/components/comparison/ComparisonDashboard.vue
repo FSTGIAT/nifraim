@@ -1420,7 +1420,7 @@ function formatCompact(val) {
   font-size: 12px;
   font-weight: 700;
   color: var(--primary);
-  background: rgba(245, 124, 0, 0.08);
+  background: rgba(46, 132, 74, 0.08);
   padding: 5px 14px;
   border-radius: 20px;
 }
@@ -1564,7 +1564,7 @@ function formatCompact(val) {
   flex-shrink: 0;
 }
 
-.kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
+.kpi-blue .kpi-icon { background: rgba(46, 132, 74, 0.1); color: var(--tab-comparison); }
 .kpi-amber .kpi-icon { background: rgba(224, 75, 72, 0.1); color: #E04B48; }
 .kpi-amber .kpi-value { color: #E04B48; }
 .kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
@@ -1897,7 +1897,7 @@ function formatCompact(val) {
 }
 .kpi-action-btn {
   background: none;
-  border: 1px solid rgba(232, 114, 10, 0.3);
+  border: 1px solid rgba(201, 162, 39, 0.3);
   border-radius: 8px;
   width: 30px;
   height: 30px;
@@ -1905,12 +1905,12 @@ function formatCompact(val) {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #E8720A;
+  color: #8A6300;
   transition: all 0.15s;
 }
 .kpi-action-btn:hover {
-  background: rgba(232, 114, 10, 0.1);
-  border-color: #E8720A;
+  background: rgba(201, 162, 39, 0.1);
+  border-color: #8A6300;
   transform: translateY(-1px);
 }
 .kpi-action-excel {
@@ -1993,9 +1993,9 @@ function formatCompact(val) {
   padding: 14px 18px;
   margin-bottom: 16px;
   border-radius: 12px;
-  border: 1px solid rgba(232, 114, 10, 0.2);
-  border-inline-start: 4px solid #E8720A;
-  background: linear-gradient(135deg, rgba(232, 114, 10, 0.04) 0%, rgba(232, 114, 10, 0.08) 100%);
+  border: 1px solid rgba(201, 162, 39, 0.2);
+  border-inline-start: 4px solid #8A6300;
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.04) 0%, rgba(201, 162, 39, 0.08) 100%);
   overflow: hidden;
 }
 
@@ -2003,7 +2003,7 @@ function formatCompact(val) {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: rgba(232, 114, 10, 0.05);
+  background: rgba(201, 162, 39, 0.05);
   animation: stripPulse 3s ease-in-out infinite;
   pointer-events: none;
 }
@@ -2025,8 +2025,8 @@ function formatCompact(val) {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: rgba(232, 114, 10, 0.12);
-  color: #E8720A;
+  background: rgba(201, 162, 39, 0.12);
+  color: #8A6300;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2048,7 +2048,7 @@ function formatCompact(val) {
   line-height: 1.5;
 }
 .unpaid-strip-text strong {
-  color: #E8720A;
+  color: #8A6300;
   font-weight: 800;
 }
 .unpaid-strip-amount {
@@ -2056,7 +2056,7 @@ function formatCompact(val) {
   font-weight: 500;
 }
 .unpaid-strip-amount strong {
-  color: #E65100;
+  color: var(--amber); /* unpaid = warning state, matches the strip */
   font-weight: 800;
 }
 
@@ -2088,18 +2088,18 @@ function formatCompact(val) {
 .unpaid-strip-btn svg { flex-shrink: 0; }
 
 .unpaid-strip-view {
-  background: rgba(245, 124, 0, 0.06);
+  background: rgba(46, 132, 74, 0.06);
   color: var(--primary);
-  border-color: rgba(245, 124, 0, 0.2);
+  border-color: rgba(46, 132, 74, 0.2);
 }
-.unpaid-strip-view:hover { background: rgba(245, 124, 0, 0.12); border-color: var(--primary); }
+.unpaid-strip-view:hover { background: rgba(46, 132, 74, 0.12); border-color: var(--primary); }
 
 .unpaid-strip-mail {
-  background: rgba(232, 114, 10, 0.06);
-  color: #E8720A;
-  border-color: rgba(232, 114, 10, 0.2);
+  background: rgba(201, 162, 39, 0.06);
+  color: #8A6300;
+  border-color: rgba(201, 162, 39, 0.2);
 }
-.unpaid-strip-mail:hover { background: rgba(232, 114, 10, 0.12); border-color: #E8720A; }
+.unpaid-strip-mail:hover { background: rgba(201, 162, 39, 0.12); border-color: #8A6300; }
 
 .unpaid-strip-excel {
   background: rgba(46, 132, 74, 0.06);
@@ -2124,7 +2124,7 @@ function formatCompact(val) {
   flex-shrink: 0;
   transition: all 0.15s;
 }
-.unpaid-strip-dismiss:hover { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
+.unpaid-strip-dismiss:hover { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
 
 /* Strip transition */
 .unpaid-strip-enter-active {

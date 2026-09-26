@@ -149,7 +149,7 @@ function logout() {
 
 .btn-renew:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 4px 16px rgba(24, 24, 24, 0.3);
 }
 
 .btn-renew:disabled {

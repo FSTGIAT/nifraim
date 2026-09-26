@@ -2,7 +2,7 @@ import { GridPixelateWipe } from './GridPixelateWipe'
 import { interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
 
 const FONT = "'Heebo', sans-serif"
-const CREAM = '#FFF8F0'
+const CREAM = '#FAFAFA' // neutral off-white (was orange-derived peach)
 
 export interface WelcomeCompositionProps {
   userName?: string
@@ -53,7 +53,7 @@ function SceneA() {
           width: circleBig,
           height: circleBig,
           borderRadius: '50%',
-          background: 'rgba(245,124,0,0.08)',
+          background: 'rgba(24,24,24,0.05)',
           top: -circleBig * 0.25,
           insetInlineStart: -circleBig * 0.2,
           filter: 'blur(2px)',
@@ -65,7 +65,7 @@ function SceneA() {
           width: circleMid,
           height: circleMid,
           borderRadius: '50%',
-          background: 'rgba(255,152,0,0.06)',
+          background: 'rgba(24,24,24,0.04)',
           bottom: height * 0.1,
           insetInlineEnd: width * 0.05,
         }}
@@ -76,7 +76,7 @@ function SceneA() {
           width: circleSmall,
           height: circleSmall,
           borderRadius: '50%',
-          background: 'rgba(255,183,77,0.10)',
+          background: 'rgba(24,24,24,0.06)',
           top: '28%',
           insetInlineEnd: '22%',
         }}
@@ -87,8 +87,8 @@ function SceneA() {
           width: tileSize,
           height: tileSize,
           borderRadius: tileSize * 0.24,
-          background: 'rgba(245,124,0,0.10)',
-          border: '1px solid rgba(245,124,0,0.18)',
+          background: '#F3F3F3',
+          border: '1px solid rgba(24,24,24,0.12)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -101,7 +101,7 @@ function SceneA() {
           height={iconSize}
           viewBox="0 0 24 24"
           fill="none"
-          stroke="#E65100"
+          stroke="#181818"
           strokeWidth={2.2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -117,7 +117,7 @@ function SceneA() {
           fontSize: nifraimSize,
           fontWeight: 900,
           letterSpacing: '-0.04em',
-          color: '#E65100',
+          color: '#181818',
           lineHeight: 1,
           opacity: wordOpacity,
           transform: `translateY(${wordY}px)`,
@@ -159,7 +159,7 @@ function SceneB({ userName }: { userName: string }) {
         position: 'absolute',
         inset: 0,
         background:
-          'radial-gradient(circle at 50% 50%, #E65100 0%, #F57C00 55%, #FFB74D 100%)',
+          'radial-gradient(circle at 50% 50%, #2E2E2E 0%, #181818 55%, #000000 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -204,7 +204,7 @@ function SceneB({ userName }: { userName: string }) {
           fontWeight: 900,
           letterSpacing: '-0.04em',
           lineHeight: 1,
-          textShadow: '0 6px 30px rgba(120,40,0,0.25)',
+          textShadow: '0 6px 30px rgba(0,0,0,0.3)',
           opacity: heroOpacity,
           transform: `scale(${heroScale})`,
           maxWidth: '100%',

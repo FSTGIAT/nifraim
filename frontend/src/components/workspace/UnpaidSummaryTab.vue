@@ -18,15 +18,15 @@
       <div class="wave-bg">
         <div class="shimmer"></div>
         <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs><linearGradient id="utg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#F57C00" stop-opacity="0.10"/><stop offset="30%" stop-color="#FF9800" stop-opacity="0.06"/><stop offset="60%" stop-color="#FFB74D" stop-opacity="0.10"/><stop offset="100%" stop-color="#F57C00" stop-opacity="0.05"/></linearGradient></defs>
+          <defs><linearGradient id="utg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2E844A" stop-opacity="0.10"/><stop offset="30%" stop-color="#2E844A" stop-opacity="0.06"/><stop offset="60%" stop-color="#2E844A" stop-opacity="0.10"/><stop offset="100%" stop-color="#2E844A" stop-opacity="0.05"/></linearGradient></defs>
           <path fill="url(#utg1)" d="M0,100L60,90C120,80,240,60,360,66.7C480,73,600,107,720,113.3C840,120,960,100,1080,86.7C1200,73,1320,67,1380,63.3L1440,60L1440,200L0,200Z"/>
         </svg>
         <svg class="wave wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs><linearGradient id="utg2" x1="100%" y1="0%" x2="0%" y2="0%"><stop offset="0%" stop-color="#FFB74D" stop-opacity="0.08"/><stop offset="40%" stop-color="#F57C00" stop-opacity="0.05"/><stop offset="70%" stop-color="#FF9800" stop-opacity="0.08"/><stop offset="100%" stop-color="#FFB74D" stop-opacity="0.04"/></linearGradient></defs>
+          <defs><linearGradient id="utg2" x1="100%" y1="0%" x2="0%" y2="0%"><stop offset="0%" stop-color="#2E844A" stop-opacity="0.08"/><stop offset="40%" stop-color="#2E844A" stop-opacity="0.05"/><stop offset="70%" stop-color="#2E844A" stop-opacity="0.08"/><stop offset="100%" stop-color="#2E844A" stop-opacity="0.04"/></linearGradient></defs>
           <path fill="url(#utg2)" d="M0,120L60,126.7C120,133,240,147,360,140C480,133,600,107,720,100C840,93,960,107,1080,120C1200,133,1320,147,1380,153.3L1440,160L1440,200L0,200Z"/>
         </svg>
         <svg class="wave wave-3" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <defs><linearGradient id="utg3" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#FF9800" stop-opacity="0.06"/><stop offset="50%" stop-color="#FFB74D" stop-opacity="0.04"/><stop offset="100%" stop-color="#F57C00" stop-opacity="0.07"/></linearGradient></defs>
+          <defs><linearGradient id="utg3" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2E844A" stop-opacity="0.06"/><stop offset="50%" stop-color="#2E844A" stop-opacity="0.04"/><stop offset="100%" stop-color="#2E844A" stop-opacity="0.07"/></linearGradient></defs>
           <path fill="url(#utg3)" d="M0,150L60,143.3C120,137,240,123,360,126.7C480,130,600,150,720,153.3C840,157,960,143,1080,133.3C1200,123,1320,117,1380,113.3L1440,110L1440,200L0,200Z"/>
         </svg>
       </div>
@@ -278,7 +278,7 @@ const modalSearch = ref('')
 const modalDebts = ref([]) // debts loaded for modal
 
 const COMPANY_COLORS = {
-  'אקסלנס': '#F57C00',
+  'אקסלנס': '#C9A227',
   'הפניקס': '#e53935',
   'מנורה': '#1e88e5',
   'הכשרה': '#43a047',
@@ -286,7 +286,7 @@ const COMPANY_COLORS = {
   'אלטשולר': '#00897b',
   'מיטב': '#5c6bc0',
   'מגדל': '#d81b60',
-  'ילין': '#fb8c00',
+  'ילין': '#D96AB5',
   'כלל': '#3949ab',
   'הראל': '#00acc1',
 }
@@ -433,12 +433,12 @@ onMounted(() => {
 
 /* Circles + waves */
 .float-circle { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; }
-.fc-1 { width: 220px; height: 220px; top: 10%; right: -60px; background: rgba(245,124,0,0.045); border: 1px solid rgba(245,124,0,0.06); animation: floatBob 8s ease-in-out infinite; }
-.fc-2 { width: 160px; height: 160px; bottom: 25%; left: -40px; background: rgba(245,124,0,0.035); border: 1px solid rgba(245,124,0,0.05); animation: floatBob 6.5s ease-in-out infinite reverse; }
-.fc-3 { width: 90px; height: 90px; top: 30%; left: 8%; background: rgba(245,124,0,0.05); animation: floatBob 10s ease-in-out infinite 2s; }
-.fc-4 { width: 120px; height: 120px; top: 55%; right: 6%; background: rgba(245,124,0,0.03); border: 1px solid rgba(245,124,0,0.04); animation: floatBob 9s ease-in-out infinite 1s; }
-.fc-5 { width: 50px; height: 50px; top: 18%; right: 22%; background: rgba(255,152,0,0.055); animation: floatBob 7s ease-in-out infinite 3s; }
-.fc-6 { width: 280px; height: 280px; bottom: 8%; right: -90px; background: rgba(245,124,0,0.025); border: 1px solid rgba(245,124,0,0.035); animation: floatBob 12s ease-in-out infinite 0.5s; }
+.fc-1 { width: 220px; height: 220px; top: 10%; right: -60px; background: rgba(46, 132, 74, 0.045); border: 1px solid rgba(46, 132, 74, 0.06); animation: floatBob 8s ease-in-out infinite; }
+.fc-2 { width: 160px; height: 160px; bottom: 25%; left: -40px; background: rgba(46, 132, 74, 0.035); border: 1px solid rgba(46, 132, 74, 0.05); animation: floatBob 6.5s ease-in-out infinite reverse; }
+.fc-3 { width: 90px; height: 90px; top: 30%; left: 8%; background: rgba(46, 132, 74, 0.05); animation: floatBob 10s ease-in-out infinite 2s; }
+.fc-4 { width: 120px; height: 120px; top: 55%; right: 6%; background: rgba(46, 132, 74, 0.03); border: 1px solid rgba(46, 132, 74, 0.04); animation: floatBob 9s ease-in-out infinite 1s; }
+.fc-5 { width: 50px; height: 50px; top: 18%; right: 22%; background: rgba(46, 132, 74, 0.055); animation: floatBob 7s ease-in-out infinite 3s; }
+.fc-6 { width: 280px; height: 280px; bottom: 8%; right: -90px; background: rgba(46, 132, 74, 0.025); border: 1px solid rgba(46, 132, 74, 0.035); animation: floatBob 12s ease-in-out infinite 0.5s; }
 .fc-7 { width: 65px; height: 65px; bottom: 35%; left: 18%; background: rgba(255,183,77,0.06); border: 1px solid rgba(255,183,77,0.05); animation: floatBob 8.5s ease-in-out infinite reverse 1.5s; }
 
 @keyframes floatBob { 0%, 100% { transform: translateY(0) rotate(0deg); } 33% { transform: translateY(-16px) rotate(2deg); } 66% { transform: translateY(8px) rotate(-1deg); } }
@@ -485,9 +485,9 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
-.kpi-amber .kpi-icon { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
-.kpi-amber .kpi-value { color: #E8720A; }
+.kpi-blue .kpi-icon { background: rgba(46, 132, 74, 0.1); color: var(--tab-comparison); }
+.kpi-amber .kpi-icon { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
+.kpi-amber .kpi-value { color: #8A6300; }
 .kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
 .kpi-red .kpi-value { color: #C23934; }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
@@ -670,7 +670,7 @@ onMounted(() => {
   border-color: var(--primary);
   color: var(--primary);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.15);
 }
 
 .group-chevron {
@@ -737,7 +737,7 @@ onMounted(() => {
 .status-select:focus { outline: none; border-color: var(--primary); }
 .status-select.open { color: #C23934; border-color: rgba(194,57,52,0.2); background: rgba(194,57,52,0.04); }
 .status-select.paid { color: #2E844A; border-color: rgba(46,132,74,0.2); background: rgba(46,132,74,0.04); }
-.status-select.disputed { color: #E8720A; border-color: rgba(232,114,10,0.2); background: rgba(232,114,10,0.04); }
+.status-select.disputed { color: #8A6300; border-color: rgba(201, 162, 39,0.2); background: rgba(201, 162, 39,0.04); }
 
 .email-badge {
   display: inline-flex;
@@ -932,7 +932,7 @@ onMounted(() => {
 
 .status-pill.open { background: rgba(194,57,52,0.08); color: #C23934; }
 .status-pill.paid { background: rgba(46,132,74,0.08); color: #2E844A; }
-.status-pill.disputed { background: rgba(232,114,10,0.08); color: #E8720A; }
+.status-pill.disputed { background: rgba(201, 162, 39,0.08); color: #8A6300; }
 .status-pill.cancelled { background: rgba(112,110,107,0.08); color: #706E6B; }
 
 /* Modal transitions */

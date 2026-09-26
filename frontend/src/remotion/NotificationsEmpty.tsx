@@ -13,10 +13,10 @@ import {
  * matching the app palette.
  */
 
-const CREAM = '#FFFBF4'
+const CREAM = '#F7F7F7' // matches NotificationBell's panel
 const INK = '#1A1410'
 const INK_SOFT = '#6B5F50'
-const BRAND = '#F57C00'
+const BRAND = '#181818' // ink (--primary); bell is outside any tab
 const EMERALD = '#10B981'
 const EMERALD_DEEP = '#047857'
 
@@ -40,7 +40,7 @@ export function NotificationsEmpty() {
 
   return (
     <AbsoluteFill style={{
-      background: `radial-gradient(circle at 50% 35%, rgba(245, 124, 0, 0.06) 0%, transparent 60%), ${CREAM}`,
+      background: `radial-gradient(circle at 50% 35%, rgba(24, 24, 24, 0.04) 0%, transparent 60%), ${CREAM}`,
       fontFamily: "'Heebo', sans-serif",
       direction: 'rtl',
       overflow: 'hidden',

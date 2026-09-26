@@ -41,7 +41,7 @@ const props = defineProps({
   delta: { type: String, default: '—' },
   direction: { type: String, default: 'none' }, // 'up' | 'down' | 'flat' | 'none'
   tone: { type: String, default: 'amber' }, // 'amber' | 'emerald' | 'blue' | 'violet'
-  sparkColor: { type: String, default: '#F57C00' },
+  sparkColor: { type: String, default: '#2E844A' }, // comparison tab colour (ApexCharts needs a literal)
   sparkData: { type: Array, default: () => [] },
   iconPath: { type: String, default: '' },
 })
@@ -94,7 +94,7 @@ const sparkOptions = computed(() => ({
   background: var(--tone-color);
 }
 
-.tone-amber   { --tone-color: #F57C00; --tone-bg: rgba(245, 124, 0, 0.08); --tone-fg: #E65100; }
+.tone-amber   { --tone-color: var(--tab-comparison); --tone-bg: var(--tab-comparison-wash); --tone-fg: #2E844A; } /* default tone; was brand orange */
 .tone-emerald { --tone-color: #2E844A; --tone-bg: rgba(46, 132, 74, 0.08); --tone-fg: #2E844A; }
 .tone-blue    { --tone-color: #7F56D9; --tone-bg: rgba(127, 86, 217, 0.08); --tone-fg: #7F56D9; }
 .tone-violet  { --tone-color: #E3066A; --tone-bg: rgba(227, 6, 106, 0.08); --tone-fg: #E3066A; }

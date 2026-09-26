@@ -11,8 +11,8 @@
       <span class="grain"></span>
 
       <svg class="brand-wave" viewBox="0 0 500 150" preserveAspectRatio="none" aria-hidden="true">
-        <path class="wave wave--1" d="M0,80 C150,140 350,20 500,90 L500,150 L0,150 Z" fill="rgba(232,102,10,0.22)" />
-        <path class="wave wave--2" d="M0,100 C120,150 380,40 500,110 L500,150 L0,150 Z" fill="rgba(232,102,10,0.14)" />
+        <path class="wave wave--1" d="M0,80 C150,140 350,20 500,90 L500,150 L0,150 Z" fill="rgba(47,115,196,0.22)" />
+        <path class="wave wave--2" d="M0,100 C120,150 380,40 500,110 L500,150 L0,150 Z" fill="rgba(47,115,196,0.14)" />
         <path class="wave wave--3" d="M0,120 C160,150 340,80 500,130 L500,150 L0,150 Z" fill="rgba(45,37,34,0.08)" />
       </svg>
 
@@ -229,9 +229,9 @@ async function handleSubmit() {
   flex: 0 0 45%;
   overflow: hidden;
   background:
-    radial-gradient(circle at 30% 25%, rgba(255, 178, 120, 0.6) 0%, transparent 55%),
-    radial-gradient(circle at 75% 75%, rgba(232, 102, 10, 0.32) 0%, transparent 55%),
-    linear-gradient(135deg, #fff3e6 0%, #f5e5d3 50%, #ede1cc 100%);
+    radial-gradient(circle at 30% 25%, rgba(78, 157, 208, 0.45) 0%, transparent 55%),
+    radial-gradient(circle at 75% 75%, rgba(47, 115, 196, 0.32) 0%, transparent 55%),
+    linear-gradient(135deg, #f9f6f2 0%, #f5f0eb 50%, #ede8e1 100%);
   isolation: isolate;
 }
 
@@ -248,7 +248,7 @@ async function handleSubmit() {
   height: 380px;
   top: -90px;
   right: -70px;
-  background: rgba(232, 102, 10, 0.45);
+  background: rgba(47, 115, 196, 0.45);
   animation: orbA 9s ease-in-out infinite;
 }
 .orb--b {
@@ -256,7 +256,7 @@ async function handleSubmit() {
   height: 300px;
   bottom: 60px;
   left: -70px;
-  background: rgba(245, 124, 0, 0.4);
+  background: rgba(14, 140, 138, 0.35);
   animation: orbB 11s ease-in-out infinite;
 }
 .orb--c {
@@ -264,7 +264,7 @@ async function handleSubmit() {
   height: 240px;
   top: 38%;
   left: 28%;
-  background: rgba(255, 170, 100, 0.5);
+  background: rgba(78, 157, 208, 0.45);
   animation: orbC 13s ease-in-out infinite;
 }
 .orb--d {
@@ -272,7 +272,7 @@ async function handleSubmit() {
   height: 180px;
   bottom: 30%;
   right: 16%;
-  background: rgba(200, 90, 0, 0.35);
+  background: rgba(44, 95, 107, 0.3);
   animation: orbD 8s ease-in-out infinite;
 }
 .orb--e {
@@ -280,7 +280,7 @@ async function handleSubmit() {
   height: 140px;
   top: 16%;
   left: 10%;
-  background: rgba(232, 102, 10, 0.4);
+  background: rgba(47, 115, 196, 0.4);
   animation: orbE 7s ease-in-out infinite;
 }
 
@@ -379,9 +379,9 @@ async function handleSubmit() {
   align-items: center;
   justify-content: center;
   color: #fff;
-  background: #e8660a;
+  background: #2F73C4;
   border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(232, 102, 10, 0.3);
+  box-shadow: 0 4px 14px rgba(47, 115, 196, 0.3);
 }
 .brand-name {
   font-size: 22px;
@@ -410,8 +410,8 @@ async function handleSubmit() {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #e8660a;
-  box-shadow: 0 0 12px rgba(232, 102, 10, 0.5);
+  background: #2F73C4;
+  box-shadow: 0 0 12px rgba(47, 115, 196, 0.5);
   animation: dotPulse 2s ease-in-out infinite;
 }
 @keyframes dotPulse {
@@ -429,7 +429,7 @@ async function handleSubmit() {
 }
 .brand-heading .accent {
   font-weight: 800;
-  color: #e8660a;
+  color: #245C9E;
   font-style: italic;
 }
 
@@ -464,8 +464,8 @@ async function handleSubmit() {
 }
 .brand-toggle-link:hover {
   background: #fff;
-  border-color: #e8660a;
-  color: #e8660a;
+  border-color: #181818;
+  color: #181818;
   transform: translateY(-1px);
 }
 
@@ -553,8 +553,8 @@ async function handleSubmit() {
 }
 .control input:focus {
   outline: none;
-  border-color: #e8660a;
-  box-shadow: 0 0 0 3px rgba(232, 102, 10, 0.15);
+  border-color: #181818;
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.1);
 }
 .control input[dir='ltr'] {
   padding: 0 44px 0 44px;
@@ -578,8 +578,8 @@ async function handleSubmit() {
   transition: color 0.2s, background 0.2s;
 }
 .toggle-pw:hover {
-  color: #e8660a;
-  background: rgba(232, 102, 10, 0.08);
+  color: #181818;
+  background: rgba(24, 24, 24, 0.06);
 }
 .toggle-pw svg {
   width: 16px;
@@ -608,7 +608,7 @@ async function handleSubmit() {
   height: 48px;
   border-radius: 999px;
   border: 0;
-  background: #e8660a;
+  background: #181818;
   color: #fff;
   font-family: 'Heebo', sans-serif;
   font-size: 15px;
@@ -619,14 +619,14 @@ async function handleSubmit() {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  box-shadow: 0 8px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: 0 8px 20px rgba(24, 24, 24, 0.25);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 0.2s, background 0.2s;
 }
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: #c85a00;
-  box-shadow: 0 12px 28px rgba(232, 102, 10, 0.35);
+  background: #000;
+  box-shadow: 0 12px 28px rgba(24, 24, 24, 0.35);
 }
 .auth-submit:disabled {
   opacity: 0.55;
@@ -654,7 +654,7 @@ async function handleSubmit() {
 }
 .mobile-toggle a {
   margin-inline-start: 6px;
-  color: #e8660a;
+  color: #181818;
   font-weight: 600;
   text-decoration: none;
 }

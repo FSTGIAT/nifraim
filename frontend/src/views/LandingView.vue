@@ -594,10 +594,14 @@ onBeforeUnmount(() => {
   --land-bg: #4A4A4A;
   --land-bg-alt: #555555;
   --land-bg-card: #5C5C5C;
-  --land-orange: #E8660A;
-  --land-orange-bright: #F57C00;
-  --land-orange-deep: #C85A00;
-  --land-orange-glow: rgba(232, 102, 10, 0.1);
+  /* Orange retired 2026-09-26: actions = ink, accents = cobalt/teal (CHART_PALETTE). */
+  --land-action: #181818;
+  --land-action-deep: #000000;
+  --land-accent: #2F73C4;          /* cobalt — fills, icons, decoration */
+  --land-accent-ink: #245C9E;      /* deeper cobalt — small text on cream (≥4.5:1) */
+  --land-accent-bright: #0E8C8A;   /* teal — gradient partner */
+  --land-accent-on-dark: #4E9DD0;  /* sky — accent text on dark sections */
+  --land-accent-glow: rgba(47, 115, 196, 0.1);
   --land-text: #F5F5F5;
   --land-text-secondary: #A0A0A0;
   --land-text-dim: #666666;
@@ -648,7 +652,7 @@ onBeforeUnmount(() => {
 }
 
 ::selection {
-  background: var(--land-orange);
+  background: var(--land-accent);
   color: #fff;
 }
 
@@ -667,7 +671,7 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
+  background: linear-gradient(90deg, var(--land-accent), var(--land-accent-bright));
   z-index: 1000;
   transform: scaleX(var(--progress));
   transform-origin: right center;
@@ -741,7 +745,7 @@ onBeforeUnmount(() => {
 .scroll-arrow {
   width: 1px;
   height: 40px;
-  background: linear-gradient(to bottom, var(--land-orange), transparent);
+  background: linear-gradient(to bottom, var(--land-accent-on-dark), transparent);
   position: relative;
   overflow: hidden;
 }
@@ -752,7 +756,7 @@ onBeforeUnmount(() => {
   top: 0;
   width: 100%;
   height: 50%;
-  background: var(--land-orange);
+  background: var(--land-accent-on-dark);
   animation: scrollPulse 2s ease-in-out infinite;
   will-change: transform;
 }
@@ -870,7 +874,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: var(--story-accent, var(--land-orange));
+  background: var(--story-accent, var(--land-action));
   color: #fff !important;
   padding: 18px 36px;
   border-radius: 999px;
@@ -895,24 +899,24 @@ onBeforeUnmount(() => {
    surface tilts in together — exactly the FlowArt mechanic. The outer .story-card
    is just a clipping frame.
 
-   Sequence: orange → noir → cream → forest → obsidian. Adjacent cards always
+   Sequence: cobalt → noir → cream → forest → obsidian. Adjacent cards always
    invert in value, so each 30°→0° rotation reveals a dramatically different
    surface descending from the right side of the viewport.
 */
 .story-card--peach .story-inner {
-  background: linear-gradient(135deg, #E8660A 0%, #C85A00 100%);
+  background: linear-gradient(135deg, #2F73C4 0%, #245C9E 100%);
   color: #FFFFFF;
   --story-accent: #1A1614;
 }
 .story-card--sage .story-inner {
   background: linear-gradient(135deg, #1F1A16 0%, #0F0C09 100%);
   color: #F5F0E8;
-  --story-accent: #E8660A;
+  --story-accent: #2F73C4; /* ink CTA would vanish on this near-black card */
 }
 .story-card--slate .story-inner {
   background: linear-gradient(135deg, #F5F0E8 0%, #ECE5D8 100%);
   color: #1A1614;
-  --story-accent: #E8660A;
+  --story-accent: #181818;
 }
 .story-card--mauve .story-inner {
   background: linear-gradient(135deg, #2D332E 0%, #1B201D 100%);
@@ -922,30 +926,30 @@ onBeforeUnmount(() => {
 .story-card--amber .story-inner {
   background: linear-gradient(135deg, #0F0C09 0%, #1F1A16 100%);
   color: #F5F0E8;
-  --story-accent: #E8660A;
+  --story-accent: #2F73C4;
 }
 
 /* Per-theme: tint label / chapter num / meta with each card's accent.
-   On the orange card, accent text shifts to soft white instead of orange
-   (orange-on-orange is illegible). */
+   On the cobalt card, accent text shifts to soft white instead of cobalt
+   (cobalt-on-cobalt is illegible). Dark cards use sky for text contrast. */
 .story-card--peach .story-label,
 .story-card--peach .story-meta,
 .story-card--peach .story-num { color: rgba(255, 255, 255, 0.85); }
 .story-card--sage .story-label,
 .story-card--sage .story-meta,
-.story-card--sage .story-num { color: #E8660A; }
+.story-card--sage .story-num { color: #4E9DD0; }
 .story-card--slate .story-label,
 .story-card--slate .story-meta,
-.story-card--slate .story-num { color: #E8660A; }
+.story-card--slate .story-num { color: #245C9E; }
 .story-card--mauve .story-label,
 .story-card--mauve .story-meta,
 .story-card--mauve .story-num { color: #D4B26A; }
 .story-card--amber .story-label,
 .story-card--amber .story-meta,
-.story-card--amber .story-num { color: #E8660A; }
+.story-card--amber .story-num { color: #4E9DD0; }
 
 /* Divider opacity tweaks — light dividers need higher opacity on dark cards,
-   darker dividers need lower opacity on cream/orange cards. */
+   darker dividers need lower opacity on cream/cobalt cards. */
 .story-card--peach .story-divider { border-top-color: rgba(0, 0, 0, 0.22); opacity: 1; }
 .story-card--slate .story-divider { border-top-color: rgba(26, 22, 20, 0.18); opacity: 1; }
 .story-card--sage .story-divider,
@@ -974,7 +978,7 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: var(--land-orange);
+  color: var(--land-accent-ink);
   font-weight: 600;
   margin-bottom: 16px;
   display: block;
@@ -1007,7 +1011,7 @@ onBeforeUnmount(() => {
 }
 
 .how-step:hover {
-  border-color: rgba(232, 102, 10, 0.15);
+  border-color: rgba(47, 115, 196, 0.15);
   transform: translateY(-4px);
   box-shadow: 0 20px 60px rgba(45, 37, 34, 0.08);
 }
@@ -1025,7 +1029,7 @@ onBeforeUnmount(() => {
   width: 52px;
   height: 52px;
   border-radius: 12px;
-  background: var(--land-orange-glow);
+  background: var(--land-accent-glow);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1035,7 +1039,7 @@ onBeforeUnmount(() => {
 .how-step-icon :deep(svg) {
   width: 24px;
   height: 24px;
-  color: var(--land-orange);
+  color: var(--land-accent);
 }
 
 .how-step h3 {
@@ -1057,7 +1061,7 @@ onBeforeUnmount(() => {
   width: 40px;
   right: calc(100% + 0px);
   height: 1px;
-  background: linear-gradient(to right, rgba(232, 102, 10, 0.2), transparent);
+  background: linear-gradient(to right, rgba(47, 115, 196, 0.2), transparent);
 }
 
 /* ══════════════════════════════════════ */
@@ -1066,7 +1070,7 @@ onBeforeUnmount(() => {
 .chapter-features {
   position: relative;
   min-height: 100vh;
-  background: linear-gradient(180deg, var(--cream-bg) 0%, #FFF2E0 100%);
+  background: linear-gradient(180deg, var(--cream-bg) 0%, var(--cream-surface) 100%);
   overflow: hidden;
 }
 
@@ -1083,14 +1087,14 @@ onBeforeUnmount(() => {
 .chapter-features::before {
   width: 520px;
   height: 520px;
-  background: rgba(232, 102, 10, 0.10);
+  background: rgba(47, 115, 196, 0.10);
   top: -120px;
   right: -140px;
 }
 .chapter-features::after {
   width: 380px;
   height: 380px;
-  background: rgba(255, 183, 77, 0.14);
+  background: rgba(14, 140, 138, 0.12);
   bottom: -100px;
   left: -100px;
 }
@@ -1109,7 +1113,7 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: var(--land-orange);
+  color: var(--land-accent-ink);
   font-weight: 600;
   margin-bottom: 12px;
   display: block;
@@ -1149,15 +1153,15 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   background: #ffffff;
   border: 1px solid rgba(45, 37, 34, 0.06);
-  box-shadow: 0 20px 50px rgba(232, 102, 10, 0.10), 0 4px 12px rgba(45, 37, 34, 0.04);
+  box-shadow: 0 20px 50px rgba(47, 115, 196, 0.10), 0 4px 12px rgba(45, 37, 34, 0.04);
   transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   direction: rtl;
 }
 
 .feature-card:hover {
-  border-color: rgba(232, 102, 10, 0.25);
+  border-color: rgba(47, 115, 196, 0.25);
   transform: translateY(-4px);
-  box-shadow: 0 28px 60px rgba(232, 102, 10, 0.14), 0 6px 16px rgba(45, 37, 34, 0.06);
+  box-shadow: 0 28px 60px rgba(47, 115, 196, 0.14), 0 6px 16px rgba(45, 37, 34, 0.06);
 }
 
 /* Cream gradient overlay replaces the old dark 0.95 one — text sits cleanly while the photo stays visible */
@@ -1165,7 +1169,7 @@ onBeforeUnmount(() => {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(255, 248, 240, 0.96) 28%, rgba(255, 248, 240, 0.55) 60%, rgba(255, 248, 240, 0.15) 100%);
+  background: linear-gradient(to top, rgba(249, 246, 242, 0.96) 28%, rgba(249, 246, 242, 0.55) 60%, rgba(249, 246, 242, 0.15) 100%);
   z-index: 1;
 }
 
@@ -1196,7 +1200,7 @@ onBeforeUnmount(() => {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.2em;
-  color: var(--land-orange);
+  color: var(--land-accent-ink);
   font-weight: 700;
   margin-bottom: 12px;
 }
@@ -1238,7 +1242,7 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: var(--land-orange);
+  color: var(--land-accent-ink);
   font-weight: 600;
   margin-bottom: 16px;
   display: block;
@@ -1282,7 +1286,7 @@ onBeforeUnmount(() => {
 }
 
 .portal-card:hover {
-  border-color: rgba(232, 102, 10, 0.12);
+  border-color: rgba(47, 115, 196, 0.12);
   transform: translateY(-4px);
   box-shadow: 0 20px 60px rgba(45, 37, 34, 0.08);
 }
@@ -1294,7 +1298,7 @@ onBeforeUnmount(() => {
   right: 0;
   width: 100px;
   height: 100px;
-  background: radial-gradient(circle, rgba(232, 102, 10, 0.04), transparent);
+  background: radial-gradient(circle, rgba(47, 115, 196, 0.04), transparent);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -1326,7 +1330,7 @@ onBeforeUnmount(() => {
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: var(--land-orange-glow);
+  background: var(--land-accent-glow);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1336,7 +1340,7 @@ onBeforeUnmount(() => {
 .portal-card .pc-icon :deep(svg) {
   width: 20px;
   height: 20px;
-  color: var(--land-orange);
+  color: var(--land-accent);
 }
 
 .portal-card h3 {
@@ -1406,7 +1410,7 @@ onBeforeUnmount(() => {
 }
 
 .cta-headline span {
-  color: var(--land-orange);
+  color: var(--land-accent-on-dark);
 }
 
 .cta-sub {
@@ -1420,7 +1424,8 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: var(--land-orange);
+  /* Cobalt, not ink: this CTA sits on the slate-900 section where ink vanishes. */
+  background: var(--land-accent);
   color: #fff !important;
   padding: 20px 52px;
   border-radius: 40px;
@@ -1430,13 +1435,13 @@ onBeforeUnmount(() => {
   min-height: 56px;
   border: none;
   cursor: pointer;
-  box-shadow: 0 0 40px rgba(232, 102, 10, 0.2);
+  box-shadow: 0 0 40px rgba(47, 115, 196, 0.2);
 }
 
 .cta-btn:hover {
-  background: var(--land-orange-deep);
+  background: var(--land-accent-ink);
   transform: translateY(-3px);
-  box-shadow: 0 12px 40px rgba(232, 102, 10, 0.4);
+  box-shadow: 0 12px 40px rgba(47, 115, 196, 0.4);
 }
 
 /* ══════════════════════════════════════ */
@@ -1480,7 +1485,7 @@ onBeforeUnmount(() => {
 .fb-name {
   font-size: 1.2rem;
   font-weight: 800;
-  color: var(--land-orange);
+  color: var(--land-accent-on-dark);
 }
 
 .fb-tag {
@@ -1500,7 +1505,7 @@ onBeforeUnmount(() => {
 }
 
 .footer-links a:hover {
-  color: var(--land-orange);
+  color: var(--land-accent-on-dark);
 }
 
 .footer-copy {

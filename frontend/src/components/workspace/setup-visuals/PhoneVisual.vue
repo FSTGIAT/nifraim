@@ -3,48 +3,48 @@
     <svg viewBox="0 0 440 330" fill="none">
       <!-- phone (right, RTL start) -->
       <g class="svp-phone">
-        <rect x="296" y="70" width="96" height="188" rx="20" fill="#fff" stroke="#EAD9C6" stroke-width="2.5"/>
-        <rect x="308" y="92" width="72" height="144" rx="10" fill="#FDF1E3"/>
-        <rect x="326" y="79" width="36" height="5" rx="2.5" fill="#EAD9C6"/>
+        <rect x="296" y="70" width="96" height="188" rx="20" fill="#fff" stroke="#C9D1D7" stroke-width="2.5"/>
+        <rect x="308" y="92" width="72" height="144" rx="10" fill="#DEE4E8"/>
+        <rect x="326" y="79" width="36" height="5" rx="2.5" fill="#C9D1D7"/>
         <!-- sms bubble with code dots -->
         <g class="svp-bubble">
-          <rect x="314" y="108" width="60" height="34" rx="10" fill="#F57C00"/>
-          <path d="M322 142l-4 8 12-8z" fill="#F57C00"/>
+          <rect x="314" y="108" width="60" height="34" rx="10" fill="#4E9DD0"/>
+          <path d="M322 142l-4 8 12-8z" fill="#4E9DD0"/>
           <circle cx="326" cy="125" r="3.2" fill="#fff"/>
           <circle cx="337" cy="125" r="3.2" fill="#fff"/>
           <circle cx="348" cy="125" r="3.2" fill="#fff"/>
           <circle cx="359" cy="125" r="3.2" fill="#fff"/>
         </g>
-        <rect x="316" y="160" width="56" height="9" rx="4.5" fill="#FFE2C4"/>
-        <rect x="316" y="176" width="40" height="9" rx="4.5" fill="#FFE2C4" opacity="0.7"/>
+        <rect x="316" y="160" width="56" height="9" rx="4.5" fill="#D3E1EA"/>
+        <rect x="316" y="176" width="40" height="9" rx="4.5" fill="#D3E1EA" opacity="0.7"/>
       </g>
 
       <!-- arc phone -> laptop -->
-      <path class="svp-arc" d="M300 130 C 240 84, 170 84, 128 128" stroke="#F5A957" stroke-width="2.5" stroke-dasharray="3 8" stroke-linecap="round"/>
+      <path class="svp-arc" d="M300 130 C 240 84, 170 84, 128 128" stroke="#7AB8E1" stroke-width="2.5" stroke-dasharray="3 8" stroke-linecap="round"/>
       <!-- flying code chip along the arc -->
       <g class="svp-chip">
-        <rect x="-23" y="-12" width="46" height="24" rx="8" fill="#fff" stroke="#F57C00" stroke-width="2"/>
-        <circle cx="-11" cy="0" r="2.6" fill="#E65100"/>
-        <circle cx="-1" cy="0" r="2.6" fill="#E65100"/>
-        <circle cx="9" cy="0" r="2.6" fill="#E65100"/>
+        <rect x="-23" y="-12" width="46" height="24" rx="8" fill="#fff" stroke="#4E9DD0" stroke-width="2"/>
+        <circle cx="-11" cy="0" r="2.6" fill="#35719A"/>
+        <circle cx="-1" cy="0" r="2.6" fill="#35719A"/>
+        <circle cx="9" cy="0" r="2.6" fill="#35719A"/>
       </g>
 
       <!-- laptop (left) -->
       <g>
-        <rect x="52" y="128" width="168" height="112" rx="12" fill="#fff" stroke="#EAD9C6" stroke-width="2.5"/>
-        <rect x="64" y="142" width="144" height="84" rx="8" fill="#FDF1E3"/>
+        <rect x="52" y="128" width="168" height="112" rx="12" fill="#fff" stroke="#C9D1D7" stroke-width="2.5"/>
+        <rect x="64" y="142" width="144" height="84" rx="8" fill="#DEE4E8"/>
         <!-- otp slots filling -->
         <g>
-          <rect class="svp-slot svp-slot-1" x="80" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#F5C08A" stroke-width="2"/>
-          <rect class="svp-slot svp-slot-2" x="108" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#F5C08A" stroke-width="2"/>
-          <rect class="svp-slot svp-slot-3" x="136" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#F5C08A" stroke-width="2"/>
-          <rect class="svp-slot svp-slot-4" x="164" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#F5C08A" stroke-width="2"/>
-          <circle class="svp-digit svp-digit-1" cx="91" cy="183" r="4" fill="#E65100"/>
-          <circle class="svp-digit svp-digit-2" cx="119" cy="183" r="4" fill="#E65100"/>
-          <circle class="svp-digit svp-digit-3" cx="147" cy="183" r="4" fill="#E65100"/>
-          <circle class="svp-digit svp-digit-4" cx="175" cy="183" r="4" fill="#E65100"/>
+          <rect class="svp-slot svp-slot-1" x="80" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#9BC5E1" stroke-width="2"/>
+          <rect class="svp-slot svp-slot-2" x="108" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#9BC5E1" stroke-width="2"/>
+          <rect class="svp-slot svp-slot-3" x="136" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#9BC5E1" stroke-width="2"/>
+          <rect class="svp-slot svp-slot-4" x="164" y="168" width="22" height="30" rx="6" fill="#fff" stroke="#9BC5E1" stroke-width="2"/>
+          <circle class="svp-digit svp-digit-1" cx="91" cy="183" r="4" fill="#35719A"/>
+          <circle class="svp-digit svp-digit-2" cx="119" cy="183" r="4" fill="#35719A"/>
+          <circle class="svp-digit svp-digit-3" cx="147" cy="183" r="4" fill="#35719A"/>
+          <circle class="svp-digit svp-digit-4" cx="175" cy="183" r="4" fill="#35719A"/>
         </g>
-        <path d="M36 240h200l-14 22H50z" fill="#F3E3D2"/>
+        <path d="M36 240h200l-14 22H50z" fill="#D2DADF"/>
       </g>
 
       <!-- success check pops after digits land -->
@@ -55,7 +55,7 @@
 
       <!-- hands-free hint: crossed-out keyboard hand... keep abstract sparkles -->
       <g class="svp-spark">
-        <path d="M250 236l3.5 8 8 3.5-8 3.5-3.5 8-3.5-8-8-3.5 8-3.5z" fill="#FFB74D"/>
+        <path d="M250 236l3.5 8 8 3.5-8 3.5-3.5 8-3.5-8-8-3.5 8-3.5z" fill="#8CC0E3"/>
       </g>
     </svg>
   </div>

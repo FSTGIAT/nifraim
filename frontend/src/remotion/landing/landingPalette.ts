@@ -1,5 +1,5 @@
 // Soft, cream-friendly palette for landing feature clips.
-// Explicitly NOT the saturated #F57C00 / #2D2522 of HeroProduct.tsx —
+// Explicitly NOT the saturated brand colours of HeroProduct.tsx —
 // these clips sit inside Chapter 04 cards next to the cream chapter sections,
 // so accents are muted to read as editorial rather than promotional.
 
@@ -16,7 +16,7 @@ export const SOFT = {
   textDim: '#A89E97',
 
   // 5 muted accents — one per feature, harmonious in cream
-  feature01: '#D4936F', // soft peach/copper — auto-load
+  feature01: '#6F93C4', // soft cobalt — auto-load (was peach/copper; orange retired)
   feature02: '#9CAE9F', // soft sage — agreements
   feature03: '#8B95A8', // soft slate — audit
   feature04: '#B89AAC', // soft mauve — insights
@@ -33,7 +33,7 @@ export const SOFT = {
 
 export const FONT = "'Heebo', -apple-system, sans-serif"
 
-/** Append 2-char hex alpha to a 6-char hex color, e.g. tint('#D4936F', 0.2) → '#D4936F33' */
+/** Append 2-char hex alpha to a 6-char hex color, e.g. tint('#6F93C4', 0.2) → '#6F93C433' */
 export function tint(hex: string, alpha: number): string {
   const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
     .toString(16)

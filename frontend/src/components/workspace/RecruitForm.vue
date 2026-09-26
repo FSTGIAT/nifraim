@@ -342,7 +342,7 @@ async function saveAll() {
   transition: border-color 0.2s;
 }
 .search-input:focus {
-  border-color: var(--primary, #F57C00);
+  border-color: var(--primary);
 }
 .search-clear {
   position: absolute;
@@ -357,7 +357,7 @@ async function saveAll() {
   justify-content: center;
 }
 .search-clear:hover {
-  color: var(--primary, #F57C00);
+  color: var(--primary);
 }
 
 .btn-add {

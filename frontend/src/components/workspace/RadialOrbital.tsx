@@ -3,8 +3,8 @@
 // component, but:
 //   1. No Tailwind. All styling is inline using the app's CSS variables.
 //   2. No shadcn Card/Badge/Button — plain divs.
-//   3. Light/bright orange palette (matches AiInsightCard / AiVizPanel) instead
-//      of the original's bg-black space aesthetic.
+//   3. Light palette: an ink center orb (neutral, so it never collides with a
+//      CHART_PALETTE node hue) instead of the original's bg-black space aesthetic.
 //   4. Compact (300×300) so it fits comfortably in the bottom-left corner.
 //   5. RTL labels in Heebo.
 //   6. onSelect(itemId) callback fires when a node is clicked — Vue/Pinia owns
@@ -34,15 +34,15 @@ interface RadialOrbitalProps {
 const COLORS = {
   // Pulled from App.vue :root — re-asserted as literals because React island
   // is rendered outside of Vue's scoped-style scope.
-  primary: '#F57C00',
-  primaryDeep: '#E65100',
-  primaryGlow: 'rgba(245, 124, 0, 0.18)',
-  primaryLight: '#FFF3E0',
+  primary: '#181818',
+  primaryDeep: '#000000',
+  primaryGlow: 'rgba(24, 24, 24, 0.18)',
+  primaryLight: '#F3F3F3',
   surface: '#FFFFFF',
   border: '#DDDBDA',
   text: '#181818',
   textMuted: '#706E6B',
-  shadowLg: '0 12px 32px rgba(245, 124, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.08)',
+  shadowLg: '0 12px 32px rgba(24, 24, 24, 0.25), 0 4px 14px rgba(0, 0, 0, 0.08)',
   shadowSm: '0 2px 6px rgba(0, 0, 0, 0.08)',
 }
 
@@ -120,7 +120,7 @@ export default function RadialOrbital({
           marginLeft: -24,
           marginTop: -24,
           borderRadius: '50%',
-          background: `linear-gradient(135deg, ${COLORS.primary} 0%, #FFA040 50%, #FFD180 100%)`,
+          background: `linear-gradient(135deg, ${COLORS.primaryDeep} 0%, ${COLORS.primary} 50%, #3E3E3C 100%)`,
           boxShadow: COLORS.shadowLg,
           display: 'flex',
           alignItems: 'center',
@@ -155,7 +155,7 @@ export default function RadialOrbital({
             height: 20,
             borderRadius: '50%',
             background: 'rgba(255, 255, 255, 0.92)',
-            boxShadow: 'inset 0 0 8px rgba(245, 124, 0, 0.35)',
+            boxShadow: 'inset 0 0 8px rgba(24, 24, 24, 0.35)',
           }}
         />
       </div>

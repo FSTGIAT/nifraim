@@ -82,8 +82,8 @@ watch(
 .run-progress {
   font-family: 'Heebo', sans-serif;
   padding: 8px 10px 4px;
-  background: rgba(245, 124, 0, 0.04);
-  border: 1px solid rgba(245, 124, 0, 0.16);
+  background: rgba(14, 140, 138, 0.04);
+  border: 1px solid rgba(14, 140, 138, 0.16);
   border-radius: 10px;
 }
 
@@ -124,21 +124,21 @@ watch(
 }
 .stage--done .stage-dot { background: #1B5E20; color: #fff; }
 .stage--active {
-  background: rgba(245, 124, 0, 0.10);
-  border-color: rgba(245, 124, 0, 0.30);
-  color: var(--primary-deep, #E65100);
+  background: rgba(14, 140, 138, 0.10);
+  border-color: rgba(14, 140, 138, 0.30);
+  color: #0A6664;
 }
 .stage--active .stage-dot { background: transparent; }
 .stage-pulse {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--primary, #F57C00);
+  background: var(--tab-automation);
   animation: stagePulse 1.2s ease-in-out infinite;
 }
 @keyframes stagePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 124, 0, 0.50); transform: scale(1); }
-  50%      { box-shadow: 0 0 0 5px rgba(245, 124, 0, 0); transform: scale(1.15); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(14, 140, 138, 0.50); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 5px rgba(14, 140, 138, 0); transform: scale(1.15); }
 }
 
 .banner {

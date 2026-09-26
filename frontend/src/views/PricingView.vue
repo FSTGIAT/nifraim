@@ -134,10 +134,13 @@ onBeforeUnmount(() => {
 /* ── Pricing Theme Variables (mirrors LandingView tokens) ── */
 .pricing {
   --land-bg: #4A4A4A;
-  --land-orange: #E8660A;
-  --land-orange-bright: #F57C00;
-  --land-orange-deep: #C85A00;
-  --land-orange-glow: rgba(232, 102, 10, 0.1);
+  /* Orange retired 2026-09-26: actions = ink, accents = cobalt/teal (CHART_PALETTE). */
+  --land-action: #181818;
+  --land-action-deep: #000000;
+  --land-accent: #2F73C4;          /* cobalt — fills, icons, decoration */
+  --land-accent-ink: #245C9E;      /* deeper cobalt — small text on cream (≥4.5:1) */
+  --land-accent-bright: #0E8C8A;   /* teal — gradient partner */
+  --land-accent-glow: rgba(47, 115, 196, 0.1);
   --land-text: #F5F5F5;
   --land-text-secondary: #A0A0A0;
   --land-border: #666666;
@@ -192,7 +195,7 @@ onBeforeUnmount(() => {
 .hero-gradient .orb-1 {
   width: 720px;
   height: 720px;
-  background: rgba(232, 102, 10, 0.28);
+  background: rgba(47, 115, 196, 0.28);
   top: -18%;
   left: -10%;
 }
@@ -200,7 +203,7 @@ onBeforeUnmount(() => {
 .hero-gradient .orb-2 {
   width: 520px;
   height: 520px;
-  background: rgba(232, 102, 10, 0.22);
+  background: rgba(47, 115, 196, 0.22);
   bottom: 2%;
   right: -6%;
 }
@@ -208,7 +211,7 @@ onBeforeUnmount(() => {
 .hero-gradient .orb-3 {
   width: 460px;
   height: 460px;
-  background: rgba(245, 124, 0, 0.2);
+  background: rgba(14, 140, 138, 0.2);
   top: 38%;
   left: 42%;
 }
@@ -237,15 +240,15 @@ onBeforeUnmount(() => {
 .hero-eyebrow {
   font-size: 0.82rem;
   letter-spacing: 0.04em;
-  color: var(--land-orange);
+  color: var(--land-accent-ink);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(232, 102, 10, 0.08);
+  background: rgba(47, 115, 196, 0.08);
   padding: 6px 16px 6px 12px;
   border-radius: 40px;
-  border: 1px solid rgba(232, 102, 10, 0.15);
+  border: 1px solid rgba(47, 115, 196, 0.15);
   width: fit-content;
   max-width: 100%;
 }
@@ -254,7 +257,7 @@ onBeforeUnmount(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--land-orange);
+  background: var(--land-accent);
   flex-shrink: 0;
   animation: dotPulse 2s ease-in-out infinite;
 }
@@ -273,7 +276,7 @@ onBeforeUnmount(() => {
 }
 
 .hero-headline .highlight {
-  color: var(--land-orange);
+  color: var(--land-accent);
   position: relative;
   display: inline-block;
 }
@@ -285,7 +288,7 @@ onBeforeUnmount(() => {
   right: 0;
   width: 100%;
   height: 8px;
-  background: rgba(232, 102, 10, 0.15);
+  background: rgba(47, 115, 196, 0.15);
   border-radius: 3px;
   z-index: -1;
 }
@@ -308,7 +311,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--land-orange);
+  background: var(--land-action);
   color: #fff;
   padding: 16px 40px;
   border-radius: 40px;
@@ -318,13 +321,13 @@ onBeforeUnmount(() => {
   min-height: 54px;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: 0 4px 20px rgba(24, 24, 24, 0.25);
 }
 
 .hero-btn:hover {
-  background: var(--land-orange-deep);
+  background: var(--land-action-deep);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(232, 102, 10, 0.3);
+  box-shadow: 0 8px 32px rgba(24, 24, 24, 0.3);
 }
 
 .hero-btn svg {
@@ -354,17 +357,17 @@ onBeforeUnmount(() => {
 }
 
 .hero-ghost:hover {
-  background: rgba(232, 102, 10, 0.06);
-  border-color: var(--land-orange);
-  color: var(--land-orange);
+  background: rgba(24, 24, 24, 0.06);
+  border-color: var(--land-action);
+  color: var(--land-action);
 }
 
 .ghost-icon {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--land-orange-glow);
-  color: var(--land-orange);
+  background: rgba(24, 24, 24, 0.08);
+  color: var(--land-action);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -372,7 +375,7 @@ onBeforeUnmount(() => {
 }
 
 .hero-ghost:hover .ghost-icon {
-  background: var(--land-orange);
+  background: var(--land-action);
   color: #fff;
 }
 
@@ -396,8 +399,8 @@ onBeforeUnmount(() => {
   padding: 36px 32px 32px;
   box-shadow:
     0 40px 80px -20px rgba(45, 37, 34, 0.18),
-    0 0 0 1px rgba(232, 102, 10, 0.08),
-    0 2px 0 rgba(232, 102, 10, 0.04) inset;
+    0 0 0 1px rgba(47, 115, 196, 0.08),
+    0 2px 0 rgba(47, 115, 196, 0.04) inset;
   position: relative;
   z-index: 2;
 }
@@ -407,7 +410,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: -2px;
   border-radius: 30px;
-  background: linear-gradient(135deg, rgba(232, 102, 10, 0.2), transparent 60%);
+  background: linear-gradient(135deg, rgba(47, 115, 196, 0.2), transparent 60%);
   z-index: -1;
   pointer-events: none;
 }
@@ -432,7 +435,7 @@ onBeforeUnmount(() => {
   line-height: 0.95;
   color: var(--cream-text);
   letter-spacing: -3px;
-  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-orange) 100%);
+  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-accent) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -484,7 +487,7 @@ onBeforeUnmount(() => {
 }
 
 .pc-bullets svg {
-  color: var(--land-orange);
+  color: var(--land-accent);
   flex-shrink: 0;
 }
 

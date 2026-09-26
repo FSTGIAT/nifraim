@@ -56,8 +56,8 @@ select {
 }
 
 input:focus, select:focus {
-  border-color: #F57C00 !important;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.15) !important;
+  border-color: #181818 !important;
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.15) !important;
   outline: none !important;
   background: rgba(255, 255, 255, 0.08) !important;
 }
@@ -75,8 +75,8 @@ button[type="submit"],
 .pay-btn {
   width: 100% !important;
   padding: 15px !important;
-  background: linear-gradient(135deg, #F57C00, #FF9800) !important;
-  color: #1a1a1a !important;
+  background: #181818 !important;
+  color: #fff !important;
   border: none !important;
   border-radius: 14px !important;
   font-size: 16px !important;
@@ -92,8 +92,9 @@ button[type="submit"]:hover,
 .btn-submit:hover,
 #submitButton:hover,
 .pay-btn:hover {
+  background: #000 !important;
   transform: translateY(-2px) !important;
-  box-shadow: 0 8px 28px rgba(245, 124, 0, 0.35) !important;
+  box-shadow: 0 8px 28px rgba(24, 24, 24, 0.35) !important;
 }
 
 /* Error messages */

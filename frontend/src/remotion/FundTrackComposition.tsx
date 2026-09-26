@@ -16,7 +16,7 @@ const NEG = '#D63E36'
 const NEG_DEEP = '#A12921'
 const FLAT = '#94A3B8'
 const GOLD = '#FBBF24'
-const GOLD_DEEP = '#D97706'
+const GOLD_DEEP = '#8A6300' // --chart-8-deep; text-safe, not orange
 
 type Period = 'month' | 'y1' | 'y3' | 'y5'
 
@@ -140,9 +140,9 @@ export function FundTrackComposition(props: VizFundTrack) {
         direction: 'rtl',
         fontFamily: FONT,
         background:
-          'radial-gradient(1200px 600px at 100% 0%, rgba(245,124,0,0.22), transparent 60%),' +
+          'radial-gradient(1200px 600px at 100% 0%, rgba(183,156,235,0.22), transparent 60%),' +
           'radial-gradient(900px 500px at 0% 100%, rgba(99,102,241,0.16), transparent 55%),' +
-          'linear-gradient(180deg, #FFFBF5 0%, #FFFFFF 80%)',
+          'linear-gradient(180deg, #FAF8FE 0%, #FFFFFF 80%)',
         color: '#181818',
         position: 'relative',
         overflow: 'hidden',
@@ -163,7 +163,7 @@ export function FundTrackComposition(props: VizFundTrack) {
               width: p.size,
               height: p.size,
               borderRadius: '50%',
-              background: i % 3 === 0 ? GOLD : '#F57C00',
+              background: i % 3 === 0 ? GOLD : '#B79CEB',
               opacity: Math.max(0, opacity),
               transform: `translateY(${yOffset}px)`,
               filter: 'blur(0.5px)',
@@ -201,8 +201,8 @@ export function FundTrackComposition(props: VizFundTrack) {
               width: 38,
               height: 38,
               borderRadius: 12,
-              background: 'linear-gradient(135deg, #F57C00, #FF9800)',
-              boxShadow: '0 10px 24px rgba(245,124,0,0.4)',
+              background: '#6A48C9',
+              boxShadow: '0 10px 24px rgba(106,72,201,0.4)',
               display: 'grid',
               placeItems: 'center',
               color: '#fff',
@@ -239,10 +239,10 @@ export function FundTrackComposition(props: VizFundTrack) {
               fontSize: 12,
               fontWeight: 700,
               color: '#fff',
-              background: 'linear-gradient(135deg, #F57C00, #FF9800)',
+              background: '#6A48C9',
               padding: '6px 14px',
               borderRadius: 999,
-              boxShadow: '0 4px 14px rgba(245,124,0,0.3)',
+              boxShadow: '0 4px 14px rgba(106,72,201,0.3)',
               opacity: periodChipProg,
               transform: `scale(${0.85 + periodChipProg * 0.15})`,
               flexShrink: 0,
@@ -669,12 +669,12 @@ export function FundTrackComposition(props: VizFundTrack) {
                 gap: 16,
                 padding: isHero ? '6px 10px 6px 10px' : 0,
                 background: isHero
-                  ? `linear-gradient(90deg, rgba(251,191,36,0.15) 0%, rgba(245,124,0,0.06) 60%, transparent 100%)`
+                  ? `linear-gradient(90deg, rgba(251,191,36,0.15) 0%, rgba(183,156,235,0.08) 60%, transparent 100%)`
                   : 'transparent',
                 borderRadius: isHero ? 12 : 0,
                 border: isHero ? `1px solid rgba(251,191,36,0.35)` : '1px solid transparent',
                 boxShadow: isHero
-                  ? `0 6px 18px rgba(245,124,0,${0.18 * heroPulse})`
+                  ? `0 6px 18px rgba(106,72,201,${0.18 * heroPulse})`
                   : 'none',
                 opacity: introProgress,
                 transform: `translateX(${(1 - introProgress) * -24}px)`,
@@ -790,9 +790,9 @@ export function FundTrackComposition(props: VizFundTrack) {
             bottom: 18,
             padding: '14px 18px',
             borderRadius: 14,
-            background: 'linear-gradient(135deg, rgba(245,124,0,0.10), rgba(251,191,36,0.10))',
-            border: '1px solid rgba(245,124,0,0.18)',
-            color: '#7A4E0C',
+            background: 'rgba(183,156,235,0.14)',
+            border: '1px solid rgba(106,72,201,0.18)',
+            color: '#6A48C9',
             fontSize: 14,
             fontWeight: 700,
             opacity: interpolate(frame, [70, 88], [0, 1], {
@@ -803,7 +803,7 @@ export function FundTrackComposition(props: VizFundTrack) {
               extrapolateLeft: 'clamp',
               extrapolateRight: 'clamp',
             })}px)`,
-            boxShadow: '0 8px 22px rgba(245,124,0,0.12)',
+            boxShadow: '0 8px 22px rgba(106,72,201,0.12)',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
@@ -814,7 +814,7 @@ export function FundTrackComposition(props: VizFundTrack) {
               width: 24,
               height: 24,
               borderRadius: 6,
-              background: 'linear-gradient(135deg, #F57C00, #FF9800)',
+              background: '#6A48C9',
               color: '#fff',
               display: 'grid',
               placeItems: 'center',

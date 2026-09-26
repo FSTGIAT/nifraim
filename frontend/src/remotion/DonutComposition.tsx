@@ -1,11 +1,10 @@
 import { useCurrentFrame, useVideoConfig, interpolate, spring } from 'remotion'
 import { VizDonut, colorsFor } from './types'
+import { CHART_PALETTE } from '../utils/chartPalette'
 
 const FONT = 'Heebo, sans-serif'
-const PALETTE = [
-  '#F57C00', '#E8720A', '#2E844A', '#4f46e5', '#ec4899',
-  '#0891b2', '#f59e0b', '#7c3aed', '#0ea5e9', '#84cc16',
-]
+// Validated categorical slots 1-11 of the app chart palette (no orange).
+const PALETTE = CHART_PALETTE.slice(0, 11)
 
 function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
   const polar = (a: number) => {
@@ -82,7 +81,7 @@ export function DonutComposition(props: VizDonut) {
         height,
         direction: 'rtl',
         fontFamily: FONT,
-        background: 'linear-gradient(135deg, #ffffff 0%, #fff8f0 100%)',
+        background: 'linear-gradient(135deg, #ffffff 0%, #f8f5fe 100%)',
         color: '#181818',
         position: 'relative',
         overflow: 'hidden',

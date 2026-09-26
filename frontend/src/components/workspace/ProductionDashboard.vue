@@ -394,14 +394,14 @@ const topClientsChartSeries = computed(() => [{
 .kpi-blue .kpi-icon { background: var(--primary-light); color: var(--primary); }
 .kpi-cyan .kpi-icon { background: rgba(227, 6, 106, 0.1); color: #E3066A; }
 .kpi-green .kpi-icon { background: var(--green-light); color: var(--accent-emerald); }
-.kpi-amber .kpi-icon { background: var(--amber-light); color: var(--amber); }
+.kpi-amber .kpi-icon { background: rgba(15, 163, 155, 0.12); color: #0B7C76; } /* accumulation = turquoise (--chart-7); amber is for warnings only */
 .kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: var(--accent-violet); }
 .kpi-emerald .kpi-icon { background: rgba(27, 94, 32, 0.1); color: #1B5E20; }
 
-.kpi-blue:hover { border-color: rgba(245, 124, 0, 0.25); box-shadow: 0 12px 32px rgba(245, 124, 0, 0.12); }
+.kpi-blue:hover { border-color: rgba(47, 115, 196, 0.25); box-shadow: 0 12px 32px rgba(47, 115, 196, 0.12); }
 .kpi-cyan:hover { border-color: rgba(227, 6, 106, 0.25); box-shadow: 0 12px 32px rgba(227, 6, 106, 0.12); }
 .kpi-green:hover { border-color: rgba(46, 132, 74, 0.25); box-shadow: 0 12px 32px rgba(46, 132, 74, 0.12); }
-.kpi-amber:hover { border-color: rgba(232, 114, 10, 0.25); box-shadow: 0 12px 32px rgba(232, 114, 10, 0.12); }
+.kpi-amber:hover { border-color: rgba(15, 163, 155, 0.3); box-shadow: 0 12px 32px rgba(15, 163, 155, 0.12); }
 .kpi-violet:hover { border-color: rgba(127, 86, 217, 0.25); box-shadow: 0 12px 32px rgba(127, 86, 217, 0.12); }
 .kpi-emerald:hover { border-color: rgba(27, 94, 32, 0.25); box-shadow: 0 12px 32px rgba(27, 94, 32, 0.12); }
 

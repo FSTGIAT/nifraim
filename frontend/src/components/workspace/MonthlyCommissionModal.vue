@@ -314,7 +314,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border, #DDDBDA);
-  background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%);
+  background: linear-gradient(135deg, var(--primary-light) 0%, #FFFFFF 100%);
 }
 .mc-head-left { display: flex; align-items: center; gap: 12px; }
 .mc-badge {
@@ -322,8 +322,8 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   color: #fff;
-  background: linear-gradient(135deg, #F57C00 0%, #FFA040 100%);
-  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.3);
+  background: var(--primary);
+  box-shadow: 0 4px 10px var(--primary-glow);
 }
 .mc-titles { display: flex; flex-direction: column; }
 .mc-title { font-size: 15px; font-weight: 700; color: var(--text, #181818); }
@@ -338,7 +338,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center;
   transition: background 0.18s ease, color 0.18s ease;
 }
-.mc-icon-btn:hover { background: var(--primary-light, #FFF3E0); color: var(--primary, #F57C00); }
+.mc-icon-btn:hover { background: var(--primary-light); color: var(--primary); }
 
 .mc-body {
   padding: 18px;
@@ -358,8 +358,8 @@ onBeforeUnmount(() => {
 
 .mc-loader {
   width: 28px; height: 28px;
-  border: 2.5px solid var(--primary-light, #FFF3E0);
-  border-top-color: var(--primary, #F57C00);
+  border: 2.5px solid var(--primary-light);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: mc-spin 0.9s linear infinite;
 }
@@ -395,9 +395,9 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border-subtle, #E5E5E5);
 }
 .mc-table th {
-  background: var(--primary-light, #FFF3E0);
+  background: var(--primary-light);
   font-weight: 700;
-  color: var(--primary-deep, #E65100);
+  color: var(--primary-deep);
   text-align: right;
 }
 .mc-table tbody tr:last-child td { border-bottom: none; }
@@ -409,7 +409,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .mc-chip--ok { background: rgba(46, 132, 74, 0.12); color: var(--green, #2E844A); }
-.mc-chip--partial { background: rgba(245, 124, 0, 0.12); color: var(--primary-deep, #E65100); }
+.mc-chip--partial { background: var(--amber-light); color: #6B4D00; } /* partial payment = warning state */
 .mc-chip--missing { background: rgba(112, 110, 107, 0.12); color: var(--text-muted, #706E6B); }
 .mc-gap-positive { color: var(--red, #EA001E); font-weight: 700; }
 .mc-gap-zero { color: var(--green, #2E844A); font-weight: 600; }

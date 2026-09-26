@@ -238,13 +238,13 @@ onBeforeUnmount(_clearTimer)
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 .brt-btn--primary {
-  background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
+  background: #0A6664;
   color: #fff;
-  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.28);
+  box-shadow: 0 4px 10px rgba(14, 140, 138, 0.28);
 }
 .brt-btn--primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(245, 124, 0, 0.38);
+  box-shadow: 0 8px 18px rgba(14, 140, 138, 0.38);
 }
 .brt-btn--quiet {
   background: var(--bg);

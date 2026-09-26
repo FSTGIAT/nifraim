@@ -1030,7 +1030,7 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .tint-savings { --cat: var(--chart-2);  --cat-deep: var(--chart-9);   --cat-tint: color-mix(in srgb, var(--chart-2) 16%, white); }
 .tint-risk    { --cat: var(--chart-4);  --cat-deep: #5A39B8;          --cat-tint: color-mix(in srgb, var(--chart-4) 16%, white); }
 .tint-health  { --cat: var(--chart-5);  --cat-deep: var(--chart-10);  --cat-tint: color-mix(in srgb, var(--chart-5) 20%, white); }
-.tint-other   { --cat: var(--chart-3);  --cat-deep: #C9791A;          --cat-tint: color-mix(in srgb, var(--chart-3) 20%, white); }
+.tint-other   { --cat: var(--chart-3);  --cat-deep: #565A1D;          --cat-tint: color-mix(in srgb, var(--chart-3) 20%, white); }
 
 /* ── The picture accordion (your reference: tall panels, widen on hover) ── */
 .shelf-rack { display: flex; flex-direction: row; gap: 14px; height: 300px; margin-bottom: 16px; }

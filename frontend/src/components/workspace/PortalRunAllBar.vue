@@ -226,10 +226,10 @@ watch(() => store.batchJustFinished, (b) => {
   background: var(--chart-8, #C9A227);
   color: var(--chart-8-ink); font-family: inherit; font-size: 15px; font-weight: 800; letter-spacing: 0.1px;
   cursor: pointer;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--chart-3, #D9820F) 34%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--chart-3) 34%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px color-mix(in srgb, var(--chart-3, #D9820F) 46%, transparent); filter: brightness(1.03); }
+.hero-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 30px color-mix(in srgb, var(--chart-3) 46%, transparent); filter: brightness(1.03); }
 .hero-run:active:not(:disabled) { transform: translateY(0); }
 .hero-run:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 .hero-run:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 3px; }
@@ -237,11 +237,11 @@ watch(() => store.batchJustFinished, (b) => {
 .hero-add {
   display: inline-flex; align-items: center; gap: 7px;
   height: 50px; padding: 0 20px; border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72); border: 1.5px solid color-mix(in srgb, var(--chart-3, #D9820F) 40%, transparent);
+  background: rgba(255, 255, 255, 0.72); border: 1.5px solid color-mix(in srgb, var(--chart-3) 40%, transparent);
   color: var(--chart-8-deep); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.hero-add:hover { background: #fff; border-color: var(--chart-3, #D9820F); transform: translateY(-1px); }
+.hero-add:hover { background: #fff; border-color: var(--chart-3); transform: translateY(-1px); }
 .hero-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
 
 /* ───── Batch progress ───── */
@@ -253,7 +253,7 @@ watch(() => store.batchJustFinished, (b) => {
   gap: 10px;
   padding: 14px 16px;
   background: color-mix(in srgb, var(--chart-8, #C9A227) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--chart-3, #D9820F) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chart-3) 26%, transparent);
   border-radius: 12px;
 }
 .batch-progress__head {
@@ -267,8 +267,8 @@ watch(() => store.batchJustFinished, (b) => {
 .batch-spinner {
   width: 15px;
   height: 15px;
-  border: 2.5px solid color-mix(in srgb, var(--chart-3, #D9820F) 28%, transparent);
-  border-top-color: var(--chart-3, #D9820F);
+  border: 2.5px solid color-mix(in srgb, var(--chart-3) 28%, transparent);
+  border-top-color: var(--chart-3);
   border-radius: 50%;
   animation: batch-spin 0.8s linear infinite;
   flex-shrink: 0;
@@ -288,7 +288,7 @@ watch(() => store.batchJustFinished, (b) => {
 }
 .batch-pill--ok   { background: rgba(46, 132, 74, 0.12); color: var(--green); border-color: rgba(46, 132, 74, 0.3); }
 .batch-pill--fail { background: rgba(234, 0, 30, 0.1);   color: var(--red-deep, #b91c1c); border-color: rgba(234,0,30,0.28); }
-.batch-pill--live { background: color-mix(in srgb, var(--chart-8, #C9A227) 22%, white); color: var(--chart-8-deep); border-color: color-mix(in srgb, var(--chart-3, #D9820F) 42%, transparent); }
+.batch-pill--live { background: color-mix(in srgb, var(--chart-8, #C9A227) 22%, white); color: var(--chart-8-deep); border-color: color-mix(in srgb, var(--chart-3) 42%, transparent); }
 .batch-pill--idle { background: rgba(107,114,128,0.1);  color: #6b7280; border-color: rgba(107,114,128,0.24); }
 
 /* ───── Batch done banner ───── */
@@ -313,14 +313,14 @@ watch(() => store.batchJustFinished, (b) => {
   padding: 8px 16px;
   border: none;
   border-radius: 9px;
-  background: var(--chart-3, #D9820F);
+  background: var(--chart-3);
   color: var(--chart-8-ink);
   font-family: inherit;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
-.batch-done__cta:hover { background: color-mix(in srgb, var(--chart-3, #D9820F) 88%, black); }
+.batch-done__cta:hover { background: color-mix(in srgb, var(--chart-3) 88%, black); }
 .batch-done__dismiss {
   display: inline-flex;
   border: none;

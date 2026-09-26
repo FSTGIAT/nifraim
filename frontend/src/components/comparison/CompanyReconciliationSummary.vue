@@ -655,7 +655,7 @@ function fmtMoney(n) {
 .crs-row:hover { background: rgba(0, 0, 0, 0.025); }
 
 .crs-row:focus-visible {
-  outline: 2px solid var(--primary, #F57C00);
+  outline: 2px solid var(--tab-comparison);
   outline-offset: -2px;
   border-radius: 6px;
 }
@@ -685,7 +685,7 @@ function fmtMoney(n) {
 .crs-chip--warn {
   background: var(--amber-light, #FFF3E0);
   color: #9A6B12;
-  border: 1px solid rgba(232, 114, 10, 0.25);
+  border: 1px solid rgba(201, 162, 39, 0.25);
 }
 
 /* Received-vs-expected progress */

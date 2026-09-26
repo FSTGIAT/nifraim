@@ -684,10 +684,10 @@ td.muted {
 .status-badge.active .status-dot { background: var(--green, #2E844A); box-shadow: 0 0 0 3px rgba(46, 132, 74, 0.15); }
 
 .status-badge.expired {
-  background: rgba(232, 114, 10, 0.12);
-  color: var(--amber, #E8720A);
+  background: rgba(201, 162, 39, 0.12);
+  color: var(--amber, #8A6300);
 }
-.status-badge.expired .status-dot { background: var(--amber, #E8720A); }
+.status-badge.expired .status-dot { background: var(--amber, #8A6300); }
 
 .status-badge.revoked {
   background: rgba(234, 0, 30, 0.08);

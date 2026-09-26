@@ -183,7 +183,7 @@ onBeforeUnmount(() => {
   height: 70vw;
   top: -20vw;
   right: -15vw;
-  background: rgba(232, 102, 10, 0.55); /* brand orange */
+  background: rgba(47, 115, 196, 0.55); /* cobalt */
   animation: heroOrb1 18s ease-in-out infinite;
 }
 .shader-hero-fallback-orb--2 {
@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
   height: 50vw;
   bottom: -15vw;
   left: -10vw;
-  background: rgba(93, 64, 55, 0.65); /* coffee */
+  background: rgba(44, 95, 107, 0.65); /* deep teal (was coffee) */
   animation: heroOrb2 22s ease-in-out infinite;
 }
 .shader-hero-fallback-orb--3 {
@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
   height: 28vw;
   top: 55%;
   right: 8%;
-  background: rgba(62, 39, 35, 0.6); /* deep coffee */
+  background: rgba(31, 58, 92, 0.6); /* deep cobalt (was coffee) */
   animation: heroOrb4 20s ease-in-out infinite;
 }
 .shader-hero-fallback-orb--5 {
@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
   height: 22vw;
   top: 15%;
   left: 12%;
-  background: rgba(232, 102, 10, 0.3); /* brand orange small */
+  background: rgba(14, 140, 138, 0.3); /* teal small */
   animation: heroOrb5 16s ease-in-out infinite;
 }
 
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
   height: 18vh;
   z-index: 5;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent 0%, rgba(232, 102, 10, 0.18) 70%, rgba(232, 102, 10, 0.45) 100%);
+  background: linear-gradient(to bottom, transparent 0%, rgba(47, 115, 196, 0.18) 70%, rgba(47, 115, 196, 0.45) 100%);
 }
 
 /* ── Hebrew content overlay (always visible) ── */
@@ -294,8 +294,8 @@ onBeforeUnmount(() => {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #E8660A;
-  box-shadow: 0 0 12px rgba(232, 102, 10, 0.7);
+  background: #4E9DD0;
+  box-shadow: 0 0 12px rgba(78, 157, 208, 0.7);
   animation: shaderHeroDotPulse 2s ease-in-out infinite;
 }
 
@@ -315,7 +315,7 @@ onBeforeUnmount(() => {
 
 .shader-hero-headline-accent {
   font-weight: 800;
-  color: #E8660A;
+  color: #4E9DD0; /* sky: readable accent on the black hero */
   font-style: italic;
 }
 

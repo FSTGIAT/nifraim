@@ -132,7 +132,7 @@ function onTile(id) {
   font-family: 'Heebo', sans-serif;
   color: var(--text);
   background:
-    radial-gradient(140% 110% at 0% 0%, rgba(245, 124, 0, 0.10) 0%, transparent 55%),
+    radial-gradient(140% 110% at 0% 0%, rgba(46, 132, 74, 0.10) 0%, transparent 55%),
     linear-gradient(140deg, var(--card-bg) 0%, var(--primary-light) 160%);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-md);
@@ -156,14 +156,14 @@ function onTile(id) {
   height: 280px;
   top: -110px;
   right: -90px;
-  background: radial-gradient(circle, rgba(245, 124, 0, 0.55) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(46, 132, 74, 0.55) 0%, transparent 65%);
 }
 .glow-b {
   width: 220px;
   height: 220px;
   bottom: -90px;
   left: -60px;
-  background: radial-gradient(circle, rgba(255, 152, 0, 0.32) 0%, transparent 65%);
+  background: radial-gradient(circle, rgba(46, 132, 74, 0.32) 0%, transparent 65%);
 }
 
 .hero > :not(.hero-bg) { position: relative; z-index: 1; }
@@ -198,8 +198,8 @@ function onTile(id) {
   letter-spacing: 0.3px;
   font-weight: 700;
   color: var(--primary-deep);
-  background: rgba(245, 124, 0, 0.12);
-  border: 1px solid rgba(245, 124, 0, 0.28);
+  background: rgba(46, 132, 74, 0.12);
+  border: 1px solid rgba(46, 132, 74, 0.28);
   padding: 4px 12px;
   border-radius: 999px;
   white-space: nowrap;
@@ -208,8 +208,8 @@ function onTile(id) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #F57C00;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.22);
+  background: var(--tab-comparison);
+  box-shadow: 0 0 0 3px rgba(46, 132, 74, 0.22);
   animation: pulseDot 2.4s ease-in-out infinite;
 }
 @keyframes pulseDot {
@@ -241,14 +241,14 @@ function onTile(id) {
 }
 .kpi--btn:hover:not(:disabled) {
   background: var(--glass-hover);
-  box-shadow: inset 0 0 0 1px rgba(245, 124, 0, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(46, 132, 74, 0.32);
   transform: translateY(-1px);
 }
 .kpi--btn:focus-visible {
   outline: none;
   box-shadow:
-    inset 0 0 0 1px rgba(245, 124, 0, 0.32),
-    0 0 0 3px rgba(245, 124, 0, 0.45);
+    inset 0 0 0 1px rgba(46, 132, 74, 0.32),
+    0 0 0 3px rgba(46, 132, 74, 0.45);
 }
 .kpi--btn:disabled {
   cursor: default;
@@ -285,14 +285,14 @@ function onTile(id) {
   height: 18px;
   border-radius: 6px;
   color: var(--primary-deep);
-  background: rgba(245, 124, 0, 0.14);
+  background: rgba(46, 132, 74, 0.14);
   opacity: 0.5;
   transition: opacity 180ms ease-out, background 180ms ease-out;
 }
 .kpi--btn:hover:not(:disabled) .kpi-chev,
 .kpi--btn:focus-visible .kpi-chev {
   opacity: 1;
-  background: rgba(245, 124, 0, 0.26);
+  background: rgba(46, 132, 74, 0.26);
 }
 
 /* Empty */
@@ -306,7 +306,7 @@ function onTile(id) {
   text-align: center;
   color: var(--text-muted);
 }
-.hero-empty svg { color: #F57C00; opacity: 0.85; }
+.hero-empty svg { color: var(--tab-comparison); opacity: 0.85; }
 .hero-empty p {
   margin: 0;
   font-size: 15px;
@@ -346,9 +346,9 @@ function onTile(id) {
   height: 20px;
   border-radius: 6px;
   color: #fff;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-comparison);
   flex-shrink: 0;
-  box-shadow: 0 3px 8px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 3px 8px rgba(46, 132, 74, 0.32);
 }
 
 .ltr-number {

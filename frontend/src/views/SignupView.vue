@@ -1,6 +1,6 @@
 <template>
   <div class="signup">
-    <!-- Orange orbs -->
+    <!-- Accent orbs (cobalt/teal) -->
     <div class="hero-gradient" aria-hidden="true">
       <div class="orb orb-1"></div>
       <div class="orb orb-2"></div>
@@ -292,10 +292,13 @@ async function processPayment() {
 <style scoped>
 /* ── Theme tokens (mirrors LandingView / PricingView) ── */
 .signup {
-  --land-orange: #E8660A;
-  --land-orange-bright: #F57C00;
-  --land-orange-deep: #C85A00;
-  --land-orange-glow: rgba(232, 102, 10, 0.1);
+  /* Orange retired 2026-09-26: actions = ink, accents = cobalt/teal (CHART_PALETTE). */
+  --land-action: #181818;
+  --land-action-deep: #000000;
+  --land-accent: #2F73C4;          /* cobalt — fills, icons, decoration */
+  --land-accent-ink: #245C9E;      /* deeper cobalt — small text on cream (≥4.5:1) */
+  --land-accent-bright: #0E8C8A;   /* teal — gradient partner */
+  --land-accent-glow: rgba(47, 115, 196, 0.1);
   --cream-bg: #F5F0EB;
   --cream-surface: #EDE8E1;
   --cream-surface-3: #F9F6F2;
@@ -316,7 +319,7 @@ async function processPayment() {
 
 .signup a { color: inherit; text-decoration: none; }
 
-/* ── Orange orbs ── */
+/* ── Accent orbs (cobalt/teal) ── */
 .hero-gradient {
   position: fixed;
   inset: 0;
@@ -334,7 +337,7 @@ async function processPayment() {
 .hero-gradient .orb-1 {
   width: 720px;
   height: 720px;
-  background: rgba(232, 102, 10, 0.28);
+  background: rgba(47, 115, 196, 0.28);
   top: -18%;
   left: -10%;
 }
@@ -342,7 +345,7 @@ async function processPayment() {
 .hero-gradient .orb-2 {
   width: 520px;
   height: 520px;
-  background: rgba(232, 102, 10, 0.22);
+  background: rgba(47, 115, 196, 0.22);
   bottom: 2%;
   right: -6%;
   animation-duration: 11s;
@@ -351,7 +354,7 @@ async function processPayment() {
 .hero-gradient .orb-3 {
   width: 460px;
   height: 460px;
-  background: rgba(245, 124, 0, 0.2);
+  background: rgba(14, 140, 138, 0.2);
   top: 38%;
   left: 42%;
   animation-duration: 10s;
@@ -395,10 +398,10 @@ async function processPayment() {
 
 .progress-line-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--land-orange), var(--land-orange-bright));
+  background: linear-gradient(90deg, var(--land-action), var(--land-action-deep));
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 0 12px rgba(232, 102, 10, 0.35);
+  box-shadow: 0 0 12px rgba(24, 24, 24, 0.25);
 }
 
 .progress-step {
@@ -425,13 +428,13 @@ async function processPayment() {
   height: 46px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
-  border: 2px solid rgba(232, 102, 10, 0.22);
+  border: 2px solid rgba(24, 24, 24, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
   font-weight: 900;
-  color: rgba(232, 102, 10, 0.55);
+  color: rgba(24, 24, 24, 0.55);
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   z-index: 2;
@@ -444,7 +447,7 @@ async function processPayment() {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(232, 102, 10, 0.35);
+  border: 2px solid rgba(24, 24, 24, 0.35);
   animation: ringPulse 2s ease-in-out infinite;
   z-index: 1;
 }
@@ -455,30 +458,30 @@ async function processPayment() {
 }
 
 .progress-step.active .step-dot {
-  background: var(--land-orange);
+  background: var(--land-action);
   border-color: transparent;
   color: #fff;
   font-size: 20px;
   font-weight: 900;
-  box-shadow: 0 4px 16px rgba(232, 102, 10, 0.4);
+  box-shadow: 0 4px 16px rgba(24, 24, 24, 0.3);
   transform: scale(1.05);
 }
 
 .progress-step.done .step-dot {
-  background: var(--land-orange);
+  background: var(--land-action);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(232, 102, 10, 0.3);
+  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.25);
 }
 
 .progress-step.done .step-check-icon {
   color: #fff;
   stroke: #fff;
-  filter: drop-shadow(0 1px 1.5px rgba(69, 26, 0, 0.3));
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.3));
 }
 
 .progress-step.done .step-dot-ring {
-  border-color: rgba(232, 102, 10, 0.25);
+  border-color: rgba(24, 24, 24, 0.25);
 }
 
 .progress-step > span {
@@ -489,12 +492,12 @@ async function processPayment() {
 }
 
 .progress-step.active > span {
-  color: var(--land-orange);
+  color: var(--land-action);
   font-weight: 700;
 }
 
 .progress-step.done > span {
-  color: var(--land-orange-deep);
+  color: var(--land-action);
   font-weight: 600;
 }
 
@@ -519,7 +522,7 @@ async function processPayment() {
   padding: 40px 36px;
   box-shadow:
     0 40px 80px -20px rgba(45, 37, 34, 0.15),
-    0 0 0 1px rgba(232, 102, 10, 0.05);
+    0 0 0 1px rgba(47, 115, 196, 0.05);
   position: relative;
 }
 
@@ -534,13 +537,13 @@ async function processPayment() {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: var(--land-orange);
+  background: var(--land-accent);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 8px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: 0 8px 20px rgba(47, 115, 196, 0.25);
 }
 
 .step-card h2 {
@@ -614,8 +617,8 @@ async function processPayment() {
 }
 
 .form-group input:focus {
-  border-color: var(--land-orange);
-  box-shadow: 0 0 0 3px rgba(232, 102, 10, 0.15);
+  border-color: var(--land-action);
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.1);
   outline: none;
   background: #fff;
 }
@@ -628,7 +631,7 @@ async function processPayment() {
   gap: 8px;
   width: 100%;
   padding: 16px;
-  background: var(--land-orange);
+  background: var(--land-action);
   color: #fff;
   border: none;
   border-radius: 14px;
@@ -639,13 +642,13 @@ async function processPayment() {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: center;
   text-decoration: none;
-  box-shadow: 0 4px 20px rgba(232, 102, 10, 0.25);
+  box-shadow: 0 4px 20px rgba(24, 24, 24, 0.25);
 }
 
 .btn-next:hover:not(:disabled) {
-  background: var(--land-orange-deep);
+  background: var(--land-action-deep);
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(232, 102, 10, 0.3);
+  box-shadow: 0 8px 28px rgba(24, 24, 24, 0.3);
 }
 
 .btn-next:active:not(:disabled) {
@@ -679,9 +682,9 @@ async function processPayment() {
 }
 
 .btn-back:hover {
-  border-color: var(--land-orange);
-  color: var(--land-orange);
-  background: rgba(232, 102, 10, 0.06);
+  border-color: var(--land-action);
+  color: var(--land-action);
+  background: rgba(24, 24, 24, 0.06);
 }
 
 .step-actions {
@@ -694,10 +697,10 @@ async function processPayment() {
 
 /* ── Plan summary card ── */
 .plan-summary {
-  border: 1px solid rgba(232, 102, 10, 0.2);
+  border: 1px solid rgba(47, 115, 196, 0.2);
   border-radius: 18px;
   padding: 28px;
-  background: linear-gradient(135deg, rgba(232, 102, 10, 0.06), rgba(255, 255, 255, 0.6));
+  background: linear-gradient(135deg, rgba(47, 115, 196, 0.06), rgba(255, 255, 255, 0.6));
   position: relative;
   overflow: hidden;
 }
@@ -709,7 +712,7 @@ async function processPayment() {
   right: -30%;
   width: 70%;
   height: 70%;
-  background: radial-gradient(circle, rgba(232, 102, 10, 0.18), transparent 60%);
+  background: radial-gradient(circle, rgba(47, 115, 196, 0.18), transparent 60%);
   pointer-events: none;
 }
 
@@ -737,7 +740,7 @@ async function processPayment() {
   line-height: 0.95;
   color: var(--cream-text);
   letter-spacing: -2px;
-  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-orange) 100%);
+  background: linear-gradient(135deg, var(--cream-text) 0%, var(--land-accent) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -789,7 +792,7 @@ async function processPayment() {
 }
 
 .ps-bullets svg {
-  color: var(--land-orange);
+  color: var(--land-accent);
   flex-shrink: 0;
 }
 
@@ -799,11 +802,11 @@ async function processPayment() {
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  background: rgba(232, 102, 10, 0.06);
-  border: 1px solid rgba(232, 102, 10, 0.18);
+  background: rgba(47, 115, 196, 0.06);
+  border: 1px solid rgba(47, 115, 196, 0.18);
   border-radius: 12px;
   margin-bottom: 20px;
-  color: var(--land-orange-deep);
+  color: var(--land-accent-ink);
   font-size: 13px;
   font-weight: 500;
   animation: fieldFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -811,7 +814,7 @@ async function processPayment() {
 
 .recurring-notice svg {
   flex-shrink: 0;
-  color: var(--land-orange);
+  color: var(--land-accent);
 }
 
 .recurring-notice strong {
@@ -861,8 +864,8 @@ async function processPayment() {
 }
 
 .terms-checkbox input:checked + .checkmark {
-  background: var(--land-orange);
-  border-color: var(--land-orange);
+  background: var(--land-action);
+  border-color: var(--land-action);
 }
 
 .terms-checkbox input:checked + .checkmark::after {
@@ -915,12 +918,12 @@ async function processPayment() {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--land-orange), var(--land-orange-bright));
+  background: linear-gradient(135deg, var(--land-accent), var(--land-accent-bright));
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 32px rgba(232, 102, 10, 0.3);
+  box-shadow: 0 12px 32px rgba(47, 115, 196, 0.3);
   animation: successPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 

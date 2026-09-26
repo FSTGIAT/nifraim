@@ -5,9 +5,9 @@ import { CardScreen } from './CardScreen'
 import { Cursor, cursorState } from './Cursor'
 
 const FONT = "'Heebo', sans-serif"
-const CREAM = '#FFFBF4'
-const BRAND = '#F57C00'
-const BRAND_DEEP = '#E65100'
+const CREAM = '#FAFAFA'
+const BRAND = '#181818'      // ink (--primary)
+const BRAND_DEEP = '#000000' // --primary-deep
 const INK_SOFT = '#6B5F50'
 
 const TRAVEL_FRAMES = 40

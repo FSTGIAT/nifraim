@@ -56,5 +56,5 @@ export function prefersReducedMotion() {
 export function toneFor(direction) {
   if (direction === 'up') return { main: 'var(--chart-gain)', soft: 'rgba(46, 132, 74, 0.5)' }
   if (direction === 'down') return { main: 'var(--chart-loss)', soft: 'rgba(220, 38, 38, 0.45)' }
-  return { main: 'var(--primary)', soft: 'rgba(245, 124, 0, 0.52)' }
+  return { main: 'var(--tab-ai)', soft: 'rgba(183, 156, 235, 0.52)' } // neutral = AI lavender
 }

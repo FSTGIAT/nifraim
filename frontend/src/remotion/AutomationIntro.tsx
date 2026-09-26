@@ -16,17 +16,17 @@ import {
 
 const FONT = "'Heebo', sans-serif"
 
-const CREAM_BG = '#FFFBF4'
+const CREAM_BG = '#F5FAFA' // automation tint (was cream)
 const INK = '#1A1410'
 const INK_SOFT = '#6B5F50'
 const HAIRLINE = '#EADFCC'
 
-const BRAND = '#F57C00'
-const BRAND_DEEP = '#E65100'
+const BRAND = '#0E8C8A'      // --tab-automation
+const BRAND_DEEP = '#0A6664' // automation text-safe ink
 
 // Bright-bold cadence colors (match --cadence-* in App.vue / chartPalette.js)
 const CAD_DAILY = '#4E9DD0'   // sky blue
-const CAD_WEEKLY = '#F9A937'  // gold
+const CAD_WEEKLY = '#D6336C'  // magenta (mirrors --cadence-weekly)
 const CAD_MONTHLY = '#8E44AD' // purple
 
 interface ZoneSpec {
@@ -109,7 +109,7 @@ function PortalCardArt({
         borderRadius: 14,
         border: `1px solid ${HAIRLINE}`,
         boxShadow: lifted
-          ? '0 24px 48px rgba(26, 20, 16, 0.18), 0 4px 12px rgba(245, 124, 0, 0.12)'
+          ? '0 24px 48px rgba(26, 20, 16, 0.18), 0 4px 12px rgba(14, 140, 138, 0.12)'
           : '0 2px 6px rgba(26, 20, 16, 0.04), 0 8px 18px rgba(26, 20, 16, 0.05)',
         transform: `scale(${scale}) rotate(${rotate}deg)`,
         transformOrigin: 'center',

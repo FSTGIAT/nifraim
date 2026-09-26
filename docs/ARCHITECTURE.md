@@ -515,8 +515,8 @@ Each tab owns a **colour identity** via three CSS vars bound inline
 (`--accent`, `--accent-glow` wash, `--accent-ink` text-safe): `production`=cobalt,
 `comparison`=green, `commission`=purple, `emails`=magenta, `recruits`=turquoise,
 `portal`=sky, `ai`=lavender, `automation`=teal. Tokens live in `App.vue :root`
-as `--tab-*` → `CHART_PALETTE`. **Orange (`--primary`) is the brand-action colour
-only — never a tab identity.**
+as `--tab-*` → `CHART_PALETTE`. **Orange is retired (2026-09-26)**: actions use the
+tab's colour inside a tab and ink (`--primary` #181818) outside — see the `nifraim-style` skill.
 
 Home-card **hover** = grow + ambient loop (both were subtle traps):
 - **Resize**: `.card:hover` scales to `1.14` + `z-index:5` (grows *over*

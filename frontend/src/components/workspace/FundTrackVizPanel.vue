@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border-subtle);
-  background: linear-gradient(180deg, rgba(245, 124, 0, 0.05) 0%, #ffffff 100%);
+  background: linear-gradient(180deg, rgba(106, 72, 201, 0.05) 0%, #ffffff 100%);
   flex-shrink: 0;
 }
 .ft-viz-head-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -250,9 +250,9 @@ onBeforeUnmount(() => {
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--tab-ai-ink);
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 4px 12px rgba(106, 72, 201, 0.32);
   flex-shrink: 0;
 }
 .ft-viz-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -280,9 +280,9 @@ onBeforeUnmount(() => {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .ft-viz-icon-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-deep);
-  border-color: rgba(245, 124, 0, 0.18);
+  background: var(--tab-ai-wash);
+  color: var(--tab-ai-ink);
+  border-color: rgba(106, 72, 201, 0.18);
 }
 
 .ft-viz-body {
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at top right, rgba(245,124,0,0.04), transparent 50%),
+    radial-gradient(circle at top right, rgba(106, 72, 201, 0.04), transparent 50%),
     #ffffff;
   min-height: 0;
   overflow: auto;

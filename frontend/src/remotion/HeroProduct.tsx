@@ -1,4 +1,5 @@
 import { interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
+import { CHART_PALETTE } from '../utils/chartPalette'
 
 const FONT = "'Heebo', -apple-system, sans-serif"
 
@@ -26,10 +27,11 @@ export function HeroProduct() {
 
   // Bar chart rows (staggered, each row draws in for 18 frames starting at frame 12 + i*6)
   const rows = [
-    { label: 'אקסלנס', value: 0.92, color: '#E65100' },
-    { label: 'הפניקס', value: 0.78, color: '#F57C00' },
-    { label: 'מגדל', value: 0.65, color: '#FF9800' },
-    { label: 'כלל', value: 0.54, color: '#FFB74D' },
+    // Categorical company colours; slot 3 (golden amber) skipped so no bar reads orange.
+    { label: 'אקסלנס', value: 0.92, color: CHART_PALETTE[0] },
+    { label: 'הפניקס', value: 0.78, color: CHART_PALETTE[1] },
+    { label: 'מגדל', value: 0.65, color: CHART_PALETTE[3] },
+    { label: 'כלל', value: 0.54, color: CHART_PALETTE[4] },
   ]
 
   const cardW = Math.min(width * 0.76, 720)
@@ -41,7 +43,7 @@ export function HeroProduct() {
         width,
         height,
         background:
-          'radial-gradient(circle at 30% 20%, #FFF8F0 0%, #FFE8D0 70%, #FFB88A 100%)',
+          'radial-gradient(circle at 30% 20%, #FFFFFF 0%, #F3F3F3 70%, #E2E2E2 100%)',
         fontFamily: FONT,
         direction: 'rtl',
         position: 'relative',
@@ -55,7 +57,7 @@ export function HeroProduct() {
           width: width * 0.5,
           height: width * 0.5,
           borderRadius: '50%',
-          background: 'rgba(245, 124, 0, 0.18)',
+          background: 'rgba(78, 157, 208, 0.18)',
           top: -width * 0.15,
           left: -width * 0.1,
           filter: 'blur(60px)',
@@ -67,7 +69,7 @@ export function HeroProduct() {
           width: width * 0.35,
           height: width * 0.35,
           borderRadius: '50%',
-          background: 'rgba(255, 183, 77, 0.22)',
+          background: 'rgba(142, 68, 173, 0.14)',
           bottom: -width * 0.1,
           right: -width * 0.08,
           filter: 'blur(60px)',
@@ -115,9 +117,9 @@ export function HeroProduct() {
               fontSize: 12,
               fontWeight: 600,
               letterSpacing: '0.15em',
-              color: '#F57C00',
+              color: '#181818',
               textTransform: 'uppercase',
-              background: 'rgba(245,124,0,0.1)',
+              background: 'rgba(24,24,24,0.08)',
               padding: '4px 10px',
               borderRadius: 99,
             }}
@@ -215,7 +217,7 @@ export function HeroProduct() {
             style={{
               fontSize: 28,
               fontWeight: 900,
-              color: '#E65100',
+              color: '#181818',
               letterSpacing: '-0.02em',
               direction: 'ltr',
             }}
@@ -249,7 +251,7 @@ export function HeroProduct() {
           style={{
             fontSize: 30,
             fontWeight: 900,
-            color: '#E65100',
+            color: '#181818',
             letterSpacing: '-0.02em',
             direction: 'ltr',
           }}

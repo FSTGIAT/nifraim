@@ -186,8 +186,8 @@ const filterOptions = [
 
 const statusItems = computed(() => [
   { key: 'found', label: 'נמצא בפרודוקציה', count: props.result.found, color: '#2E844A' },
-  { key: 'client_only', label: 'לקוח קיים, מוצר חסר', count: props.result.client_only, color: '#F57C00' },
-  { key: 'not_found', label: 'לא נמצא', count: props.result.not_found, color: '#E8720A' },
+  { key: 'client_only', label: 'לקוח קיים, מוצר חסר', count: props.result.client_only, color: '#0FA39B' },
+  { key: 'not_found', label: 'לא נמצא', count: props.result.not_found, color: '#8A6300' },
 ])
 
 const donutSeries = computed(() => statusItems.value.map(s => s.count))
@@ -326,7 +326,7 @@ function formatNum(val) {
   left: 0;
   right: 0;
   height: 4px;
-  background: linear-gradient(90deg, #2E844A 0%, #2E844A 40%, #F57C00 40%, #F57C00 65%, #E8720A 65%, #E8720A 100%);
+  background: linear-gradient(90deg, #2E844A 0%, #2E844A 40%, #0FA39B 40%, #0FA39B 65%, #8A6300 65%, #8A6300 100%);
 }
 
 .hero-header {
@@ -347,7 +347,7 @@ function formatNum(val) {
   font-size: 12px;
   font-weight: 700;
   color: var(--primary);
-  background: rgba(245, 124, 0, 0.08);
+  background: rgba(15, 163, 155, 0.08);
   padding: 5px 14px;
   border-radius: 20px;
 }
@@ -450,10 +450,10 @@ function formatNum(val) {
   flex-shrink: 0;
 }
 
-.kpi-blue .kpi-icon { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
+.kpi-blue .kpi-icon { background: rgba(15, 163, 155, 0.1); color: var(--tab-recruits-ink); }
 .kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.kpi-amber .kpi-icon { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
-.kpi-amber .kpi-value { color: #E8720A; }
+.kpi-amber .kpi-icon { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
+.kpi-amber .kpi-value { color: #8A6300; }
 .kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
 
 .kpi-data { min-width: 0; }
@@ -564,9 +564,9 @@ function formatNum(val) {
 }
 
 .dot-full_match { background: #2E844A; }
-.dot-partial_match { background: #F57C00; }
+.dot-partial_match { background: var(--tab-recruits); }
 .dot-client_only { background: #7F56D9; }
-.dot-not_found { background: #E8720A; }
+.dot-not_found { background: #8A6300; }
 
 .client-info {
   flex: 1;
@@ -603,9 +603,9 @@ function formatNum(val) {
 }
 
 .badge-full_match { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.badge-partial_match { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
+.badge-partial_match { background: rgba(15, 163, 155, 0.1); color: var(--tab-recruits-ink); }
 .badge-client_only { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
-.badge-not_found { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
+.badge-not_found { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
 .badge-count { background: var(--border-subtle); color: var(--text-muted); }
 
 .expand-arrow {
@@ -644,8 +644,8 @@ function formatNum(val) {
 }
 
 .pdot-found { background: #2E844A; }
-.pdot-client_only { background: #F57C00; }
-.pdot-not_found { background: #E8720A; }
+.pdot-client_only { background: var(--tab-recruits); }
+.pdot-not_found { background: #8A6300; }
 
 .prod-info {
   flex: 1;
@@ -693,8 +693,8 @@ function formatNum(val) {
 }
 
 .psl-found { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.psl-client_only { background: rgba(245, 124, 0, 0.1); color: #F57C00; }
-.psl-not_found { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
+.psl-client_only { background: rgba(15, 163, 155, 0.1); color: var(--tab-recruits-ink); }
+.psl-not_found { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
 
 .empty-results {
   text-align: center;

@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: #FFF3E0;
+  background: var(--primary-light);
   cursor: pointer;
   overflow: hidden;
 }
@@ -186,8 +186,8 @@ onBeforeUnmount(() => {
   top: 20px;
   inset-inline-end: 24px;
   background: rgba(255, 255, 255, 0.85);
-  color: #E65100;
-  border: 1px solid rgba(230, 81, 0, 0.25);
+  color: var(--primary);
+  border: 1px solid rgba(24, 24, 24, 0.25);
   backdrop-filter: blur(8px);
   border-radius: 999px;
   padding: 8px 18px;
@@ -198,13 +198,13 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
   transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   z-index: 1;
-  box-shadow: 0 4px 12px rgba(230, 81, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.15);
 }
 
 .welcome-skip:hover {
   background: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(230, 81, 0, 0.25);
+  box-shadow: 0 6px 18px rgba(24, 24, 24, 0.25);
 }
 
 .welcome-fade-enter-active {

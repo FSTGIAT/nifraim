@@ -522,7 +522,7 @@ onMounted(() => { load(); loadActions() })
 
 .mt-blockers {
   padding: 14px 16px; border-radius: var(--radius-md);
-  background: rgba(249, 169, 55, 0.08); border: 1px solid rgba(249, 169, 55, 0.35);
+  background: var(--amber-light); border: 1px solid rgba(201, 162, 39, 0.35); /* blockers = warning */
 }
 .mt-blockers h4 { margin: 0 0 8px; font-size: 0.9rem; color: var(--text-primary); }
 .mt-blockers ul { margin: 0; padding-inline-start: 18px; }

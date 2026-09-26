@@ -180,10 +180,10 @@ async function openCompose() {
 .mp-copy:hover { background: #ececec; }
 
 .mp-open {
-  background: #f57c00;
+  background: var(--primary);
   color: #fff;
 }
-.mp-open:hover { background: #e76b00; }
+.mp-open:hover { background: var(--primary-deep); }
 
 .modal-enter-active,
 .modal-leave-active {

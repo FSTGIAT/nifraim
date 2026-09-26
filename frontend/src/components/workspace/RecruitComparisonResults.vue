@@ -991,7 +991,7 @@ const companyChartOptions = computed(() => ({
     },
   },
   plotOptions: { bar: { horizontal: true, barHeight: '60%', borderRadius: 4 } },
-  colors: ['#2E844A', '#E8720A'],
+  colors: ['#2E844A', '#8A6300'],
   xaxis: {
     categories: (props.result.company_breakdown || []).map(c => c.company),
     labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
@@ -1053,7 +1053,7 @@ const productChartOptions = computed(() => ({
     },
   },
   plotOptions: { bar: { horizontal: true, barHeight: '55%', borderRadius: 4 } },
-  colors: ['#2E844A', '#E8720A'],
+  colors: ['#2E844A', '#8A6300'],
   xaxis: {
     categories: productBreakdown.value.map(p => p.product),
     labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
@@ -1385,7 +1385,7 @@ const chartSeries = computed(() => [props.result.found, props.result.not_found])
 const chartOptions = computed(() => ({
   chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
   labels: ['נמצאו בפרודוקציה', 'לא נמצאו'],
-  colors: ['#2E844A', '#E8720A'],
+  colors: ['#2E844A', '#8A6300'],
   legend: { show: false },
   dataLabels: {
     enabled: true,
@@ -1518,9 +1518,9 @@ const chartOptions = computed(() => ({
 .found-kpi .kpi-num { color: var(--accent-emerald); }
 .found-kpi .kpi-pct { color: var(--accent-emerald); }
 
-.missing-kpi { background: rgba(232,114,10,0.06); border-color: rgba(232,114,10,0.1); }
-.missing-kpi .kpi-num { color: #E8720A; }
-.missing-kpi .kpi-pct { color: #E8720A; }
+.missing-kpi { background: rgba(201, 162, 39,0.06); border-color: rgba(201, 162, 39,0.1); }
+.missing-kpi .kpi-num { color: #8A6300; }
+.missing-kpi .kpi-pct { color: #8A6300; }
 
 .total-kpi { background: var(--border-subtle); }
 .total-kpi .kpi-num { color: var(--text); }
@@ -1580,9 +1580,9 @@ const chartOptions = computed(() => ({
 .ins-kpi-green .ins-kpi-icon { background: rgba(46,132,74,0.12); color: var(--accent-emerald); }
 .ins-kpi-green .ins-kpi-val { color: var(--accent-emerald); }
 
-.ins-kpi-orange { background: rgba(232,114,10,0.06); border-color: rgba(232,114,10,0.1); }
-.ins-kpi-orange .ins-kpi-icon { background: rgba(232,114,10,0.12); color: #E8720A; }
-.ins-kpi-orange .ins-kpi-val { color: #E8720A; }
+.ins-kpi-orange { background: rgba(201, 162, 39,0.06); border-color: rgba(201, 162, 39,0.1); }
+.ins-kpi-orange .ins-kpi-icon { background: rgba(201, 162, 39,0.12); color: #8A6300; }
+.ins-kpi-orange .ins-kpi-val { color: #8A6300; }
 
 .ins-kpi-cyan { background: rgba(227,6,106,0.06); border-color: rgba(227,6,106,0.1); }
 .ins-kpi-cyan .ins-kpi-icon { background: rgba(227,6,106,0.12); color: #E3066A; }
@@ -1679,9 +1679,9 @@ const chartOptions = computed(() => ({
 
 .ins-summary-card {
   padding: 16px;
-  border: 1px solid rgba(232,114,10,0.15);
+  border: 1px solid rgba(201, 162, 39,0.15);
   border-radius: 12px;
-  background: rgba(232,114,10,0.03);
+  background: rgba(201, 162, 39,0.03);
 }
 
 .summary-bullets {
@@ -1703,7 +1703,7 @@ const chartOptions = computed(() => ({
   content: '•';
   position: absolute;
   right: 0;
-  color: #E8720A;
+  color: #8A6300;
   font-weight: 700;
 }
 
@@ -1791,7 +1791,7 @@ const chartOptions = computed(() => ({
 
 .slice-filter select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
   outline: none;
 }
 
@@ -1824,7 +1824,7 @@ const chartOptions = computed(() => ({
   transition: border-color 0.2s;
 }
 .slice-search-input:focus {
-  border-color: var(--primary, #F57C00);
+  border-color: var(--primary);
 }
 .search-clear {
   position: absolute;
@@ -1839,7 +1839,7 @@ const chartOptions = computed(() => ({
   justify-content: center;
 }
 .search-clear:hover {
-  color: var(--primary, #F57C00);
+  color: var(--primary);
 }
 
 .slice-clear {
@@ -1902,7 +1902,7 @@ const chartOptions = computed(() => ({
 }
 
 .row-found { border-right: 3px solid var(--accent-emerald); }
-.row-missing { border-right: 3px solid #E8720A; }
+.row-missing { border-right: 3px solid #8A6300; }
 
 .dot {
   display: inline-block;
@@ -1911,7 +1911,7 @@ const chartOptions = computed(() => ({
   border-radius: 50%;
 }
 .dot-found { background: var(--accent-emerald); box-shadow: 0 0 6px var(--green-light); }
-.dot-missing { background: #E8720A; box-shadow: 0 0 6px rgba(232,114,10,0.2); }
+.dot-missing { background: #8A6300; box-shadow: 0 0 6px rgba(201, 162, 39,0.2); }
 
 .td-name { font-weight: 600; white-space: nowrap; }
 .td-id { font-size: 12px; color: var(--text-muted); font-family: monospace; }
@@ -1930,7 +1930,7 @@ const chartOptions = computed(() => ({
   background: var(--green-light);
   color: var(--accent-emerald);
 }
-.prod-badge-zero { background: rgba(232,114,10,0.08); color: #E8720A; }
+.prod-badge-zero { background: rgba(201, 162, 39,0.08); color: #8A6300; }
 
 .td-premium { font-weight: 700; font-size: 12px; color: var(--primary); white-space: nowrap; }
 
@@ -2041,7 +2041,7 @@ const chartOptions = computed(() => ({
   flex-shrink: 0;
 }
 .chip-found { background: var(--green-light); color: var(--accent-emerald); }
-.chip-missing { background: rgba(232,114,10,0.08); color: #E8720A; }
+.chip-missing { background: rgba(201, 162, 39,0.08); color: #8A6300; }
 .chip-company { background: rgba(127,86,217,0.08); color: #7F56D9; }
 .chip-product { background: rgba(127,86,217,0.08); color: #7F56D9; }
 
@@ -2250,14 +2250,14 @@ const chartOptions = computed(() => ({
 
 .status-select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
   outline: none;
 }
 
 .status-select.cs-moved {
-  background-color: rgba(232, 114, 10, 0.08);
-  border-color: rgba(232, 114, 10, 0.3);
-  color: #E8720A;
+  background-color: rgba(201, 162, 39, 0.08);
+  border-color: rgba(201, 162, 39, 0.3);
+  color: #8A6300;
 }
 
 .status-select.cs-withdrew {
@@ -2281,7 +2281,7 @@ const chartOptions = computed(() => ({
   font-family: 'Heebo', sans-serif;
   font-size: 12px;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.15);
+  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
 }
 
 .status-found-label {
@@ -2386,7 +2386,7 @@ const chartOptions = computed(() => ({
 .mm-action-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(245, 124, 0, 0.06);
+  background: rgba(15, 163, 155, 0.06);
 }
 
 .mm-table-wrap {
@@ -2431,14 +2431,14 @@ const chartOptions = computed(() => ({
 }
 
 .mm-row:hover {
-  background: rgba(245, 124, 0, 0.04);
+  background: rgba(15, 163, 155, 0.04);
 }
 
 .mm-row-selected {
-  background: rgba(245, 124, 0, 0.08);
+  background: rgba(15, 163, 155, 0.08);
 }
 .mm-row-selected:hover {
-  background: rgba(245, 124, 0, 0.12);
+  background: rgba(15, 163, 155, 0.12);
 }
 
 .th-check,
@@ -2451,16 +2451,16 @@ const chartOptions = computed(() => ({
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: var(--primary, #F57C00);
+  accent-color: var(--primary);
 }
 .mm-action-primary {
-  background: var(--primary, #F57C00);
+  background: var(--primary);
   color: #fff;
-  border-color: var(--primary, #F57C00) !important;
+  border-color: var(--primary) !important;
 }
 .mm-action-primary:hover:not(:disabled) {
-  background: #E65100;
-  border-color: #E65100 !important;
+  background: var(--primary-deep);
+  border-color: var(--primary-deep) !important;
 }
 .mm-action-primary:disabled {
   opacity: 0.5;
@@ -2491,7 +2491,7 @@ const chartOptions = computed(() => ({
   letter-spacing: -0.5px;
 }
 
-.drill-stat-missing { color: #E8720A; }
+.drill-stat-missing { color: #8A6300; }
 .drill-stat-premium { color: var(--primary); font-size: 16px; }
 
 .drill-stat-lbl {

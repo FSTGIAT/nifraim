@@ -111,13 +111,13 @@ const iconSpring = useSpring(iconScale, { mass: 0.1, stiffness: 150, damping: 12
   inset-inline-end: -3px;
   width: 16px;
   height: 16px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #0A6664;
   color: #fff;
   border: 2px solid #fff;
   border-radius: 999px;
   display: grid;
   place-items: center;
-  box-shadow: 0 2px 6px rgba(245, 124, 0, 0.4);
+  box-shadow: 0 2px 6px rgba(14, 140, 138, 0.4);
 }
 
 .di-inner {
@@ -144,8 +144,8 @@ const iconSpring = useSpring(iconScale, { mass: 0.1, stiffness: 150, damping: 12
   animation: dockPulse 1.4s ease-in-out infinite;
 }
 @keyframes dockPulse {
-  0%, 100% { box-shadow: 0 6px 12px rgba(17,12,6,0.20), inset 0 -2px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 0 0 rgba(245, 124, 0, 0.50); }
-  50%      { box-shadow: 0 6px 12px rgba(17,12,6,0.20), inset 0 -2px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 0 16px rgba(245, 124, 0, 0); }
+  0%, 100% { box-shadow: 0 6px 12px rgba(17,12,6,0.20), inset 0 -2px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 0 0 rgba(14, 140, 138, 0.50); }
+  50%      { box-shadow: 0 6px 12px rgba(17,12,6,0.20), inset 0 -2px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 0 16px rgba(14, 140, 138, 0); }
 }
 
 .di-spinner {

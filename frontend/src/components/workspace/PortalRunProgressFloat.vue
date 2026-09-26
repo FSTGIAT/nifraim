@@ -134,9 +134,9 @@ const portalLabel = computed(() => {
   return fromStore || brandFor(kind).label || kind
 })
 const brandDotStyle = computed(() => {
-  if (!cred.value) return { background: 'linear-gradient(135deg, #F57C00, #FF9800)' }
+  if (!cred.value) return { background: '#0E8C8A' }
   const b = brandFor(cred.value.portal_kind)
-  const c = b?.color || '#F57C00'
+  const c = b?.color || '#0E8C8A'
   return { background: `linear-gradient(135deg, ${c}, ${shade(c, -15)})` }
 })
 
@@ -279,7 +279,7 @@ function shade(hex, pct) {
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   border-radius: 16px;
-  border: 1px solid rgba(245, 124, 0, 0.16);
+  border: 1px solid rgba(14, 140, 138, 0.16);
   box-shadow:
     0 20px 50px -8px rgba(45, 37, 34, 0.20),
     0 8px 16px -4px rgba(45, 37, 34, 0.10),
@@ -288,10 +288,10 @@ function shade(hex, pct) {
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 .prf-shell--otp {
-  border-color: rgba(245, 124, 0, 0.45);
+  border-color: rgba(14, 140, 138, 0.45);
   box-shadow:
-    0 20px 50px -8px rgba(245, 124, 0, 0.30),
-    0 0 0 4px rgba(245, 124, 0, 0.08),
+    0 20px 50px -8px rgba(14, 140, 138, 0.30),
+    0 0 0 4px rgba(14, 140, 138, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .prf-shell--ok {
@@ -319,7 +319,7 @@ function shade(hex, pct) {
 .prf-topbar-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: linear-gradient(90deg, #F57C00, #FF9800, #FFB74D);
+  background: linear-gradient(90deg, #0A6664, #0E8C8A, #0E8C8A);
   border-radius: 0 2px 2px 0;
   transition: width 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
@@ -372,7 +372,7 @@ function shade(hex, pct) {
   border-radius: 50%;
   flex-shrink: 0;
   box-shadow:
-    0 4px 10px rgba(245, 124, 0, 0.25),
+    0 4px 10px rgba(14, 140, 138, 0.25),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   position: relative;
 }
@@ -384,7 +384,7 @@ function shade(hex, pct) {
   border: 2px solid currentColor;
   opacity: 0;
   animation: prf-halo 2.4s ease-in-out infinite;
-  color: rgba(245, 124, 0, 0.4);
+  color: rgba(14, 140, 138, 0.4);
   pointer-events: none;
 }
 .prf-shell--ok .prf-portal-dot::after { animation: none; opacity: 0; }
@@ -501,13 +501,13 @@ function shade(hex, pct) {
 .prf-stage--done .prf-stage-label { color: #1B5E20; }
 
 .prf-stage--active .prf-stage-marker {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #0A6664;
   color: #fff;
   transform: scale(1.10);
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.18);
+  box-shadow: 0 0 0 4px rgba(14, 140, 138, 0.18);
 }
 .prf-stage--active .prf-stage-label {
-  color: #E65100;
+  color: #0A6664;
   font-weight: 700;
 }
 .prf-stage-pulse {
@@ -534,11 +534,11 @@ function shade(hex, pct) {
   align-items: center;
   gap: 7px;
   padding: 8px 12px;
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.07), rgba(255, 152, 0, 0.04));
-  border: 1px dashed rgba(245, 124, 0, 0.30);
+  background: linear-gradient(135deg, rgba(14, 140, 138, 0.07), rgba(14, 140, 138, 0.04));
+  border: 1px dashed rgba(14, 140, 138, 0.30);
   border-radius: 10px;
   font-size: 12px;
-  color: #E65100;
+  color: #0A6664;
   font-weight: 600;
   line-height: 1.4;
 }

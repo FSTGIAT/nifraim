@@ -163,7 +163,7 @@ function luminance(hex) {
  *  so the card reads bright without losing the brand identity. */
 const SEVERITY_PAINT = {
   error:   { base: '#EA001E', deep: '#C23934' },   // vivid red → deep red
-  warning: { base: '#F57C00', deep: '#E65100' },   // orange → deep amber
+  warning: { base: '#8A6300', deep: '#6B4D00' },   // semantic amber (--amber) → deep amber
   info:    { base: '#7F56D9', deep: '#7F56D9' },   // violet → violet
 }
 function paintFor(alert) {
@@ -423,13 +423,13 @@ onBeforeUnmount(() => {
 .bell-btn:active { transform: scale(0.96); }
 .bell-btn.is-open {
   color: var(--text);
-  border-color: var(--primary, #F57C00);
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.12), 0 8px 20px rgba(245, 124, 0, 0.18);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(24, 24, 24, 0.12), 0 8px 20px rgba(24, 24, 24, 0.18);
 }
 .bell-btn.has-alerts {
-  color: var(--primary-deep, #E65100);
-  border-color: rgba(245, 124, 0, 0.40);
-  background: linear-gradient(135deg, rgba(245, 124, 0, 0.06) 0%, var(--card-bg, #fff) 100%);
+  color: var(--primary-deep);
+  border-color: rgba(24, 24, 24, 0.40);
+  background: linear-gradient(135deg, rgba(24, 24, 24, 0.06) 0%, var(--card-bg, #fff) 100%);
 }
 .bell-btn.has-alerts .bell-svg { animation: bell-shake 2.2s ease-in-out infinite; transform-origin: 50% 4px; }
 @keyframes bell-shake {
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  background: radial-gradient(circle at 30% 20%, rgba(245, 124, 0, 0.18), transparent 60%);
+  background: radial-gradient(circle at 30% 20%, rgba(24, 24, 24, 0.10), transparent 60%);
   opacity: 0;
   transition: opacity 0.25s;
   pointer-events: none;
@@ -462,12 +462,12 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: linear-gradient(135deg, #F57C00 0%, #E65100 100%);
+  background: var(--red);
   color: #fff;
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.3px;
-  box-shadow: 0 3px 8px rgba(230, 81, 0, 0.50), inset 0 -1px 0 rgba(0,0,0,0.18);
+  box-shadow: 0 3px 8px rgba(234, 0, 30, 0.40), inset 0 -1px 0 rgba(0,0,0,0.18);
   animation: badge-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 @keyframes badge-pop {
@@ -499,8 +499,8 @@ onBeforeUnmount(() => {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #FFFBF4 0%, #FFFFFF 100%);
-  border: 1px solid #EADFCC;
+  background: linear-gradient(180deg, #F7F7F7 0%, #FFFFFF 100%);
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
   box-shadow: 0 24px 60px rgba(26, 20, 16, 0.18), 0 6px 18px rgba(26, 20, 16, 0.08);
   z-index: 1500;
@@ -544,9 +544,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid #EADFCC;
+  border-bottom: 1px solid var(--border-subtle);
   background:
-    linear-gradient(180deg, rgba(245, 124, 0, 0.08) 0%, rgba(245, 124, 0, 0.02) 100%);
+    linear-gradient(180deg, rgba(24, 24, 24, 0.05) 0%, rgba(24, 24, 24, 0.01) 100%);
   flex-shrink: 0;
 }
 .bp-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -556,11 +556,11 @@ onBeforeUnmount(() => {
   gap: 7px;
   font-size: 14px;
   font-weight: 800;
-  color: #1A1410;
+  color: var(--text);
   letter-spacing: -0.2px;
 }
-.bp-title svg { color: #F57C00; }
-.bp-meta { font-size: 11px; color: #6B5F50; }
+.bp-title svg { color: var(--primary); }
+.bp-meta { font-size: 11px; color: var(--text-muted); }
 .bp-head-actions { display: inline-flex; gap: 4px; align-items: center; }
 
 .bp-link {
@@ -570,15 +570,15 @@ onBeforeUnmount(() => {
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 700;
-  color: #6B5F50;
+  color: var(--text-muted);
   background: transparent;
-  border: 1px solid #EADFCC;
+  border: 1px solid var(--border-subtle);
   border-radius: 7px;
   padding: 4px 8px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.bp-link:hover:not(:disabled) { color: #1A1410; border-color: #6B5F50; background: rgba(0,0,0,0.04); }
+.bp-link:hover:not(:disabled) { color: var(--text); border-color: var(--text-muted); background: rgba(0,0,0,0.04); }
 .bp-link:disabled { opacity: 0.5; cursor: not-allowed; }
 .bp-link--close { padding: 4px 6px; }
 
@@ -590,14 +590,14 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   padding: 32px;
-  color: #6B5F50;
+  color: var(--text-muted);
   font-size: 12.5px;
   font-weight: 600;
 }
 .dot-spinner {
   width: 14px; height: 14px;
-  border: 2px solid #EADFCC;
-  border-top-color: #F57C00;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -609,12 +609,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   text-align: center;
-  color: #6B5F50;
+  color: var(--text-muted);
   font-size: 12.5px;
   padding: 8px 8px 14px;
 }
 .bp-empty strong {
-  color: #1A1410;
+  color: var(--text);
   font-size: 14px;
   font-weight: 800;
   margin-top: 4px;
@@ -622,8 +622,8 @@ onBeforeUnmount(() => {
 .bp-empty-anim {
   width: 100%;
   aspect-ratio: 9 / 5;
-  background: #FFFBF4;
-  border: 1px solid #EADFCC;
+  background: #F7F7F7;
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
   position: relative;
@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
 
 .bp-card {
   background: #fff;
-  border: 1px solid #EADFCC;
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 6px rgba(26, 20, 16, 0.04);
@@ -659,7 +659,7 @@ onBeforeUnmount(() => {
 }
 .bp-card:hover {
   transform: translateY(-2px);
-  border-color: var(--c-edge, #EADFCC);
+  border-color: var(--c-edge, var(--border-subtle));
   box-shadow: 0 12px 24px rgba(26, 20, 16, 0.08), 0 4px 10px rgba(26, 20, 16, 0.04);
 }
 @keyframes bp-card-in {
@@ -670,7 +670,7 @@ onBeforeUnmount(() => {
 /* Severity defaults — overridden inline per-card via paintStyle() which
  * pulls the actual company brand color (Migdal red, Phoenix navy, etc.). */
 .bp-card--error   { --c-base: #EA001E; --c-deep: #C23934; --c-edge: rgba(194, 57, 52, 0.32); }
-.bp-card--warning { --c-base: #E8720A; --c-deep: #E65100; --c-edge: rgba(232, 114, 10, 0.32); }
+.bp-card--warning { --c-base: #8A6300; --c-deep: #6B4D00; --c-edge: rgba(201, 162, 39, 0.32); }
 .bp-card--info    { --c-base: #7F56D9; --c-deep: #7F56D9; --c-edge: rgba(127, 86, 217, 0.32); }
 
 .bp-card-wash {
@@ -736,30 +736,30 @@ onBeforeUnmount(() => {
   font-family: inherit;
   font-size: 11.5px;
   font-weight: 700;
-  color: #1A1410;
+  color: var(--text);
   background: #fff;
-  border: 1px solid #EADFCC;
+  border: 1px solid var(--border-subtle);
   border-radius: 7px;
   padding: 5px 10px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
 }
-.bp-action:hover { background: #FFFBF4; border-color: #6B5F50; }
+.bp-action:hover { background: #F7F7F7; border-color: var(--text-muted); }
 .bp-action:active { transform: scale(0.97); }
 .bp-action--primary {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--primary);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 3px 8px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 3px 8px rgba(24, 24, 24, 0.24);
 }
 .bp-action--primary:hover {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: var(--primary-deep);
   border-color: transparent;
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(245, 124, 0, 0.42);
+  box-shadow: 0 6px 14px rgba(24, 24, 24, 0.30);
 }
-.bp-action--ghost { color: #6B5F50; border-color: transparent; }
-.bp-action--ghost:hover { color: #1A1410; background: rgba(0,0,0,0.04); }
+.bp-action--ghost { color: var(--text-muted); border-color: transparent; }
+.bp-action--ghost:hover { color: var(--text); background: rgba(0,0,0,0.04); }
 
 /* Card dismiss = collapse + sweep. The leaving card shrinks vertically then
  * slides off to the visual-end edge with the cadence color trailing behind. */

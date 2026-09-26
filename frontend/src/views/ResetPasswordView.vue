@@ -121,7 +121,7 @@ async function handleSubmit() {
 
 .auth-brand-panel {
   width: 45%;
-  background: linear-gradient(135deg, #E65100 0%, #F57C00 40%, #FF9800 70%, #FFB74D 100%);
+  background: linear-gradient(135deg, #181818 0%, #1F3A5C 55%, #2F73C4 100%);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -279,8 +279,8 @@ input {
 }
 
 input:focus {
-  border-color: #F57C00;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.12);
+  border-color: #181818;
+  box-shadow: 0 0 0 3px rgba(24, 24, 24, 0.1);
   outline: none;
   background: #fff;
 }
@@ -292,7 +292,7 @@ input::placeholder {
 .btn-submit {
   width: 100%;
   padding: 14px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #181818;
   color: #fff;
   border: none;
   border-radius: 50px;
@@ -305,13 +305,13 @@ input::placeholder {
   gap: 8px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(24, 24, 24, 0.25);
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: linear-gradient(135deg, #E65100, #F57C00);
+  background: #000;
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.35);
+  box-shadow: 0 8px 24px rgba(24, 24, 24, 0.35);
 }
 
 .btn-submit:disabled {
@@ -364,20 +364,20 @@ input::placeholder {
 .back-link {
   display: inline-block;
   padding: 12px 32px;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #181818;
   color: #fff;
   border-radius: 50px;
   font-size: 15px;
   font-weight: 700;
   text-decoration: none;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 16px rgba(245, 124, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(24, 24, 24, 0.25);
 }
 
 .back-link:hover {
-  background: linear-gradient(135deg, #E65100, #F57C00);
+  background: #000;
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(245, 124, 0, 0.35);
+  box-shadow: 0 8px 24px rgba(24, 24, 24, 0.35);
 }
 
 .fade-enter-active { animation: fadeIn 0.3s; }

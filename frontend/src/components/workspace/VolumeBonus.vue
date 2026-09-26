@@ -244,7 +244,7 @@ td {
 
 .freq-monthly { background: rgba(127, 86, 217, 0.1); color: #7F56D9; }
 .freq-quarterly { background: rgba(227, 6, 106, 0.1); color: #E3066A; }
-.freq-yearly { background: rgba(232, 114, 10, 0.1); color: #E8720A; }
+.freq-yearly { background: rgba(201, 162, 39, 0.1); color: #8A6300; }
 .freq-other { background: var(--bg-surface); color: var(--text-muted); }
 
 /* Paid status select */

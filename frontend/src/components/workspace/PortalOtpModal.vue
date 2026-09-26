@@ -190,7 +190,7 @@ function onBackdrop() {
   content: '';
   display: block;
   height: 3px;
-  background: linear-gradient(90deg, transparent, #F57C00, transparent);
+  background: linear-gradient(90deg, transparent, var(--tab-automation), transparent);
 }
 
 .otp-head {
@@ -206,10 +206,10 @@ function onBackdrop() {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #0A6664;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 6px 14px rgba(245, 124, 0, 0.32);
+  box-shadow: 0 6px 14px rgba(14, 140, 138, 0.32);
 }
 .otp-titles { flex: 1; min-width: 0; }
 .otp-title { margin: 0; font-size: 15px; font-weight: 800; color: var(--text); }
@@ -243,14 +243,14 @@ function onBackdrop() {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(245, 124, 0, 0.35);
+  background: rgba(14, 140, 138, 0.35);
   animation: pulseDot 1.4s ease-in-out infinite;
 }
 .otp-pulse span:nth-child(2) { animation-delay: 0.18s; }
 .otp-pulse span:nth-child(3) { animation-delay: 0.36s; }
 @keyframes pulseDot {
   0%, 100% { transform: scale(0.8); opacity: 0.4; }
-  50%      { transform: scale(1.3); opacity: 1; background: #F57C00; }
+  50%      { transform: scale(1.3); opacity: 1; background: var(--tab-automation); }
 }
 
 .otp-hint {
@@ -286,9 +286,9 @@ function onBackdrop() {
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .otp-box:focus {
-  border-color: #F57C00;
+  border-color: var(--tab-automation);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(245, 124, 0, 0.18);
+  box-shadow: 0 0 0 3px rgba(14, 140, 138, 0.18);
 }
 .otp-box:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -311,7 +311,7 @@ function onBackdrop() {
   line-height: 1.6;
 }
 .otp-forward-hint a {
-  color: #f57c00;
+  color: #0A6664;
   font-weight: 600;
   text-decoration: none;
 }
@@ -341,7 +341,7 @@ function onBackdrop() {
 .otp-cancel:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .otp-submit {
-  background: linear-gradient(135deg, #F57C00, #FF9800);
+  background: #0A6664;
   color: #fff;
   border: none;
   border-radius: 9px;
@@ -350,12 +350,12 @@ function onBackdrop() {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(245, 124, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(14, 140, 138, 0.3);
   transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
 .otp-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(245, 124, 0, 0.4);
+  box-shadow: 0 6px 18px rgba(14, 140, 138, 0.4);
 }
 .otp-submit:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 

@@ -427,7 +427,7 @@ onMounted(async () => {
   padding: 9px 14px;
   margin-bottom: 12px;
   background: var(--amber-light);
-  border: 1px solid rgba(232, 114, 10, 0.3);
+  border: 1px solid rgba(201, 162, 39, 0.3);
   border-radius: var(--radius-sm);
   color: var(--amber);
   font-size: 13px;
@@ -466,8 +466,8 @@ onMounted(async () => {
   min-width: 0;
 }
 
-/* נפרעים badge — orange-tinted to read as the commission side, distinct from
-   the emerald production badge. */
+/* נפרעים badge — comparison-tab green for the commission side; the production
+   badge wears the production-tab blue so the two stay distinct. */
 .toolbar-nifraim {
   display: flex;
   align-items: center;
@@ -479,7 +479,7 @@ onMounted(async () => {
 .toolbar-nif-dot {
   width: 7px;
   height: 7px;
-  background: #f57c00;
+  background: var(--tab-comparison);
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -491,8 +491,8 @@ onMounted(async () => {
 }
 .toolbar-nif-count {
   font-size: 11px;
-  color: #b45309;
-  background: rgba(245, 124, 0, 0.1);
+  color: var(--tab-comparison);
+  background: rgba(46, 132, 74, 0.1);
   padding: 2px 8px;
   border-radius: 6px;
   flex-shrink: 0;
@@ -535,7 +535,7 @@ onMounted(async () => {
 .toolbar-prod-dot {
   width: 7px;
   height: 7px;
-  background: var(--accent-emerald);
+  background: var(--tab-production);
   border-radius: 50%;
   flex-shrink: 0;
   animation: pulse-soft 2s ease-in-out infinite;

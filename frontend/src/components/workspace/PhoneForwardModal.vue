@@ -329,9 +329,9 @@ const configured = computed(() => !!store.phoneForward?.token)
 
 // ── Wizard steps (colored like the welcome wizard: install→connect→done) ──
 const STEPS = [
-  { id: 1, title: 'התקנת האפליקציה', accent: '#E8930C', deep: '#9A5B00', soft: '#FDF1DC', tint: '#FFFAF1' },
-  { id: 2, title: 'חיבור מאובטח',    accent: '#4E9DD0', deep: '#2C6E9E', soft: '#E7F2FA', tint: '#F5FAFD' },
-  { id: 3, title: 'בדיקה וסיום',      accent: '#1FA88C', deep: '#0E7A64', soft: '#E4F5F0', tint: '#F3FBF8' },
+  { id: 1, title: 'התקנת האפליקציה', accent: '#4E9DD0', deep: '#35719A', soft: '#EAF3F9', tint: '#F8FBFD' },
+  { id: 2, title: 'חיבור מאובטח',    accent: '#8E44AD', deep: '#6C2E87', soft: '#F1E9F5', tint: '#FAF8FC' },
+  { id: 3, title: 'בדיקה וסיום',      accent: '#0E8C8A', deep: '#0A6664', soft: '#E2F1F1', tint: '#F5FAFA' },
 ]
 const SUBS = {
   1: 'התקנה חד-פעמית של האפליקציה שמעבירה את קודי ה-SMS אלינו.',
@@ -602,8 +602,8 @@ async function onTest() {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--primary-deep, #E65100);
-  background: var(--primary-light, #FFF3E0);
+  color: #0A6664;
+  background: var(--tab-automation-wash);
   border-radius: 999px;
   padding: 4px 12px;
   margin-bottom: 10px;
@@ -681,7 +681,7 @@ async function onTest() {
 .pf-qr-info, .pf-url-right { min-width: 0; flex: 1; }
 .pf-qr-name { font-size: 16px; font-weight: 800; color: var(--text, #181818); margin-bottom: 4px; }
 .pf-qr-desc { font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.5; margin-bottom: 8px; }
-.pf-qr-link { font-size: 11.5px; color: var(--primary, #F57C00); word-break: break-all; text-decoration: none; }
+.pf-qr-link { font-size: 11.5px; color: #0A6664; word-break: break-all; text-decoration: none; }
 .pf-qr-link:hover { text-decoration: underline; }
 .pf-qr-auto {
   display: inline-flex; align-items: center; gap: 5px;
@@ -822,7 +822,7 @@ async function onTest() {
   cursor: pointer; padding: 6px 0; list-style: none;
 }
 .pf-fallback summary::-webkit-details-marker { display: none; }
-.pf-fallback summary::before { content: '＋ '; color: var(--primary, #F57C00); }
+.pf-fallback summary::before { content: '＋ '; color: var(--tab-automation); }
 .pf-fallback[open] summary::before { content: '－ '; }
 
 /* ── Visual pane ── */
