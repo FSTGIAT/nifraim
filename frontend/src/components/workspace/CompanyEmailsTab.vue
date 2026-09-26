@@ -125,12 +125,21 @@ const KNOWN_COMPANIES = (() => {
 
 const knownTotal = computed(() => KNOWN_COMPANIES.length)
 
+// Spelling-tolerant company key: Hebrew names are written with and without
+// the vowel letters א/ו/י ("אנאליסט" = "אנליסט"), so drop them after the
+// first letter, plus spaces and quote marks.
+function nameKey(n) {
+  const t = String(n || '').trim().replace(/[\s"'׳״-]/g, '')
+  return t.slice(0, 1) + t.slice(1).replace(/[אוי]/g, '')
+}
+
 /** Insurers with no address on file — the actionable half of this screen. */
 const missingCompanies = computed(() => {
-  const have = new Set(contacts.value.map(c => String(c.company_name || '').trim()))
-  return KNOWN_COMPANIES.filter(co =>
-    ![...have].some(h => h.includes(co.label) || co.label.includes(h)),
-  )
+  const have = contacts.value.map(c => nameKey(c.company_name)).filter(Boolean)
+  return KNOWN_COMPANIES.filter(co => {
+    const k = nameKey(co.label)
+    return !have.some(h => h.includes(k) || k.includes(h))
+  })
 })
 
 // Same palette-color-per-company mechanism as the comparison summary and the

@@ -47,26 +47,24 @@
     </div>
 
     <!-- Intro -->
+    <!-- Hero — same structure as the other tabs (מדף ההסכמים, פורטל לקוחות):
+         chip · wordmark · one line · actions, the looping scene at the end. -->
     <header class="lib-intro">
-      <div class="lib-intro-icon" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
-          <path d="M13 7l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>
-        </svg>
-      </div>
       <div class="lib-intro-text">
-        <h2 class="lib-title">ספריית AI</h2>
-        <p class="lib-sub">כל הקבצים, הטבלאות והנתונים שהעוזר החכם משתמש בהם כדי לענות על השאלות שלך. כל הנתונים שייכים לך ולתיק שלך בלבד.</p>
+        <span class="lib-eyebrow">העוזר החכם</span>
+        <h2 class="lib-title lib-wordmark"><span dir="ltr">Nifraim</span> <span class="lib-wordmark-acc">ספריית AI</span></h2>
+        <p class="lib-sub">הקבצים והנתונים שה-AI משתמש בהם כדי לענות לכם — שלכם בלבד.</p>
+        <div class="lib-intro-actions">
+          <button class="lib-refresh" :disabled="loading" @click="load" type="button" title="רענן">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ spinning: loading }">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+            <span>רענן</span>
+          </button>
+        </div>
       </div>
-      <button class="lib-refresh" :disabled="loading" @click="load" type="button" title="רענן">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ spinning: loading }">
-          <polyline points="23 4 23 10 17 10"/>
-          <polyline points="1 20 1 14 7 14"/>
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-        </svg>
-        <span>רענן</span>
-      </button>
       <div class="lib-intro-art" aria-hidden="true">
         <TabHeroLoop scene="ai-library" />
       </div>
@@ -105,7 +103,7 @@
     </div>
 
     <!-- Summary strip -->
-    <section v-if="data && !loading" class="lib-summary-strip">
+    <section v-if="data && !loading && !isCompletelyEmpty" class="lib-summary-strip">
       <div class="lib-chip">
         <span class="lib-chip-value ltr-number">{{ productionTotal }}</span>
         <span class="lib-chip-label">קבצי פרודוקציה</span>
@@ -135,6 +133,42 @@
         <div class="sk-row" v-for="r in 3" :key="r"></div>
       </div>
     </div>
+
+    <!-- Library completely empty: one welcome section instead of zero counters
+         and empty groups. Realistic photo with a surreal touch as its
+         backdrop (pages dissolving into light, read by the AI), a headline
+         and a short slider of what the AI reads. -->
+    <section v-else-if="data && isCompletelyEmpty" class="lib-welcome">
+      <div v-if="libWelcomeArt.still" class="lib-welcome-photo" aria-hidden="true">
+        <video v-if="libWelcomeArt.video && !libReduced" :src="libWelcomeArt.video" :poster="libWelcomeArt.still"
+               autoplay muted loop playsinline preload="auto" disablepictureinpicture></video>
+        <img v-else :src="libWelcomeArt.still" alt="" />
+      </div>
+      <div class="lib-welcome-copy">
+        <h3 class="lib-welcome-title">כל קובץ שתעלו<br><span>ה-AI יקרא ויבין</span></h3>
+        <div v-if="!libReduced" class="lib-slider" aria-live="polite"
+             @mouseenter="libPaused = true" @mouseleave="libPaused = false">
+          <div class="lib-slide-track">
+            <Transition name="lib-slide" mode="out-in">
+              <div :key="libStep" class="lib-slide">
+                <span class="lib-slide-n ltr-number">{{ String(libStep + 1).padStart(2, '0') }}</span>
+                <div><strong>{{ LIB_STEPS[libStep].title }}</strong><span>{{ LIB_STEPS[libStep].text }}</span></div>
+              </div>
+            </Transition>
+          </div>
+          <div class="lib-bars">
+            <button v-for="(st, n) in LIB_STEPS" :key="n" type="button" class="lib-bar"
+                    :class="{ 'lib-bar--done': n < libStep, 'lib-bar--on': n === libStep, 'lib-bar--paused': libPaused }"
+                    :aria-label="st.title" :aria-current="n === libStep ? 'step' : undefined" @click="libGo(n)">
+              <span :key="n === libStep ? libCycle : 'x'" class="lib-bar-fill"></span>
+            </button>
+          </div>
+        </div>
+        <ol v-else class="lib-steps-static">
+          <li v-for="(st, n) in LIB_STEPS" :key="n"><span class="lib-slide-n ltr-number">{{ String(n + 1).padStart(2, '0') }}</span><div><strong>{{ st.title }}</strong><span>{{ st.text }}</span></div></li>
+        </ol>
+      </div>
+    </section>
 
     <template v-else-if="data">
       <!-- Quick collapse / expand all -->
@@ -455,19 +489,12 @@
         </transition>
       </section>
 
-      <!-- Complete empty state -->
-      <div v-if="isCompletelyEmpty" class="lib-empty-all">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        <p>אין עדיין נתונים בספרייה. ברגע שתעלה קובץ פרודוקציה, נפרעים או תגייס לקוחות — ה-AI יראה אותם כאן.</p>
-      </div>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
 
@@ -600,12 +627,41 @@ const ratesTotal = computed(() => {
   if (!r) return 0
   return (r.nifraim?.count || 0) + (r.volume?.count || 0)
 })
+// ── Empty-library welcome ──
+const libWelcomeAssets = import.meta.glob('../../assets/welcome/ai-library-empty.{webp,mp4}', { eager: true, import: 'default' })
+const libWelcomeArt = {
+  still: Object.entries(libWelcomeAssets).find(([k]) => k.endsWith('.webp'))?.[1] || '',
+  video: Object.entries(libWelcomeAssets).find(([k]) => k.endsWith('.mp4'))?.[1] || '',
+}
+const libReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const LIB_STEPS = [
+  { title: 'קבצי פרודוקציה', text: 'הלקוחות, המוצרים והצבירות שלכם.' },
+  { title: 'קבצי נפרעים', text: 'העמלות שהחברות שילמו — לפי חודש.' },
+  { title: 'תיק אישי ומדף הסכמים', text: 'המגויסים שלכם ושיעורי העמלה.' },
+  { title: 'שאלו את ה-AI', text: 'והוא יענה מתוך הנתונים שלכם בלבד.' },
+]
+const LIB_MS = 2800 // keep in sync with .lib-bar--on
+const libStep = ref(0)
+const libCycle = ref(0)
+const libPaused = ref(false)
+let libTimer = null
+function libArm() {
+  clearTimeout(libTimer)
+  if (libReduced) return
+  libTimer = setTimeout(() => { if (libPaused.value) return libArm(); libGo((libStep.value + 1) % LIB_STEPS.length) }, LIB_MS)
+}
+function libGo(n) { libStep.value = n; libCycle.value++; libArm() }
+watch(libPaused, (p) => { if (!p) libArm() })
+onBeforeUnmount(() => clearTimeout(libTimer))
+
 const isCompletelyEmpty = computed(() =>
   productionTotal.value === 0 &&
   commissionTotal.value === 0 &&
   !data.value?.myfile &&
   !data.value?.rates
 )
+// Start the welcome slider when the library turns out to be empty.
+watch(isCompletelyEmpty, (on) => { if (on) libGo(0); else clearTimeout(libTimer) }, { immediate: true })
 
 // Filtered production
 const filteredProduction = computed(() => {
@@ -717,6 +773,53 @@ function buildScaleMock() {
 </script>
 
 <style scoped>
+/* ── Empty library: welcome (photo dissolving into the card + slider) ── */
+.lib-welcome {
+  position: relative; overflow: hidden; min-height: 380px; display: flex; align-items: center;
+  border-radius: var(--radius-lg, 16px); border: 1px solid var(--border-subtle); background: var(--card-bg); box-shadow: var(--shadow-sm);
+}
+.lib-welcome-photo {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 62%; z-index: 0; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 95%);
+          mask-image: linear-gradient(to right, #000 0%, #000 48%, transparent 95%);
+}
+.lib-welcome-photo video, .lib-welcome-photo img { width: 100%; height: 100%; object-fit: cover; object-position: left center; display: block; }
+.lib-welcome-copy { position: relative; z-index: 1; width: min(440px, 48%); padding: 40px 40px; display: flex; flex-direction: column; gap: 18px; }
+.lib-welcome-title {
+  margin: 0; font-family: 'Heebo', sans-serif; font-weight: 900;
+  font-size: clamp(28px, 3.2vw, 40px); line-height: 1.08; letter-spacing: -0.03em; color: var(--text);
+}
+.lib-welcome-title span { color: var(--tab-ai-ink); }
+.lib-slider { display: flex; flex-direction: column; gap: 10px; width: min(380px, 100%); }
+.lib-slide-track { min-height: 52px; }
+.lib-slide, .lib-steps-static li { display: flex; align-items: baseline; gap: 14px; }
+.lib-slide-n { flex-shrink: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: var(--tab-ai-ink); }
+.lib-slide div, .lib-steps-static div { display: flex; flex-direction: column; gap: 2px; }
+.lib-slide strong, .lib-steps-static strong { font-size: 18px; font-weight: 700; color: var(--text); }
+.lib-slide div span, .lib-steps-static div span { font-size: 13.5px; color: var(--text-muted); }
+.lib-slide-enter-active { transition: opacity 0.26s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.lib-slide-leave-active { transition: opacity 0.16s ease-in, transform 0.18s ease-in; }
+.lib-slide-enter-from { opacity: 0; transform: translateY(12px); }
+.lib-slide-leave-to { opacity: 0; transform: translateY(-8px); }
+.lib-bars { display: flex; gap: 6px; }
+.lib-bar { position: relative; flex: 1; height: 16px; padding: 0; border: none; background: none; cursor: pointer; }
+.lib-bar::before, .lib-bar-fill { position: absolute; inset-inline: 0; top: 6px; height: 4px; border-radius: 99px; }
+.lib-bar::before { content: ''; background: var(--tab-ai-wash); }
+.lib-bar-fill { display: block; width: 0; inset-inline-end: auto; background: var(--tab-ai-ink); }
+.lib-bar--done .lib-bar-fill { width: 100%; }
+.lib-bar--on .lib-bar-fill { animation: lib-fill 2.8s linear forwards; }
+.lib-bar--on.lib-bar--paused .lib-bar-fill { animation-play-state: paused; }
+.lib-bar:focus-visible { outline: 2px solid var(--tab-ai-ink); outline-offset: 2px; border-radius: 6px; }
+@keyframes lib-fill { from { width: 0; } to { width: 100%; } }
+.lib-steps-static { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 860px) {
+  .lib-welcome { flex-direction: column; align-items: stretch; min-height: 0; }
+  .lib-welcome-photo { position: relative; width: 100%; height: 200px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+  .lib-welcome-copy { width: auto; padding: 6px 20px 26px; }
+}
+
 .ai-library {
   position: relative;
   max-width: 1100px;
@@ -847,69 +950,33 @@ function buildScaleMock() {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px 22px;
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(145deg, rgba(106, 72, 201, 0.07) 0%, rgba(106, 72, 201, 0.02) 45%, #ffffff 100%),
-    #ffffff;
-  border: 1px solid rgba(106, 72, 201, 0.18);
-  box-shadow: 0 6px 22px rgba(106, 72, 201, 0.07), 0 1px 2px rgba(17, 12, 6, 0.04);
+  padding: 22px 26px;
+  border-radius: var(--radius-xl, 24px);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow: hidden;
 }
-.lib-intro::before {
-  content: '';
-  position: absolute;
-  inset-inline-start: -60px;
-  top: -60px;
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(106, 72, 201, 0.22), transparent 70%);
-  border-radius: 50%;
-  filter: blur(4px);
-  pointer-events: none;
+.lib-eyebrow {
+  display: inline-flex; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--tab-ai-ink); background: var(--tab-ai-wash); border: 1px solid color-mix(in srgb, var(--tab-ai) 35%, white);
+  padding: 4px 11px; border-radius: 999px;
 }
-.lib-intro-icon {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
-  color: #ffffff;
-  box-shadow: 0 6px 16px rgba(106, 72, 201, 0.32);
-  flex-shrink: 0;
-}
-.lib-intro-text { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.lib-intro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.lib-intro-text { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .lib-title { margin: 0; font-size: 20px; font-weight: 800; color: var(--text); }
-.lib-sub { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+/* The product wordmark, same as "Nifraim המסלקה" (MaslakaTab .mk-hero-title). */
+.lib-wordmark { font-family: 'Rubik', 'Heebo', sans-serif; font-size: clamp(28px, 3.3vw, 40px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.lib-wordmark-acc { color: var(--tab-ai-ink); }
+.lib-sub { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
 
 .lib-refresh {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid rgba(106, 72, 201, 0.32);
-  color: var(--tab-ai-ink);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-surface); color: var(--text-secondary); border: 1px solid var(--border-subtle);
+  border-radius: 12px; padding: 10px 15px; font-size: 13px; font-family: inherit; font-weight: 600; cursor: pointer;
   transition: all 0.18s var(--transition);
-  flex-shrink: 0;
 }
-.lib-refresh:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
-  color: #ffffff;
-  border-color: transparent;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(106, 72, 201, 0.28);
-}
+.lib-refresh:hover:not(:disabled) { border-color: var(--tab-ai-ink); color: var(--tab-ai-ink); }
 .lib-refresh:disabled { opacity: 0.5; cursor: default; }
 .spinning { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -920,8 +987,8 @@ function buildScaleMock() {
   z-index: 1;
   flex-shrink: 0;
   width: clamp(150px, 22vw, 240px);
-  margin-block: -20px;
-  margin-inline-end: -22px;
+  margin-block: -22px;
+  margin-inline-end: -26px;
   align-self: stretch;
   overflow: hidden;
   border-start-end-radius: var(--radius-lg);
@@ -1415,20 +1482,6 @@ function buildScaleMock() {
   border-radius: var(--radius-md);
   border: 1px dashed var(--border);
 }
-.lib-empty-all {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  background: #ffffff;
-  border-radius: var(--radius-lg);
-  border: 1px dashed var(--border);
-}
-.lib-empty-all svg { color: var(--tab-ai-ink); opacity: 0.6; }
-.lib-empty-all p { margin: 0; font-size: 13px; max-width: 400px; line-height: 1.55; }
 
 /* Error */
 .lib-error {
@@ -1518,7 +1571,6 @@ function buildScaleMock() {
 
 @media (max-width: 520px) {
   .ai-library { padding: 14px 12px 28px; gap: 14px; }
-  .lib-intro-icon { width: 36px; height: 36px; border-radius: 10px; }
   .lib-title { font-size: 17px; }
   .lib-sub { font-size: 12px; }
   .lib-summary-strip {

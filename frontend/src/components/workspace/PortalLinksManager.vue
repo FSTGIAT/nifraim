@@ -9,7 +9,7 @@
           <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
         </svg>
         <div>
-          <h2>פורטל לקוחות</h2>
+          <h2 class="pl-wordmark"><span dir="ltr">Nifraim</span> <span class="pl-wordmark-acc">פורטל לקוחות</span></h2>
           <p>נהל את הקישורים המשותפים לכל הלקוחות שלך</p>
         </div>
       </div>
@@ -47,7 +47,7 @@
     </div>
 
     <!-- Status filter pills -->
-    <div class="filter-pills">
+    <div v-if="portalStore.links.length" class="filter-pills">
       <button
         v-for="opt in filterOptions"
         :key="opt.id"
@@ -73,19 +73,49 @@
         </div>
       </div>
 
-      <!-- Empty: no links at all -->
-      <div v-else-if="!portalStore.links.length" class="empty-state">
-        <TabHeroLoop scene="portal" flow="ltr" class="empty-art-loop" />
-        <h3>עדיין לא יצרתם קישור פורטל</h3>
-        <p>קישור הפורטל מאפשר ללקוחות שלכם לראות את תיק הביטוח האישי שלהם — עם הגנה בסיסמה.</p>
-        <button class="btn-generate large" @click="showGenerateModal = true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          צרו את הקישור הראשון
-        </button>
-      </div>
+      <!-- No links yet: show the customer's side of the portal — what the
+           link actually gives them. The action is the hero's "צור קישור חדש". -->
+      <section v-else-if="!portalStore.links.length" class="pl-show">
+        <!-- The surreal Kling picture (agent laptop ↔ customer phone, joined by a
+             stream of light) as the section's backdrop, dissolving into the card. -->
+        <div v-if="plShowArt.still" class="pl-show-photo" aria-hidden="true">
+          <video v-if="plShowArt.video && !plReduced" :src="plShowArt.video" :poster="plShowArt.still"
+                 autoplay muted loop playsinline preload="auto" disablepictureinpicture></video>
+          <img v-else :src="plShowArt.still" alt="" />
+        </div>
+        <div class="pl-show-copy">
+          <h3 class="pl-show-title">מה הלקוח שלכם<br><span>רואה בפורטל</span></h3>
+
+          <!-- Slides: one feature at a time, each with its own Remotion scene;
+               story bars below. Hover pauses, a bar jumps. Reduced motion → a
+               plain numbered list. -->
+          <div v-if="!plReduced" class="pl-slider" aria-live="polite"
+               @mouseenter="plPaused = true" @mouseleave="plPaused = false">
+            <div ref="plSceneEl" class="pl-scene" aria-hidden="true"></div>
+            <div class="pl-slide-track">
+              <Transition name="pl-slide" mode="out-in">
+                <div :key="plStep" class="pl-slide">
+                  <span class="pl-feat-n ltr-number">{{ String(plStep + 1).padStart(2, '0') }}</span>
+                  <div><strong>{{ PL_FEATURES[plStep].title }}</strong><span>{{ PL_FEATURES[plStep].text }}</span></div>
+                </div>
+              </Transition>
+            </div>
+            <div class="pl-bars">
+              <button v-for="(ft, n) in PL_FEATURES" :key="n" type="button" class="pl-bar"
+                      :class="{ 'pl-bar--done': n < plStep, 'pl-bar--on': n === plStep, 'pl-bar--paused': plPaused }"
+                      :aria-label="ft.title" :aria-current="n === plStep ? 'step' : undefined" @click="plGo(n)">
+                <span :key="n === plStep ? plCycle : 'x'" class="pl-bar-fill"></span>
+              </button>
+            </div>
+          </div>
+          <ol v-else class="pl-feats">
+            <li v-for="(ft, n) in PL_FEATURES" :key="n">
+              <span class="pl-feat-n ltr-number">{{ String(n + 1).padStart(2, '0') }}</span>
+              <div><strong>{{ ft.title }}</strong><span>{{ ft.text }}</span></div>
+            </li>
+          </ol>
+        </div>
+      </section>
 
       <!-- Empty: filter/search no matches -->
       <div v-else-if="!portalStore.sortedLinks.length" class="empty-state compact">
@@ -222,7 +252,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, computed, onMounted, h , watch, onBeforeUnmount } from 'vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { usePortalStore } from '../../stores/portal.js'
 import PortalGenerateModal from './PortalGenerateModal.vue'
@@ -236,6 +266,68 @@ defineEmits(['close'])
 const portalStore = usePortalStore()
 const showGenerateModal = ref(false)
 const copiedToken = ref(null)
+
+// ── "What your customer sees" slides (no links yet) ──
+const plShowAssets = import.meta.glob('../../assets/welcome/portal-show.{webp,mp4}', { eager: true, import: 'default' })
+const plShowArt = {
+  still: Object.entries(plShowAssets).find(([k]) => k.endsWith('.webp'))?.[1] || '',
+  video: Object.entries(plShowAssets).find(([k]) => k.endsWith('.mp4'))?.[1] || '',
+}
+const plReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const PL_FEATURES = [
+  { title: 'תמונת מצב', text: 'פרמיה, צבירה ומספר המוצרים — במבט אחד.' },
+  { title: 'גרפים', text: 'פיזור לפי חברה ומגמה לאורך החודשים.' },
+  { title: 'מה השתנה', text: 'עדכונים בתיק מאז הביקור הקודם.' },
+  { title: 'שאלות ל-AI', text: 'הלקוח שואל — ה-AI עונה מתוך התיק שלו.' },
+  { title: 'דוח מסלקה', text: 'החיסכון הפנסיוני מהמסלקה — צבירה ומגמה.' },
+]
+const PL_MS = 2800 // = PORTAL_SCENE_FRAMES / 30fps; keep in sync with .pl-bar--on
+const plStep = ref(0)
+const plCycle = ref(0)
+const plPaused = ref(false)
+const plSceneEl = ref(null)
+let plTimer = null
+let plRoot = null
+let plMods = null
+function plArm() {
+  clearTimeout(plTimer)
+  if (plReduced) return
+  plTimer = setTimeout(() => { if (plPaused.value) return plArm(); plGo((plStep.value + 1) % PL_FEATURES.length) }, PL_MS)
+}
+function plGo(n) { plStep.value = n; plCycle.value++; plPaint(); plArm() }
+let plMounting = false
+async function plMount() {
+  if (plReduced || plRoot || plMounting || !plSceneEl.value) return
+  plMounting = true
+  try {
+    const [rd, react, player, comp] = await Promise.all([
+      import('react-dom/client'), import('react'), import('@remotion/player'), import('../../remotion/PortalFeatureScene'),
+    ])
+    if (!plSceneEl.value) return
+    plMods = { react, player, comp }
+    plRoot = rd.createRoot(plSceneEl.value)
+    plPaint()
+  } catch (e) { console.error('[PortalLinksManager] scene failed', e) } finally { plMounting = false }
+}
+function plPaint() {
+  if (!plRoot || !plMods) return
+  const { react, player, comp } = plMods
+  plRoot.render(react.createElement(player.Player, {
+    key: plCycle.value, // restart the scene on every slide
+    component: comp.PortalFeatureScene,
+    inputProps: { step: plStep.value },
+    durationInFrames: comp.PORTAL_SCENE_FRAMES, fps: 30,
+    compositionWidth: comp.PORTAL_SCENE_W, compositionHeight: comp.PORTAL_SCENE_H,
+    autoPlay: true, loop: true, controls: false, clickToPlay: false, doubleClickToFullscreen: false,
+    showPosterWhenUnplayed: false, acknowledgeRemotionLicense: true,
+    style: { width: '100%', height: '100%', backgroundColor: 'transparent' },
+  }))
+}
+function plUnmount() { clearTimeout(plTimer); try { plRoot?.unmount() } catch { /* ignore */ } plRoot = null }
+watch(plPaused, (p) => { if (!p) plArm() })
+// The section only exists with no links; mount when its scene box appears.
+watch(plSceneEl, (el) => { if (el) { plMount(); plGo(0) } else plUnmount() })
+onBeforeUnmount(plUnmount)
 
 const filterOptions = [
   { id: 'all', label: 'הכל' },
@@ -346,6 +438,51 @@ function onGenerated() {
 </script>
 
 <style scoped>
+/* ── No links yet: the customer's side of the portal ── */
+.pl-show { position: relative; overflow: hidden; min-height: 420px; display: flex; align-items: center; margin: -4px 0 0; border-radius: var(--radius-md); }
+.pl-show-photo {
+  position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 60%; z-index: 0; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 45%, transparent 95%);
+          mask-image: linear-gradient(to right, #000 0%, #000 45%, transparent 95%);
+}
+.pl-show-photo video, .pl-show-photo img { width: 100%; height: 100%; object-fit: cover; object-position: left center; display: block; }
+.pl-show-copy { position: relative; z-index: 1; width: min(420px, 48%); padding: 32px 28px; display: flex; flex-direction: column; gap: 16px; }
+.pl-show-title {
+  margin: 0; font-family: 'Heebo', sans-serif; font-weight: 900;
+  font-size: clamp(26px, 2.8vw, 36px); line-height: 1.1; letter-spacing: -0.03em; color: var(--text);
+}
+.pl-show-title span { color: var(--tab-portal-ink); }
+.pl-slider { display: flex; flex-direction: column; gap: 12px; }
+.pl-scene { width: 100%; aspect-ratio: 360 / 220; direction: ltr; }
+.pl-slide-track { min-height: 52px; }
+.pl-slide, .pl-feats li { display: flex; align-items: baseline; gap: 14px; }
+.pl-feat-n { flex-shrink: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: var(--tab-portal); }
+.pl-slide div, .pl-feats div { display: flex; flex-direction: column; gap: 2px; }
+.pl-slide strong, .pl-feats strong { font-size: 18px; font-weight: 700; color: var(--text); }
+.pl-slide div span, .pl-feats div span { font-size: 13.5px; color: var(--text-muted); line-height: 1.5; }
+.pl-slide-enter-active { transition: opacity 0.26s ease-out, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.pl-slide-leave-active { transition: opacity 0.16s ease-in, transform 0.18s ease-in; }
+.pl-slide-enter-from { opacity: 0; transform: translateY(12px); }
+.pl-slide-leave-to { opacity: 0; transform: translateY(-8px); }
+.pl-bars { display: flex; gap: 6px; }
+.pl-bar { position: relative; flex: 1; height: 16px; padding: 0; border: none; background: none; cursor: pointer; }
+.pl-bar::before, .pl-bar-fill { position: absolute; inset-inline: 0; top: 6px; height: 4px; border-radius: 99px; }
+.pl-bar::before { content: ''; background: color-mix(in srgb, var(--tab-portal) 18%, white); }
+.pl-bar-fill { display: block; width: 0; inset-inline-end: auto; background: var(--tab-portal-ink); }
+.pl-bar--done .pl-bar-fill { width: 100%; }
+.pl-bar--on .pl-bar-fill { animation: pl-fill 2.8s linear forwards; }
+.pl-bar--on.pl-bar--paused .pl-bar-fill { animation-play-state: paused; }
+.pl-bar:focus-visible { outline: 2px solid var(--tab-portal); outline-offset: 2px; border-radius: 6px; }
+@keyframes pl-fill { from { width: 0; } to { width: 100%; } }
+.pl-feats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 760px) {
+  .pl-show { flex-direction: column; align-items: stretch; min-height: 0; }
+  .pl-show-photo { position: relative; width: 100%; height: 190px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 55%, transparent 100%); }
+  .pl-show-copy { width: auto; padding: 8px 12px 20px; }
+}
+
 .portal-tab-root {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #DDDBDA);
@@ -404,6 +541,12 @@ function onGenerated() {
   margin-top: 2px;
 }
 
+.toolbar-title h2.pl-wordmark {
+  /* The product wordmark, same as "Nifraim המסלקה" (MaslakaTab .mk-hero-title). */
+  font-family: 'Rubik', 'Heebo', sans-serif; font-size: clamp(28px, 3.3vw, 40px); font-weight: 700;
+  letter-spacing: -0.03em; line-height: 1.05;
+}
+.pl-wordmark-acc { color: var(--tab-portal-ink); }
 .toolbar-title h2 {
   margin: 0;
   font-size: 20px;

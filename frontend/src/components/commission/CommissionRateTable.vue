@@ -7,7 +7,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
           עמלות נפרעים
         </span>
-        <h2 class="hero-title">מדף ההסכמים שלך</h2>
+        <h2 class="hero-title hero-wordmark"><span dir="ltr">Nifraim</span> <span class="hero-wordmark-acc">מדף ההסכמים</span></h2>
         <p v-if="!rates.length" class="hero-sub">העלו הסכם עמלות והשיעורים יופיעו כאן על המדף.</p>
         <div class="hero-actions">
           <button class="btn-accent" @click="triggerUpload" :disabled="queueBusy">
@@ -1076,6 +1076,9 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .hero-copy { display: flex; flex-direction: column; gap: 7px; }
 .hero-eyebrow { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--chart-9); background: color-mix(in srgb, var(--chart-2) 12%, white); border: 1px solid color-mix(in srgb, var(--chart-2) 28%, white); padding: 4px 11px; border-radius: 999px; }
 .hero-title { margin: 2px 0 0; font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+/* The product wordmark, same as "Nifraim המסלקה" (MaslakaTab .mk-hero-title). */
+.hero-wordmark { font-family: 'Rubik', 'Heebo', sans-serif; font-size: clamp(28px, 3.3vw, 40px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.hero-wordmark-acc { color: var(--tab-commission); }
 .hero-sub { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
 .btn-accent { display: inline-flex; align-items: center; gap: 8px; background: var(--chart-4); color: #fff; border: none; border-radius: 12px; padding: 11px 18px; font-size: 14px; font-family: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 5px 14px color-mix(in srgb, var(--chart-4) 26%, transparent); transition: transform 0.2s var(--transition), background 0.2s var(--transition); }
