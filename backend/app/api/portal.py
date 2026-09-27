@@ -116,6 +116,33 @@ async def save_offers(
     return await list_offers(user=user, db=db)
 
 
+@router.delete("/links/{token}")
+async def delete_link_permanently(
+    token: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a customer's portal link for good (the agent confirms first in
+    the UI). Unlike DELETE /{token} (revoke — the row stays and shows as
+    "מבוטל"), the link, its snapshots and its offer clicks are deleted and the
+    customer disappears from the list. An active link stops working at once."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.portal_snapshot import PortalSnapshot
+
+    link = (await db.execute(
+        select(CustomerPortalLink).where(
+            CustomerPortalLink.token == token, CustomerPortalLink.user_id == user.id,
+        )
+    )).scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    # portal_snapshots → customer_portal_links has no ON DELETE CASCADE.
+    await db.execute(sa_delete(PortalSnapshot).where(PortalSnapshot.portal_link_id == link.id))
+    await db.delete(link)  # portal_offer_clicks cascade at the DB level
+    await db.commit()
+    return {"ok": True}
+
+
 @router.patch("/links/{token}/settings", response_model=PortalLinkOut)
 async def update_link_settings(
     token: str,

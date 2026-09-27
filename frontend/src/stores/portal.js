@@ -11,7 +11,8 @@ export const usePortalStore = defineStore('portal', () => {
 
   // Filter / sort / pagination
   const searchQuery = ref('')
-  const statusFilter = ref('all') // 'all' | 'active' | 'expired' | 'revoked'
+  // Opens on the links that matter; 'all' is no longer offered as a pill.
+  const statusFilter = ref('active') // 'active' | 'expired' | 'revoked'
   const sortBy = ref('created_at') // 'created_at' | 'customer_name' | 'last_accessed_at' | 'status'
   const sortDir = ref('desc')
   const currentPage = ref(1)
@@ -145,6 +146,17 @@ export const usePortalStore = defineStore('portal', () => {
     }
   }
 
+  async function deleteLink(token) {
+    error.value = null
+    try {
+      await api.delete(`/portal/links/${token}`)
+      links.value = links.value.filter(l => l.token !== token)
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה במחיקת הלקוח'
+      throw e
+    }
+  }
+
   async function sendEmail(token) {
     error.value = null
     try {
@@ -257,7 +269,7 @@ export const usePortalStore = defineStore('portal', () => {
     setSearch, setStatusFilter, setSort, setPage, linkStatus,
     // agent
     fetchLinks, generateLink, revokeLink, sendEmail, getCustomerInfo,
-    fetchOffers, saveOffers, updateLinkSettings,
+    fetchOffers, saveOffers, updateLinkSettings, deleteLink,
     // customer
     accessPortal, fetchDashboard, fetchHistory, logout,
   }

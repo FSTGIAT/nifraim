@@ -211,8 +211,20 @@
                     <line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
                 </button>
+                <button class="action-btn danger" @click="confirmDelete(link)" title="מחק לקוח" aria-label="מחק את הלקוח מהרשימה">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
+                </button>
               </div>
-              <span v-else class="row-actions-empty">—</span>
+              <!-- Revoked / expired: nothing to copy or send — only delete. -->
+              <div v-else class="row-actions">
+                <button class="action-btn danger" @click="confirmDelete(link)" title="מחק לקוח" aria-label="מחק את הלקוח מהרשימה">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -336,7 +348,6 @@ watch(plSceneEl, (el) => { if (el) { plMount(); plGo(0) } else plUnmount() })
 onBeforeUnmount(plUnmount)
 
 const filterOptions = [
-  { id: 'all', label: 'הכל' },
   { id: 'active', label: 'פעיל' },
   { id: 'expired', label: 'פג תוקף' },
   { id: 'revoked', label: 'מבוטל' },
@@ -426,6 +437,17 @@ async function sendEmail(link) {
   } catch { /* error stored in store */ }
 }
 
+async function confirmDelete(link) {
+  const active = link._status === 'active'
+  const msg = active
+    ? `למחוק את ${link.customer_name}?\nהקישור יפסיק לעבוד מיד, והלקוח יוסר מהרשימה. אי אפשר לבטל את הפעולה.`
+    : `למחוק את ${link.customer_name} מהרשימה?\nאי אפשר לבטל את הפעולה.`
+  if (!confirm(msg)) return
+  try {
+    await portalStore.deleteLink(link.token)
+  } catch { /* error stored in store */ }
+}
+
 async function confirmRevoke(link) {
   if (!confirm(`לבטל את הקישור של ${link.customer_name}?`)) return
   try {
@@ -435,7 +457,7 @@ async function confirmRevoke(link) {
 
 function resetFilters() {
   portalStore.setSearch('')
-  portalStore.setStatusFilter('all')
+  portalStore.setStatusFilter('active')
 }
 
 function onGenerated() {

@@ -9,7 +9,7 @@
             <div class="modal-header">
               <div class="modal-heading">
                 <h3 id="pgw-title">{{ isEdit ? 'מה הלקוח רואה בפורטל' : 'פורטל חדש ללקוח' }}</h3>
-                <p class="modal-sub">
+                <p v-if="isEdit || step <= 3" class="modal-sub">
                   {{ isEdit ? editLink.customer_name : 'שלושה צעדים קצרים — והלקוח מקבל תיק אישי, מאחורי סיסמה.' }}
                 </p>
               </div>
