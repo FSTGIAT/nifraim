@@ -42,37 +42,74 @@
             <div class="step-body">
               <!-- ── 1. למי פותחים ─────────────────────────────── -->
               <section v-if="step === 1" class="step-panel" aria-labelledby="pgw-s1" @input="dirty = true">
-                <h4 id="pgw-s1" ref="headingEl" tabindex="-1" class="q-title">למי פותחים את הפורטל?</h4>
-                <div class="field">
-                  <label for="pgw-id">תעודת זהות</label>
-                  <input id="pgw-id" v-model="form.customer_id_number" placeholder="מספר ת.ז של הלקוח" dir="ltr" inputmode="numeric" autocomplete="off" @blur="autoFill" />
+                <!-- Narrow screens hide the side picture — bring it in as a banner -->
+                <div class="welcome-banner" aria-hidden="true"><img :src="artwork" alt="" /></div>
+                <div class="welcome">
+                  <h4 id="pgw-s1" ref="headingEl" tabindex="-1" class="welcome-title">
+                    תיק אישי ללקוח,<br><span>בשלוש דקות</span>
+                  </h4>
                 </div>
-                <div class="field">
-                  <label for="pgw-name">שם הלקוח</label>
-                  <input id="pgw-name" v-model="form.customer_name" placeholder="שם מלא" autocomplete="off" />
-                  <span v-if="autoFilling" class="auto-hint"><span class="mini-spinner"></span>מחפש בתיק…</span>
-                  <span v-else-if="mixTotal" class="field-help">נמצאו {{ mixTotal }} מוצרים בתיק של הלקוח</span>
+
+                <!-- Lookup -->
+                <div class="lookup" :class="{ 'lookup--found': lookup === 'found' }">
+                  <label for="pgw-id" class="lookup-label">תעודת זהות של הלקוח</label>
+                  <div class="lookup-row">
+                    <span class="lookup-icon" aria-hidden="true">
+                      <span v-if="lookup === 'searching'" class="mini-spinner"></span>
+                      <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </span>
+                    <input
+                      id="pgw-id" v-model="form.customer_id_number" dir="ltr" inputmode="numeric" autocomplete="off"
+                      placeholder="012345678" @blur="autoFill" @keydown.enter.prevent="autoFill"
+                    />
+                  </div>
+
+                  <Transition name="fade" mode="out-in">
+                    <div v-if="lookup === 'found'" key="found" class="found-card" aria-live="polite">
+                      <span class="found-avatar" aria-hidden="true">{{ initials }}</span>
+                      <div class="found-text">
+                        <span class="found-kicker">נמצא בתיק שלכם</span>
+                        <span class="found-name">{{ form.customer_name }}</span>
+                        <span v-if="mixTotal" class="found-meta"><span class="ltr-number">{{ mixTotal }}</span> מוצרים<template v-if="productMix.savings && productMix.insurance"> · חיסכון וביטוח</template><template v-else-if="productMix.savings"> · חיסכון</template><template v-else-if="productMix.insurance"> · ביטוח</template></span>
+                      </div>
+                      <button type="button" class="btn-link" @click="editName = !editName">{{ editName ? 'סגור' : 'שינוי שם' }}</button>
+                    </div>
+                    <p v-else-if="lookup === 'notfound'" key="nf" class="lookup-note" aria-live="polite">
+                      לא מצאנו את הלקוח בקובץ הפרודוקציה — הקלידו את שמו כדי להמשיך.
+                    </p>
+                  </Transition>
+
+                  <div v-if="lookup === 'notfound' || editName" class="field">
+                    <label for="pgw-name">שם הלקוח</label>
+                    <input id="pgw-name" v-model="form.customer_name" placeholder="שם מלא" autocomplete="off" />
+                  </div>
                 </div>
-                <div class="field">
-                  <label for="pgw-email">אימייל <span class="opt">(לא חובה)</span></label>
-                  <input id="pgw-email" v-model="form.customer_email" type="email" placeholder="email@example.com" dir="ltr" autocomplete="off" />
-                </div>
-                <div class="field-row">
-                  <div class="field field--grow">
-                    <label for="pgw-pass">סיסמה לפורטל</label>
-                    <div class="password-row">
-                      <input id="pgw-pass" :type="showPass ? 'text' : 'password'" v-model="form.password" placeholder="סיסמה" dir="ltr" autocomplete="new-password" />
-                      <button type="button" class="icon-btn" @click="generatePassword" title="סיסמה אוטומטית" aria-label="צור סיסמה אוטומטית">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-                      </button>
-                      <button type="button" class="icon-btn icon-btn--text" @click="showPass = !showPass" :aria-pressed="showPass">
-                        {{ showPass ? 'הסתר' : 'הצג' }}
-                      </button>
+
+                <!-- Access -->
+                <div class="q-card access">
+                  <div class="access-row">
+                    <div class="access-pass">
+                      <label for="pgw-pass" class="access-sub">סיסמה</label>
+                      <div class="password-row">
+                        <input id="pgw-pass" :type="showPass ? 'text' : 'password'" v-model="form.password" dir="ltr" autocomplete="new-password" class="pass-input" />
+                        <button type="button" class="icon-btn" @click="generatePassword" title="סיסמה חדשה" aria-label="צור סיסמה אוטומטית">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+                        </button>
+                        <button type="button" class="icon-btn icon-btn--text" @click="showPass = !showPass" :aria-pressed="showPass">
+                          {{ showPass ? 'הסתר' : 'הצג' }}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div class="field field--days">
-                    <label for="pgw-days">תוקף (ימים)</label>
-                    <input id="pgw-days" v-model.number="form.expires_days" type="number" min="1" max="365" dir="ltr" />
+                  <div class="access-days">
+                    <span class="access-sub" id="pgw-days-l">הקישור בתוקף ל־</span>
+                    <div class="chips" role="radiogroup" aria-labelledby="pgw-days-l">
+                      <button
+                        v-for="d in DAY_OPTIONS" :key="d.days" type="button" role="radio"
+                        class="chip" :class="{ 'chip--on': form.expires_days === d.days }"
+                        :aria-checked="form.expires_days === d.days" @click="form.expires_days = d.days; dirty = true"
+                      >{{ d.label }}</button>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -126,10 +163,14 @@
 
               <!-- ── 3. שירותים נוספים ────────────────────────── -->
               <section v-else-if="step === 3" class="step-panel" aria-labelledby="pgw-s3">
+                <div class="welcome-banner welcome-banner--pitch" aria-hidden="true">
+                  <img :src="offersArtwork" alt="" />
+                  <span>על מספר הסוכן שלכם</span>
+                </div>
                 <h4 id="pgw-s3" ref="headingEl" tabindex="-1" class="q-title">להציע ל{{ firstName }} שירותים נוספים?</h4>
                 <p class="q-lead">
-                  הלקוח יראה בפורטל כרטיסים של שירותים משלימים. לחיצה פותחת את <strong>קישור הרכישה האישי שלכם</strong> —
-                  כך כל רכישה נרשמת אצלכם.
+                  הציעו ללקוחות לרכוש עצמאית ביטוח נסיעות לחו"ל ופוליסת חיסכון, על מספר הסוכן שלכם.
+                  בפורטל יופיעו כרטיסי שירות — לחיצה פותחת את <strong>קישור הרכישה האישי שלכם</strong>, כך שכל רכישה נרשמת אצלכם.
                 </p>
                 <div class="choice-cards" role="radiogroup" aria-label="הצעות מסחריות">
                   <button type="button" role="radio" class="choice" :class="{ 'choice--on': offersEnabled }" :aria-checked="offersEnabled" @click="setOffersEnabled(true)">
@@ -146,6 +187,10 @@
                   <div v-if="offersEnabled" class="q-card">
                     <p class="q-label">אילו שירותים?</p>
                     <div v-if="offersLoading" class="auto-hint auto-hint--static"><span class="mini-spinner"></span>טוען…</div>
+                    <div v-else-if="offersError" class="retry-row" role="alert">
+                      <span>השירותים לא נטענו כרגע.</span>
+                      <button type="button" class="btn-link" @click="loadOffers">נסו שוב</button>
+                    </div>
                     <div v-else class="toggle-list">
                       <div v-for="o in offerRows" :key="o.service_key" class="offer-row">
                         <label class="switch-row">
@@ -183,12 +228,6 @@
                     <input :value="portalUrl" readonly dir="ltr" aria-label="קישור לפורטל" />
                     <button type="button" class="copy-btn" @click="copyLink">{{ copied ? 'הועתק' : 'העתק' }}</button>
                   </div>
-                  <div class="success-actions">
-                    <button v-if="form.customer_email" type="button" class="btn-secondary btn-with-icon" @click="sendEmail" :disabled="sendingEmail || emailSent">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                      {{ emailSent ? 'נשלח' : sendingEmail ? 'שולח…' : 'שלח קישור באימייל' }}
-                    </button>
-                  </div>
                 </template>
               </section>
             </div>
@@ -220,9 +259,18 @@
           <!-- Left in RTL: the surreal picture; from step 2 the live phone
                preview floats over it. Hidden below 820px (the form is the job). -->
           <aside class="pane pane--art" aria-hidden="true">
-            <img :src="artwork" alt="" />
-            <div class="art-veil" :class="{ 'art-veil--deep': showPreview }"></div>
+            <Transition name="art-swap">
+              <img :key="artSrc" :src="artSrc" alt="" class="art-img" />
+            </Transition>
+            <div class="art-veil" :class="{ 'art-veil--deep': showPreview, 'art-veil--pitch': step === 3 }"></div>
             <div v-show="showPreview" ref="previewEl" class="preview-mount"></div>
+            <!-- Step 3 is the commercial moment: its own picture + the pitch. -->
+            <Transition name="fade">
+              <div v-if="step === 3" class="art-pitch">
+                <span class="art-kicker">שירותים נוספים</span>
+                <p>הציעו ללקוחות לרכוש עצמאית ביטוח נסיעות לחו"ל ופוליסת חיסכון, על מספר הסוכן שלכם</p>
+              </div>
+            </Transition>
           </aside>
         </div>
       </div>
@@ -232,6 +280,7 @@
 
 <script setup>
 import artwork from '../../assets/portal/portal-setup-surreal.webp'
+import offersArtwork from '../../assets/portal/portal-offers-surreal.webp'
 
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { usePortalStore } from '../../stores/portal.js'
@@ -286,8 +335,6 @@ const busy = ref(false)
 const error = ref(null)
 const copied = ref(false)
 const autoFilling = ref(false)
-const sendingEmail = ref(false)
-const emailSent = ref(false)
 const generatedLink = ref(null)
 const productMix = ref(null)
 const dirty = ref(false)
@@ -304,7 +351,7 @@ function resetAll() {
   Object.assign(form, { customer_id_number: '', customer_name: '', customer_email: '', password: '', expires_days: 30 })
   Object.assign(settings, defaultSettings())
   error.value = null; generatedLink.value = null; productMix.value = null
-  copied.value = false; emailSent.value = false; dirty.value = false; confirmClose.value = false
+  copied.value = false; dirty.value = false; confirmClose.value = false
   offersEnabled.value = false; offersLoaded = false; offerRows.value = []
   lastChanged.value = 'all'
   recommendationsApplied = false; settingsTouched = false
@@ -316,6 +363,10 @@ function resetAll() {
       Object.assign(settings.show_amounts, s.show_amounts || {})
       settings.offers = [...(s.offers || [])]
       offersEnabled.value = settings.offers.length > 0
+    } else {
+      // A pre-wizard link: the server shows it without the agent card
+      // (portal_view) — the wizard must say so too, not claim it's on.
+      settings.sections.agent_card = false
     }
     form.customer_name = props.editLink.customer_name
     form.customer_id_number = props.editLink.customer_id_number
@@ -324,12 +375,19 @@ function resetAll() {
     if (offersEnabled.value) loadOffers()
   } else {
     step.value = 1; maxReached.value = 1
+    lookup.value = 'idle'; editName.value = false; lastLookedUp = ''
+    generatePassword()          // ready before the agent even looks
+    showPass.value = false
   }
 }
 watch(() => props.show, (v) => { if (v) { resetAll(); focusHeading() } else unmountPreview() })
 
 // ── step 1 ──
 const firstName = computed(() => (form.customer_name || '').trim().split(/\s+/)[0] || 'הלקוח')
+const DAY_OPTIONS = [{ days: 30, label: 'חודש' }, { days: 90, label: '3 חודשים' }, { days: 365, label: 'שנה' }]
+const lookup = ref('idle') // idle | searching | found | notfound
+const editName = ref(false)
+const initials = computed(() => (form.customer_name || '').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('') || '?')
 const step1Valid = computed(() => form.customer_id_number && form.customer_name && form.password && form.expires_days >= 1)
 const mixTotal = computed(() => (productMix.value ? productMix.value.savings + productMix.value.insurance + productMix.value.unknown : 0))
 
@@ -348,13 +406,18 @@ async function loadMix() {
   productMix.value = info.product_mix || null
   return info
 }
+let lastLookedUp = ''
 async function autoFill() {
-  if (!form.customer_id_number || form.customer_id_number.length < 5) return
+  const id = (form.customer_id_number || '').trim()
+  if (id.length < 5 || id === lastLookedUp) return
+  lastLookedUp = id
   autoFilling.value = true
+  lookup.value = 'searching'
   try {
     const info = await loadMix()
-    if (info?.name && !form.customer_name) form.customer_name = info.name
-    if (info?.email && !form.customer_email) form.customer_email = info.email
+    const found = !!(info && (info.name || (info.product_mix && (info.product_mix.savings + info.product_mix.insurance + info.product_mix.unknown))))
+    if (info?.name) form.customer_name = info.name
+    lookup.value = found && form.customer_name ? 'found' : 'notfound'
     applyRecommendations()
   } finally {
     autoFilling.value = false
@@ -403,9 +466,11 @@ function toggleSection(id) { settings.sections[id] = !settings.sections[id]; mar
 function mark(key) { dirty.value = true; settingsTouched = true; lastChanged.value = key }
 
 // ── step 3 ──
+const offersError = ref(false)
 async function loadOffers() {
   if (offersLoaded) return
   offersLoading.value = true
+  offersError.value = false
   try {
     const { catalog, offers } = await portalStore.fetchOffers()
     const saved = Object.fromEntries(offers.map((o) => [o.service_key, o]))
@@ -419,7 +484,7 @@ async function loadOffers() {
     }))
     offersLoaded = true
   } catch {
-    error.value = 'לא הצלחנו לטעון את השירותים'
+    offersError.value = true
   } finally {
     offersLoading.value = false
   }
@@ -489,7 +554,7 @@ async function submit() {
       const link = await portalStore.generateLink({
         customer_id_number: form.customer_id_number,
         customer_name: form.customer_name,
-        customer_email: form.customer_email || null,
+        customer_email: null, // no email field in the wizard — never store an address the agent didn't see
         password: form.password,
         expires_days: form.expires_days,
         settings: buildSettings(),
@@ -527,16 +592,13 @@ async function copyLink() {
   copied.value = true
   setTimeout(() => { copied.value = false }, 2000)
 }
-async function sendEmail() {
-  if (!generatedLink.value) return
-  sendingEmail.value = true
-  try { await portalStore.sendEmail(generatedLink.value.token); emailSent.value = true } catch { error.value = portalStore.error } finally { sendingEmail.value = false }
-}
 
 // ── Remotion live preview (React island, like SetupProgressCard) ──
 const previewEl = ref(null)
 const reducedMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-const showPreview = computed(() => step.value >= 2 && step.value <= 3)
+// Phone preview in step 2; step 3 hands the pane to its own picture + pitch.
+const showPreview = computed(() => step.value === 2)
+const artSrc = computed(() => (step.value === 3 ? offersArtwork : artwork))
 let previewRoot = null
 let previewMods = null
 let previewNonce = 0 // new key per change → the Player remounts and replays the entrance
@@ -560,6 +622,8 @@ const previewProps = computed(() => ({
 
 async function mountPreview() {
   if (!previewEl.value || previewRoot) return
+  // The art pane is hidden below 820px — don't download/run the island there.
+  if (window.matchMedia?.('(max-width: 820px)').matches) return
   try {
     const [rdClient, react, player, comp] = await Promise.all([
       import('react-dom/client'),
@@ -641,7 +705,23 @@ onBeforeUnmount(unmountPreview)
   min-width: 0; min-height: 0;
 }
 .pane--art { position: relative; overflow: hidden; background: #6f8e99; }
-.pane--art img { width: 100%; height: 100%; object-fit: cover; object-position: 30% 40%; display: block; }
+.art-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 30% 40%; display: block; }
+.art-swap-enter-active { transition: opacity 0.45s ease-out; }
+.art-swap-leave-active { transition: opacity 0.3s ease-in; }
+.art-swap-enter-from, .art-swap-leave-to { opacity: 0; }
+.art-veil--pitch {
+  /* dark wash under the pitch so white text holds ≥4.5:1 on the sky-blue wall */
+  background: linear-gradient(to bottom, rgba(18, 28, 36, 0.62) 0%, rgba(18, 28, 36, 0.28) 34%, transparent 58%);
+}
+.art-pitch {
+  position: absolute; top: 0; inset-inline: 0; padding: 30px 28px;
+  direction: rtl; color: #fff; display: flex; flex-direction: column; gap: 8px;
+}
+.art-kicker {
+  align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+  padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.28);
+}
+.art-pitch p { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.35; letter-spacing: -0.01em; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.25); }
 .art-veil {
   position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(to left, rgba(255, 255, 255, 0.28), transparent 34%);
@@ -679,6 +759,63 @@ onBeforeUnmount(unmountPreview)
 }
 .close-btn:hover { color: var(--text); background: var(--bg); }
 .close-btn:focus-visible { outline: 2px solid var(--tab-portal-ink); outline-offset: 2px; }
+
+/* ── step 1: welcome ── */
+.welcome-banner { display: none; }
+.welcome { display: flex; flex-direction: column; gap: 4px; }
+.welcome-title {
+  margin: 0; outline: none;
+  font-size: clamp(24px, 2.6vw, 30px); font-weight: 900; line-height: 1.15; letter-spacing: -0.03em; color: var(--text);
+}
+.welcome-title span { color: var(--tab-portal-ink); }
+.lookup {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  border-radius: 16px; background: var(--tab-portal-wash); border: 1px solid transparent;
+  transition: border-color 0.25s, background 0.25s;
+}
+.lookup--found { background: var(--card-bg); border-color: color-mix(in srgb, var(--tab-portal-ink) 35%, transparent); }
+.lookup-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.lookup-row { position: relative; }
+.lookup-icon { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); color: var(--tab-portal-ink); display: grid; place-items: center; pointer-events: none; }
+.lookup-row input {
+  width: 100%; min-height: 52px; padding: 0 44px 0 16px; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--card-bg);
+  font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0.06em; color: var(--text);
+}
+.lookup-row input:focus { outline: none; border-color: var(--tab-portal-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tab-portal) 22%, transparent); }
+.found-card { display: flex; align-items: center; gap: 12px; }
+.found-avatar {
+  width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%;
+  background: var(--tab-portal-ink); color: #fff; font-weight: 800; font-size: 15px;
+}
+.found-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.found-kicker { font-size: 11.5px; font-weight: 700; color: var(--green, #2E844A); }
+.found-name { font-size: 16px; font-weight: 800; color: var(--text); }
+.found-meta { font-size: 12.5px; color: var(--text-muted); }
+.lookup-note { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.access { gap: 12px; }
+.access-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.access-pass { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.access-row { display: flex; gap: 12px; }
+.pass-input {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: ui-monospace, monospace; font-size: 18px; letter-spacing: 0.3em; background: var(--bg-surface); color: var(--text);
+}
+.pass-input:focus { outline: none; border-color: var(--tab-portal-ink); }
+.access-days { display: flex; flex-direction: column; gap: 6px; }
+.retry-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-muted); }
+@media (max-width: 820px) {
+  .welcome-banner {
+    display: block; margin: -4px -2px 4px; height: 120px; border-radius: 14px; overflow: hidden; position: relative;
+  }
+  .welcome-banner img { width: 100%; height: 100%; object-fit: cover; object-position: 22% 28%; display: block; }
+  .welcome-banner--pitch img { object-position: 50% 62%; }
+  .welcome-banner--pitch span {
+    position: absolute; top: 10px; right: 12px; z-index: 1; font-size: 12px; font-weight: 700; color: #fff;
+    padding: 3px 10px; border-radius: 999px; background: rgba(18, 28, 36, 0.55);
+  }
+  .welcome-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 40%, var(--card-bg)); }
+}
 
 /* ── step rail — big light numerals, like the product's marketing steps ── */
 .steps { list-style: none; margin: 0 0 16px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
