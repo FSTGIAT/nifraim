@@ -45,14 +45,22 @@ async def get_admin_user(
 
 
 async def get_portal_session(
+    token: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> CustomerPortalLink:
-    """Validate a portal JWT and return the associated portal link."""
+    """Validate a portal JWT and return the associated portal link.
+
+    `token` is the `{token}` path segment of every route that uses this. The
+    session must belong to THAT link — otherwise a customer holding any valid
+    portal session could read another customer's dashboard by swapping the
+    token in the URL."""
     payload = decode_portal_token(credentials.credentials)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid portal session")
     portal_token = payload.get("sub")
+    if not portal_token or portal_token != token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid portal session")
     result = await db.execute(
         select(CustomerPortalLink).where(CustomerPortalLink.token == portal_token)
     )

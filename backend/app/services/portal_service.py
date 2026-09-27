@@ -1,7 +1,7 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,15 +105,13 @@ async def verify_portal_access(db: AsyncSession, token: str, password: str) -> C
 
 async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: str) -> dict | None:
     """Get dashboard data for a customer from the active production file."""
-    # Find active production upload
-    prod_result = await db.execute(
-        select(FileUpload).where(
-            FileUpload.user_id == user_id,
-            FileUpload.is_production == True,
-        )
-    )
-    prod_upload = prod_result.scalar_one_or_none()
-    if not prod_upload:
+    # This month's production book. `is_production` is NOT a singleton (one
+    # file per company coexists), so `scalar_one_or_none()` here raised
+    # MultipleResultsFound for any agent with more than one company. Use the
+    # same unified selection the rest of the app uses.
+    from app.api.production import _get_production_upload_ids  # lazy: avoid import cycle
+    upload_ids = await _get_production_upload_ids(db, user_id)
+    if not upload_ids:
         return None
 
     # Get customer records — match by exact OR by leading-zero-stripped ID.
@@ -122,7 +120,7 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
     records_result = await db.execute(
         select(ClientRecord).where(
             ClientRecord.user_id == user_id,
-            ClientRecord.upload_id == prod_upload.id,
+            ClientRecord.upload_id.in_(upload_ids),
             or_(
                 ClientRecord.id_number == id_number,
                 ClientRecord.id_number == id_stripped,
@@ -173,8 +171,18 @@ async def get_portal_dashboard(db: AsyncSession, user_id: uuid.UUID, id_number: 
             customer_name = name
             break
 
-    # Extract period from production filename (e.g. "דוח פרודוקציה דצמבר 25.xlsx")
-    period_label = _extract_period(prod_upload.filename)
+    # Period from the newest production file that names one
+    # (e.g. "דוח פרודוקציה דצמבר 25.xlsx").
+    period_label = ""
+    uploads_result = await db.execute(select(FileUpload).where(FileUpload.id.in_(upload_ids)))
+    for up in sorted(
+        uploads_result.scalars().all(),
+        key=lambda u: (u.period_month or date.min, u.uploaded_at or datetime.min),
+        reverse=True,
+    ):
+        period_label = _extract_period(up.filename)
+        if period_label:
+            break
 
     kpi = {
         "product_count": len(records),
