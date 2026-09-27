@@ -27,7 +27,9 @@ async def create_portal_link(
     password: str,
     expires_days: int = 30,
     customer_email: str | None = None,
+    settings: dict | None = None,
 ) -> CustomerPortalLink:
+    from app.services.portal_view import normalize_settings
     token = generate_token()
     link = CustomerPortalLink(
         user_id=user_id,
@@ -37,6 +39,7 @@ async def create_portal_link(
         customer_email=customer_email,
         password_hash=hash_password(password),
         expires_at=datetime.utcnow() + timedelta(days=expires_days),
+        settings=normalize_settings(settings) if settings is not None else None,
     )
     db.add(link)
     await db.commit()
@@ -395,6 +398,9 @@ async def get_portal_history(db: AsyncSession, portal_link_id: uuid.UUID, limit:
             "kpi": s.kpi_json,
             "has_changes": s.has_changes,
             "changes_json": s.changes_json,
+            # Internal: lets portal_view recompute scoped trend points. The
+            # route strips it before responding.
+            "_products": s.products_json or [],
         }
         for s in snapshots
     ]

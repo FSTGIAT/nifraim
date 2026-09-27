@@ -9,6 +9,13 @@ class PortalLinkCreate(BaseModel):
     customer_email: str | None = None
     password: str
     expires_days: int = 30
+    # Setup wizard choices (services/portal_view.normalize_settings). Omitted →
+    # NULL → the customer sees everything, as before the wizard.
+    settings: dict | None = None
+
+
+class PortalSettingsUpdate(BaseModel):
+    settings: dict
 
 
 class PortalLinkOut(BaseModel):
@@ -21,6 +28,7 @@ class PortalLinkOut(BaseModel):
     expires_at: datetime
     created_at: datetime
     last_accessed_at: datetime | None
+    settings: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -49,16 +57,28 @@ class PortalProduct(BaseModel):
 
 class PortalKPI(BaseModel):
     product_count: int
-    total_premium: float
-    total_accumulation: float
+    total_premium: float | None      # None = the agent chose to hide it
+    total_accumulation: float | None
     company_count: int
 
 
 class PortalCompanyBreakdown(BaseModel):
     company: str
-    premium: float
-    accumulation: float
+    premium: float | None
+    accumulation: float | None
     count: int
+
+
+class PortalOfferPublic(BaseModel):
+    service_key: str
+    title: str
+    url: str
+
+
+class PortalAgentCard(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    company_name: str | None = None
 
 
 class PortalDashboardData(BaseModel):
@@ -69,6 +89,26 @@ class PortalDashboardData(BaseModel):
     kpi: PortalKPI
     company_breakdown: list[PortalCompanyBreakdown]
     recent_changes: dict | None = None
+    settings: dict | None = None
+    offers: list[PortalOfferPublic] = []
+    agent: PortalAgentCard | None = None
+
+
+# --- Agent offers (setup wizard step 3) ---
+
+class AgentOfferIn(BaseModel):
+    service_key: str
+    title: str | None = None
+    url: str = Field(..., max_length=1000)
+    is_active: bool = True
+
+
+class AgentOfferOut(BaseModel):
+    service_key: str
+    title: str
+    url: str
+    is_active: bool
+    clicks: int = 0
 
 
 # --- Snapshot schemas ---

@@ -58,19 +58,31 @@ def build_portal_context(dashboard_data: dict) -> str:
         parts.append(f"תקופה: {dashboard_data['period']}")
 
     kpi = dashboard_data.get("kpi", {})
+    # An amount is None when the agent chose not to share it (portal_view).
+    # Say so explicitly, so the model answers "not shown" instead of guessing.
+    hidden = [label for key, label in (("total_premium", "פרמיה"), ("total_accumulation", "צבירה"))
+              if key in kpi and kpi[key] is None]
     parts.append(f"סה\"כ מוצרים: {kpi.get('product_count', 0)}")
-    parts.append(f"סה\"כ פרמיה: {kpi.get('total_premium', 0):,.0f}₪")
-    parts.append(f"סה\"כ צבירה: {kpi.get('total_accumulation', 0):,.0f}₪")
+    if kpi.get("total_premium") is not None:
+        parts.append(f"סה\"כ פרמיה: {kpi['total_premium']:,.0f}₪")
+    if kpi.get("total_accumulation") is not None:
+        parts.append(f"סה\"כ צבירה: {kpi['total_accumulation']:,.0f}₪")
     parts.append(f"מספר חברות: {kpi.get('company_count', 0)}")
+    if hidden:
+        parts.append(f"הסוכן בחר לא להציג בפורטל: {', '.join(hidden)}. אין לך מידע על סכומים אלה — "
+                     f"אם הלקוח שואל, הפנה אותו לסוכן.")
 
     # Company breakdown
     breakdown = dashboard_data.get("company_breakdown", [])
     if breakdown:
         co_lines = []
         for co in breakdown:
-            co_lines.append(
-                f"{co['company']}: {co['count']} מוצרים, פרמיה: {co['premium']:,.0f}₪, צבירה: {co['accumulation']:,.0f}₪"
-            )
+            line = f"{co['company']}: {co['count']} מוצרים"
+            if co.get("premium") is not None:
+                line += f", פרמיה: {co['premium']:,.0f}₪"
+            if co.get("accumulation") is not None:
+                line += f", צבירה: {co['accumulation']:,.0f}₪"
+            co_lines.append(line)
         parts.append(f"פירוט לפי חברה: {'; '.join(co_lines)}")
 
     # Products

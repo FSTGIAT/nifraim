@@ -38,26 +38,30 @@ async def send_raw_message(msg) -> None:
     await _send_email(msg)
 
 
-async def send_portal_email(to_email: str, customer_name: str, portal_url: str, password: str) -> bool:
+async def send_portal_email(to_email: str, customer_name: str, portal_url: str, password: str | None) -> bool:
     """Send portal link email to customer via SMTP."""
     if not settings.SMTP_HOST or not settings.SMTP_USER:
         raise ValueError("SMTP not configured")
 
+    password_line = (
+        f'סיסמה: <strong dir="ltr" style="color: #181818; letter-spacing: 1px;">{password}</strong>'
+        if password else "את הסיסמה לכניסה תקבלו מהסוכן שלכם בנפרד."
+    )
     html_body = f"""
     <div dir="rtl" style="font-family: 'Heebo', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="color: #F57C00; font-size: 24px; margin: 0;">Nifraim</h1>
+            <h1 style="color: #35719A; font-size: 24px; margin: 0;">Nifraim</h1>
         </div>
         <h2 style="color: #181818; font-size: 20px;">שלום {customer_name},</h2>
         <p style="color: #3E3E3C; font-size: 16px; line-height: 1.8;">
             הסוכן שלך שיתף איתך את תיק הביטוח האישי שלך.
         </p>
         <div style="background: #F3F3F3; border-radius: 8px; padding: 20px; margin: 24px 0; text-align: center;">
-            <a href="{portal_url}" style="display: inline-block; padding: 14px 32px; background: #F57C00; color: white; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 700;">
+            <a href="{portal_url}" style="display: inline-block; padding: 14px 32px; background: #35719A; color: white; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 700;">
                 צפייה בתיק הביטוח
             </a>
             <p style="color: #706E6B; font-size: 14px; margin-top: 16px;">
-                סיסמה: <strong dir="ltr" style="color: #181818; letter-spacing: 1px;">{password}</strong>
+                {password_line}
             </p>
         </div>
         <p style="color: #706E6B; font-size: 13px; line-height: 1.6;">
