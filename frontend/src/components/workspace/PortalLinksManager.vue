@@ -46,6 +46,8 @@
       <TabHeroLoop scene="portal" flow="ltr" class="toolbar-art" />
     </div>
 
+    <!-- Content card — separate from the hero card, like every other tab -->
+    <div class="links-card">
     <!-- Status filter pills -->
     <div v-if="portalStore.links.length" class="filter-pills">
       <button
@@ -258,6 +260,7 @@
           </button>
         </div>
       </div>
+    </div>
     </div>
 
     <PortalGenerateModal
@@ -522,23 +525,28 @@ function closeGenerateModal() {
   .pl-show-copy { width: auto; padding: 8px 12px 20px; }
 }
 
+/* Hero card + content card with a gap, like every other tab (they used to
+   share one card, split only by a border line). */
 .portal-tab-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.toolbar,
+.links-card {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #DDDBDA);
   border-radius: var(--radius-lg, 16px);
   padding: 24px;
-  min-height: 480px;
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
 }
+.links-card { min-height: 240px; }
 
 /* ── Toolbar ── */
 .toolbar {
   position: relative;
   overflow: hidden;
   display: block;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-subtle, #E5E5E5);
-  margin-bottom: 16px;
 }
 
 .toolbar-main {
@@ -1094,7 +1102,7 @@ td.muted {
 }
 
 @media (max-width: 640px) {
-  .portal-tab-root { padding: 16px; }
+  .toolbar, .links-card { padding: 16px; }
   .toolbar-title { flex-direction: column; gap: 8px; align-items: flex-start; }
   .toolbar-actions { flex-direction: column; align-items: stretch; }
   .btn-generate { justify-content: center; }
