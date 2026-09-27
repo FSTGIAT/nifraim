@@ -822,9 +822,10 @@ function buildScaleMock() {
 
 .ai-library {
   position: relative;
-  max-width: 1100px;
+  /* No own max-width / top+side padding: workspace-main already sets the
+     shared page margins, so the hero lines up with every other tab. */
   margin: 0 auto;
-  padding: 24px 24px 48px;
+  padding: 0 0 48px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1556,7 +1557,7 @@ function buildScaleMock() {
 
 /* ===== Responsive ===== */
 @media (max-width: 860px) {
-  .ai-library { padding: 18px 16px 32px; gap: 16px; }
+  .ai-library { padding: 0 0 32px; gap: 16px; }
   .lib-intro {
     flex-wrap: wrap;
     padding: 16px 18px;
@@ -1570,7 +1571,7 @@ function buildScaleMock() {
 }
 
 @media (max-width: 520px) {
-  .ai-library { padding: 14px 12px 28px; gap: 14px; }
+  .ai-library { padding: 0 0 28px; gap: 14px; }
   .lib-title { font-size: 17px; }
   .lib-sub { font-size: 12px; }
   .lib-summary-strip {

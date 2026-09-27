@@ -332,7 +332,9 @@ onUnmounted(() => {
 .auto-page {
   position: relative;
   min-height: 100%;
-  padding: 26px 20px 48px;
+  /* No top/side padding: workspace-main already sets the shared page margins,
+     so the hero lines up with every other tab (was 26px lower, 20px inset). */
+  padding: 0 0 48px;
   overflow: hidden;
   background: transparent;
 }
