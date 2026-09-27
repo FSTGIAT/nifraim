@@ -20,8 +20,8 @@
           />
         </svg>
         <div class="donut-center">
-          <span class="donut-label">סה"כ צבירה</span>
-          <span class="donut-total ltr-number">{{ formatCurrency(total) }}</span>
+          <span class="donut-label">{{ metric.label }}</span>
+          <span class="donut-total ltr-number">{{ formatValue(total) }}</span>
         </div>
       </div>
 
@@ -30,7 +30,7 @@
         <div v-for="(item, i) in items" :key="i" class="legend-row">
           <span class="legend-dot" :style="{ background: colors[i % colors.length] }"></span>
           <span class="legend-name">{{ item.shortName }}</span>
-          <span class="legend-value ltr-number">{{ formatCurrency(item.value) }}</span>
+          <span class="legend-value ltr-number">{{ formatValue(item.value) }}</span>
           <span class="legend-pct ltr-number">{{ item.pct }}%</span>
         </div>
       </div>
@@ -51,14 +51,21 @@ const colors = CHART_PALETTE
 
 const circumference = 2 * Math.PI * 80 // ~502.65
 
-const total = computed(() =>
-  (props.breakdown || []).reduce((s, b) => s + (b.accumulation || 0), 0)
-)
+const sumOf = (key) => (props.breakdown || []).reduce((s, b) => s + (b[key] || 0), 0)
+const metric = computed(() => {
+  if (sumOf('accumulation') > 0) return { key: 'accumulation', label: 'סה"כ צבירה', money: true }
+  if (sumOf('premium') > 0) return { key: 'premium', label: 'פרמיה חודשית', money: true }
+  return { key: 'count', label: 'מוצרים', money: false }
+})
+const total = computed(() => sumOf(metric.value.key))
+function formatValue(v) {
+  return metric.value.money ? formatCurrency(v) : String(Math.round(v || 0))
+}
 
 const items = computed(() => {
   if (!total.value) return []
   return (props.breakdown || []).map(b => {
-    const val = b.accumulation || 0
+    const val = b[metric.value.key] || 0
     const pct = Math.round((val / total.value) * 100)
     return {
       company: b.company,

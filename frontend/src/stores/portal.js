@@ -161,7 +161,38 @@ export const usePortalStore = defineStore('portal', () => {
       const res = await api.get(`/portal/customer-info/${idNumber}`)
       return res.data
     } catch {
-      return { name: '', email: '' }
+      return { name: '', email: '', product_mix: null }
+    }
+  }
+
+  // ─── Setup wizard: agent offers (step 3) + per-link settings ───
+
+  async function fetchOffers() {
+    const res = await api.get('/portal/offers')
+    return res.data // { catalog: [{service_key,title}], offers: [{service_key,title,url,is_active,clicks}] }
+  }
+
+  async function saveOffers(offers) {
+    error.value = null
+    try {
+      const res = await api.put('/portal/offers', offers)
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בשמירת השירותים'
+      throw e
+    }
+  }
+
+  async function updateLinkSettings(token, settings) {
+    error.value = null
+    try {
+      const res = await api.patch(`/portal/links/${token}/settings`, { settings })
+      const idx = links.value.findIndex(l => l.token === token)
+      if (idx !== -1) links.value[idx] = { ...links.value[idx], settings: res.data.settings }
+      return res.data
+    } catch (e) {
+      error.value = e.response?.data?.detail || 'שגיאה בשמירת ההגדרות'
+      throw e
     }
   }
 
@@ -226,6 +257,7 @@ export const usePortalStore = defineStore('portal', () => {
     setSearch, setStatusFilter, setSort, setPage, linkStatus,
     // agent
     fetchLinks, generateLink, revokeLink, sendEmail, getCustomerInfo,
+    fetchOffers, saveOffers, updateLinkSettings,
     // customer
     accessPortal, fetchDashboard, fetchHistory, logout,
   }

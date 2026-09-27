@@ -16,7 +16,7 @@
           <span class="product-count">{{ group.products.length }} מוצרים</span>
         </div>
         <div class="card-metrics">
-          <div class="metric">
+          <div class="metric" v-if="group.totalAccumulation">
             <span class="metric-label">צבירה</span>
             <span class="metric-value ltr-number">{{ formatCompact(group.totalAccumulation) }}</span>
           </div>
@@ -47,8 +47,10 @@
                 <h4>{{ selectedGroup.company }}</h4>
                 <p class="modal-subtitle">
                   {{ selectedGroup.products.length }} מוצרים
-                  <span class="sep">&middot;</span>
-                  צבירה: <span class="ltr-number">{{ formatNum(selectedGroup.totalAccumulation) }}</span> &#8362;
+                  <template v-if="selectedGroup.totalAccumulation">
+                    <span class="sep">&middot;</span>
+                    צבירה: <span class="ltr-number">{{ formatNum(selectedGroup.totalAccumulation) }}</span> &#8362;
+                  </template>
                 </p>
               </div>
               <PortalCloseButton @click="closeModal" />

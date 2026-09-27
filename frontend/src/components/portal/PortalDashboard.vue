@@ -9,7 +9,7 @@
         </p>
       </div>
       <div class="header-actions">
-        <button class="print-btn" @click="printReport" title="הדפסת דוח">
+        <button v-if="show('print')" class="print-btn" @click="printReport" title="הדפסת דוח">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 6 2 18 2 18 9"/>
             <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
@@ -40,17 +40,20 @@
       :changes="data.recent_changes"
     />
 
-    <!-- KPI Strip -->
-    <PortalKPIStrip :kpi="data.kpi" />
+    <!-- Each section only when the agent chose to share it (setup wizard;
+         the server already removed the data itself — this hides the frame). -->
+    <PortalKPIStrip v-if="show('summary')" :kpi="data.kpi" />
 
-    <!-- Trend Chart -->
-    <PortalTrendChart :snapshots="portalStore.history" />
+    <PortalTrendChart v-if="show('trend')" :snapshots="portalStore.history" />
 
-    <!-- Company Chart + Products -->
-    <div class="section-grid">
-      <PortalCompanyChart :breakdown="data.company_breakdown" />
-      <PortalProductTable :products="data.products" />
+    <div v-if="show('companies') || show('products')" class="section-grid" :class="{ 'section-grid--single': !(show('companies') && show('products')) }">
+      <PortalCompanyChart v-if="show('companies')" :breakdown="data.company_breakdown" />
+      <PortalProductTable v-if="show('products')" :products="data.products" />
     </div>
+
+    <PortalOffers v-if="token" :offers="data.offers || []" :token="token" />
+
+    <PortalAgentCard v-if="show('agent_card')" :agent="data.agent" />
 
     <!-- Print footer -->
     <div class="print-only-footer">
@@ -58,7 +61,7 @@
     </div>
 
     <!-- AI Chat -->
-    <PortalAIChat v-if="token" :token="token" />
+    <PortalAIChat v-if="token && show('ai_chat')" :token="token" />
   </div>
 </template>
 
@@ -71,6 +74,8 @@ import PortalProductTable from './PortalProductTable.vue'
 import PortalTrendChart from './PortalTrendChart.vue'
 import PortalChangesBanner from './PortalChangesBanner.vue'
 import PortalAIChat from './PortalAIChat.vue'
+import PortalOffers from './PortalOffers.vue'
+import PortalAgentCard from './PortalAgentCard.vue'
 
 const props = defineProps({
   data: Object,
@@ -80,6 +85,11 @@ const props = defineProps({
 defineEmits(['logout'])
 
 const portalStore = usePortalStore()
+
+// settings.sections from the server (portal_view); missing = legacy link → all on.
+function show(key) {
+  return props.data?.settings?.sections?.[key] !== false
+}
 
 const printDate = computed(() => {
   return new Date().toLocaleDateString('he-IL', {
@@ -185,6 +195,7 @@ onMounted(() => {
   gap: 20px;
   margin-top: 20px;
 }
+.section-grid--single { grid-template-columns: 1fr; }
 
 /* Print-only elements (hidden on screen) */
 .print-only-header,

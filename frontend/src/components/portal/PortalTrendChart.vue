@@ -28,16 +28,14 @@ const sortedSnapshots = computed(() =>
   [...props.snapshots].reverse()
 )
 
+// A series the agent hid comes back as null on every snapshot — drop it
+// rather than plotting a flat ₪0 line.
 const series = computed(() => [
-  {
-    name: 'פרמיה',
-    data: sortedSnapshots.value.map(s => s.kpi?.total_premium ?? 0),
-  },
-  {
-    name: 'צבירה',
-    data: sortedSnapshots.value.map(s => s.kpi?.total_accumulation ?? 0),
-  },
-])
+  { name: 'פרמיה', key: 'total_premium' },
+  { name: 'צבירה', key: 'total_accumulation' },
+]
+  .filter(({ key }) => sortedSnapshots.value.some(s => s.kpi?.[key] !== null && s.kpi?.[key] !== undefined))
+  .map(({ name, key }) => ({ name, data: sortedSnapshots.value.map(s => s.kpi?.[key] ?? 0) })))
 
 const chartOptions = computed(() => ({
   chart: {

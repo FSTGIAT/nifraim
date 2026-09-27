@@ -176,7 +176,11 @@ def apply_settings(raw_settings: dict | None, dashboard: dict) -> dict:
     """Return the dashboard exactly as this customer may see it."""
     if raw_settings is None:
         out = copy.deepcopy(dashboard)
-        out["settings"] = default_settings()
+        s = default_settings()
+        # A link made before the wizard shows exactly what it always showed —
+        # the agent card is new content the agent never chose for it.
+        s["sections"]["agent_card"] = False
+        out["settings"] = s
         return out
     s = normalize_settings(raw_settings)
     scope, show = s["product_scope"], s["show_amounts"]

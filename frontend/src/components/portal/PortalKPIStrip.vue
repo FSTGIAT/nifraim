@@ -12,7 +12,7 @@
       </div>
     </div>
 
-    <div class="kpi-card">
+    <div v-if="kpi.total_premium > 0" class="kpi-card">
       <div class="kpi-icon" style="background: var(--green-light); color: var(--green);">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="1" x2="12" y2="23"/>
@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <div class="kpi-card">
+    <div v-if="kpi.total_accumulation > 0" class="kpi-card">
       <div class="kpi-icon" style="background: var(--primary-light); color: var(--primary-deep);">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
@@ -67,7 +67,8 @@ function formatCurrency(val) {
 <style scoped>
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fit: the agent may hide amounts, leaving 2–3 cards */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 16px;
 }
 

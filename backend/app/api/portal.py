@@ -330,9 +330,10 @@ async def get_customer_info(
     #
     # Searching all of them is also more correct than picking one: a customer
     # can sit in any company's file, so a single-file lookup would miss them.
+    empty_mix = {"savings": 0, "insurance": 0, "unknown": 0}
     upload_ids = await _get_production_upload_ids(db, user.id)
     if not upload_ids:
-        return {"name": "", "email": ""}
+        return {"name": "", "email": "", "product_mix": empty_mix}
 
     id_stripped = str(id_number or "").lstrip("0") or "0"
     record_result = await db.execute(
@@ -344,11 +345,21 @@ async def get_customer_info(
                 ClientRecord.id_number == id_stripped,
                 func.ltrim(ClientRecord.id_number, "0") == id_stripped,
             ),
-        ).limit(1)
+        )
     )
-    record = record_result.scalar_one_or_none()
-    if not record:
-        return {"name": "", "email": ""}
+    records = list(record_result.scalars().all())
+    if not records:
+        return {"name": "", "email": "", "product_mix": empty_mix}
 
+    # Setup wizard: how many of this customer's products each scope keeps, so
+    # the agent sees "this hides N products" before choosing (portal_view).
+    from app.services.portal_view import product_category
+    mix = dict(empty_mix)
+    for r in records:
+        cat = product_category(r.product_type)
+        mix["savings" if cat in ("gemel_hishtalmut", "pension") else "insurance" if cat == "insurance" else "unknown"] += 1
+
+    record = records[0]
     name = " ".join(p for p in [record.first_name or "", record.last_name or ""] if p).strip()
-    return {"name": name, "email": record.client_email or ""}
+    email = next((r.client_email for r in records if r.client_email), "")
+    return {"name": name, "email": email or "", "product_mix": mix}
