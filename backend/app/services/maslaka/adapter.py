@@ -85,6 +85,11 @@ class FeedbackResult:
     # (e.g. 1032 "לא ניתן לספק דוח פרודוקציה עבור המפיץ הפונה") + its PERUT text.
     maane_code: str | None = None
     maane_detail: str | None = None
+    # The body's OPERATOR (מתפעל) that answered — YeshutGoremPoneLemislaka/
+    # MISPAR-MEZAHE-METAFEL. One insurer body is served by several operators, and
+    # each answers a production request on its own: Phoenix P&G's מלמ and פנסיה
+    # ותיקה answered 1032 while its other operators accepted (Swiftness, 2026-09-27).
+    metafel_id: str | None = None
     extras: dict[str, str] = field(default_factory=dict)
 
 
@@ -265,9 +270,18 @@ def parse_feedback_records(xml_bytes: bytes) -> list[FeedbackResult]:
     root = ET.fromstring(xml_bytes)
     base = parse_feedback(xml_bytes)
     out: list[FeedbackResult] = []
-    for rec in root.iter():
-        if _local_tag(rec.tag) != "MashovBeramatReshuma":
+    # Pair every record with the operator of the block that carries it.
+    records: list[tuple[ET.Element, str | None]] = []
+    for pone in root.iter():
+        if _local_tag(pone.tag) != "YeshutGoremPoneLemislaka":
             continue
+        metafel = next(((c.text or "").strip() or None for c in pone
+                        if _local_tag(c.tag) == "MISPAR-MEZAHE-METAFEL"), None)
+        records += [(r, metafel) for r in pone.iter()
+                    if _local_tag(r.tag) == "MashovBeramatReshuma"]
+    if not records:
+        records = [(r, None) for r in root.iter() if _local_tag(r.tag) == "MashovBeramatReshuma"]
+    for rec, metafel in records:
         err = (_text_of(rec, "KOD-SHGIHA-BERAMAT-RESHUMA") or "").strip() or None
         status = (_text_of(rec, "STATUS-RESHUMA") or "").strip()
         details = [
@@ -287,6 +301,7 @@ def parse_feedback_records(xml_bytes: bytes) -> list[FeedbackResult]:
             sug_mashov=base.sug_mashov,
             maane_code=(_text_of(rec, "MAANE-BERAMAT-RESHUMA") or "").strip() or None,
             maane_detail=detail,
+            metafel_id=metafel,
         ))
     return out or [base]
 

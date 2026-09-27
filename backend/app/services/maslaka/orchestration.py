@@ -15,6 +15,7 @@ All functions are async + strictly user_id-scoped (multi-tenancy).
 
 from __future__ import annotations
 
+import re
 import json
 import logging
 import uuid
@@ -163,7 +164,18 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
         # agent is the file's sender — in the FILENAME too, since rule 118
         # accepts "the ID in the filename OR the uploader".
         production = action_code in PRODUCTION_REPORT_CODES
-        sender_id = (link.agent_id_number if production else settings.MASLAKA_AGENT_ID) or ""
+        consent = await _consent_dates(db, inquiry)
+        # 9100/9101 default = the recipe the מסלקה ACCEPTED on 2026-09-27 (probe D,
+        # 5C0D1474): sent in the AGENT's name (the נספח ג' self-verification is
+        # registered to the licensee, not to Nifraim — "לקוח לא מורשה" otherwise),
+        # ATAR-MEUVTACH=1 and no POA code. A customer-supplied 8-char code
+        # (mislaka_code=) switches back to the code route.
+        if action_code in ("9100", "9101") and consent and not consent.get("poa_mislaka_code"):
+            consent.setdefault("info_sender_is_agent", True)
+            consent.setdefault("poa_secure_site", True)
+            consent.setdefault("poa_self_verified", True)
+        sender_id = (link.agent_id_number if (production or consent.get("info_sender_is_agent"))
+                     else settings.MASLAKA_AGENT_ID) or ""
         # Israel local, explicitly — see events.maslaka_now(). The filename
         # stamp, TAARICH-BITZUA and the allocator's business-day window all use
         # this one clock; the "business day" the sequence resets on is an
@@ -189,7 +201,7 @@ async def submit_inquiry(db: AsyncSession, inquiry_id: uuid.UUID) -> None:
             sender_is_agent=production,
             internal_agent_number=await _internal_agent_number(db, inquiry),
             **(await _identity_override(db, inquiry)),
-            **(await _consent_dates(db, inquiry)),
+            **consent,
         )
         xml_bytes = req.xml
         filename = build_filename(
@@ -556,9 +568,23 @@ async def _apply_feedback(
             detail=f"משוב ב': {fb.maane_code or fb.error_code or 'ok'} "
                    f"{fb.maane_detail or fb.error_detail or ''}"[:500],
         )
-        # A request to ONE body (2000/2100/9101) that gets a content answer
-        # instead of data is closed by it — show the insurer's own reason.
         _code = (inquiry.interface_code or "").rpartition(":")[2]
+        # A PRODUCTION request is answered per OPERATOR (מתפעל) of the body, one
+        # משוב ב' each. A refusal from one operator (Phoenix P&G's מלמ / פנסיה
+        # ותיקה: 1032 "לא קיים הסכם עמלות") says nothing about the others, which
+        # accepted and will deliver by the 15th. Failing the whole request on it
+        # made live requests look dead and got them resent 8 times (2026-09-26).
+        if _code in PRODUCTION_REPORT_CODES and (fb.maane_code or fb.error_code):
+            await audit.log_event(
+                db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
+                customer_id_number=inquiry.customer_id_number,
+                event_type="operator_refusal", actor="system",
+                detail=f"מתפעל {fb.metafel_id or '?'}: {fb.maane_code or fb.error_code} "
+                       f"{fb.maane_detail or fb.error_detail or ''}"[:500],
+            )
+            return True
+        # A request to ONE body (9101) that gets a content answer instead of
+        # data is closed by it — show the insurer's own reason.
         if inquiry.target_yatzran_id and _code != "9100" and (fb.maane_code or fb.error_code):
             inquiry.error_code = (fb.maane_code or fb.error_code)[:50]
             inquiry.error_detail = (fb.maane_detail or fb.error_detail or "")[:500]
@@ -1074,7 +1100,10 @@ CONSENT_EVENT = "consent_recorded"
 
 
 async def record_consent(db: AsyncSession, inquiry: PensionInquiry, *,
-                         customer_signed: str, agent_signed: str, actor: str = "agent", note: str = "") -> None:
+                         customer_signed: str, agent_signed: str, actor: str = "agent", note: str = "",
+                         country: str = "", city: str = "", street: str = "", house: str = "",
+                         zip_code: str = "", excluded_product: str = "",
+                         mislaka_code: str = "") -> None:
     """Record the נספח א' signature dates a 9100/9101 declares to the מסלקה.
     Kept in the audit log (no schema change): it IS a declaration, so it
     belongs on the audit trail with who recorded it."""
@@ -1083,7 +1112,13 @@ async def record_consent(db: AsyncSession, inquiry: PensionInquiry, *,
     await audit.log_event(
         db, user_id=inquiry.user_id, inquiry_id=inquiry.id,
         customer_id_number=inquiry.customer_id_number, event_type=CONSENT_EVENT,
-        actor=actor, detail=f"customer_signed={customer_signed} agent_signed={agent_signed} {note}".strip(),
+        actor=actor, detail=" ".join(
+            f"{k}={v.strip()}" for k, v in (
+                ("customer_signed", customer_signed), ("agent_signed", agent_signed),
+                ("country", country), ("city", city), ("street", street), ("house", house),
+                ("zip", zip_code), ("excluded", excluded_product),
+                ("mislaka_code", mislaka_code)) if v and v.strip()
+        ) + (f" note={note}" if note else ""),
     )
 
 
@@ -1159,9 +1194,23 @@ async def _consent_dates(db: AsyncSession, inquiry: PensionInquiry) -> dict:
     )).scalar_one_or_none()
     if not row:
         return {}
-    kv = dict(p.split("=", 1) for p in row.split() if "=" in p)
+    # key=value pairs; a value may contain spaces (a city like "תל אביב"), so a
+    # value runs until the next " key=".
+    kv = dict(re.findall(r"([a-z_]+)=(.*?)(?=\s+[a-z_]+=|$)", row))
     return {"consent_customer_signed": kv.get("customer_signed"),
-            "consent_agent_signed": kv.get("agent_signed")}
+            "consent_agent_signed": kv.get("agent_signed"),
+            "poa_country": kv.get("country"),
+            "poa_city": kv.get("city"),
+            "poa_street": kv.get("street"),
+            "poa_house": kv.get("house"),
+            "poa_zip": kv.get("zip"),
+            "poa_excluded_product": kv.get("excluded"),
+            "poa_mislaka_code": kv.get("mislaka_code"),
+            # Absent keys stay absent so submit_inquiry can apply the 9100 default;
+            # an explicit 0 / "nifraim" still overrides it.
+            **({"poa_self_verified": kv["self_verified"] == "1"} if "self_verified" in kv else {}),
+            **({"poa_secure_site": kv["secure_site"] == "1"} if "secure_site" in kv else {}),
+            **({"info_sender_is_agent": kv["sender"] == "agent"} if "sender" in kv else {})}
 
 
 async def _store_raw_payload(

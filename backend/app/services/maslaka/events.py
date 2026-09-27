@@ -177,6 +177,16 @@ def build_events_request(
     information_date: str | None = None,
     consent_customer_signed: str | None = None,
     consent_agent_signed: str | None = None,
+    poa_country: str | None = None,
+    poa_city: str | None = None,
+    poa_street: str | None = None,
+    poa_house: str | None = None,
+    poa_zip: str | None = None,
+    poa_excluded_product: str | None = None,
+    poa_mislaka_code: str | None = None,
+    poa_self_verified: bool = False,
+    poa_secure_site: bool = False,
+    info_sender_is_agent: bool = False,
     sender_is_agent: bool = False,
     internal_agent_number: str | None = None,
     agent_id_type: str | None = None,
@@ -241,6 +251,11 @@ def build_events_request(
     # agent is sender AND subject — rules 118 (sender = filename ID), 144
     # (subject = sender) and 128 (a ת"ז subject carries both names) together.
     agent_sender = bool(sender_is_agent and distributor_request and _agent_digits)
+    # A 9100/9101 sent in the AGENT's name (header + filename only): the
+    # requester/subject blocks keep the customer. Probe for "who owns נספח ג'"
+    # (2026-09-27) — Nifraim the software house, or the licensee himself.
+    header_agent = bool(agent_sender or (info_sender_is_agent and not distributor_request
+                                         and _agent_digits))
     # Identity override for the AGENT (sender = requester = subject in agent-sender
     # mode): e.g. type 12 "מספר בעל רישיון" instead of 3 ת"ז — the XSD allows it on
     # all three, and rule 144 needs type AND number equal, so they move together.
@@ -284,7 +299,7 @@ def build_events_request(
     # (`%Y%m%d%H%M%S%f`) is 20 chars and made every request built without an
     # explicit file_number schema-invalid. Default to the real shape instead:
     # a bad default is worse than a missing argument, because it looks fine.
-    _sender_for_file_no = _agent_digits if agent_sender else ("".join(
+    _sender_for_file_no = _agent_digits if header_agent else ("".join(
         ch for ch in str(settings.MASLAKA_AGENT_ID or "") if ch.isdigit()
     ) or "0")
     file_number = file_number or build_file_number(
@@ -301,7 +316,7 @@ def build_events_request(
     # שולח לא זהה למספר זהוי בשם הקובץ/למספר זיהוי הלקוח שטען את הקובץ" —
     # rejected seq 0034, which put the acting agent's ת"ז here.
     # With agent_sender the file is named for the agent too, which rule 118 accepts.
-    if agent_sender:
+    if header_agent:
         _sub(sender, "SUG-MEZAHE-SHOLECH", _ag_type)  # 3 = ת"ז (default), 12 = licence
         _sub(sender, "MISPAR-ZIHUI-SHOLECH", _ag_val)
         _sub(sender, "SHEM-GOREM-SHOLECH", acting_agent_name.strip())
@@ -461,20 +476,54 @@ def build_events_request(
                     f"action {action.code} needs the נספח א' signature dates "
                     f"({_lbl}, YYYYMMDD) from the signed form")
             datetime.strptime(_d, "%Y%m%d")
+        # Rules 14 / 18 / 26 — the 9101 of 2026-09-25 (46408134) was rejected for
+        # sending exactly these empty. They are the customer's declaration on the
+        # signed נספח א' and her מסלקה identification code: never defaulted.
+        for _lbl, _v in (("poa_country (ERETZ, rule 14)", poa_country),
+                         ("poa_city (SHEM-YISHUV, rule 14)", poa_city),
+                         ("poa_excluded_product (KAYAM-MUTZAR-MUCHRAG 1/2, rule 18)", poa_excluded_product),
+                         ("poa_mislaka_code (KOD-ZIHUI-YIPUI-KOACH-BEMISLAKA, rule 26)",
+                          "self-verified" if poa_self_verified else poa_mislaka_code)):
+            if not (_v or "").strip():
+                raise ValueError(f"action {action.code} needs {_lbl}")
+        # Rule 14 (2026-09-27, 9100 64EC6A60): country + city are not enough —
+        # "SHEMRECHOV && MISPARBAIT && MIKUD | TADOAR && MIKUD".
+        if not all((_x or "").strip() for _x in (poa_street, poa_house, poa_zip)):
+            raise ValueError(f"action {action.code} needs the customer's street, house number "
+                             "and postcode (rule 14)")
+        if not (poa_zip or "").strip().isdigit():
+            raise ValueError("poa_zip (MIKUD) must be digits")
+        if poa_excluded_product not in ("1", "2"):
+            raise ValueError("poa_excluded_product must be 1 (yes) or 2 (no)")
     if action.code in ("9100", "9101") and consent_customer_signed and consent_agent_signed:
         bm = _sub(yipui, "BakashatMefitzLeinianYipuiKoach")
         _sub(bm, "TZURAF-MISMACH-YIPUI-KOACH", "2")
-        _sub(bm, "KOD-ZIHUI-YIPUI-KOACH-BEMISLAKA")
+        # נספח ג' (Swiftness guide_gimel_attachment.pdf §12-14): a distributor
+        # registered to verify customers itself sends NO code — the portal blocks
+        # the field. Rule 26 otherwise wants an existing 8-char מסלקה POA code;
+        # our ח.פ was refused as one (2026-09-27, 64EC6A60).
+        _sub(bm, "KOD-ZIHUI-YIPUI-KOACH-BEMISLAKA",
+             None if poa_self_verified else ((poa_mislaka_code or "").strip() or None))
         _sub(bm, "MISMACH-ZIHUI", "2")
         _sub(bm, "SUG-BAKASHAT-MEFITZ-LEEINIAN-YIPUI-KOACH", "1")
-        _sub(bm, "KAYAM-MUTZAR-MUCHRAG")
+        _sub(bm, "KAYAM-MUTZAR-MUCHRAG", poa_excluded_product)
         _sub(bm, "TAARICH-CHTIMA-LAKOACH", consent_customer_signed)
         _sub(bm, "TAARICH-CHTIMA-BAAL-RISHAION", consent_agent_signed)
         for tag in ("TOKEF-YIPUI-KOACH", "MOED-PKIHA", "HARSHAA-LEMASHKANTA"):
             _sub(bm, tag)
-        _sub(bm, "ATAR-MEUVTACH", "2")
-        for tag in ("ERETZ", "SHEM-YISHUV", "SEMEL-YESHUV", "SHEM-RECHOV", "MISPAR-BAIT",
-                    "MISPAR-KNISA", "MISPAR-DIRA", "MIKUD", "TA-DOAR", "NISPACH-D",
+        # ATAR-MEUVTACH: "האם ייפוי כח הועבר על ידי אתר מאובטח" — 9100/1 only,
+        # for the מסלקה's use. A secure site is one of the self-verification
+        # channels of חוזר ייפוי כוח, so it is the candidate marker for נספח ג'.
+        _sub(bm, "ATAR-MEUVTACH", "1" if poa_secure_site else "2")
+        _sub(bm, "ERETZ", (poa_country or "").strip() or None)
+        _sub(bm, "SHEM-YISHUV", (poa_city or "").strip() or None)
+        _sub(bm, "SEMEL-YESHUV")
+        _sub(bm, "SHEM-RECHOV", (poa_street or "").strip() or None)
+        _sub(bm, "MISPAR-BAIT", (poa_house or "").strip() or None)
+        for tag in ("MISPAR-KNISA", "MISPAR-DIRA"):
+            _sub(bm, tag)
+        _sub(bm, "MIKUD", (poa_zip or "").strip() or None)
+        for tag in ("TA-DOAR", "NISPACH-D",
                     "BITUL-ARSHAA", "SUG-RISHAYON", "MISPAR-RISHAYON",
                     "MISPAR-SOHEN-PNIMI-ETZEL-MOSDI"):
             _sub(bm, tag)

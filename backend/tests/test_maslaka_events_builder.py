@@ -227,6 +227,29 @@ def main() -> None:
           parsed and parsed.sender_id == "000043417252", parsed.sender_id if parsed else "")
     check("TST suffix marks the test environment", parsed and parsed.is_test)
 
+    # The 9100 the מסלקה ACCEPTED on 2026-09-27 (probe D, 5C0D1474): agent as
+    # sender, ATAR-MEUVTACH=1, no POA code, full address. Rules 14/26 refused
+    # every other combination.
+    _d = dict(action_code="9100", customer_id_number="40336281", customer_first_name="משה",
+              customer_last_name="היב כהן", sequence=1, environment_code="2",
+              acting_agent_id="040336281", acting_agent_name="משה היב כהן",
+              consent_customer_signed="20260924", consent_agent_signed="20260924",
+              poa_country="ישראל", poa_city="תל אביב", poa_street="ירמיהו", poa_house="27",
+              poa_zip="6259413", poa_excluded_product="2")
+    try:
+        build_events_request(**{**_d, "poa_street": ""}, poa_self_verified=True)
+        check("9100 without a street is refused (rule 14)", False)
+    except ValueError:
+        check("9100 without a street is refused (rule 14)", True)
+    _x = build_events_request(**_d, poa_self_verified=True, poa_secure_site=True,
+                              info_sender_is_agent=True).xml.decode()
+    check("accepted 9100: sender is the agent", text_of(_x, "MISPAR-ZIHUI-SHOLECH") == "040336281")
+    check("accepted 9100: ATAR-MEUVTACH=1", text_of(_x, "ATAR-MEUVTACH") == "1")
+    check("accepted 9100: no POA code", text_of(_x, "KOD-ZIHUI-YIPUI-KOACH-BEMISLAKA") in (None, ""))
+    check("accepted 9100: OFEN=1 (immediate)",
+          text_of(_x, "OFEN-HAAVARAT-MEIDA-MIMISLLAKA-LELAKOACH") == "1")
+    check("accepted 9100: address sent", text_of(_x, "MIKUD") == "6259413")
+
     print("\n" + ("ALL PASS" if not FAILURES else f"{len(FAILURES)} FAILURE(S): " + "; ".join(FAILURES)))
     sys.exit(1 if FAILURES else 0)
 
