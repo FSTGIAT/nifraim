@@ -1,5 +1,5 @@
 <template>
-  <!-- The collection agent ("סוכן גבייה"), in the cycle clock's line-art style:
+  <!-- סוכן המשרד (the office agent), in the cycle clock's line-art style:
        an envelope sealed with ₪, a magnifier checking it, a slow dashed halo.
        Badge = insurers that still need the agent's action. Click → the panel,
        which grows out of this icon. Shown only once a comparison exists. -->
@@ -34,21 +34,21 @@
         </g>
       </g>
     </svg>
-    <b v-if="store.openCount" class="cai-badge ltr-number">{{ store.openCount }}</b>
-    <span v-if="size === 'big'" class="cai-cap">סוכן גבייה</span>
+    <b v-if="store.todoCount" class="cai-badge ltr-number">{{ store.todoCount }}</b>
+    <span v-if="size === 'big'" class="cai-cap">סוכן המשרד</span>
   </button>
 </template>
 
 <script setup>
 import { computed, ref, onMounted } from 'vue'
-import { useCollectionAgentStore } from '../../stores/collectionAgent.js'
+import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 
 defineProps({ size: { type: String, default: 'big' } }) // big (home, under the clock) | small (corner)
 defineEmits(['open'])
-const store = useCollectionAgentStore()
+const store = useOfficeAgentStore()
 const btnEl = ref(null)
 const title = computed(() =>
-  store.openCount ? `סוכן גבייה · ${store.openCount} חברות לטיפול` : 'סוכן גבייה',
+  store.todoCount ? `סוכן המשרד · ${store.todoCount} דברים מחכים לך` : 'סוכן המשרד',
 )
 onMounted(() => { if (!store.brief) store.load() })
 </script>

@@ -63,7 +63,7 @@
          small alarm-clock icon in the top-right corner. -->
     <div v-if="showEmotionClock" class="ws-emotion-clock">
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
-      <!-- the collection agent (סוכן גבייה) — once a comparison exists -->
+      <!-- סוכן המשרד — the back-office agent (mail + unpaid commission) -->
       <CollectionAgentIcon size="big" @open="openCollector" />
     </div>
     <div
@@ -74,7 +74,7 @@
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <CollectionAgentIcon size="small" @open="openCollector" />
     </div>
-    <CollectionAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" />
+    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" />
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
          replaced `AiInsightCard`, a full-width summary band that sat above
@@ -326,7 +326,7 @@ import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import CycleRailIcon from '../components/workspace/CycleRailIcon.vue'
 import CycleEmotionClock from '../components/workspace/CycleEmotionClock.vue'
 import CollectionAgentIcon from '../components/workspace/CollectionAgentIcon.vue'
-import CollectionAgentPanel from '../components/workspace/CollectionAgentPanel.vue'
+import OfficeAgentPanel from '../components/workspace/OfficeAgentPanel.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
