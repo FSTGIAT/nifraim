@@ -30,6 +30,8 @@ from app.models.user import User
 from app.services import collection_agent
 
 logger = logging.getLogger(__name__)
+# one line per Nifra Agent turn — uvicorn's logger is the one that reaches the server log
+trace = logging.getLogger("uvicorn.error")
 IL = ZoneInfo("Asia/Jerusalem")
 MAIL_WINDOW = timedelta(days=14)
 
@@ -180,6 +182,17 @@ def _proposal_line(p: dict, own_email: str = "") -> str:
 
 
 async def ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None) -> dict:
+    import time as _t
+    t0 = _t.monotonic()
+    out = await _ask(db, user, question, history)
+    p = out.get("proposal")
+    trace.info("NIFRA-ASK user=%s hist=%d %.1fs | Q: %s | A: %s%s", user.email, len(history or []), _t.monotonic() - t0,
+               question.replace("\n", " ")[:300], (out.get("answer") or "").replace("\n", " ")[:400],
+               f" | PROPOSAL {p}" if p else "")
+    return out
+
+
+async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None) -> dict:
     """Answer — or ACT on — a short request. The model reads the data map
     (services/data_map) and may prepare ONE action (services/agent_actions):
     an email or a meeting invitation, returned as `proposal` for the agent to
@@ -243,14 +256,15 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
                         proposal = agent_actions.normalize(kind, args)
                         content = "הוכן והוצג לסוכן לאישור. אל תכין שוב — כתוב משפט אחד."
                     except agent_actions.ActionError as e:
-                        content = f"לא תקין ({e}). אם חסרה כתובת מייל תקינה — שאל את הסוכן עליה."
+                        content = ("כתובת המייל לא תקינה — אמור לסוכן בדיוק איזו כתובת קיבלת ושהיא נראית שגויה, ובקש את הכתובת הנכונה. אל תכין בלי כתובת תקינה."
+                                   if str(e) == "bad_email" else f"לא תקין ({e}).")
                 results.append({"type": "tool_result", "tool_use_id": blk.id, "content": content})
             messages.append({"role": "user", "content": results})
             if proposal:
                 return {"answer": _proposal_line(proposal, own_email), "proposal": proposal}
         return {"answer": "בדקתי כמה דפים ולא הגעתי לתשובה חד-משמעית — נסו לשאול בצורה ממוקדת יותר.", "proposal": proposal}
     except Exception as e:  # noqa: BLE001
-        logger.warning("office agent ask failed: %s", e)
+        trace.warning("NIFRA-ASK failed: %r", e)
         return {"answer": "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע.", "proposal": None}
 
 

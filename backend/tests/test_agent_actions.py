@@ -42,3 +42,14 @@ def test_reminder_to_self_has_no_cc():
     p = aa.normalize("meeting", {"to_email": "Agent@gmail.com", "title": "תזכורת: להתקשר למגדל", "start": "2026-09-30T09:00", "duration_min": 15})
     msg = aa.build_message(p, "agent@gmail.com", "קיקו")
     assert "Cc" not in msg
+
+
+@pytest.mark.parametrize("addr", ["fefefef@.ddd.oo", "a@b", "a@b.", "a@-b.com", "a b@c.com", "a@b..com"])
+def test_rejects_malformed_addresses(addr):
+    with pytest.raises(aa.ActionError, match="bad_email"):
+        aa.normalize("email", {"to_email": addr, "subject": "s", "body": "b"})
+
+
+@pytest.mark.parametrize("addr", ["dana.cohen@gmail.com", "amlot@menora.co.il", "o'neil+x@mail.example.org"])
+def test_accepts_real_addresses(addr):
+    assert aa.normalize("email", {"to_email": addr, "subject": "s", "body": "b"})["to_email"] == addr

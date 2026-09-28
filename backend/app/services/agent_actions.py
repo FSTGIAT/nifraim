@@ -20,7 +20,9 @@ from email.utils import formataddr, make_msgid
 from zoneinfo import ZoneInfo
 
 IL = ZoneInfo("Asia/Jerusalem")
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# a real domain: labels that don't start/end with "." or "-", and a letter TLD
+# ("x@.ddd.oo" passed the old loose check and got an invite prepared)
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+'-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$")
 HE_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
 
 PROPOSE_EMAIL_TOOL = {
@@ -166,4 +168,6 @@ async def send(db, user, kind: str, data: dict) -> dict:
         raise ActionError(state.get("reason") or "cannot_send")
     msg = build_message(p, state["mailbox_address"], user.full_name or "")
     await send_as_agent(user.id, msg, display_name=user.full_name)
+    import logging
+    logging.getLogger("uvicorn.error").info("NIFRA-ACT sent %s to %s (user=%s)", kind, p["to_email"], user.email)
     return {"ok": True, "kind": kind, "to_email": p["to_email"]}
