@@ -94,7 +94,8 @@ class Settings(BaseSettings):
     # The נפרעים cycle fires on CYCLE_DAY at CYCLE_HOUR (Asia/Jerusalem) for every
     # paid user: a PortalRunBatch(trigger='cycle') is queued for their worker and
     # downloads reporting month M-1. There is NO manual run button.
-    # A new user's first cycle is the 21st of the month AFTER signup. A שיוך form
+    # A new user's first cycle: signed before the 21st → that month's 21st, else the
+    # next month's. A שיוך form
     # SUBMITTED before MASLAKA_CUTOFF_DAY of month M makes the first automatic
     # מסלקה production land on MASLAKA_DAY of month M+1 (on/after it: M+2).
     # The first cycle the system ever fires ("YYYY-MM"). Earlier cycles are never

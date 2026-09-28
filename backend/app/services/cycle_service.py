@@ -11,8 +11,9 @@
 Rules (see docs/ARCHITECTURE.md "Monthly cycle"):
 - A cycle fires on settings.CYCLE_DAY at CYCLE_HOUR, Asia/Jerusalem. Its period is
   the month BEFORE the cycle month (21/10 → September).
-- A user's FIRST cycle is ALWAYS the cycle of the month after signup (signed 19/9 →
-  21/10). Before it, only the Production tab is locked — never the rest of the app.
+- A user's FIRST cycle: signed up BEFORE the CYCLE_DAY (21st) → that same month's
+  cycle (signed 1/8 → 21/8, July נפרעים); on/after the 21st → next month's (signed
+  28/9 → 21/10). Before it, only the Production tab is locked — never the rest of the app.
 - A שיוך form SUBMITTED before MASLAKA_CUTOFF_DAY of month M → first automatic מסלקה
   production on MASLAKA_DAY of month M+1 (after the cutoff: M+2). A cycle uses the
   מסלקה as its production source when that date is on/before the cycle month's
@@ -112,11 +113,13 @@ def next_cycle(now: datetime) -> tuple[int, int]:
 
 
 def first_cycle_for(signup: datetime) -> tuple[int, int]:
-    """(y, m) of the user's first cycle: ALWAYS the cycle of the month after
-    signup, whatever the day. Signed 19/9 → 21/10 (September נפרעים), which is
-    exactly the month the מסלקה's first production (15/10) describes. Running
-    21/9 instead would fetch August נפרעים with no production to match."""
+    """(y, m) of the user's first cycle. Signed up BEFORE the CYCLE_DAY (day
+    1–20, Israel time) → this month's cycle (signed 1/8 → 21/8, July נפרעים; the
+    agent uploads July production manually). On/after it → next month's (signed
+    28/9 → 21/10). Decided 2026-09-28 (replaced "always next month")."""
     il = _to_il(signup)
+    if il.day < settings.CYCLE_DAY:
+        return il.year, il.month
     return _add_months(il.year, il.month, 1)
 
 

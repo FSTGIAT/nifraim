@@ -500,7 +500,7 @@ territory. The short version, all measured:
 
 On the 21st at 06:00 (Israel) the server queues every paid user's cycle batch `pending` for their
 worker, and it downloads נפרעים for the **previous month**. There is **no manual run button** for agents (admin-only as "הרצה ידנית (תמיכה)", also before launch)
-(admin/support only). A new user's **first cycle is the 21st of the month after signup**, and until then
+(admin/support only). A new user's **first cycle is the 21st of the signup month if they signed up before the 21st, otherwise next month's** (changed 2026-09-28), and until then
 **only the Production tab is locked**. Production comes from a manual upload (only after the cycle batch
 ended, forced to the cycle period) until the מסלקה feed is live: a שיוך submitted before the 27th gives
 production on the 15th of the next month. A pending cycle batch is **never orphan-reaped**. It waits for

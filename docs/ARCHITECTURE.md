@@ -1032,9 +1032,9 @@ whole domain; `GET /api/cycle/status` is the single source for every cycle-aware
 
 ```mermaid
 flowchart RL
-  S[signup month M] --> L[Production tab LOCKED<br/>rest of app open]
-  L --> C1[21st of M+1 · 06:00 IL<br/>cycle batch queued pending → worker]
-  C1 --> N[נפרעים of M]
+  S[signup] --> L[Production tab LOCKED<br/>rest of app open]
+  L --> C1[first 21st · 06:00 IL<br/>signed before the 21st → same month, else next<br/>cycle batch queued pending → worker]
+  C1 --> N[נפרעים of the month before]
   SH[שיוך SUBMITTED before 27th] --> MS[15th next month<br/>מסלקה 2100 production]
   N --> CMP{production for period?}
   MS --> CMP
@@ -1046,8 +1046,9 @@ flowchart RL
   **before** the cycle month (21/10 → September). Hourly `run_cycle_tick` (scheduler, :00) queues
   and catches up idempotently; the partial unique index `(user_id, cycle_period) WHERE trigger='cycle'`
   makes a double fire a no-op.
-- **First cycle = the 21st of the month AFTER signup**, whatever the day (19/9 → 21/10). That is the
-  month the first מסלקה production describes; 21/9 would fetch August נפרעים with nothing to match.
+- **First cycle depends on the signup day** (changed 2026-09-28; it used to be "always next month"):
+  - Signed up **before the 21st** (day 1–20, Israel time): that month's 21st. Signed 1/8 → 21/8 downloads July, and the agent uploads July production manually.
+  - Signed up **on or after the 21st**: next month's 21st (28/9 → 21/10).
 - **מסלקה timing**: שיוך SUBMITTED before `MASLAKA_CUTOFF_DAY` (27) of M → first production on the
   15th of M+1, else M+2. A cycle whose production landed by its month's 15th is `production_source=maslaka`
   (no upload); otherwise `manual`.
@@ -1058,7 +1059,7 @@ flowchart RL
 
 Two dates decide everything, and both come from the server:
 
-- **Signup date** (`users.created_at`): gives the **first cycle**, the 21st of the month after signup.
+- **Signup date** (`users.created_at`): gives the **first cycle**. Before the 21st it's the same month's 21st; on or after the 21st it's next month's.
 - **שיוך SUBMITTED date** (`maslaka_agent_links.submitted_at`): gives the **first מסלקה production**.
   - Submitted **before the 27th** of month M: the 15th of M+1.
   - Submitted **on or after the 27th**: the 15th of M+2.
@@ -1068,14 +1069,16 @@ Each cycle then picks its production source, `production_source_for_cycle(y, m, 
 - **`maslaka`** when the first מסלקה production is on or before the 15th of the cycle month. Nothing to upload.
 - **`manual`** otherwise. The agent uploads production for that cycle's period, and only after the cycle download ended.
 
-**Path A — on time.** Signup and שיוך on 19.9, before the 27th:
+**Path A — early signup, on-time שיוך.** Signup and שיוך on 19.9, before the 21st and the 27th:
 
 | When | What happens | Production tab |
 |---|---|---|
-| 19.9 → 21.10 | Setup wizard; the rest of the app is open | **Locked**, countdown to 21.10 |
-| 15.10 | The מסלקה sends September production (2100) | still locked |
-| 21.10 06:00 | Cycle 1: the worker downloads September נפרעים | Opens. `maslaka`, no upload; the comparison runs when the download ends |
-| every 21st after | Fully automatic | small מסלקה icon in place of the upload |
+| 19.9 → 21.9 | Setup wizard; the rest of the app is open | **Locked**, countdown to 21.9 |
+| 21.9 06:00 | Cycle 1: August נפרעים download; source `manual` (the מסלקה starts 15.10) | Upload refused until the batch ends, then a **big "upload August production" call** |
+| 15.10 | The מסלקה sends September production (2100) | — |
+| 21.10 06:00 | Cycle 2: September נפרעים; source `maslaka` | Small מסלקה icon in place of the upload; comparison runs on its own |
+
+**Path A2 — early signup, no מסלקה yet.** Signup 1.8, with the cycle already running: 21.8 downloads July נפרעים and the agent uploads July production manually. Local test user `aug-signup@test.com`.
 
 **Path B — late שיוך.** Signup and שיוך on 28.9, on or after the 27th. Walked end to end on 2026-09-28:
 

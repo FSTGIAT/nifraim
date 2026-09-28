@@ -38,16 +38,19 @@ def test_period_is_previous_month_with_year_rollover():
     assert cycle_period(2027, 1) == date(2026, 12, 1)
 
 
-def test_scenario_A_signup_19_9_first_cycle_21_10():
-    assert first_cycle_for(il(2026, 9, 19)) == (2026, 10)
-    # 21/10 downloads September
-    assert cycle_period(*first_cycle_for(il(2026, 9, 19))) == date(2026, 9, 1)
+def test_signup_before_21st_first_cycle_same_month():
+    # signed 1/8 → 21/8 downloads July (manual July production upload)
+    assert first_cycle_for(il(2026, 8, 1)) == (2026, 8)
+    assert cycle_period(*first_cycle_for(il(2026, 8, 1))) == date(2026, 7, 1)
+    assert first_cycle_for(il(2026, 9, 19)) == (2026, 9)
+    assert first_cycle_for(il(2026, 9, 20, 23, 59)) == (2026, 9)
 
 
-def test_first_cycle_is_always_next_month_whatever_the_day():
-    assert first_cycle_for(il(2026, 9, 1)) == (2026, 10)
+def test_signup_on_or_after_21st_first_cycle_next_month():
     assert first_cycle_for(il(2026, 9, 21, 5, 59)) == (2026, 10)
     assert first_cycle_for(il(2026, 9, 21, 7)) == (2026, 10)
+    assert first_cycle_for(il(2026, 9, 28)) == (2026, 10)
+    assert cycle_period(*first_cycle_for(il(2026, 9, 28))) == date(2026, 9, 1)
     assert first_cycle_for(il(2026, 9, 30, 23, 30)) == (2026, 10)
 
 
@@ -79,10 +82,12 @@ def test_maslaka_cutoff_27th():
     assert maslaka_first_auto(None) is None
 
 
-def test_scenario_A_shiyuch_on_time_first_cycle_fully_automatic():
-    # signed + שיוך 19/9 → מסלקה Sep production 15/10 → 21/10 Sep נפרעים: match
+def test_scenario_A_shiyuch_on_time():
+    # signed + שיוך 19/9 → first cycle 21/9 (August, manual upload) →
+    # מסלקה Sep production 15/10 → 21/10 fully automatic
     first = maslaka_first_auto(il(2026, 9, 19))
-    assert cycle_period(*first_cycle_for(il(2026, 9, 19))) == date(2026, 9, 1)
+    assert cycle_period(*first_cycle_for(il(2026, 9, 19))) == date(2026, 8, 1)
+    assert production_source_for_cycle(2026, 9, first) == "manual"
     assert production_source_for_cycle(2026, 10, first) == "maslaka"
 
 
