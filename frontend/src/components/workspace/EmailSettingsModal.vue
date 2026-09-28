@@ -127,42 +127,42 @@
                 </div>
               </section>
 
-              <!-- מראה: the page background -->
+              <!-- מראה: the page background — live demo + colour plate -->
               <section v-else-if="activeTab === 'appearance'" class="es-pane">
                 <h4 class="es-pane-title">צבע רקע</h4>
-                <p class="es-help">הרקע של כל המסכים. נשמר לחשבון שלך במכשיר הזה.</p>
-                <div v-for="g in CANVAS_GROUPS" :key="g.id" class="cv-group">
-                  <span class="cv-group-label">{{ g.label }}</span>
-                  <div class="cv-grid" role="radiogroup" :aria-label="g.label">
-                    <button
-                      v-for="sw in g.swatches" :key="sw.hex" type="button" role="radio"
-                      class="cv-tile" :class="{ on: canvas === sw.hex }" :aria-checked="canvas === sw.hex"
-                      :title="sw.name" @click="pickCanvas(sw.hex)"
-                    >
-                      <span class="cv-preview" :style="{ background: sw.hex }">
-                        <span class="cv-card"><i :style="sw.accent ? { background: sw.accent } : null"></i><i></i></span>
-                        <span v-if="canvas === sw.hex" class="cv-check" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                        </span>
-                      </span>
-                      <span class="cv-name">{{ sw.name }}</span>
-                    </button>
+
+                <!-- demo: a mini app on the chosen colour -->
+                <div class="cv-demo" :style="{ background: canvas }" aria-hidden="true">
+                  <div class="cvd-strip">
+                    <i class="cvd-pill cvd-pill--on"></i><i class="cvd-pill"></i><i class="cvd-pill"></i><i class="cvd-pill"></i><i class="cvd-pill"></i>
+                  </div>
+                  <div class="cvd-kpis">
+                    <div v-for="k in 4" :key="k" class="cvd-kpi"><b :style="{ background: DEMO_KPI[k - 1] }"></b><span><i></i><i></i></span></div>
+                  </div>
+                  <div class="cvd-card">
+                    <span class="cvd-title"></span>
+                    <div class="cvd-bars"><i v-for="(h, n) in [46, 70, 38, 88, 60, 74]" :key="n" :style="{ height: h + '%' }"></i></div>
                   </div>
                 </div>
-                <div class="cv-group">
-                  <span class="cv-group-label">צבע משלך</span>
-                  <div class="cv-custom">
-                    <label class="cv-tile cv-tile--custom" :class="{ on: isCustom }">
-                      <span class="cv-preview cv-preview--custom" :style="{ background: isCustom ? canvas : null }">
-                        <input type="color" :value="canvas.toLowerCase()" aria-label="בחירת צבע משלך" @input="pickCanvas($event.target.value)" />
-                        <span class="cv-card"><i></i><i></i></span>
-                      </span>
-                      <span class="cv-name ltr-number">{{ isCustom ? canvas : 'בחירה חופשית' }}</span>
-                    </label>
-                    <p v-if="tooDark" class="cv-warn">צבע כהה מקשה על קריאת הטקסט — מומלץ גוון בהיר.</p>
-                    <button v-if="canvas !== DEFAULT_CANVAS" type="button" class="cv-reset" @click="pickCanvas(DEFAULT_CANVAS)">חזרה לברירת המחדל</button>
-                  </div>
+
+                <!-- the plate -->
+                <div class="cv-plate" role="radiogroup" aria-label="צבע רקע">
+                  <button
+                    v-for="sw in PLATE" :key="sw.hex" type="button" role="radio"
+                    class="cv-dot" :class="{ on: canvas === sw.hex }" :aria-checked="canvas === sw.hex"
+                    :aria-label="sw.name" :title="sw.name" :style="{ background: sw.hex }"
+                    @click="pickCanvas(sw.hex)"
+                  >
+                    <svg v-if="canvas === sw.hex" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                  </button>
+                  <label class="cv-dot cv-dot--custom" :class="{ on: isCustom }" title="צבע משלך" :style="isCustom ? { background: canvas } : null">
+                    <input type="color" :value="canvas.toLowerCase()" aria-label="צבע משלך" @input="pickCanvas($event.target.value)" />
+                    <svg v-if="!isCustom" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                  </label>
                 </div>
+                <p v-if="tooDark" class="cv-warn">צבע כהה מקשה על קריאת הטקסט — מומלץ גוון בהיר.</p>
+                <button v-if="canvas !== DEFAULT_CANVAS" type="button" class="cv-reset" @click="pickCanvas(DEFAULT_CANVAS)">חזרה לברירת המחדל</button>
               </section>
 
               <!-- דוא"ל -->
@@ -264,7 +264,10 @@ const activeTab = ref('automation')
 
 // ── מראה: page background ──
 const canvas = ref(getCanvas())
-const ALL_SWATCHES = CANVAS_GROUPS.flatMap((g) => g.swatches.map((s) => s.hex))
+// One plate, ordered light → warm → cool (names only as tooltips).
+const PLATE = CANVAS_GROUPS.flatMap((g) => g.swatches)
+const ALL_SWATCHES = PLATE.map((s) => s.hex)
+const DEMO_KPI = ['#2F73C4', '#D6336C', '#0FA39B', '#8E44AD']
 const isCustom = computed(() => !ALL_SWATCHES.includes(canvas.value))
 const tooDark = computed(() => luminance(canvas.value) < 0.72)
 function pickCanvas(hex) {
@@ -704,50 +707,48 @@ watch(() => props.open, (now) => {
   .es-rail-label { white-space: nowrap; }
 }
 
-/* ── מראה: colour board ── */
-.cv-group { display: flex; flex-direction: column; gap: 10px; }
-.cv-group-label { font-size: 12.5px; font-weight: 800; color: var(--text-secondary, #706E6B); }
-.cv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
-.cv-tile {
-  display: flex; flex-direction: column; gap: 7px; padding: 7px 7px 9px; cursor: pointer;
-  background: #fff; border: 1.5px solid var(--border-subtle); border-radius: 14px;
-  font-family: inherit; text-align: center;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+/* ── מראה: live demo + colour plate ── */
+.cv-demo {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px;
+  border-radius: 16px; border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 0 0 1px rgba(24, 24, 24, 0.03);
+  transition: background 0.35s ease;
 }
-.cv-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(24, 24, 24, 0.08); }
-.cv-tile.on { border-color: var(--deep, #6C2E87); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #8E44AD) 22%, transparent); }
-.cv-tile:focus-visible { outline: 2px solid var(--deep, #6C2E87); outline-offset: 2px; }
-.cv-preview {
-  position: relative; height: 62px; border-radius: 10px; overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(24, 24, 24, 0.06);
-  display: grid; place-items: center;
-}
-/* a tiny white card on the colour: how the app will look */
-.cv-card {
-  width: 58%; height: 34px; border-radius: 7px; background: #fff;
+.cvd-strip { display: flex; gap: 6px; padding: 5px; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(24, 24, 24, 0.06); }
+.cvd-pill { flex: 1; height: 14px; border-radius: 6px; background: #EFEDEA; }
+.cvd-pill--on { background: #2F73C4; }
+.cvd-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cvd-kpi { display: flex; align-items: center; gap: 7px; padding: 9px; background: #fff; border-radius: 9px; box-shadow: 0 2px 8px rgba(24, 24, 24, 0.05); }
+.cvd-kpi b { width: 18px; height: 18px; border-radius: 6px; opacity: 0.85; flex-shrink: 0; }
+.cvd-kpi span { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.cvd-kpi i { display: block; height: 5px; border-radius: 3px; background: #D9D7D3; }
+.cvd-kpi i:first-child { width: 70%; background: #3E3E3C; }
+.cvd-card { background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(24, 24, 24, 0.05); }
+.cvd-title { display: block; width: 34%; height: 7px; border-radius: 4px; background: #3E3E3C; margin-bottom: 10px; }
+.cvd-bars { display: flex; align-items: flex-end; gap: 10px; height: 64px; padding: 0 6px; border-bottom: 2px solid #EFEDEA; }
+.cvd-bars i { flex: 1; border-radius: 5px 5px 0 0; background: #2F73C4; opacity: 0.75; }
+.cvd-bars i:nth-child(2n) { background: #0FA39B; }
+
+.cv-plate { display: flex; flex-wrap: wrap; gap: 12px; padding: 4px 2px; }
+.cv-dot {
+  position: relative; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; padding: 0;
+  display: grid; place-items: center; color: #181818;
+  border: 1px solid rgba(24, 24, 24, 0.12);
   box-shadow: 0 2px 6px rgba(24, 24, 24, 0.08);
-  display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.cv-card i { display: block; height: 5px; border-radius: 3px; background: #D9D7D3; }
-.cv-card i:first-child { width: 60%; background: #BDBAB5; }
-.cv-card i:last-child { width: 85%; }
-.cv-check {
-  position: absolute; top: 6px; inset-inline-end: 6px; width: 22px; height: 22px; border-radius: 50%;
-  display: grid; place-items: center; color: #fff; background: var(--deep, #6C2E87);
-  box-shadow: 0 2px 6px rgba(24, 24, 24, 0.2);
+.cv-dot:hover { transform: scale(1.1); }
+.cv-dot.on { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #181818; }
+.cv-dot:focus-visible { outline: 2px solid #181818; outline-offset: 4px; }
+.cv-dot--custom {
+  background: conic-gradient(#F8D7DA, #FBF4DC, #DDF2E3, #DCEBFA, #EADFF7, #F8D7DA);
 }
-.cv-name { font-size: 12px; font-weight: 700; color: var(--text-primary, #181818); }
-.cv-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.cv-tile--custom { width: 120px; }
-.cv-preview--custom {
-  background: conic-gradient(from 0deg, #EAF1FA, #EAF4EC, #FBF4DC, #FBEFF4, #F2EEFB, #E6F3F2, #EAF1FA);
-}
-.cv-preview--custom input[type="color"] {
-  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0;
+.cv-dot--custom input[type="color"] {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; border-radius: 50%;
 }
 .cv-warn { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--amber, #8A6300); }
 .cv-reset {
-  height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  align-self: flex-start; height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer; font-family: inherit;
   font-size: 13px; font-weight: 700; color: var(--text-primary, #181818);
   background: transparent; border: 1px solid var(--border-subtle);
 }
