@@ -1126,8 +1126,8 @@ When `needs_production_upload` is set, the upload call is the only message:
 
 - **Home widget:** turns production blue with the chip "ממתין לפרודוקציה" and the title "עכשיו: להעלות את הפרודוקציה של <month>". Its button goes to the Production tab.
 - **Alarm clock and rail icon:** say the same thing.
-- **The `upload_production` notice:** plays the Remotion `CycleGears` scene, a hand-drawn line drawing whose strokes draw on. The נפרעים gear turns with a ✓, the agent's production gear floats above its empty slot, and the השוואה gear waits. The copy reads "הורדת דוחות נפרעים הסתיימה" and says when the system goes automatic (the 21st of the month of `maslaka_first_auto`, else of `maslaka_if_submitted_now` plus the שיוך deadline). The only button is the upload.
-- **The agent's FIRST cycle:** the drawing is slower and green emphasis strokes burst around the ✓. No confetti.
+- **The `upload_production` notice:** plays the Remotion `CycleGears` scene: ONE big hand-drawn gear (the strokes draw on) that is missing one tooth. Its hub carries a green ✓ (נפרעים in), and its inner ring is green except a blue dashed stretch under the gap. The missing tooth (the agent's production, blue with an upload arrow) floats above the gap, and the gear keeps trying to turn, catching and snapping back. The copy reads "הורדת דוחות נפרעים הסתיימה" and says when the system goes automatic (the 21st of the month of `maslaka_first_auto`, else of `maslaka_if_submitted_now` plus the שיוך deadline). The only button is the upload.
+- **The agent's FIRST cycle:** the drawing is slower and green emphasis strokes burst around the gear once. No confetti.
 - **Setup wizard:** the notice mounts only while the full-screen wizard is closed, because the wizard used to cover it.
 
 ### Simulating future cycles locally

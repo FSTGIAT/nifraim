@@ -186,7 +186,7 @@ function act() {
   font-size: 12.5px; font-weight: 700; color: var(--tab-production, #2F73C4);
 }
 .cg-kicker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green, #2E844A); }
-.cg-stage { margin: -6px -8px -22px; }
+.cg-stage { margin: -6px -8px 6px; }
 .cg-static { display: flex; align-items: center; justify-content: center; gap: 28px; height: 100%; }
 .cg-static-g {
   width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
