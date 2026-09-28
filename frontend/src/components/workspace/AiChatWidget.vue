@@ -21,8 +21,19 @@
           class="chat-message"
           :class="msg.role"
         >
-          <div class="message-avatar" :class="msg.role">
-            {{ msg.role === 'user' ? 'א' : 'AI' }}
+          <div class="message-avatar" :class="msg.role" aria-hidden="true">
+            <Avatar
+              v-if="msg.role === 'user'"
+              :name="auth.user?.full_name || ''"
+              :username="auth.user?.username || ''"
+              :avatar-seed="seedFor(auth.user)"
+              :size="30"
+            />
+            <ThinkingOrbIsland
+              v-else
+              :state="chatStore.loading && i === chatStore.messages.length - 1 ? 'solving' : 'working'"
+              :size="32" color="#6A48C9" :dot-size="1.5"
+            />
           </div>
           <div class="message-bubble">
             <div
@@ -83,7 +94,7 @@
       </div>
 
       <!-- Input bar -->
-      <div class="chat-input-bar">
+      <div class="chat-input-bar" :class="{ 'has-text': !!input.trim() }">
         <input
           ref="fileInputEl"
           type="file"
@@ -100,14 +111,12 @@
           @click="openFilePicker"
         >
           <span v-if="chatStore.uploadingDoc" class="chat-attach-spinner" aria-hidden="true"></span>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>
         <input
           v-model="input"
           class="chat-input"
-          placeholder="שאל שאלה על הנתונים שלך..."
+          placeholder="שאלו את Nifra AI…"
           @keydown.enter.prevent="send(input)"
           :disabled="chatStore.loading"
         />
@@ -116,10 +125,8 @@
           @click="send(input)"
           :disabled="!input.trim() || chatStore.loading"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
+          <!-- lucide CornerLeftUp (RTL) — same as the Nifra AI panel -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14 9 9 4 4 9"/><path d="M20 20h-7a4 4 0 0 1-4-4V4"/></svg>
         </button>
       </div>
     </div>
@@ -128,6 +135,9 @@
 
 <script setup>
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
+import Avatar from '../Avatar.vue'
+import { useAuthStore } from '../../stores/auth.js'
+import { seedFor } from '../../utils/avatarSeed.js'
 import AiLibraryIcons from './AiLibraryIcons.vue'
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
@@ -138,6 +148,7 @@ const emit = defineEmits(['navigate-tab', 'latest-viz', 'latest-vizs'])
 
 const chatStore = useChatStore()
 const input = ref('')
+const auth = useAuthStore()
 const messagesEl = ref(null)
 const fileInputEl = ref(null)
 
@@ -378,14 +389,13 @@ watch(
   align-items: flex-start;
 }
 
-.chat-message.user {
-  flex-direction: row-reverse;
-}
+/* RTL: both speakers start on the right, like the Nifra AI panel */
 
 .message-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -395,15 +405,8 @@ watch(
   letter-spacing: -0.5px;
 }
 
-.message-avatar.user {
-  background: var(--tab-ai-ink);
-  color: #fff;
-}
-
-.message-avatar.assistant {
-  background: linear-gradient(135deg, #7F56D9 0%, #E3066A 100%);
-  color: #fff;
-}
+.message-avatar.user { box-shadow: 0 2px 6px rgba(24, 24, 24, 0.12); }
+.message-avatar.assistant { background: #F6F2FD; }
 
 .message-bubble {
   max-width: 85%;
@@ -414,18 +417,26 @@ watch(
   word-break: break-word;
 }
 
+/* the agent's message: soft lavender bubble, right-aligned */
 .chat-message.user .message-bubble {
-  background: var(--tab-ai-ink);
-  color: #fff;
-  border-top-left-radius: 4px;
+  max-width: 78%;
+  direction: rtl; text-align: start; unicode-bidi: plaintext;
+  background: #F2EEFB;
+  color: var(--text-primary, #181818);
+  border-radius: 18px;
+  border-start-start-radius: 6px;
+  font-size: 14.5px;
   white-space: pre-wrap;
 }
-
+/* Nifra AI's answer: clean text, no box */
 .chat-message.assistant .message-bubble {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border-subtle);
-  border-top-right-radius: 4px;
+  max-width: calc(100% - 44px);
+  background: transparent;
+  color: var(--text-primary, #181818);
+  border: none;
+  padding: 4px 2px 0;
+  font-size: 14.5px;
+  line-height: 1.8;
 }
 
 /* Typing indicator */
@@ -583,61 +594,37 @@ watch(
   padding: 10px 14px 0;
   background: var(--glass);
 }
+/* input: the AIInput pill (same as the Nifra AI panel) */
 .chat-input-bar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 12px 14px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--glass);
+  position: relative;
+  margin: 10px 14px 14px;
+  border-radius: 26px;
+  background: rgba(24, 24, 24, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(24, 24, 24, 0.04);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-
+.chat-input-bar:focus-within { background: #fff; box-shadow: inset 0 0 0 1px rgba(106, 72, 201, 0.35), 0 10px 28px rgba(40, 24, 90, 0.1); }
 .chat-input {
-  flex: 1;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: var(--card-bg);
-  font-size: 13.5px;
-  font-family: inherit;
-  color: var(--text);
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  display: block; width: 100%; height: 52px;
+  padding: 0 52px; border: none; outline: none; background: transparent;
+  font-size: 15px; font-family: inherit; color: var(--text-primary, #181818);
 }
-
-.chat-input:focus {
-  border-color: var(--tab-ai-ink);
-  box-shadow: var(--shadow-glow);
+.chat-input::placeholder { color: rgba(24, 24, 24, 0.45); }
+.chat-attach-btn, .chat-send-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 12px; border: none; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s ease, color 0.15s ease;
 }
-
-.chat-input::placeholder {
-  color: var(--text-muted);
-}
-
+.chat-attach-btn { right: 12px; color: rgba(24, 24, 24, 0.7); background: rgba(24, 24, 24, 0.05); }
+.chat-attach-btn:hover:not(:disabled) { background: rgba(106, 72, 201, 0.12); color: var(--tab-ai-ink, #6A48C9); }
 .chat-send-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: var(--tab-ai-ink);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s var(--transition);
-  flex-shrink: 0;
+  left: 12px; color: #fff; background: var(--tab-ai-ink, #6A48C9);
+  opacity: 0; transform: translateY(-50%) scale(0.95); pointer-events: none;
 }
-
-.chat-send-btn:hover:not(:disabled) {
-  background: var(--tab-ai-ink);
-  transform: scale(1.05);
-}
-
-.chat-send-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
+.chat-input-bar.has-text .chat-send-btn { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
+.chat-send-btn:hover:not(:disabled) { background: #5A3AB5; }
+.chat-send-btn:disabled { opacity: 0.4; }
 
 /* Attached AI documents */
 .chat-doc-chips {
@@ -686,24 +673,6 @@ watch(
 
 /* Paperclip button inside the input bar */
 .chat-file-input { display: none; }
-.chat-attach-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  background: var(--card-bg);
-  color: var(--text-secondary);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-.chat-attach-btn:hover:not(:disabled) {
-  background: var(--tab-ai-wash);
-  color: var(--tab-ai-ink);
-  border-color: rgba(106, 72, 201, 0.32);
-}
 .chat-attach-btn:disabled { opacity: 0.55; cursor: default; }
 .chat-attach-spinner {
   width: 14px;
