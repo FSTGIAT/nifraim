@@ -9,7 +9,7 @@
         :style="{ '--k': k.color, '--k-ink': k.ink }"
         :title="k.title || null"
         :role="k.open ? 'button' : null" :tabindex="k.open ? 0 : null"
-        @click="k.open && k.open()" @keydown.enter="k.open && k.open()"
+        @click="k.open && k.open($event.currentTarget)" @keydown.enter="k.open && k.open($event.currentTarget)"
       >
         <span class="kpi-ghost" aria-hidden="true"><KpiGlyph :name="k.glyph" :size="92" :stroke="1.2" /></span>
         <span class="kpi-icon"><KpiGlyph :name="k.glyph" :size="22" /></span>
@@ -186,7 +186,7 @@
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="filterModal.open" class="fm-overlay" @click.self="closeFilterModal">
-          <div class="fm-card">
+          <div ref="fmCardEl" class="fm-card">
             <div class="fm-header">
               <div class="fm-title">{{ filterModal.title }}</div>
               <span class="fm-count">{{ filteredModalCustomers.length }} לקוחות</span>
@@ -251,8 +251,9 @@
 </template>
 
 <script setup>
+import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import KpiGlyph from '../workspace/KpiGlyph.vue'
-import { ref, computed, watch, onMounted, onUnmounted, toRef } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
 import { useAuthStore } from '../../stores/auth.js'
@@ -495,11 +496,11 @@ const kpiCards = computed(() => [
     color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)' },
   { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
     color: '#E04B48', ink: '#C23934',
-    open: () => openFilterModal('לא שולם', kpiUnpaid.value),
+    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el),
     actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
   { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
     color: '#4E9DD0', ink: '#35719A',
-    open: () => openFilterModal('רק בנפרעים', kpiOnlyComm.value),
+    open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el),
     actions: kpiOnlyComm.value.length ? { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value), mailTitle: 'שלח מייל על לקוחות שרק בנפרעים' } : null },
   { key: 'charge', glyph: 'charge', label: 'חיוב לא משולם', value: formatAmount(kpiUnpaidCharge.value), ltr: true, title: 'סה"כ חיוב לא משולם',
     color: '#D6336C', ink: '#C42B60' },
@@ -897,13 +898,21 @@ const filteredModalCustomers = computed(() => {
   return list
 })
 
-function openFilterModal(title, customers) {
+// iPhone-style: a modal opened from a KPI card grows out of that card and
+// folds back into it (composables/useOriginMorph). Other callers: plain modal.
+const originMorph = useOriginMorph()
+const fmCardEl = ref(null)
+
+function openFilterModal(title, customers, originEl = null) {
+  originMorph.remember(originEl)
   filterModal.value = { open: true, title, customers }
   productFilter.value = null
   productFilterOpen.value = false
+  if (originEl) nextTick(() => originMorph.grow(fmCardEl.value))
 }
 
-function closeFilterModal() {
+async function closeFilterModal() {
+  if (originMorph.hasOrigin()) await originMorph.shrink(fmCardEl.value)
   filterModal.value = { open: false, title: '', customers: [] }
   filterSearchQuery.value = ''
   productFilter.value = null
