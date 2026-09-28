@@ -230,7 +230,9 @@
       aria-hidden="true"
     >
       <span v-if="morphTab" ref="morphGlyph" class="launch-glyph">
-        <AppIcon :name="morphTab" :size="22" />
+        <!-- the home card's own drawing sketches itself as the app opens -->
+        <HomeCardDrawing v-if="DRAWN_TABS.has(morphTab)" :name="morphTab" />
+        <AppIcon v-else :name="morphTab" :size="22" />
       </span>
     </div>
 
@@ -358,6 +360,8 @@ import AiConversationSheet from '../components/workspace/AiConversationSheet.vue
 import { useAiContextStore } from '../stores/aiContext.js'
 import { useLaunchMorph } from '../composables/useLaunchMorph.js'
 import AppIcon from '../components/icons/AppIcon.vue'
+import HomeCardDrawing from '../components/workspace/HomeCardDrawing.vue'
+const DRAWN_TABS = new Set(['production', 'comparison', 'commission-rates', 'portal', 'ai-library', 'maslaka', 'portal-automation'])
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -1085,10 +1089,15 @@ async function openFundDetail(trackId) {
 }
 /* The glyph rides inside the surface, so it inherits its scale — its own
    animation counter-scales it back to a readable size. */
+/* the glyph is on screen ~⅓s during a launch — sketch the drawing inside that */
+.launch-glyph :deep(.s) { animation-duration: 0.32s !important; animation-delay: 0s !important; }
+.launch-glyph :deep(.dot), .launch-glyph :deep(.pct) { animation-delay: 0.2s !important; }
 .launch-glyph {
   display: grid;
   place-items: center;
   color: var(--launch-accent, var(--text-muted));
+  --accent: var(--launch-accent);
+  --accent-ink: var(--launch-accent);
   opacity: 0;
   will-change: transform, opacity;
 }

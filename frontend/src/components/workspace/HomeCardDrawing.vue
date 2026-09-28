@@ -3,7 +3,7 @@
        the cycle clock and Nifra Agent (round strokes, a thin secondary line,
        one small accent). Each draws itself in on mount and re-draws on hover;
        the automation gears turn. pathLength=1 on every stroke → one dash anim. -->
-  <svg class="hcd" :class="['hcd--' + name, { 'is-hover': hover }]" viewBox="0 0 64 64" aria-hidden="true"
+  <svg class="hcd" :class="['hcd--' + name, { 'is-hover': hover, 'hcd--small': small }]" viewBox="0 0 64 64" aria-hidden="true"
        :style="{ '--hcd-delay': delay + 'ms' }">
     <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
       <!-- פרודוקציה: the book of policies, growing -->
@@ -95,6 +95,7 @@ defineProps({
   name: { type: String, required: true },
   hover: { type: Boolean, default: false },
   delay: { type: Number, default: 0 },
+  small: { type: Boolean, default: false }, // tab-strip size: static, one colour (currentColor), bolder strokes
 })
 </script>
 
@@ -116,6 +117,14 @@ defineProps({
 .is-hover .gear-big { animation-duration: 3s; }
 .is-hover .gear-small { animation-duration: 1.5s; }
 @keyframes hcdSpin { to { transform: rotate(360deg); } }
+/* small (tab strip): drawn, still, inherits the pill's text colour (white when active) */
+.hcd--small { width: 20px; height: 20px; color: currentColor; }
+.hcd--small .s { animation: none; stroke-dashoffset: 0; stroke-width: 4.4; }
+.hcd--small .thin { stroke-width: 3; opacity: 0.55; }
+.hcd--small .acc { color: currentColor; stroke: currentColor; }
+.hcd--small .dot, .hcd--small .pct { animation: none; opacity: 1; fill: currentColor; }
+.hcd--small .pct { display: none; }
+.hcd--small .gear-big, .hcd--small .gear-small { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   .s, .is-hover .s { animation: none; stroke-dashoffset: 0; }
   .dot, .pct { animation: none; opacity: 1; }

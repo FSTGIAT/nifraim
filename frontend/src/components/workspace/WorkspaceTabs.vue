@@ -63,7 +63,7 @@
         @click="onPillPress($event, tab.id)"
       >
         <span class="strip-icon">
-          <AppIcon :name="tab.id" :size="17" />
+          <HomeCardDrawing :name="tab.id" small />
         </span>
         <span class="strip-label">{{ tab.label }}</span>
       </button>
@@ -92,7 +92,6 @@
 
 <script setup>
 import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import AppIcon from '../icons/AppIcon.vue'
 import HomeCardDrawing from './HomeCardDrawing.vue'
 import CardAmbientIsland from './CardAmbientIsland.vue'
 

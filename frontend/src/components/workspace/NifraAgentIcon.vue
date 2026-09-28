@@ -61,6 +61,8 @@ onMounted(() => { if (!store.narration) store.narrate() })
   filter: blur(14px); opacity: 0.7; animation: naiSpin 9s linear infinite;
 }
 .nai--small .nai-glow { inset: -6px; filter: blur(7px); }
+/* phones: the icon sits near the screen edge — keep the glow inside it (no sideways scroll) */
+@media (max-width: 700px) { .nai-glow { inset: -4px; filter: blur(8px); } }
 .nai-badge {
   position: absolute; top: 4px; inset-inline-end: 4px; min-width: 22px; height: 22px; padding: 0 6px;
   border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 900;
