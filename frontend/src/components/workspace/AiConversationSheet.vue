@@ -121,8 +121,8 @@
             class="ai-sheet-file-input"
             @change="onFileChosen"
           />
-          <!-- AIInput design (pill, mic, send appears once typing), in Vue -->
-          <div class="ai-pill" :class="{ 'has-text': !!draft.trim(), listening }">
+          <!-- AIInput design (pill, send appears once typing), in Vue -->
+          <div class="ai-pill" :class="{ 'has-text': !!draft.trim() }">
             <textarea
               ref="inputEl"
               v-model="draft"
@@ -143,16 +143,6 @@
             >
               <span v-if="chatStore.uploadingDoc" class="ai-sheet-attach-spinner" aria-hidden="true"></span>
               <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-            <button
-              v-if="canDictate"
-              type="button"
-              class="ai-pill-btn ai-pill-mic"
-              :title="listening ? 'עצור הקלטה' : 'הכתבה קולית'"
-              :aria-pressed="listening"
-              @click="toggleMic"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
             </button>
             <button
               class="ai-pill-btn ai-pill-send"
@@ -237,29 +227,6 @@ function autoSize() {
   el.style.height = Math.max(52, Math.min(el.scrollHeight, 200)) + 'px'
 }
 
-// Voice dictation (Hebrew) where the browser supports it; hidden otherwise.
-const SpeechRec = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
-const canDictate = !!SpeechRec
-const listening = ref(false)
-let recognition = null
-function toggleMic() {
-  if (!SpeechRec) return
-  if (listening.value) { recognition?.stop(); return }
-  recognition = new SpeechRec()
-  recognition.lang = 'he-IL'
-  recognition.interimResults = true
-  const base = draft.value.trim() ? draft.value.trim() + ' ' : ''
-  recognition.onresult = (e) => {
-    let t = ''
-    for (const r of e.results) t += r[0].transcript
-    draft.value = base + t
-    nextTick(autoSize)
-  }
-  recognition.onend = () => { listening.value = false }
-  recognition.onerror = () => { listening.value = false }
-  listening.value = true
-  recognition.start()
-}
 
 async function submit() {
   const text = draft.value.trim()
@@ -778,7 +745,7 @@ onBeforeUnmount(() => {
   display: block; width: 100%; height: 52px; min-height: 52px; max-height: 200px;
   resize: none; overflow-y: auto; border: none; outline: none; background: transparent;
   /* RTL: attach on the right, mic/send on the left */
-  padding: 16px 52px 16px 92px;
+  padding: 16px 52px 16px 52px;
   font-family: inherit; font-size: 15.5px; line-height: 1.25; color: var(--text-primary, #181818);
   transition: height 0.1s ease-out;
 }
@@ -792,10 +759,6 @@ onBeforeUnmount(() => {
 }
 .ai-pill-btn:hover:not(:disabled) { background: rgba(106, 72, 201, 0.12); color: var(--tab-ai-ink, #6A48C9); }
 .ai-pill-attach { right: 12px; }
-.ai-pill-mic { left: 12px; }
-.ai-pill.has-text .ai-pill-mic { left: 48px; }
-.ai-pill.listening .ai-pill-mic { color: #fff; background: var(--tab-ai-ink, #6A48C9); animation: aiMic 1.2s ease-in-out infinite; }
-@keyframes aiMic { 50% { box-shadow: 0 0 0 6px rgba(106, 72, 201, 0.18); } }
 .ai-pill-send { left: 12px; opacity: 0; transform: translateY(-50%) scale(0.95); pointer-events: none; color: #fff; background: var(--tab-ai-ink, #6A48C9); }
 .ai-pill.has-text .ai-pill-send { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
 .ai-pill-send:hover:not(:disabled) { background: #5A3AB5; color: #fff; }
