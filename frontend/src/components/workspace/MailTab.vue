@@ -369,7 +369,7 @@
       </Transition>
     </Teleport>
 
-    <HachsharaMailModal :open="mailboxOpen" @close="onMailboxClosed" />
+    <HachsharaMailModal :open="mailboxOpen" purpose="general" @close="onMailboxClosed" />
   </div>
 </template>
 

@@ -187,6 +187,8 @@ def build_events_request(
     poa_self_verified: bool = False,
     poa_secure_site: bool = False,
     info_sender_is_agent: bool = False,
+    customer_type_override: str | None = None,
+    customer_id_type_override: str | None = None,
     sender_is_agent: bool = False,
     internal_agent_number: str | None = None,
     agent_id_type: str | None = None,
@@ -376,7 +378,11 @@ def build_events_request(
 
     customer = _sub(pone, "YeshutLakoachMeidaBsisi")
     # 1 = עמית/מבוטח; 3 = מפיץ, the spec's value for every production request.
-    _sub(customer, "SUG-LAKOACH", "3" if distributor_request else "1")
+    # customer_type_override: a one-off PROBE (2026-09-27) of SUG-LAKOACH=3 on a
+    # 9100 — the field spec reserves 3 for 2000–2500; the מסלקה's verdict settles
+    # whether a 9100 can be asked about a distributor's whole book.
+    _cust_type = customer_type_override or ("3" if distributor_request else "1")
+    _sub(customer, "SUG-LAKOACH", _cust_type)
     # Rule 144 — "בבקשת פרודוקציה סוג מזהה לקוח ומספר מזהה לקוח צריך להיות זהה
     # לסוג מזהה שולח ומספר מזהה שולח" (seq 0033) — and rule 118 pins the sender
     # to the vault owner (seq 0034). So a production request's subject is
@@ -385,7 +391,7 @@ def build_events_request(
     # (rule 128 applies only to a ת"ז subject).
     _sub(customer, "SUG-MEZAHE-LAKOACH",
          (settings.MASLAKA_SENDER_ID_TYPE or "1") if (distributor_request and not agent_sender)
-         else (_ag_type if agent_sender else "3"))
+         else (_ag_type if agent_sender else (customer_id_type_override or "3")))
     # NINE digits, zero-PADDED — not stripped. An Israeli ת"ז is nine digits
     # including any leading zero, and `043417252` is a real one. Stripping would
     # send an 8-digit identifier for every saver whose ת"ז starts with 0 — about
@@ -406,7 +412,8 @@ def build_events_request(
         _sub(customer, "SHEM-MISHPACHA-LAKOACH", None if distributor_request else customer_last_name)
     # SHEM-MAASIK is mandatory for SUG-LAKOACH 3: "את שם המפיץ".
     _sub(customer, "SHEM-MAASIK",
-         ((acting_agent_name or "").strip() or None) if distributor_request else None)
+         ((acting_agent_name or "").strip() or None)
+         if (distributor_request or _cust_type == "3") else None)
     for tag in ("KOD-MEZAHE-MAASIK-ETZEL-YATZRAN", "KOD-MEDINA", "TAARICH-LEIDA"):
         _sub(customer, tag)
 

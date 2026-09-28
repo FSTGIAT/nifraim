@@ -361,7 +361,10 @@ export const usePortalAutomationStore = defineStore('portalAutomation', () => {
       const startedAt = rawStart ? new Date(rawStart).getTime() : 0
       const tooOld = startedAt && Date.now() - startedAt > BATCH_MAX_AGE_MS
       const alreadyPolling = activeBatchId.value === latest.id && batchPollHandle
-      if (!tooOld && !alreadyPolling) {
+      // A PENDING batch is a monthly-cycle batch waiting for the worker to come
+      // online (can be days) — not a live run. The cycle store adopts it the
+      // moment the worker claims it (status → running).
+      if (!tooOld && !alreadyPolling && latest.status !== 'pending') {
         activeBatchId.value = latest.id
         activeBatch.value = latest
         _startBatchPolling(latest.id)

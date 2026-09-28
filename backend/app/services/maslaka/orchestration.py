@@ -1210,7 +1210,9 @@ async def _consent_dates(db: AsyncSession, inquiry: PensionInquiry) -> dict:
             # an explicit 0 / "nifraim" still overrides it.
             **({"poa_self_verified": kv["self_verified"] == "1"} if "self_verified" in kv else {}),
             **({"poa_secure_site": kv["secure_site"] == "1"} if "secure_site" in kv else {}),
-            **({"info_sender_is_agent": kv["sender"] == "agent"} if "sender" in kv else {})}
+            **({"info_sender_is_agent": kv["sender"] == "agent"} if "sender" in kv else {}),
+            **({"customer_type_override": kv["lakoach_type"]} if kv.get("lakoach_type") in ("1", "2", "3") else {}),
+            **({"customer_id_type_override": kv["lakoach_id_type"]} if (kv.get("lakoach_id_type") or "").isdigit() else {})}
 
 
 async def _store_raw_payload(

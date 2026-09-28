@@ -763,9 +763,12 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             select(FileUpload.period_month).where(FileUpload.id.in_(comm_upload_ids))
         )
         comm_periods = [p for (p,) in _cp.all() if p]
+    # A cycle batch KNOWS its period (M-1 of the cycle month) — that beats the
+    # calendar guess. The files' own detected months still win: if a portal
+    # had not published M-1 yet and served an older month, say so honestly.
     comm_period = (
         Counter(comm_periods).most_common(1)[0][0] if comm_periods
-        else (batch_period or _prev_month)
+        else (getattr(batch, "cycle_period", None) or batch_period or _prev_month)
     )
 
     # The batch is anchored on its production snapshot.

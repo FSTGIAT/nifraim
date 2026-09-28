@@ -1,6 +1,13 @@
 <template>
   <div class="production-tab">
-    <div v-if="productionStore.loading || !productionStore.currentLoaded" class="loading-state">
+    <!-- Monthly cycle: before the agent's first cycle only THIS tab is locked. -->
+    <CycleLockedState
+      v-if="cycleStore.locked"
+      @go-to-portal-automation="$emit('go-to-portal-automation')"
+      @go-to-maslaka="$emit('go-to-maslaka')"
+    />
+
+    <div v-else-if="productionStore.loading || !productionStore.currentLoaded" class="loading-state">
       <div class="loader">
         <div class="loader-ring"></div>
         <div class="loader-ring delay"></div>
@@ -9,6 +16,29 @@
     </div>
 
     <template v-else>
+      <!-- Monthly cycle: the cycle's נפרעים are in and production is still
+           manual (no מסלקה feed yet) → ask for THIS period's production. -->
+      <div v-if="cycleStore.status?.needs_production_upload && productionStore.currentFile" class="cy-banner" role="status">
+        <span class="cy-banner-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+        </span>
+        <div class="cy-banner-text">
+          <strong>הנפרעים של {{ cycleStore.status.current_period_label }} כבר כאן</strong>
+          <span>העלה/י את קובץ הפרודוקציה של {{ cycleStore.status.current_period_label }} (מאתר המסלקה) — וההשוואה תרוץ לבד.</span>
+        </div>
+        <button type="button" class="cy-banner-btn" @click="openFilePicker">העלאת פרודוקציה</button>
+      </div>
+      <div v-else-if="uploadGateNote && productionStore.currentFile" class="cy-note" role="status">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span>{{ uploadGateNote }}</span>
+      </div>
+      <div v-if="uploadError" class="cy-error" role="alert">
+        <span>{{ uploadError }}</span>
+        <button type="button" class="cy-error-x" aria-label="סגור" @click="uploadError = ''">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
       <!-- No production yet: the tab's identity hero + one extra-big door to
            the automation (which is what fills this screen), on its own stage.
            Manual upload stays as a small action in the hero; a file dropped
@@ -18,7 +48,7 @@
           <div class="pt-hero-copy">
             <span class="pt-kicker">פרודוקציה</span>
             <h2 class="pt-hero-title"><span dir="ltr">Nifraim</span> <span class="pt-hero-title-acc">פרודוקציה</span></h2>
-            <button type="button" class="pt-manual" @click="openFilePicker">
+            <button v-if="canUpload" type="button" class="pt-manual" @click="openFilePicker">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"
                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7" />
@@ -29,19 +59,38 @@
           <TabHeroLoop scene="production" flow="ltr" class="pt-hero-art" />
         </header>
 
+        <!-- The stage follows the monthly cycle: what to do NOW (upload the
+             period's production, wait for the computer, watch the download,
+             or simply the next 21st). Before launch: the legacy door. -->
         <div class="pt-stage">
           <div class="pt-cta">
             <BigAddButton
-              label="מעבר להורדה אוטומטית"
+              :label="emptyCta.label"
               color="var(--tab-production)"
               :size="250"
-              @click="$emit('go-to-portal-automation')"
+              @click="onEmptyCta"
             >
-              <AppIcon name="portal-automation" :size="84" />
+              <svg v-if="emptyCta.icon === 'upload'" viewBox="0 0 24 24" width="84" height="84" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" />
+              </svg>
+              <svg v-else-if="emptyCta.icon === 'clock'" viewBox="0 0 24 24" width="84" height="84" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2" /><path d="M5 3 2 6" /><path d="m22 6-3-3" />
+              </svg>
+              <svg v-else-if="emptyCta.icon === 'monitor'" viewBox="0 0 24 24" width="84" height="84" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
+              </svg>
+              <AppIcon v-else name="portal-automation" :size="84" />
             </BigAddButton>
             <!-- First-run hint: a hand glides in from the screen's bottom-right
                  and taps the ring. Only on this empty state. -->
             <PointingHand from="bottom-right" color="var(--tab-production)" />
+          </div>
+          <div v-if="emptyCta.title" class="pt-cta-copy">
+            <strong>{{ emptyCta.title }}</strong>
+            <span>{{ emptyCta.note }}</span>
           </div>
         </div>
       </section>
@@ -116,6 +165,7 @@
 
           <!-- Upload icon button -->
           <button
+            v-if="canUpload"
             class="upload-icon-btn"
             @click="openFilePicker"
             title="החלף קובץ פרודוקציה"
@@ -294,11 +344,78 @@ import BigAddButton from './BigAddButton.vue'
 import AppIcon from '../icons/AppIcon.vue'
 import PointingHand from './PointingHand.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
+import CycleLockedState from './CycleLockedState.vue'
+import { useCycleStore } from '../../stores/cycle.js'
+import { useAuthStore } from '../../stores/auth.js'
 
-defineEmits(['go-to-comparison', 'go-to-portal-automation'])
+const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-maslaka'])
 
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()
+const cycleStore = useCycleStore()
+const auth = useAuthStore()
+
+// Monthly cycle: manual production is accepted only in the cycle's window
+// (the server enforces it; this only hides dead buttons). Unknown status →
+// show the buttons and let the server answer.
+const canUpload = computed(() =>
+  !cycleStore.loaded || !cycleStore.status || cycleStore.manualUploadOpen || !!auth.user?.is_admin,
+)
+const uploadGateNote = computed(() => {
+  const st = cycleStore.status
+  if (!st || st.locked || st.prelaunch || canUpload.value) return ''
+  if (st.production_source === 'maslaka') return `הפרודוקציה של ${st.current_period_label} מגיעה אוטומטית מהמסלקה`
+  return 'העלאת הפרודוקציה תיפתח בסיום ההורדה האוטומטית של המחזור'
+})
+const uploadError = ref('')
+
+// Empty-state call, per cycle state (see the template comment).
+const emptyCta = computed(() => {
+  const st = cycleStore.status
+  const legacy = { label: 'מעבר להורדה אוטומטית', icon: 'automation', action: 'automation', title: '', note: '' }
+  if (!st || st.prelaunch) return legacy
+  const period = st.current_period_label
+  if (st.manual_upload_open) {
+    return {
+      label: `העלאת פרודוקציה ל${period}`, icon: 'upload', action: 'upload',
+      title: `הנפרעים של ${period} כבר כאן`,
+      note: `העלה/י את קובץ הפרודוקציה של ${period} (מאתר המסלקה) — וההשוואה תרוץ לבד.`,
+    }
+  }
+  if (st.worker_waiting) {
+    return {
+      label: 'למצב המחשב', icon: 'monitor', action: 'automation',
+      title: `המחזור של ${period} ממתין למחשב`,
+      note: 'ההורדה תתחיל לבד ברגע שהמחשב יודלק ויתחבר. אחריה תיפתח כאן העלאת הפרודוקציה.',
+    }
+  }
+  if (['pending', 'running'].includes(st.cycle_batch_status)) {
+    return {
+      label: 'לצפייה בהורדה', icon: 'automation', action: 'automation',
+      title: `הנפרעים של ${period} יורדים עכשיו`,
+      note: 'בסיום ההורדה תיפתח כאן העלאת הפרודוקציה של החודש.',
+    }
+  }
+  if (st.production_source === 'maslaka') {
+    return {
+      label: 'למסלקה', icon: 'clock', action: 'maslaka',
+      title: 'הפרודוקציה מגיעה אוטומטית מהמסלקה',
+      note: `הפרודוקציה של ${period} נשלחת מהמסלקה ב-15 בחודש — אין צורך להעלות דבר.`,
+    }
+  }
+  const next = st.next_cycle_at ? new Date(st.next_cycle_at) : null
+  return {
+    label: 'מעבר לאוטומציה', icon: 'clock', action: 'automation',
+    title: next ? `הנפרעים יורדים לבד ב-${next.getDate()}.${next.getMonth() + 1} · 06:00` : 'הנפרעים יורדים לבד ב-21 לחודש',
+    note: 'אין צורך ללחוץ על כלום — רק שהמחשב יהיה דלוק.',
+  }
+})
+function onEmptyCta() {
+  const a = emptyCta.value.action
+  if (a === 'upload') openFilePicker()
+  else if (a === 'maslaka') emit('go-to-maslaka')
+  else emit('go-to-portal-automation')
+}
 const innerTab = ref('insights')
 const fileInputRef = ref(null)
 const showCompareModal = ref(false)
@@ -411,20 +528,31 @@ if (droppedFiles) {
   })
 }
 
-function onFileSelected(e) {
+async function onFileSelected(e) {
   const files = e.target.files
-  if (files && files.length > 0) {
-    const file = files[0]
-    const ext = file.name.split('.').pop().toLowerCase()
+  const file = files && files.length > 0 ? files[0] : null
+  if (e.target) e.target.value = ''
+  if (!file) return
+  if (!canUpload.value) {
+    uploadError.value = uploadGateNote.value || 'העלאת פרודוקציה אינה זמינה כרגע'
+    return
+  }
+  uploadError.value = ''
+  const ext = file.name.split('.').pop().toLowerCase()
+  try {
     if (ext === 'xlsx' || ext === 'xls') {
-      productionStore.uploadProduction(file)
+      await productionStore.uploadProduction(file)
     } else if (ext === 'zip') {
       // ZIP path goes through the generic /api/uploads endpoint so the
       // server-side Mimshak detection + production classification fires.
-      productionStore.uploadProductionZip(file)
+      await productionStore.uploadProductionZip(file)
+    } else {
+      return
     }
+    cycleStore.fetchStatus()
+  } catch (_) {
+    uploadError.value = productionStore.error || 'שגיאה בהעלאת הקובץ'
   }
-  e.target.value = ''
 }
 
 function acceptCompare() {
@@ -455,6 +583,40 @@ async function handleCompare(currentId, previousId) {
 </script>
 
 <style scoped>
+/* ── Monthly cycle banners ── */
+.cy-banner {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+  background: var(--card-bg); border: 1px solid color-mix(in srgb, var(--tab-production) 35%, transparent);
+  border-radius: var(--radius-md, 14px); box-shadow: var(--shadow-sm);
+}
+.cy-banner-icon {
+  flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--tab-production-wash); color: var(--tab-production);
+}
+.cy-banner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cy-banner-text strong { font-size: 15px; font-weight: 800; color: var(--text-primary, #181818); }
+.cy-banner-text span { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary, #706E6B); }
+.cy-banner-btn {
+  flex-shrink: 0; height: 40px; padding: 0 18px; border: none; border-radius: 10px;
+  background: var(--tab-production); color: #fff; font-family: inherit; font-size: 14px; font-weight: 700;
+  cursor: pointer; box-shadow: 0 4px 12px rgba(47, 115, 196, 0.25); transition: transform 0.15s ease;
+}
+.cy-banner-btn:hover { transform: translateY(-1px); }
+@media (max-width: 640px) { .cy-banner { flex-wrap: wrap; } .cy-banner-btn { width: 100%; } }
+.cy-note {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
+  border-radius: 999px; background: var(--tab-production-wash); color: var(--tab-production);
+  font-size: 13px; font-weight: 700;
+}
+.cy-error {
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 10px;
+  background: rgba(234, 0, 30, 0.06); border: 1px solid rgba(234, 0, 30, 0.22);
+  color: var(--red-deep, #b91c1c); font-size: 13.5px; font-weight: 600;
+}
+.cy-error span { flex: 1; }
+.cy-error-x { border: none; background: transparent; color: inherit; cursor: pointer; display: inline-flex; padding: 4px; }
+
 .production-tab {
   animation: slideUp 0.4s var(--transition);
   display: flex;
@@ -506,7 +668,11 @@ async function handleCompare(currentId, previousId) {
     radial-gradient(color-mix(in srgb, var(--tab-production) 16%, transparent) 1.2px, transparent 1.4px) 0 0 / 22px 22px,
     var(--card-bg);
 }
+.pt-stage { grid-auto-flow: row; gap: 22px; align-content: center; }
 .pt-cta { position: relative; display: grid; place-items: center; }
+.pt-cta-copy { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; max-width: 440px; }
+.pt-cta-copy strong { font-size: 19px; font-weight: 800; color: var(--text-primary, #181818); }
+.pt-cta-copy span { font-size: 14px; line-height: 1.6; color: var(--text-secondary, #706E6B); }
 @media (max-width: 640px) {
   .pt-hero-art { display: none; }
   .pt-hero-copy { max-width: none; }

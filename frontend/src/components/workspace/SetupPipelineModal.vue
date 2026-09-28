@@ -17,54 +17,53 @@
           <div class="spm-layout">
             <!-- ── MAIN (right pane in RTL): header + steps ── -->
             <div class="spm-main">
-              <header class="spm-header">
-                <span class="spm-kicker">הפעלת האוטומציה</span>
-                <h2 id="spm-title" class="spm-title">ברוכים הבאים ל-Nifraim</h2>
-                <p class="spm-sub">עוד כמה צעדים וההורדה תרוץ לבד.</p>
-                <div class="spm-progress" aria-hidden="true">
-                  <span
-                    v-for="s in steps"
-                    :key="s.id"
-                    class="spm-progress-seg"
-                    :class="{ 'spm-progress-seg--on': s.done }"
-                    :style="s.done ? { background: ACCENTS[s.id].accent } : {}"
-                  ></span>
-                  <span class="spm-progress-label ltr-number">{{ completedCount }}/{{ steps.length }}</span>
-                </div>
+              <header class="spm-top">
+                <h2 id="spm-title" class="spm-welcome">ברוכים הבאים ל-<span class="spm-title-brand" dir="ltr">Nifraim</span></h2>
+                <!-- compact step bar: jump to any page -->
+                <nav class="spm-stepper" aria-label="צעדי ההפעלה">
+                  <template v-for="(st, i) in steps" :key="st.id">
+                    <span v-if="i" class="spm-stepper-line" :class="{ 'spm-stepper-line--done': steps[i - 1].done }"></span>
+                    <button
+                      type="button"
+                      class="spm-dot"
+                      :class="{ 'spm-dot--on': st.id === selectedId, 'spm-dot--done': st.done }"
+                      :style="dotStyle(st)"
+                      :title="st.title"
+                      :aria-label="st.title"
+                      :aria-current="st.id === selectedId ? 'step' : undefined"
+                      @click="select(st.id)"
+                    >
+                      <svg v-if="st.done" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      <span v-else class="ltr-number">{{ i + 1 }}</span>
+                    </button>
+                  </template>
+                  <span class="spm-stepper-count ltr-number">{{ completedCount }}/{{ steps.length }}</span>
+                </nav>
               </header>
 
-              <ol class="spm-steps">
-                <li
-                  v-for="(s, i) in steps"
-                  :key="s.id"
-                  class="spm-step"
-                  :class="[
-                    { 'spm-step--active': s.id === selectedId, 'spm-step--done': s.done },
-                    s.id === selectedId && !s.done ? 'spm-step--' + s.id : '',
-                  ]"
-                >
-                  <button class="spm-step-head" type="button" @click="select(s.id)">
-                    <span class="spm-step-marker" :style="markerStyle(s)">
-                      <Transition name="spm-check" mode="out-in">
-                        <svg v-if="s.done" key="check" class="spm-check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path class="spm-check-path" d="M20 6 9 17l-5-5"/></svg>
-                        <span v-else key="num" class="spm-step-num ltr-number">{{ i + 1 }}</span>
-                      </Transition>
-                    </span>
-                    <span class="spm-step-titles">
-                      <span class="spm-step-title">{{ s.title }}</span>
-                      <span v-if="s.done && s.id === 'worker' && workerHost" class="spm-step-meta ltr-number">{{ workerHost }}</span>
-                      <span v-if="s.done" class="spm-step-donetag">{{ s.id === 'worker' ? (workerOnline ? 'מחובר' : 'מותקן') : 'הושלם' }}</span>
-                      <span v-else-if="s.id === firstIncompleteId" class="spm-step-nexttag" :style="{ background: ACCENTS[s.id].soft, color: ACCENTS[s.id].deep }">הצעד הבא</span>
-                    </span>
-                  </button>
-
-                  <!-- Detail: only for the ACTIVE, NOT-DONE step — the mission card -->
-                  <div class="spm-step-detail" :class="{ 'spm-step-detail--open': s.id === selectedId && (!s.done || (s.id === 'worker' && justConnected)) }">
-                    <div class="spm-step-detail-inner">
-                      <p class="spm-step-body">{{ s.body }}</p>
-
+              <!-- one PAGE per step -->
+              <Transition :name="reducedMotion ? 'spm-fade' : 'spm-page'" mode="out-in">
+                <section v-if="current" :key="current.id" class="spm-page">
+                  <span class="spm-page-kicker" :style="{ color: activeAccent.deep }">
+                    {{ phaseOf(current.id) }} · צעד <span class="ltr-number">{{ pad(stepIndex + 1) }}</span>
+                  </span>
+                  <h3 class="spm-page-title"><StepTitle :title="current.title" split :accent="activeAccent.deep" /></h3>
+                  <p v-if="current.body" class="spm-page-body">{{ current.body }}</p>
+                  <div v-if="current.done && !(current.id === 'worker' && justConnected)" class="spm-done">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    הושלם
+                  </div>
+                  <div v-else class="spm-page-content">
+                      
+                      <!-- מדף ההסכמים: email each insurer for the agreement, in place -->
+                      <AgreementRequestsPanel
+                        v-if="current.id === 'agreements'"
+                        @go-mail="select('mail')"
+                        @open-shelf="leaveSetupFor('agreements'); emit('open-agreements')"
+                        @changed="setup.refreshAgreements()"
+                      />
                       <!-- Worker: honest walkthrough + live install telemetry -->
-                      <div v-if="s.id === 'worker' && justConnected" class="spm-connected" role="status">
+                      <div v-else-if="current.id === 'worker' && justConnected" class="spm-connected" role="status">
                         <span class="spm-connected-icon" aria-hidden="true">
                           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                         </span>
@@ -73,7 +72,7 @@
                           <span>ההורדות ירוצו מ-<span class="ltr-number">{{ workerHost || 'המחשב שלך' }}</span>. עוברים לצעד הבא…</span>
                         </div>
                       </div>
-                      <template v-else-if="s.id === 'worker'">
+                      <template v-else-if="current.id === 'worker'">
                         <div class="spm-mini-steps">
                           <div class="spm-mini-step">
                             <span class="spm-mini-num" :style="{ background: ACCENTS.worker.soft, color: ACCENTS.worker.deep }">1</span>
@@ -90,9 +89,9 @@
                         </div>
 
                         <div class="spm-step-actions">
-                          <button class="spm-cta" :style="ctaStyle('worker')" :disabled="downloading" @click="onCta(s)">
+                          <button class="spm-cta" :style="ctaStyle('worker')" :disabled="downloading" @click="onCta(current)">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-                            {{ downloading ? 'מוריד…' : downloadedOnce ? 'הורד שוב' : s.cta }}
+                            {{ downloading ? 'מוריד…' : downloadedOnce ? 'הורד שוב' : current.cta }}
                           </button>
                           <span class="spm-worker-pill" :class="workerOnline ? 'spm-worker-pill--on' : ''">
                             <span class="spm-worker-dot"></span>{{ workerOnline ? 'מחובר' : 'ממתין לחיבור' }}
@@ -128,20 +127,34 @@
 
                       <!-- Other steps: single mission CTA -->
                       <template v-else>
-                        <p v-if="s.id === 'phone' && redirectNote" class="spm-hint" :style="{ background: ACCENTS.phone.soft, color: ACCENTS.phone.deep }">{{ redirectNote }}</p>
+                        <p v-if="current.id === 'phone' && redirectNote" class="spm-hint" :style="{ background: ACCENTS.phone.soft, color: ACCENTS.phone.deep }">{{ redirectNote }}</p>
                         <div class="spm-step-actions">
-                        <button class="spm-cta" :style="ctaStyle(s.id)" @click="onCta(s)">
-                          <svg v-if="s.id === 'phone'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-                          <svg v-else-if="s.id === 'portal'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                        <button class="spm-cta" :style="ctaStyle(current.id)" @click="onCta(current)">
+                          <svg v-if="current.id === 'phone'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+                          <svg v-else-if="current.id === 'portal'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                          <svg v-else-if="current.id === 'mail'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                          <svg v-else-if="current.id === 'agreements'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+                          <svg v-else-if="current.id === 'maslaka'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+                          <svg v-else-if="current.id === 'run'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                           <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z"/></svg>
-                          {{ s.cta }}
+                          {{ current.cta }}
                         </button>
                         </div>
                       </template>
-                    </div>
                   </div>
-                </li>
-              </ol>
+                </section>
+              </Transition>
+
+              <footer class="spm-nav">
+                <button type="button" class="spm-nav-btn" :disabled="stepIndex <= 0" @click="go(-1)">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  הקודם
+                </button>
+                <button type="button" class="spm-nav-btn spm-nav-btn--next" @click="stepIndex >= steps.length - 1 ? close() : go(1)">
+                  {{ stepIndex >= steps.length - 1 ? 'סיום' : 'הבא' }}
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+              </footer>
             </div>
 
             <!-- ── VISUAL (left pane in RTL): full-bleed, own background, divider ── -->
@@ -167,8 +180,9 @@
                   <img v-else-if="stepAssets[selectedId]" :src="stepAssets[selectedId]" alt="" class="spm-visual-img" />
                   <component v-else :is="fallbackVisuals[selectedId]" />
                   <div class="spm-visual-scrim" :style="{ background: scrimBg }"></div>
-                  <div class="spm-visual-caption">
-                    <span class="spm-visual-chip" :style="{ color: activeAccent.deep, borderColor: activeAccent.accent + '55' }">{{ activeStepTitle }}</span>
+                  <div class="spm-visual-num" aria-hidden="true">
+                    <span class="spm-visual-num-n ltr-number">{{ pad(stepIndex + 1) }}</span>
+                    <span class="spm-visual-num-of ltr-number">/{{ pad(steps.length) }}</span>
                   </div>
                 </div>
               </Transition>
@@ -182,7 +196,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { setupState, closeSetup } from '../../utils/setupState.js'
+import { setupState, closeSetup, leaveSetupFor } from '../../utils/setupState.js'
 import { useSetupPipeline, SETUP_ACCENTS } from '../../composables/useSetupPipeline.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import api from '../../api/client.js'
@@ -190,8 +204,13 @@ import WorkerVisual from './setup-visuals/WorkerVisual.vue'
 import PhoneVisual from './setup-visuals/PhoneVisual.vue'
 import PortalVisual from './setup-visuals/PortalVisual.vue'
 import RunVisual from './setup-visuals/RunVisual.vue'
+import MaslakaVisual from './setup-visuals/MaslakaVisual.vue'
+import MailVisual from './setup-visuals/MailVisual.vue'
+import StepTitle from './StepTitle.vue'
+import AgreementRequestsPanel from './AgreementRequestsPanel.vue'
+import AgreementsVisual from './setup-visuals/AgreementsVisual.vue'
 
-const emit = defineEmits(['open-phone-forward', 'open-add-portal', 'run-automation'])
+const emit = defineEmits(['open-phone-forward', 'open-add-portal', 'open-mail-agent', 'open-agreements', 'open-maslaka', 'run-automation'])
 
 const store = usePortalAutomationStore()
 const setup = useSetupPipeline()
@@ -200,7 +219,12 @@ const { steps, completedCount, allDone, firstIncompleteId } = setup
 const ACCENTS = SETUP_ACCENTS
 const DONE = { accent: '#2E844A', soft: '#EAF5EE' }
 
-const fallbackVisuals = { worker: WorkerVisual, phone: PhoneVisual, portal: PortalVisual, run: RunVisual }
+// ── page-per-step navigation ──
+const PHASE_OF = { phone: 'חיבור', worker: 'חיבור', mail: 'מייל והסכמים', agreements: 'מייל והסכמים', maslaka: 'מסלקה ופורטל', portal: 'מסלקה ופורטל', run: 'המחזור' }
+const phaseOf = (id) => PHASE_OF[id] || ''
+const pad = (n) => String(n).padStart(2, '0')
+
+const fallbackVisuals = { worker: WorkerVisual, phone: PhoneVisual, portal: PortalVisual, mail: MailVisual, agreements: AgreementsVisual, maslaka: MaslakaVisual, run: RunVisual }
 
 // Kling-generated images (optional): any step-<id>.webp dropped into
 // assets/welcome/ takes over from the SVG fallback automatically.
@@ -236,6 +260,20 @@ let connectedTimer = null
 const phoneStepDone = computed(() => !!steps.value.find((s) => s.id === 'phone')?.done)
 
 const activeAccent = computed(() => ACCENTS[selectedId.value] || ACCENTS.worker)
+const stepIndex = computed(() => Math.max(0, steps.value.findIndex((x) => x.id === selectedId.value)))
+const current = computed(() => steps.value[stepIndex.value] || null)
+function go(delta) {
+  const i = Math.min(steps.value.length - 1, Math.max(0, stepIndex.value + delta))
+  select(steps.value[i].id)
+}
+function dotStyle(st) {
+  if (st.done) return { background: DONE.accent, borderColor: DONE.accent, color: '#fff' }
+  if (st.id === selectedId.value) {
+    const a = ACCENTS[st.id]
+    return { background: a.deep, borderColor: a.deep, color: '#fff' }
+  }
+  return {}
+}
 const activeStepTitle = computed(() => steps.value.find((s) => s.id === selectedId.value)?.title || '')
 const visualBg = computed(() => {
   const a = activeAccent.value
@@ -330,15 +368,6 @@ function select(id) {
 }
 function close() { closeSetup() }
 
-function markerStyle(s) {
-  if (s.done) return { background: DONE.accent, borderColor: DONE.accent, color: '#fff' }
-  if (s.id === selectedId.value) {
-    const a = ACCENTS[s.id]
-    return { background: a.soft, borderColor: a.accent, color: a.deep }
-  }
-  return {}
-}
-
 function ctaStyle(id) {
   const a = ACCENTS[id]
   return { background: a.deep, boxShadow: `0 4px 12px ${a.accent}55` } // deep: white text on sky/teal accents fails 4.5:1
@@ -357,7 +386,9 @@ watch(phoneStepDone, (done, prev) => {
 function onCta(s) {
   if (s.id === 'worker') downloadInstaller()
   else if (s.id === 'phone') emit('open-phone-forward')
-  else if (s.id === 'portal') { emit('open-add-portal'); close() }
+  else if (s.id === 'portal') { leaveSetupFor('portal'); emit('open-add-portal') }
+  else if (s.id === 'mail') { leaveSetupFor('mail'); emit('open-mail-agent') }
+  else if (s.id === 'maslaka') { leaveSetupFor('maslaka'); emit('open-maslaka') }
   else if (s.id === 'run') { emit('run-automation'); close() }
 }
 
@@ -407,7 +438,12 @@ watch(() => setupState.modalOpen, (open) => {
   if (open) {
     celebrating.value = false
     workerHint.value = ''
-    setup.bootstrap().catch(() => {})
+    const requested = setupState.requestedStep
+    setup.bootstrap().then(() => {
+      // Back from a step done elsewhere (e.g. a portal was just added): land on
+      // the step that is ACTUALLY next, now that the fresh state is in.
+      if (!requested && setupState.modalOpen) selectedId.value = firstIncompleteId.value || selectedId.value
+    }).catch(() => {})
     if (!pollHeld) { setup.startWorkerPoll(); pollHeld = true }
     if (!tickTimer) tickTimer = setInterval(() => { nowTick.value = Date.now() }, 5000)
     selectedId.value = setupState.requestedStep || firstIncompleteId.value || 'phone'
@@ -882,5 +918,108 @@ onBeforeUnmount(() => {
   .spm-worker-dot,
   .spm-install-spinner { animation: none; }
   .spm-step-detail { transition: none; }
+}
+
+.spm-title-brand { color: #0A6664; unicode-bidi: isolate; }   /* two-colour welcome: ink + automation teal */
+
+/* ═══════════ Full-screen welcome: one page per step ═══════════ */
+.spm-overlay { padding: 0; backdrop-filter: none; background: #fff; }
+.spm-card { max-width: none; width: 100vw; height: 100vh; max-height: none; border-radius: 0; box-shadow: none; }
+.spm-layout { height: 100vh; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.spm-main {
+  display: flex; flex-direction: column; min-height: 0;
+  padding: clamp(28px, 4vh, 48px) clamp(28px, 5vw, 72px) clamp(20px, 3vh, 32px);
+  overflow-y: auto;
+}
+.spm-close { top: 20px; left: 20px; }
+
+/* top: kicker + welcome + step bar */
+.spm-top { display: flex; flex-direction: column; gap: 8px; }
+.spm-top .spm-kicker { align-self: flex-start; }
+.spm-welcome { margin: 0; font-size: 20px; font-weight: 800; color: var(--text, #181818); }
+.spm-stepper { display: flex; align-items: center; gap: 0; margin-top: 10px; }
+.spm-dot {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid #E4E1DD; background: #fff; color: #8A8784;
+  font-family: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.spm-dot:hover { transform: scale(1.08); }
+.spm-dot--on { transform: scale(1.12); box-shadow: 0 4px 12px rgba(24, 24, 24, 0.14); }
+.spm-stepper-line { flex: 1; min-width: 10px; max-width: 46px; height: 2px; background: #ECEAE7; }
+.spm-stepper-line--done { background: rgba(46, 132, 74, 0.45); }
+.spm-stepper-count { margin-inline-start: 12px; font-size: 12.5px; font-weight: 700; color: var(--text-tertiary, #706E6B); }
+
+/* the page */
+.spm-page { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 28px 0; min-height: 0; }
+.spm-page-kicker { font-size: 13px; font-weight: 800; letter-spacing: 0.02em; }
+.spm-page-title { margin: 0; font-size: clamp(32px, 3.4vw, 50px); font-weight: 900; line-height: 1.12; letter-spacing: -0.02em; color: var(--text, #181818); }
+.spm-page-title :deep(.st-brand) { font-size: 1em; }
+.spm-page-body { margin: 0; max-width: 46ch; font-size: 16.5px; line-height: 1.65; color: var(--text-secondary, #3E3E3C); }
+.spm-page-content { display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin-top: 6px; }
+.spm-page-content .spm-cta { height: 48px; padding: 0 24px; font-size: 15px; border-radius: 12px; }
+.spm-done {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; margin-top: 6px;
+  padding: 8px 16px; border-radius: 999px; background: #EAF5EE; color: #2E844A; font-size: 14px; font-weight: 800;
+}
+
+/* bottom nav */
+.spm-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid #F0EEEB; }
+.spm-nav-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 10px;
+  border: 1px solid var(--border-subtle, #E5E5E5); background: #fff; color: var(--text, #181818);
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.spm-nav-btn:disabled { opacity: 0.4; cursor: default; }
+.spm-nav-btn--next { background: var(--primary, #181818); color: #fff; border-color: transparent; }
+.spm-nav-btn--next:hover { background: var(--primary-deep, #000); }
+
+/* page transition */
+.spm-page-enter-active, .spm-page-leave-active { transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
+.spm-page-enter-from { opacity: 0; transform: translateX(-24px); }
+.spm-page-leave-to { opacity: 0; transform: translateX(24px); }
+
+/* picture: landing-style step number in its top-right corner */
+.spm-visual-num {
+  position: absolute; top: clamp(20px, 4vh, 44px); right: clamp(20px, 3vw, 44px); z-index: 2;
+  display: flex; align-items: baseline; gap: 6px; direction: ltr; pointer-events: none;
+}
+.spm-visual-num-n {
+  font-family: 'Heebo', sans-serif; font-size: clamp(90px, 11vw, 168px); font-weight: 900; line-height: 0.9;
+  color: rgba(255, 255, 255, 0.14); -webkit-text-stroke: 2px rgba(255, 255, 255, 0.92);
+  text-shadow: 0 6px 30px rgba(24, 24, 24, 0.12); letter-spacing: -0.04em;
+}
+.spm-visual-num-of { font-size: clamp(18px, 1.6vw, 24px); font-weight: 800; color: rgba(255, 255, 255, 0.92); text-shadow: 0 2px 10px rgba(24, 24, 24, 0.18); }
+
+/* ROBOT install instructions — a clean numbered list, not cramped boxes */
+.spm-mini-steps { gap: 0; margin-bottom: 4px; counter-reset: none; }
+.spm-mini-step {
+  position: relative; display: flex; align-items: flex-start; gap: 14px;
+  padding: 0 0 16px; border: none; background: none; box-shadow: none;
+  font-size: 15px; line-height: 1.6; color: var(--text, #181818);
+}
+.spm-mini-step:not(:last-child)::before {
+  content: ''; position: absolute; right: 13px; top: 30px; bottom: 2px; width: 2px;
+  background: linear-gradient(#E9DDF0, #F4EEF7);
+}
+.spm-mini-num {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800;
+}
+.spm-mini-step code {
+  display: inline-block; margin: 0 2px; padding: 1px 9px; border-radius: 6px;
+  background: #F3EAF7; color: #6B2F86; border: 1px solid #E4D3EC;
+  font-family: 'Heebo', sans-serif; font-size: 13px; font-weight: 700; direction: rtl;
+}
+
+/* phones: picture becomes a banner on top */
+@media (max-width: 760px) {
+  .spm-layout { grid-template-columns: 1fr; grid-template-rows: 34vh minmax(0, 1fr); height: 100vh; }
+  .spm-visual-col { order: -1; }
+  .spm-main { overflow-y: auto; padding: 20px; }
+  .spm-page { padding: 18px 0; justify-content: flex-start; }
+  .spm-page-title { font-size: 30px; }
 }
 </style>

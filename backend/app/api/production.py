@@ -495,6 +495,11 @@ async def upload_production(
     if not file.filename:
         raise HTTPException(status_code=400, detail="לא סופק קובץ")
 
+    # Monthly cycle: manual production is accepted only in the cycle's window,
+    # and is ALWAYS filed under the cycle's period (M-1).
+    from app.api.cycle import manual_production_window
+    cycle_period = await manual_production_window(db, user)
+
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ("xlsx", "xls"):
         raise HTTPException(status_code=400, detail="רק קבצי xlsx/xls נתמכים")
@@ -557,6 +562,8 @@ async def upload_production(
     from app.services.parser_service import detect_period_month
     from datetime import datetime as _dt
     detected_period = detect_period_month(file.filename, result.get("records"), uploaded_at=_dt.utcnow())
+    if cycle_period is not None:
+        detected_period = cycle_period
 
     upload = FileUpload(
         user_id=user.id,
@@ -588,6 +595,10 @@ async def upload_production(
     # Create portal snapshots and production summary in background (non-blocking)
     background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
     background_tasks.add_task(_compute_summary_bg, user.id, upload.id)
+    if cycle_period is not None:
+        # Monthly cycle: the cycle's נפרעים are already in — compare now.
+        from app.services.cycle_service import compare_now
+        background_tasks.add_task(compare_now, user.id)
 
     companies = await _get_companies_for_upload(db, upload.id)
 

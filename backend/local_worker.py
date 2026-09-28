@@ -706,10 +706,14 @@ async def _reconcile_orphans(uid):
                        PortalRun.started_at < now - timedelta(minutes=10))
                 .values(status="failed", error_message=msg, finished_at=now)
             )
+            # A PENDING cycle batch is the month's work waiting for exactly this
+            # worker to come online (monthly cycle) — claim it, never reap it.
             res = await db.execute(
                 update(PortalRunBatch)
                 .where(PortalRunBatch.user_id == uid,
-                       PortalRunBatch.status.in_(["pending", "running"]))
+                       PortalRunBatch.status.in_(["pending", "running"]),
+                       ~((PortalRunBatch.trigger == "cycle")
+                         & (PortalRunBatch.status == "pending")))
                 .values(status="failed", error_message=msg, finished_at=now,
                         current_run_id=None)
                 .returning(PortalRunBatch.id)
@@ -736,7 +740,10 @@ async def _claim_pending_batch(uid):
         res = await db.execute(
             update(PortalRunBatch)
             .where(PortalRunBatch.id == bid, PortalRunBatch.status == "pending")
-            .values(status="running").returning(PortalRunBatch.id)
+            # started_at = CLAIM time: a cycle batch may have waited days for
+            # this worker, and the orphan reaper ages a running batch from it.
+            .values(status="running", started_at=datetime.utcnow())
+            .returning(PortalRunBatch.id)
         )
         await db.commit()
         return res.scalar_one_or_none()

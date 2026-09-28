@@ -421,6 +421,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
+import { resumeSetupIfAway } from '../../utils/setupState.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 
 const idNumber = ref('')
@@ -484,6 +485,8 @@ async function loadAssociation() {
     const { data } = await api.get('/maslaka/association')
     assoc.value = data
     assocError.value = ''
+    // Sent here by the setup wizard and the שיוך form is now in → go back.
+    if (['submitted', 'approved'].includes(data?.status)) resumeSetupIfAway('maslaka')
   } catch {
     // Fail closed: if we cannot confirm the association, the ask form stays off.
     assoc.value = null

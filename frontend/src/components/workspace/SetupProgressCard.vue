@@ -27,7 +27,7 @@
         <p v-if="!celebrating" class="spc-next">
           <span>הצעד הבא:</span>
           <span class="spc-next-chip" :style="{ background: nextAccent.soft, color: nextAccent.deep }">
-            <span class="spc-next-dot" :style="{ background: nextAccent.accent }"></span>{{ nextStepTitle }}
+            <span class="spc-next-dot" :style="{ background: nextAccent.accent }"></span><StepTitle :title="nextStepTitle" />
           </span>
         </p>
       </div>
@@ -48,6 +48,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import StepTitle from './StepTitle.vue'
 import { useSetupPipeline, SETUP_ACCENTS } from '../../composables/useSetupPipeline.js'
 import { openSetup } from '../../utils/setupState.js'
 

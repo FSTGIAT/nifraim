@@ -1023,3 +1023,74 @@ name → the Transporter uploads one and **silently drops the rest**.
 *Regenerate this map when the two-plane topology, the OTP routing, the mail-intake
 routing, or the comparison/merge selection logic changes — those are the parts a new
 session cannot safely infer from reading one file.*
+
+## 13. Monthly cycle (מחזור) — the ONLY trigger of portal automation
+
+Since 2026-09-28 agents never run automation by hand. `services/cycle_service.py` is the
+whole domain; `GET /api/cycle/status` is the single source for every cycle-aware UI.
+
+```mermaid
+flowchart RL
+  S[signup month M] --> L[Production tab LOCKED<br/>rest of app open]
+  L --> C1[21st of M+1 · 06:00 IL<br/>cycle batch queued pending → worker]
+  C1 --> N[נפרעים of M]
+  SH[שיוך SUBMITTED before 27th] --> MS[15th next month<br/>מסלקה 2100 production]
+  N --> CMP{production for period?}
+  MS --> CMP
+  U[manual upload — only after the cycle batch ended,<br/>filed under the cycle period] --> CMP
+  CMP --> R[comparison_ready notification]
+```
+
+- **Cycle** = `CYCLE_DAY` (21) at `CYCLE_HOUR` (06:00 Asia/Jerusalem). Its period is the month
+  **before** the cycle month (21/10 → September). Hourly `run_cycle_tick` (scheduler, :00) queues
+  and catches up idempotently; the partial unique index `(user_id, cycle_period) WHERE trigger='cycle'`
+  makes a double fire a no-op.
+- **First cycle = the 21st of the month AFTER signup**, whatever the day (19/9 → 21/10). That is the
+  month the first מסלקה production describes; 21/9 would fetch August נפרעים with nothing to match.
+- **מסלקה timing**: שיוך SUBMITTED before `MASLAKA_CUTOFF_DAY` (27) of M → first production on the
+  15th of M+1, else M+2. A cycle whose production landed by its month's 15th is `production_source=maslaka`
+  (no upload); otherwise `manual`.
+- **`CYCLE_LAUNCH` ("2026-10")** — cycles before it are never queued. Without it, deploying would fire
+  last month's cycle for every existing user at once. Pre-launch users keep legacy upload behaviour.
+
+### Invariants
+- **No manual run for agents.** `POST /batches/run` and `/credentials/{id}/run` are admin-only
+  (`_require_manual_run_allowed`); the UI hides every run button unless `user.is_admin`.
+- **A cycle batch never runs inline on Railway.** It is inserted `pending`; only the worker claims it.
+- **A PENDING cycle batch is never reaped** — not by `_recover_orphan_batches` (API) and not by the
+  worker's startup `_reconcile_orphans`. It is the month's work waiting for the worker. The claim sets
+  `started_at = now` so the running-age reaper counts from the claim, not the (days-old) queue time.
+  ⚠️ The worker-side half ships in the BUNDLE — every worker must self-update before a cycle fires.
+- **Manual production is gated server-side** (`api/cycle.manual_production_window`): 403 +
+  `X-Cycle-Gate: locked|maslaka|waiting`; when allowed, the upload's `period_month` is FORCED to the cycle
+  period. `/api/uploads` checks after parsing (uncommitted ingest → rollback on refusal).
+- **Only the Production tab locks**, never the app. Admins are never locked.
+- **Notifications** (`cycle_notifications`, UNIQUE user+kind+period) are emitted only by the server tick
+  (the worker has no SMTP): `worker_waiting`, `upload_production`, `cycle_failed`, `comparison_ready`.
+  Each is emailed once (Resend) and shown once in `CycleNotificationModal`.
+- Until `CYCLE_LAUNCH`, existing unlocked agents keep the legacy manual run (`cycle_service.manual_run_allowed`, exposed as `manual_run_allowed` on the status); agents who already have production are never locked.
+- The frontend's `hydrateBatch` ignores `pending` batches (a waiting cycle batch is not a live run);
+  `stores/cycle.js` hands it to the progress widget when the worker flips it to `running`.
+
+UI: `CycleLockedState.vue` (locked tab, Remotion `CycleCountdown` countdown + hand-drawn strip),
+`CycleEmotionClock.vue` (home, ≥1360px: a line-drawn alarm clock right of the cards — live countdown in the dial read like a clock (hours left, seconds right), month-progress arc, subtle ring; mood = motion only), `CycleRailIcon.vue` (small alarm clock in the top-right corner for tabs/smaller screens). The notification bell lives in the `HomeSidebar` rail (`:show-bell`), falling back to the corner only where the rail is hidden or ≤720px tall; exactly one bell is mounted because it owns the store poll → popover `CycleHomeTimer.vue` (Remotion `CycleWidget` ring + month rail), the cycle card in
+`PortalRunAllBar.vue`, the `maslaka` + "first cycle" steps in `useSetupPipeline.js`.
+Tests: `backend/tests/test_cycle_service.py` (date math for every scenario).
+
+## 14. Agreement requests — the wizard emails insurers for the commission agreement
+
+`services/agreement_requests.py` + `/api/agreement-requests` + `AgreementRequestsPanel.vue` (inside the
+setup wizard's "מדף ההסכמים" step — no navigation away).
+
+- Companies = brands of the agent's portal logins (`PORTAL_META`) + their production book
+  (`receiving_company` → `company_stem`) + existing `company_contacts`; a brand-new agent gets
+  `COMMON_INSURERS`. Identity is `company_stem`, never the display string.
+- Sending goes FROM the agent's mailbox via `mail_intake.send.send_as_agent` — **Gmail app-password
+  only today** (Outlook consent is Mail.Read). The panel says so instead of offering a dead button.
+  Each send upserts the company contact and stores `sent_message_id` on `agreement_requests`
+  (one row per user+company).
+- Follow-up: `run_agreement_request_poll` (every 15 min, 45-day window) → `find_messages_matching`
+  on the contact addresses; a reply = In-Reply-To/References ∋ our Message-ID, or from the contact
+  after `sent_at`. PDF attachments are loaded by calling `api.ai_documents.upload_document`
+  itself (rates_only) — the exact manual-shelf path (sha dedupe, Claude extraction, rate upsert,
+  race handling). Status: sent → replied (no PDF) | imported. Non-PDF replies are not imported.

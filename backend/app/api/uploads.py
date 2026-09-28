@@ -48,17 +48,39 @@ async def upload_file(
             content=content,
             filename=file.filename,
             password=password,
+            commit=False,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
+    # Monthly cycle: a file that turned out to be PRODUCTION is held to the same
+    # window as /production/upload. Checked after parsing (only then do we know
+    # the category); the ingest is uncommitted, so a refusal rolls it back whole.
+    cycle_period = None
+    if upload.file_category == "production":
+        from app.api.cycle import manual_production_window
+        try:
+            cycle_period = await manual_production_window(db, user)
+        except HTTPException:
+            await db.rollback()
+            raise
+        if cycle_period is not None:
+            upload.period_month = cycle_period
+    await db.commit()
+    await db.refresh(upload)
+
     # Fire downstream hooks. Production → snapshot + summary; commission →
     # auto-comparison against the active production. Manual commission uploads
     # used to skip this — agents had to navigate to the Comparison tab to see
     # results; this brings parity with the portal-automation runner.
     schedule_post_ingest(user.id, upload.id, upload.file_category)
+    if upload.file_category == "production" and cycle_period is not None:
+        # Monthly cycle: the cycle's נפרעים are already in — compare now.
+        import asyncio
+        from app.services.cycle_service import compare_now
+        asyncio.create_task(compare_now(user.id))
 
     return UploadOut(
         id=str(upload.id),

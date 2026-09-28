@@ -496,6 +496,17 @@ territory. The short version, all measured:
 
 ---
 
+## Monthly Cycle (מחזור) — automation runs on the 21st, never by hand
+
+On the 21st at 06:00 (Israel) the server queues every paid user's cycle batch `pending` for their
+worker, and it downloads נפרעים for the **previous month**. There is **no manual run button** for agents
+(admin/support only). A new user's **first cycle is the 21st of the month after signup**, and until then
+**only the Production tab is locked**. Production comes from a manual upload (only after the cycle batch
+ended, forced to the cycle period) until the מסלקה feed is live: a שיוך submitted before the 27th gives
+production on the 15th of the next month. A pending cycle batch is **never orphan-reaped**. It waits for
+the worker. `CYCLE_LAUNCH` stops the system from firing past cycles on deploy.
+**See `docs/ARCHITECTURE.md` §13.** Code: `services/cycle_service.py`, `api/cycle.py`, `stores/cycle.js`.
+
 ## Local Worker & Self-Update (`local-worker` skill)
 
 Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the

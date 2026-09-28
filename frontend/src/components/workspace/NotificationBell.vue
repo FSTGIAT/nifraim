@@ -22,7 +22,7 @@
     <!-- Panel teleported to body so it always sits above page chrome -->
     <Teleport to="body">
       <Transition name="bell-panel">
-        <div v-if="open" class="bell-panel" role="dialog" aria-label="התראות">
+        <div v-if="open" class="bell-panel" :class="{ 'bell-panel--rail': placement === 'rail' }" role="dialog" aria-label="התראות">
           <header class="bp-head">
             <div class="bp-titles">
               <span class="bp-title">
@@ -181,6 +181,11 @@ function paintFor(alert) {
   return SEVERITY_PAINT[alert.severity] || SEVERITY_PAINT.warning
 }
 
+const props = defineProps({
+  // 'corner' = the old fixed top-right spot; 'rail' = inside HomeSidebar
+  // (left edge), so the panel opens beside the rail instead.
+  placement: { type: String, default: 'corner' },
+})
 const store = useNotificationsStore()
 const open = ref(false)
 const rootRef = ref(null)
@@ -508,6 +513,14 @@ onBeforeUnmount(() => {
   font-family: 'Heebo', sans-serif;
   direction: rtl;
 }
+.bell-panel--rail {
+  inset-inline-start: auto;
+  left: 112px;           /* just right of the sidebar rail (left edge) */
+  top: 44px;
+  max-height: calc(100vh - 88px);
+  transform-origin: left top;
+}
+@media (max-width: 1180px) { .bell-panel--rail { left: 92px; } }
 @media (max-width: 720px) {
   .bell-panel {
     inset-inline-start: 8px;

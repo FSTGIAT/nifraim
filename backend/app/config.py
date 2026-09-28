@@ -90,6 +90,21 @@ class Settings(BaseSettings):
     # shipping a half-specified request at a regulator. Flip to True ONLY when the
     # vault is live and MASLAKA_AGENT_NUMBER / MASLAKA_AGENT_ID are set.
     MASLAKA_ENABLED: bool = False                  # N → Y when the מסלקה grants access
+    # ── Monthly cycle (מחזור) ─────────────────────────────────────────────
+    # The נפרעים cycle fires on CYCLE_DAY at CYCLE_HOUR (Asia/Jerusalem) for every
+    # paid user: a PortalRunBatch(trigger='cycle') is queued for their worker and
+    # downloads reporting month M-1. There is NO manual run button.
+    # A new user's first cycle is the 21st of the month AFTER signup. A שיוך form
+    # SUBMITTED before MASLAKA_CUTOFF_DAY of month M makes the first automatic
+    # מסלקה production land on MASLAKA_DAY of month M+1 (on/after it: M+2).
+    # The first cycle the system ever fires ("YYYY-MM"). Earlier cycles are never
+    # queued — without it, deploying would immediately fire last month's cycle
+    # for every existing user. Before it, existing users keep today's behaviour.
+    CYCLE_LAUNCH: str = "2026-10"
+    CYCLE_DAY: int = 21
+    CYCLE_HOUR: int = 6
+    MASLAKA_DAY: int = 15
+    MASLAKA_CUTOFF_DAY: int = 27
     # WHICH HOST AM I? True only on the Maslaka Gateway VM — the Israeli Windows box
     # whose folders the מסלקה Transporter syncs. It is NOT a feature flag: setting it
     # on Railway makes the cloud write outbox XML to a container disk the Transporter

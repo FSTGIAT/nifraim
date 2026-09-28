@@ -135,6 +135,10 @@ async def _recover_orphan_batches(db: AsyncSession, user_id: uuid.UUID) -> int:
             PortalRunBatch.user_id == user_id,
             PortalRunBatch.status.in_(ACTIVE_BATCH_STATUSES),
             PortalRunBatch.started_at < cutoff,
+            # A PENDING cycle batch is not an orphan — it is the month's work
+            # waiting for the agent's worker to come online (monthly cycle
+            # invariant). Only a claimed (running) one can be abandoned.
+            ~((PortalRunBatch.trigger == "cycle") & (PortalRunBatch.status == "pending")),
         )
         .values(status="failed", current_run_id=None, finished_at=now,
                 error_message="בוטל אוטומטית — ההרצה לא הסתיימה (העובד כנראה נותק)")
@@ -445,6 +449,7 @@ async def trigger_run(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    await _require_manual_run_allowed(db, user)
     cred_result = await db.execute(
         select(PortalCredential).where(
             PortalCredential.id == uuid.UUID(cred_id),
@@ -519,6 +524,22 @@ async def trigger_run(
 ACTIVE_BATCH_STATUSES = {"pending", "running"}
 
 
+async def _require_manual_run_allowed(db: AsyncSession, user: User) -> None:
+    """Monthly cycle invariant: agents never trigger automation by hand — the
+    cycle (services/cycle_service.py) queues it on the 21st. Only support
+    (admins) may run on demand — plus, until CYCLE_LAUNCH, existing agents
+    keep the legacy button (cycle_service.manual_run_allowed)."""
+    from app.services import cycle_service
+    if user.is_admin:
+        return
+    state = await cycle_service.user_cycle_state(db, user)
+    if not cycle_service.manual_run_allowed(user, state):
+        raise HTTPException(
+            status_code=403,
+            detail="ההורדה האוטומטית רצה במחזור החודשי — אין צורך להפעיל אותה ידנית",
+        )
+
+
 @router.post("/batches/run", response_model=BatchStartOut)
 async def run_all_portals(
     db: AsyncSession = Depends(get_db),
@@ -527,6 +548,7 @@ async def run_all_portals(
     """Start a "run all portals" batch: every active credential runs
     sequentially, then the downloads are aggregated into one merged production
     file + one merged נפרעים file and the comparison runs automatically."""
+    await _require_manual_run_allowed(db, user)
     # Self-heal first: an "active" batch/run whose worker died (re-exec, crash,
     # reboot) would otherwise block this user forever ("הורדה אוטומטית כבר פעילה")
     # with no way out. Auto-fail orphans so the user never has to untangle a stuck
@@ -566,6 +588,7 @@ async def run_all_portals(
     batch = PortalRunBatch(
         user_id=user.id,
         status="pending",
+        trigger="admin",
         started_at=datetime.utcnow(),
     )
     db.add(batch)

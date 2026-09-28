@@ -10,11 +10,24 @@
         <span class="hero-kicker">פורטלי חברות הביטוח</span>
         <h2 class="hero-title hero-wordmark"><span dir="ltr">Nifraim</span> <span class="hero-wordmark-acc">אוטומציה</span></h2>
         <p class="hero-sub">
-          <template v-if="activeCredCount">כל החברות במקום אחד — {{ heroSubText }}, בלחיצה אחת מורידים ומשווים את הכל.</template>
+          <template v-if="activeCredCount">כל החברות במקום אחד — {{ heroSubText }}. כל חודש ב-21 הכל יורד ומושווה לבד.</template>
           <template v-else>מחברים פורטל אחד, וקוד האימות מגיע לבד מהטלפון — מכאן ההורדות רצות בשבילכם.</template>
         </p>
+        <!-- Monthly cycle: THE way downloads happen — no run button for agents. -->
+        <div v-if="cycle.status" class="cycle-card" :class="'cycle-card--' + cycleTone" role="status">
+          <span class="cycle-icon" aria-hidden="true">
+            <svg v-if="cycleTone === 'wait'" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            <span v-else-if="cycleTone === 'live'" class="cycle-spin"></span>
+            <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </span>
+          <div class="cycle-text">
+            <strong>{{ cycleTitle }}</strong>
+            <span>{{ cycleSub }}</span>
+          </div>
+        </div>
         <div class="hero-actions">
           <button
+            v-if="canRunManually"
             class="hero-run"
             :disabled="!store.credentials.length || anyRunning || !!store.activeBatchId"
             :title="store.credentials.length ? undefined : 'הוסיפו פורטל קודם — אין עדיין ממה להוריד'"
@@ -24,7 +37,7 @@
                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
             </svg>
-            <span>הורדה אוטומטית מכל החברות</span>
+            <span>{{ auth.user?.is_admin && !cycle.status?.prelaunch ? 'הרצה ידנית (תמיכה)' : 'הורדה אוטומטית מכל החברות' }}</span>
           </button>
           <button class="hero-add" type="button" @click="$emit('add')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -61,9 +74,42 @@ import { computed, ref, watch } from 'vue'
 import AutomationHeroLoopIsland from './AutomationHeroLoopIsland.vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { brandFor, brandForLabel } from '../../utils/companyBrand.js'
+import { useAuthStore } from '../../stores/auth.js'
+import { useCycleStore, monthName, shortDate } from '../../stores/cycle.js'
 
 const emit = defineEmits(['view-results', 'add'])
 const store = usePortalAutomationStore()
+const auth = useAuthStore()
+const cycle = useCycleStore()
+cycle.fetchStatus()
+const canRunManually = computed(() => !!auth.user?.is_admin || !!cycle.status?.manual_run_allowed)
+
+// ── Monthly cycle card ──
+const cycleTone = computed(() => {
+  const st = cycle.status
+  if (!st) return 'next'
+  if (st.worker_waiting) return 'wait'
+  if (st.cycle_batch_status === 'running' || st.cycle_batch_status === 'pending') return 'live'
+  return 'next'
+})
+const cycleTitle = computed(() => {
+  const st = cycle.status
+  if (!st) return ''
+  if (st.worker_waiting) return `המחזור של ${st.current_period_label} ממתין למחשב`
+  if (cycleTone.value === 'live') return `המחזור של ${st.current_period_label} רץ עכשיו`
+  const at = st.locked ? st.first_cycle_at : st.next_cycle_at
+  return `${st.locked ? 'המחזור הראשון' : 'המחזור הבא'}: ${shortDate(at)} בשעה 06:00`
+})
+const cycleSub = computed(() => {
+  const st = cycle.status
+  if (!st) return ''
+  if (st.worker_waiting) return 'ההורדה תתחיל לבד ברגע שהמחשב יודלק ויתחבר — אין צורך לעשות דבר מעבר לזה.'
+  if (cycleTone.value === 'live') return 'הדוחות יורדים מכל החברות, בלי ללחוץ על כלום.'
+  const period = st.locked
+    ? monthName(new Date(new Date(st.first_cycle_at).getFullYear(), new Date(st.first_cycle_at).getMonth() - 1, 1).toISOString())
+    : monthName(st.next_period)
+  return `הנפרעים של ${period} יורדים לבד מכל החברות — רק שהמחשב יהיה דלוק.`
+})
 
 const batchDone = ref(null)
 const anyRunning = computed(() => !!store.activeRunId)
@@ -218,6 +264,30 @@ watch(() => store.batchJustFinished, (b) => {
 }
 .hero-add:hover { background: #fff; border-color: var(--chart-3); transform: translateY(-1px); }
 .hero-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
+
+/* ───── Monthly cycle card ───── */
+.cycle-card {
+  display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 16px;
+  align-self: flex-start; max-width: 100%;
+  border-radius: 14px; background: var(--tab-automation-wash, rgba(14, 140, 138, 0.08));
+  border: 1px solid color-mix(in srgb, var(--tab-automation, #0E8C8A) 28%, transparent);
+}
+.cycle-card--wait { background: var(--amber-light, #FBF4DC); border-color: color-mix(in srgb, var(--amber, #8A6300) 30%, transparent); }
+.cycle-icon {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: #0A6664;
+}
+.cycle-card--wait .cycle-icon { color: var(--amber, #8A6300); }
+.cycle-spin {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2.5px solid rgba(10, 102, 100, 0.25); border-top-color: #0A6664;
+  animation: batch-spin 0.8s linear infinite;
+}
+.cycle-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cycle-text strong { font-size: 15px; font-weight: 800; color: #0A6664; }
+.cycle-card--wait .cycle-text strong { color: var(--amber, #8A6300); }
+.cycle-text span { font-size: 13px; line-height: 1.5; color: var(--text-secondary, #6b7280); }
 
 /* ───── Batch progress ───── */
 .batch-progress {

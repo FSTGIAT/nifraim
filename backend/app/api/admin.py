@@ -263,3 +263,15 @@ async def commission_path_diagnostic(
             "If cached_per_category contains an entry whose total_commission matches the AI's quoted figure, that's the AI's source.",
         ],
     }
+
+
+@router.get("/operations")
+async def operations(
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin operations dashboard: monthly cycle per worker, worker liveness,
+    Mail Agent, מסלקה link + downloads, agreement requests — every agent."""
+    from app.services.admin_operations import operations_overview
+    return await operations_overview(db)
+

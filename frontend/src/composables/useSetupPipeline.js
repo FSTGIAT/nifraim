@@ -1,5 +1,8 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
+import { useCycleStore, shortDate } from '../stores/cycle.js'
+import { useMailboxStore } from '../stores/mailbox.js'
+import api from '../api/client.js'
 import { useNotificationsStore } from '../stores/notifications.js'
 import { getUserFlag, setUserFlag } from '../utils/userFlags.js'
 import { CHART_PALETTE } from '../utils/chartPalette.js'
@@ -32,8 +35,17 @@ export const SETUP_ACCENTS = {
   worker: { accent: CHART_PALETTE[3], deep: '#6C2E87', soft: '#F1E9F5', tint: '#FAF8FC' },  // purple
   phone:  { accent: CHART_PALETTE[1], deep: '#35719A', soft: '#EAF3F9', tint: '#F8FBFD' },  // sky (= --tab-portal-ink)
   portal: { accent: CHART_PALETTE[5], deep: '#B0245A', soft: '#FAE7ED', tint: '#FDF7F9' },  // magenta
+  mail:    { accent: '#4E9DD0', deep: '#2F6C94', soft: '#E8F1F8', tint: '#F7FAFD' },        // sky (= --tab-mail)
+  agreements: { accent: '#8E44AD', deep: '#6B2F86', soft: '#F3EAF7', tint: '#FBF8FD' },   // purple (= --tab-commission)
+  maslaka: { accent: '#2C5F6B', deep: '#2C5F6B', soft: '#E4EDEF', tint: '#F6F9FA' },       // deep teal (= --tab-maslaka)
   run:    { accent: CHART_PALETTE[11], deep: '#0A6664', soft: '#E2F1F1', tint: '#F5FAFA' }, // teal (= --tab-automation)
 }
+
+// How many agreements the agent has on the shelf (documents + rate rows).
+// Module-level so the modal, the home card and the locked tab share it.
+const agreementsCount = ref(null)
+// Agreement requests already emailed to insurers (the wizard's in-place flow).
+const agreementRequestsSent = ref(0)
 
 // Worker heartbeat poll is shared (modal + card may both be mounted).
 let pollTimer = null
@@ -42,6 +54,8 @@ let pollRefs = 0
 export function useSetupPipeline() {
   const store = usePortalAutomationStore()
   const notifications = useNotificationsStore()
+  const cycle = useCycleStore()
+  const mailbox = useMailboxStore()
 
   // "Done" = ever achieved, not live state: a veteran whose PC is off, or whose
   // last batch failed, has still finished setup and must not be re-onboarded.
@@ -51,41 +65,79 @@ export function useSetupPipeline() {
   const runDone = computed(() =>
     ['success', 'partial'].includes(store.latestBatch?.status) || !!store.setupStatus?.has_successful_run,
   )
+  const mailDone = computed(() => !!(mailbox.config && mailbox.config.is_active))
+  // Done once agreements are on the shelf OR the requests went out (the
+  // replies load by themselves).
+  const agreementsDone = computed(() => (agreementsCount.value || 0) > 0 || agreementRequestsSent.value > 0)
+  // "Signed" = the שיוך form was SUBMITTED (approval may come later).
+  const maslakaDone = computed(() => ['submitted', 'approved'].includes(cycle.status?.maslaka_status))
+  const firstCycleLabel = computed(() => {
+    const at = cycle.status?.first_cycle_at
+    return at ? `${shortDate(at)} בשעה 06:00` : 'ה-21 בחודש בשעה 06:00'
+  })
 
   // Phone comes first: the installer embeds the phone-forward token, so the
   // worker step can't be completed until the phone step is.
   const steps = computed(() => [
     {
       id: 'phone',
-      title: 'חברו את הטלפון',
-      body: 'הטלפון מעביר את קוד האימות (SMS) אוטומטית — בלי הקלדה. הגדרה חד-פעמית.',
+      title: 'חברו את Nifraim Sms App',
+      body: 'קבלת OTP מחברות הביטוח.',
       cta: 'חבר את הטלפון',
       hint: '',
       done: phoneDone.value,
     },
     {
       id: 'worker',
-      title: 'התקינו את המחשב',
-      body: 'התקנה חד-פעמית: ההורדות ירוצו ישירות מהמחשב שלך (כתובת IP ישראלית), וכל החברות יעבדו.',
+      title: 'התקינו את Nifraim ROBOT',
+      body: '',
       cta: 'הורד מתקין',
       hint: 'לחצו פעמיים על הקובץ שירד — תוך כ-20 שניות המחוון כאן יהפוך ל"מחובר".',
       done: workerDone.value,
     },
     {
+      id: 'mail',
+      title: 'חברו את Nifraim Mail Agent',
+      body: 'קורא את המיילים מלקוחות ומחברות שאישרתם, מנסח תשובות מתוך הנתונים שלכם — ושולח באישורכם.',
+      cta: 'פתיחת Mail Agent',
+      hint: '',
+      done: mailDone.value,
+    },
+    {
+      id: 'agreements',
+      title: 'מדף ההסכמים',
+      body: 'ההסכמים מגיעים אליכם — לבד.',
+      cta: 'העלאת הסכמים',
+      hint: '',
+      done: agreementsDone.value,
+    },
+    {
+      id: 'maslaka',
+      title: 'שיוך למסלקה',
+      body: 'טופס חד-פעמי שמחבר אותך למסלקה הפנסיונית. טופס שמוגש עד ה-26 בחודש — הפרודוקציה מגיעה לבד כבר ב-15 בחודש הבא.',
+      cta: 'מילוי טופס שיוך',
+      hint: '',
+      done: maslakaDone.value,
+    },
+    {
       id: 'portal',
       title: 'הוסיפו פורטל ראשון',
-      body: 'שם משתמש וסיסמה לפורטל הסוכן של חברת הביטוח — מוסיפים פעם אחת, ומכאן הכל אוטומטי.',
+      body: 'שם משתמש וסיסמה לפורטל הסוכן של חברת הביטוח.',
       cta: 'הוסף פורטל',
       hint: '',
       done: credsDone.value,
     },
     {
+      // Monthly cycle: there is no "run now" — the first cycle runs by itself.
       id: 'run',
-      title: 'הריצו הורדה אוטומטית',
-      body: 'לחיצה אחת מורידה את הדוחות מכל החברות ומאחדת אותם לשני קבצים: פרודוקציה + נפרעים.',
-      cta: 'הרץ עכשיו',
+      title: 'המחזור הראשון',
+      body: `ב-${firstCycleLabel.value} Nifraim מוריד לבד את הנפרעים של החודש הקודם מכל החברות. אין צורך ללחוץ על כלום — רק שהמחשב יהיה דלוק.`,
+      cta: 'לצפייה באוטומציה',
       hint: '',
-      done: runDone.value,
+      // Nothing to press: once every other step is done the first cycle is
+      // simply SCHEDULED — count it, or the wizard would reopen for weeks.
+      done: runDone.value || (phoneDone.value && workerDone.value && credsDone.value
+        && mailDone.value && agreementsDone.value && maslakaDone.value),
     },
   ])
 
@@ -110,7 +162,23 @@ export function useSetupPipeline() {
       store.fetchLatestBatch().catch(() => {}),
       store.fetchWorkerStatus().catch(() => {}),
       store.fetchSetupStatus().catch(() => {}),
+      cycle.fetchStatus().catch(() => {}),
+      mailbox.fetchConfig().catch(() => {}),
+      fetchAgreementsCount(),
     ])
+  }
+
+  async function fetchAgreementsCount() {
+    try {
+      const [docs, rates, reqs] = await Promise.all([
+        api.get('/ai/documents').catch(() => ({ data: [] })),
+        api.get('/commission-rates').catch(() => ({ data: [] })),
+        api.get('/agreement-requests').catch(() => ({ data: null })),
+      ])
+      agreementRequestsSent.value = reqs.data?.sent_count || 0
+      const n = (d) => (Array.isArray(d) ? d.length : Array.isArray(d?.items) ? d.items.length : 0)
+      agreementsCount.value = n(docs.data) + n(rates.data)
+    } catch (_) { /* leave unknown */ }
   }
 
   function startWorkerPoll() {
@@ -168,5 +236,6 @@ export function useSetupPipeline() {
     pinReminder,
     markCompleted,
     closeCard,
+    refreshAgreements: fetchAgreementsCount,
   }
 }

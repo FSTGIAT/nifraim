@@ -178,60 +178,6 @@
                   </div>
                 </div>
 
-                <!-- Advanced: company SMS templates (progressive disclosure) -->
-                <button class="pf-tpl-toggle" @click="showTemplates = !showTemplates">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :style="{ transform: showTemplates ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }"><polyline points="9 18 15 12 9 6"/></svg>
-                  תבניות זיהוי SMS של חברות
-                  <span class="pf-tpl-count">{{ templates.length }}</span>
-                </button>
-
-                <div v-if="showTemplates" class="pf-tpl-body">
-                  <p class="pf-tpl-intro">
-                    כך האפליקציה יודעת אילו הודעות להעביר. הדביקו הודעת SMS אמיתית של חברה — נבנה ממנה תבנית.
-                    הודעה עם קוד שלא תואמת אף תבנית <strong>תועבר בכל זאת</strong> (ברירת מחדל בטוחה).
-                    תבנית "חסימה" עוצרת הודעה אישית עם קוד מלהישלח.
-                  </p>
-
-                  <div class="pf-tpl-form">
-                    <div class="pf-tpl-form-row">
-                      <input v-model="tplForm.company_name" class="pf-tpl-input" placeholder="שם חברה (למשל מגדל)" />
-                      <label class="pf-tpl-block"><input type="checkbox" v-model="tplForm.is_block" /> חסימה (אל תעביר)</label>
-                    </div>
-                    <input v-model="tplForm.example" class="pf-tpl-input ltr-number" placeholder="הדביקו הודעת SMS אמיתית, למשל: קוד האימות שלך במגדל 482917" @input="onExampleInput" />
-                    <input v-model="tplForm.pattern" class="pf-tpl-input pf-tpl-pattern ltr-number" placeholder="תבנית (regex) — נוצרת אוטומטית, ניתן לערוך" />
-                    <div class="pf-tpl-form-actions">
-                      <button class="pf-btn pf-btn--primary" :style="ctaStyle" :disabled="tplBusy || !tplForm.company_name || !tplForm.pattern" @click="saveTemplate">
-                        {{ editingTplId ? 'עדכן' : 'הוסף תבנית' }}
-                      </button>
-                      <button v-if="editingTplId" class="pf-linkbtn" @click="resetTplForm">ביטול</button>
-                      <button v-if="!templates.length" class="pf-linkbtn" :disabled="tplBusy" @click="seedTemplates">טען תבניות ברירת מחדל</button>
-                    </div>
-                  </div>
-
-                  <div class="pf-tpl-testbox">
-                    <input v-model="tplTest" class="pf-tpl-input ltr-number" placeholder="בדקו הודעה: יישלח / לא יישלח" />
-                    <span v-if="tplTest" class="pf-tpl-verdict" :class="{ ok: tplVerdict.forward, no: !tplVerdict.forward }">
-                      {{ tplVerdict.forward ? 'יישלח' : 'לא יישלח' }} · {{ tplVerdict.reason }}
-                    </span>
-                  </div>
-
-                  <ul class="pf-tpl-list">
-                    <li v-for="t in templates" :key="t.id" class="pf-tpl-item">
-                      <span class="pf-tpl-badge" :class="t.is_block ? 'block' : 'allow'">{{ t.is_block ? 'חסימה' : 'העברה' }}</span>
-                      <div class="pf-tpl-item-main">
-                        <div class="pf-tpl-item-name">{{ t.company_name }}</div>
-                        <div class="pf-tpl-item-pattern ltr-number">{{ t.pattern }}</div>
-                      </div>
-                      <button class="pf-tpl-icon" title="ערוך" @click="editTemplate(t)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      </button>
-                      <button class="pf-tpl-icon pf-tpl-icon--danger" title="מחק" @click="deleteTemplate(t)">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                      </button>
-                    </li>
-                    <li v-if="!templates.length" class="pf-tpl-empty">אין תבניות עדיין — הוסיפו אחת או טענו ברירת מחדל.</li>
-                  </ul>
-                </div>
               </section>
 
               <!-- ── Footer navigation ── -->
@@ -304,7 +250,7 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import api from '../../api/client.js'
 
@@ -382,14 +328,6 @@ const playInstallUrl = computed(() => {
 const qrSrc = (data) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data)}`
 
-// ---- Company SMS templates ----
-const showTemplates = ref(false)
-const templates = ref([])
-const tplBusy = ref(false)
-const editingTplId = ref(null)
-const tplForm = reactive({ company_name: '', example: '', pattern: '', is_block: false })
-const tplTest = ref('')
-
 watch(
   () => props.open,
   async (v) => {
@@ -398,119 +336,16 @@ watch(
       loading.value = true
       try { await store.fetchPhoneForward() } finally { loading.value = false }
       testResult.value = null
-      if (configured.value) loadTemplates()
     }
   },
   { immediate: true },
 )
-
-async function loadTemplates() {
-  try {
-    const { data } = await api.get('/sms-otp-templates')
-    templates.value = data
-  } catch { /* ignore */ }
-}
-
-function resetTplForm() {
-  editingTplId.value = null
-  tplForm.company_name = ''
-  tplForm.example = ''
-  tplForm.pattern = ''
-  tplForm.is_block = false
-}
-
-/** Build a tolerant starter regex from a pasted SMS: escape literals, loosen
- *  whitespace, and turn the 4-8 digit code into \d{4,8}. The user can edit it. */
-function suggestPattern(text) {
-  if (!text) return ''
-  let p = text.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  p = p.replace(/[ \t]+/g, '\\s+')
-  p = p.replace(/\d{4,8}/g, '\\d{4,8}')
-  return p
-}
-
-function onExampleInput() {
-  // Only auto-fill while the pattern is empty or still matches the prior suggestion,
-  // so we never clobber a hand-edited pattern.
-  if (!tplForm.pattern || tplForm.pattern === suggestPattern(tplForm._lastExample || '')) {
-    tplForm.pattern = suggestPattern(tplForm.example)
-  }
-  tplForm._lastExample = tplForm.example
-}
-
-async function saveTemplate() {
-  tplBusy.value = true
-  try {
-    const payload = {
-      company_name: tplForm.company_name.trim(),
-      pattern: tplForm.pattern.trim(),
-      example: tplForm.example.trim() || null,
-      is_block: tplForm.is_block,
-    }
-    if (editingTplId.value) {
-      await api.put(`/sms-otp-templates/${editingTplId.value}`, payload)
-    } else {
-      await api.post('/sms-otp-templates', payload)
-    }
-    resetTplForm()
-    await loadTemplates()
-  } finally {
-    tplBusy.value = false
-  }
-}
-
-function editTemplate(t) {
-  editingTplId.value = t.id
-  tplForm.company_name = t.company_name
-  tplForm.example = t.example || ''
-  tplForm.pattern = t.pattern
-  tplForm.is_block = t.is_block
-}
-
-async function deleteTemplate(t) {
-  if (!confirm(`למחוק את התבנית של ${t.company_name}?`)) return
-  await api.delete(`/sms-otp-templates/${t.id}`)
-  await loadTemplates()
-}
-
-async function seedTemplates() {
-  tplBusy.value = true
-  try {
-    await api.post('/sms-otp-templates/seed')
-    await loadTemplates()
-  } finally {
-    tplBusy.value = false
-  }
-}
-
-function safeRegex(pattern) {
-  try { return new RegExp(pattern, 'is') } catch { return null }
-}
-
-// Mirror of the Android OtpFilter decision (block -> allow -> fail-open).
-const tplVerdict = computed(() => {
-  const hay = tplTest.value || ''
-  const active = templates.value
-  for (const t of active) {
-    if (!t.is_block) continue
-    const re = safeRegex(t.pattern)
-    if (re && re.test(hay)) return { forward: false, reason: `חסימה: ${t.company_name}` }
-  }
-  for (const t of active) {
-    if (t.is_block) continue
-    const re = safeRegex(t.pattern)
-    if (re && re.test(hay)) return { forward: true, reason: `תואם ${t.company_name}` }
-  }
-  if (/\d{4,8}/.test(hay)) return { forward: true, reason: 'יש קוד (ברירת מחדל בטוחה)' }
-  return { forward: false, reason: 'אין קוד' }
-})
 
 async function onRegenerate() {
   loading.value = true
   try {
     await store.regeneratePhoneForwardToken()
     confirmRegenOpen.value = false
-    if (configured.value) loadTemplates()
   } finally {
     loading.value = false
   }
@@ -739,7 +574,7 @@ async function onTest() {
   color: var(--text-secondary, #3E3E3C);
 }
 .pf-steps li strong { color: var(--text, #181818); }
-.pf-steps code, .pf-tpl-body code {
+.pf-steps code {
   background: #F4F2EF; border-radius: 5px; padding: 1px 6px;
   font-size: 12px; direction: ltr; display: inline-block;
 }
@@ -864,51 +699,6 @@ async function onTest() {
 .pf-pop-leave-to { opacity: 0; transform: scale(0.9) translateY(-6px); }
 .pf-fade-enter-active, .pf-fade-leave-active { transition: opacity 0.2s ease; }
 .pf-fade-enter-from, .pf-fade-leave-to { opacity: 0; }
-
-/* ── Templates manager ── */
-.pf-tpl-toggle {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  border: none; background: none; padding: 10px 0; cursor: pointer;
-  font-family: inherit; font-size: 13.5px; font-weight: 700; color: var(--text-secondary, #3E3E3C);
-  border-top: 1px solid #F0EDE8;
-}
-.pf-tpl-count {
-  margin-right: auto; font-size: 11.5px; font-weight: 700; color: var(--text-tertiary, #706E6B);
-  background: #F4F2EF; border-radius: 999px; padding: 2px 9px;
-}
-.pf-tpl-body { padding-top: 4px; }
-.pf-tpl-intro { font-size: 12.5px; color: var(--text-tertiary, #706E6B); line-height: 1.55; margin: 0 0 14px; }
-.pf-tpl-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.pf-tpl-form-row { display: flex; gap: 8px; align-items: center; }
-.pf-tpl-input {
-  width: 100%; padding: 9px 11px; border: 1.5px solid #E3E0DB; border-radius: 9px;
-  font-family: inherit; font-size: 13px;
-}
-.pf-tpl-pattern { font-size: 12px; color: var(--text-tertiary, #706E6B); }
-.pf-tpl-block { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text-secondary, #3E3E3C); white-space: nowrap; }
-.pf-tpl-form-actions { display: flex; gap: 10px; align-items: center; }
-.pf-tpl-testbox { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
-.pf-tpl-verdict { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.pf-tpl-verdict.ok { color: #1B7F5E; }
-.pf-tpl-verdict.no { color: #C0392B; }
-.pf-tpl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.pf-tpl-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; background: #FAFAF9; border: 1px solid #F0EDE8; border-radius: 11px;
-}
-.pf-tpl-badge { flex-shrink: 0; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 3px 9px; }
-.pf-tpl-badge.allow { color: #1B7F5E; background: #E4F5F0; }
-.pf-tpl-badge.block { color: #C0392B; background: #FBEAE7; }
-.pf-tpl-item-main { flex: 1; min-width: 0; }
-.pf-tpl-item-name { font-size: 13px; font-weight: 700; color: var(--text, #181818); }
-.pf-tpl-item-pattern { font-size: 11px; color: var(--text-tertiary, #706E6B); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
-.pf-tpl-icon {
-  flex-shrink: 0; display: inline-flex; padding: 6px; border: none; border-radius: 8px;
-  background: transparent; color: var(--text-tertiary, #706E6B); cursor: pointer; transition: background 0.15s, color 0.15s;
-}
-.pf-tpl-icon:hover { background: #F0EDE8; color: var(--text, #181818); }
-.pf-tpl-icon--danger:hover { background: #FBEAE7; color: #C0392B; }
-.pf-tpl-empty { font-size: 12.5px; color: var(--text-tertiary, #706E6B); text-align: center; padding: 12px; }
 
 /* ── Confirm dialog ── */
 .pf-overlay--confirm { z-index: 1310; }

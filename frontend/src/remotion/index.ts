@@ -14,6 +14,16 @@ export { WorkerPulse, WORKER_PULSE_FRAMES } from './WorkerPulse'
 export { AiOrb, AI_ORB_FRAMES } from './AiOrb'
 export { PlusPulse, PLUS_PULSE_FRAMES } from './PlusPulse'
 export {
+  CycleCountdown,
+  CYCLE_COUNTDOWN_FRAMES,
+  CYCLE_COUNTDOWN_SIZE,
+  CYCLE_COUNTDOWN_COMPACT_SIZE,
+} from './CycleCountdown'
+export type { CycleCountdownProps } from './CycleCountdown'
+export { CycleWidget, CYCLE_WIDGET_FRAMES, CYCLE_WIDGET_SIZE } from './CycleWidget'
+export { MailAgentLoop, MAIL_AGENT_LOOP_FRAMES, MAIL_AGENT_LOOP_SIZE } from './MailAgentLoop'
+export type { CycleWidgetProps } from './CycleWidget'
+export {
   TAB_HERO_SCENES,
   TAB_HERO_LOOP_FRAMES,
   AiKnowledgeLoop,

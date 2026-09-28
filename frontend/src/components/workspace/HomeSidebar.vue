@@ -106,6 +106,12 @@
     </nav>
 
     <div class="rail-foot">
+      <!-- Notifications live in the rail (moved from the top-right corner).
+           WorkspaceView falls back to the corner when the rail has no room. -->
+      <div v-if="showBell" class="rail-bell">
+        <NotificationBell placement="rail" />
+        <span class="rail-label">התראות</span>
+      </div>
       <button
         v-if="signOut"
         type="button"
@@ -125,6 +131,7 @@ import { ref, computed, watch } from 'vue'
 import Avatar from '../Avatar.vue'
 import { candidateSeeds, seedFor, avatarFamily, AVATAR_FAMILIES } from '../../utils/avatarSeed.js'
 import AvatarSwiper from './AvatarSwiper.vue'
+import NotificationBell from './NotificationBell.vue'
 import { useMessengerStore } from '../../stores/messenger.js'
 
 const props = defineProps({
@@ -133,6 +140,9 @@ const props = defineProps({
   user: { type: Object, default: null },
   // The rail item whose page/window is currently open (e.g. 'contacts').
   active: { type: String, default: '' },
+  // Host the notification bell (WorkspaceView decides — off when the rail is
+  // hidden or too short).
+  showBell: { type: Boolean, default: false },
 })
 const emit = defineEmits(['select'])
 // Hand the icon's rectangle up with the key: pages and windows opened from
@@ -321,6 +331,8 @@ const ICONS = {
 /* ── items ────────────────────────────────────────────────────────────── */
 .rail-nav { display: flex; flex-direction: column; gap: 4px; }
 .rail-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.rail-bell { display: flex; align-items: center; gap: 12px; width: 182px; margin: 2px 0 8px; }
+.rail-bell :deep(.bell-btn) { width: 44px; height: 44px; border-radius: 12px; }
 
 .rail-item {
   display: flex; align-items: center; gap: 12px;
@@ -378,8 +390,21 @@ const ICONS = {
   .rail-who, .rail-label, .rail-deck { display: none; }
   .rail-item { width: auto; justify-content: center; padding: 9px 0; }
   .rail-ico { width: 22px; }
+  .rail-bell { width: auto; justify-content: center; }
+  .rail-bell :deep(.bell-btn) { width: 42px; height: 42px; }
 }
 @media (max-width: 720px) {
   .rail { display: none; }
+}
+/* Short screens: tighten the rail so avatar · nav · bell · sign-out all fit
+   above the insights orbit. The orbit's top ~40px is empty dashed ring, so
+   the rail may reach into it. (≤720px tall: WorkspaceView keeps the bell in
+   the corner instead — showBell=false.) */
+@media (max-height: 860px) {
+  .rail { padding-top: 10px; padding-bottom: 10px; bottom: 284px; }
+  .rail-item { padding-top: 6px; padding-bottom: 6px; }
+  .rail-nav { gap: 2px; }
+  .rail-foot { padding-top: 6px; }
+  .rail-bell { margin: 0 0 4px; }
 }
 </style>

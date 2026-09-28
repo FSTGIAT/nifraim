@@ -39,5 +39,7 @@ from app.models.mail_item import MailItem
 from app.models.ai_usage import AiUsage
 from app.models.mail_agent_profile import MailAgentProfile
 from app.models.mail_agent_gap import MailAgentGap
+from app.models.cycle_notification import CycleNotification
+from app.models.agreement_request import AgreementRequest
 
 __all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "AgentPortalOffer", "PortalOfferClick", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "MaslakaAgentLink", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]

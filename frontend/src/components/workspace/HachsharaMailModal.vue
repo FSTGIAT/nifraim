@@ -2,19 +2,35 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="hm-overlay" @click.self="$emit('close')">
-        <div class="hm-card">
+        <div class="hm-card hm-card--wide">
+          <!-- visual pane: the Mail Agent story as a loop instead of a paragraph -->
+          <aside class="hm-visual" aria-hidden="true">
+            <RemotionLoopIsland
+              component="MailAgentLoop"
+              frames-key="MAIL_AGENT_LOOP_FRAMES"
+              :width="480"
+              :height="720"
+              :input-props="{ accent: '#4E9DD0', deep: '#2F6C94', soft: '#E8F1F8' }"
+            >
+              <img v-if="stillArt" :src="stillArt" alt="" class="hm-visual-still" />
+            </RemotionLoopIsland>
+          </aside>
+          <div class="hm-body">
           <button class="hm-close" aria-label="סגירה" @click="$emit('close')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
 
           <header class="hm-head">
-            <span class="hm-ico">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m2 7 10 6 10-6" /></svg>
-            </span>
-            <div>
-              <h3 class="hm-title">חיבור תיבת המייל</h3>
-              <p class="hm-sub">הכשרה שולחת את קובץ הפרודוקציה למייל שלך פעם בחודש. נתחבר לתיבה בקריאה בלבד, נזהה את הקובץ ונטען אותו לבד — בלי שתצטרך לעשות כלום.</p>
-            </div>
+            <span class="hm-kicker">{{ purpose === 'general' ? 'חיבור המייל' : 'הפרודוקציה של הכשרה' }}</span>
+            <h3 v-if="purpose === 'general'" class="hm-title hm-title--brand" dir="ltr"><span>Nifraim</span> <span class="hm-title-acc">Mail Agent</span></h3>
+            <h3 v-else class="hm-title hm-title--brand">חיבור <span class="hm-title-acc">תיבת המייל</span></h3>
+            <p v-if="purpose === 'general'" class="hm-sub">קורא את המיילים מהשולחים שאישרתם, מנסח תשובות מהנתונים — ושולח באישורכם.</p>
+            <p v-else class="hm-sub">הכשרה שולחת את הפרודוקציה במייל — נזהה ונטען אותה לבד.</p>
+            <!-- Honest about sending: only a Gmail app-password mailbox can
+                 send today (Outlook needs Mail.Send consent — not yet). -->
+            <p v-if="purpose === 'general' && store.detected && store.detected !== 'google'" class="hm-sub hm-sub--note">
+              מהתיבה הזו נוכל לקרוא ולעקוב. שליחה אוטומטית זמינה כרגע מ-Gmail.
+            </p>
           </header>
 
           <!-- Status: only after a mailbox exists. -->
@@ -28,7 +44,7 @@
 
           <!-- The only question we ask. Everything else is derived from it. -->
           <label class="hm-field">
-            <span class="hm-label">כתובת המייל שאליה הכשרה שולחת</span>
+            <span class="hm-label">{{ purpose === 'general' ? 'כתובת המייל שלך' : 'כתובת המייל שאליה הכשרה שולחת' }}</span>
             <input
               v-model.trim="email"
               class="hm-input ltr-number"
@@ -70,35 +86,40 @@
 
           <!-- Google: an app password, and the mistake everyone makes, named. -->
           <div v-else-if="host === 'google'" class="hm-branch">
-            <label class="hm-field">
-              <span class="hm-label">סיסמת אפליקציה</span>
-              <input v-model.trim="appPassword" class="hm-input ltr-number" type="password" placeholder="abcd efgh ijkl mnop" autocomplete="off" />
-            </label>
-            <p class="hm-help">
-              זו לא הסיסמה הרגילה של Gmail. Google מייצרת קוד נפרד בן 16 תווים לאפליקציה הזו בלבד —
-              כך הסיסמה שלך נשארת אצלך, ותוכל לבטל את הגישה בכל רגע.
-            </p>
-            <!-- Send the agent straight to the one page that matters. Telling them to
-                 "turn on 2-Step Verification" first lands them on Google's security
-                 page, which no longer links to app passwords at all — a dead end. -->
-            <a class="hm-cta hm-cta--ghost" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">
-              <span class="hm-cta-ico">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-              </span>
-              <span>פתיחת דף סיסמאות האפליקציה ב-Google</span>
-            </a>
-            <ol class="hm-steps">
-              <li>בדף שנפתח: כתוב שם — למשל Nifraim — ולחץ "Create".</li>
-              <li>Google תציג קוד בן 16 תווים. העתק אותו.</li>
-              <li>חזור לכאן והדבק אותו בשדה למעלה.</li>
+            <p class="hm-lead">קוד אפליקציה בן 16 תווים — לא הסיסמה הרגילה.</p>
+            <ol class="hm-flow">
+              <li class="hm-flow-step" :class="{ 'is-done': openedGoogle }" style="--i: 0">
+                <span class="hm-flow-n">1</span>
+                <div class="hm-flow-main">
+                  <strong>פותחים את דף הקודים של Google</strong>
+                  <!-- Straight to the one page that matters (the security page no
+                       longer links to app passwords — a dead end). -->
+                  <a class="hm-flow-btn" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" @click="openedGoogle = true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                    פתיחה ב-Google
+                  </a>
+                </div>
+              </li>
+              <li class="hm-flow-step" style="--i: 1">
+                <span class="hm-flow-n">2</span>
+                <div class="hm-flow-main">
+                  <strong>יוצרים קוד בשם <span dir="ltr" class="hm-chip-name">Nifraim</span> ומעתיקים</strong>
+                </div>
+              </li>
+              <li class="hm-flow-step" :class="{ 'is-done': appPassword.length >= 16 }" style="--i: 2">
+                <span class="hm-flow-n">3</span>
+                <div class="hm-flow-main">
+                  <strong>מדביקים כאן</strong>
+                  <input v-model.trim="appPassword" class="hm-input ltr-number" type="password" placeholder="abcd efgh ijkl mnop" autocomplete="off" aria-label="סיסמת אפליקציה" />
+                </div>
+              </li>
             </ol>
-            <p class="hm-hint">אם Google כותבת שהאפשרות אינה זמינה — צריך קודם להפעיל "אימות דו-שלבי" בחשבון.</p>
-            <p class="hm-note">
-              הקוד נותן גישת קריאה לכל תיבת המייל, והוא מתבטל אוטומטית בכל פעם שתחליף סיסמה ב-Google.
-              מעדיף לא לשמור קוד אצלנו? <button class="hm-link" @click="switchToForwarding">אפשר להעביר אלינו את הדואר במקום</button>
+            <p class="hm-tip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              לא מופיע? מפעילים קודם "אימות דו-שלבי" בחשבון Google.
             </p>
-            <button class="hm-cta" :disabled="!email || !appPassword || store.saving" @click="saveGoogle">
-              {{ store.saving ? 'שומר…' : 'חיבור התיבה' }}
+            <button class="hm-cta hm-cta--solid" :disabled="!email || !appPassword || store.saving" @click="saveGoogle">
+              {{ store.saving ? 'מחבר…' : (purpose === 'general' ? 'חיבור Nifraim Mail Agent' : 'חיבור התיבה') }}
             </button>
           </div>
 
@@ -151,6 +172,7 @@
             <button v-if="cfg" class="hm-disconnect" @click="disconnect">ניתוק</button>
             <button class="hm-done" @click="$emit('close')">סיום</button>
           </footer>
+          </div>
         </div>
       </div>
     </Transition>
@@ -160,12 +182,21 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useMailboxStore } from '../../stores/mailbox.js'
+import RemotionLoopIsland from './RemotionLoopIsland.vue'
 import { CONNECTED_NO_MAIL_YET, errorCopy, lastReceivedLabel } from '../../utils/mailboxCopy.js'
 
-const props = defineProps({ open: Boolean })
+const props = defineProps({
+  open: Boolean,
+  // 'hachshara' = production intake by mail (read-only copy);
+  // 'general'   = the setup wizard's "connect your mailbox" (send + track).
+  purpose: { type: String, default: 'hachshara' },
+})
 defineEmits(['close'])
 
 const store = useMailboxStore()
+// Reduced-motion still for the visual pane (the wizard's Mail Agent picture).
+const stillArt = Object.values(import.meta.glob('../../assets/welcome/step-mail.webp', { eager: true, import: 'default' }))[0] || ''
+const openedGoogle = ref(false)
 const email = ref('')
 const appPassword = ref('')
 const host = ref(null)
@@ -323,6 +354,7 @@ async function disconnect() {
   background: var(--tint); color: var(--accent);
 }
 .hm-title { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: #181818; }
+.hm-sub.hm-sub--note { margin-top: 6px; color: var(--amber, #8A6300); font-weight: 600; }
 .hm-sub { margin: 0; font-size: 12.5px; line-height: 1.6; color: rgba(24, 24, 24, 0.58); }
 
 .hm-status {
@@ -438,4 +470,63 @@ async function disconnect() {
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-from .hm-card, .modal-leave-to .hm-card { transform: scale(0.94) translateY(12px); opacity: 0; }
 .hm-card { transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease; }
+
+/* ═══════════ Nifraim Mail Agent — wide, designed window ═══════════ */
+.hm-card--wide {
+  width: min(960px, 94vw); max-width: none; max-height: min(760px, 94vh);
+  padding: 0; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); overflow: hidden;
+}
+.hm-visual { position: relative; background: linear-gradient(170deg, #fff 0%, #E8F1F8 100%); border-left: 1px solid #E3EDF5; display: flex; align-items: center; justify-content: center; }
+.hm-visual :deep(.rli) { width: 100%; max-height: 100%; }
+.hm-visual-still { width: 100%; height: 100%; object-fit: cover; }
+.hm-body { position: relative; padding: 30px 32px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.hm-card--wide .hm-close { top: 16px; left: 16px; }
+.hm-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.hm-kicker { align-self: flex-start; padding: 4px 11px; border-radius: 999px; background: #E8F1F8; color: #2F6C94; font-size: 11.5px; font-weight: 800; }
+.hm-title--brand { margin: 4px 0 0; font-size: clamp(26px, 2.6vw, 34px); font-weight: 900; letter-spacing: -0.02em; line-height: 1.1; color: var(--text, #181818); }
+.hm-title--brand[dir='ltr'] { text-align: right; }
+.hm-title-acc { color: #2F6C94; }
+.hm-card--wide .hm-sub { margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-secondary, #3E3E3C); }
+.hm-card--wide .hm-sub--note { color: #8A6300; font-weight: 700; font-size: 13.5px; }
+.hm-card--wide .hm-input { height: 46px; border-radius: 12px; font-size: 15px; }
+.hm-lead { margin: 0; font-size: 14px; font-weight: 700; color: #2F6C94; }
+
+.hm-flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hm-flow-step {
+  position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
+  border-radius: 14px; background: #fff; border: 1px solid #E3EDF5;
+  box-shadow: 0 4px 14px rgba(47, 108, 148, 0.06);
+  animation: hmIn 0.45s cubic-bezier(0.32, 0.72, 0, 1) both; animation-delay: calc(var(--i) * 0.12s);
+}
+@keyframes hmIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.hm-flow-n {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #E8F1F8; color: #2F6C94; font-size: 14px; font-weight: 900;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.hm-flow-step.is-done { border-color: rgba(46, 132, 74, 0.35); }
+.hm-flow-step.is-done .hm-flow-n { background: #2E844A; color: #fff; }
+.hm-flow-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.hm-flow-main strong { font-size: 15px; font-weight: 800; color: var(--text, #181818); line-height: 1.4; }
+.hm-chip-name { padding: 1px 8px; border-radius: 6px; background: #E8F1F8; color: #2F6C94; }
+.hm-flow-btn {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
+  border-radius: 10px; border: 1.5px solid #BFD8EA; color: #2F6C94; background: #F7FAFD;
+  font-size: 13.5px; font-weight: 800; text-decoration: none;
+}
+.hm-flow-btn:hover { background: #E8F1F8; }
+.hm-tip { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary, #706E6B); }
+.hm-cta--solid {
+  height: 50px; border: none; border-radius: 12px; background: #2F6C94; color: #fff;
+  font-size: 15.5px; font-weight: 800; box-shadow: 0 8px 20px rgba(47, 108, 148, 0.28);
+}
+.hm-cta--solid:hover:not(:disabled) { background: #265a7c; transform: translateY(-1px); }
+.hm-cta--solid:disabled { opacity: 0.55; box-shadow: none; }
+@media (max-width: 760px) {
+  .hm-card--wide { grid-template-columns: 1fr; max-height: 94vh; overflow-y: auto; }
+  .hm-visual { height: 220px; border-left: none; border-bottom: 1px solid #E3EDF5; }
+  .hm-body { overflow: visible; padding: 22px 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .hm-flow-step { animation: none; } }
 </style>

@@ -65,7 +65,9 @@
 
     <!-- ─── ACTIONS ─────────────────────────────────────────── -->
     <footer class="pcard__actions">
+      <!-- Monthly cycle: agents never run by hand — support (admin) only. -->
       <button
+        v-if="canRunManually"
         class="pcard__run"
         type="button"
         :disabled="isRunning"
@@ -102,6 +104,8 @@ import { brandFor } from '../../utils/companyBrand.js'
 import CompanyLogo from './CompanyLogo.vue'
 import { nearestChartColor } from '../../utils/chartPalette.js'
 import api from '../../api/client.js'
+import { useAuthStore } from '../../stores/auth.js'
+import { useCycleStore } from '../../stores/cycle.js'
 
 const props = defineProps({
   cred: { type: Object, required: true },
@@ -112,6 +116,9 @@ const props = defineProps({
   washColor: { type: String, default: '' },
 })
 defineEmits(['run', 'edit', 'delete', 'view-error'])
+const auth = useAuthStore()
+const cycle = useCycleStore()
+const canRunManually = computed(() => !!auth.user?.is_admin || !!cycle.status?.manual_run_allowed)
 
 const STATUS_LABELS = {
   success: 'הצליח',

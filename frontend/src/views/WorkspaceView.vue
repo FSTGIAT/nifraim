@@ -15,6 +15,7 @@
       :items="circleMenuItems"
       :active="railActive"
       :user="auth.user"
+      :show-bell="bellInRail"
       @select="onMenuSelect"
     />
 
@@ -50,9 +51,25 @@
       @navigate="onBatchToastNavigate"
     />
 
-    <!-- Notifications bell — always-visible top-right alert center. -->
-    <div class="ws-bell-anchor">
+    <!-- Notifications bell: lives in the sidebar rail (HomeSidebar :show-bell).
+         The corner spot is only the fallback where the rail is hidden (phones)
+         or too short. Exactly ONE bell is mounted — it owns the store poll. -->
+    <div v-if="!bellInRail" class="ws-bell-anchor">
       <NotificationBell />
+    </div>
+
+    <!-- Monthly cycle. Home with room: the big emotion clock in the empty
+         band right of the cards. Everywhere else (tabs, smaller screens): the
+         small alarm-clock icon in the top-right corner. -->
+    <div v-if="showEmotionClock" class="ws-emotion-clock">
+      <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
+    </div>
+    <div
+      v-else
+      class="ws-cycle-small"
+      :class="{ 'ws-cycle-small--below-bell': !bellInRail, 'ws-cycle-small--content': viewMode === 'content' }"
+    >
+      <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
     </div>
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
@@ -85,7 +102,7 @@
     <!-- User-to-user messenger — collapsed pill in the BOTTOM-RIGHT (the only
          free corner). Self-contained: it never touches the worker/automation
          plane, and its presence heartbeat is a person, not a Windows PC. -->
-    <MessengerDock />
+    <MessengerDock v-if="!setupState.modalOpen" />
 
     <!-- Insights hub: floating radial-orbital launcher in the BOTTOM-LEFT.
          Two nodes: 3-month commission comparison + yield/track recommendations.
@@ -183,7 +200,7 @@
             <!-- Same rule as the view switch: while the morph is running it
                  owns the swap, or the tab slide plays underneath it. -->
             <Transition :name="morphRunning ? 'view-none' : 'tab-switch'" mode="out-in">
-              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" />
+              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" @go-to-maslaka="onCardSelect('maslaka')" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
@@ -224,8 +241,29 @@
     <SetupPipelineModal
       @open-phone-forward="phoneForwardOpen = true"
       @open-add-portal="onActivationAddPortal"
+      @open-mail-agent="mailAgentOpen = true"
+      @open-agreements="onCardSelect('commission-rates')"
+      @open-maslaka="onCardSelect('maslaka')"
       @run-automation="onCardSelect('portal-automation')"
     />
+
+    <!-- Left the setup wizard for a step that lives elsewhere (portal, Mail
+         Agent, מסלקה, manual agreement upload): one tap back, always. -->
+    <Transition name="setup-return">
+      <button
+        v-if="setupState.away && !setupState.modalOpen"
+        type="button"
+        class="setup-return"
+        @click="resumeSetup()"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        חזרה להפעלת האוטומציה
+      </button>
+    </Transition>
+
+    <!-- Monthly cycle (מחזור) events: worker waiting / upload production /
+         partial run / comparison ready — each shown once (also emailed). -->
+    <CycleNotificationModal @navigate="(tab) => onCardSelect(tab)" />
 
     <!-- Full-page drop overlay -->
     <Teleport to="body">
@@ -270,7 +308,7 @@ import { useComparisonStore } from '../stores/comparison.js'
 import { useProductionStore } from '../stores/production.js'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useSetupPipeline } from '../composables/useSetupPipeline.js'
-import { openSetup } from '../utils/setupState.js'
+import { openSetup, setupState, resumeSetup, resumeSetupIfAway } from '../utils/setupState.js'
 import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
 import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionModal.vue'
 import YieldRecommendationsModal from '../components/workspace/YieldRecommendationsModal.vue'
@@ -279,6 +317,10 @@ import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
 import PhoneForwardModal from '../components/workspace/PhoneForwardModal.vue'
 import SetupProgressCard from '../components/workspace/SetupProgressCard.vue'
 import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
+import CycleRailIcon from '../components/workspace/CycleRailIcon.vue'
+import CycleEmotionClock from '../components/workspace/CycleEmotionClock.vue'
+import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
+import { useCycleStore } from '../stores/cycle.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
 import BatchResultsToast from '../components/workspace/BatchResultsToast.vue'
 import NotificationBell from '../components/workspace/NotificationBell.vue'
@@ -445,7 +487,7 @@ function closeRecruits() {
 
 function closeMailAgent() {
   if (!mailAgentOpen.value) return
-  morph.dismiss({ tabId: 'mail', commit: () => { mailAgentOpen.value = false } })
+  morph.dismiss({ tabId: 'mail', commit: () => { mailAgentOpen.value = false; resumeSetupIfAway('mail') } })
 }
 
 function goHome() {
@@ -466,6 +508,22 @@ function onBatchToastNavigate(tab) {
 // the welcome wipe (and on reloads) while setup is incomplete and the user
 // hasn't ✕-closed the home card.
 const setup = useSetupPipeline()
+const cycleStore = useCycleStore()
+
+// Live media queries for chrome placement (bell in the rail vs the corner;
+// room for the big emotion clock on home).
+function useMq(query) {
+  const m = window.matchMedia(query)
+  const r = ref(m.matches)
+  const on = (e) => { r.value = e.matches }
+  m.addEventListener('change', on)
+  onUnmounted(() => m.removeEventListener('change', on))
+  return r
+}
+// The rail is hidden ≤720px wide and has no room for the bell ≤720px tall.
+const bellInRail = useMq('(min-width: 721px) and (min-height: 721px)')
+const roomForEmotionClock = useMq('(min-width: 1360px) and (min-height: 640px)')
+const showEmotionClock = computed(() => viewMode.value === 'home' && roomForEmotionClock.value)
 
 async function maybeOpenSetup() {
   if (setup.isCompleted()) return
@@ -597,6 +655,10 @@ onMounted(async () => {
   // mid-batch) — polling + the post-batch store refresh continue even if the
   // user never opens the automation tab. Fire-and-forget; failures are benign.
   portalAutomationStore.hydrateBatch()
+  // Monthly cycle: status drives the Production-tab lock; unseen cycle events
+  // pop the notification modal.
+  cycleStore.fetchStatus()
+  cycleStore.fetchNotifications()
   document.addEventListener('dragenter', onDragEnter)
   document.addEventListener('dragleave', onDragLeave)
   document.addEventListener('dragover', onDragOver)
@@ -658,6 +720,8 @@ watch(mailAgentOpen, (open) => { if (!open) refreshMailBadge() })
 const emailSettingsOpen = ref(false)
 // Set only on the return leg from Microsoft's consent screen.
 const backFromConsent = ref(false)
+// Only the NEXT open jumps to the mailbox card (the consent return).
+watch(emailSettingsOpen, (open) => { if (!open) backFromConsent.value = false })
 const fundDetailOpen = ref(false)
 const fundDetailViz = ref(null)
 const fundTickerStore = useFundTickerStore()
@@ -751,11 +815,28 @@ async function openFundDetail(trackId) {
                                 its CENTRE aligned with the 46px bell above */
   z-index: 200;
 }
+/* Cycle: big emotion clock, vertically centred in the empty band between the
+   cards grid (882px, centred) and the right rail. */
+.ws-emotion-clock {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  inset-inline-start: max(40px, calc(25vw - 260px));  /* RTL: visual-RIGHT */
+  z-index: 50;
+}
+/* Cycle: small alarm-clock icon — the bell's old corner (the bell moved into
+   the rail); under the corner bell when that fallback is showing. */
+.ws-cycle-small { position: fixed; top: 44px; inset-inline-start: 18px; z-index: 200; }
+.ws-cycle-small--below-bell { top: 104px; }
+.ws-cycle-small--below-bell.ws-cycle-small--content { top: 188px; }
 @media (max-width: 720px) {
   .ws-bell-anchor { top: 40px; inset-inline-start: 10px; }
+  .ws-cycle-small--below-bell { top: 96px; inset-inline-start: 10px; }
+  .ws-cycle-small--below-bell.ws-cycle-small--content { top: 180px; }
 }
 @media (max-width: 640px) {
   .ws-bell-anchor { top: 8px; }
+  .ws-cycle-small--below-bell:not(.ws-cycle-small--content) { top: 62px; }
 }
 
 
@@ -1141,4 +1222,14 @@ async function openFundDetail(trackId) {
     padding: 24px 16px 40px;
   }
 }
+.setup-return {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1040;
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px;
+  border: none; border-radius: 999px; background: var(--primary, #181818); color: #fff;
+  font-family: 'Heebo', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 10px 28px rgba(24, 24, 24, 0.28);
+}
+.setup-return:hover { background: var(--primary-deep, #000); }
+.setup-return-enter-active, .setup-return-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.setup-return-enter-from, .setup-return-leave-to { opacity: 0; transform: translate(-50%, 12px); }
 </style>

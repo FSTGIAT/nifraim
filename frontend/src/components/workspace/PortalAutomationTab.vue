@@ -112,7 +112,7 @@
             <div class="err-body">{{ errorMessage }}</div>
             <footer class="err-foot">
               <button class="err-btn err-btn--secondary" type="button" @click="errorModalOpen = false">סגור</button>
-              <button v-if="errorContext" class="err-btn err-btn--primary" type="button" @click="rerunFromError">
+              <button v-if="errorContext && canRunManually" class="err-btn err-btn--primary" type="button" @click="rerunFromError">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <polygon points="6 4 20 12 6 20" />
                 </svg>
@@ -130,6 +130,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { useAuthStore } from '../../stores/auth.js'
+import { resumeSetupIfAway } from '../../utils/setupState.js'
+import { useCycleStore } from '../../stores/cycle.js'
 import PortalCredentialModal from './PortalCredentialModal.vue'
 import PortalAutomationCanvas from './PortalAutomationCanvas.vue'
 import PortalRunAllBar from './PortalRunAllBar.vue'
@@ -143,6 +146,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['go-to-comparison', 'opened'])
 const store = usePortalAutomationStore()
+const auth = useAuthStore()
+// Monthly cycle: only support (admin) re-runs by hand.
+const cycle = useCycleStore()
+const canRunManually = computed(() => !!auth.user?.is_admin || !!cycle.status?.manual_run_allowed)
 
 // ── No-portal welcome: photo + how-it-works slider ──
 const auAssets = import.meta.glob('../../assets/welcome/automation-empty.{webp,mp4}', { eager: true, import: 'default' })
@@ -154,7 +161,7 @@ const auReduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefe
 const AU_STEPS = [
   { title: 'מוסיפים פורטל', text: 'שם משתמש וסיסמה — פעם אחת לכל חברה.' },
   { title: 'הטלפון מעביר את הקוד', text: 'קוד האימות מגיע לבד, בלי להקליד.' },
-  { title: 'לחיצה אחת', text: 'כל הדוחות יורדים מכל החברות.' },
+  { title: 'כל חודש ב-21', text: 'הדוחות יורדים לבד מכל החברות — בלי ללחוץ.' },
   { title: 'הכל מושווה', text: 'פרודוקציה ונפרעים מתעדכנים לבד.' },
 ]
 const AU_MS = 2800 // keep in sync with .au-bar--on
@@ -188,7 +195,9 @@ function openEdit(cred) {
   modalOpen.value = true
 }
 function onModalSaved() {
-  // store.create/update already updates credentials[]; nothing else needed
+  // store.create/update already updates credentials[]. If the setup wizard
+  // sent the agent here to add a portal, take them back to it.
+  resumeSetupIfAway('portal')
 }
 
 function portalLabel(kind) {

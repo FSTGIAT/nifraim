@@ -11,31 +11,14 @@ from app.config import settings
 from app.database import async_session
 from app.models.fund_track import FundTrack
 from app.models.mailbox_config import MailboxConfig
-from app.models.portal_credential import PortalCredential
-from app.models.portal_run import PortalRun
 from app.services.fund_scraper import update_fund_tracks
 from app.services.mail_intake.poller import poll_mailbox
 from app.services.subscription_service import process_renewals
-from app.services.portal_automation.runner import run_automation
 from app.services.maslaka import orchestration as maslaka_orchestration
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
-
-# Per credential. Matches runner.RUN_HARD_TIMEOUT_S — the Harel consolidated run
-# now loops ALL accounts in the מספר-חשבון dropdown (production + נפרעים drills
-# per account), so a multi-account user legitimately exceeds the old 300s.
-PORTAL_RUN_TIMEOUT_S = 720
-
-# A credential is "due" when its last run was at least this many hours ago.
-# Slightly under the natural cadence so a daily job at 09:00 still fires the
-# next day even if the previous run took 30 minutes.
-_DUE_THRESHOLDS_HOURS = {
-    "daily": 23,
-    "weekly": 24 * 7 - 1,
-    "monthly": 24 * 30 - 1,
-}
 
 
 async def run_renewals():
@@ -46,63 +29,6 @@ async def run_renewals():
             logger.info(f"Scheduled renewal complete: {stats}")
     except Exception as e:
         logger.error(f"Scheduled renewal failed: {e}")
-
-
-def _is_due(cred: PortalCredential, now: datetime) -> bool:
-    threshold_hours = _DUE_THRESHOLDS_HOURS.get(cred.schedule_kind)
-    if threshold_hours is None:
-        return False
-    if cred.last_run_at is None:
-        return True
-    return (now - cred.last_run_at) >= timedelta(hours=threshold_hours)
-
-
-async def tick_portal_schedules():
-    """Hourly scan: for every active credential whose cadence is due, create a
-    PortalRun and fire the runner. Manual ('manual' schedule_kind) credentials
-    are ignored.
-    """
-    try:
-        now = datetime.utcnow()
-        async with async_session() as db:
-            cred_result = await db.execute(
-                select(PortalCredential).where(
-                    PortalCredential.is_active.is_(True),
-                    PortalCredential.schedule_kind != "manual",
-                )
-            )
-            creds = cred_result.scalars().all()
-            due_creds = [c for c in creds if _is_due(c, now)]
-
-            run_ids: list = []
-            for cred in due_creds:
-                run = PortalRun(
-                    user_id=cred.user_id,
-                    credential_id=cred.id,
-                    status="pending",
-                    started_at=now,
-                )
-                db.add(run)
-                await db.flush()
-                run_ids.append(run.id)
-            if run_ids:
-                await db.commit()
-
-        if not run_ids:
-            logger.debug("Scheduler tick: no due credentials")
-            return
-        logger.info(f"Scheduler tick: {len(run_ids)} portal run(s) queued")
-
-        for run_id in run_ids:
-            try:
-                await asyncio.wait_for(run_automation(run_id), timeout=PORTAL_RUN_TIMEOUT_S)
-            except asyncio.TimeoutError:
-                logger.error(f"Scheduled portal run {run_id} timed out at scheduler level")
-            except Exception as e:
-                logger.error(f"Scheduled portal run {run_id} failed: {e}")
-
-    except Exception as e:
-        logger.error(f"Scheduler tick outer failure: {e}")
 
 
 async def scrape_fund_tracks_job():
@@ -243,8 +169,8 @@ def start_scheduler():
     """Start the background scheduler.
 
     - Renewals: 06:00 IST daily.
-    - Portal automation tick: every hour at minute 7 (offset to avoid the
-      top of the hour where many other systems run).
+    - Monthly cycle tick: hourly on the hour (queues the 21st cycle batches,
+      catch-up, cycle notifications).
     - Fund-track scrape: weekly Sun 06:30 IST (offset from renewals so we
       don't double-schedule both at exactly 06:00). Pension data publishes
       monthly so weekly is plenty.
@@ -255,11 +181,20 @@ def start_scheduler():
         id="process_renewals",
         replace_existing=True,
     )
+    # Monthly cycle (מחזור) — the ONLY trigger of portal automation. Hourly on
+    # the hour: at CYCLE_HOUR on CYCLE_DAY it queues every paid user's cycle
+    # batch for their worker; every other tick is idempotent catch-up (app was
+    # down at 06:00, portal logins added mid-month) + notifications.
+    # The old per-credential `tick_portal_schedules` is RETIRED: it ran single
+    # runs inline on Railway (geo-blocked, no merge) and bypassed the cycle.
+    from app.services.cycle_service import run_cycle_tick
     scheduler.add_job(
-        tick_portal_schedules,
-        CronTrigger(minute=7, timezone="Asia/Jerusalem"),
-        id="tick_portal_schedules",
+        run_cycle_tick,
+        CronTrigger(minute=0, timezone="Asia/Jerusalem"),
+        id="monthly_cycle_tick",
         replace_existing=True,
+        misfire_grace_time=30 * 60,
+        coalesce=True,
     )
     scheduler.add_job(
         scrape_fund_tracks_job,
@@ -324,6 +259,15 @@ def start_scheduler():
         # every deploy/restart leaves new mail unread for MAIL_AGENT_POLL_MINUTES.
         next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
     )
+    # Agreement requests: follow insurers' replies to the wizard's "please send
+    # my commission agreement" emails; a PDF reply is loaded to the shelf.
+    from app.services.agreement_requests import run_agreement_request_poll
+    scheduler.add_job(
+        run_agreement_request_poll,
+        IntervalTrigger(minutes=15),
+        id="agreement_request_poll",
+        replace_existing=True,
+    )
     scheduler.add_job(
         purge_old_bodies,
         CronTrigger(hour=3, minute=40, timezone="Asia/Jerusalem"),
@@ -333,7 +277,7 @@ def start_scheduler():
     scheduler.start()
     asyncio.create_task(_refresh_funds_if_stale())
     logger.info(
-        "Scheduler started — renewals 06:00 IST, portal tick hourly :07, "
+        "Scheduler started — renewals 06:00 IST, monthly cycle tick hourly :00, "
         "fund scrape Sun 06:30 IST, maslaka poll every %dmin, maslaka retention 03:00 IST",
         settings.MASLAKA_POLL_INTERVAL_MINUTES,
     )

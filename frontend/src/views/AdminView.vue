@@ -22,9 +22,15 @@
     <main class="admin-main">
       <!-- Tabs -->
       <div class="admin-tabs">
+        <button :class="{ active: tab === 'ops' }" @click="tab = 'ops'">תפעול</button>
         <button :class="{ active: tab === 'users' }" @click="tab = 'users'">משתמשים</button>
         <button :class="{ active: tab === 'agents' }" @click="tab = 'agents'">סטטוס סוכנים</button>
         <button :class="{ active: tab === 'subscriptions' }" @click="tab = 'subscriptions'">מנויים</button>
+      </div>
+
+      <!-- Operations: cycle per worker, Mail Agent, מסלקה — the default view -->
+      <div v-if="tab === 'ops'" class="admin-section admin-section--ops">
+        <AdminOperations />
       </div>
 
       <!-- Users Tab -->
@@ -218,10 +224,11 @@
 </template>
 
 <script setup>
+import AdminOperations from '../components/admin/AdminOperations.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '../api/client.js'
 
-const tab = ref('users')
+const tab = ref('ops')
 const users = ref([])
 const agents = ref([])
 const subscriptions = ref([])
