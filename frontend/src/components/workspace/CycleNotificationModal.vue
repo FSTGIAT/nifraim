@@ -21,7 +21,7 @@
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </header>
-          <div class="cg-stage">
+          <div class="cg-stage" @pointerenter="hoverStart" @pointerleave="hoverEnd">
             <RemotionLoopIsland
               component="CycleGears"
               :frames-key="celebrate ? 'CYCLE_GEARS_FRAMES' : 'CYCLE_GEARS_FRAMES_PLAIN'"
@@ -94,7 +94,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useCycleStore } from '../../stores/cycle.js'
 import RemotionLoopIsland from './RemotionLoopIsland.vue'
 
@@ -124,7 +124,12 @@ const firstPeriod = computed(() => {
   return `${y}-${String(m).padStart(2, '0')}-01`
 })
 const celebrate = computed(() => isUpload.value && !!firstPeriod.value && current.value.period === firstPeriod.value)
+const hoverAt = ref({ start: null, end: null })
+function hoverStart() { hoverAt.value = { start: Date.now(), end: null } }
+function hoverEnd() { if (hoverAt.value.start) hoverAt.value = { ...hoverAt.value, end: Date.now() } }
 const gearProps = computed(() => ({
+  hoverStartMs: hoverAt.value.start,
+  hoverEndMs: hoverAt.value.end,
   celebrate: celebrate.value,
   accent: '#2F73C4', done: '#2E844A', faint: '#A9A6A2', ink: '#181818',
   labelDone: `נפרעים ${(current.value?.period_label || '').split(' ')[0]}`,

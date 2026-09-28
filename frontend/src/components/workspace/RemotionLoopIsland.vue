@@ -8,7 +8,7 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   component: { type: String, required: true },
@@ -20,6 +20,7 @@ const props = defineProps({
 const mountEl = ref(null)
 const useStatic = ref(false)
 let root = null
+let renderPlayer = null
 
 onMounted(async () => {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { useStatic.value = true; return }
@@ -30,7 +31,7 @@ onMounted(async () => {
     ])
     if (!mountEl.value) return
     root = rd.createRoot(mountEl.value)
-    root.render(react.createElement(player.Player, {
+    renderPlayer = () => root?.render(react.createElement(player.Player, {
       component: remotion[props.component],
       inputProps: props.inputProps,
       durationInFrames: remotion[props.framesKey],
@@ -41,11 +42,14 @@ onMounted(async () => {
       doubleClickToFullscreen: false, acknowledgeRemotionLicense: true,
       style: { width: '100%', height: '100%' },
     }))
+    renderPlayer()
   } catch (e) {
     console.error('[RemotionLoopIsland] render failed', e)
     useStatic.value = true
   }
 })
+// New inputProps (e.g. hover) → re-render the same Player; it keeps its frame.
+watch(() => props.inputProps, () => renderPlayer?.(), { deep: true })
 onBeforeUnmount(() => { try { root?.unmount() } catch { /* ignore */ } root = null })
 </script>
 

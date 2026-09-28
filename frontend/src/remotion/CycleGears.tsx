@@ -69,6 +69,8 @@ type Props = {
   done?: string // green
   ink?: string
   faint?: string
+  hoverStartMs?: number | null // the pointer entered the gear (Date.now())
+  hoverEndMs?: number | null // …and left it
 }
 
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
@@ -90,6 +92,8 @@ export const CycleGears: React.FC<Props> = ({
   done = '#2E844A',
   ink = '#181818',
   faint = '#A9A6A2',
+  hoverStartMs = null,
+  hoverEndMs = null,
 }) => {
   const f = useCurrentFrame()
   const INTRO = celebrate ? INTRO_CELEBRATE : INTRO_PLAIN
@@ -114,6 +118,22 @@ export const CycleGears: React.FC<Props> = ({
   // Opening: the gear spins FAST and slows to a stop over 3s (ease-out cubic),
   // landing after whole turns so the gap is back at the top for the loop.
   const spin = interpolate(f, [0, SPIN_FRAMES], [0, SPIN_TURNS * 360], { ...clamp, easing: Easing.out(Easing.cubic) })
+  // Hover: the gear spins while the pointer is on it (real time, like the
+  // countdown), and on leave eases to a stop on a whole turn — gap back on top.
+  let hoverSpin = 0
+  if (hoverStartMs) {
+    const now = Date.now()
+    const W = 0.6 // deg per ms (~1.7 turns/s)
+    const end = hoverEndMs && hoverEndMs >= hoverStartMs ? hoverEndMs : null
+    const aEnd = W * ((end ?? now) - hoverStartMs)
+    if (!end) hoverSpin = aEnd
+    else {
+      const target = Math.ceil((aEnd + 120) / 360) * 360
+      const D = (3 * (target - aEnd)) / W // ms: ease-out cubic starting at speed W
+      const p = Math.min(1, (now - end) / D)
+      hoverSpin = aEnd + (target - aEnd) * (1 - (1 - p) ** 3)
+    }
+  }
 
   // the loose tooth floats above the gap (bobs 2x per loop), leaning in as
   // the gear creeps toward it
@@ -147,7 +167,7 @@ export const CycleGears: React.FC<Props> = ({
             )
           })}
 
-          <g transform={`rotate(${rot + spin})`}>
+          <g transform={`rotate(${rot + spin + hoverSpin})`}>
             <Draw d={GEAR} p={pGear} stroke={ink} width={3} />
             <Draw d={GHOST} p={pTooth} stroke={accent} width={2} dash="4 6" />
             {/* inner ring: green all round except under the gap (blue, dashed) */}
