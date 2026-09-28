@@ -1230,28 +1230,52 @@ setup wizard's "מדף ההסכמים" step — no navigation away).
 - **Summary KPIs** + filters (דורש טיפול = failed / waiting_worker / not_queued / partial / שיוך rejected /
   mailbox error). One grouped query per area; latest batch via `DISTINCT ON (user_id)`.
 
-## 17. Collection agent (סוכן גבייה) — chases unpaid commission, the agent approves every mail
+## 17. Office agent (סוכן המשרד) + the data map — the back-office AI that works for the agent
 
-This is a back-office agent, not a chat: per insurer it gives one line and ONE suggested next step.
+The agent's back-office AI speaks first: a greeting, then one card per thing that waits, each card with the ONE action that moves it. A short ask box answers in ≤3 plain sentences and ends with a step. It is not a chat. It owns no new data; it **speaks for two workers** and reads the **data map**.
+
+```mermaid
+flowchart RL
+  MA[Mail Agent<br/>triage · summary · draft] --> OA[office_agent.brief<br/>greeting + cards by urgency]
+  CA[collection_agent<br/>unpaid per insurer · draft · follow-up] --> OA
+  DM[data_map<br/>Markdown site, drill-down] --> ASK[office_agent.ask<br/>Haiku + open_page tool]
+  OA --> UI[OfficeAgentPanel]
+  ASK --> UI
+```
 
 - **Code:**
-  - Backend: `services/collection_agent.py`, `api/collection_agent.py` (`/api/collection-agent`) and `models/collection_case.py` (`collection_cases`, UNIQUE user + company + month).
-  - Frontend: `CollectionAgentIcon.vue`, `CollectionAgentPanel.vue` and `stores/collectionAgent.js`.
-- **Source:** the latest persisted merged comparison.
-  - **Unpaid** = `only_production` customers whose product company is one of the month's `commission_company_sources`. An insurer with no נפרעים at all is "no data", not unpaid.
-  - Inactive or cancelled products are never claimed (`INACTIVE_MARKERS`).
-  - There is one draft line per customer + policy; riders are merged and their expected commission summed.
-- **Flow:**
-  1. `refresh_cases` builds DRAFT mails and never rewrites a case that was already sent.
-  2. The agent adds the contact email if missing, then approves with "אישור ושליחה", which sends via `mail_intake.send.send_as_agent` (the agreement-request path). The contact is saved in `company_contacts`.
-  3. `poll_user` runs every 15 minutes on the scheduler and picks up replies, threaded or from the contact after `sent_at`. It adds a one-line Hebrew summary via Haiku, falling back to the first line.
-  4. After 7 days with no reply, the card suggests a reminder, which the agent sends.
-  5. The agent can mark any case "טופל".
-- **Invariants:**
-  - Nothing is ever sent without the agent's click (decided 2026-09-29).
-  - The drafts are rebuilt from data, never made up.
-  - The next step comes from `suggestion()`, a pure ladder: contact → approve → wait → remind → read → done (`tests/test_collection_agent.py`).
-- **UI:**
-  - **Icon:** line art in the cycle clock's style (an envelope with a ₪ seal and a magnifier, and a dashed halo), under the clock on home and under the small clock elsewhere. Its badge counts the insurers that still need action. It appears only once a comparison exists.
-  - **Panel:** opens iPhone-style out of the icon (`useOriginMorph`). It holds a hand-drawn diagram (the agent in the centre, a drawn branch per insurer: grey = draft, green = sent, bold green = replied) and the picked insurer's step, contact and draft.
+  - Backend: `services/office_agent.py` and `api/office_agent.py` (`GET /api/office-agent`, `POST /ask`, `GET /map?path=`).
+  - Frontend: `stores/officeAgent.js`, `OfficeAgentPanel.vue`, `CollectionAgentIcon.vue` (under the cycle clock) and `OfficeAgentGlyph.vue`.
+- **Cards:**
+  - Open Mail Agent items (`mail_items`, 14 days): send the draft / make a draft / import the file / done.
+  - Open collection cases: approve and send / add the contact / remind / read the reply and resolve.
+  - Order: `PRIORITY` (insurer replied, then customer question, then reminder due, …).
+  - Every action goes through the EXISTING endpoints (`/mail-agent/items/*`, `/collection-agent/cases/*`). **Sending is always the agent's click.**
 
+### 17a. The data map (`services/data_map.py`) — the agent's data as Markdown the AI navigates
+
+The AI never gets one giant dump. It gets `index.md` (categories, a one-line fact each, links) and **drills down** with the `open_page` tool, following the connections the answer needs:
+
+```
+index.md ─┬─ companies.md ──► companies/<key>.md   production · paid/unpaid · נפרעים received ·
+          │                                        agreement rates · contact · open mail ·
+          │                                        collection case + next step · unpaid customers ─► customers/<id>.md
+          ├─ unpaid.md  ──► companies/<key>.md
+          ├─ mail.md    ──► companies/<key>.md · customers/<id>.md
+          ├─ agreements.md ─► companies/<key>.md
+          └─ search/<name>.md   (the agent says a NAME, not an ID)
+```
+
+- **Rendering:** pages are rendered **on demand** from one loaded `MapContext`: the latest merged comparison, rates, contacts, collection cases and open mail. A book has hundreds of customers, so only the pages the AI opens are built.
+- **Safety:** read-only and user-scoped. Links are the exact paths `open_page` accepts.
+- **The ask loop:** `ask()` runs Haiku with the index in the prompt, for at most 5 `open_page` hops.
+  - **Invariant:** answers only from the pages it opened. When something isn't there, it says so and suggests what to check.
+  - The reply blocks are re-sent as **plain dicts**, because re-sending the SDK objects trips its serializer.
+- **Extending it:** new capabilities (tasks, client-file gaps, renewals) plug in as NEW pages and cards, not as a bigger prompt. Add a page renderer and a link from `index.md`.
+
+### 17b. Collection agent (סוכן גבייה) — one of the office agent's workers
+
+- **Unpaid** = `only_production` customers of insurers that DO report נפרעים that month (no נפרעים at all = "no data"). Inactive or cancelled products are never claimed.
+- **Drafts:** one line per customer + policy.
+- **Flow:** DRAFT → the agent approves (send via `send_as_agent`) → replies polled every 15 minutes, with a one-line Haiku summary → a reminder is SUGGESTED after 7 days → resolved.
+- **Code:** `services/collection_agent.py`, `/api/collection-agent`, `collection_cases` (UNIQUE user + company + month), `tests/test_collection_agent.py`.

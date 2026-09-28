@@ -24,3 +24,12 @@ async def get_brief(db: AsyncSession = Depends(get_db), user: User = Depends(get
 @router.post("/ask")
 async def ask(body: AskIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
     return {"answer": await svc.ask(db, user, body.question)}
+
+
+@router.get("/map")
+async def map_page(path: str = "index.md", db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """One page of the agent's data map (services/data_map) — what the AI reads."""
+    from fastapi.responses import PlainTextResponse
+    from app.services import data_map
+    ctx = await data_map.load(db, user)
+    return PlainTextResponse(data_map.render(ctx, path), media_type="text/markdown; charset=utf-8")

@@ -140,30 +140,56 @@ async def brief(db: AsyncSession, user: User) -> dict:
 
 
 ASK_SYSTEM = (
-    "אתה סוכן המשרד של סוכן ביטוח: עוזר back-office שמכיר את המיילים שלו ואת פערי העמלות שלו. "
-    "ענה בעברית, ישר לעניין, עד 3 משפטים קצרים. השתמש רק בעובדות שקיבלת; אם אין לך את המידע — אמור זאת "
-    "בקצרה והצע מה לבדוק. אל תמציא סכומים או שמות. אם יש פעולה — אמור אותה במשפט אחד."
+    "אתה סוכן המשרד של סוכן ביטוח: עוזר back-office. יש לך מפה של הנתונים שלו כאתר Markdown קטן: "
+    "index.md מחולק לקטגוריות עם קישורים, ואפשר לרדת לעומק עם הכלי open_page (חברה → לקוח → מייל). "
+    "לפני שאתה עונה — פתח את הדפים שרלוונטיים לשאלה (לרוב 1–3 דפים), עקוב אחרי הקישורים כדי לחבר בין הנתונים. "
+    "ענה בעברית, ישר לעניין, עד 3 משפטים קצרים בטקסט רגיל — בלי Markdown, בלי כוכביות ובלי כותרות — "
+    "וסיים בצעד אחד שהסוכן צריך לעשות. שם של לקוח בלי ת.ז — חפש עם search/<שם>.md. "
+    "השתמש רק במה שמופיע בדפים; אם אין — אמור זאת בקצרה. אל תמציא סכומים או שמות."
 )
+OPEN_PAGE_TOOL = {
+    "name": "open_page",
+    "description": "פתיחת דף במפת הנתונים של הסוכן (Markdown). נתיבים כמו index.md, companies.md, companies/<key>.md, customers/<ת.ז>.md, search/<שם>.md, unpaid.md, mail.md, agreements.md — בדיוק כפי שמופיעים בקישורים.",
+    "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+}
+MAX_HOPS = 5
 
 
 async def ask(db: AsyncSession, user: User, question: str) -> str:
-    b = await brief(db, user)
-    facts = [f"{b['headline']}."]
-    u = b["unpaid"]
-    if u["open"]:
-        facts.append(f"עמלות שלא שולמו ({u['period_label']}): {u['open']} חברות, {u['customers']} לקוחות, צפי ₪{round(u['expected']):,}.")
-    for c in b["cards"][:15]:
-        facts.append(f"- [{c['kind']}] {c['title']}: {c['text']} ({c['meta']})")
+    """Answer a short question by navigating the data map (services/data_map):
+    the model starts from index.md and opens linked pages until it can answer."""
+    from app.services import data_map
+
+    ctx = await data_map.load(db, user)
+    index = data_map.render(ctx, "index.md")
     if not settings.ANTHROPIC_API_KEY:
-        return b["headline"]
+        return index.splitlines()[0]
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        r = await client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=220, system=ASK_SYSTEM,
-            messages=[{"role": "user", "content": "עובדות:\n" + "\n".join(facts) + f"\n\nשאלה: {question[:500]}"}],
-        )
-        return "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip() or b["headline"]
+        messages = [{"role": "user", "content": f"index.md:\n{index}\n\nשאלה: {question[:500]}"}]
+        for _ in range(MAX_HOPS):
+            r = await client.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=400, system=ASK_SYSTEM,
+                tools=[OPEN_PAGE_TOOL], messages=messages,
+            )
+            if r.stop_reason != "tool_use":
+                return "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip() or "אין לי תשובה כרגע."
+            # plain dicts — re-sending the SDK's block objects trips its serializer
+            blocks = []
+            for blk in r.content:
+                if getattr(blk, "type", "") == "text":
+                    blocks.append({"type": "text", "text": blk.text})
+                elif getattr(blk, "type", "") == "tool_use":
+                    blocks.append({"type": "tool_use", "id": blk.id, "name": blk.name, "input": dict(blk.input or {})})
+            messages.append({"role": "assistant", "content": blocks})
+            results = []
+            for blk in r.content:
+                if getattr(blk, "type", "") == "tool_use":
+                    page = data_map.render(ctx, (blk.input or {}).get("path", "index.md"))
+                    results.append({"type": "tool_result", "tool_use_id": blk.id, "content": page[:6000]})
+            messages.append({"role": "user", "content": results})
+        return "בדקתי כמה דפים ולא הגעתי לתשובה חד-משמעית — נסו לשאול בצורה ממוקדת יותר."
     except Exception as e:  # noqa: BLE001
         logger.warning("office agent ask failed: %s", e)
         return "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע."

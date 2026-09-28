@@ -519,13 +519,13 @@ The agent sees their own dates everywhere, all from `/api/cycle/status`: signup,
 - **Admin operations dashboard:** `/admin` → "תפעול" (sidebar item **ניהול**, admins only). It shows, per agent: cycle status per worker, Mail Agent, מסלקה downloads and agreement requests.
   See §16.
 
-## Collection agent (סוכן גבייה)
+## Office agent (סוכן המשרד) + the data map
 
-A back-office agent that chases unpaid commission. It works per insurer from the latest merged comparison.
-- Its mails are DRAFTS until the agent clicks "אישור ושליחה". Nothing is ever sent automatically.
-- It follows replies, summarising each in one line, and suggests a reminder after 7 days.
-- Inactive products are never claimed.
-- It lives under the cycle clock on home. See `docs/ARCHITECTURE.md` §17.
+The back-office AI speaks first: a greeting, then one card per mail or insurer that needs the agent, with ONE action each, plus a short ask box.
+- **The workers:** it speaks for the Mail Agent (incoming mail) and the collection agent (unpaid commission per insurer). Every send is still the agent's click on their endpoints.
+- **The data map:** its answers come from `services/data_map.py`, the agent's data as a Markdown site (`index.md` → companies → customers, unpaid, mail, agreements, search by name). The AI drills into it with an `open_page` tool.
+- **Adding a capability:** add a page and a card, never a bigger prompt.
+- See `docs/ARCHITECTURE.md` §17.
 
 ## Local Worker & Self-Update (`local-worker` skill)
 
