@@ -105,7 +105,7 @@ export default function RadialOrbital({
           position: 'absolute',
           inset: `${size / 2 - orbitRadius - 4}px`,
           borderRadius: '50%',
-          border: `1px dashed ${COLORS.border}`,
+          border: '1px dashed var(--on-canvas-line, #DDDBDA)',
           pointerEvents: 'none',
         }}
       />
@@ -243,7 +243,8 @@ export default function RadialOrbital({
                 whiteSpace: 'nowrap',
                 fontSize: 11,
                 fontWeight: 600,
-                color: hovered ? nodeColor : COLORS.textMuted,
+                // sits on the page canvas → follows its on-canvas text colour (dark canvas = light)
+                color: hovered ? nodeColor : 'var(--on-canvas-muted, #706E6B)',
                 background: hovered ? `${nodeColor}1A` : 'transparent',
                 padding: hovered ? '3px 8px' : 0,
                 borderRadius: 6,

@@ -146,20 +146,22 @@
                 </div>
 
                 <!-- the plate -->
-                <div class="cv-plate" role="radiogroup" aria-label="צבע רקע">
+                <div class="cv-plates" role="radiogroup" aria-label="צבע רקע">
+                <div v-for="(g, gi) in CANVAS_GROUPS" :key="g.id" class="cv-plate">
                   <button
-                    v-for="sw in PLATE" :key="sw.hex" type="button" role="radio"
+                    v-for="sw in g.swatches" :key="sw.hex" type="button" role="radio"
                     class="cv-dot" :class="{ on: canvas === sw.hex }" :aria-checked="canvas === sw.hex"
                     :aria-label="sw.name" :title="sw.name" :style="{ background: sw.hex }"
                     @click="pickCanvas(sw.hex)"
                   >
                     <svg v-if="canvas === sw.hex" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                   </button>
-                  <label class="cv-dot cv-dot--custom" :class="{ on: isCustom }" title="צבע משלך" :style="isCustom ? { background: canvas } : null">
+                  <label v-if="gi === CANVAS_GROUPS.length - 1" class="cv-dot cv-dot--custom" :class="{ on: isCustom }" title="צבע משלך" :style="isCustom ? { background: canvas } : null">
                     <input type="color" :value="canvas.toLowerCase()" aria-label="צבע משלך" @input="pickCanvas($event.target.value)" />
                     <svg v-if="!isCustom" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                     <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                   </label>
+                </div>
                 </div>
                 <p v-if="tooDark" class="cv-warn">צבע כהה מקשה על קריאת הטקסט — מומלץ גוון בהיר.</p>
                 <button v-if="canvas !== DEFAULT_CANVAS" type="button" class="cv-reset" @click="pickCanvas(DEFAULT_CANVAS)">חזרה לברירת המחדל</button>
@@ -269,7 +271,9 @@ const PLATE = CANVAS_GROUPS.flatMap((g) => g.swatches)
 const ALL_SWATCHES = PLATE.map((s) => s.hex)
 const DEMO_KPI = ['#2F73C4', '#D6336C', '#0FA39B', '#8E44AD']
 const isCustom = computed(() => !ALL_SWATCHES.includes(canvas.value))
-const tooDark = computed(() => luminance(canvas.value) < 0.72)
+// Only a CUSTOM mid-dark colour is a readability risk: the dark plate row is
+// handled (data-canvas="dark"), light ones are fine.
+const tooDark = computed(() => isCustom.value && luminance(canvas.value) < 0.72 && luminance(canvas.value) >= 0.2)
 function pickCanvas(hex) {
   setCanvas(hex)
   canvas.value = getCanvas()
@@ -729,7 +733,9 @@ watch(() => props.open, (now) => {
 .cvd-bars i { flex: 1; border-radius: 5px 5px 0 0; background: #2F73C4; opacity: 0.75; }
 .cvd-bars i:nth-child(2n) { background: #0FA39B; }
 
+.cv-plates { display: flex; flex-direction: column; gap: 12px; }
 .cv-plate { display: flex; flex-wrap: wrap; gap: 12px; padding: 4px 2px; }
+.cv-dot { color: #181818; }
 .cv-dot {
   position: relative; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; padding: 0;
   display: grid; place-items: center; color: #181818;
@@ -739,6 +745,8 @@ watch(() => props.open, (now) => {
 }
 .cv-dot:hover { transform: scale(1.1); }
 .cv-dot.on { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #181818; }
+/* checks on the dark dots are white */
+.cv-plate:nth-child(3) .cv-dot:not(.cv-dot--custom) { color: #fff; border-color: rgba(255, 255, 255, 0.12); }
 .cv-dot:focus-visible { outline: 2px solid #181818; outline-offset: 4px; }
 .cv-dot--custom {
   background: conic-gradient(#F8D7DA, #FBF4DC, #DDF2E3, #DCEBFA, #EADFF7, #F8D7DA);

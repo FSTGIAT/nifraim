@@ -191,6 +191,14 @@ body {
   position: relative;
 }
 
+/* Text/lines that sit DIRECTLY on the page canvas (not inside a white card)
+   use these; a dark canvas (Settings → מראה, utils/appCanvas.js) flips them. */
+html[data-canvas="dark"] {
+  --on-canvas: #EDEDED;
+  --on-canvas-muted: #B8B6B2;
+  --on-canvas-line: rgba(255, 255, 255, 0.22);
+}
+
 /* Clean background */
 .bg-mesh {
   display: none;

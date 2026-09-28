@@ -6,8 +6,9 @@ import { getUserFlag, setUserFlag } from './userFlags.js'
 const KEY = 'app_canvas'
 export const DEFAULT_CANVAS = '#EEEBE5'
 
-// Light tones only: text and charts outside the white cards are ink, so the
-// canvas must stay light. The palette group = a soft tint of each tab colour.
+// Light tones + a dark row. The cards stay white either way; on a dark canvas
+// <html data-canvas="dark"> lets page-level text (the few labels that sit
+// directly on the canvas) switch to light — see App.vue.
 export const CANVAS_GROUPS = [
   {
     id: 'neutral', label: 'ניטרליים',
@@ -33,6 +34,17 @@ export const CANVAS_GROUPS = [
       { hex: '#E6F3F2', name: 'אוטומציה', accent: '#0E8C8A' },
     ],
   },
+  {
+    id: 'dark', label: 'כהים',
+    swatches: [
+      { hex: '#0F0F10', name: 'שחור' },
+      { hex: '#1C1D20', name: 'פחם' },
+      { hex: '#2A2C31', name: 'גרפיט' },
+      { hex: '#16202E', name: 'כחול לילה' },
+      { hex: '#13231E', name: 'ירוק לילה' },
+      { hex: '#221A2B', name: 'שזיף' },
+    ],
+  },
 ]
 
 const HEX = /^#[0-9a-f]{6}$/i
@@ -42,8 +54,16 @@ export function getCanvas() {
   return v && HEX.test(v) ? v.toUpperCase() : DEFAULT_CANVAS
 }
 
+export function isDarkCanvas(hex) {
+  return luminance(hex) < 0.2
+}
+
 export function applyCanvas(hex = getCanvas()) {
-  try { document.documentElement.style.setProperty('--app-canvas', hex) } catch { /* SSR / no DOM */ }
+  try {
+    const root = document.documentElement
+    root.style.setProperty('--app-canvas', hex)
+    root.dataset.canvas = isDarkCanvas(hex) ? 'dark' : 'light'
+  } catch { /* SSR / no DOM */ }
 }
 
 export function setCanvas(hex) {
