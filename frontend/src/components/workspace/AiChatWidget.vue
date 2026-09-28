@@ -2,64 +2,15 @@
   <div class="ai-chat-widget">
     <div class="chat-card">
       <div class="chat-header">
-        <div class="chat-header-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-        </div>
-        <span class="chat-header-title">עוזר AI</span>
+        <ThinkingOrbIsland class="chat-header-orb" :state="chatStore.loading ? 'solving' : 'working'" :size="32" color="#6A48C9" :dot-size="1.5" />
+        <span class="chat-header-title"><span dir="ltr">Nifra <b>AI</b></span></span>
+        <AiLibraryIcons class="chat-libs" :documents="chatStore.documents" :sources="chatStore.sources" clickable @open="onLibOpen" />
         <button v-if="chatStore.messages.length" class="chat-clear-btn" @click="chatStore.clearMessages" title="נקה שיחה">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="1 4 1 10 7 10"/>
             <path d="M3.51 15a9 9 0 105.64-11.95L1 10"/>
           </svg>
         </button>
-      </div>
-
-      <!-- Attached AI documents (uploaded PDFs) -->
-      <div v-if="chatStore.documents.length" class="chat-doc-chips" aria-label="מסמכים שהועלו">
-        <span
-          v-for="doc in chatStore.documents"
-          :key="doc.id"
-          class="chat-doc-chip"
-          :class="{ 'chat-doc-chip-error': doc.status === 'error' }"
-          :title="doc.summary || doc.filename"
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <span class="chat-doc-chip-label">{{ doc.filename }}</span>
-          <button
-            type="button"
-            class="chat-doc-chip-x"
-            :aria-label="`הסר ${doc.filename}`"
-            @click="chatStore.removeDocument(doc.id)"
-          >
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </span>
-      </div>
-
-      <!-- Data source tags -->
-      <div v-if="chatStore.sources.length" class="chat-sources">
-        <span class="sources-label">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-            <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-          </svg>
-          מקורות נתונים:
-        </span>
-        <button
-          v-for="src in chatStore.sources"
-          :key="src.label"
-          class="source-tag"
-          :class="src.type"
-          @click="onSourceClick(src)"
-        >{{ src.label }}</button>
       </div>
 
       <!-- Messages area -->
@@ -176,6 +127,8 @@
 </template>
 
 <script setup>
+import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
+import AiLibraryIcons from './AiLibraryIcons.vue'
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
@@ -207,6 +160,10 @@ const sourceTabMap = {
   production: 'production',
   commission: 'comparison',
   myfile: 'recruits',
+}
+
+function onLibOpen(tab) {
+  emit('navigate-tab', tab)
 }
 
 function onSourceClick(src) {
@@ -774,4 +731,10 @@ watch(
     font-size: 11.5px;
   }
 }
+
+/* Nifra AI header: orb + wordmark + library icons */
+.chat-header-orb { width: 32px; height: 32px; flex-shrink: 0; }
+.chat-header-title { font-size: 16px; font-weight: 900; letter-spacing: -0.02em; color: var(--text-primary, #181818); }
+.chat-header-title b { color: var(--tab-ai-ink, #6A48C9); font-weight: 900; }
+.chat-libs { margin-inline-start: auto; }
 </style>

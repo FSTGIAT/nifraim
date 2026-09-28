@@ -7,17 +7,9 @@
       <aside v-if="open" class="ai-sheet" role="dialog" aria-modal="true" :aria-label="headerLabel">
         <header class="ai-sheet-head">
           <div class="ai-sheet-head-left">
-            <span class="ai-sheet-badge" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z"/>
-                <path d="M19 3v4"/>
-                <path d="M5 17v4"/>
-                <path d="M3 19h4"/>
-                <path d="M17 19h4"/>
-              </svg>
-            </span>
+            <ThinkingOrbIsland class="ai-sheet-orb" :state="chatStore.loading ? 'solving' : 'listening'" :size="32" color="#6A48C9" :dot-size="1.5" />
             <div class="ai-sheet-titles">
-              <span class="ai-sheet-title">עוזר AI</span>
+              <span class="ai-sheet-title" dir="ltr">Nifra <b>AI</b></span>
               <span class="ai-sheet-sub" v-if="viewTitle">· {{ viewTitle }}</span>
             </div>
           </div>
@@ -46,42 +38,13 @@
         <div v-if="chatStore.error" class="ai-sheet-error">{{ chatStore.error }}</div>
         <div v-if="chatStore.uploadError" class="ai-sheet-error">{{ chatStore.uploadError }}</div>
 
-        <div v-if="chatStore.documents.length" class="ai-doc-chips" aria-label="מסמכים שהועלו">
-          <span
-            v-for="doc in chatStore.documents"
-            :key="doc.id"
-            class="ai-doc-chip"
-            :class="{ 'ai-doc-chip-error': doc.status === 'error' }"
-            :title="doc.summary || doc.filename"
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span class="ai-doc-chip-label">{{ doc.filename }}</span>
-            <button
-              type="button"
-              class="ai-doc-chip-x"
-              :aria-label="`הסר ${doc.filename}`"
-              @click="chatStore.removeDocument(doc.id)"
-            >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </span>
-        </div>
+        <!-- what Nifra AI reads: small library icons, not a chip per file -->
+        <AiLibraryIcons class="ai-sheet-libs" :documents="chatStore.documents" :sources="chatStore.sources" />
 
         <div class="ai-sheet-body" ref="bodyEl">
           <div v-if="!chatStore.messages.length" class="ai-sheet-empty">
-            <span class="ai-sheet-empty-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-              </svg>
-            </span>
-            <p class="ai-sheet-empty-title">שאל אותי על המסך הזה</p>
-            <p class="ai-sheet-empty-sub">אענה על בסיס הנתונים שלך — חברות, עמלות, לקוחות שהשתנו.</p>
+            <ThinkingOrbIsland class="ai-sheet-empty-orb" state="listening" :size="64" color="#6A48C9" :dot-size="1.4" />
+            <p class="ai-sheet-empty-sub">שאלו על חברות, עמלות ולקוחות — אענה מהנתונים שלכם.</p>
           </div>
 
           <div
@@ -187,6 +150,8 @@
 </template>
 
 <script setup>
+import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
+import AiLibraryIcons from './AiLibraryIcons.vue'
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useChatStore } from '../../stores/chat.js'
 import { renderMarkdown } from '../../utils/renderMarkdown.js'
@@ -265,6 +230,7 @@ watch(() => props.open, async (isOpen) => {
     if (!chatStore.documentsLoaded) {
       chatStore.loadDocuments()
     }
+    if (!chatStore.sourcesLoaded) chatStore.fetchSources()
     await nextTick()
     inputEl.value?.focus()
     if (props.initialQuestion && props.initialQuestion.trim()) {
@@ -326,9 +292,13 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   inset-inline-end: 0;
-  width: 420px;
-  max-width: 92vw;
-  background: #ffffff;
+  width: 520px;
+  max-width: 94vw;
+  /* a soft lavender horizon rising from the bottom edge */
+  background:
+    radial-gradient(130% 42% at 50% 100%, rgba(183, 156, 235, 0.34) 0%, rgba(183, 156, 235, 0) 70%),
+    radial-gradient(80% 30% at 85% 100%, rgba(106, 72, 201, 0.14) 0%, rgba(106, 72, 201, 0) 70%),
+    linear-gradient(180deg, #FFFFFF 0%, #FBF9FE 100%);
   border-inline-start: 1px solid var(--border-subtle);
   box-shadow: -18px 0 48px rgba(17, 12, 6, 0.12), -2px 0 6px rgba(17, 12, 6, 0.04);
   z-index: 1005;
@@ -701,5 +671,39 @@ onBeforeUnmount(() => {
   .ai-sheet-enter-from,
   .ai-sheet-leave-to { transform: none; }
   .ai-typing .dot { animation: none; opacity: 0.55; }
+}
+
+/* Nifra AI */
+.ai-sheet-orb { width: 32px; height: 32px; flex-shrink: 0; }
+.ai-sheet-title { font-size: 17px; font-weight: 900; letter-spacing: -0.02em; color: var(--text-primary, #181818); }
+.ai-sheet-title b { color: var(--tab-ai-ink, #6A48C9); font-weight: 900; }
+.ai-sheet-libs { padding: 10px 18px 0; }
+.ai-sheet-empty-orb { width: 64px; height: 64px; margin-bottom: 6px; }
+.ai-sheet-empty-sub { font-size: 14px !important; color: var(--text-secondary, #5C5A58) !important; max-width: 280px; }
+
+/* Desktop: Nifra AI opens HORIZONTALLY out of the floating button (right
+   edge) — a wide panel revealed from the button's side to the left. */
+@media (min-width: 701px) {
+  .ai-sheet {
+    top: 96px; bottom: auto; right: 98px; left: auto; inset-inline-end: auto;
+    width: min(1040px, calc(100vw - 230px));
+    height: min(620px, calc(100vh - 124px));
+    max-width: none;
+    border-radius: 24px;
+    border: 1px solid color-mix(in srgb, #6A48C9 16%, var(--border-subtle));
+    box-shadow: 0 30px 80px rgba(40, 24, 90, 0.22), 0 4px 14px rgba(40, 24, 90, 0.08);
+    overflow: hidden;
+  }
+  .ai-sheet-enter-active { transition: clip-path 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease; }
+  .ai-sheet-leave-active { transition: clip-path 0.3s cubic-bezier(0.55, 0, 0.9, 0.4), opacity 0.3s ease; }
+  .ai-sheet-enter-from,
+  .ai-sheet-leave-to {
+    opacity: 0.4;
+    transform: none;
+    clip-path: inset(0 0 0 100% round 24px); /* collapsed onto the right edge, next to the button */
+  }
+  .ai-sheet-enter-to,
+  .ai-sheet-leave-from { clip-path: inset(0 0 0 0 round 24px); }
+  .ai-sheet-empty-sub { max-width: 420px; }
 }
 </style>

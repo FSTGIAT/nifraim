@@ -31,6 +31,7 @@
     "pinia": "^3.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "thinking-orbs": "^0.3.2",
     "vue": "^3.5.28",
     "vue-router": "^4.6.4",
     "vue3-apexcharts": "^1.10.0",
