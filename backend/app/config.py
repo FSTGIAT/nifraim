@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     CYCLE_HOUR: int = 6
     MASLAKA_DAY: int = 15
     MASLAKA_CUTOFF_DAY: int = 27
+    # LOCAL SIMULATION ONLY: an ISO instant ("2026-10-21T07:00:00+03:00") the cycle
+    # code treats as "now", to walk a user through future cycles. Never set on Railway.
+    CYCLE_NOW_OVERRIDE: str = ""
     # WHICH HOST AM I? True only on the Maslaka Gateway VM — the Israeli Windows box
     # whose folders the מסלקה Transporter syncs. It is NOT a feature flag: setting it
     # on Railway makes the cloud write outbox XML to a container disk the Transporter

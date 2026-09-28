@@ -59,6 +59,14 @@ HEBREW_MONTHS = [
 ]
 
 
+def utc_now() -> datetime:
+    """Aware UTC "now" for the cycle code — CYCLE_NOW_OVERRIDE when a local
+    simulation sets it, the real clock otherwise."""
+    if settings.CYCLE_NOW_OVERRIDE:
+        return datetime.fromisoformat(settings.CYCLE_NOW_OVERRIDE).astimezone(timezone.utc)
+    return datetime.now(timezone.utc)
+
+
 # ─────────────────────────── pure date math ────────────────────────────────
 
 def _add_months(y: int, m: int, k: int) -> tuple[int, int]:
@@ -282,7 +290,7 @@ def manual_run_allowed(user, state: "CycleState") -> bool:
 
 
 async def user_cycle_state(db: AsyncSession, user, now: datetime | None = None) -> CycleState:
-    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(tzinfo=None)
+    now_utc = (now or utc_now()).astimezone(timezone.utc).replace(tzinfo=None)
     now_aware = now_utc.replace(tzinfo=timezone.utc)
 
     fy, fm = first_cycle_for(user.created_at or now_utc)
@@ -530,7 +538,7 @@ async def run_cycle_tick(now: datetime | None = None) -> None:
     from app.database import async_session
     from app.models.user import User
 
-    now_aware = now or datetime.now(timezone.utc)
+    now_aware = now or utc_now()
     try:
         async with async_session() as db:
             users = (await db.execute(

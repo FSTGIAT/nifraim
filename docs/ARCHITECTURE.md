@@ -132,6 +132,7 @@ Invariants:
 | **The one seam mail uses to reach ingest** | `services/mail_intake/__init__.py::ingest_mail_attachment` |
 | **Microsoft consent / Gmail IMAP / Resend webhook** | `services/mail_intake/{graph,gmail,resend}.py`, `api/mailbox.py` |
 | **Local worker lifecycle / self-update** | `backend/local_worker.py` |
+| **New customer journey / monthly cycle (21st, locked tab, manual vs מסלקה production)** | §13 · `services/cycle_service.py`, `api/cycle.py`, `stores/cycle.js`, `ProductionTab.vue` |
 | **Worker endpoints (bundle, heartbeat, update, log)** | `api/portal_automation.py` (`/worker/*`) |
 | **OTP webhook / templates / next-otp** | `api/portal_automation.py` (`/phone-forward/*`) |
 | **OTP company routing from SMS text** | `services/otp_routing.py::match_otp_company` |
@@ -1053,6 +1054,53 @@ flowchart RL
 - **`CYCLE_LAUNCH` ("2026-10")** — cycles before it are never queued. Without it, deploying would fire
   last month's cycle for every existing user at once. Pre-launch users keep legacy upload behaviour.
 
+### New customer — the cycle method (what a new agent goes through)
+
+Two dates decide everything, and both come from the server:
+
+- **Signup date** (`users.created_at`): gives the **first cycle**, the 21st of the month after signup.
+- **שיוך SUBMITTED date** (`maslaka_agent_links.submitted_at`): gives the **first מסלקה production**.
+  - Submitted **before the 27th** of month M: the 15th of M+1.
+  - Submitted **on or after the 27th**: the 15th of M+2.
+
+Each cycle then picks its production source, `production_source_for_cycle(y, m, maslaka_first)`:
+
+- **`maslaka`** when the first מסלקה production is on or before the 15th of the cycle month. Nothing to upload.
+- **`manual`** otherwise. The agent uploads production for that cycle's period, and only after the cycle download ended.
+
+**Path A — on time.** Signup and שיוך on 19.9, before the 27th:
+
+| When | What happens | Production tab |
+|---|---|---|
+| 19.9 → 21.10 | Setup wizard; the rest of the app is open | **Locked**, countdown to 21.10 |
+| 15.10 | The מסלקה sends September production (2100) | still locked |
+| 21.10 06:00 | Cycle 1: the worker downloads September נפרעים | Opens. `maslaka`, no upload; the comparison runs when the download ends |
+| every 21st after | Fully automatic | small מסלקה icon in place of the upload |
+
+**Path B — late שיוך.** Signup and שיוך on 28.9, on or after the 27th. Walked end to end on 2026-09-28:
+
+| When | What happens | Production tab |
+|---|---|---|
+| 28.9 → 21.10 | Setup; first מסלקה production shown as 15.11 | **Locked**, countdown to 21.10 |
+| 21.10 06:00 | Cycle 1: September נפרעים download | Upload refused (403 `waiting`) until the batch ends |
+| 21.10, batch ended | `upload_production` email + modal | **Big "upload September production" call**. The upload is forced to September, and `compare_now` runs the comparison |
+| 15.11 | The מסלקה sends October production | — |
+| 21.11 06:00 | Cycle 2: October נפרעים, source `maslaka` | Upload refused (403 `maslaka`). The upload **shrinks to a small מסלקה icon** (`.gate-icon`, tooltip "arrives on the 15th") |
+
+**Other cases:**
+
+- **Signup on time, שיוך late** (signup 19.9, submitted 5.10 → 15.11): same as path B. The first cycle comes from the signup date; the source comes from the submitted date.
+- **No שיוך, or rejected:** `manual` every cycle. Each 21st asks for that month's upload, and the wizard and מסלקה tab keep showing the next deadline (`maslaka_deadline` / `maslaka_if_submitted_now`).
+- **Worker offline at 06:00:** the batch stays `pending`, the agent gets `worker_waiting`, and the worker claims it when it comes online. The upload window opens only after that.
+
+**Production-tab state machine** (`ProductionTab.vue`, all from `/api/cycle/status`):
+
+```
+locked ─(first 21st 06:00)─► cycle batch pending/running ─► batch ended ─┬─ source=manual → upload OPEN (big CTA / needs_production_upload banner)
+                                                                          │                  → uploaded → dashboard + small upload icon
+                                                                          └─ source=maslaka → no upload; small מסלקה icon (tooltip)
+```
+
 ### Dates the agent sees (2026-09-28)
 `GET /api/cycle/status` also returns:
 
@@ -1068,6 +1116,14 @@ flowchart RL
 - **One wording source:** `stores/cycle.js`: `signupLine`, `maslakaLine` (tone todo / wait / ok) and `MASLAKA_RULE`.
   - Surfaces that use it: the cycle widget (date chips + a "נרשמתם" rail marker), the locked Production timeline, wizard step 5, the מסלקה tab header, and the admin dashboard (`expected_first_production`).
 - **The UI never recomputes the rule.** Where it compares dates, it compares plain `YYYY-MM-DD` strings, not `Date` objects across time zones.
+
+### Simulating future cycles locally
+`CYCLE_NOW_OVERRIDE` (config) sets the instant that `cycle_service.utc_now()` returns. Start local uvicorn with it (e.g. `2026-11-21T09:00:00+02:00`), and set the same instant on the browser clock (Playwright `page.clock.install`) to walk a user through the upcoming 21sts. **Never set it on Railway.**
+
+Path B above was verified this way.
+
+- Under a fake clock, a batch queued by the tick still gets the real `started_at`, so a spurious `worker_waiting` fires. It's a simulation artifact.
+- Date math for every path is covered in `tests/test_cycle_service.py` (`test_scenario_*`).
 
 ### Invariants
 - **No manual run for agents.** `POST /batches/run` and `/credentials/{id}/run` are admin-only

@@ -28,10 +28,6 @@
         </div>
         <button type="button" class="cy-banner-btn" @click="openFilePicker">העלאת פרודוקציה</button>
       </div>
-      <div v-else-if="uploadGateNote && productionStore.currentFile" class="cy-note" role="status">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        <span>{{ uploadGateNote }}</span>
-      </div>
       <div v-if="uploadError" class="cy-error" role="alert">
         <span>{{ uploadError }}</span>
         <button type="button" class="cy-error-x" aria-label="סגור" @click="uploadError = ''">
@@ -176,6 +172,24 @@
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
           </button>
+          <!-- Upload closed for this cycle (מסלקה delivers it, or the cycle's
+               download hasn't ended): the upload shrinks to a small status
+               icon; hover/focus says why. -->
+          <span
+            v-else-if="uploadGateNote"
+            class="gate-icon"
+            tabindex="0"
+            role="img"
+            :aria-label="uploadGateNote"
+          >
+            <svg v-if="cycleStore.status?.production_source === 'maslaka'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4z"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+            <span class="gate-tip" role="tooltip">{{ uploadGateNote }}</span>
+          </span>
         </div>
 
         <!-- Uploading indicator -->
@@ -364,7 +378,7 @@ const canUpload = computed(() =>
 const uploadGateNote = computed(() => {
   const st = cycleStore.status
   if (!st || st.locked || st.prelaunch || canUpload.value) return ''
-  if (st.production_source === 'maslaka') return `הפרודוקציה של ${st.current_period_label} מגיעה אוטומטית מהמסלקה`
+  if (st.production_source === 'maslaka') return `הפרודוקציה של ${st.current_period_label} מגיעה אוטומטית מהמסלקה ב-15 לחודש — אין צורך להעלות ידנית`
   return 'העלאת הפרודוקציה תיפתח בסיום ההורדה האוטומטית של המחזור'
 })
 const uploadError = ref('')
@@ -604,11 +618,6 @@ async function handleCompare(currentId, previousId) {
 }
 .cy-banner-btn:hover { transform: translateY(-1px); }
 @media (max-width: 640px) { .cy-banner { flex-wrap: wrap; } .cy-banner-btn { width: 100%; } }
-.cy-note {
-  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
-  border-radius: 999px; background: var(--tab-production-wash); color: var(--tab-production);
-  font-size: 13px; font-weight: 700;
-}
 .cy-error {
   display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 10px;
   background: rgba(234, 0, 30, 0.06); border: 1px solid rgba(234, 0, 30, 0.22);
@@ -846,7 +855,12 @@ async function handleCompare(currentId, previousId) {
 .inner-tabs {
   display: flex;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.inner-tab { flex-shrink: 0; }
 
 .inner-tab {
   display: flex;
@@ -965,6 +979,23 @@ async function handleCompare(currentId, previousId) {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(46, 132, 74, 0.2);
 }
+
+/* Upload closed this cycle → small status icon + tooltip */
+.gate-icon {
+  position: relative; width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: help;
+  background: var(--tab-production-wash); color: var(--tab-production);
+  border: 1.5px solid rgba(47, 115, 196, 0.18);
+}
+.gate-icon:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+.gate-tip {
+  position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 20;
+  width: max-content; max-width: min(260px, 46vw); padding: 8px 12px; border-radius: 10px;
+  background: var(--primary, #181818); color: #fff; font-size: 12.5px; font-weight: 600; line-height: 1.5;
+  box-shadow: var(--shadow-md, 0 6px 18px rgba(0, 0, 0, 0.18));
+  opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.gate-icon:hover .gate-tip, .gate-icon:focus-visible .gate-tip { opacity: 1; transform: none; }
 
 /* Uploading banner */
 .uploading-banner {
