@@ -39,20 +39,14 @@
               </div>
             </RemotionLoopIsland>
           </div>
-          <h3 class="cg-title">
-            <template v-if="celebrate"><span dir="ltr">Nifraim</span> הוריד את הנפרעים לבד.</template>
-            <template v-else>הנפרעים של {{ current.period_label }} כבר כאן.</template>
-            <span class="cg-acc">{{ celebrate ? 'הגלגל הבא — שלך.' : 'נשאר רק הגלגל שלך.' }}</span>
-          </h3>
+          <h3 class="cg-title">הורדת דוחות נפרעים <span class="cg-acc">הסתיימה</span></h3>
           <p class="cg-body">
-            <template v-if="celebrate">הנפרעים של {{ current.period_label }} ירדו אוטומטית מכל החברות. </template>
-            מעלים את קובץ הפרודוקציה של {{ current.period_label }} (מאתר המסלקה) — והמכונה נסגרת: ההשוואה רצה לבד.
+            הנפרעים של {{ current.period_label }} ירדו אוטומטית מכל החברות.
+            העלה פרודוקציה באופן ידני<template v-if="autoCycle.date"> — ב-<span class="ltr-number">{{ autoCycle.date }}</span> המערכת תעבור לאוטומציה<template v-if="autoCycle.deadline"> (בתנאי שטופס השיוך יוגש עד <span class="ltr-number">{{ autoCycle.deadline }}</span>)</template></template>.
           </p>
           <footer class="cn-foot">
             <span v-if="queue.length > 1" class="cn-count ltr-number">1/{{ queue.length }}</span>
-            <button class="cn-btn cn-btn--ghost" type="button" @click="dismiss">
-              {{ queue.length > 1 ? 'הבא' : 'אחר כך' }}
-            </button>
+            <button v-if="queue.length > 1" class="cn-btn cn-btn--ghost" type="button" @click="dismiss">הבא</button>
             <button class="cn-btn cn-btn--primary" type="button" @click="act">
               {{ meta.cta }}
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -132,11 +126,23 @@ const firstPeriod = computed(() => {
 const celebrate = computed(() => isUpload.value && !!firstPeriod.value && current.value.period === firstPeriod.value)
 const gearProps = computed(() => ({
   celebrate: celebrate.value,
-  accent: '#2F73C4', done: '#2E844A', idle: '#B7B4B0', ink: '#181818',
+  accent: '#2F73C4', done: '#2E844A', faint: '#A9A6A2', ink: '#181818',
   labelDone: `נפרעים ${(current.value?.period_label || '').split(' ')[0]}`,
-  labelNow: 'הפרודוקציה שלך',
   labelNext: 'השוואה',
 }))
+// When production stops being manual: the cycle (21st) of the month the first
+// מסלקה production lands — already scheduled (שיוך submitted), or what a
+// submission by the deadline would give. String math, no time-zone drift.
+const autoCycle = computed(() => {
+  const st = cycle.status || {}
+  const iso = st.maslaka_first_auto || st.maslaka_if_submitted_now
+  const m = iso ? Number(iso.slice(5, 7)) : null
+  const dm = (d) => (d ? `${Number(d.slice(8, 10))}.${Number(d.slice(5, 7))}` : '')
+  return {
+    date: m ? `21.${m}` : '',
+    deadline: st.maslaka_first_auto ? '' : dm(st.maslaka_deadline),
+  }
+})
 
 function dismiss() {
   if (current.value) cycle.markSeen(current.value.id)
@@ -180,7 +186,7 @@ function act() {
   font-size: 12.5px; font-weight: 700; color: var(--tab-production, #2F73C4);
 }
 .cg-kicker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green, #2E844A); }
-.cg-stage { margin: -6px -8px 0; }
+.cg-stage { margin: -6px -8px -22px; }
 .cg-static { display: flex; align-items: center; justify-content: center; gap: 28px; height: 100%; }
 .cg-static-g {
   width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
@@ -193,7 +199,7 @@ function act() {
   font-size: clamp(22px, 3vw, 28px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.25;
   color: var(--text-primary, #181818);
 }
-.cg-acc { display: block; color: var(--tab-production, #2F73C4); }
+.cg-acc { color: var(--tab-production, #2F73C4); }
 .cg-body { margin: 0; text-align: center; font-size: 15px; line-height: 1.7; color: var(--text-secondary, #5C5A58); text-wrap: pretty; }
 .cn-card--gears .cn-foot { justify-content: center; margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) { .cn-card--celebrate { animation: none; } }
