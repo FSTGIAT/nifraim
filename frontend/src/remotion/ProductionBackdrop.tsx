@@ -62,14 +62,14 @@ export const ProductionBackdrop: React.FC<Props> = ({ variant = 'compare', color
     return (
       <AbsoluteFill>
         <svg width={PRODUCTION_BACKDROP_W} height={PRODUCTION_BACKDROP_H} viewBox={`0 0 ${PRODUCTION_BACKDROP_W} ${PRODUCTION_BACKDROP_H}`}>
-          <line x1={60} y1={700} x2={1540} y2={700} {...stroke} strokeWidth={8} />
+          <line x1={60} y1={930} x2={1540} y2={930} {...stroke} strokeWidth={8} />
           {X.map((x, i) => {
             const k = lift(i)
             return (
               <g key={i}>
-                <circle cx={x} cy={700} r={22} fill={color} fillOpacity={F_OP * 2} stroke={color} strokeOpacity={S_OP} strokeWidth={4} />
+                <circle cx={x} cy={930} r={22} fill={color} fillOpacity={F_OP * 2} stroke={color} strokeOpacity={S_OP} strokeWidth={4} />
                 {/* calendar page hovering over its month */}
-                <g transform={`translate(${x - 110} ${380 - k * 60})`} opacity={0.55 + 0.45 * k}>
+                <g transform={`translate(${x - 110} ${630 - k * 50})`} opacity={0.55 + 0.45 * k}>
                   <rect width={220} height={240} rx={28} fill={color} fillOpacity={F_OP} stroke={color} strokeOpacity={S_OP} strokeWidth={4} />
                   <line x1={0} y1={70} x2={220} y2={70} {...stroke} />
                   <line x1={60} y1={-18} x2={60} y2={30} {...stroke} strokeWidth={8} />
@@ -82,7 +82,7 @@ export const ProductionBackdrop: React.FC<Props> = ({ variant = 'compare', color
             )
           })}
           {/* the clock, far corner */}
-          <g transform="translate(1360 170)">
+          <g transform="translate(1500 330)">
             <circle r={120} {...stroke} />
             <line x1={0} y1={0} x2={0} y2={-80} {...stroke} strokeWidth={8} transform={`rotate(${t * 360 * 4})`} />
             <line x1={0} y1={0} x2={56} y2={0} {...stroke} strokeWidth={8} transform={`rotate(${t * 360})`} />
