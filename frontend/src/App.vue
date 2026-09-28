@@ -66,8 +66,7 @@ const navTabs = [
   --gray: #706E6B;
   --light-gray: #DDDBDA;
   --bg: #F3F3F3;
-  /* The page canvas (body only). Warm white + the opening screen's two big
-     circles, in light. --bg stays the neutral fill components use. */
+  /* The page canvas (body only): warm white. --bg stays the neutral fill components use. */
   --app-canvas: #F4F3F0;
   --bg-surface: #FFFFFF;
   --card-bg: #FFFFFF;
@@ -179,8 +178,6 @@ const navTabs = [
 body {
   font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: var(--app-canvas);
-  background-image: radial-gradient(ellipse 75% 60% at 50% 32%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 70%);
-  background-attachment: fixed;
   color: var(--text);
   direction: rtl;
   min-height: 100vh;
@@ -192,18 +189,6 @@ body {
 #app-root {
   min-height: 100vh;
   position: relative;
-}
-
-/* The opening screen's circles, echoed faintly behind every page. */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(circle 320px at calc(100% - 120px) 110px, rgba(24, 24, 24, 0.035) 0%, rgba(24, 24, 24, 0.055) 99%, transparent 100%),
-    radial-gradient(circle 210px at 90px calc(100% - 50px), rgba(24, 24, 24, 0.03) 0%, rgba(24, 24, 24, 0.05) 99%, transparent 100%);
 }
 
 /* Clean background */
