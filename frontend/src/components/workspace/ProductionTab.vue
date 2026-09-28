@@ -84,7 +84,42 @@
                  and taps the ring. Only on this empty state. -->
             <PointingHand from="bottom-right" color="var(--tab-production)" />
           </div>
-          <div v-if="emptyCta.title" class="pt-cta-copy">
+          <!-- The cycle's נפרעים are in → one clear ask: this month's production. -->
+          <div v-if="emptyCta.action === 'upload' && uploadFlow" class="pt-ready">
+            <span class="pt-ready-chip">
+              <span class="pt-ready-dot" aria-hidden="true"></span>
+              ההורדה של <span class="ltr-number">{{ uploadFlow.cycleDay }}</span> הסתיימה
+            </span>
+            <h3 class="pt-ready-title">
+              הנפרעים של <span class="pt-ready-acc">{{ uploadFlow.month }}</span> כבר כאן
+            </h3>
+            <ol class="pt-flow" aria-label="מה נשאר">
+              <li class="pt-flow-step is-done">
+                <span class="pt-flow-ic" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                <span class="pt-flow-label">נפרעים</span>
+                <span class="pt-flow-sub">הורדו אוטומטית</span>
+              </li>
+              <li class="pt-flow-line" aria-hidden="true"></li>
+              <li class="pt-flow-step is-now">
+                <span class="pt-flow-ic" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+                </span>
+                <span class="pt-flow-label">פרודוקציה</span>
+                <span class="pt-flow-sub">מאתר המסלקה</span>
+              </li>
+              <li class="pt-flow-line" aria-hidden="true"></li>
+              <li class="pt-flow-step">
+                <span class="pt-flow-ic" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+                </span>
+                <span class="pt-flow-label">השוואה</span>
+                <span class="pt-flow-sub">רצה לבד</span>
+              </li>
+            </ol>
+          </div>
+          <div v-else-if="emptyCta.title" class="pt-cta-copy">
             <strong>{{ emptyCta.title }}</strong>
             <span>{{ emptyCta.note }}</span>
           </div>
@@ -424,6 +459,14 @@ const emptyCta = computed(() => {
     note: 'אין צורך ללחוץ על כלום — רק שהמחשב יהיה דלוק.',
   }
 })
+// "Upload" state details: the period month and the day its cycle ran (string
+// math on the ISO date — no Date/time-zone drift).
+const uploadFlow = computed(() => {
+  const p = cycleStore.status?.current_period
+  if (!p) return null
+  const [, m] = p.split('-').map(Number)
+  return { month: cycleStore.status.current_period_label, cycleDay: `21.${(m % 12) + 1}` }
+})
 function onEmptyCta() {
   const a = emptyCta.value.action
   if (a === 'upload') openFilePicker()
@@ -682,6 +725,54 @@ async function handleCompare(currentId, previousId) {
 .pt-cta-copy { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; max-width: 440px; }
 .pt-cta-copy strong { font-size: 19px; font-weight: 800; color: var(--text-primary, #181818); }
 .pt-cta-copy span { font-size: 14px; line-height: 1.6; color: var(--text-secondary, #706E6B); }
+/* Cycle "upload" state: chip → two-tone title → 3-step flow */
+.pt-ready { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.pt-ready-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
+  color: var(--text-secondary, #706E6B); font-size: 13px; font-weight: 600;
+}
+.pt-ready-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent);
+}
+.pt-ready-title {
+  margin: 0; font-size: clamp(24px, 2.6vw, 32px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.15;
+  text-wrap: balance;
+  color: var(--text-primary, #181818);
+}
+.pt-ready-acc { color: var(--tab-production); }
+.pt-flow {
+  list-style: none; margin: 6px 0 0; padding: 0;
+  display: flex; align-items: flex-start; justify-content: center; gap: 10px;
+}
+.pt-flow-step { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 104px; }
+.pt-flow-ic {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card-bg); border: 1.5px solid var(--border-subtle); color: var(--text-muted, #939393);
+}
+.pt-flow-step.is-done .pt-flow-ic { background: var(--green); border-color: var(--green); color: #fff; }
+.pt-flow-step.is-now .pt-flow-ic {
+  background: var(--tab-production); border-color: var(--tab-production); color: #fff;
+  animation: ptFlowPulse 2.2s ease-in-out infinite;
+}
+.pt-flow-label { font-size: 14px; font-weight: 800; color: var(--text-primary, #181818); }
+.pt-flow-step:not(.is-done):not(.is-now) .pt-flow-label { color: var(--text-secondary, #706E6B); }
+.pt-flow-sub { font-size: 12px; color: var(--text-secondary, #706E6B); }
+.pt-flow-line {
+  flex: 0 0 44px; height: 0; margin-top: 20px;
+  border-top: 2px dashed color-mix(in srgb, var(--tab-production) 35%, transparent);
+}
+@keyframes ptFlowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-production) 35%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--tab-production) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .pt-flow-step.is-now .pt-flow-ic { animation: none; } }
+@media (max-width: 480px) {
+  .pt-flow { gap: 4px; }
+  .pt-flow-step { width: 84px; }
+  .pt-flow-line { flex-basis: 18px; }
+}
 @media (max-width: 640px) {
   .pt-hero-art { display: none; }
   .pt-hero-copy { max-width: none; }
