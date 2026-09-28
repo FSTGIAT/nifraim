@@ -74,7 +74,7 @@
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <NifraAgentIcon size="small" @open="openCollector" />
     </div>
-    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" />
+    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" @open-mail="collectorOpen = false; mailAgentOpen = true" />
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
          replaced `AiInsightCard`, a full-width summary band that sat above

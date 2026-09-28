@@ -388,6 +388,7 @@ ACTION_HE = {
     "remind": "לשלוח תזכורת", "resolve": "לסמן כטופל",
 }
 _brief_cache: dict = {}   # user_id -> (signature, payload)
+SETUP_MAIL = "setup:mail"   # a narration line whose action is "connect the mailbox"
 
 
 def _fallback_lines(cards: list[dict]) -> list[dict]:
@@ -404,7 +405,8 @@ async def narrate(db: AsyncSession, user: User) -> dict:
 
     b = await brief(db, user)
     cards = b["cards"]
-    sig = "|".join(f"{c['id']}:{c['sub']}:{c['text']}" for c in cards)
+    connected = bool((b.get("mailbox") or {}).get("mailbox_connected"))
+    sig = f"mail={connected}|" + "|".join(f"{c['id']}:{c['sub']}:{c['text']}" for c in cards)
     hit = _brief_cache.get(user.id)
     if hit and hit[0] == sig:
         return {**hit[1], "cards": cards, "mailbox": b["mailbox"]}
@@ -432,6 +434,13 @@ async def narrate(db: AsyncSession, user: User) -> dict:
             lines = parsed or lines
         except Exception as e:  # noqa: BLE001 — the deterministic lines still say it
             logger.warning("nifra agent narrate failed: %s", e)
+    if not connected:
+        # a new agent (or one who never connected mail) — the first thing is the
+        # mailbox: without it the agent can't read, answer or send anything
+        lines = [{"text": "קודם כל — חברו את Nifraim Mail Agent: כך אקרא את המיילים מהחברות ומהלקוחות, אכין תשובות ואשלח פניות בשמכם.",
+                  "ref": SETUP_MAIL}] + [l for l in lines if l.get("ref")][:4]
+    elif not cards:
+        lines = [{"text": "הכל מטופל — אין כרגע משהו שמחכה לך. אפשר לשאול אותי על עמלות ולקוחות, או לבקש שאקבע פגישה או אכין מייל.", "ref": None}]
     payload = {"greeting": b["greeting"], "lines": lines, "todo_count": b["todo_count"]}
     _brief_cache[user.id] = (sig, payload)
     return {**payload, "cards": cards, "mailbox": b["mailbox"]}

@@ -34,11 +34,15 @@
               </h2>
               <ol class="na-lines">
                 <li v-for="(l, i) in store.narration.lines" v-show="i <= step" :key="i" class="na-line"
-                    :class="{ 'is-handled': l.ref && lineDone[i] && !cardOf(l) }">
+                    :class="{ 'is-handled': l.ref && !l.ref.startsWith('setup:') && lineDone[i] && !cardOf(l) }">
                   <span class="na-line-dot" aria-hidden="true"></span>
                   <div class="na-line-body">
                     <AiStreamingText :text="l.text" :speed="7" :start="i <= step" :show-cursor="i === step" @complete="onLineDone(i)" />
                     <!-- the action this line points at -->
+                    <button v-if="lineDone[i] && l.ref === 'setup:mail'" type="button" class="na-link" @click="emit('open-mail')">
+                      חיבור Mail Agent
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
                     <template v-if="lineDone[i] && cardOf(l)">
                       <button v-if="primary(cardOf(l))" type="button" class="na-link" @click="toggle(i, cardOf(l))">
                         {{ openLine === i ? 'סגירה' : primary(cardOf(l)).label }}
@@ -179,7 +183,7 @@ import AiStreamingText from '../ui/AiStreamingText.vue'
 import AgentCreateDrawing from './AgentCreateDrawing.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: Object, default: null } })
-const emit = defineEmits(['update:open'])
+const emit = defineEmits(['update:open', 'open-mail'])
 const store = useOfficeAgentStore()
 
 // sequential streaming: greeting → line 0 → line 1 …

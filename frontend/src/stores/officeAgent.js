@@ -15,8 +15,10 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
   const narrating = ref(false)
 
   const cards = computed(() => brief.value?.cards || [])
-  const todoCount = computed(() => brief.value?.todo_count || 0)
-  const visible = computed(() => !!brief.value && (cards.value.length > 0 || !!brief.value.mailbox?.mailbox_connected))
+  const todoCount = computed(() => (brief.value?.todo_count || 0) + (brief.value && !brief.value.mailbox?.mailbox_connected ? 1 : 0))
+  // always there once loaded — a new agent's first job is "connect mail"
+  const visible = computed(() => !!brief.value)
+  const needsMail = computed(() => !!brief.value && !brief.value.mailbox?.mailbox_connected)
 
   async function load() {
     loading.value = true
@@ -113,5 +115,5 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  return { searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
+  return { searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, needsMail, load, narrate, act, ask }
 })
