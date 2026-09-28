@@ -124,6 +124,9 @@ async def load(db: AsyncSession, user: User) -> MapContext:
     for c in (await db.execute(select(CollectionCase).where(CollectionCase.user_id == user.id))).scalars():
         if c.period == latest or c.status in ("sent", "replied"):
             ctx.cases[c.company_key] = c
+    # every customer in the active production files, not only the compared ones —
+    # the app's own search finds them there, so the agent must too
+    await add_production_customers(db, ctx)
     ctx.mails = (await db.execute(
         select(MailItem).where(MailItem.user_id == user.id, MailItem.status.in_(OPEN_STATUSES))
         .order_by(MailItem.received_at.desc()).limit(40)
@@ -209,7 +212,7 @@ def page_company(ctx: MapContext, slug: str) -> str:
     return "\n".join(lines)
 
 
-async def add_production_customers(db, ctx: MapContext, ids) -> None:
+async def add_production_customers(db, ctx: MapContext, ids=None) -> None:
     """Customers the agent @-mentioned who are in a production file but not in
     the last comparison (the @ search reads ALL active production files) — load
     them from ClientRecord so their page exists instead of "not found"."""
@@ -218,16 +221,20 @@ async def add_production_customers(db, ctx: MapContext, ids) -> None:
     from app.models.record import ClientRecord
 
     have = {str(c.get("id_number")).lstrip("0") for c in ctx.customers}
-    want = {str(i).lstrip("0") for i in ids if i and str(i).lstrip("0") not in have}
-    upload_ids = await _get_production_upload_ids(db, ctx.user.id) if want else []
-    if not want or not upload_ids:
+    upload_ids = await _get_production_upload_ids(db, ctx.user.id)
+    if not upload_ids:
         return
-    recs = (await db.execute(select(ClientRecord).where(
-        ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(upload_ids),
-        or_(ClientRecord.id_number.in_(want), func.ltrim(ClientRecord.id_number, "0").in_(want)),
-    ))).scalars().all()
+    cond = [ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(upload_ids), ClientRecord.id_number.isnot(None)]
+    if ids is not None:  # None = every production customer (load() does this)
+        want = {str(i).lstrip("0") for i in ids if i and str(i).lstrip("0") not in have}
+        if not want:
+            return
+        cond.append(or_(ClientRecord.id_number.in_(want), func.ltrim(ClientRecord.id_number, "0").in_(want)))
+    recs = (await db.execute(select(ClientRecord).where(*cond))).scalars().all()
     for r in recs:
         idn = str(r.id_number).lstrip("0")
+        if idn in have:
+            continue
         c = ctx.extra.setdefault(idn, {
             "id_number": idn, "first_name": r.first_name, "last_name": r.last_name,
             "client_email": r.client_email, "client_phone": r.client_phone,
@@ -273,7 +280,7 @@ def page_top(ctx: MapContext) -> str:
     """The biggest customers — "הלקוח הכי גדול" has three honest meanings, so
     rank all three: accumulation (צבירה), premium, commission received."""
     rows = []
-    for c in ctx.customers:
+    for c in [*ctx.customers, *ctx.extra.values()]:
         prods = c.get("production_products") or []
         acc = sum(float(p.get("accumulation") or 0) for p in prods)
         prem = sum(float(p.get("premium") or 0) for p in prods)
@@ -337,7 +344,7 @@ def page_search(ctx: MapContext, text: str) -> str:
     t = (text or "").strip()
     lines = [f"# חיפוש: {t}", ""]
     hits = []
-    for c in ctx.customers:
+    for c in [*ctx.customers, *ctx.extra.values()]:
         nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x)
         rev = " ".join(x for x in (c.get("last_name"), c.get("first_name")) if x)
         if t and (t in nm or t in rev or t == str(c.get("id_number"))):

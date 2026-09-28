@@ -1260,6 +1260,7 @@ flowchart RL
 
 - **@ contacts:** typing `@` (or the @ button) in the ask box opens a search. `GET /api/office-agent/contacts?q=` returns customers from the active production files (name, ת.ז, email/phone), saved insurer contacts and mail senders. The picked contacts go with the question as `mentions`, so the agent gets the exact ID and email.
 - **No false "done":** if the model's final text claims it prepared something (`הכנתי` / `מחכה לאישור`) but no proposal exists (the tool was never called, or it was cut off by `max_tokens`), it is sent back once to call the tool. Otherwise the answer says it failed. It never claims an action that wasn't prepared.
+- **Every production customer is on the map:** `load()` adds each customer from the active production files who isn't in the last comparison (`ctx.extra`), so name/ID search and customer pages match the app's own search.
 - **`top.md`:** ranks the biggest customers by accumulation, premium and commission received (for "הלקוח הכי גדול").
 
 ### 17a. The data map (`services/data_map.py`) — the agent's data as Markdown the AI navigates
