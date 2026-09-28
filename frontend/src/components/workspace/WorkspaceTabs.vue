@@ -28,7 +28,7 @@
         <!-- Content -->
         <div class="card-body">
           <span class="card-icon-wrap">
-            <AppIcon :name="tab.id" :size="22" />
+            <HomeCardDrawing :name="tab.id" :hover="hoveredCard === tab.id" :delay="idx * 90" />
           </span>
           <span class="card-label">{{ tab.label }}</span>
           <span class="card-desc">{{ tab.description }}</span>
@@ -93,6 +93,7 @@
 <script setup>
 import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import AppIcon from '../icons/AppIcon.vue'
+import HomeCardDrawing from './HomeCardDrawing.vue'
 import CardAmbientIsland from './CardAmbientIsland.vue'
 
 const props = defineProps({
@@ -369,25 +370,18 @@ const tabs = [
   z-index: 1;
 }
 
+/* a large line drawing (HomeCardDrawing), no tinted tile — same language as the clock */
 .card-icon-wrap {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: var(--accent-glow);
-  border: 1px solid var(--accent-glow);
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
+  justify-content: flex-start;
+  margin: -4px 0 8px;
   color: var(--accent-ink, var(--accent));
-  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
 .card:hover .card-icon-wrap {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 4px 16px var(--accent-glow);
-  transform: scale(1.05);
+  transform: translateY(-2px);
 }
 
 .card-label {
@@ -582,14 +576,12 @@ const tabs = [
   }
 
   .card-icon-wrap {
-    width: 34px;
-    height: 34px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   .card-icon-wrap svg {
-    width: 17px;
-    height: 17px;
+    width: 48px;
+    height: 48px;
   }
 
   .card-label {
@@ -630,15 +622,12 @@ const tabs = [
   }
 
   .card-icon-wrap {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 4px;
   }
 
   .card-icon-wrap svg {
-    width: 17px;
-    height: 17px;
+    width: 42px;
+    height: 42px;
   }
 
   .card-label {

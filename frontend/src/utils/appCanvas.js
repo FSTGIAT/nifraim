@@ -4,7 +4,10 @@
 import { getUserFlag, setUserFlag } from './userFlags.js'
 
 const KEY = 'app_canvas'
-export const DEFAULT_CANVAS = '#EEEBE5'
+// Graphite for a logged-in agent who never picked one (user's call, 2026-09-29).
+// Public pages (login, customer portal, /privacy) keep the light stone.
+export const DEFAULT_CANVAS = '#2A2C31'
+const PUBLIC_CANVAS = '#EEEBE5'
 
 // Light tones + a dark row. The cards stay white either way; on a dark canvas
 // <html data-canvas="dark"> lets page-level text (the few labels that sit
@@ -51,7 +54,10 @@ const HEX = /^#[0-9a-f]{6}$/i
 
 export function getCanvas() {
   const v = getUserFlag(KEY)
-  return v && HEX.test(v) ? v.toUpperCase() : DEFAULT_CANVAS
+  if (v && HEX.test(v)) return v.toUpperCase()
+  let loggedIn = false
+  try { loggedIn = !!localStorage.getItem('token') } catch { /* private mode */ }
+  return loggedIn ? DEFAULT_CANVAS : PUBLIC_CANVAS
 }
 
 export function isDarkCanvas(hex) {
