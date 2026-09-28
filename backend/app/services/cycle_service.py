@@ -126,6 +126,17 @@ def maslaka_first_auto(submitted_at: datetime | None) -> date | None:
     return date(y, m, settings.MASLAKA_DAY)
 
 
+def maslaka_deadline(now: datetime) -> date:
+    """The last day a שיוך submitted from `now` on still makes the NEXT 15th:
+    the day before the cutoff (26th) this month, or next month's once today is
+    already on/after the cutoff."""
+    il = _to_il(now)
+    y, m = il.year, il.month
+    if il.day >= settings.MASLAKA_CUTOFF_DAY:
+        y, m = _add_months(y, m, 1)
+    return date(y, m, settings.MASLAKA_CUTOFF_DAY - 1)
+
+
 def production_source_for_cycle(y: int, m: int, maslaka_first: date | None) -> str:
     """'maslaka' when the מסלקה production for this cycle's period has landed by
     the cycle month's MASLAKA_DAY, else 'manual'."""
@@ -157,6 +168,11 @@ class CycleState:
     needs_production_upload: bool       # manual source, open, and nothing uploaded yet
     maslaka_status: str                 # maslaka_agent_links.status or not_started
     maslaka_first_auto: str | None      # ISO date
+    signup_at: str | None = None        # ISO, aware IL — when the agent signed up
+    maslaka_submitted_at: str | None = None   # ISO, aware IL
+    maslaka_approved_at: str | None = None    # ISO, aware IL
+    maslaka_deadline: str | None = None       # ISO date — last day that still makes the next 15th
+    maslaka_if_submitted_now: str | None = None  # ISO date — the 15th a submission today would give
     manual_run_allowed: bool = False    # admin, or legacy button before CYCLE_LAUNCH
 
 
@@ -259,12 +275,10 @@ async def compare_now(user_id: uuid.UUID) -> None:
 
 
 def manual_run_allowed(user, state: "CycleState") -> bool:
-    """Agents never run by hand once the cycle system has launched. Before
-    CYCLE_LAUNCH an existing (unlocked) agent keeps the legacy manual run, so
-    deploying early doesn't leave everyone without downloads until the 21st."""
-    if getattr(user, "is_admin", False):
-        return True
-    return state.prelaunch and not state.locked
+    """Agents never run automation by hand — the monthly cycle does (from the
+    first cycle; before launch there are simply no runs). Only support
+    (admins) may run on demand. Decided 2026-09-28: admin-only even pre-launch."""
+    return bool(getattr(user, "is_admin", False))
 
 
 async def user_cycle_state(db: AsyncSession, user, now: datetime | None = None) -> CycleState:
@@ -331,6 +345,11 @@ async def user_cycle_state(db: AsyncSession, user, now: datetime | None = None) 
         needs_production_upload=needs_upload,
         maslaka_status=link.status if link else "not_started",
         maslaka_first_auto=maslaka_first.isoformat() if maslaka_first else None,
+        signup_at=_to_il(user.created_at).isoformat() if user.created_at else None,
+        maslaka_submitted_at=_to_il(link.submitted_at).isoformat() if link and link.submitted_at else None,
+        maslaka_approved_at=_to_il(link.approved_at).isoformat() if link and link.approved_at else None,
+        maslaka_deadline=maslaka_deadline(now_aware).isoformat(),
+        maslaka_if_submitted_now=maslaka_first_auto(now_utc).isoformat(),
     )
 
 

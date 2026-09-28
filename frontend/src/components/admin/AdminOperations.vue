@@ -64,7 +64,7 @@
                 <strong>{{ a.full_name || a.email }}</strong>
                 <span class="ltr-number">{{ a.email }}</span>
                 <span class="ops-muted">
-                  {{ a.is_active ? 'מנוי פעיל' : 'לא פעיל' }}<template v-if="a.is_admin"> · אדמין</template>
+                  נרשם {{ dmy(a.created_at) }} · {{ a.is_active ? 'מנוי פעיל' : 'לא פעיל' }}<template v-if="a.is_admin"> · אדמין</template>
                 </span>
               </div>
             </td>
@@ -100,6 +100,11 @@
             </td>
             <td>
               <span class="ops-badge" :class="'b-' + MASLAKA[a.maslaka.association].tone">{{ MASLAKA[a.maslaka.association].label }}</span>
+              <div v-if="a.maslaka.submitted_at || a.maslaka.expected_first_production" class="ops-muted">
+                <template v-if="a.maslaka.submitted_at">הוגש {{ dmy(a.maslaka.submitted_at) }}</template>
+                <template v-if="a.maslaka.approved_at"> · אושר {{ dmy(a.maslaka.approved_at) }}</template>
+                <template v-if="a.maslaka.expected_first_production"> · <strong>פרודוקציה {{ dmy(a.maslaka.expected_first_production) }}</strong></template>
+              </div>
               <div class="ops-muted">
                 <span class="ltr-number">{{ a.maslaka.customers }}</span> לקוחות
                 <template v-if="a.maslaka.last_holding_at"> · עודכן {{ ago(a.maslaka.last_holding_at) }}</template>
@@ -235,6 +240,12 @@ function fmtDate(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   return `${d.getDate()}.${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+function dmy(iso) {
+  if (!iso) return ''
+  const raw = /T/.test(iso) && !/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso + 'Z' : iso
+  const d = new Date(raw)
+  return `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`
 }
 function ago(iso) {
   if (!iso) return ''

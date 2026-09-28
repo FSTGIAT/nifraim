@@ -24,6 +24,18 @@
       <div v-else ref="mountEl" class="cw-mount" aria-hidden="true"></div>
     </div>
 
+    <!-- the agent's own dates: signup + where they stand with the מסלקה -->
+    <div class="cw-facts">
+      <span v-if="signup" class="cw-fact">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+        {{ signup }}
+      </span>
+      <span v-if="mas" class="cw-fact" :class="'cw-fact--' + mas.tone" :title="MASLAKA_RULE">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 18v-7M10 18v-7M14 18v-7M18 18v-7"/><path d="m12 2 8 5H4Z"/></svg>
+        <strong>{{ mas.title }}</strong><span v-if="mas.sub">{{ mas.sub }}</span>
+      </span>
+    </div>
+
     <footer class="cw-foot">
       <span class="cw-sub">{{ sub }}</span>
       <button type="button" class="cw-go" @click="onOpen">
@@ -36,7 +48,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useCycleStore, monthName, shortDate } from '../../stores/cycle.js'
+import { useCycleStore, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 const emit = defineEmits(['select'])
@@ -52,6 +64,8 @@ function prevMonthSameDay(iso) {
   return new Date(d.getFullYear(), d.getMonth() - 1, d.getDate(), d.getHours(), d.getMinutes())
 }
 
+const signup = computed(() => signupLine(st.value))
+const mas = computed(() => maslakaLine(st.value))
 const target = computed(() => (st.value?.locked ? st.value.first_cycle_at : st.value?.next_cycle_at))
 const periodName = computed(() => (target.value ? monthBefore(target.value) : ''))
 const title = computed(() => {
@@ -111,6 +125,8 @@ function draw() {
       maslakaLabel: s.maslaka_first_auto ? shortDate(s.maslaka_first_auto) : '',
       waiting: !!s.worker_waiting,
       narrow: narrow.value,
+      signupMs: s.signup_at ? new Date(s.signup_at).getTime() : null,
+      signupLabel: s.signup_at ? shortDate(s.signup_at) : '',
     },
     durationInFrames: remotion.CYCLE_WIDGET_FRAMES,
     fps: 30,
@@ -211,6 +227,15 @@ onBeforeUnmount(() => {
 .cw-static { height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary, #706E6B); font-weight: 700; }
 .cw-static-num { font-size: 48px; font-weight: 900; color: var(--tab-production); }
 
+.cw-facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.cw-fact {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+  background: #F4F3F1; color: #3E3E3C; font-size: 12.5px; font-weight: 600;
+}
+.cw-fact strong { font-weight: 800; }
+.cw-fact--ok { background: #EAF5EE; color: #2E844A; }
+.cw-fact--wait { background: #FBF4DC; color: #8A6300; }
+.cw-fact--todo { background: #E4EDEF; color: #2C5F6B; }
 .cw-foot { display: flex; align-items: center; gap: 12px; }
 .cw-sub { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-secondary, #706E6B); }
 .cw-go {

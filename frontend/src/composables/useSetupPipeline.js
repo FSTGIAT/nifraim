@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
-import { useCycleStore, shortDate } from '../stores/cycle.js'
+import { useCycleStore, shortDate, maslakaLine } from '../stores/cycle.js'
 import { useMailboxStore } from '../stores/mailbox.js'
 import api from '../api/client.js'
 import { useNotificationsStore } from '../stores/notifications.js'
@@ -71,6 +71,13 @@ export function useSetupPipeline() {
   const agreementsDone = computed(() => (agreementsCount.value || 0) > 0 || agreementRequestsSent.value > 0)
   // "Signed" = the שיוך form was SUBMITTED (approval may come later).
   const maslakaDone = computed(() => ['submitted', 'approved'].includes(cycle.status?.maslaka_status))
+  // Step 5 speaks in real dates: the deadline + the 15th it gives, or the
+  // submitted/approved dates once the form is in (server-computed).
+  const maslakaBody = computed(() => {
+    const m = maslakaLine(cycle.status)
+    if (!m) return 'טופס שמוגש עד ה-26 בחודש — הפרודוקציה מגיעה ב-15 בחודש הבא.'
+    return m.tone === 'todo' ? `${m.title} — ${m.sub}.` : `${m.sub} — ${m.title}.`
+  })
   const firstCycleLabel = computed(() => {
     const at = cycle.status?.first_cycle_at
     return at ? `${shortDate(at)} בשעה 06:00` : 'ה-21 בחודש בשעה 06:00'
@@ -114,7 +121,7 @@ export function useSetupPipeline() {
     {
       id: 'maslaka',
       title: 'שיוך למסלקה',
-      body: 'טופס חד-פעמי שמחבר אותך למסלקה הפנסיונית. טופס שמוגש עד ה-26 בחודש — הפרודוקציה מגיעה לבד כבר ב-15 בחודש הבא.',
+      body: maslakaBody.value,
       cta: 'מילוי טופס שיוך',
       hint: '',
       done: maslakaDone.value,

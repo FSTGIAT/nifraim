@@ -30,6 +30,8 @@ export type CycleWidgetProps = {
   maslakaLabel?: string // "15.11"
   waiting?: boolean
   narrow?: boolean // phones: the ring alone, composition 300×230
+  signupMs?: number | null // the agent's signup — a marker on the rail when inside it
+  signupLabel?: string
 }
 
 const RAIL_R = 830 // right end (start of the month)
@@ -48,6 +50,8 @@ export const CycleWidget: React.FC<CycleWidgetProps> = ({
   maslakaLabel = '',
   waiting = false,
   narrow = false,
+  signupMs = null,
+  signupLabel = '',
 }) => {
   const frame = useCurrentFrame()
   const t = frame / CYCLE_WIDGET_FRAMES // 0..1 over the loop
@@ -131,6 +135,14 @@ export const CycleWidget: React.FC<CycleWidgetProps> = ({
           strokeDasharray="2 12" strokeLinecap="round" strokeDashoffset={-t * 14 * 6} />
         <circle cx={RAIL_R} cy={RAIL_Y} r={6} fill={accent} opacity={0.5} />
         {startLabel && RAIL_R - todayX > 70 && <text x={RAIL_R} y={RAIL_Y + 34} textAnchor="middle" fontSize="16" fontWeight="700" fill={ink} opacity={0.45}>{startLabel}</text>}
+
+        {/* signup marker */}
+        {signupMs && signupMs > startMs && signupMs < targetMs && Math.abs(railX(signupMs) - todayX) > 50 && (
+          <g>
+            <rect x={railX(signupMs) - 7} y={RAIL_Y - 7} width={14} height={14} rx={3} fill="#fff" stroke={ink} strokeOpacity={0.55} strokeWidth={3} transform={`rotate(45 ${railX(signupMs)} ${RAIL_Y})`} />
+            <text x={railX(signupMs)} y={RAIL_Y - 20} textAnchor="middle" fontSize="15" fontWeight="700" fill={ink} opacity={0.6} direction="rtl">{`נרשמתם ${signupLabel}`}</text>
+          </g>
+        )}
 
         {/* מסלקה marker */}
         {showMaslaka && Math.abs(railX(maslakaMs!) - todayX) > 60 && (

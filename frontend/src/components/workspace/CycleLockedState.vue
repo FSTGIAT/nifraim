@@ -39,6 +39,13 @@
       <div class="cl-card">
         <h3 class="cl-card-title">מה יקרה עכשיו</h3>
         <ol class="cl-timeline">
+          <li v-if="signup" class="cl-tl cl-tl--done">
+            <span class="cl-tl-dot"></span>
+            <div class="cl-tl-body">
+              <strong>{{ signup }}</strong>
+              <span>ההרשמה נשמרה — ממנה נקבע המחזור הראשון שלכם.</span>
+            </div>
+          </li>
           <li class="cl-tl" :class="{ 'cl-tl--done': setup.allDone.value }">
             <span class="cl-tl-dot"></span>
             <div class="cl-tl-body">
@@ -49,14 +56,9 @@
           <li class="cl-tl" :class="{ 'cl-tl--done': maslakaSigned }">
             <span class="cl-tl-dot"></span>
             <div class="cl-tl-body">
-              <template v-if="maslakaFirst">
-                <strong><span class="ltr-number">{{ shortDate(maslakaFirst) }}</span> — הפרודוקציה מהמסלקה</strong>
-                <span>המסלקה שולחת לבד את הפרודוקציה של {{ monthBefore(maslakaFirst) }}.</span>
-              </template>
-              <template v-else>
-                <strong>טופס שיוך למסלקה</strong>
-                <span>מוגש עד ה-26 בחודש — הפרודוקציה מגיעה לבד ב-15 בחודש הבא.</span>
-              </template>
+              <strong>{{ mas ? mas.title : 'טופס שיוך למסלקה' }}</strong>
+              <span v-if="mas && mas.sub">{{ mas.sub }}</span>
+              <span class="cl-rule">{{ MASLAKA_RULE }}</span>
             </div>
           </li>
           <li class="cl-tl">
@@ -131,7 +133,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useCycleStore, monthName, shortDate } from '../../stores/cycle.js'
+import { useCycleStore, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import { useSetupPipeline } from '../../composables/useSetupPipeline.js'
 import { openSetup } from '../../utils/setupState.js'
 import CycleCountdownIsland from './CycleCountdownIsland.vue'
@@ -173,14 +175,18 @@ function monthBefore(iso) {
 }
 const firstPeriodName = computed(() => (cycle.status?.first_cycle_at ? monthBefore(cycle.status.first_cycle_at) : ''))
 
+const signup = computed(() => signupLine(cycle.status))
+const mas = computed(() => maslakaLine(cycle.status))
 const maslakaFirst = computed(() => cycle.status?.maslaka_first_auto || null)
 const maslakaSigned = computed(() => ['submitted', 'approved'].includes(cycle.status?.maslaka_status))
 // The מסלקה production for the first cycle's period lands by the 15th of the
 // first cycle's month → no manual upload even in cycle 1.
 const firstIsAuto = computed(() => {
-  if (!maslakaFirst.value || !firstAt.value) return false
-  const f = firstAt.value
-  return new Date(maslakaFirst.value) <= new Date(f.getFullYear(), f.getMonth(), 15)
+  // Plain YYYY-MM-DD comparison: Date objects here would mix UTC and the
+  // browser's zone and flip the verdict around midnight.
+  const first = cycle.status?.first_cycle_at
+  if (!maslakaFirst.value || !first) return false
+  return maslakaFirst.value <= `${first.slice(0, 7)}-15`
 })
 
 
@@ -306,6 +312,7 @@ function onStep(s) {
 }
 .cl-step--done .cl-step-mark { background: var(--green, #2E844A); border-color: var(--green, #2E844A); }
 .cl-step-title { flex: 1; font-weight: 700; }
+.cl-rule { display: block; margin-top: 3px; font-size: 12px !important; color: var(--text-secondary, #8A8784) !important; }
 .cl-step-go { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 800; color: var(--tab-production); }
 .cl-step-when { font-size: 12.5px; font-weight: 800; color: var(--tab-production); }
 .cl-note { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary, #706E6B); }

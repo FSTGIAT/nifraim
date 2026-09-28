@@ -151,6 +151,9 @@ async def operations_overview(db: AsyncSession) -> dict:
                 "submitted_at": _iso(l.submitted_at) if l else None,
                 "approved_at": _iso(l.approved_at) if l else None,
                 "auto_production": bool(l and l.auto_production),
+                # first automatic מסלקה production (the 27th rule, cycle_service)
+                "expected_first_production": _iso(cs.maslaka_first_auto(l.submitted_at or l.approved_at))
+                    if l and l.status in ("submitted", "approved") else None,
                 "inquiries": inq.get(u.id, {}),
                 "last_inquiry_at": _iso(inq_last.get(u.id)),
                 "holdings": hd[0] if hd else 0, "customers": hd[1] if hd else 0,

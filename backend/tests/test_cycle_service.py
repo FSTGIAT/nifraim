@@ -11,6 +11,7 @@ from app.services.cycle_service import (
     cycle_period,
     first_cycle_for,
     latest_cycle,
+    maslaka_deadline,
     maslaka_first_auto,
     next_cycle,
     production_source_for_cycle,
@@ -105,3 +106,19 @@ def test_scenario_E_no_shiyuch_always_manual():
 
 def test_scenario_H_old_user_already_past_first_cycle():
     assert cycle_moment(*first_cycle_for(il(2025, 3, 1))) < aware(2026, 9, 28)
+
+
+def test_maslaka_deadline_before_and_after_cutoff():
+    # 19.9 → still counts until 26.9 (→ production 15.10)
+    assert maslaka_deadline(aware(2026, 9, 19)) == date(2026, 9, 26)
+    assert maslaka_deadline(aware(2026, 9, 26, 23)) == date(2026, 9, 26)
+    # 27.9 / 28.9 → the next window is 26.10 (→ production 15.11)
+    assert maslaka_deadline(aware(2026, 9, 27)) == date(2026, 10, 26)
+    assert maslaka_deadline(aware(2026, 9, 28)) == date(2026, 10, 26)
+    # rollover
+    assert maslaka_deadline(aware(2026, 12, 29)) == date(2027, 1, 26)
+
+
+def test_submitting_today_gives():
+    assert maslaka_first_auto(il(2026, 9, 26, 23, 30)) == date(2026, 10, 15)   # 26th late evening IL still counts
+    assert maslaka_first_auto(il(2026, 9, 27, 0, 30)) == date(2026, 11, 15)    # 27th just after midnight IL

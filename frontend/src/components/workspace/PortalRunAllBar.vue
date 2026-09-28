@@ -37,7 +37,7 @@
                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
             </svg>
-            <span>{{ auth.user?.is_admin && !cycle.status?.prelaunch ? 'הרצה ידנית (תמיכה)' : 'הורדה אוטומטית מכל החברות' }}</span>
+            <span>הרצה ידנית (תמיכה)</span>
           </button>
           <button class="hero-add" type="button" @click="$emit('add')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

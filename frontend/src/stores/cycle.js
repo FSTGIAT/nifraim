@@ -94,3 +94,37 @@ export const useCycleStore = defineStore('cycle', () => {
     fetchStatus, fetchNotifications, markSeen, reset,
   }
 })
+
+// ── מסלקה timeline wording, shared by every surface (server fields only) ──
+// The rule: a שיוך form submitted by the 26th → the מסלקה production arrives on
+// the 15th of the next month; from the 27th on → the 15th of the month after.
+export const MASLAKA_RULE = 'טופס שיוך שמוגש עד ה-26 בחודש — הפרודוקציה מהמסלקה מגיעה ב-15 בחודש הבא. מה-27 ואילך — ב-15 בחודש שאחריו.'
+
+export function signupLine(st) {
+  return st?.signup_at ? `נרשמתם ב-${shortDate(st.signup_at)}` : ''
+}
+
+/** { title, sub, tone } describing where the agent stands with the מסלקה. */
+export function maslakaLine(st) {
+  if (!st) return null
+  const s = st.maslaka_status
+  if (s === 'approved') {
+    return {
+      tone: 'ok',
+      title: `פרודוקציה מהמסלקה ב-${shortDate(st.maslaka_first_auto)}`,
+      sub: [st.maslaka_submitted_at && `הוגש ב-${shortDate(st.maslaka_submitted_at)}`, st.maslaka_approved_at && `אושר ב-${shortDate(st.maslaka_approved_at)}`].filter(Boolean).join(' · '),
+    }
+  }
+  if (s === 'submitted') {
+    return {
+      tone: 'wait',
+      title: `פרודוקציה מהמסלקה ב-${shortDate(st.maslaka_first_auto)}`,
+      sub: `הוגש ב-${shortDate(st.maslaka_submitted_at)} · ממתין לאישור המסלקה`,
+    }
+  }
+  return {
+    tone: 'todo',
+    title: `הגישו את טופס השיוך עד ${shortDate(st.maslaka_deadline)}`,
+    sub: `והפרודוקציה מהמסלקה תגיע ב-${shortDate(st.maslaka_if_submitted_now)}`,
+  }
+}

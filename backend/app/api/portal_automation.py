@@ -527,8 +527,7 @@ ACTIVE_BATCH_STATUSES = {"pending", "running"}
 async def _require_manual_run_allowed(db: AsyncSession, user: User) -> None:
     """Monthly cycle invariant: agents never trigger automation by hand — the
     cycle (services/cycle_service.py) queues it on the 21st. Only support
-    (admins) may run on demand — plus, until CYCLE_LAUNCH, existing agents
-    keep the legacy button (cycle_service.manual_run_allowed)."""
+    (admins) may run on demand (cycle_service.manual_run_allowed)."""
     from app.services import cycle_service
     if user.is_admin:
         return

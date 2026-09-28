@@ -48,6 +48,12 @@
           >איך זוהה האישור?</button>
           <span v-if="assocError" class="mk-hero-err">{{ assocError }}</span>
         </div>
+        <!-- the agent's dates: signup, שיוך submitted/approved, first production -->
+        <div v-if="masLine" class="mk-dates" :title="MASLAKA_RULE">
+          <span v-if="signup" class="mk-date">{{ signup }}</span>
+          <span class="mk-date" :class="'mk-date--' + masLine.tone"><strong>{{ masLine.title }}</strong><template v-if="masLine.sub"> · {{ masLine.sub }}</template></span>
+          <span class="mk-rule">{{ MASLAKA_RULE }}</span>
+        </div>
       </div>
       <TabHeroLoop scene="maslaka" class="mk-hero-art" />
     </header>
@@ -422,6 +428,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { resumeSetupIfAway } from '../../utils/setupState.js'
+import { useCycleStore, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 
 const idNumber = ref('')
@@ -454,6 +461,9 @@ const gate = ref('')
 const assoc = ref(null)
 const assocError = ref('')
 const assocOpen = ref(false)
+const cycleStore = useCycleStore()
+const signup = computed(() => signupLine(cycleStore.status))
+const masLine = computed(() => maslakaLine(cycleStore.status))
 const assocLoaded = ref(false)
 
 const needsAssoc = computed(() => assocLoaded.value && assoc.value?.status !== 'approved')
@@ -487,6 +497,7 @@ async function loadAssociation() {
     assocError.value = ''
     // Sent here by the setup wizard and the שיוך form is now in → go back.
     if (['submitted', 'approved'].includes(data?.status)) resumeSetupIfAway('maslaka')
+    cycleStore.fetchStatus()   // the dates (submitted/approved, first production) follow the status
   } catch {
     // Fail closed: if we cannot confirm the association, the ask form stays off.
     assoc.value = null
@@ -1279,4 +1290,11 @@ onMounted(async () => {
 .mk-prod-status--off .mk-prod-dot { background: var(--text-muted); }
 .mk-manual-toggle { display: inline-block; margin-top: 2px; }
 .mk-manual { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.mk-dates { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.mk-date { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px; background: #F4F3F1; color: #3E3E3C; font-size: 12.5px; font-weight: 600; }
+.mk-date strong { font-weight: 800; }
+.mk-date--ok { background: #EAF5EE; color: #2E844A; }
+.mk-date--wait { background: #FBF4DC; color: #8A6300; }
+.mk-date--todo { background: #E4EDEF; color: #2C5F6B; }
+.mk-rule { flex-basis: 100%; font-size: 12px; color: var(--text-secondary, #8A8784); }
 </style>
