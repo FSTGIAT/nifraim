@@ -2,73 +2,18 @@
   <div class="prod-dashboard">
     <!-- KPI Row -->
     <div class="kpi-row">
-      <div class="kpi-card kpi-blue clickable" @click="openDrilldown('products')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ analytics.total_records.toLocaleString() }}</div>
-          <div class="kpi-label">מוצרים</div>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-cyan clickable" @click="openDrilldown('clients')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-            <path d="M16 3.13a4 4 0 010 7.75"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ analytics.unique_clients.toLocaleString() }}</div>
-          <div class="kpi-label">לקוחות</div>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-amber clickable" :title="'₪' + Math.round(analytics.total_accumulation).toLocaleString()" @click="openDrilldown('accumulation')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-            <line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(analytics.total_accumulation) }}</div>
-          <div class="kpi-label">סה"כ צבירה</div>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-violet clickable" @click="openDrilldown('companies')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-            <polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ analytics.companies_count }}</div>
-          <div class="kpi-label">חברות</div>
-        </div>
-      </div>
-
-      <div class="kpi-card kpi-emerald clickable" @click="openDrilldown('status')">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ activePercent }}%</div>
-          <div class="kpi-label">מוצרים פעילים</div>
-        </div>
-      </div>
+      <button
+        v-for="k in kpis" :key="k.key" type="button"
+        class="kpi-card" :style="{ '--k': k.color, '--k-ink': k.ink }"
+        :title="k.title || null" @click="openDrilldown(k.drill)"
+      >
+        <span class="kpi-ghost" aria-hidden="true"><KpiGlyph :name="k.key" :size="92" :stroke="1.2" /></span>
+        <span class="kpi-icon"><KpiGlyph :name="k.key" :size="22" /></span>
+        <span class="kpi-data">
+          <span class="kpi-value ltr-number">{{ k.value }}</span>
+          <span class="kpi-label">{{ k.label }}</span>
+        </span>
+      </button>
     </div>
 
     <!-- Hero chart: commission trend (most important — sits directly under KPIs) -->
@@ -198,6 +143,7 @@
 import { computed, ref } from 'vue'
 import api from '../../api/client.js'
 import ProductionTrendChart from './ProductionTrendChart.vue'
+import KpiGlyph from './KpiGlyph.vue'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
 const props = defineProps({
@@ -294,6 +240,25 @@ const activePercent = computed(() => {
   return Math.round((active.count / total) * 100)
 })
 
+// KPI cards. Colour = category (CHART_PALETTE via --chart-*), products wear the
+// Production tab cobalt; `ink` is the text-safe shade for the badge glyph.
+const kpis = computed(() => {
+  const a = props.analytics
+  return [
+    { key: 'products', drill: 'products', label: 'מוצרים', value: a.total_records.toLocaleString(),
+      color: 'var(--tab-production)', ink: 'var(--tab-production)' },
+    { key: 'clients', drill: 'clients', label: 'לקוחות', value: a.unique_clients.toLocaleString(),
+      color: 'var(--chart-6)', ink: 'var(--tab-emails-ink, #C42B60)' },
+    { key: 'accumulation', drill: 'accumulation', label: 'סה"כ צבירה', value: formatAmount(a.total_accumulation),
+      title: '₪' + Math.round(a.total_accumulation).toLocaleString(),
+      color: 'var(--chart-7)', ink: 'var(--tab-recruits-ink, #1E7D78)' },
+    { key: 'companies', drill: 'companies', label: 'חברות', value: String(a.companies_count),
+      color: 'var(--chart-4)', ink: 'var(--chart-4)' },
+    { key: 'active', drill: 'status', label: 'מוצרים פעילים', value: `${activePercent.value}%`,
+      color: 'var(--chart-10)', ink: 'var(--chart-10)' },
+  ]
+})
+
 // Bright-bold categorical palette shared across all chart bars (see
 // utils/chartPalette.js). Each bar/company/category gets a clearly distinct hue.
 const PALETTE_SERIES = CHART_PALETTE
@@ -359,65 +324,58 @@ const topClientsChartSeries = computed(() => [{
 }
 
 .kpi-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  background: var(--card-bg);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 16px 16px 18px; min-height: 84px;
+  font-family: inherit; text-align: start; color: inherit;
+  background:
+    radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, var(--k) 9%, transparent) 0%, transparent 60%),
+    var(--card-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
-
 .kpi-card:hover {
-  transform: translateY(-6px) scale(1.12);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.10);
-  border-color: rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--k) 30%, transparent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--k) 16%, transparent);
 }
+.kpi-card:active { transform: translateY(0); }
+.kpi-card:focus-visible { outline: 2px solid var(--k); outline-offset: 2px; }
 
-.kpi-card:active {
-  transform: translateY(-1px) scale(0.98);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+/* the oversized faint glyph tucked into the far corner */
+.kpi-ghost {
+  position: absolute; inset-inline-end: -14px; bottom: -18px;
+  color: var(--k); opacity: 0.09; pointer-events: none;
+  transition: transform 0.35s ease, opacity 0.35s ease;
 }
+.kpi-card:hover .kpi-ghost { transform: rotate(-8deg) scale(1.06); opacity: 0.14; }
 
 .kpi-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  position: relative; flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 14px;
+  display: grid; place-items: center;
+  color: var(--k-ink);
+  background: color-mix(in srgb, var(--k) 13%, var(--card-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 18%, transparent);
 }
 
-.kpi-blue .kpi-icon { background: var(--primary-light); color: var(--primary); }
-.kpi-cyan .kpi-icon { background: rgba(227, 6, 106, 0.1); color: #E3066A; }
-.kpi-green .kpi-icon { background: var(--green-light); color: var(--accent-emerald); }
-.kpi-amber .kpi-icon { background: rgba(15, 163, 155, 0.12); color: #0B7C76; } /* accumulation = turquoise (--chart-7); amber is for warnings only */
-.kpi-violet .kpi-icon { background: rgba(127, 86, 217, 0.1); color: var(--accent-violet); }
-.kpi-emerald .kpi-icon { background: rgba(27, 94, 32, 0.1); color: #1B5E20; }
-
-.kpi-blue:hover { border-color: rgba(47, 115, 196, 0.25); box-shadow: 0 12px 32px rgba(47, 115, 196, 0.12); }
-.kpi-cyan:hover { border-color: rgba(227, 6, 106, 0.25); box-shadow: 0 12px 32px rgba(227, 6, 106, 0.12); }
-.kpi-green:hover { border-color: rgba(46, 132, 74, 0.25); box-shadow: 0 12px 32px rgba(46, 132, 74, 0.12); }
-.kpi-amber:hover { border-color: rgba(15, 163, 155, 0.3); box-shadow: 0 12px 32px rgba(15, 163, 155, 0.12); }
-.kpi-violet:hover { border-color: rgba(127, 86, 217, 0.25); box-shadow: 0 12px 32px rgba(127, 86, 217, 0.12); }
-.kpi-emerald:hover { border-color: rgba(27, 94, 32, 0.25); box-shadow: 0 12px 32px rgba(27, 94, 32, 0.12); }
-
-.kpi-data { min-width: 0; }
+.kpi-data { position: relative; min-width: 0; display: flex; flex-direction: column; }
 
 .kpi-value {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
+  font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--text-primary, #181818); line-height: 1.15;
 }
 
 .kpi-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--text-secondary, #706E6B); margin-top: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi-card, .kpi-ghost { transition: none; }
 }
 
 /* Charts */
