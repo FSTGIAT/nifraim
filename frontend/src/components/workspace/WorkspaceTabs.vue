@@ -73,7 +73,7 @@
       <!-- Home button -->
       <button class="strip-pill home-pill" type="button" aria-label="מסך הבית" title="מסך הבית" @click="$emit('go-home')">
         <span class="strip-icon">
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1.5" />
             <rect x="14" y="3" width="7" height="7" rx="1.5" />
@@ -531,10 +531,18 @@ const tabs = [
   flex-shrink: 0;
 }
 
-.home-pill { flex: 0 0 auto; padding: 0 14px; }
+/* back-to-workspace: a big rectangle button, full bar height */
+.home-pill {
+  flex: 0 0 auto; width: 64px; padding: 0; justify-content: center;
+  border-radius: 14px;
+  color: var(--text-primary, #181818);
+  background: color-mix(in srgb, var(--primary, #181818) 6%, var(--card-bg));
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
 .home-pill:hover {
-  color: var(--text);
-  background: var(--glass-hover);
+  color: #fff;
+  background: var(--primary, #181818);
+  box-shadow: 0 6px 16px rgba(24, 24, 24, 0.18);
 }
 .home-pill:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
@@ -549,7 +557,8 @@ const tabs = [
 @media (max-width: 700px) {
   .strip-container { padding-inline: 64px 12px; } /* phones: only the bell corner (right, = inline-start in RTL) is reserved */
   .strip { gap: 1px; padding: 5px; }
-  .strip-pill:not(.active), .home-pill { padding: 0 7px; }
+  .strip-pill:not(.active) { padding: 0 7px; }
+  .home-pill { width: 44px; }
   .strip-divider { margin: 0 2px; }
 }
 @container (max-width: 1240px) {
