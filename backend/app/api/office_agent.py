@@ -12,8 +12,19 @@ from app.services import office_agent as svc
 router = APIRouter()
 
 
+class Turn(BaseModel):
+    role: str
+    text: str = Field(max_length=4000)
+
+
 class AskIn(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    history: list[Turn] = Field(default_factory=list, max_length=20)
+
+
+class ActIn(BaseModel):
+    kind: str  # email | meeting
+    data: dict
 
 
 @router.get("")
@@ -29,7 +40,24 @@ async def get_narrate(db: AsyncSession = Depends(get_db), user: User = Depends(g
 
 @router.post("/ask")
 async def ask(body: AskIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
-    return {"answer": await svc.ask(db, user, body.question)}
+    return await svc.ask(db, user, body.question, [t.model_dump() for t in body.history])
+
+
+@router.post("/act")
+async def act(body: ActIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """The agent approved a prepared email / meeting invite — send it from their mailbox."""
+    from fastapi import HTTPException
+    from app.services import agent_actions
+    from app.services.mail_intake import MailIntakeError
+    from app.services.mail_intake.send import NoSendableMailbox
+    try:
+        return await agent_actions.send(db, user, body.kind, body.data)
+    except agent_actions.ActionError as e:
+        raise HTTPException(400, str(e))
+    except NoSendableMailbox:
+        raise HTTPException(400, "not_connected")
+    except MailIntakeError as e:
+        raise HTTPException(502, str(e))
 
 
 @router.get("/map")

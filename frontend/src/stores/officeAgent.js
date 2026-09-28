@@ -73,11 +73,13 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
   async function ask(question) {
     const q = (question || '').trim()
     if (!q) return
+    const history = thread.value.slice(-8).map((m) => ({ role: m.role, text: m.text }))
     thread.value.push({ role: 'user', text: q })
     busy.value = 'ask'
     try {
-      const { data } = await api.post('/office-agent/ask', { question: q })
-      thread.value.push({ role: 'agent', text: data.answer })
+      const { data } = await api.post('/office-agent/ask', { question: q, history })
+      // proposal = an email / meeting invite the agent prepared; sent only on approve()
+      thread.value.push({ role: 'agent', text: data.answer, proposal: data.proposal ? { ...data.proposal, status: 'open' } : null })
     } catch {
       thread.value.push({ role: 'agent', text: 'לא הצלחתי לענות כרגע — נסו שוב בעוד רגע.' })
     } finally {
@@ -85,5 +87,26 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  return { brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
+  // The agent approved a prepared email / meeting — send it from their mailbox.
+  async function approve(msg) {
+    const p = msg.proposal
+    busy.value = 'act'
+    error.value = ''
+    try {
+      const { kind, status, ...data } = p
+      await api.post('/office-agent/act', { kind, data })
+      p.status = 'sent'
+      return true
+    } catch (e) {
+      const d = e?.response?.data?.detail
+      error.value = d === 'bad_email' ? 'כתובת המייל לא תקינה'
+        : d === 'bad_start' ? 'המועד לא תקין'
+        : message(e)
+      return false
+    } finally {
+      busy.value = ''
+    }
+  }
+
+  return { approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
 })

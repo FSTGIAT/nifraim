@@ -83,6 +83,44 @@
             <div v-for="(m, i) in store.thread" :key="'t' + i" class="na-qa" :class="'na-qa--' + m.role">
               <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="7" :show-cursor="i === store.thread.length - 1" />
               <span v-else>{{ m.text }}</span>
+              <!-- what the agent prepared: editable, sent only on approve -->
+              <Transition name="na-sheet">
+                <div v-if="m.proposal && m.proposal.status !== 'dropped'" class="na-sheet na-prop" :class="{ 'is-sent': m.proposal.status === 'sent' }">
+                  <div class="na-prop-head">
+                    <svg v-if="m.proposal.kind === 'meeting'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+                    <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
+                    <strong>{{ m.proposal.kind === 'meeting' ? 'זימון לפגישה' : 'מייל' }}</strong>
+                    <span v-if="m.proposal.status === 'sent'" class="na-sent">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                      {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : 'נשלח' }}
+                    </span>
+                  </div>
+                  <fieldset :disabled="m.proposal.status === 'sent'" class="na-prop-fields">
+                    <label class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
+                    <template v-if="m.proposal.kind === 'meeting'">
+                      <label class="na-f"><span>נושא</span><input v-model="m.proposal.title" /></label>
+                      <div class="na-f-row">
+                        <label class="na-f"><span>תאריך</span><input :value="m.proposal.start.slice(0, 10)" type="date" dir="ltr" @input="setStart(m.proposal, $event.target.value, null)" /></label>
+                        <label class="na-f"><span>שעה</span><input :value="m.proposal.start.slice(11, 16)" type="time" dir="ltr" step="300" @input="setStart(m.proposal, null, $event.target.value)" /></label>
+                        <label class="na-f na-f--s"><span>דקות</span><input v-model.number="m.proposal.duration_min" type="number" min="10" max="480" step="5" dir="ltr" /></label>
+                      </div>
+                      <label class="na-f"><span>מיקום</span><input v-model="m.proposal.location" placeholder="משרד · טלפון · קישור לזום" /></label>
+                    </template>
+                    <template v-else>
+                      <label class="na-f"><span>נושא</span><input v-model="m.proposal.subject" /></label>
+                      <textarea v-model="m.proposal.body" rows="6"></textarea>
+                    </template>
+                  </fieldset>
+                  <div v-if="m.proposal.status !== 'sent'" class="na-row">
+                    <button type="button" class="na-go" :disabled="!canSend || store.busy === 'act'" @click="store.approve(m)">
+                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : 'אישור ושליחה' }}
+                    </button>
+                    <button type="button" class="na-link na-link--quiet" @click="m.proposal.status = 'dropped'">ביטול</button>
+                    <span v-if="!canSend" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                  </div>
+                  <p v-if="store.error && i === store.thread.length - 1" class="na-err">{{ store.error }}</p>
+                </div>
+              </Transition>
             </div>
             <p v-if="store.busy === 'ask'" class="na-thinking"><i></i><i></i><i></i></p>
           </div>
@@ -162,6 +200,10 @@ async function sendIt(c) {
 async function saveEmail(c) { if (email.value && (await store.act(c, 'set_email', { email: email.value }))) openLine.value = -1 }
 async function runPrimary(c) { if (await store.act(c, primary(c).action)) openLine.value = -1 }
 async function finish(c) { if (await store.act(c, c.actions.includes('resolve') ? 'resolve' : 'done')) openLine.value = -1 }
+
+function setStart(p, date, time) {
+  p.start = `${date || p.start.slice(0, 10)}T${time || p.start.slice(11, 16)}`
+}
 
 const q = ref('')
 const feedEl = ref(null)
@@ -285,6 +327,24 @@ async function close() {
 .na-sheet-enter-active, .na-sheet-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-4px); }
 
+.na-prop { margin-top: 12px; }
+.na-prop-head { display: flex; align-items: center; gap: 8px; color: #0A6664; font-size: 14px; }
+.na-prop-head strong { color: #10201F; font-weight: 800; }
+.na-sent { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 800; color: #1E7D4A; }
+.na-prop.is-sent { opacity: 0.8; }
+.na-prop-fields { border: none; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.na-f { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.na-f span { font-size: 12px; font-weight: 800; color: #4A5B5A; }
+.na-f input, .na-prop textarea {
+  width: 100%; box-sizing: border-box; height: 38px; padding: 0 11px; border-radius: 11px; border: 1px solid rgba(14, 140, 138, 0.2);
+  font-family: inherit; font-size: 14px; color: #10201F; background: #fff; outline: none;
+}
+.na-prop textarea { height: auto; padding: 9px 11px; line-height: 1.6; resize: vertical; }
+.na-f input:focus, .na-prop textarea:focus { border-color: rgba(14, 140, 138, 0.55); }
+.na-f-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.na-f-row .na-f { min-width: 120px; }
+.na-f--s { flex: 0 0 90px; min-width: 90px !important; }
+.na-prop-fields:disabled input, .na-prop-fields:disabled textarea { background: rgba(255, 255, 255, 0.6); color: #3E4B4A; }
 .na-qa { margin-top: 18px; font-size: 16px; line-height: 1.7; }
 .na-qa--user { display: table; padding: 8px 14px; border-radius: 16px; background: rgba(14, 140, 138, 0.1); font-weight: 600; }
 .na-qa--agent { color: #1B2A29; }

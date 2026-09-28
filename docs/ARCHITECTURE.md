@@ -1253,6 +1253,11 @@ flowchart RL
   - Order: `PRIORITY` (insurer replied, then customer question, then reminder due, …).
   - Every action goes through the EXISTING endpoints (`/mail-agent/items/*`, `/collection-agent/cases/*`). **Sending is always the agent's click.**
 
+- **Actions (it DOES, not only answers — 2026-09-29):** `ask()` runs on **Sonnet 5** (`ASK_MODEL`; Haiku kept asking for details instead of acting) with the recent panel turns as `history`, and has two more tools beside `open_page`, both in `services/agent_actions.py`:
+  - `propose_email` prepares a mail to any address.
+  - `propose_meeting` schedules a meeting. It becomes a real **iCalendar REQUEST invite** (accept/decline in Gmail/Outlook) to the invitee, with a Cc to the agent. There is no Google Calendar consent (the mailbox is IMAP/SMTP), so the invite IS the scheduling channel.
+  - The tools only PREPARE. `ask` returns `{answer, proposal}`; the panel shows an editable sheet, and **`POST /api/office-agent/act` sends only on the agent's approve click**, via `send_as_agent`. The only question it may ask is a missing recipient email. Tests: `tests/test_agent_actions.py`.
+
 ### 17a. The data map (`services/data_map.py`) — the agent's data as Markdown the AI navigates
 
 The AI never gets one giant dump. It gets `index.md` (categories, a one-line fact each, links) and **drills down** with the `open_page` tool, following the connections the answer needs:

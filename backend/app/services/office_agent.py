@@ -140,12 +140,20 @@ async def brief(db: AsyncSession, user: User) -> dict:
 
 
 ASK_SYSTEM = (
-    "אתה סוכן המשרד של סוכן ביטוח: עוזר back-office. יש לך מפה של הנתונים שלו כאתר Markdown קטן: "
-    "index.md מחולק לקטגוריות עם קישורים, ואפשר לרדת לעומק עם הכלי open_page (חברה → לקוח → מייל). "
-    "לפני שאתה עונה — פתח את הדפים שרלוונטיים לשאלה (לרוב 1–3 דפים), עקוב אחרי הקישורים כדי לחבר בין הנתונים. "
-    "ענה בעברית, ישר לעניין, עד 3 משפטים קצרים בטקסט רגיל — בלי Markdown, בלי כוכביות ובלי כותרות — "
-    "וסיים בצעד אחד שהסוכן צריך לעשות. שם של לקוח בלי ת.ז — חפש עם search/<שם>.md. "
-    "השתמש רק במה שמופיע בדפים; אם אין — אמור זאת בקצרה. אל תמציא סכומים או שמות."
+    "אתה Nifra Agent — הסוכן האישי שעובד בשביל סוכן ביטוח. אתה לא רק עונה, אתה עושה: "
+    "יש לך ידיים — propose_email מכין מייל, propose_meeting קובע פגישה (זימון יומן עם אישור/דחייה). "
+    "הם לא שולחים לבד: הסוכן רואה את מה שהכנת ולוחץ אישור. לכן לעולם אל תגיד 'אני לא יכול לקבוע פגישה' או 'לשלוח מייל'. "
+    "כשמבקשים ממך פעולה — עשה אותה מיד עם הכלי. הפרט היחיד שמותר לשאול עליו הוא כתובת המייל של הנמען, ורק אם אין לך אותה "
+    "(בשיחה או בדפים). לעולם אל תשאל על שם, תוכן, אורך או ניסוח — אתה כותב את המייל בעצמך, קצר ומקצועי, בגוף ראשון של הסוכן. "
+    "to_name — רק שם אמיתי שידוע לך; אחרת השאר ריק (לא 'לקוח'). "
+    "יום ושעה שהסוכן אמר — קובעים בדיוק אותם, בלי ויכוח ובלי הערות על חגים. נמען שהסוכן נתן — לא צריך לאמת אותו מול הנתונים. "
+    "שעה שלא נאמרה — הצע בעצמך את יום העבודה הקרוב ב-10:00, 30 דקות (ימים א-ה); אל תשאל על זה. "
+    "כותרת ברירת מחדל: 'פגישת היכרות' ללקוח חדש, אחרת לפי ההקשר. "
+    "יש לך גם מפה של הנתונים שלו כאתר Markdown: index.md מחולק לקטגוריות עם קישורים, ואפשר לרדת לעומק עם open_page "
+    "(חברה → לקוח → מייל). לשאלות על הנתונים — פתח את הדפים הרלוונטיים (1–3) לפני שאתה עונה. "
+    "שם של לקוח בלי ת.ז — search/<שם>.md. השתמש רק במה שמופיע בדפים; אל תמציא סכומים או שמות. "
+    "ענה בעברית, ישר לעניין, עד 3 משפטים קצרים בטקסט רגיל — בלי Markdown, בלי כוכביות ובלי רשימות. "
+    "אחרי שהכנת פעולה — משפט אחד שאומר מה הכנת ושהיא מחכה לאישור שלו."
 )
 OPEN_PAGE_TOOL = {
     "name": "open_page",
@@ -153,28 +161,60 @@ OPEN_PAGE_TOOL = {
     "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
 }
 MAX_HOPS = 5
+# Sonnet, not Haiku: Haiku kept asking for details it didn't need instead of acting
+ASK_MODEL = "claude-sonnet-5"
 
 
-async def ask(db: AsyncSession, user: User, question: str) -> str:
-    """Answer a short question by navigating the data map (services/data_map):
-    the model starts from index.md and opens linked pages until it can answer."""
-    from app.services import data_map
+def _proposal_line(p: dict) -> str:
+    from app.services.agent_actions import when_he
+    who = p.get("to_name") or p["to_email"]
+    to = "ל" + ("" if "\u0590" <= who[:1] <= "\u05ff" else "-") + who
+    if p["kind"] == "meeting":
+        return f"הכנתי זימון ל{p['title']} עם {who} — {when_he(p['start'], p['duration_min'])}. מחכה לאישור שלך."
+    return f"הכנתי מייל {to}: «{p['subject']}». מחכה לאישור שלך."
+
+
+async def ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None) -> dict:
+    """Answer — or ACT on — a short request. The model reads the data map
+    (services/data_map) and may prepare ONE action (services/agent_actions):
+    an email or a meeting invitation, returned as `proposal` for the agent to
+    approve. `history` = the recent turns of this panel, so "לקוח" after
+    "תקבע פגישה" is understood."""
+    from app.services import agent_actions, data_map
 
     ctx = await data_map.load(db, user)
     index = data_map.render(ctx, "index.md")
     if not settings.ANTHROPIC_API_KEY:
-        return index.splitlines()[0]
+        return {"answer": index.splitlines()[0], "proposal": None}
+    now = datetime.now(IL)
+    system = ASK_SYSTEM + f" עכשיו: יום {agent_actions.HE_DAYS[now.weekday()]} {now:%Y-%m-%d %H:%M} (שעון ישראל). שם הסוכן: {user.full_name or ''}."
+    messages: list[dict] = []
+    for turn in (history or [])[-8:]:
+        role = "assistant" if turn.get("role") == "agent" else "user"
+        text = str(turn.get("text") or "").strip()[:1500]
+        if text and (not messages or messages[-1]["role"] != role):
+            messages.append({"role": role, "content": text})
+        elif text:
+            messages[-1]["content"] += "\n" + text
+    if messages and messages[0]["role"] == "assistant":
+        messages.insert(0, {"role": "user", "content": "שלום"})
+    q = f"index.md:\n{index}\n\nבקשה: {question[:500]}"
+    if messages and messages[-1]["role"] == "user":
+        messages[-1]["content"] += "\n" + q
+    else:
+        messages.append({"role": "user", "content": q})
+    proposal = None
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        messages = [{"role": "user", "content": f"index.md:\n{index}\n\nשאלה: {question[:500]}"}]
         for _ in range(MAX_HOPS):
             r = await client.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=400, system=ASK_SYSTEM,
-                tools=[OPEN_PAGE_TOOL], messages=messages,
+                model=ASK_MODEL, max_tokens=900, system=system,
+                tools=[OPEN_PAGE_TOOL, *agent_actions.TOOLS], messages=messages,
             )
+            text = "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip()
             if r.stop_reason != "tool_use":
-                return "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip() or "אין לי תשובה כרגע."
+                return {"answer": text or ("הכנתי — מחכה לאישור שלך." if proposal else "אין לי תשובה כרגע."), "proposal": proposal}
             # plain dicts — re-sending the SDK's block objects trips its serializer
             blocks = []
             for blk in r.content:
@@ -185,14 +225,26 @@ async def ask(db: AsyncSession, user: User, question: str) -> str:
             messages.append({"role": "assistant", "content": blocks})
             results = []
             for blk in r.content:
-                if getattr(blk, "type", "") == "tool_use":
-                    page = data_map.render(ctx, (blk.input or {}).get("path", "index.md"))
-                    results.append({"type": "tool_result", "tool_use_id": blk.id, "content": page[:6000]})
+                if getattr(blk, "type", "") != "tool_use":
+                    continue
+                args = dict(blk.input or {})
+                if blk.name == "open_page":
+                    content = data_map.render(ctx, args.get("path", "index.md"))[:6000]
+                else:
+                    kind = "email" if blk.name == "propose_email" else "meeting"
+                    try:
+                        proposal = agent_actions.normalize(kind, args)
+                        content = "הוכן והוצג לסוכן לאישור. אל תכין שוב — כתוב משפט אחד."
+                    except agent_actions.ActionError as e:
+                        content = f"לא תקין ({e}). אם חסרה כתובת מייל תקינה — שאל את הסוכן עליה."
+                results.append({"type": "tool_result", "tool_use_id": blk.id, "content": content})
             messages.append({"role": "user", "content": results})
-        return "בדקתי כמה דפים ולא הגעתי לתשובה חד-משמעית — נסו לשאול בצורה ממוקדת יותר."
+            if proposal:
+                return {"answer": _proposal_line(proposal), "proposal": proposal}
+        return {"answer": "בדקתי כמה דפים ולא הגעתי לתשובה חד-משמעית — נסו לשאול בצורה ממוקדת יותר.", "proposal": proposal}
     except Exception as e:  # noqa: BLE001
         logger.warning("office agent ask failed: %s", e)
-        return "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע."
+        return {"answer": "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע.", "proposal": None}
 
 
 # ─────────────────────────── the written brief (Nifra Agent speaks) ────────
