@@ -11,6 +11,8 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
   const busy = ref('')
   const error = ref('')
   const thread = ref([]) // [{role:'user'|'agent', text}] — the short Q&A
+  const narration = ref(null) // {greeting, lines:[{text, ref}]} — what the agent writes on open
+  const narrating = ref(false)
 
   const cards = computed(() => brief.value?.cards || [])
   const todoCount = computed(() => brief.value?.todo_count || 0)
@@ -21,6 +23,20 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     try {
       brief.value = (await api.get('/office-agent')).data
     } catch { /* keep the last brief */ } finally { loading.value = false }
+  }
+
+  // The agent's written brief (≤5 lines). Also refreshes the cards behind it.
+  async function narrate() {
+    narrating.value = true
+    try {
+      const { data } = await api.get('/office-agent/narrate')
+      narration.value = { greeting: data.greeting, lines: data.lines || [] }
+      brief.value = { ...(brief.value || {}), cards: data.cards, mailbox: data.mailbox, todo_count: data.todo_count }
+    } catch {
+      narration.value = { greeting: 'שלום', lines: [{ text: 'לא הצלחתי לטעון את התדריך כרגע — נסו שוב בעוד רגע.', ref: null }] }
+    } finally {
+      narrating.value = false
+    }
   }
 
   function message(e) {
@@ -69,5 +85,5 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  return { brief, loading, busy, error, thread, cards, todoCount, visible, load, act, ask }
+  return { brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
 })

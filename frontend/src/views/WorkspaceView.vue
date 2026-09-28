@@ -64,7 +64,7 @@
     <div v-if="showEmotionClock" class="ws-emotion-clock">
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
       <!-- סוכן המשרד — the back-office agent (mail + unpaid commission) -->
-      <CollectionAgentIcon size="big" @open="openCollector" />
+      <NifraAgentIcon size="big" @open="openCollector" />
     </div>
     <div
       v-else
@@ -72,7 +72,7 @@
       :class="{ 'ws-cycle-small--below-bell': !bellInRail, 'ws-cycle-small--content': viewMode === 'content' }"
     >
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
-      <CollectionAgentIcon size="small" @open="openCollector" />
+      <NifraAgentIcon size="small" @open="openCollector" />
     </div>
     <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" />
 
@@ -325,7 +325,7 @@ import SetupProgressCard from '../components/workspace/SetupProgressCard.vue'
 import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import CycleRailIcon from '../components/workspace/CycleRailIcon.vue'
 import CycleEmotionClock from '../components/workspace/CycleEmotionClock.vue'
-import CollectionAgentIcon from '../components/workspace/CollectionAgentIcon.vue'
+import NifraAgentIcon from '../components/workspace/NifraAgentIcon.vue'
 import OfficeAgentPanel from '../components/workspace/OfficeAgentPanel.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'

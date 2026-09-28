@@ -1230,22 +1230,23 @@ setup wizard's "מדף ההסכמים" step — no navigation away).
 - **Summary KPIs** + filters (דורש טיפול = failed / waiting_worker / not_queued / partial / שיוך rejected /
   mailbox error). One grouped query per area; latest batch via `DISTINCT ON (user_id)`.
 
-## 17. Office agent (סוכן המשרד) + the data map — the back-office AI that works for the agent
+## 17. Nifra Agent (office agent, was סוכן המשרד) + the data map — the back-office AI that works for the agent
 
-The agent's back-office AI speaks first: a greeting, then one card per thing that waits, each card with the ONE action that moves it. A short ask box answers in ≤3 plain sentences and ends with a step. It is not a chat. It owns no new data; it **speaks for two workers** and reads the **data map**.
+The agent's back-office AI speaks first. **Nifra Agent WRITES, it does not show tickets** (user rule 2026-09-29): on open, `GET /api/office-agent/narrate` has Haiku (`narrate()`, `NARRATE_SYSTEM`) turn the cards into a greeting + ≤5 lines, each tied to a card `ref`; the panel streams them one after another (`AiStreamingText`) and ends a line with ONE inline link that opens its action in place (draft to approve, contact to add). The narration must not invent times/amounts; the cards stay the source of truth behind it (cached per user by card signature). A short ask box answers in ≤3 plain sentences and ends with a step. It is not a chat. It owns no new data; it **speaks for two workers** and reads the **data map**.
 
 ```mermaid
 flowchart RL
   MA[Mail Agent<br/>triage · summary · draft] --> OA[office_agent.brief<br/>greeting + cards by urgency]
   CA[collection_agent<br/>unpaid per insurer · draft · follow-up] --> OA
   DM[data_map<br/>Markdown site, drill-down] --> ASK[office_agent.ask<br/>Haiku + open_page tool]
-  OA --> UI[OfficeAgentPanel]
+  OA --> NR[office_agent.narrate<br/>greeting + ≤5 lines → card refs]
+  NR --> UI[OfficeAgentPanel = Nifra Agent]
   ASK --> UI
 ```
 
 - **Code:**
-  - Backend: `services/office_agent.py` and `api/office_agent.py` (`GET /api/office-agent`, `POST /ask`, `GET /map?path=`).
-  - Frontend: `stores/officeAgent.js`, `OfficeAgentPanel.vue`, `CollectionAgentIcon.vue` (under the cycle clock) and `OfficeAgentGlyph.vue`.
+  - Backend: `services/office_agent.py` and `api/office_agent.py` (`GET /api/office-agent`, `GET /narrate`, `POST /ask`, `GET /map?path=`).
+  - Frontend: `stores/officeAgent.js`, `OfficeAgentPanel.vue` (streamed lines, aurora + ThinkingOrb), `NifraAgentIcon.vue` (live ThinkingOrb in a breathing glass ring, under the cycle clock), `components/ui/AiStreamingText.vue`.
 - **Cards:**
   - Open Mail Agent items (`mail_items`, 14 days): send the draft / make a draft / import the file / done.
   - Open collection cases: approve and send / add the contact / remind / read the reply and resolve.

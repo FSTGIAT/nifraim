@@ -193,3 +193,69 @@ async def ask(db: AsyncSession, user: User, question: str) -> str:
     except Exception as e:  # noqa: BLE001
         logger.warning("office agent ask failed: %s", e)
         return "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע."
+
+
+# ─────────────────────────── the written brief (Nifra Agent speaks) ────────
+
+NARRATE_SYSTEM = (
+    "אתה Nifra Agent — הסוכן האישי של סוכן ביטוח, שעובד בשבילו על המיילים והעמלות. "
+    "כתוב לו תדריך קצר בגוף ראשון, חם וישיר, בטקסט רגיל בלי Markdown. "
+    "החזר JSON בלבד: {\"lines\":[{\"text\":\"...\",\"ref\":\"<id של פריט או null>\"}]} "
+    "עד 5 שורות, כל שורה משפט אחד קצר (עד 16 מילים): מה הגיע / מה מחכה, ומה כדאי לעשות. "
+    "הכי דחוף ראשון. אחד-לאחד מול הפריטים שקיבלת — אל תמציא, ובמיוחד אל תמציא זמנים, דדליינים או סכומים. "
+    "השתמש בפעולה המוצעת כפי שהיא כתובה (למשל 'לאשר ולשלוח את הפנייה'). פריט שכבר נענה/אושר — אמור בקצרה מה קרה. "
+    "אם אין כלום — שורה אחת שהכל מטופל."
+)
+ACTION_HE = {
+    "send_reply": "לשלוח את התשובה שהכנתי", "make_draft": "להכין טיוטת תשובה", "import": "לטעון את הקובץ",
+    "done": "לסמן כטופל", "send_case": "לאשר ולשלוח את הפנייה לחברה", "set_email": "להוסיף מייל של איש קשר",
+    "remind": "לשלוח תזכורת", "resolve": "לסמן כטופל",
+}
+_brief_cache: dict = {}   # user_id -> (signature, payload)
+
+
+def _fallback_lines(cards: list[dict]) -> list[dict]:
+    out = []
+    for c in cards[:5]:
+        out.append({"text": f"{c['title']}: {c['text']}", "ref": c["id"]})
+    return out or [{"text": "הכל מטופל — אין כרגע משהו שמחכה לך.", "ref": None}]
+
+
+async def narrate(db: AsyncSession, user: User) -> dict:
+    """Greeting + ≤5 written lines (each may point at a card = its action).
+    Cached per user until the underlying cards change."""
+    import json
+
+    b = await brief(db, user)
+    cards = b["cards"]
+    sig = "|".join(f"{c['id']}:{c['sub']}:{c['text']}" for c in cards)
+    hit = _brief_cache.get(user.id)
+    if hit and hit[0] == sig:
+        return {**hit[1], "cards": cards, "mailbox": b["mailbox"]}
+    lines = _fallback_lines(cards)
+    if settings.ANTHROPIC_API_KEY and cards:
+        try:
+            import anthropic
+            client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            items = "\n".join(
+                f"- id={c['id']} | {c['title']} | {c['text']} | {c['meta']} | פעולה מוצעת: "
+                + (", ".join(ACTION_HE.get(a, a) for a in c['actions']) or "אין — רק לעדכן")
+                for c in cards[:20]
+            )
+            r = await client.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=500, system=NARRATE_SYSTEM,
+                messages=[{"role": "user", "content": f"הפריטים:\n{items}"}],
+            )
+            raw = "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip()
+            raw = raw[raw.find("{"): raw.rfind("}") + 1]
+            ids = {c["id"] for c in cards}
+            parsed = [
+                {"text": str(l.get("text", "")).strip()[:160], "ref": l.get("ref") if l.get("ref") in ids else None}
+                for l in (json.loads(raw).get("lines") or []) if str(l.get("text", "")).strip()
+            ][:5]
+            lines = parsed or lines
+        except Exception as e:  # noqa: BLE001 — the deterministic lines still say it
+            logger.warning("nifra agent narrate failed: %s", e)
+    payload = {"greeting": b["greeting"], "lines": lines, "todo_count": b["todo_count"]}
+    _brief_cache[user.id] = (sig, payload)
+    return {**payload, "cards": cards, "mailbox": b["mailbox"]}

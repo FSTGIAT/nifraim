@@ -1,80 +1,93 @@
 <template>
-  <!-- סוכן המשרד — the agent's back-office AI. It speaks first: a greeting, how
-       many things wait, then one card per thing (a mail that arrived, an insurer
-       that didn't pay) with the ONE action that moves it. A short ask box for
-       quick questions. Opens out of its icon (useOriginMorph). -->
+  <!-- Nifra Agent — the agent's back-office AI, alive. No tickets: it WRITES to
+       you — a greeting, then ≤5 streamed lines (what arrived, what waits, what
+       to do). A line that points at something ends with one small link that
+       opens it inline (the draft to approve, the contact to add). A glass ask
+       box for quick questions. Opens out of its icon (useOriginMorph). -->
   <Teleport to="body">
-    <Transition name="oa-fade">
-      <div v-if="open" class="oa-overlay" @click.self="close">
-        <section ref="cardEl" class="oa" role="dialog" aria-modal="true" aria-label="סוכן המשרד">
-          <header class="oa-head">
-            <span class="oa-avatar" aria-hidden="true"><OfficeAgentGlyph /></span>
-            <div class="oa-titles">
-              <strong class="oa-name">סוכן המשרד</strong>
-              <span class="oa-sub">עובד בשבילך על המיילים והעמלות</span>
+    <Transition name="na-fade">
+      <div v-if="open" class="na-overlay" @click.self="close">
+        <section ref="cardEl" class="na" role="dialog" aria-modal="true" aria-label="Nifra Agent">
+          <div class="na-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+
+          <button class="na-x" type="button" aria-label="סגור" @click="close">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+
+          <!-- the agent -->
+          <header class="na-stage">
+            <div class="na-orb-wrap">
+              <span class="na-halo" aria-hidden="true"></span>
+              <span class="na-halo na-halo--2" aria-hidden="true"></span>
+              <ThinkingOrbIsland class="na-orb" :state="orbState" :size="64" color="#0E8C8A" :dot-size="1.3" :dots="1.15" />
             </div>
-            <button class="oa-x" type="button" aria-label="סגור" @click="close">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
+            <strong class="na-name" dir="ltr">Nifra <b>Agent</b></strong>
+            <span class="na-status"><i aria-hidden="true"></i>{{ statusText }}</span>
           </header>
 
-          <div ref="feedEl" class="oa-feed">
-            <div v-if="!b" class="oa-msg oa-msg--agent"><p class="oa-typing"><i></i><i></i><i></i></p></div>
-            <template v-else>
-              <!-- the agent speaks first -->
-              <div class="oa-msg oa-msg--agent">
-                <p class="oa-hello">{{ b.greeting }}</p>
-                <p class="oa-headline">{{ b.headline }}</p>
-              </div>
-
-              <article v-for="c in b.cards" :key="c.id" class="oa-card" :class="['oa-card--' + c.kind, 'oa-card--' + c.sub]">
-                <header class="oa-card-head">
-                  <span class="oa-card-ic" aria-hidden="true">
-                    <svg v-if="c.kind === 'unpaid'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 8.5h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9M12 6.5v2M12 16.5v2"/></svg>
-                    <svg v-else-if="c.sub === 'customer_question'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>
-                    <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
-                  </span>
-                  <div class="oa-card-titles">
-                    <strong>{{ c.title }}</strong>
-                    <span class="oa-card-meta">{{ c.meta }}</span>
+          <div ref="feedEl" class="na-feed">
+            <!-- what the agent writes -->
+            <template v-if="store.narration">
+              <h2 class="na-greeting">
+                <AiStreamingText :text="store.narration.greeting" mode="word" :speed="70" :show-cursor="false" @complete="onGreetingDone" />
+              </h2>
+              <ol class="na-lines">
+                <li v-for="(l, i) in store.narration.lines" v-show="i <= step" :key="i" class="na-line"
+                    :class="{ 'is-handled': l.ref && lineDone[i] && !cardOf(l) }">
+                  <span class="na-line-dot" aria-hidden="true"></span>
+                  <div class="na-line-body">
+                    <AiStreamingText :text="l.text" :speed="16" :start="i <= step" :show-cursor="i === step" @complete="onLineDone(i)" />
+                    <!-- the action this line points at -->
+                    <template v-if="lineDone[i] && cardOf(l)">
+                      <button v-if="primary(cardOf(l))" type="button" class="na-link" @click="toggle(i, cardOf(l))">
+                        {{ openLine === i ? 'סגירה' : primary(cardOf(l)).label }}
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                      </button>
+                      <button v-if="hasFinish(cardOf(l))" type="button" class="na-link na-link--quiet" :disabled="!!store.busy" @click="finish(cardOf(l))">טופל</button>
+                    </template>
+                    <!-- inline: the draft to approve / the contact to add -->
+                    <Transition name="na-sheet">
+                      <div v-if="openLine === i && cardOf(l)" class="na-sheet">
+                        <template v-if="cardOf(l).actions.includes('set_email')">
+                          <label class="na-sheet-label">המייל של איש הקשר ב{{ cardOf(l).title }}</label>
+                          <div class="na-row">
+                            <input v-model.trim="email" type="email" dir="ltr" placeholder="name@insurer.co.il" @keydown.enter="saveEmail(cardOf(l))" />
+                            <button type="button" class="na-go" :disabled="!email || !!store.busy" @click="saveEmail(cardOf(l))">שמירה</button>
+                          </div>
+                        </template>
+                        <template v-else-if="cardOf(l).draft_body && isSend(cardOf(l))">
+                          <label class="na-sheet-label">{{ cardOf(l).kind === 'unpaid' ? `הפנייה לחברה · ${cardOf(l).policies} פוליסות` : 'התשובה שהכנתי' }}</label>
+                          <textarea v-model="body" rows="7"></textarea>
+                          <div class="na-row">
+                            <button type="button" class="na-go" :disabled="!canSend || !!store.busy" @click="sendIt(cardOf(l))">
+                              {{ store.busy ? 'שולח…' : 'אישור ושליחה' }}
+                            </button>
+                            <span v-if="!canSend" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                          </div>
+                        </template>
+                        <div v-else class="na-row">
+                          <button type="button" class="na-go" :disabled="!!store.busy" @click="runPrimary(cardOf(l))">{{ primary(cardOf(l)).label }}</button>
+                        </div>
+                        <p v-if="store.error" class="na-err">{{ store.error }}</p>
+                      </div>
+                    </Transition>
                   </div>
-                </header>
-                <p class="oa-card-text">{{ c.text }}</p>
-
-                <!-- insurer contact missing -->
-                <div v-if="c.actions.includes('set_email')" class="oa-inline">
-                  <input v-model.trim="emails[c.id]" type="email" dir="ltr" placeholder="name@insurer.co.il" @keydown.enter="setEmail(c)" />
-                  <button type="button" class="oa-btn oa-btn--go" :disabled="!emails[c.id] || isBusy(c, 'set_email')" @click="setEmail(c)">שמירה</button>
-                </div>
-
-                <!-- the draft behind the action -->
-                <details v-if="c.draft_body && (c.actions.includes('send_reply') || c.actions.includes('send_case'))" class="oa-draft">
-                  <summary>{{ c.kind === 'unpaid' ? `הפנייה לחברה · ${c.policies} פוליסות` : 'הטיוטה שהכנתי' }}</summary>
-                  <textarea v-model="bodies[c.id]" rows="7" @blur="saveCaseBody(c)"></textarea>
-                </details>
-
-                <div v-if="primary(c) || c.actions.includes('done')" class="oa-actions">
-                  <button v-if="primary(c)" type="button" class="oa-btn oa-btn--go" :disabled="primary(c).disabled || isBusy(c, primary(c).action)"
-                          @click="run(c, primary(c).action)">
-                    {{ isBusy(c, primary(c).action) ? '…' : primary(c).label }}
-                  </button>
-                  <button v-if="c.actions.includes('done')" type="button" class="oa-btn" :disabled="isBusy(c, 'done')" @click="run(c, 'done')">טופל</button>
-                </div>
-              </article>
-
-              <p v-if="store.error" class="oa-err">{{ store.error }}</p>
-
-              <!-- the short Q&A -->
-              <div v-for="(m, i) in store.thread" :key="i" class="oa-msg" :class="'oa-msg--' + m.role">
-                <p>{{ m.text }}</p>
-              </div>
-              <div v-if="store.busy === 'ask'" class="oa-msg oa-msg--agent"><p class="oa-typing"><i></i><i></i><i></i></p></div>
+                </li>
+              </ol>
             </template>
+            <p v-else class="na-thinking" aria-label="כותב"><i></i><i></i><i></i></p>
+
+            <!-- the short Q&A -->
+            <div v-for="(m, i) in store.thread" :key="'t' + i" class="na-qa" :class="'na-qa--' + m.role">
+              <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="14" :show-cursor="i === store.thread.length - 1" />
+              <span v-else>{{ m.text }}</span>
+            </div>
+            <p v-if="store.busy === 'ask'" class="na-thinking"><i></i><i></i><i></i></p>
           </div>
 
-          <form class="oa-ask" @submit.prevent="askNow">
-            <input v-model="q" class="oa-ask-input" placeholder="שאלו את סוכן המשרד…" maxlength="500" />
-            <button class="oa-ask-send" type="submit" :disabled="!q.trim() || store.busy === 'ask'" aria-label="שלח">
+          <form class="na-ask" @submit.prevent="askNow">
+            <input v-model="q" class="na-ask-input" placeholder="דברו עם Nifra Agent…" maxlength="500" />
+            <button class="na-ask-send" type="submit" :disabled="!q.trim() || store.busy === 'ask'" aria-label="שלח">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14 9 9 4 4 9"/><path d="M20 20h-7a4 4 0 0 1-4-4V4"/></svg>
             </button>
           </form>
@@ -88,62 +101,91 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
-import OfficeAgentGlyph from './OfficeAgentGlyph.vue'
+import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
+import AiStreamingText from '../ui/AiStreamingText.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: Object, default: null } })
 const emit = defineEmits(['update:open'])
 const store = useOfficeAgentStore()
-const b = computed(() => store.brief)
 
-const emails = reactive({})
-const bodies = reactive({})
-watch(() => store.cards, (cs) => {
-  for (const c of cs) {
-    if (!(c.id in bodies)) bodies[c.id] = c.draft_body || ''
-    if (!(c.id in emails)) emails[c.id] = c.to_email || ''
-  }
-}, { immediate: true })
+// sequential streaming: greeting → line 0 → line 1 …
+const step = ref(-1)
+const lineDone = reactive({})
+function onGreetingDone() { if (step.value < 0) step.value = 0 }
+function onLineDone(i) {
+  lineDone[i] = true
+  if (i === step.value) step.value = i + 1
+}
+const writing = computed(() => store.narrating || (!!store.narration && step.value < store.narration.lines.length))
+const orbState = computed(() => (store.busy === 'ask' || writing.value ? 'composing' : 'listening'))
+const statusText = computed(() => {
+  if (store.narrating) return 'עובר על המיילים והעמלות…'
+  if (store.busy === 'ask') return 'בודק…'
+  if (writing.value) return 'כותב לך…'
+  return 'עובד בשבילך'
+})
 
-// the ONE action that moves each card
+const cardOf = (l) => (l?.ref ? store.cards.find((c) => c.id === l.ref) : null)
+const canSend = computed(() => !!store.brief?.mailbox?.can_send)
+const isSend = (c) => c.actions.includes('send_reply') || c.actions.includes('send_case')
+const hasFinish = (c) => c.actions.includes('done') || c.actions.includes('resolve')
 function primary(c) {
-  const canSend = !!b.value?.mailbox?.can_send
-  if (c.actions.includes('send_reply')) return { action: 'send_reply', label: 'שליחת התשובה', disabled: !canSend }
+  if (c.actions.includes('send_reply')) return { action: 'send_reply', label: 'לתשובה שהכנתי' }
+  if (c.actions.includes('send_case')) return { action: 'send_case', label: 'לפנייה לחברה' }
+  if (c.actions.includes('set_email')) return { action: 'set_email', label: 'הוספת מייל' }
+  if (c.actions.includes('remind')) return { action: 'remind', label: 'שליחת תזכורת' }
   if (c.actions.includes('make_draft')) return { action: 'make_draft', label: 'הכנת טיוטה' }
   if (c.actions.includes('import')) return { action: 'import', label: 'טעינת הקובץ' }
-  if (c.actions.includes('send_case')) return { action: 'send_case', label: 'אישור ושליחה', disabled: !canSend }
-  if (c.actions.includes('remind')) return { action: 'remind', label: 'שליחת תזכורת', disabled: !canSend }
-  if (c.actions.includes('resolve')) return { action: 'resolve', label: 'סימון כטופל' }
   return null
 }
-const isBusy = (c, a) => store.busy === c.id + ':' + a
-function run(c, action) {
-  if (action === 'send_reply') return store.act(c, action, { body: bodies[c.id] })
-  return store.act(c, action)
+
+const openLine = ref(-1)
+const body = ref('')
+const email = ref('')
+function toggle(i, c) {
+  openLine.value = openLine.value === i ? -1 : i
+  body.value = c.draft_body || ''
+  email.value = c.to_email || ''
+  store.error = ''
 }
-function setEmail(c) { if (emails[c.id]) store.act(c, 'set_email', { email: emails[c.id] }) }
-function saveCaseBody(c) {
-  if (c.kind === 'unpaid' && bodies[c.id] !== c.draft_body) store.act(c, 'save_case_body', { body: bodies[c.id] })
+async function sendIt(c) {
+  if (c.kind === 'unpaid') {
+    if (body.value !== c.draft_body && !(await store.act(c, 'save_case_body', { body: body.value }))) return
+    if (await store.act(c, 'send_case')) openLine.value = -1
+  } else if (await store.act(c, 'send_reply', { body: body.value })) {
+    openLine.value = -1
+  }
 }
+async function saveEmail(c) { if (email.value && (await store.act(c, 'set_email', { email: email.value }))) openLine.value = -1 }
+async function runPrimary(c) { if (await store.act(c, primary(c).action)) openLine.value = -1 }
+async function finish(c) { if (await store.act(c, c.actions.includes('resolve') ? 'resolve' : 'done')) openLine.value = -1 }
 
 const q = ref('')
 const feedEl = ref(null)
 async function askNow() {
   const text = q.value
   q.value = ''
-  await store.ask(text)
+  const p = store.ask(text)
+  await nextTick()
+  feedEl.value?.scrollTo({ top: feedEl.value.scrollHeight, behavior: 'smooth' })
+  await p
   await nextTick()
   feedEl.value?.scrollTo({ top: feedEl.value.scrollHeight, behavior: 'smooth' })
 }
 
-// iPhone-style open/close out of the icon
+// iPhone-style open/close out of the icon; the agent writes fresh on every open
 const morph = useOriginMorph()
 const cardEl = ref(null)
 watch(() => props.open, async (v) => {
   if (!v) return
-  store.load()
+  step.value = -1
+  for (const k of Object.keys(lineDone)) delete lineDone[k]
+  openLine.value = -1
+  store.narration = null
   morph.remember(props.originEl)
   await nextTick()
   morph.grow(cardEl.value)
+  store.narrate()
 })
 async function close() {
   if (morph.hasOrigin()) await morph.shrink(cardEl.value)
@@ -152,69 +194,118 @@ async function close() {
 </script>
 
 <style scoped>
-.oa-overlay { position: fixed; inset: 0; z-index: 1010; background: rgba(24, 24, 24, 0.32); display: grid; place-items: center; padding: 16px; }
-.oa {
-  width: min(760px, 100%); height: min(780px, calc(100vh - 32px));
+.na-overlay {
+  position: fixed; inset: 0; z-index: 1010; display: grid; place-items: center; padding: 16px;
+  background: rgba(10, 20, 22, 0.38); backdrop-filter: blur(6px);
+}
+.na {
+  position: relative; width: min(820px, 100%); height: min(780px, calc(100vh - 32px));
   display: flex; flex-direction: column; overflow: hidden;
-  background: #fff; border-radius: 24px; border: 1px solid var(--border-subtle);
-  box-shadow: 0 30px 80px rgba(24, 24, 24, 0.22); font-family: 'Heebo', sans-serif;
+  border-radius: 30px; background: #F7FBFA;
+  box-shadow: 0 40px 100px rgba(8, 40, 38, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  font-family: 'Heebo', sans-serif; color: #10201F;
 }
-.oa-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); }
-.oa-avatar { width: 46px; height: 46px; color: var(--tab-comparison, #2E844A); flex-shrink: 0; }
-.oa-titles { flex: 1; display: flex; flex-direction: column; }
-.oa-name { font-size: 18px; font-weight: 900; letter-spacing: -0.02em; color: var(--text-primary, #181818); }
-.oa-sub { font-size: 12.5px; color: var(--text-secondary, #706E6B); }
-.oa-x { width: 32px; height: 32px; border-radius: 10px; border: none; background: transparent; cursor: pointer; display: grid; place-items: center; color: var(--text-secondary, #706E6B); }
-.oa-x:hover { background: var(--bg, #F3F3F3); color: var(--text-primary, #181818); }
+/* aurora: three soft blobs drifting behind glass */
+.na-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.na-aurora i { position: absolute; border-radius: 50%; filter: blur(64px); opacity: 0.55; }
+.na-aurora i:nth-child(1) { width: 420px; height: 420px; top: -150px; right: -90px; background: #8FD9C6; animation: naDrift1 18s ease-in-out infinite; }
+.na-aurora i:nth-child(2) { width: 380px; height: 380px; top: 90px; left: -150px; background: #BFE6F2; animation: naDrift2 22s ease-in-out infinite; }
+.na-aurora i:nth-child(3) { width: 360px; height: 360px; bottom: -170px; right: 30%; background: #D6F0E8; animation: naDrift1 26s ease-in-out infinite reverse; }
+@keyframes naDrift1 { 50% { transform: translate(-60px, 40px) scale(1.12); } }
+@keyframes naDrift2 { 50% { transform: translate(70px, -30px) scale(0.92); } }
 
-.oa-feed { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; background: #FBFBFA; }
-.oa-msg { max-width: 88%; }
-.oa-msg p { margin: 0; }
-.oa-msg--agent { align-self: flex-start; padding: 12px 16px; border-radius: 18px; border-start-start-radius: 6px; background: #fff; border: 1px solid var(--border-subtle); }
-.oa-msg--user { align-self: flex-start; padding: 10px 14px; border-radius: 18px; border-start-start-radius: 6px; background: #EAF4EC; font-size: 14.5px; }
-.oa-hello { font-size: 17px; font-weight: 900; color: var(--text-primary, #181818); }
-.oa-headline { font-size: 15px; color: var(--text-secondary, #3E3E3C); margin-top: 2px !important; }
-
-.oa-card {
-  display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
-  background: #fff; border-radius: 16px; border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
-  border-inline-start: 4px solid #D9D7D3;
+.na-x {
+  position: absolute; top: 16px; left: 16px; z-index: 3; width: 34px; height: 34px; border-radius: 12px;
+  border: none; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(8px); cursor: pointer;
+  display: grid; place-items: center; color: #3E4B4A;
 }
-.oa-card--unpaid { border-inline-start-color: #E04B48; }
-.oa-card--customer_question { border-inline-start-color: var(--tab-portal-ink, #35719A); }
-.oa-card--commission_reply, .oa-card--read { border-inline-start-color: var(--tab-comparison, #2E844A); }
-.oa-card-head { display: flex; align-items: center; gap: 10px; }
-.oa-card-ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: #F3F2EF; color: #3E3E3C; flex-shrink: 0; }
-.oa-card--unpaid .oa-card-ic { background: #FDECEC; color: #C23934; }
-.oa-card--customer_question .oa-card-ic { background: #EAF4FA; color: #35719A; }
-.oa-card--commission_reply .oa-card-ic { background: #EAF4EC; color: #2E844A; }
-.oa-card-titles { display: flex; flex-direction: column; min-width: 0; }
-.oa-card-titles strong { font-size: 15px; font-weight: 800; color: var(--text-primary, #181818); }
-.oa-card-meta { font-size: 12px; color: var(--text-secondary, #706E6B); }
-.oa-card-text { margin: 0; font-size: 15px; line-height: 1.6; color: var(--text-primary, #181818); }
-.oa-inline { display: flex; gap: 8px; }
-.oa-inline input { flex: 1; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-subtle); font-family: inherit; font-size: 14px; outline: none; }
-.oa-inline input:focus { border-color: var(--tab-comparison, #2E844A); }
-.oa-draft summary { cursor: pointer; font-size: 13px; font-weight: 800; color: var(--text-secondary, #3E3E3C); }
-.oa-draft textarea { width: 100%; margin-top: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border-subtle); font-family: inherit; font-size: 13.5px; line-height: 1.6; resize: vertical; background: #FCFCFB; outline: none; }
-.oa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.oa-btn { height: 38px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--border-subtle); background: #fff; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 800; color: var(--text-primary, #181818); }
-.oa-btn--go { background: #181818; color: #fff; border-color: transparent; }
-.oa-btn--go:hover:not(:disabled) { background: #000; }
-.oa-btn:disabled { opacity: 0.4; cursor: default; }
-.oa-err { margin: 0; font-size: 13px; font-weight: 700; color: #C23934; }
+.na-x:hover { background: #fff; color: #10201F; }
 
-.oa-typing { display: inline-flex; gap: 4px; }
-.oa-typing i { width: 7px; height: 7px; border-radius: 50%; background: #A9A6A2; animation: oaDot 1s ease-in-out infinite; }
-.oa-typing i:nth-child(2) { animation-delay: 0.15s; } .oa-typing i:nth-child(3) { animation-delay: 0.3s; }
-@keyframes oaDot { 50% { opacity: 0.3; transform: translateY(-2px); } }
+.na-stage { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 20px 4px; }
+.na-orb-wrap { position: relative; width: 128px; height: 128px; display: grid; place-items: center; }
+.na-orb-wrap::before {
+  content: ''; position: absolute; inset: 12px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.98), rgba(226, 244, 240, 0.8) 58%, rgba(14, 140, 138, 0.1));
+  box-shadow: 0 18px 44px rgba(14, 140, 138, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+  animation: naBreathe 4.8s ease-in-out infinite;
+}
+.na-orb { position: relative; transform: scale(1.6); }
+.na-halo { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(14, 140, 138, 0.3); animation: naHalo 3.6s ease-out infinite; }
+.na-halo--2 { animation-delay: 1.8s; }
+@keyframes naHalo { from { transform: scale(0.74); opacity: 0.9; } to { transform: scale(1.35); opacity: 0; } }
+@keyframes naBreathe { 50% { transform: scale(1.04); } }
+.na-name { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+.na-name b { color: #0E8C8A; font-weight: 900; }
+.na-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: #4A5B5A; }
+.na-status i { width: 7px; height: 7px; border-radius: 50%; background: #1DB39E; box-shadow: 0 0 0 4px rgba(29, 179, 158, 0.18); animation: naPulse 2s ease-in-out infinite; }
+@keyframes naPulse { 50% { box-shadow: 0 0 0 7px rgba(29, 179, 158, 0.04); } }
 
-.oa-ask { position: relative; margin: 12px 16px 16px; border-radius: 26px; background: rgba(24, 24, 24, 0.05); }
-.oa-ask:focus-within { background: #fff; box-shadow: inset 0 0 0 1px rgba(46, 132, 74, 0.35); }
-.oa-ask-input { width: 100%; height: 50px; padding: 0 18px 0 52px; border: none; outline: none; background: transparent; font-family: inherit; font-size: 15px; }
-.oa-ask-send { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 12px; border: none; cursor: pointer; display: grid; place-items: center; color: #fff; background: #181818; }
-.oa-ask-send:disabled { opacity: 0.3; cursor: default; }
+.na-feed { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding: 8px clamp(20px, 7vw, 72px) 18px; }
+.na-greeting { margin: 12px 0 16px; font-size: clamp(26px, 3.2vw, 34px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.2; }
+.na-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.na-line { display: flex; gap: 12px; align-items: flex-start; animation: naIn 0.35s ease both; transition: opacity 0.3s ease; }
+@keyframes naIn { from { opacity: 0; transform: translateY(6px); } }
+.na-line-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 11px; border-radius: 50%; background: #0E8C8A; box-shadow: 0 0 0 4px rgba(14, 140, 138, 0.14); }
+.na-line-body { flex: 1; min-width: 0; font-size: 17px; line-height: 1.7; color: #1B2A29; }
+.na-line.is-handled { opacity: 0.45; }
+.na-line.is-handled .na-line-body { text-decoration: line-through; text-decoration-color: rgba(14, 140, 138, 0.5); }
+.na-line.is-handled .na-line-dot { background: #9BB; box-shadow: none; }
+.na-link {
+  display: inline-flex; align-items: center; gap: 3px; margin-inline-start: 8px; padding: 2px 11px; border-radius: 999px;
+  border: none; cursor: pointer; font-family: inherit; font-size: 13.5px; font-weight: 800; color: #0A6664;
+  background: rgba(14, 140, 138, 0.1); animation: naIn 0.3s ease both; vertical-align: 1px;
+}
+.na-link:hover { background: rgba(14, 140, 138, 0.18); }
+.na-link--quiet { color: #4A5B5A; background: rgba(24, 24, 24, 0.05); }
+.na-link--quiet:hover { background: rgba(24, 24, 24, 0.09); }
+.na-sheet {
+  margin-top: 10px; padding: 14px; border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78); backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(8, 40, 38, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  display: flex; flex-direction: column; gap: 8px; text-decoration: none;
+}
+.na-sheet-label { font-size: 12.5px; font-weight: 800; color: #4A5B5A; }
+.na-sheet textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(14, 140, 138, 0.18);
+  font-family: inherit; font-size: 14px; line-height: 1.6; background: rgba(255, 255, 255, 0.9); outline: none; color: #10201F;
+}
+.na-sheet textarea:focus, .na-row input:focus { border-color: rgba(14, 140, 138, 0.5); }
+.na-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.na-row input { flex: 1; min-width: 180px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(14, 140, 138, 0.2); font-family: inherit; font-size: 14px; outline: none; background: #fff; }
+.na-go { height: 40px; padding: 0 18px; border-radius: 12px; border: none; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 800; color: #fff; background: #10201F; transition: transform 0.15s ease; }
+.na-go:hover:not(:disabled) { background: #000; transform: translateY(-1px); }
+.na-go:disabled { opacity: 0.35; cursor: default; }
+.na-hint { font-size: 12.5px; color: #8A6300; }
+.na-err { margin: 0; font-size: 13px; font-weight: 700; color: #C23934; }
+.na-sheet-enter-active, .na-sheet-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-4px); }
 
-.oa-fade-enter-active, .oa-fade-leave-active { transition: opacity 0.2s ease; }
-.oa-fade-enter-from, .oa-fade-leave-to { opacity: 0; }
+.na-qa { margin-top: 18px; font-size: 16px; line-height: 1.7; }
+.na-qa--user { display: table; padding: 8px 14px; border-radius: 16px; background: rgba(14, 140, 138, 0.1); font-weight: 600; }
+.na-qa--agent { color: #1B2A29; }
+.na-thinking { display: inline-flex; gap: 5px; margin: 16px 0 0; }
+.na-thinking i { width: 7px; height: 7px; border-radius: 50%; background: #0E8C8A; opacity: 0.5; animation: naDot 1s ease-in-out infinite; }
+.na-thinking i:nth-child(2) { animation-delay: 0.15s; }
+.na-thinking i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes naDot { 50% { opacity: 1; transform: translateY(-3px); } }
+
+.na-ask {
+  position: relative; z-index: 1; margin: 0 clamp(16px, 6vw, 64px) 20px; border-radius: 26px;
+  background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(14px);
+  box-shadow: 0 12px 34px rgba(8, 40, 38, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+}
+.na-ask:focus-within { box-shadow: 0 14px 38px rgba(8, 40, 38, 0.16), inset 0 0 0 1px rgba(14, 140, 138, 0.4); }
+.na-ask-input { width: 100%; box-sizing: border-box; height: 54px; padding: 0 20px 0 56px; border: none; outline: none; background: transparent; font-family: inherit; font-size: 15.5px; color: #10201F; }
+.na-ask-send { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 13px; border: none; cursor: pointer; display: grid; place-items: center; color: #fff; background: #0E8C8A; }
+.na-ask-send:disabled { opacity: 0.3; cursor: default; }
+
+.na-fade-enter-active, .na-fade-leave-active { transition: opacity 0.25s ease; }
+.na-fade-enter-from, .na-fade-leave-to { opacity: 0; }
+@media (max-width: 600px) {
+  .na { border-radius: 22px; }
+  .na-line-body { font-size: 15.5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .na-aurora i, .na-halo, .na-status i, .na-line, .na-link, .na-orb-wrap::before { animation: none; }
+}
 </style>

@@ -21,6 +21,12 @@ async def get_brief(db: AsyncSession = Depends(get_db), user: User = Depends(get
     return await svc.brief(db, user)
 
 
+@router.get("/narrate")
+async def get_narrate(db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """Nifra Agent's written brief: greeting + ≤5 lines, each optionally tied to a card's action."""
+    return await svc.narrate(db, user)
+
+
 @router.post("/ask")
 async def ask(body: AskIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
     return {"answer": await svc.ask(db, user, body.question)}
