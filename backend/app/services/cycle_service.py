@@ -541,6 +541,11 @@ async def run_cycle_tick(now: datetime | None = None) -> None:
     from app.database import async_session
     from app.models.user import User
 
+    if now is None and settings.CYCLE_NOW_OVERRIDE:
+        # A local simulation drives _tick_user itself; the scheduler must not
+        # queue batches / email every local user on a fake clock.
+        logger.info("cycle tick skipped: CYCLE_NOW_OVERRIDE is set")
+        return
     now_aware = now or utc_now()
     try:
         async with async_session() as db:
