@@ -1053,6 +1053,22 @@ flowchart RL
 - **`CYCLE_LAUNCH` ("2026-10")** — cycles before it are never queued. Without it, deploying would fire
   last month's cycle for every existing user at once. Pre-launch users keep legacy upload behaviour.
 
+### Dates the agent sees (2026-09-28)
+`GET /api/cycle/status` also returns:
+
+| Field | Meaning |
+|---|---|
+| `signup_at` | `users.created_at` in Israel time. The first cycle is derived from it. |
+| `maslaka_submitted_at` / `maslaka_approved_at` | From `maslaka_agent_links`. |
+| `maslaka_first_auto` | The 15th the first מסלקה production lands (27th rule, from submitted, else approved). |
+| `maslaka_deadline` | The last day that still makes the next 15th: the 26th this month, or next month's once today is ≥ 27. From `cycle_service.maslaka_deadline()`. |
+| `maslaka_if_submitted_now` | The 15th a submission today would give. |
+
+- **Pure helpers + tests:** the 26th vs 27th around midnight Israel time, and the year rollover.
+- **One wording source:** `stores/cycle.js`: `signupLine`, `maslakaLine` (tone todo / wait / ok) and `MASLAKA_RULE`.
+  - Surfaces that use it: the cycle widget (date chips + a "נרשמתם" rail marker), the locked Production timeline, wizard step 5, the מסלקה tab header, and the admin dashboard (`expected_first_production`).
+- **The UI never recomputes the rule.** Where it compares dates, it compares plain `YYYY-MM-DD` strings, not `Date` objects across time zones.
+
 ### Invariants
 - **No manual run for agents.** `POST /batches/run` and `/credentials/{id}/run` are admin-only
   (`_require_manual_run_allowed`); the UI hides every run button unless `user.is_admin`.
@@ -1068,7 +1084,7 @@ flowchart RL
 - **Notifications** (`cycle_notifications`, UNIQUE user+kind+period) are emitted only by the server tick
   (the worker has no SMTP): `worker_waiting`, `upload_production`, `cycle_failed`, `comparison_ready`.
   Each is emailed once (Resend) and shown once in `CycleNotificationModal`.
-- Until `CYCLE_LAUNCH`, existing unlocked agents keep the legacy manual run (`cycle_service.manual_run_allowed`, exposed as `manual_run_allowed` on the status); agents who already have production are never locked.
+- **Manual run is admin-only, also before launch** (decided 2026-09-28): `cycle_service.manual_run_allowed` = `is_admin`, exposed as `manual_run_allowed` on the status; the button shows only for admins as "הרצה ידנית (תמיכה)". Agents who already have production are never locked.
 - The frontend's `hydrateBatch` ignores `pending` batches (a waiting cycle batch is not a live run);
   `stores/cycle.js` hands it to the progress widget when the worker flips it to `running`.
 
