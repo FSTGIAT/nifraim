@@ -4,7 +4,7 @@
       <div v-if="open" class="ai-sheet-overlay" @click.self="close" />
     </Transition>
     <Transition name="ai-sheet">
-      <aside v-if="open" class="ai-sheet" role="dialog" aria-modal="true" :aria-label="headerLabel">
+      <aside v-if="open" class="ai-sheet" :class="{ 'ai-sheet--empty': !chatStore.messages.length }" role="dialog" aria-modal="true" :aria-label="headerLabel">
         <header class="ai-sheet-head">
           <div class="ai-sheet-head-left">
             <ThinkingOrbIsland class="ai-sheet-orb" :state="chatStore.loading ? 'solving' : 'listening'" :size="32" color="#6A48C9" :dot-size="1.5" />
@@ -100,7 +100,9 @@
           />
         </div>
 
-        <form class="ai-sheet-input-row" @submit.prevent="submit">
+        <!-- Floating composer (Claude-style): a card inside the panel — centred
+             under the greeting while empty, docked at the bottom once talking. -->
+        <form class="ai-composer" @submit.prevent="submit">
           <input
             ref="fileInputEl"
             type="file"
@@ -108,41 +110,43 @@
             class="ai-sheet-file-input"
             @change="onFileChosen"
           />
-          <button
-            type="button"
-            class="ai-sheet-attach"
-            :disabled="chatStore.uploadingDoc"
-            :aria-busy="chatStore.uploadingDoc"
-            :title="chatStore.uploadingDoc ? 'מעבד מסמך…' : 'צרף מסמך PDF'"
-            @click="openFilePicker"
-          >
-            <span v-if="chatStore.uploadingDoc" class="ai-sheet-attach-spinner" aria-hidden="true"></span>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
           <textarea
             ref="inputEl"
             v-model="draft"
-            class="ai-sheet-input"
+            class="ai-composer-input"
             rows="1"
             maxlength="500"
-            placeholder="שאל שאלה…"
+            placeholder="שאלו את Nifra AI…"
             @keydown="onKeydown"
             @input="autoSize"
           ></textarea>
-          <button
-            class="ai-sheet-send"
-            type="submit"
-            :disabled="!canSend"
-            :aria-disabled="!canSend"
-            title="שלח"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+          <div class="ai-composer-bar">
+            <button
+              type="button"
+              class="ai-composer-tool"
+              :disabled="chatStore.uploadingDoc"
+              :aria-busy="chatStore.uploadingDoc"
+              :title="chatStore.uploadingDoc ? 'מעבד מסמך…' : 'צרף מסמך PDF'"
+              @click="openFilePicker"
+            >
+              <span v-if="chatStore.uploadingDoc" class="ai-sheet-attach-spinner" aria-hidden="true"></span>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+            <span class="ai-composer-hint">מבוסס על הנתונים שלכם</span>
+            <button
+              class="ai-composer-send"
+              type="submit"
+              :disabled="!canSend"
+              :aria-disabled="!canSend"
+              title="שלח"
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7"/>
+              </svg>
+            </button>
+          </div>
         </form>
       </aside>
     </Transition>
@@ -706,4 +710,51 @@ onBeforeUnmount(() => {
   .ai-sheet-leave-from { clip-path: inset(0 0 0 0 round 24px); }
   .ai-sheet-empty-sub { max-width: 420px; }
 }
+
+/* ── floating composer ── */
+.ai-composer {
+  position: relative; z-index: 2;
+  width: min(760px, calc(100% - 40px));
+  margin: 0 auto 20px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 14px 10px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, #6A48C9 14%, var(--border-subtle));
+  border-radius: 22px;
+  box-shadow: 0 14px 40px rgba(40, 24, 90, 0.13), 0 2px 6px rgba(40, 24, 90, 0.05);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.ai-composer:focus-within {
+  border-color: color-mix(in srgb, #6A48C9 38%, transparent);
+  box-shadow: 0 16px 44px rgba(40, 24, 90, 0.16), 0 0 0 4px rgba(106, 72, 201, 0.08);
+}
+.ai-composer-input {
+  width: 100%; resize: none; min-height: 28px; max-height: 140px;
+  padding: 4px 6px; border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: 15.5px; line-height: 1.5; color: var(--text-primary, #181818);
+}
+.ai-composer-input::placeholder { color: #A3A09C; }
+.ai-composer-bar { display: flex; align-items: center; gap: 8px; }
+.ai-composer-tool {
+  width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; cursor: pointer;
+  color: var(--text-secondary, #5C5A58); background: transparent; border: 1px solid var(--border-subtle);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.ai-composer-tool:hover:not(:disabled) { background: var(--tab-ai-wash, #F2EEFB); color: var(--tab-ai-ink, #6A48C9); }
+.ai-composer-tool:disabled { opacity: 0.55; cursor: default; }
+.ai-composer-hint { font-size: 12px; color: #A3A09C; }
+.ai-composer-send {
+  margin-inline-start: auto;
+  width: 36px; height: 36px; border-radius: 12px; border: none; cursor: pointer;
+  display: grid; place-items: center; color: #fff;
+  background: var(--tab-ai-ink, #6A48C9);
+  box-shadow: 0 4px 12px rgba(106, 72, 201, 0.3);
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+.ai-composer-send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(106, 72, 201, 0.38); }
+.ai-composer-send:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+/* empty: greeting + composer float together in the middle */
+.ai-sheet--empty .ai-sheet-body { flex: 0 0 auto; margin-top: auto; padding-bottom: 18px; }
+.ai-sheet--empty .ai-composer { margin-bottom: auto; }
+.ai-sheet--empty .ai-sheet-empty-sub { font-size: 17px !important; font-weight: 600; }
 </style>
