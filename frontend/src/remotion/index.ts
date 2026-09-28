@@ -76,3 +76,4 @@ export function sizeForViz(viz: Viz): { width: number; height: number } {
 export const VIZ_DURATION_FRAMES = 90
 export const VIZ_FPS = 30
 export { CycleGears, CYCLE_GEARS_FRAMES, CYCLE_GEARS_FRAMES_PLAIN, CYCLE_GEARS_W, CYCLE_GEARS_H } from './CycleGears'
+export { ProductionBackdrop, PRODUCTION_BACKDROP_FRAMES, PRODUCTION_BACKDROP_W, PRODUCTION_BACKDROP_H } from './ProductionBackdrop'

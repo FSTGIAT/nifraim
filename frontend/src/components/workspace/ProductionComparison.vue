@@ -11,7 +11,7 @@
 
     <!-- No history: what this screen will show, as a preview -->
     <div v-if="!history.length && !comparisonResult" class="pc-preview">
-      <article v-for="c in PREVIEW" :key="c.key" class="pc-card" :style="{ '--k': c.color }">
+      <article v-for="c in PREVIEW" :key="c.key" class="pc-card" :style="{ '--k': c.color, '--k-ink': c.ink }">
         <span class="pc-ic" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <template v-if="c.key === 'new'"><circle cx="9" cy="8" r="3.5" fill="currentColor" fill-opacity="0.18"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><path d="M19 8v6M16 11h6"/></template>
@@ -21,9 +21,13 @@
         </span>
         <strong>{{ c.title }}</strong>
         <span>{{ c.text }}</span>
-        <span class="pc-ghost" aria-hidden="true">
-          <i v-for="n in 3" :key="n" :style="{ width: (92 - n * 18) + '%' }"></i>
-        </span>
+        <ul class="pc-sample" aria-hidden="true">
+          <li v-for="n in 2" :key="n" :style="{ '--d': (n - 1) * 0.35 + 's' }">
+            <i class="pc-av"></i>
+            <i class="pc-name" :style="{ width: (70 - n * 12) + '%' }"></i>
+            <b class="pc-chip">{{ c.chip }}</b>
+          </li>
+        </ul>
       </article>
     </div>
 
@@ -1092,9 +1096,9 @@
 import ProdSectionHero from './ProdSectionHero.vue'
 // What the file-to-file comparison shows once there are two files.
 const PREVIEW = [
-  { key: 'new', title: 'לקוחות חדשים', text: 'מי הצטרף מאז הקובץ הקודם', color: 'var(--green)' },
-  { key: 'gone', title: 'לקוחות שעזבו', text: 'מי כבר לא מופיע', color: 'var(--red)' },
-  { key: 'changed', title: 'שינויים', text: 'פרמיה, צבירה ומוצרים שזזו', color: 'var(--tab-production)' },
+  { key: 'new', title: 'לקוחות חדשים', text: 'מי הצטרף מאז הקובץ הקודם', color: 'var(--tab-production)', ink: 'var(--tab-production)', chip: '+' },
+  { key: 'gone', title: 'לקוחות שעזבו', text: 'מי כבר לא מופיע', color: 'var(--tab-production)', ink: 'var(--tab-production)', chip: '−' },
+  { key: 'changed', title: 'שינויים', text: 'פרמיה, צבירה ומוצרים שזזו', color: 'var(--tab-production)', ink: 'var(--tab-production)', chip: '±' },
 ]
 
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
@@ -3903,23 +3907,38 @@ function formatVal(val) {
 
 /* ── empty state: preview of what the comparison shows ── */
 .prod-comparison { display: flex; flex-direction: column; gap: 16px; }
-.pc-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pc-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .pc-card {
   position: relative; overflow: hidden;
-  display: flex; flex-direction: column; gap: 4px; padding: 18px 18px 58px;
-  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 4px; padding: 24px 22px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.pc-card strong { font-size: 16px; font-weight: 800; color: var(--text-primary, #181818); }
-.pc-card > span:not(.pc-ic):not(.pc-ghost) { font-size: 13px; color: var(--text-secondary, #706E6B); }
+.pc-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px color-mix(in srgb, var(--k) 16%, transparent); }
+.pc-card strong { font-size: 19px; font-weight: 900; letter-spacing: -0.02em; color: var(--text-primary, #181818); }
+.pc-card > span:not(.pc-ic) { font-size: 13.5px; color: var(--text-secondary, #706E6B); }
 .pc-ic {
-  width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; margin-bottom: 6px;
-  color: var(--k); background: color-mix(in srgb, var(--k) 12%, var(--card-bg));
+  width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; margin-bottom: 8px;
+  color: var(--k-ink); background: color-mix(in srgb, var(--k) 13%, var(--card-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 20%, transparent);
 }
-/* skeleton rows: the list that will fill in */
-.pc-ghost { position: absolute; inset-inline: 18px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
-.pc-ghost i {
-  display: block; height: 7px; border-radius: 4px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--k) 16%, transparent), color-mix(in srgb, var(--k) 6%, transparent));
+.pc-ic svg { width: 26px; height: 26px; }
+/* sample rows: what the list will look like */
+.pc-sample { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pc-sample li {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle);
+  animation: pcRow 3.2s ease-in-out infinite; animation-delay: var(--d);
 }
+.pc-av { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; background: color-mix(in srgb, var(--k) 12%, transparent); }
+.pc-name { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--k) 12%, transparent); }
+.pc-chip {
+  margin-inline-start: auto; min-width: 28px; height: 22px; padding: 0 8px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 14px; font-weight: 900; line-height: 1;
+  color: var(--k-ink); background: color-mix(in srgb, var(--k) 12%, var(--card-bg));
+}
+@keyframes pcRow { 0%, 100% { transform: none; opacity: 1; } 50% { transform: translateX(-4px); opacity: 0.8; } }
+@media (prefers-reduced-motion: reduce) { .pc-sample li { animation: none; } }
 @media (max-width: 720px) { .pc-preview { grid-template-columns: 1fr; } }
 </style>

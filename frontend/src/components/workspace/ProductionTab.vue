@@ -1,5 +1,7 @@
 <template>
-  <div class="production-tab">
+  <div class="production-tab" :class="{ 'production-tab--stage': backdropVariant }">
+    <!-- Big faint animated backdrop behind the sub-screens (not תובנות). -->
+    <ProdBackdrop v-if="backdropVariant" :variant="backdropVariant" />
     <!-- Monthly cycle: before the agent's first cycle only THIS tab is locked. -->
     <CycleLockedState
       v-if="cycleStore.locked"
@@ -403,6 +405,7 @@ import PointingHand from './PointingHand.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 import CycleLockedState from './CycleLockedState.vue'
 import ProdSectionHero from './ProdSectionHero.vue'
+import ProdBackdrop from './ProdBackdrop.vue'
 import { useCycleStore } from '../../stores/cycle.js'
 import { useAuthStore } from '../../stores/auth.js'
 
@@ -483,6 +486,10 @@ function onEmptyCta() {
   else emit('go-to-portal-automation')
 }
 const innerTab = ref('insights')
+const backdropVariant = computed(() => {
+  if (!productionStore.currentFile || cycleStore.locked) return null
+  return { comparison: 'compare', volume: 'volume', history: 'history' }[innerTab.value] || null
+})
 const fileInputRef = ref(null)
 const showCompareModal = ref(false)
 const previousFile = ref(null)
@@ -679,11 +686,15 @@ async function handleCompare(currentId, previousId) {
 .cy-error-x { border: none; background: transparent; color: inherit; cursor: pointer; display: inline-flex; padding: 4px; }
 
 .production-tab {
+  position: relative;
   animation: slideUp 0.4s var(--transition);
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
+/* sub-screens with the backdrop fill the viewport; content sits above it */
+.production-tab--stage { min-height: calc(100vh - 110px); }
+.production-tab > :not(.pbd) { position: relative; z-index: 1; }
 
 /* ── Empty state: hero + stage (same shape as השוואת נפרעים) ─────── */
 .pt-empty { display: flex; flex-direction: column; gap: 18px; }

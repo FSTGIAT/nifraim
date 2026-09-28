@@ -595,7 +595,7 @@ export function ProductionLoop() {
    (removed), a blue row's bar changes length (changed). */
 export function ProdCompareLoop() {
   const frame = useCurrentFrame()
-  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7', GREEN = '#2E844A', RED = '#E04B48'
+  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7', GREEN = '#1F5496', RED = '#9DBFE6' // monochrome: new row = deep cobalt, removed = pale
   const p = loopPhase(frame, 240)
   const cl = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
   const inT = interpolate(p, [0.08, 0.3], [0, 1], { ...cl, easing: Easing.out(Easing.cubic) })
