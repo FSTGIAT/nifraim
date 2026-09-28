@@ -54,7 +54,18 @@
             :class="msg.role"
           >
             <div class="ai-msg-avatar" :class="msg.role" aria-hidden="true">
-              {{ msg.role === 'user' ? 'א' : 'AI' }}
+              <Avatar
+                v-if="msg.role === 'user'"
+                :name="auth.user?.full_name || ''"
+                :username="auth.user?.username || ''"
+                :avatar-seed="seedFor(auth.user)"
+                :size="32"
+              />
+              <ThinkingOrbIsland
+                v-else
+                :state="chatStore.loading && i === chatStore.messages.length - 1 ? 'solving' : 'working'"
+                :size="32" color="#6A48C9" :dot-size="1.5"
+              />
             </div>
             <div class="ai-msg-bubble">
               <div
@@ -110,41 +121,48 @@
             class="ai-sheet-file-input"
             @change="onFileChosen"
           />
-          <textarea
-            ref="inputEl"
-            v-model="draft"
-            class="ai-composer-input"
-            rows="1"
-            maxlength="500"
-            placeholder="שאלו את Nifra AI…"
-            @keydown="onKeydown"
-            @input="autoSize"
-          ></textarea>
-          <div class="ai-composer-bar">
+          <!-- AIInput design (pill, mic, send appears once typing), in Vue -->
+          <div class="ai-pill" :class="{ 'has-text': !!draft.trim(), listening }">
+            <textarea
+              ref="inputEl"
+              v-model="draft"
+              class="ai-pill-input"
+              rows="1"
+              maxlength="500"
+              placeholder="שאלו את Nifra AI…"
+              @keydown="onKeydown"
+              @input="autoSize"
+            ></textarea>
             <button
               type="button"
-              class="ai-composer-tool"
+              class="ai-pill-btn ai-pill-attach"
               :disabled="chatStore.uploadingDoc"
               :aria-busy="chatStore.uploadingDoc"
               :title="chatStore.uploadingDoc ? 'מעבד מסמך…' : 'צרף מסמך PDF'"
               @click="openFilePicker"
             >
               <span v-if="chatStore.uploadingDoc" class="ai-sheet-attach-spinner" aria-hidden="true"></span>
-              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             </button>
-            <span class="ai-composer-hint">מבוסס על הנתונים שלכם</span>
             <button
-              class="ai-composer-send"
+              v-if="canDictate"
+              type="button"
+              class="ai-pill-btn ai-pill-mic"
+              :title="listening ? 'עצור הקלטה' : 'הכתבה קולית'"
+              :aria-pressed="listening"
+              @click="toggleMic"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            </button>
+            <button
+              class="ai-pill-btn ai-pill-send"
               type="submit"
               :disabled="!canSend"
               :aria-disabled="!canSend"
               title="שלח"
             >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 19V5M5 12l7-7 7 7"/>
-              </svg>
+              <!-- lucide CornerLeftUp (RTL mirror of the design's CornerRightUp) -->
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14 9 9 4 4 9"/><path d="M20 20h-7a4 4 0 0 1-4-4V4"/></svg>
             </button>
           </div>
         </form>
@@ -154,6 +172,9 @@
 </template>
 
 <script setup>
+import Avatar from '../Avatar.vue'
+import { useAuthStore } from '../../stores/auth.js'
+import { seedFor } from '../../utils/avatarSeed.js'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 import AiLibraryIcons from './AiLibraryIcons.vue'
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
@@ -170,6 +191,7 @@ const props = defineProps({
 const emit = defineEmits(['update:open', 'latest-viz', 'latest-vizs'])
 
 const chatStore = useChatStore()
+const auth = useAuthStore()
 const draft = ref('')
 const bodyEl = ref(null)
 const inputEl = ref(null)
@@ -207,11 +229,36 @@ function onKeydown(e) {
   }
 }
 
+// AIInput: min 52px, grows to 200px
 function autoSize() {
   const el = inputEl.value
   if (!el) return
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 96) + 'px'
+  el.style.height = '52px'
+  el.style.height = Math.max(52, Math.min(el.scrollHeight, 200)) + 'px'
+}
+
+// Voice dictation (Hebrew) where the browser supports it; hidden otherwise.
+const SpeechRec = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
+const canDictate = !!SpeechRec
+const listening = ref(false)
+let recognition = null
+function toggleMic() {
+  if (!SpeechRec) return
+  if (listening.value) { recognition?.stop(); return }
+  recognition = new SpeechRec()
+  recognition.lang = 'he-IL'
+  recognition.interimResults = true
+  const base = draft.value.trim() ? draft.value.trim() + ' ' : ''
+  recognition.onresult = (e) => {
+    let t = ''
+    for (const r of e.results) t += r[0].transcript
+    draft.value = base + t
+    nextTick(autoSize)
+  }
+  recognition.onend = () => { listening.value = false }
+  recognition.onerror = () => { listening.value = false }
+  listening.value = true
+  recognition.start()
 }
 
 async function submit() {
@@ -403,11 +450,12 @@ onBeforeUnmount(() => {
   gap: 8px;
   max-width: 100%;
 }
-.ai-msg.user { flex-direction: row-reverse; }
+/* RTL: both speakers start on the right (like the rest of the app) */
 .ai-msg-avatar {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -415,16 +463,8 @@ onBeforeUnmount(() => {
   font-weight: 800;
   letter-spacing: 0.3px;
 }
-.ai-msg-avatar.user {
-  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
-  color: #ffffff;
-  box-shadow: 0 3px 8px rgba(106, 72, 201, 0.28);
-}
-.ai-msg-avatar.assistant {
-  background: var(--bg);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-}
+.ai-msg-avatar.user { box-shadow: 0 2px 6px rgba(24, 24, 24, 0.12); }
+.ai-msg-avatar.assistant { background: #F6F2FD; }
 .ai-msg-bubble {
   max-width: calc(100% - 36px);
   border-radius: 14px;
@@ -433,21 +473,30 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   word-wrap: break-word;
 }
+/* the agent's own message: a soft lavender bubble, text right-aligned */
 .ai-msg.user .ai-msg-bubble {
-  background: linear-gradient(135deg, var(--tab-ai), var(--tab-ai-ink));
-  color: #ffffff;
-  border-bottom-right-radius: 4px;
+  max-width: 78%;
+  direction: rtl; text-align: start; unicode-bidi: plaintext;
+  background: #F2EEFB;
+  color: var(--text-primary, #181818);
+  border-radius: 18px;
+  border-start-start-radius: 6px;
+  padding: 10px 14px;
+  font-size: 15px;
 }
+/* Nifra AI's answer: clean text on the panel, no box (Claude-style) */
 .ai-msg.assistant .ai-msg-bubble {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border-subtle);
-  border-bottom-left-radius: 4px;
+  background: transparent;
+  color: var(--text-primary, #181818);
+  border: none;
+  padding: 4px 2px 0;
+  font-size: 15px;
+  line-height: 1.8;
 }
 .ai-msg-content :deep(p) { margin: 0 0 6px; }
 .ai-msg-content :deep(p:last-child) { margin-bottom: 0; }
 .ai-msg-content :deep(strong) { font-weight: 700; color: var(--tab-ai-ink); }
-.ai-msg.user .ai-msg-content :deep(strong) { color: #ffffff; }
+.ai-msg.user .ai-msg-content :deep(strong) { color: var(--tab-ai-ink, #6A48C9); }
 .ai-msg-content :deep(.chat-table-wrap) {
   margin: 6px 0;
   overflow-x: auto;
@@ -711,50 +760,58 @@ onBeforeUnmount(() => {
   .ai-sheet-empty-sub { max-width: 420px; }
 }
 
-/* ── floating composer ── */
+/* ── composer: AIInput pill ── */
 .ai-composer {
   position: relative; z-index: 2;
-  width: min(760px, calc(100% - 40px));
-  margin: 0 auto 20px;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 14px 14px 10px;
-  background: #fff;
-  border: 1px solid color-mix(in srgb, #6A48C9 14%, var(--border-subtle));
-  border-radius: 22px;
-  box-shadow: 0 14px 40px rgba(40, 24, 90, 0.13), 0 2px 6px rgba(40, 24, 90, 0.05);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  width: min(720px, calc(100% - 40px));
+  margin: 0 auto 22px;
 }
-.ai-composer:focus-within {
-  border-color: color-mix(in srgb, #6A48C9 38%, transparent);
-  box-shadow: 0 16px 44px rgba(40, 24, 90, 0.16), 0 0 0 4px rgba(106, 72, 201, 0.08);
+.ai-pill {
+  position: relative;
+  border-radius: 26px;
+  background: rgba(24, 24, 24, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(24, 24, 24, 0.04), 0 10px 30px rgba(40, 24, 90, 0.08);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-.ai-composer-input {
-  width: 100%; resize: none; min-height: 28px; max-height: 140px;
-  padding: 4px 6px; border: none; outline: none; background: transparent;
-  font-family: inherit; font-size: 15.5px; line-height: 1.5; color: var(--text-primary, #181818);
+.ai-pill:focus-within { background: #fff; box-shadow: inset 0 0 0 1px rgba(106, 72, 201, 0.35), 0 12px 34px rgba(40, 24, 90, 0.12); }
+.ai-pill-input {
+  display: block; width: 100%; height: 52px; min-height: 52px; max-height: 200px;
+  resize: none; overflow-y: auto; border: none; outline: none; background: transparent;
+  /* RTL: attach on the right, mic/send on the left */
+  padding: 16px 52px 16px 92px;
+  font-family: inherit; font-size: 15.5px; line-height: 1.25; color: var(--text-primary, #181818);
+  transition: height 0.1s ease-out;
 }
-.ai-composer-input::placeholder { color: #A3A09C; }
-.ai-composer-bar { display: flex; align-items: center; gap: 8px; }
-.ai-composer-tool {
-  width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; cursor: pointer;
-  color: var(--text-secondary, #5C5A58); background: transparent; border: 1px solid var(--border-subtle);
-  transition: background 0.15s ease, color 0.15s ease;
+.ai-pill-input::placeholder { color: rgba(24, 24, 24, 0.45); }
+.ai-pill-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 12px; border: none; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  color: rgba(24, 24, 24, 0.7); background: rgba(24, 24, 24, 0.05);
+  transition: right 0.2s ease, left 0.2s ease, opacity 0.2s ease, transform 0.2s ease, background 0.15s ease;
 }
-.ai-composer-tool:hover:not(:disabled) { background: var(--tab-ai-wash, #F2EEFB); color: var(--tab-ai-ink, #6A48C9); }
-.ai-composer-tool:disabled { opacity: 0.55; cursor: default; }
-.ai-composer-hint { font-size: 12px; color: #A3A09C; }
-.ai-composer-send {
-  margin-inline-start: auto;
-  width: 36px; height: 36px; border-radius: 12px; border: none; cursor: pointer;
-  display: grid; place-items: center; color: #fff;
-  background: var(--tab-ai-ink, #6A48C9);
-  box-shadow: 0 4px 12px rgba(106, 72, 201, 0.3);
-  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
-}
-.ai-composer-send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(106, 72, 201, 0.38); }
-.ai-composer-send:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+.ai-pill-btn:hover:not(:disabled) { background: rgba(106, 72, 201, 0.12); color: var(--tab-ai-ink, #6A48C9); }
+.ai-pill-attach { right: 12px; }
+.ai-pill-mic { left: 12px; }
+.ai-pill.has-text .ai-pill-mic { left: 48px; }
+.ai-pill.listening .ai-pill-mic { color: #fff; background: var(--tab-ai-ink, #6A48C9); animation: aiMic 1.2s ease-in-out infinite; }
+@keyframes aiMic { 50% { box-shadow: 0 0 0 6px rgba(106, 72, 201, 0.18); } }
+.ai-pill-send { left: 12px; opacity: 0; transform: translateY(-50%) scale(0.95); pointer-events: none; color: #fff; background: var(--tab-ai-ink, #6A48C9); }
+.ai-pill.has-text .ai-pill-send { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
+.ai-pill-send:hover:not(:disabled) { background: #5A3AB5; color: #fff; }
+.ai-pill-send:disabled { opacity: 0.4; }
 /* empty: greeting + composer float together in the middle */
 .ai-sheet--empty .ai-sheet-body { flex: 0 0 auto; margin-top: auto; padding-bottom: 18px; }
 .ai-sheet--empty .ai-composer { margin-bottom: auto; }
 .ai-sheet--empty .ai-sheet-empty-sub { font-size: 17px !important; font-weight: 600; }
+
+/* conversation: a readable centred column on a clean surface — the horizon
+   glow belongs to the empty greeting only */
+.ai-sheet:not(.ai-sheet--empty) {
+  background:
+    radial-gradient(90% 22% at 50% 100%, rgba(183, 156, 235, 0.22) 0%, rgba(183, 156, 235, 0) 70%),
+    #FFFFFF;
+}
+.ai-sheet:not(.ai-sheet--empty) .ai-sheet-body > .ai-msg,
+.ai-sheet:not(.ai-sheet--empty) .ai-sheet-body > * { width: min(760px, 100%); margin-inline: auto; }
 </style>
