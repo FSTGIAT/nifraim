@@ -50,7 +50,7 @@
       <!-- The active tab's colour pill: ONE element that glides between tabs
            (position + width + colour animate), under the pills' text. -->
       <span class="strip-glider" :class="{ 'strip-glider--on': glider.ready }" aria-hidden="true"
-            :style="{ transform: `translateX(${glider.x}px)`, width: glider.w + 'px', background: glider.color }"></span>
+            :style="{ transform: `translateX(${glider.x}px)`, width: glider.w + 'px', background: glider.color, color: glider.color }"></span>
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -63,7 +63,7 @@
         @click="onPillPress($event, tab.id)"
       >
         <span class="strip-icon">
-          <AppIcon :name="tab.id" :size="15" />
+          <AppIcon :name="tab.id" :size="17" />
         </span>
         <span class="strip-label">{{ tab.label }}</span>
       </button>
@@ -73,7 +73,7 @@
       <!-- Home button -->
       <button class="strip-pill home-pill" type="button" aria-label="מסך הבית" title="מסך הבית" @click="$emit('go-home')">
         <span class="strip-icon">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1.5" />
             <rect x="14" y="3" width="7" height="7" rx="1.5" />
@@ -443,7 +443,7 @@ const tabs = [
   container-type: inline-size; /* the strip adapts to ITS width (rail gutter included), not the viewport's */
   display: flex;
   justify-content: center;
-  padding: 10px 16px 6px;
+  padding: 10px 68px 6px; /* both sides clear the corner bell/clock, so the bar stays centred */
   position: sticky;
   top: 0; /* the legacy WorkspaceHeader is no longer rendered */
   z-index: 90;
@@ -453,21 +453,28 @@ const tabs = [
 
 .strip {
   position: relative;
-  max-width: 100%;
-  display: inline-flex;
+  width: min(100%, 1180px); /* spans the content column */
+  display: flex;
   align-items: center;
-  gap: 2px;
-  background: var(--card-bg);
+  gap: 4px;
+  background: linear-gradient(180deg, #fff 0%, color-mix(in srgb, var(--card-bg) 94%, var(--app-canvas, #EEEBE5)) 100%);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  padding: 4px;
-  box-shadow: 0 6px 22px rgba(24, 24, 24, 0.06), 0 1px 2px rgba(24, 24, 24, 0.04);
+  border-radius: 20px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(24, 24, 24, 0.07), 0 1px 2px rgba(24, 24, 24, 0.04), inset 0 1px 0 #fff;
+}
+/* decoration: a hairline in every tab's colour along the bottom edge */
+.strip::after {
+  content: ''; position: absolute; inset-inline: 22px; bottom: -1px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--chart-9), var(--chart-7), var(--chart-4), var(--chart-6), var(--chart-2), var(--chart-12), var(--chart-14));
+  opacity: 0.45; pointer-events: none;
 }
 /* The gliding pill. Sits under the pills (they are z-index 1). */
 .strip-glider {
-  position: absolute; top: 4px; bottom: 4px; left: 0; z-index: 0;
-  border-radius: 12px; pointer-events: none; opacity: 0;
-  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.14);
+  position: absolute; top: 6px; bottom: 6px; left: 0; z-index: 0;
+  border-radius: 14px; pointer-events: none; opacity: 0;
+  /* glow in the active tab's own colour (colour = glider colour, set inline) */
+  box-shadow: 0 6px 18px color-mix(in srgb, currentColor 38%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .strip-glider--on {
   opacity: 1;
@@ -477,12 +484,15 @@ const tabs = [
 
 .strip-pill {
   z-index: 1;
+  flex: 1 1 auto;
+  justify-content: center;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 16px;
-  border-radius: 12px;
-  font-size: 13px;
+  gap: 8px;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 14px;
+  font-size: 14px;
   font-weight: 600; /* same weight active or not — a bolder active tab reflowed the strip under the pill */
   font-family: inherit;
   color: var(--text-muted);
@@ -515,13 +525,13 @@ const tabs = [
 
 .strip-divider {
   width: 1px;
-  height: 20px;
+  height: 26px;
   background: var(--border-subtle);
   margin: 0 4px;
   flex-shrink: 0;
 }
 
-.home-pill { padding: 7px 10px; }
+.home-pill { flex: 0 0 auto; padding: 0 14px; }
 .home-pill:hover {
   color: var(--text);
   background: var(--glass-hover);
@@ -536,9 +546,15 @@ const tabs = [
    inactive tabs go icon-only — label in the tooltip — and the active tab keeps
    its name. Before this the strip was a fixed 1216px and overflowed the page
    below ~1250px wide. */
+@media (max-width: 700px) {
+  .strip-container { padding-inline: 64px 12px; } /* phones: only the bell corner (right, = inline-start in RTL) is reserved */
+  .strip { gap: 1px; padding: 5px; }
+  .strip-pill:not(.active), .home-pill { padding: 0 7px; }
+  .strip-divider { margin: 0 2px; }
+}
 @container (max-width: 1240px) {
   .strip-pill:not(.active) .strip-label { display: none; }
-  .strip-pill:not(.active) { padding: 7px 10px; }
+  .strip-pill:not(.active) { padding: 0 10px; }
 }
 
 @media (max-width: 960px) {

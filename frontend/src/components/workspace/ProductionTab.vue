@@ -1,5 +1,8 @@
 <template>
-  <div class="production-tab" :class="{ 'production-tab--stage': backdropVariant }">
+  <div ref="tabRoot" class="production-tab" :class="{ 'production-tab--stage': backdropVariant, 'production-tab--band': bandH }">
+    <!-- תובנות: one hero panel behind the section bar + the KPI row, so they
+         read as one header block. Sized to the KPI row's bottom (it wraps). -->
+    <div v-if="bandH" class="pt-band" :style="{ height: bandH + 'px' }" aria-hidden="true"></div>
     <!-- Big faint animated backdrop behind the sub-screens (not תובנות). -->
     <ProdBackdrop v-if="backdropVariant" :variant="backdropVariant" />
     <!-- Monthly cycle: before the agent's first cycle only THIS tab is locked. -->
@@ -391,7 +394,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, onMounted, watch, inject } from 'vue'
+import { computed, reactive, ref, onMounted, onBeforeUnmount, nextTick, watch, inject } from 'vue'
 import { useProductionStore } from '../../stores/production.js'
 import { useVolumeStore } from '../../stores/volume.js'
 import ProductionDashboard from './ProductionDashboard.vue'
@@ -486,6 +489,26 @@ function onEmptyCta() {
   else emit('go-to-portal-automation')
 }
 const innerTab = ref('insights')
+// ── תובנות header band: measure down to the KPI row's bottom ──
+const tabRoot = ref(null)
+const bandH = ref(0)
+let bandRO = null
+function measureBand() {
+  const root = tabRoot.value
+  const kpi = root?.querySelector('.kpi-row')
+  if (!root || !kpi || innerTab.value !== 'insights') { bandH.value = 0; return }
+  bandH.value = Math.round(kpi.getBoundingClientRect().bottom - root.getBoundingClientRect().top) + 16
+}
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && tabRoot.value) {
+    bandRO = new ResizeObserver(() => measureBand())
+    bandRO.observe(tabRoot.value)
+  }
+})
+onBeforeUnmount(() => bandRO?.disconnect())
+watch(() => [innerTab.value, productionStore.analytics, productionStore.currentFile], () => {
+  nextTick(measureBand); setTimeout(measureBand, 300)
+})
 const backdropVariant = computed(() => {
   if (!productionStore.currentFile || cycleStore.locked) return null
   return { comparison: 'compare', volume: 'volume', history: 'history' }[innerTab.value] || null
@@ -694,7 +717,22 @@ async function handleCompare(currentId, previousId) {
 }
 /* sub-screens with the backdrop fill the viewport; content sits above it */
 .production-tab--stage { min-height: calc(100vh - 110px); }
-.production-tab > :not(.pbd) { position: relative; z-index: 1; }
+.production-tab > :not(.pbd):not(.pt-band) { position: relative; z-index: 1; }
+/* the תובנות header panel behind the section bar + KPIs */
+.pt-band {
+  position: absolute; z-index: 0; top: 0; inset-inline: 0;
+  border-radius: 22px; pointer-events: none;
+  border: 1px solid var(--border-subtle);
+  background: var(--card-bg, #FFFFFF);
+  box-shadow: 0 10px 30px rgba(24, 24, 24, 0.06);
+}
+/* the bar and the KPI row sit INSIDE the panel, with room to breathe */
+.production-tab--band > .inner-tabs-bar { margin: 18px 22px 0; }
+.production-tab--band :deep(.kpi-row) { margin: -4px 22px -8px; } /* ~12px from the panel to the next card */
+@media (max-width: 640px) {
+  .production-tab--band > .inner-tabs-bar { margin: 12px 12px 0; }
+  .production-tab--band :deep(.kpi-row) { margin-inline: 12px; }
+}
 
 /* ── Empty state: hero + stage (same shape as השוואת נפרעים) ─────── */
 .pt-empty { display: flex; flex-direction: column; gap: 18px; }
