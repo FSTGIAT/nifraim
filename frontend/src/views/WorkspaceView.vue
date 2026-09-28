@@ -302,6 +302,7 @@
 </template>
 
 <script setup>
+import { applyCanvas } from '../utils/appCanvas.js'
 import { ref, computed, onMounted, onUnmounted, provide, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'
@@ -632,6 +633,7 @@ function onHashNav() {
 }
 
 onMounted(async () => {
+  applyCanvas() // the logged-in agent's background (per user)
   window.addEventListener('hashchange', onHashNav)
   refreshMailBadge()
   mailBadgeTimer = setInterval(refreshMailBadge, 2 * 60 * 1000)

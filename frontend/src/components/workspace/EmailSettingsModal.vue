@@ -127,6 +127,44 @@
                 </div>
               </section>
 
+              <!-- מראה: the page background -->
+              <section v-else-if="activeTab === 'appearance'" class="es-pane">
+                <h4 class="es-pane-title">צבע רקע</h4>
+                <p class="es-help">הרקע של כל המסכים. נשמר לחשבון שלך במכשיר הזה.</p>
+                <div v-for="g in CANVAS_GROUPS" :key="g.id" class="cv-group">
+                  <span class="cv-group-label">{{ g.label }}</span>
+                  <div class="cv-grid" role="radiogroup" :aria-label="g.label">
+                    <button
+                      v-for="sw in g.swatches" :key="sw.hex" type="button" role="radio"
+                      class="cv-tile" :class="{ on: canvas === sw.hex }" :aria-checked="canvas === sw.hex"
+                      :title="sw.name" @click="pickCanvas(sw.hex)"
+                    >
+                      <span class="cv-preview" :style="{ background: sw.hex }">
+                        <span class="cv-card"><i :style="sw.accent ? { background: sw.accent } : null"></i><i></i></span>
+                        <span v-if="canvas === sw.hex" class="cv-check" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        </span>
+                      </span>
+                      <span class="cv-name">{{ sw.name }}</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="cv-group">
+                  <span class="cv-group-label">צבע משלך</span>
+                  <div class="cv-custom">
+                    <label class="cv-tile cv-tile--custom" :class="{ on: isCustom }">
+                      <span class="cv-preview cv-preview--custom" :style="{ background: isCustom ? canvas : null }">
+                        <input type="color" :value="canvas.toLowerCase()" aria-label="בחירת צבע משלך" @input="pickCanvas($event.target.value)" />
+                        <span class="cv-card"><i></i><i></i></span>
+                      </span>
+                      <span class="cv-name ltr-number">{{ isCustom ? canvas : 'בחירה חופשית' }}</span>
+                    </label>
+                    <p v-if="tooDark" class="cv-warn">צבע כהה מקשה על קריאת הטקסט — מומלץ גוון בהיר.</p>
+                    <button v-if="canvas !== DEFAULT_CANVAS" type="button" class="cv-reset" @click="pickCanvas(DEFAULT_CANVAS)">חזרה לברירת המחדל</button>
+                  </div>
+                </div>
+              </section>
+
               <!-- דוא"ל -->
               <section v-else class="es-pane">
                 <h4 class="es-pane-title">ספק דוא"ל</h4>
@@ -191,6 +229,7 @@ import { lastReceivedLabel } from '../../utils/mailboxCopy.js'
 import PhoneForwardModal from './PhoneForwardModal.vue'
 import HachsharaMailModal from './HachsharaMailModal.vue'
 import api from '../../api/client.js'
+import { CANVAS_GROUPS, DEFAULT_CANVAS, getCanvas, setCanvas, luminance } from '../../utils/appCanvas.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -218,8 +257,22 @@ const tabs = [
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>' },
   { id: 'email', label: 'דוא"ל', accent: '#5B6EE1', deep: '#3A4BC0', soft: '#EAECFB', tint: '#F6F7FE',
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="m3 6 9 7 9-7"/></svg>' },
+  { id: 'appearance', label: 'מראה', accent: '#8E44AD', deep: '#6C2E87', soft: '#F3EDF7', tint: '#FAF6FC',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 3-3.5 3H16a2 2 0 0 0-1.4 3.4A2 2 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="12" cy="7" r="1.2" fill="currentColor"/><circle cx="16.5" cy="10.5" r="1.2" fill="currentColor"/></svg>' },
 ]
 const activeTab = ref('automation')
+
+// ── מראה: page background ──
+const canvas = ref(getCanvas())
+const ALL_SWATCHES = CANVAS_GROUPS.flatMap((g) => g.swatches.map((s) => s.hex))
+const isCustom = computed(() => !ALL_SWATCHES.includes(canvas.value))
+const tooDark = computed(() => luminance(canvas.value) < 0.72)
+function pickCanvas(hex) {
+  setCanvas(hex)
+  canvas.value = getCanvas()
+  justSaved.value = true
+  setTimeout(() => { justSaved.value = false }, 1600)
+}
 const tab = computed(() => tabs.find((t) => t.id === activeTab.value) || tabs[1])
 
 // ── Worker install (permanent download entry) ──
@@ -650,4 +703,53 @@ watch(() => props.open, (now) => {
   .es-rail { flex-direction: row; overflow-x: auto; border-inline-end: none; border-bottom: 1px solid rgba(24,24,24,0.06); }
   .es-rail-label { white-space: nowrap; }
 }
+
+/* ── מראה: colour board ── */
+.cv-group { display: flex; flex-direction: column; gap: 10px; }
+.cv-group-label { font-size: 12.5px; font-weight: 800; color: var(--text-secondary, #706E6B); }
+.cv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.cv-tile {
+  display: flex; flex-direction: column; gap: 7px; padding: 7px 7px 9px; cursor: pointer;
+  background: #fff; border: 1.5px solid var(--border-subtle); border-radius: 14px;
+  font-family: inherit; text-align: center;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(24, 24, 24, 0.08); }
+.cv-tile.on { border-color: var(--deep, #6C2E87); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #8E44AD) 22%, transparent); }
+.cv-tile:focus-visible { outline: 2px solid var(--deep, #6C2E87); outline-offset: 2px; }
+.cv-preview {
+  position: relative; height: 62px; border-radius: 10px; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(24, 24, 24, 0.06);
+  display: grid; place-items: center;
+}
+/* a tiny white card on the colour: how the app will look */
+.cv-card {
+  width: 58%; height: 34px; border-radius: 7px; background: #fff;
+  box-shadow: 0 2px 6px rgba(24, 24, 24, 0.08);
+  display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 0 8px;
+}
+.cv-card i { display: block; height: 5px; border-radius: 3px; background: #D9D7D3; }
+.cv-card i:first-child { width: 60%; background: #BDBAB5; }
+.cv-card i:last-child { width: 85%; }
+.cv-check {
+  position: absolute; top: 6px; inset-inline-end: 6px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; background: var(--deep, #6C2E87);
+  box-shadow: 0 2px 6px rgba(24, 24, 24, 0.2);
+}
+.cv-name { font-size: 12px; font-weight: 700; color: var(--text-primary, #181818); }
+.cv-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.cv-tile--custom { width: 120px; }
+.cv-preview--custom {
+  background: conic-gradient(from 0deg, #EAF1FA, #EAF4EC, #FBF4DC, #FBEFF4, #F2EEFB, #E6F3F2, #EAF1FA);
+}
+.cv-preview--custom input[type="color"] {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0;
+}
+.cv-warn { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--amber, #8A6300); }
+.cv-reset {
+  height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  font-size: 13px; font-weight: 700; color: var(--text-primary, #181818);
+  background: transparent; border: 1px solid var(--border-subtle);
+}
+.cv-reset:hover { background: var(--bg, #F3F3F3); }
 </style>

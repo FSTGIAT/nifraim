@@ -46,6 +46,11 @@ router.onError((err) => {
   if (STALE_CHUNK.test(String(err && err.message))) recoverFromStaleChunk()
 })
 
+import { applyCanvas } from './utils/appCanvas.js'
+
+// The agent's chosen page background (Settings → מראה), before first paint.
+applyCanvas()
+
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
