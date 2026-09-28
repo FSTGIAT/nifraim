@@ -319,9 +319,11 @@ const topClientsChartSeries = computed(() => [{
 /* KPI Row */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr)); /* 5 cards span the page */
   gap: 12px;
 }
+@media (max-width: 860px) { .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .kpi-card {
   position: relative; overflow: hidden;
