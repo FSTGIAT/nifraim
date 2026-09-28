@@ -1263,6 +1263,17 @@ flowchart RL
 - **Every production customer is on the map:** `load()` adds each customer from the active production files who isn't in the last comparison (`ctx.extra`), so name/ID search and customer pages match the app's own search.
 - **`top.md`:** ranks the biggest customers by accumulation, premium and commission received (for "הלקוח הכי גדול").
 
+- **The agent's jobs as computed pages (`services/agent_insights.py`, 2026-09-29).** Python computes each page; the model only narrates it:
+  - `reconcile.md`: expected (agreements) vs paid נפרעים per insurer; ₪0 / below-agreement lines; active policies with no נפרעים line; insurers that sent no file.
+    - A **suspicious expected** (> ₪5,000 and > 50× paid, e.g. a pension rate applied to the balance) is listed apart and kept out of the gap. It is most likely a calculation error, not a debt.
+  - `policy/<n>.md` answers "did I get paid on policy X" (₪0 is shown as ₪0, not as paid).
+  - `retention.md`: arrears/cancellation **signals** (active, nothing paid this period) and dormant funds with a balance.
+  - `crosssell.md` + the customer page's "תמונת תיק": rule-based overlaps, consolidation, dormant funds, missing cover — **in this agent's book only**.
+  - `tasks.md`: open mails and insurer follow-ups.
+  - **Not in the data, so the agent says so:** market returns and market management fees (0 of 1149 נפרעים rows carry `management_fee`), policy end dates (renewals), birth dates (age-change alerts).
+- **Action tools only on an explicit ask (`wants_action`):** `propose_email` / `propose_meeting` are offered only when the message, or the agent's previous one, contains an action verb (שלח/תכין/קבע/תזכיר/תענה…). Otherwise the model gets `open_page` only, so "אילו משימות פתוחות יש לי?" is answered and not turned into a drafted email.
+- **Mail Agent customer lookup** (`mail_agent/context.py`) also matches the sender's **name** against production first+last name, trying every split point and either order, but only when exactly ONE customer matches. `[להשלים]` stays only for data that truly isn't there.
+
 ### 17a. The data map (`services/data_map.py`) — the agent's data as Markdown the AI navigates
 
 The AI never gets one giant dump. It gets `index.md` (categories, a one-line fact each, links) and **drills down** with the `open_page` tool, following the connections the answer needs:

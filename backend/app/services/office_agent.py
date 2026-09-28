@@ -18,6 +18,7 @@ Every send is still the agent's click on the existing endpoints (mail-agent
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -145,13 +146,19 @@ ASK_SYSTEM = (
     "אתה Nifra Agent — הסוכן האישי שעובד בשביל סוכן ביטוח. אתה לא רק עונה, אתה עושה: "
     "יש לך ידיים — propose_email מכין מייל, propose_meeting קובע פגישה (זימון יומן עם אישור/דחייה). "
     "הם לא שולחים לבד: הסוכן רואה את מה שהכנת ולוחץ אישור. לכן לעולם אל תגיד 'אני לא יכול לקבוע פגישה' או 'לשלוח מייל'. "
-    "כשמבקשים ממך פעולה — עשה אותה מיד עם הכלי. הפרט היחיד שמותר לשאול עליו הוא כתובת המייל של הנמען, ורק אם אין לך אותה "
+    "שאלה ('מה/מי/אילו/למה/האם…') = תשובה בלבד, בלי להכין פעולה. מכין מייל/פגישה רק כשביקשו במפורש לפעול (שלח, תכין, קבע, תזכיר, תענה). "
+        "כשמבקשים ממך פעולה — עשה אותה מיד עם הכלי. הפרט היחיד שמותר לשאול עליו הוא כתובת המייל של הנמען, ורק אם אין לך אותה "
     "(בשיחה או בדפים). לעולם אל תשאל על שם, תוכן, אורך או ניסוח — אתה כותב את המייל בעצמך, קצר ומקצועי, בגוף ראשון של הסוכן. "
     "to_name — רק שם אמיתי שידוע לך; אחרת השאר ריק (לא 'לקוח'). "
     "תזכורת לסוכן עצמו ('תזכיר לי…') = propose_meeting אל המייל של הסוכן עצמו (מופיע למטה), 15 דקות, כותרת 'תזכורת: …'; 'בבוקר' = 09:00. "
     "כתובת מייל של לקוח שכתב לסוכן מופיעה בדפי המייל/החיפוש בתוך <…> — השתמש בה. "
     "'הלקוח הכי גדול/הגדולים' → top.md (ברירת מחדל: לפי צבירה, ואמור לפי מה דירגת). מילה קטועה או שגיאת כתיב — הבן לבד ואל תשאל. "
     "מייל 'עם מידע מפורט' ללקוח = פתח את דף הלקוח וכתוב את המוצרים שלו (חברה, מוצר, צבירה) מהדף בלבד. "
+        "מפת היכולות: 'מה חסר ללקוח / כפל / מה להציע' → דף הלקוח (תמונת תיק) או crosssell.md; "
+    "'למה העמלה נמוכה / איפה פער / האם קיבלתי עמלה על פוליסה X' → reconcile.md, policy/<מספר>.md; "
+    "'מי בפיגור / בסכנת נטישה' → retention.md; 'מה פתוח לי היום' → tasks.md. "
+    "אין לך נתוני שוק (תשואות, דמי ניהול בשוק, מסלולים מומלצים) ואין בקבצים תאריכי סיום פוליסה או תאריכי לידה — "
+    "על שאלות כאלה אמור בפשטות שהנתון לא קיים אצלך, בלי להמציא ובלי לנחש. "
         "אל תיתן ייעוץ מקצועי משלך (מס, משפטי, סכומים שלא בדפים). כשיש טיוטת תשובה מוכנה — סכם אותה והצע לשלוח אותה. "
         "יום ושעה שהסוכן אמר — קובעים בדיוק אותם, בלי ויכוח ובלי הערות על חגים. נמען שהסוכן נתן — לא צריך לאמת אותו מול הנתונים. "
     "שעה שלא נאמרה — הצע בעצמך את יום העבודה הקרוב ב-10:00, 30 דקות (ימים א-ה); אל תשאל על זה. "
@@ -192,6 +199,23 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
                question.replace("\n", " ")[:300], (out.get("answer") or "").replace("\n", " ")[:400],
                f" | PROPOSAL {p}" if p else "")
     return out
+
+
+# Only an explicit ask to ACT unlocks the action tools. "אילו משימות פתוחות יש לי?"
+# kept turning into a drafted email because the tasks page shows a ready draft.
+ACTION_RE = re.compile(
+    r"(?:^|[\s,.@])(?:ו|ש)?(?:ת?שלח|ת?כין|הכן|ת?קבע|קבע|ת?זמן|ת?זכיר|תענה|ענה|ת?כתוב|כתוב|ת?זיז|תשנה|שנה|ת?אשר|להכין|לשלוח|לקבוע)"
+    r"|\b(?:send|email|mail|schedule|remind|draft|reply|book)\b",
+    re.IGNORECASE,
+)
+
+
+def wants_action(question: str, history: list[dict] | None) -> bool:
+    if ACTION_RE.search(question or ""):
+        return True
+    # a follow-up that answers the agent's question about a pending action ("הוא לקוח חדש, המייל…")
+    users = [t.get("text") or "" for t in (history or []) if t.get("role") != "agent"]
+    return bool(users) and bool(ACTION_RE.search(users[-1]))
 
 
 async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None, mentions: list[dict] | None = None) -> dict:
@@ -240,17 +264,19 @@ async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] 
         messages.append({"role": "user", "content": q})
     proposal = None
     nudged = False
+    act = wants_action(question, history)
+    tools = [OPEN_PAGE_TOOL, *agent_actions.TOOLS] if act else [OPEN_PAGE_TOOL]
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         for _ in range(MAX_HOPS):
             r = await client.messages.create(
                 model=ASK_MODEL, max_tokens=2500, system=system,
-                tools=[OPEN_PAGE_TOOL, *agent_actions.TOOLS], messages=messages,
+                tools=tools, messages=messages,
             )
             text = "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip()
             if r.stop_reason != "tool_use":
-                claims = not proposal and any(w in text for w in ("הכנתי", "מחכה לאישור", "מחכה לאישורך"))
+                claims = act and not proposal and any(w in text for w in ("הכנתי", "מחכה לאישור", "מחכה לאישורך"))
                 if claims and not nudged:
                     # it SAID it prepared something but never called the tool (or the call
                     # was cut off by max_tokens) — send it back once to actually do it

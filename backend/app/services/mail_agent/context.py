@@ -23,9 +23,37 @@ def ids_in(text: str) -> set[str]:
     return {m.lstrip("0") or "0" for m in _ID_RE.findall(text or "")}
 
 
+async def _id_by_name(db: AsyncSession, user_id: uuid.UUID, name: str) -> str | None:
+    """The sender's display name → their ת.ז, only when EXACTLY one production
+    customer has that first+last name (either order). A customer who writes from
+    an address we don't have, without their ID, otherwise got "[להשלים]" for data
+    we hold. Two people with the same name → no guess."""
+    parts = [x for x in re.split(r"\s+", (name or "").strip()) if x and "@" not in x]
+    if len(parts) < 2:
+        return None
+    # every split point: "יצחק מרדכי בלומנטל" is first="יצחק מרדכי" last="בלומנטל"
+    pairs = []
+    for i in range(1, len(parts)):
+        a, b = " ".join(parts[:i]), " ".join(parts[i:])
+        pairs += [(ClientRecord.first_name == a) & (ClientRecord.last_name == b),
+                  (ClientRecord.first_name == b) & (ClientRecord.last_name == a)]
+    rows = (await db.execute(
+        select(ClientRecord.id_number)
+        .join(FileUpload, FileUpload.id == ClientRecord.upload_id)
+        .where(ClientRecord.user_id == user_id, FileUpload.is_production.is_(True), or_(*pairs))
+        .distinct().limit(3)
+    )).scalars().all()
+    ids = {str(i).lstrip("0") for i in rows if i}
+    return ids.pop() if len(ids) == 1 else None
+
+
 async def customer_products(
-    db: AsyncSession, user_id: uuid.UUID, *, id_numbers: set[str], email: str | None,
+    db: AsyncSession, user_id: uuid.UUID, *, id_numbers: set[str], email: str | None, name: str | None = None,
 ) -> list[dict]:
+    if not id_numbers and name:
+        by_name = await _id_by_name(db, user_id, name)
+        if by_name:
+            id_numbers = {by_name}
     conds = []
     if id_numbers:
         conds.append(ClientRecord.id_number.in_(sorted(id_numbers)))

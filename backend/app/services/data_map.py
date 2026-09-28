@@ -148,6 +148,10 @@ def page_index(ctx: MapContext) -> str:
         f"- [חברות](companies.md) — {len(comp)} חברות בתיק",
         f"- [לא שולם](unpaid.md) — {s.get('only_in_production', 0)} לקוחות בלי עמלה · {len(unpaid_cases)} חברות בטיפול גבייה",
         f"- [מיילים פתוחים](mail.md) — {len(ctx.mails)} מיילים שמחכים לטיפול",
+        "- [התאמת עמלות](reconcile.md) — הסכם מול נפרעים: פערים, שולם ₪0, פוליסות שנעלמו · פוליסה: `policy/<מספר>.md`",
+        "- [שימור](retention.md) — סימני פיגור/ביטול, קופות רדומות",
+        "- [פערים והזדמנויות](crosssell.md) — כפל כיסויים, איחוד קופות, כיסוי חסר",
+        "- [מה פתוח לי היום](tasks.md) — מיילים ומעקב מול חברות",
         "- [לקוחות מובילים](top.md) — הלקוחות הגדולים לפי צבירה, פרמיה ועמלה",
         f"- [הסכמי עמלות](agreements.md) — {sum(len(v) for v in ctx.rates.values())} שיעורים ב-{len(ctx.rates)} חברות",
         "- לקוח לפי ת.ז: `customers/<ת.ז>.md` · חיפוש לפי שם: `search/<שם>.md`",
@@ -265,11 +269,9 @@ def page_customer(ctx: MapContext, idn: str) -> str:
                      f" · פוליסה {p.get('policy_number') or '—'} · סטטוס {p.get('status') or '—'}"
                      + (f" · צבירה {_money(p.get('accumulation'))}" if p.get("accumulation") else "")
                      + (f" · צפי עמלה {_money(p.get('expected_commission'))}" if p.get("expected_commission") else ""))
-    if c.get("commission_products"):
-        lines += ["", "## עמלות שהתקבלו"] + [
-            f"- {p.get('company') or p.get('receiving_company')}: {_money(p.get('commission') or p.get('commission_paid'))}"
-            for p in c["commission_products"][:10]
-        ]
+    from app.services import agent_insights
+    lines += agent_insights.nifraim_section(ctx, c)
+    lines += agent_insights.portfolio_section(c)
     mails = [m for m in ctx.mails if m.linked_customer_id_number == idn]
     if mails:
         lines += ["", "## מיילים על הלקוח"] + [f"- {m.from_name or m.from_address}: {m.summary or m.subject}" for m in mails]
@@ -365,6 +367,17 @@ def render(ctx: MapContext, path: str) -> str:
         return page_index(ctx)
     if path == "companies.md":
         return page_companies(ctx)
+    from app.services import agent_insights
+    if path == "reconcile.md":
+        return agent_insights.page_reconcile(ctx)
+    if path == "retention.md":
+        return agent_insights.page_retention(ctx)
+    if path == "crosssell.md":
+        return agent_insights.page_crosssell(ctx)
+    if path == "tasks.md":
+        return agent_insights.page_tasks(ctx)
+    if path.startswith("policy/"):
+        return agent_insights.page_policy(ctx, path[len("policy/"):].removesuffix(".md"))
     if path == "top.md":
         return page_top(ctx)
     if path == "unpaid.md":

@@ -161,6 +161,7 @@ async def make_draft(db: AsyncSession, item: MailItem, sender: MailWatchSender |
         "חברות שיש להן קובץ נפרעים במערכת": await context.commission_boundaries(db, item.user_id),
         "מוצרי הלקוחות הרלוונטיים (מהפרודוקציה)": await context.customer_products(
             db, item.user_id, id_numbers=ids, email=item.from_address if kind == "customer" else None,
+            name=item.from_name if kind == "customer" else None,
         ),
     }
     try:
