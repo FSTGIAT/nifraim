@@ -67,7 +67,7 @@ const navTabs = [
   --light-gray: #DDDBDA;
   --bg: #F3F3F3;
   /* The page canvas (body only): warm white. --bg stays the neutral fill components use. */
-  --app-canvas: #F4F3F0;
+  --app-canvas: #EEEBE5;
   --bg-surface: #FFFFFF;
   --card-bg: #FFFFFF;
   --card-bg-solid: #FFFFFF;

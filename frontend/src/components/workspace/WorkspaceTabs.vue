@@ -447,7 +447,7 @@ const tabs = [
   position: sticky;
   top: 0; /* the legacy WorkspaceHeader is no longer rendered */
   z-index: 90;
-  background: var(--bg);
+  background: var(--app-canvas); /* same as the page, so the sticky strip is seamless */
   animation: stripSlideDown 0.3s var(--transition) both;
 }
 
