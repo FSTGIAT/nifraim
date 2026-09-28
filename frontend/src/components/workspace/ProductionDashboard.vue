@@ -5,7 +5,7 @@
       <button
         v-for="k in kpis" :key="k.key" type="button"
         class="kpi-card" :style="{ '--k': k.color, '--k-ink': k.ink }"
-        :title="k.title || null" @click="openDrilldown(k.drill)"
+        :title="k.title || null" @click="openDrilldown(k.drill, $event.currentTarget)"
       >
         <span class="kpi-ghost" aria-hidden="true"><KpiGlyph :name="k.key" :size="92" :stroke="1.2" /></span>
         <span class="kpi-icon"><KpiGlyph :name="k.key" :size="22" /></span>
@@ -58,13 +58,13 @@
     <!-- KPI Drill-down Modal -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="drilldown" class="dd-overlay" @click.self="drilldown = null">
-          <div class="dd-card">
+        <div v-if="drilldown" class="dd-overlay" @click.self="closeDrilldown">
+          <div ref="ddCardEl" class="dd-card">
             <div class="dd-header">
               <h4>{{ drilldownTitle }}</h4>
               <div class="dd-header-right">
                 <span class="dd-count ltr-number">{{ filteredDrillData.length }} שורות</span>
-                <button class="dd-close" @click="drilldown = null">&times;</button>
+                <button class="dd-close" @click="closeDrilldown">&times;</button>
               </div>
             </div>
             <div class="dd-search">
@@ -140,7 +140,8 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, nextTick } from 'vue'
+import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import api from '../../api/client.js'
 import ProductionTrendChart from './ProductionTrendChart.vue'
 import KpiGlyph from './KpiGlyph.vue'
@@ -204,8 +205,19 @@ const filteredDrillData = computed(() => {
   })
 })
 
-async function openDrilldown(type) {
+// iPhone-style: the drill-down grows out of the tapped KPI card and folds back
+// into it (composables/useOriginMorph), like the השוואת נפרעים KPIs.
+const originMorph = useOriginMorph()
+const ddCardEl = ref(null)
+async function closeDrilldown() {
+  if (originMorph.hasOrigin()) await originMorph.shrink(ddCardEl.value)
+  drilldown.value = null
+}
+
+async function openDrilldown(type, originEl = null) {
+  originMorph.remember(originEl)
   drilldown.value = type
+  if (originEl) nextTick(() => originMorph.grow(ddCardEl.value))
   ddSearch.value = ''
   clientsData.value = []
 
