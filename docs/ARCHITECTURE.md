@@ -1114,11 +1114,21 @@ locked ─(first 21st 06:00)─► cycle batch pending/running ─► batch ende
 | `maslaka_first_auto` | The 15th the first מסלקה production lands (27th rule, from submitted, else approved). |
 | `maslaka_deadline` | The last day that still makes the next 15th: the 26th this month, or next month's once today is ≥ 27. From `cycle_service.maslaka_deadline()`. |
 | `maslaka_if_submitted_now` | The 15th a submission today would give. |
+| `server_now` | The server's clock (honours `CYCLE_NOW_OVERRIDE`). `stores/cycle.js` keeps the skew against the browser, and every countdown uses `cycleNow()` / Remotion `skewMs`, so a PC with a wrong clock never shows a wrong countdown. |
 
 - **Pure helpers + tests:** the 26th vs 27th around midnight Israel time, and the year rollover.
 - **One wording source:** `stores/cycle.js`: `signupLine`, `maslakaLine` (tone todo / wait / ok) and `MASLAKA_RULE`.
   - Surfaces that use it: the cycle widget (date chips + a "נרשמתם" rail marker), the locked Production timeline, wizard step 5, the מסלקה tab header, and the admin dashboard (`expected_first_production`).
 - **The UI never recomputes the rule.** Where it compares dates, it compares plain `YYYY-MM-DD` strings, not `Date` objects across time zones.
+
+### Upload-pending moment (the agent's part of the month)
+When `needs_production_upload` is set, the upload call is the only message:
+
+- **Home widget:** turns production blue with the chip "ממתין לפרודוקציה" and the title "עכשיו: להעלות את הפרודוקציה של <month>". Its button goes to the Production tab.
+- **Alarm clock and rail icon:** say the same thing.
+- **The `upload_production` notice:** plays the Remotion `CycleGears` scene. The נפרעים gear turns ✓, the agent's production gear hovers above its empty slot, and the השוואה gear waits.
+- **The agent's FIRST cycle:** the notice gets the assembly intro, where the machine comes together. No confetti.
+- **Setup wizard:** the notice mounts only while the full-screen wizard is closed, because the wizard used to cover it.
 
 ### Simulating future cycles locally
 `CYCLE_NOW_OVERRIDE` (config) sets the instant that `cycle_service.utc_now()` returns. Start local uvicorn with it (e.g. `2026-11-21T09:00:00+02:00`), and set the same instant on the browser clock (Playwright `page.clock.install`) to walk a user through the upcoming 21sts. **Never set it on Railway.**

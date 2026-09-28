@@ -22,6 +22,12 @@ export function shortDate(iso) {
   return `${d.getDate()}.${d.getMonth() + 1}`
 }
 
+// Countdowns run on the SERVER's clock: an agent PC whose clock is off (or a
+// local simulation's CYCLE_NOW_OVERRIDE) must not show a wrong countdown.
+let _skewMs = 0
+export function cycleNow() { return Date.now() + _skewMs }
+export function cycleSkewMs() { return _skewMs }
+
 export const useCycleStore = defineStore('cycle', () => {
   const status = ref(null)
   const loaded = ref(false)
@@ -37,6 +43,7 @@ export const useCycleStore = defineStore('cycle', () => {
     try {
       const prev = status.value?.cycle_batch_status
       const res = await api.get('/cycle/status')
+      if (res.data?.server_now) _skewMs = Date.parse(res.data.server_now) - Date.now()
       status.value = res.data
       // The worker just claimed this month's cycle batch → hand it to the
       // live progress widget (it deliberately ignores pending batches).

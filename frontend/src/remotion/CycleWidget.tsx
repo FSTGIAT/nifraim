@@ -20,6 +20,7 @@ export const CYCLE_WIDGET_SIZE = { width: 880, height: 230 }
 
 export type CycleWidgetProps = {
   targetMs: number
+  skewMs?: number
   startMs: number
   color?: string
   ink?: string
@@ -40,6 +41,7 @@ const RAIL_Y = 120
 
 export const CycleWidget: React.FC<CycleWidgetProps> = ({
   targetMs,
+  skewMs = 0,
   startMs,
   color = '#2F73C4',
   ink = '#181818',
@@ -56,7 +58,7 @@ export const CycleWidget: React.FC<CycleWidgetProps> = ({
   const frame = useCurrentFrame()
   const t = frame / CYCLE_WIDGET_FRAMES // 0..1 over the loop
 
-  const now = Date.now()
+  const now = Date.now() + skewMs
   const remaining = Math.max(0, targetMs - now)
   const span = Math.max(1, targetMs - startMs)
   const frac = Math.max(0.02, Math.min(1, 1 - remaining / span))

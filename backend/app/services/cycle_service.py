@@ -185,6 +185,7 @@ class CycleState:
     maslaka_deadline: str | None = None       # ISO date — last day that still makes the next 15th
     maslaka_if_submitted_now: str | None = None  # ISO date — the 15th a submission today would give
     manual_run_allowed: bool = False    # admin, or legacy button before CYCLE_LAUNCH
+    server_now: str | None = None       # ISO — the clock every countdown runs on (the agent's PC clock may be wrong)
 
 
 async def _maslaka_link(db: AsyncSession, user_id: uuid.UUID):
@@ -361,6 +362,7 @@ async def user_cycle_state(db: AsyncSession, user, now: datetime | None = None) 
         maslaka_approved_at=_to_il(link.approved_at).isoformat() if link and link.approved_at else None,
         maslaka_deadline=maslaka_deadline(now_aware).isoformat(),
         maslaka_if_submitted_now=maslaka_first_auto(now_utc).isoformat(),
+        server_now=now_aware.isoformat(),
     )
 
 

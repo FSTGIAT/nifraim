@@ -75,7 +75,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useCycleStore, shortDate } from '../../stores/cycle.js'
+import { useCycleStore, cycleNow, shortDate } from '../../stores/cycle.js'
 import CycleHomeTimer from './CycleHomeTimer.vue'
 
 const emit = defineEmits(['select'])
@@ -85,7 +85,7 @@ const open = ref(false)
 const btnEl = ref(null)
 const popStyle = ref(null)
 
-const now = ref(Date.now())
+const now = ref(cycleNow())
 let timer = null
 // The dial shows a live countdown; the seconds dot starts at the current second.
 const left = computed(() => {
@@ -108,7 +108,7 @@ const tip = computed(() => {
 })
 function onKey(e) { if (e.key === 'Escape') open.value = false }
 onMounted(() => {
-  timer = setInterval(() => { now.value = Date.now() }, 1000)
+  timer = setInterval(() => { now.value = cycleNow() }, 1000)
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
@@ -123,12 +123,13 @@ const mood = computed(() => {
   if (st.value?.cycle_batch_status === 'running') return 'excited'
   return 'happy'
 })
-const tone = computed(() => (st.value?.worker_waiting ? 'wait' : st.value?.locked ? 'locked' : 'ok'))
+const tone = computed(() => (st.value?.worker_waiting ? 'wait' : st.value?.locked || st.value?.needs_production_upload ? 'locked' : 'ok'))
 const what = computed(() => {
   const s = st.value
   if (!s) return ''
   if (s.worker_waiting) return 'ממתין שהמחשב יתעורר'
   if (s.cycle_batch_status === 'running') return 'הנפרעים יורדים עכשיו'
+  if (s.needs_production_upload) return `עכשיו: פרודוקציה של ${s.current_period_label}`
   return s.locked ? `עד שהפרודוקציה נפתחת · ${shortDate(s.first_cycle_at)}` : `עד המחזור הבא · ${shortDate(s.next_cycle_at)}`
 })
 const aria = computed(() => `המחזור החודשי — עוד ${days.value} ימים. לחיצה לפרטים`)

@@ -133,7 +133,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useCycleStore, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
+import { useCycleStore, cycleNow, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import { useSetupPipeline } from '../../composables/useSetupPipeline.js'
 import { openSetup } from '../../utils/setupState.js'
 import CycleCountdownIsland from './CycleCountdownIsland.vue'
@@ -146,7 +146,7 @@ const heroPhoto = Object.values(
 const cycle = useCycleStore()
 const setup = useSetupPipeline()
 
-const now = ref(Date.now())
+const now = ref(cycleNow())
 let timer = null
 // Phones: the hand-drawn strip is unreadable at that scale — digits only
 // (the timeline card below tells the same story in text).
@@ -156,7 +156,7 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
   setup.bootstrap()
   timer = setInterval(() => {
-    now.value = Date.now()
+    now.value = cycleNow()
     // The moment the first cycle fires, ask the server — it unlocks the tab.
     if (firstAt.value && now.value >= firstAt.value.getTime()) cycle.fetchStatus()
   }, 30000)

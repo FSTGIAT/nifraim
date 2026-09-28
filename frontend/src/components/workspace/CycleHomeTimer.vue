@@ -2,7 +2,7 @@
   <!-- The monthly cycle as a live, animated widget (opened from CycleRailIcon). Locked
        agents count down to the Production tab opening; everyone else to the
        next cycle. Same width as the home cards grid (like SetupProgressCard). -->
-  <section v-if="st" class="cw" :class="{ 'cw--wait': st.worker_waiting, 'cw--locked': st.locked, 'cw--embedded': embedded }">
+  <section v-if="st" class="cw" :class="{ 'cw--wait': st.worker_waiting, 'cw--locked': st.locked, 'cw--todo': uploadPending, 'cw--embedded': embedded }">
     <header class="cw-head">
       <span class="cw-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
@@ -39,7 +39,7 @@
     <footer class="cw-foot">
       <span class="cw-sub">{{ sub }}</span>
       <button type="button" class="cw-go" @click="onOpen">
-        {{ st.locked ? 'מה יקרה ב-21' : 'לאוטומציה' }}
+        {{ st.locked ? 'מה יקרה ב-21' : uploadPending ? 'להעלאת הפרודוקציה' : 'לאוטומציה' }}
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
     </footer>
@@ -48,7 +48,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useCycleStore, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
+import { useCycleStore, cycleNow, cycleSkewMs, monthName, shortDate, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 const emit = defineEmits(['select'])
@@ -68,9 +68,13 @@ const signup = computed(() => signupLine(st.value))
 const mas = computed(() => maslakaLine(st.value))
 const target = computed(() => (st.value?.locked ? st.value.first_cycle_at : st.value?.next_cycle_at))
 const periodName = computed(() => (target.value ? monthBefore(target.value) : ''))
+// The cycle's נפרעים are in and this month's production is still missing: the
+// widget's job is to say so (not to look "automatic" while a step waits on the agent).
+const uploadPending = computed(() => !!st.value?.needs_production_upload)
 const title = computed(() => {
   const s = st.value
   if (!s) return ''
+  if (uploadPending.value) return `עכשיו: להעלות את הפרודוקציה של ${s.current_period_label}`
   if (s.locked) return `הפרודוקציה נפתחת ב-${shortDate(s.first_cycle_at)} · 06:00`
   if (s.worker_waiting) return `המחזור של ${s.current_period_label} ממתין למחשב`
   return `המחזור הבא: ${shortDate(s.next_cycle_at)} · 06:00`
@@ -78,6 +82,7 @@ const title = computed(() => {
 const sub = computed(() => {
   const s = st.value
   if (!s) return ''
+  if (uploadPending.value) return `הנפרעים של ${s.current_period_label} כבר כאן — קובץ הפרודוקציה משלים את ההשוואה. המחזור הבא: ${shortDate(s.next_cycle_at)} · 06:00.`
   if (s.locked) return `באותו בוקר נוריד לבד את הנפרעים של ${periodName.value} מכל החברות.`
   if (s.worker_waiting) return 'ההורדה תתחיל לבד ברגע שהמחשב יודלק ויתחבר.'
   return `הנפרעים של ${monthName(s.next_period)} יורדים לבד — רק שהמחשב יהיה דלוק.`
@@ -87,11 +92,12 @@ const chip = computed(() => {
   if (s?.worker_waiting) return { tone: 'wait', text: 'ממתין למחשב' }
   if (['pending', 'running'].includes(s?.cycle_batch_status)) return { tone: 'live', text: 'רץ עכשיו' }
   if (s?.locked) return { tone: 'locked', text: 'המחזור הראשון' }
+  if (uploadPending.value) return { tone: 'todo', text: 'ממתין לפרודוקציה' }
   return { tone: 'ok', text: 'אוטומטי' }
 })
 
 function onOpen() {
-  emit('select', st.value?.locked ? 'production' : 'portal-automation')
+  emit('select', st.value?.locked || uploadPending.value ? 'production' : 'portal-automation')
 }
 
 // ── Remotion island ──
@@ -105,7 +111,7 @@ const mountEl = ref(null)
 const useStatic = ref(false)
 let reactRoot = null
 let mods = null
-const staticDays = computed(() => Math.max(0, Math.floor((new Date(target.value).getTime() - Date.now()) / 86400000)))
+const staticDays = computed(() => Math.max(0, Math.floor((new Date(target.value).getTime() - cycleNow()) / 86400000)))
 
 function draw() {
   if (!reactRoot || !mods || !target.value) return
@@ -115,8 +121,9 @@ function draw() {
     component: remotion.CycleWidget,
     inputProps: {
       targetMs: new Date(target.value).getTime(),
+      skewMs: cycleSkewMs(),
       startMs: prevMonthSameDay(target.value).getTime(),
-      color: s.locked ? '#2F73C4' : '#0A6664',
+      color: s.locked || s.needs_production_upload ? '#2F73C4' : '#0A6664',
       ink: '#181818',
       targetLabel: shortDate(target.value),
       targetCaption: `נפרעים ${periodName.value}`,
@@ -219,6 +226,7 @@ onBeforeUnmount(() => {
 .cw-chip--locked { background: var(--tab-production-wash); color: var(--tab-production); }
 .cw-chip--ok { background: var(--tab-automation-wash); color: #0A6664; }
 .cw-chip--live { background: var(--tab-automation-wash); color: #0A6664; }
+.cw-chip--todo { background: var(--tab-production-wash); color: var(--tab-production); }
 .cw-chip--wait { background: var(--amber-light, #FBF4DC); color: var(--amber, #8A6300); }
 
 .cw-stage { width: 100%; }

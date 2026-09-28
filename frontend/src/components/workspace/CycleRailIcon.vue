@@ -61,7 +61,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useCycleStore } from '../../stores/cycle.js'
+import { useCycleStore, cycleNow } from '../../stores/cycle.js'
 import CycleHomeTimer from './CycleHomeTimer.vue'
 
 const emit = defineEmits(['select'])
@@ -69,11 +69,11 @@ const cycle = useCycleStore()
 const st = computed(() => cycle.status)
 const open = ref(false)
 
-const now = ref(Date.now())
+const now = ref(cycleNow())
 let timer = null
 function onKey(e) { if (e.key === 'Escape') open.value = false }
 onMounted(() => {
-  timer = setInterval(() => { now.value = Date.now() }, 60000)
+  timer = setInterval(() => { now.value = cycleNow() }, 60000)
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
@@ -85,10 +85,11 @@ const target = computed(() => new Date(st.value?.locked ? st.value.first_cycle_a
 const days = computed(() => Math.max(0, Math.floor((target.value - now.value) / 86400000)))
 const tone = computed(() => {
   if (st.value?.worker_waiting) return 'wait'
-  return st.value?.locked ? 'locked' : 'ok'
+  return st.value?.locked || st.value?.needs_production_upload ? 'locked' : 'ok'
 })
 const label = computed(() => {
   if (st.value?.worker_waiting) return 'המחזור החודשי ממתין למחשב'
+  if (st.value?.needs_production_upload) return `הנפרעים של ${st.value.current_period_label} כאן — העלו את הפרודוקציה`
   return st.value?.locked
     ? `לשונית הפרודוקציה נפתחת בעוד ${days.value} ימים`
     : `המחזור הבא בעוד ${days.value} ימים`

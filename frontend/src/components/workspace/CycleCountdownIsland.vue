@@ -13,6 +13,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { cycleNow, cycleSkewMs } from '../../stores/cycle.js'
 
 const props = defineProps({
   targetIso: { type: String, required: true },
@@ -30,7 +31,7 @@ let reactRoot = null
 let mods = null
 
 // Reduced-motion fallback ticks once a minute (no seconds shown).
-const now = ref(Date.now())
+const now = ref(cycleNow())
 let staticTimer = null
 const staticText = computed(() => {
   const ms = Math.max(0, new Date(props.targetIso).getTime() - now.value)
@@ -48,6 +49,7 @@ function draw() {
     component: remotion.CycleCountdown,
     inputProps: {
       targetMs: new Date(props.targetIso).getTime(),
+      skewMs: cycleSkewMs(),
       color: props.color,
       ink: '#181818',
       periodName: props.periodName,
@@ -94,7 +96,7 @@ onMounted(() => {
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (reduced) {
     useStatic.value = true
-    staticTimer = setInterval(() => { now.value = Date.now() }, 30000)
+    staticTimer = setInterval(() => { now.value = cycleNow() }, 30000)
     return
   }
   nextTick(mount)

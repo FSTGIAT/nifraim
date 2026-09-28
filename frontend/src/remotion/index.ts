@@ -75,3 +75,4 @@ export function sizeForViz(viz: Viz): { width: number; height: number } {
 /** Total frames to run the intro. 30 fps × 3 s feels right for all types. */
 export const VIZ_DURATION_FRAMES = 90
 export const VIZ_FPS = 30
+export { CycleGears, CYCLE_GEARS_FRAMES, CYCLE_GEARS_FRAMES_PLAIN, CYCLE_GEARS_W, CYCLE_GEARS_H } from './CycleGears'

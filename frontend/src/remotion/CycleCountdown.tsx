@@ -21,6 +21,7 @@ export const CYCLE_COUNTDOWN_FRAMES = 240 // 8s @ 30fps
 
 export type CycleCountdownProps = {
   targetMs: number
+  skewMs?: number
   color?: string // tab accent (production cobalt)
   ink?: string
   periodName?: string // "ספטמבר 2026"
@@ -58,6 +59,7 @@ const SY = 318
 
 export const CycleCountdown: React.FC<CycleCountdownProps> = ({
   targetMs,
+  skewMs = 0,
   color = '#2F73C4',
   ink = '#181818',
   periodName = '',
@@ -68,7 +70,7 @@ export const CycleCountdown: React.FC<CycleCountdownProps> = ({
   const frame = useCurrentFrame()
 
   // ── live countdown ──
-  const remaining = Math.max(0, targetMs - Date.now())
+  const remaining = Math.max(0, targetMs - (Date.now() + skewMs))
   const totalS = Math.floor(remaining / 1000)
   const units = [
     { v: Math.floor(totalS / 86400), l: 'ימים' },

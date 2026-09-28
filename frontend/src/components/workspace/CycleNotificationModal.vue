@@ -2,7 +2,65 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="current" class="cn-overlay" @click.self="dismiss">
-        <div class="cn-card" role="dialog" aria-modal="true" :aria-label="current.title">
+        <!-- The month's נפרעים are in and production is the agent's part: the
+             machine scene (Remotion gears). The agent's FIRST cycle gets the
+             assembly intro — the celebration is the machine coming together. -->
+        <div
+          v-if="isUpload"
+          :key="current.id"
+          class="cn-card cn-card--gears"
+          :class="{ 'cn-card--celebrate': celebrate }"
+          role="dialog" aria-modal="true" :aria-label="current.title"
+        >
+          <header class="cg-head">
+            <span class="cg-kicker">
+              <span class="cg-kicker-dot" aria-hidden="true"></span>
+              {{ celebrate ? 'המחזור הראשון שלך' : 'המחזור החודשי' }} · {{ current.period_label }}
+            </span>
+            <button class="cn-x" type="button" aria-label="סגור" @click="dismiss">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </header>
+          <div class="cg-stage">
+            <RemotionLoopIsland
+              component="CycleGears"
+              :frames-key="celebrate ? 'CYCLE_GEARS_FRAMES' : 'CYCLE_GEARS_FRAMES_PLAIN'"
+              :width="560" :height="320"
+              :input-props="gearProps"
+            >
+              <div class="cg-static" aria-hidden="true">
+                <span class="cg-static-g cg-static-g--done">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                <span class="cg-static-g cg-static-g--now">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V5M6 11l6-6 6 6"/></svg>
+                </span>
+                <span class="cg-static-g"></span>
+              </div>
+            </RemotionLoopIsland>
+          </div>
+          <h3 class="cg-title">
+            <template v-if="celebrate"><span dir="ltr">Nifraim</span> הוריד את הנפרעים לבד.</template>
+            <template v-else>הנפרעים של {{ current.period_label }} כבר כאן.</template>
+            <span class="cg-acc">{{ celebrate ? 'הגלגל הבא — שלך.' : 'נשאר רק הגלגל שלך.' }}</span>
+          </h3>
+          <p class="cg-body">
+            <template v-if="celebrate">הנפרעים של {{ current.period_label }} ירדו אוטומטית מכל החברות. </template>
+            מעלים את קובץ הפרודוקציה של {{ current.period_label }} (מאתר המסלקה) — והמכונה נסגרת: ההשוואה רצה לבד.
+          </p>
+          <footer class="cn-foot">
+            <span v-if="queue.length > 1" class="cn-count ltr-number">1/{{ queue.length }}</span>
+            <button class="cn-btn cn-btn--ghost" type="button" @click="dismiss">
+              {{ queue.length > 1 ? 'הבא' : 'אחר כך' }}
+            </button>
+            <button class="cn-btn cn-btn--primary" type="button" @click="act">
+              {{ meta.cta }}
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+          </footer>
+        </div>
+
+        <div v-else class="cn-card" role="dialog" aria-modal="true" :aria-label="current.title">
           <header class="cn-head">
             <span class="cn-icon" :class="'cn-icon--' + meta.tone" aria-hidden="true">
               <!-- worker waiting: monitor -->
@@ -44,6 +102,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useCycleStore } from '../../stores/cycle.js'
+import RemotionLoopIsland from './RemotionLoopIsland.vue'
 
 const emit = defineEmits(['navigate'])
 const cycle = useCycleStore()
@@ -58,6 +117,26 @@ const META = {
   comparison_ready: { tone: 'ok', tab: 'comparison', cta: 'להשוואה' },
 }
 const meta = computed(() => META[current.value?.kind] || { tone: 'info' })
+
+const isUpload = computed(() => current.value?.kind === 'upload_production')
+// The agent's FIRST cycle: its period is the month before the first cycle's
+// month (string math on the ISO dates — no time-zone drift).
+const firstPeriod = computed(() => {
+  const iso = cycle.status?.first_cycle_at
+  if (!iso) return null
+  let [y, m] = iso.slice(0, 7).split('-').map(Number)
+  m -= 1
+  if (m === 0) { m = 12; y -= 1 }
+  return `${y}-${String(m).padStart(2, '0')}-01`
+})
+const celebrate = computed(() => isUpload.value && !!firstPeriod.value && current.value.period === firstPeriod.value)
+const gearProps = computed(() => ({
+  celebrate: celebrate.value,
+  accent: '#2F73C4', done: '#2E844A', idle: '#B7B4B0', ink: '#181818',
+  labelDone: `נפרעים ${(current.value?.period_label || '').split(' ')[0]}`,
+  labelNow: 'הפרודוקציה שלך',
+  labelNext: 'השוואה',
+}))
 
 function dismiss() {
   if (current.value) cycle.markSeen(current.value.id)
@@ -85,6 +164,40 @@ function act() {
   box-shadow: var(--shadow-lg, 0 20px 50px rgba(0, 0, 0, 0.18));
   font-family: 'Heebo', sans-serif;
 }
+/* ── gears variant (upload production) ── */
+.cn-card--gears {
+  width: min(600px, 100%); gap: 12px; padding: 18px 24px 20px;
+  background:
+    radial-gradient(120% 70% at 50% 0%, var(--tab-production-wash, rgba(47, 115, 196, 0.1)) 0%, transparent 70%),
+    var(--card-bg, #fff);
+}
+.cn-card--celebrate { animation: cgRise 0.7s cubic-bezier(0.2, 0.9, 0.25, 1.15) both; }
+@keyframes cgRise { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
+.cg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cg-kicker {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+  background: var(--card-bg, #fff); border: 1px solid var(--border-subtle);
+  font-size: 12.5px; font-weight: 700; color: var(--tab-production, #2F73C4);
+}
+.cg-kicker-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green, #2E844A); }
+.cg-stage { margin: -6px -8px 0; }
+.cg-static { display: flex; align-items: center; justify-content: center; gap: 28px; height: 100%; }
+.cg-static-g {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px dashed var(--border-subtle); color: var(--text-muted, #939393);
+}
+.cg-static-g--done { background: var(--green, #2E844A); border: none; color: #fff; }
+.cg-static-g--now { background: var(--tab-production, #2F73C4); border: none; color: #fff; }
+.cg-title {
+  margin: 0; text-align: center; text-wrap: balance;
+  font-size: clamp(22px, 3vw, 28px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.25;
+  color: var(--text-primary, #181818);
+}
+.cg-acc { display: block; color: var(--tab-production, #2F73C4); }
+.cg-body { margin: 0; text-align: center; font-size: 15px; line-height: 1.7; color: var(--text-secondary, #5C5A58); text-wrap: pretty; }
+.cn-card--gears .cn-foot { justify-content: center; margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .cn-card--celebrate { animation: none; } }
+
 .cn-head { display: flex; align-items: flex-start; gap: 12px; }
 .cn-icon {
   flex-shrink: 0; width: 46px; height: 46px; border-radius: 12px;

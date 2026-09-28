@@ -263,7 +263,8 @@
 
     <!-- Monthly cycle (מחזור) events: worker waiting / upload production /
          partial run / comparison ready — each shown once (also emailed). -->
-    <CycleNotificationModal @navigate="(tab) => onCardSelect(tab)" />
+    <!-- Waits for the full-screen setup wizard to close (it would cover it). -->
+    <CycleNotificationModal v-if="!setupState.modalOpen" @navigate="(tab) => onCardSelect(tab)" />
 
     <!-- Full-page drop overlay -->
     <Teleport to="body">
