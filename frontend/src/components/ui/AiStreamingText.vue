@@ -38,10 +38,15 @@ function run() {
   let i = 0
   let last = 0
   const tick = (t) => {
-    if (t - last >= props.speed) {
-      last = t
+    if (!last) last = t
+    // time-based, not frame-based: a busy page drops frames, and one token per
+    // frame would stretch a 3s line to 15s
+    const n = Math.floor((t - last) / props.speed)
+    if (n > 0 || i >= tokens.length) {
+      last += n * props.speed
       if (i < tokens.length) {
-        shown.value += tokens[i++]
+        shown.value += tokens.slice(i, i + n).join('')
+        i += n
       } else {
         done.value = true
         raf = 0

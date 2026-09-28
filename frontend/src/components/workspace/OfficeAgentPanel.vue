@@ -28,15 +28,16 @@
           <div ref="feedEl" class="na-feed">
             <!-- what the agent writes -->
             <template v-if="store.narration">
+              <div :key="runId" class="na-run">
               <h2 class="na-greeting">
-                <AiStreamingText :text="store.narration.greeting" mode="word" :speed="70" :show-cursor="false" @complete="onGreetingDone" />
+                <AiStreamingText :text="store.narration.greeting" mode="word" :speed="38" :show-cursor="false" @complete="onGreetingDone" />
               </h2>
               <ol class="na-lines">
                 <li v-for="(l, i) in store.narration.lines" v-show="i <= step" :key="i" class="na-line"
                     :class="{ 'is-handled': l.ref && lineDone[i] && !cardOf(l) }">
                   <span class="na-line-dot" aria-hidden="true"></span>
                   <div class="na-line-body">
-                    <AiStreamingText :text="l.text" :speed="16" :start="i <= step" :show-cursor="i === step" @complete="onLineDone(i)" />
+                    <AiStreamingText :text="l.text" :speed="7" :start="i <= step" :show-cursor="i === step" @complete="onLineDone(i)" />
                     <!-- the action this line points at -->
                     <template v-if="lineDone[i] && cardOf(l)">
                       <button v-if="primary(cardOf(l))" type="button" class="na-link" @click="toggle(i, cardOf(l))">
@@ -74,12 +75,13 @@
                   </div>
                 </li>
               </ol>
+              </div>
             </template>
             <p v-else class="na-thinking" aria-label="כותב"><i></i><i></i><i></i></p>
 
             <!-- the short Q&A -->
             <div v-for="(m, i) in store.thread" :key="'t' + i" class="na-qa" :class="'na-qa--' + m.role">
-              <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="14" :show-cursor="i === store.thread.length - 1" />
+              <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="7" :show-cursor="i === store.thread.length - 1" />
               <span v-else>{{ m.text }}</span>
             </div>
             <p v-if="store.busy === 'ask'" class="na-thinking"><i></i><i></i><i></i></p>
@@ -117,9 +119,10 @@ function onLineDone(i) {
   if (i === step.value) step.value = i + 1
 }
 const writing = computed(() => store.narrating || (!!store.narration && step.value < store.narration.lines.length))
-const orbState = computed(() => (store.busy === 'ask' || writing.value ? 'composing' : 'listening'))
+// 'composing' only while really waiting on the server; writing is calm
+const orbState = computed(() => (store.busy === 'ask' || (store.narrating && !store.narration) ? 'composing' : 'connecting'))
 const statusText = computed(() => {
-  if (store.narrating) return 'עובר על המיילים והעמלות…'
+  if (store.narrating && !store.narration) return 'עובר על המיילים והעמלות…'
   if (store.busy === 'ask') return 'בודק…'
   if (writing.value) return 'כותב לך…'
   return 'עובד בשבילך'
@@ -173,7 +176,9 @@ async function askNow() {
   feedEl.value?.scrollTo({ top: feedEl.value.scrollHeight, behavior: 'smooth' })
 }
 
-// iPhone-style open/close out of the icon; the agent writes fresh on every open
+// iPhone-style open/close out of the icon. The brief is prefetched by the icon,
+// so the agent starts writing at once; a silent re-narrate refreshes it behind.
+const runId = ref(0)
 const morph = useOriginMorph()
 const cardEl = ref(null)
 watch(() => props.open, async (v) => {
@@ -181,7 +186,7 @@ watch(() => props.open, async (v) => {
   step.value = -1
   for (const k of Object.keys(lineDone)) delete lineDone[k]
   openLine.value = -1
-  store.narration = null
+  runId.value++
   morph.remember(props.originEl)
   await nextTick()
   morph.grow(cardEl.value)

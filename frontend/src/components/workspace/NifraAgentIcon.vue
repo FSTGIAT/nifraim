@@ -31,9 +31,10 @@ defineProps({ size: { type: String, default: 'big' } }) // big (home, under the 
 defineEmits(['open'])
 const store = useOfficeAgentStore()
 const btnEl = ref(null)
-const state = computed(() => (store.loading || store.busy ? 'composing' : 'connecting'))
+const state = computed(() => (store.busy ? 'composing' : 'connecting'))
 const title = computed(() => (store.todoCount ? `Nifra Agent · ${store.todoCount} דברים מחכים לך` : 'Nifra Agent'))
-onMounted(() => { if (!store.brief) store.load() })
+// prefetch the written brief so opening the panel starts writing instantly
+onMounted(() => { if (!store.narration) store.narrate() })
 </script>
 
 <style scoped>

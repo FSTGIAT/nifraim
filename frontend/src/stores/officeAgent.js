@@ -33,7 +33,7 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
       narration.value = { greeting: data.greeting, lines: data.lines || [] }
       brief.value = { ...(brief.value || {}), cards: data.cards, mailbox: data.mailbox, todo_count: data.todo_count }
     } catch {
-      narration.value = { greeting: 'שלום', lines: [{ text: 'לא הצלחתי לטעון את התדריך כרגע — נסו שוב בעוד רגע.', ref: null }] }
+      if (!narration.value) narration.value = { greeting: 'שלום', lines: [{ text: 'לא הצלחתי לטעון את התדריך כרגע — נסו שוב בעוד רגע.', ref: null }] }
     } finally {
       narrating.value = false
     }
