@@ -21,7 +21,10 @@ import { AbsoluteFill, interpolate, useCurrentFrame, Easing } from 'remotion'
 export const CYCLE_GEARS_W = 560
 export const CYCLE_GEARS_H = 320
 const LOOP = 240
-const INTRO_PLAIN = 64
+const DRAW = 64 // the plain draw-on length the stroke timings are written against
+const SPIN_FRAMES = 90 // opening spin: fast, easing to a stop over 3s
+const SPIN_TURNS = 3 // whole turns, so the gap ends back at the top
+const INTRO_PLAIN = SPIN_FRAMES
 const INTRO_CELEBRATE = 112
 export const CYCLE_GEARS_FRAMES = INTRO_CELEBRATE + LOOP * 450 // ~1h; the notice never lives that long
 export const CYCLE_GEARS_FRAMES_PLAIN = INTRO_PLAIN + LOOP * 450
@@ -90,7 +93,7 @@ export const CycleGears: React.FC<Props> = ({
 }) => {
   const f = useCurrentFrame()
   const INTRO = celebrate ? INTRO_CELEBRATE : INTRO_PLAIN
-  const k = INTRO / INTRO_PLAIN
+  const k = celebrate ? INTRO_CELEBRATE / DRAW : 1
   const inLoop = f >= INTRO
   const lf = inLoop ? (f - INTRO) % LOOP : 0
   const t = lf / LOOP
@@ -108,6 +111,9 @@ export const CycleGears: React.FC<Props> = ({
   const hitch = (x: number) =>
     interpolate(x, [0, 44, 52, 60, 68], [0, 7, -1.6, 0.6, 0], { ...clamp, easing: Easing.inOut(Easing.quad) })
   const rot = inLoop ? (lf < 120 ? hitch(lf - 20) : hitch(lf - 140)) : 0
+  // Opening: the gear spins FAST and slows to a stop over 3s (ease-out cubic),
+  // landing after whole turns so the gap is back at the top for the loop.
+  const spin = interpolate(f, [0, SPIN_FRAMES], [0, SPIN_TURNS * 360], { ...clamp, easing: Easing.out(Easing.cubic) })
 
   // the loose tooth floats above the gap (bobs 2x per loop), leaning in as
   // the gear creeps toward it
@@ -141,7 +147,7 @@ export const CycleGears: React.FC<Props> = ({
             )
           })}
 
-          <g transform={`rotate(${rot})`}>
+          <g transform={`rotate(${rot + spin})`}>
             <Draw d={GEAR} p={pGear} stroke={ink} width={3} />
             <Draw d={GHOST} p={pTooth} stroke={accent} width={2} dash="4 6" />
             {/* inner ring: green all round except under the gap (blue, dashed) */}
