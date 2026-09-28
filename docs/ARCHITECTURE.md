@@ -1094,3 +1094,53 @@ setup wizard's "מדף ההסכמים" step — no navigation away).
   after `sent_at`. PDF attachments are loaded by calling `api.ai_documents.upload_document`
   itself (rates_only) — the exact manual-shelf path (sha dedupe, Claude extraction, rate upsert,
   race handling). Status: sent → replied (no PDF) | imported. Non-PDF replies are not imported.
+
+## 15. Setup wizard (welcome) — full-screen, one page per step
+
+`SetupPipelineModal.vue` + `composables/useSetupPipeline.js` (steps, copy, done-detection, flags) +
+`utils/setupState.js` (open / leave / resume). Opens for every new agent until setup is completed.
+
+| # | id | Done when | Action |
+|---|---|---|---|
+| 1 | phone | phone-forward token exists | PhoneForwardModal (stacks above, z 1300) |
+| 2 | worker | worker online or ever connected | download installer; live install telemetry |
+| 3 | mail | mailbox connected (`/mailbox`) | opens **Nifraim Mail Agent** (MailAgentModal) |
+| 4 | agreements | agreement docs/rates exist OR requests sent | `AgreementRequestsPanel` **inside** the wizard (§14) |
+| 5 | maslaka | שיוך submitted/approved | MaslakaTab (association wizard) |
+| 6 | portal | ≥1 portal credential | PortalAutomationTab → add-portal modal |
+| 7 | run | first cycle succeeded, or all other steps done | informational (the cycle runs itself, §13) |
+
+- **Layout:** full-screen (`100vw × 100vh`). Left: the step's Kling loop (`assets/welcome/step-<id>.mp4`,
+  poster `step-<id>.webp`) with an outlined `NN/07` number top-right. Right: kicker, two-colour title
+  (`StepTitle` wordmarks / `split`), one line, the action, Back/Next + a numbered step bar. Phones: picture
+  becomes a top banner. The messenger dock is unmounted while the wizard is open (it would cover Back).
+- **Leave / resume invariant:** steps whose action lives elsewhere call `leaveSetupFor(id)`; the surface
+  that completes it calls `resumeSetupIfAway(id)` (portal saved, Mail Agent closed, שיוך submitted) and a
+  "חזרה להפעלת האוטומציה" pill shows while away. On reopen the wizard re-bootstraps and lands on the
+  first incomplete step.
+- **Bell** lives in the `HomeSidebar` rail (`:show-bell`); the corner only when the rail is hidden or
+  ≤720px tall. Exactly one `NotificationBell` is mounted (it owns the store poll).
+- **Adding/replacing a step picture:** Kling `text_to_image` 2:3 in the step colour (surreal pastel 3D) →
+  crop the bottom ~7% (watermark), re-centre 2:3, 900×1350 webp → upload the cropped PNG with
+  `file_upload` → `image_to_video` kling-video-v3_0, 5s, first = tail frame (seamless loop), no audio →
+  ffmpeg crop the bottom 8% + scale 736×1104, h264 crf 27, `+faststart`, `-an`; crop the still the same
+  way so poster == first frame. The account runs ONE video job at a time. `import.meta.glob` picks the
+  files up — no code change.
+- **Mail Agent connect window** (`HachsharaMailModal`, `purpose="general"` from Mail Agent): wide 2-pane,
+  Remotion `MailAgentLoop` (reads mail → drafts reply from data → sends on approval → loads agreements),
+  Gmail app-password as 3 step cards. Same window serves הכשרה intake with its own copy.
+
+## 16. Admin operations dashboard (`/admin` → "תפעול")
+
+`services/admin_operations.py` → `GET /api/admin/operations` (admin-only, `get_admin_user`) →
+`components/admin/AdminOperations.vue`, the default tab of `AdminView`. Reached from the sidebar item
+**ניהול** (admins only). Auto-refresh 30s.
+
+- **Per agent:** worker (online ≤90s heartbeat, host, last seen, active portals) · monthly cycle state for
+  the CURRENT period (`locked` before their first cycle → `prelaunch` → `no_portals` / `not_queued` /
+  `queued` / `waiting_worker` / `running` / `success` / `partial` / `failed`, + last batch of any
+  trigger) · Mail Agent (connected, can-send = Gmail app-password, last error, watched senders, 30-day
+  mails received/sent) · מסלקה (association status, inquiries by status, holdings → distinct customers,
+  last update) · agreement requests by status.
+- **Summary KPIs** + filters (דורש טיפול = failed / waiting_worker / not_queued / partial / שיוך rejected /
+  mailbox error). One grouped query per area; latest batch via `DISTINCT ON (user_id)`.

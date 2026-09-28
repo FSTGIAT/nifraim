@@ -712,8 +712,12 @@ const mailPending = computed(() => {
   const b = mailAgentStore.summary?.by_status || {}
   return (b.drafted || 0) + (b.needs_reply || 0)
 })
-const circleMenuItems = computed(() =>
-  baseMenuItems.map((it) => (it.key === 'mail' && mailPending.value ? { ...it, badge: mailPending.value } : it)))
+const circleMenuItems = computed(() => {
+  const items = baseMenuItems.map((it) => (it.key === 'mail' && mailPending.value ? { ...it, badge: mailPending.value } : it))
+  // Admins get the operations dashboard (/admin) right in the rail.
+  if (auth.user?.is_admin) items.splice(items.length - 1, 0, { key: 'admin', label: 'ניהול', icon: 'Shield' })
+  return items
+})
 let mailBadgeTimer = null
 function refreshMailBadge() { mailAgentStore.fetchSummary().catch(() => {}) }
 watch(mailAgentOpen, (open) => { if (!open) refreshMailBadge() })
@@ -734,6 +738,7 @@ const railActive = computed(() =>
 
 function onMenuSelect(key, rect) {
   if (key === 'logout')   { handleLogout(); return }
+  if (key === 'admin')    { router.push('/admin'); return }
   if (key === 'home')     { goHome(); return }
   if (key === 'search')   { searchOpen.value = true; return }
   if (key === 'settings') { emailSettingsOpen.value = true; return }

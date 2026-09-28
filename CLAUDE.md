@@ -507,6 +507,16 @@ production on the 15th of the next month. A pending cycle batch is **never orpha
 the worker. `CYCLE_LAUNCH` stops the system from firing past cycles on deploy.
 **See `docs/ARCHITECTURE.md` §13.** Code: `services/cycle_service.py`, `api/cycle.py`, `stores/cycle.js`.
 
+## Welcome wizard & admin dashboard
+
+- **Welcome (setup) wizard:** full-screen, one page per step, 7 steps: Sms App → ROBOT → Mail Agent →
+  מדף ההסכמים (in-wizard agreement requests) → שיוך למסלקה → portal → first cycle.
+  - Steps done elsewhere use `leaveSetupFor` / `resumeSetupIfAway`.
+  - Each step's picture and video lives in `assets/welcome/step-<id>.{webp,mp4}`.
+  - See `docs/ARCHITECTURE.md` §15 and the `nifraim-style` skill (step colours, wordmarks, minimal copy).
+- **Admin operations dashboard:** `/admin` → "תפעול" (sidebar item **ניהול**, admins only). It shows, per agent: cycle status per worker, Mail Agent, מסלקה downloads and agreement requests.
+  See §16.
+
 ## Local Worker & Self-Update (`local-worker` skill)
 
 Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the
