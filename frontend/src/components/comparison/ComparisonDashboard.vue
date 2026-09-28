@@ -1,135 +1,30 @@
 <template>
   <div class="bi-dashboard">
-    <!-- KPI Cards Row -->
+    <!-- KPI Cards Row — same design as the Production KPIs: category colour,
+         duotone badge + oversized corner glyph (KpiGlyph), calm hover. -->
     <div class="kpi-row">
-      <div class="kpi-card kpi-blue">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-            <path d="M16 3.13a4 4 0 010 7.75"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value">{{ kpiTotalCustomers }}</div>
-          <div class="kpi-label">סה״כ לקוחות</div>
-        </div>
-      </div>
-      <div class="kpi-card kpi-amber" @click="openFilterModal('לא שולם', kpiUnpaid)" style="cursor:pointer">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value">{{ kpiUnpaid.length }}</div>
-          <div class="kpi-label">לא שולם</div>
-        </div>
-        <div v-if="kpiUnpaid.length > 0" class="kpi-actions">
-          <button
-            class="kpi-action-btn kpi-action-mail"
-            @click.stop="sendAllUnpaidMail(kpiUnpaid)"
-            title="שלח מייל על כל הלקוחות שלא שולמו"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="M22 7l-10 7L2 7"/>
-            </svg>
+      <div
+        v-for="k in kpiCards" :key="k.key"
+        class="kpi-card" :class="{ clickable: !!k.open }"
+        :style="{ '--k': k.color, '--k-ink': k.ink }"
+        :title="k.title || null"
+        :role="k.open ? 'button' : null" :tabindex="k.open ? 0 : null"
+        @click="k.open && k.open()" @keydown.enter="k.open && k.open()"
+      >
+        <span class="kpi-ghost" aria-hidden="true"><KpiGlyph :name="k.glyph" :size="92" :stroke="1.2" /></span>
+        <span class="kpi-icon"><KpiGlyph :name="k.glyph" :size="22" /></span>
+        <span class="kpi-data">
+          <span class="kpi-value" :class="{ 'ltr-number': k.ltr }">{{ k.value }}</span>
+          <span class="kpi-label">{{ k.label }}</span>
+        </span>
+        <span v-if="k.actions" class="kpi-actions">
+          <button class="kpi-action-btn" type="button" :title="k.actions.mailTitle" @click.stop="k.actions.mail()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
           </button>
-          <button
-            class="kpi-action-btn kpi-action-excel"
-            @click.stop="downloadUnpaidExcel(kpiUnpaid)"
-            title="הורד לאקסל"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <polyline points="9 15 12 18 15 15"/>
-            </svg>
+          <button class="kpi-action-btn" type="button" title="הורד לאקסל" @click.stop="k.actions.excel()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
           </button>
-        </div>
-      </div>
-      <div class="kpi-card kpi-violet" @click="openFilterModal('רק בנפרעים', kpiOnlyComm)" style="cursor:pointer">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value">{{ kpiOnlyComm.length }}</div>
-          <div class="kpi-label">רק בנפרעים</div>
-        </div>
-        <div v-if="kpiOnlyComm.length > 0" class="kpi-actions">
-          <button
-            class="kpi-action-btn kpi-action-mail"
-            @click.stop="sendOnlyCommissionMail(kpiOnlyComm)"
-            title="שלח מייל על לקוחות שרק בנפרעים"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="M22 7l-10 7L2 7"/>
-            </svg>
-          </button>
-          <button
-            class="kpi-action-btn kpi-action-excel"
-            @click.stop="downloadOnlyCommissionExcel(kpiOnlyComm)"
-            title="הורד לאקסל"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <polyline points="9 15 12 18 15 15"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div class="kpi-card kpi-red">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(kpiUnpaidCharge) }}</div>
-          <div class="kpi-label">סה"כ חיוב לא משולם</div>
-        </div>
-      </div>
-      <div class="kpi-card kpi-green" title="לפי הדיווח האחרון מכל חברה">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number">{{ formatAmount(totalCommission) }}</div>
-          <!-- The full qualifier lives in the card's title attribute: at six
-               equal columns this label wrapped to three lines and stretched
-               the whole row. -->
-          <div class="kpi-label">עמלות שהתקבלו</div>
-        </div>
-      </div>
-      <div class="kpi-card kpi-cyan">
-        <div class="kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-            <line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-        </div>
-        <div class="kpi-data">
-          <div class="kpi-value ltr-number" :title="formatAmount(totalBalance)">{{ formatCompact(totalBalance) }}</div>
-          <div class="kpi-label">סה"כ יתרה</div>
-        </div>
+        </span>
       </div>
     </div>
 
@@ -356,6 +251,7 @@
 </template>
 
 <script setup>
+import KpiGlyph from '../workspace/KpiGlyph.vue'
 import { ref, computed, watch, onMounted, onUnmounted, toRef } from 'vue'
 import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
@@ -592,6 +488,26 @@ function unpaidChargeOf(list) {
 // Strip below the charts follows the active filter; the KPI never does.
 const totalUnpaidCharge = computed(() => unpaidChargeOf(effectiveUnpaidCustomers.value))
 const kpiUnpaidCharge = computed(() => unpaidChargeOf(kpiUnpaid.value))
+
+// The six KPI cards (colour = category; ink = text-safe shade for the badge).
+const kpiCards = computed(() => [
+  { key: 'total', glyph: 'matched-customers', label: 'סה״כ לקוחות', value: kpiTotalCustomers.value,
+    color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)' },
+  { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
+    color: '#E04B48', ink: '#C23934',
+    open: () => openFilterModal('לא שולם', kpiUnpaid.value),
+    actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
+  { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
+    color: '#4E9DD0', ink: '#35719A',
+    open: () => openFilterModal('רק בנפרעים', kpiOnlyComm.value),
+    actions: kpiOnlyComm.value.length ? { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value), mailTitle: 'שלח מייל על לקוחות שרק בנפרעים' } : null },
+  { key: 'charge', glyph: 'charge', label: 'חיוב לא משולם', value: formatAmount(kpiUnpaidCharge.value), ltr: true, title: 'סה"כ חיוב לא משולם',
+    color: '#D6336C', ink: '#C42B60' },
+  { key: 'received', glyph: 'received', label: 'עמלות שהתקבלו', value: formatAmount(totalCommission.value), ltr: true,
+    title: 'לפי הדיווח האחרון מכל חברה', color: '#0FA39B', ink: '#1E7D78' },
+  { key: 'balance', glyph: 'balance', label: 'סה"כ יתרה', value: formatCompact(totalBalance.value), ltr: true,
+    title: formatAmount(totalBalance.value), color: '#2F73C4', ink: '#2F73C4' },
+])
 
 // ─── Top Clients ───
 
@@ -1539,55 +1455,54 @@ function formatCompact(val) {
 }
 
 .kpi-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 16px 16px 18px; min-height: 84px;
+  background:
+    radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, var(--k) 9%, transparent) 0%, transparent 60%),
+    var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
-
+.kpi-card.clickable { cursor: pointer; }
 .kpi-card:hover {
-  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--k) 30%, transparent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--k) 16%, transparent);
 }
-
+.kpi-card:focus-visible { outline: 2px solid var(--k); outline-offset: 2px; }
+.kpi-ghost {
+  position: absolute; inset-inline-end: -14px; bottom: -18px;
+  color: var(--k); opacity: 0.09; pointer-events: none;
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+.kpi-card:hover .kpi-ghost { transform: rotate(-8deg) scale(1.06); opacity: 0.14; }
 .kpi-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  position: relative; flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 14px;
+  display: grid; place-items: center;
+  color: var(--k-ink);
+  background: color-mix(in srgb, var(--k) 13%, var(--card-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k) 18%, transparent);
 }
-
-.kpi-blue .kpi-icon { background: rgba(46, 132, 74, 0.1); color: var(--tab-comparison); }
-.kpi-amber .kpi-icon { background: rgba(224, 75, 72, 0.1); color: #E04B48; }
-.kpi-amber .kpi-value { color: #E04B48; }
-.kpi-red .kpi-icon { background: rgba(194, 57, 52, 0.1); color: #C23934; }
-.kpi-red .kpi-value { color: #C23934; }
-.kpi-green .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.kpi-cyan .kpi-icon { background: rgba(46, 132, 74, 0.1); color: #2E844A; }
-.kpi-violet .kpi-icon { background: rgba(78, 157, 208, 0.12); color: #3A86BD; }
-.kpi-violet .kpi-value { color: #3A86BD; }
-
-.kpi-data { min-width: 0; }
+.kpi-data { position: relative; min-width: 0; display: flex; flex-direction: column; }
 .kpi-value {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.5px;
-  line-height: 1.2;
+  font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--text-primary, #181818); line-height: 1.15; white-space: nowrap;
 }
-.kpi-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-top: 2px;
+.kpi-label { font-size: 12.5px; font-weight: 600; color: var(--text-secondary, #706E6B); margin-top: 3px; white-space: nowrap; }
+.kpi-actions { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 4px; z-index: 1; }
+.kpi-action-btn {
+  width: 26px; height: 26px; border-radius: 8px; padding: 0; cursor: pointer;
+  display: grid; place-items: center;
+  color: var(--k-ink); background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--k) 25%, transparent);
+  transition: background 0.15s ease, color 0.15s ease;
 }
+.kpi-action-btn:hover { background: var(--k-ink); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .kpi-card, .kpi-ghost { transition: none; } }
 
 /* ── Chart Cards ── */
 .chart-card {
@@ -1888,39 +1803,6 @@ function formatCompact(val) {
 .fm-chip-ok { background: var(--green-light); color: var(--green); }
 .fm-chip-commission { background: var(--green-light); color: var(--green); }
 .fm-chip-violet { background: rgba(127, 86, 217, 0.08); color: var(--accent-violet); }
-
-.kpi-actions {
-  display: flex;
-  gap: 4px;
-  margin-inline-start: auto;
-  flex-shrink: 0;
-}
-.kpi-action-btn {
-  background: none;
-  border: 1px solid rgba(201, 162, 39, 0.3);
-  border-radius: 8px;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #8A6300;
-  transition: all 0.15s;
-}
-.kpi-action-btn:hover {
-  background: rgba(201, 162, 39, 0.1);
-  border-color: #8A6300;
-  transform: translateY(-1px);
-}
-.kpi-action-excel {
-  color: #2E844A;
-  border-color: rgba(46, 132, 74, 0.3);
-}
-.kpi-action-excel:hover {
-  background: rgba(46, 132, 74, 0.1);
-  border-color: #2E844A;
-}
 
 .fm-arrow {
   color: var(--light-gray);

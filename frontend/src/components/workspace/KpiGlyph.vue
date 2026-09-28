@@ -27,6 +27,33 @@
       <path d="M5 10.5v7M9.7 10.5v7M14.3 10.5v7M19 10.5v7" />
       <path d="M3 20.5h18" />
     </template>
+    <!-- השוואת נפרעים -->
+    <template v-else-if="name === 'matched-customers'">
+      <circle cx="8" cy="8" r="3.2" fill="currentColor" fill-opacity="0.18" />
+      <path d="M2.5 19v-.8A4.2 4.2 0 0 1 6.7 14h2.6" />
+      <path d="m13 17 2.5 2.5L21 14" />
+      <circle cx="16" cy="7.5" r="3" />
+    </template>
+    <template v-else-if="name === 'unpaid'">
+      <circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity="0.18" />
+      <path d="M12 7v6" /><path d="M12 16.5h.01" />
+    </template>
+    <template v-else-if="name === 'only-comm'">
+      <path d="M14 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5z" fill="currentColor" fill-opacity="0.18" />
+      <path d="M14 2.5v5h5" /><path d="M9 13h6M9 16.5h4" />
+    </template>
+    <template v-else-if="name === 'charge'">
+      <path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" fill="currentColor" fill-opacity="0.18" />
+      <path d="M12 9v4" /><path d="M12 17h.01" />
+    </template>
+    <template v-else-if="name === 'received'">
+      <circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity="0.18" />
+      <path d="M15 8.5h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9" /><path d="M12 6.5v2M12 16.5v2" />
+    </template>
+    <template v-else-if="name === 'balance'">
+      <rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="currentColor" fill-opacity="0.18" />
+      <path d="M2.5 10h19" /><path d="M16 14.5h2.5" />
+    </template>
     <template v-else>
       <circle cx="12" cy="12" r="9.5" fill="currentColor" fill-opacity="0.18" />
       <path d="M5.5 12.5h3l1.8-3.5 3 7 1.8-3.5h3.4" />
@@ -36,7 +63,7 @@
 
 <script setup>
 defineProps({
-  name: { type: String, required: true }, // products | clients | accumulation | companies | active
+  name: { type: String, required: true }, // products | clients | accumulation | companies | active | matched-customers | unpaid | only-comm | charge | received | balance
   size: { type: Number, default: 22 },
   stroke: { type: Number, default: 1.8 },
 })
