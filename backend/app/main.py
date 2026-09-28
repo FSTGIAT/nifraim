@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -96,6 +96,7 @@ app.include_router(mailbox.router, prefix="/api/mailbox", tags=["mailbox"])
 app.include_router(mail_agent.router, prefix="/api/mail-agent", tags=["mail-agent"])
 app.include_router(cycle.router, prefix="/api/cycle", tags=["cycle"])
 app.include_router(agreement_requests.router, prefix="/api/agreement-requests", tags=["agreement-requests"])
+app.include_router(collection_agent.router, prefix="/api/collection-agent", tags=["collection-agent"])
 # Public legal pages at the site root (no /api prefix). Registered before the SPA
 # catch-all below so GET /privacy returns the policy, not index.html.
 app.include_router(legal.router, tags=["legal"])

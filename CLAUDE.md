@@ -519,6 +519,14 @@ The agent sees their own dates everywhere, all from `/api/cycle/status`: signup,
 - **Admin operations dashboard:** `/admin` → "תפעול" (sidebar item **ניהול**, admins only). It shows, per agent: cycle status per worker, Mail Agent, מסלקה downloads and agreement requests.
   See §16.
 
+## Collection agent (סוכן גבייה)
+
+A back-office agent that chases unpaid commission. It works per insurer from the latest merged comparison.
+- Its mails are DRAFTS until the agent clicks "אישור ושליחה". Nothing is ever sent automatically.
+- It follows replies, summarising each in one line, and suggests a reminder after 7 days.
+- Inactive products are never claimed.
+- It lives under the cycle clock on home. See `docs/ARCHITECTURE.md` §17.
+
 ## Local Worker & Self-Update (`local-worker` skill)
 
 Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the

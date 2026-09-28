@@ -63,6 +63,8 @@
          small alarm-clock icon in the top-right corner. -->
     <div v-if="showEmotionClock" class="ws-emotion-clock">
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
+      <!-- the collection agent (סוכן גבייה) — once a comparison exists -->
+      <CollectionAgentIcon size="big" @open="openCollector" />
     </div>
     <div
       v-else
@@ -70,7 +72,9 @@
       :class="{ 'ws-cycle-small--below-bell': !bellInRail, 'ws-cycle-small--content': viewMode === 'content' }"
     >
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
+      <CollectionAgentIcon size="small" @open="openCollector" />
     </div>
+    <CollectionAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" />
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
          replaced `AiInsightCard`, a full-width summary band that sat above
@@ -321,6 +325,8 @@ import SetupProgressCard from '../components/workspace/SetupProgressCard.vue'
 import SetupPipelineModal from '../components/workspace/SetupPipelineModal.vue'
 import CycleRailIcon from '../components/workspace/CycleRailIcon.vue'
 import CycleEmotionClock from '../components/workspace/CycleEmotionClock.vue'
+import CollectionAgentIcon from '../components/workspace/CollectionAgentIcon.vue'
+import CollectionAgentPanel from '../components/workspace/CollectionAgentPanel.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
@@ -525,6 +531,14 @@ function useMq(query) {
 // The rail is hidden ≤720px wide and has no room for the bell ≤720px tall.
 const bellInRail = useMq('(min-width: 721px) and (min-height: 721px)')
 const roomForEmotionClock = useMq('(min-width: 1360px) and (min-height: 640px)')
+// ── Collection agent (סוכן גבייה) ──
+const collectorOpen = ref(false)
+const collectorOrigin = ref(null)
+function openCollector(el) {
+  collectorOrigin.value = el || null
+  collectorOpen.value = true
+}
+
 const showEmotionClock = computed(() => viewMode.value === 'home' && roomForEmotionClock.value)
 
 async function maybeOpenSetup() {
@@ -826,6 +840,7 @@ async function openFundDetail(trackId) {
 /* Cycle: big emotion clock, vertically centred in the empty band between the
    cards grid (882px, centred) and the right rail. */
 .ws-emotion-clock {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
   position: fixed;
   top: 50%;
   transform: translateY(-50%);
@@ -834,7 +849,7 @@ async function openFundDetail(trackId) {
 }
 /* Cycle: small alarm-clock icon — the bell's old corner (the bell moved into
    the rail); under the corner bell when that fallback is showing. */
-.ws-cycle-small { position: fixed; top: 44px; inset-inline-start: 18px; z-index: 200; }
+.ws-cycle-small { position: fixed; top: 44px; inset-inline-start: 18px; z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .ws-cycle-small--below-bell { top: 104px; }
 .ws-cycle-small--below-bell.ws-cycle-small--content { top: 188px; }
 @media (max-width: 720px) {

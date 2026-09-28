@@ -268,6 +268,15 @@ def start_scheduler():
         id="agreement_request_poll",
         replace_existing=True,
     )
+    # Collection agent: follow insurers' replies to the unpaid-commission mails
+    # the agent approved (services/collection_agent.py).
+    from app.services.collection_agent import run_collection_poll
+    scheduler.add_job(
+        run_collection_poll,
+        IntervalTrigger(minutes=15),
+        id="collection_poll",
+        replace_existing=True,
+    )
     scheduler.add_job(
         purge_old_bodies,
         CronTrigger(hour=3, minute=40, timezone="Asia/Jerusalem"),
