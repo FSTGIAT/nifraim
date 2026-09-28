@@ -37,7 +37,9 @@ from app.models.mail_item import OPEN_STATUSES, MailItem
 from app.models.user import User
 from app.utils.company_norm import company_stem
 
-STATUS_HE = {"matched": "שולם", "only_production": "לא שולם", "only_commission": "רק בנפרעים"}
+STATUS_HE = {
+    "production_only_file": "בפרודוקציה (לא בהשוואה האחרונה)",
+    "matched": "שולם", "only_production": "לא שולם", "only_commission": "רק בנפרעים"}
 
 
 def _key(name: str | None) -> str:
@@ -65,6 +67,7 @@ class MapContext:
     cases: dict = field(default_factory=dict)           # key -> CollectionCase (latest period)
     mails: list = field(default_factory=list)           # open MailItem
     names: dict = field(default_factory=dict)           # key -> display name
+    extra: dict = field(default_factory=dict)           # id -> customer from production only (@-mentioned, not in the comparison)
 
     # derived
     @property
@@ -206,8 +209,42 @@ def page_company(ctx: MapContext, slug: str) -> str:
     return "\n".join(lines)
 
 
+async def add_production_customers(db, ctx: MapContext, ids) -> None:
+    """Customers the agent @-mentioned who are in a production file but not in
+    the last comparison (the @ search reads ALL active production files) — load
+    them from ClientRecord so their page exists instead of "not found"."""
+    from sqlalchemy import func, or_, select
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+
+    have = {str(c.get("id_number")).lstrip("0") for c in ctx.customers}
+    want = {str(i).lstrip("0") for i in ids if i and str(i).lstrip("0") not in have}
+    upload_ids = await _get_production_upload_ids(db, ctx.user.id) if want else []
+    if not want or not upload_ids:
+        return
+    recs = (await db.execute(select(ClientRecord).where(
+        ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(upload_ids),
+        or_(ClientRecord.id_number.in_(want), func.ltrim(ClientRecord.id_number, "0").in_(want)),
+    ))).scalars().all()
+    for r in recs:
+        idn = str(r.id_number).lstrip("0")
+        c = ctx.extra.setdefault(idn, {
+            "id_number": idn, "first_name": r.first_name, "last_name": r.last_name,
+            "client_email": r.client_email, "client_phone": r.client_phone,
+            "match_status": "production_only_file", "production_products": [], "commission_products": [],
+        })
+        c["client_email"] = c["client_email"] or r.client_email
+        c["client_phone"] = c["client_phone"] or r.client_phone
+        c["production_products"].append({
+            "company": r.receiving_company, "product": r.product, "product_type": r.product_type,
+            "policy_number": r.fund_policy_number, "status": r.product_status,
+            "accumulation": float(r.accumulation) if r.accumulation else None,
+            "premium": float(r.total_premium) if r.total_premium else None,
+        })
+
+
 def page_customer(ctx: MapContext, idn: str) -> str:
-    c = next((x for x in ctx.customers if str(x.get("id_number")) == idn), None)
+    c = next((x for x in ctx.customers if str(x.get("id_number")) == idn), None) or ctx.extra.get(idn.lstrip("0"))
     if not c:
         return f"# לא נמצא\nאין לקוח עם ת.ז {idn} בהשוואה האחרונה."
     nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x) or idn

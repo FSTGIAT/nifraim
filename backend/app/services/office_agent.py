@@ -222,6 +222,7 @@ async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] 
         messages.insert(0, {"role": "user", "content": "שלום"})
     q = f"index.md:\n{index}\n\nבקשה: {question[:500]}"
     if mentions:
+        await data_map.add_production_customers(db, ctx, [m.get("id_number") for m in mentions if m.get("id_number")])
         # the agent @-picked these from their contacts — exact, use them as given
         rows = []
         for m in mentions[:10]:
