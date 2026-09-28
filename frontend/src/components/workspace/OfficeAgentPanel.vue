@@ -87,13 +87,15 @@
               <Transition name="na-sheet">
                 <div v-if="m.proposal && m.proposal.status !== 'dropped'" class="na-sheet na-prop" :class="{ 'is-sent': m.proposal.status === 'sent' }">
                   <div class="na-prop-head">
-                    <svg v-if="m.proposal.kind === 'meeting'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
-                    <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
-                    <strong>{{ m.proposal.kind === 'meeting' ? 'זימון לפגישה' : 'מייל' }}</strong>
-                    <span v-if="m.proposal.status === 'sent'" class="na-sent">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                      {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : 'נשלח' }}
-                    </span>
+                    <AgentCreateDrawing :kind="m.proposal.kind" :state="m.proposal.status === 'sent' ? 'sent' : 'open'" />
+                    <div class="na-prop-titles">
+                      <strong>{{ m.proposal.kind === 'meeting' ? (isSelf(m.proposal) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל' }}</strong>
+                      <span v-if="m.proposal.status === 'sent'" class="na-sent">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : 'נשלח' }}
+                      </span>
+                      <span v-else class="na-prop-sub">הכנתי — עברו, שנו מה שצריך ואשרו</span>
+                    </div>
                   </div>
                   <fieldset :disabled="m.proposal.status === 'sent'" class="na-prop-fields">
                     <label class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
@@ -143,6 +145,7 @@ import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 import AiStreamingText from '../ui/AiStreamingText.vue'
+import AgentCreateDrawing from './AgentCreateDrawing.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: Object, default: null } })
 const emit = defineEmits(['update:open'])
@@ -158,7 +161,20 @@ function onLineDone(i) {
 }
 const writing = computed(() => store.narrating || (!!store.narration && step.value < store.narration.lines.length))
 // 'composing' only while really waiting on the server; writing is calm
-const orbState = computed(() => (store.busy === 'ask' || (store.narrating && !store.narration) ? 'composing' : 'connecting'))
+// 'solving' for a beat when the agent just created something
+const justMade = ref(false)
+let madeTimer = 0
+watch(() => store.thread.length, () => {
+  const last = store.thread[store.thread.length - 1]
+  if (last?.proposal) {
+    justMade.value = true
+    clearTimeout(madeTimer)
+    madeTimer = setTimeout(() => { justMade.value = false }, 2200)
+  }
+})
+const orbState = computed(() => (justMade.value ? 'solving'
+  : store.busy === 'ask' || (store.narrating && !store.narration) ? 'composing' : 'connecting'))
+const isSelf = (p) => !!store.brief?.mailbox?.mailbox_address && p.to_email?.toLowerCase() === store.brief.mailbox.mailbox_address.toLowerCase()
 const statusText = computed(() => {
   if (store.narrating && !store.narration) return 'עובר על המיילים והעמלות…'
   if (store.busy === 'ask') return 'בודק…'
@@ -328,9 +344,15 @@ async function close() {
 .na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-4px); }
 
 .na-prop { margin-top: 12px; }
-.na-prop-head { display: flex; align-items: center; gap: 8px; color: #0A6664; font-size: 14px; }
-.na-prop-head strong { color: #10201F; font-weight: 800; }
-.na-sent { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 800; color: #1E7D4A; }
+.na-prop-head { display: flex; align-items: center; gap: 14px; padding-bottom: 4px; }
+.na-prop-titles { display: flex; flex-direction: column; gap: 2px; }
+.na-prop-titles strong { color: #10201F; font-size: 17px; font-weight: 900; letter-spacing: -0.02em; }
+.na-prop-sub { font-size: 13px; color: #4A5B5A; animation: naIn .4s ease 1.2s both; }
+.na-sent { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 800; color: #1E7D4A; animation: naIn .4s ease 1.3s both; }
+/* the fields appear once the drawing is made */
+.na-prop:not(.is-sent) .na-prop-fields > *, .na-prop:not(.is-sent) > .na-row { animation: naIn .4s ease both; animation-delay: calc(.9s + var(--i, 0) * 70ms); }
+.na-prop-fields > :nth-child(2) { --i: 1; } .na-prop-fields > :nth-child(3) { --i: 2; } .na-prop-fields > :nth-child(4) { --i: 3; }
+.na-prop > .na-row { --i: 5; }
 .na-prop.is-sent { opacity: 0.8; }
 .na-prop-fields { border: none; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .na-f { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }

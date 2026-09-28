@@ -146,7 +146,10 @@ ASK_SYSTEM = (
     "כשמבקשים ממך פעולה — עשה אותה מיד עם הכלי. הפרט היחיד שמותר לשאול עליו הוא כתובת המייל של הנמען, ורק אם אין לך אותה "
     "(בשיחה או בדפים). לעולם אל תשאל על שם, תוכן, אורך או ניסוח — אתה כותב את המייל בעצמך, קצר ומקצועי, בגוף ראשון של הסוכן. "
     "to_name — רק שם אמיתי שידוע לך; אחרת השאר ריק (לא 'לקוח'). "
-    "יום ושעה שהסוכן אמר — קובעים בדיוק אותם, בלי ויכוח ובלי הערות על חגים. נמען שהסוכן נתן — לא צריך לאמת אותו מול הנתונים. "
+    "תזכורת לסוכן עצמו ('תזכיר לי…') = propose_meeting אל המייל של הסוכן עצמו (מופיע למטה), 15 דקות, כותרת 'תזכורת: …'; 'בבוקר' = 09:00. "
+    "כתובת מייל של לקוח שכתב לסוכן מופיעה בדפי המייל/החיפוש בתוך <…> — השתמש בה. "
+    "אל תיתן ייעוץ מקצועי משלך (מס, משפטי, סכומים שלא בדפים). כשיש טיוטת תשובה מוכנה — סכם אותה והצע לשלוח אותה. "
+        "יום ושעה שהסוכן אמר — קובעים בדיוק אותם, בלי ויכוח ובלי הערות על חגים. נמען שהסוכן נתן — לא צריך לאמת אותו מול הנתונים. "
     "שעה שלא נאמרה — הצע בעצמך את יום העבודה הקרוב ב-10:00, 30 דקות (ימים א-ה); אל תשאל על זה. "
     "כותרת ברירת מחדל: 'פגישת היכרות' ללקוח חדש, אחרת לפי ההקשר. "
     "יש לך גם מפה של הנתונים שלו כאתר Markdown: index.md מחולק לקטגוריות עם קישורים, ואפשר לרדת לעומק עם open_page "
@@ -165,8 +168,10 @@ MAX_HOPS = 5
 ASK_MODEL = "claude-sonnet-5"
 
 
-def _proposal_line(p: dict) -> str:
+def _proposal_line(p: dict, own_email: str = "") -> str:
     from app.services.agent_actions import when_he
+    if p["kind"] == "meeting" and own_email and p["to_email"].lower() == own_email.lower():
+        return f"שמתי לך ביומן «{p['title']}» — {when_he(p['start'], p['duration_min'])}. מחכה לאישור שלך."
     who = p.get("to_name") or p["to_email"]
     to = "ל" + ("" if "\u0590" <= who[:1] <= "\u05ff" else "-") + who
     if p["kind"] == "meeting":
@@ -187,7 +192,9 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
     if not settings.ANTHROPIC_API_KEY:
         return {"answer": index.splitlines()[0], "proposal": None}
     now = datetime.now(IL)
-    system = ASK_SYSTEM + f" עכשיו: יום {agent_actions.HE_DAYS[now.weekday()]} {now:%Y-%m-%d %H:%M} (שעון ישראל). שם הסוכן: {user.full_name or ''}."
+    from app.services.agreement_requests import mailbox_state
+    own_email = (await mailbox_state(db, user.id)).get("mailbox_address") or user.email
+    system = ASK_SYSTEM + f" עכשיו: יום {agent_actions.HE_DAYS[now.weekday()]} {now:%Y-%m-%d %H:%M} (שעון ישראל). שם הסוכן: {user.full_name or ''}. המייל של הסוכן: {own_email}."
     messages: list[dict] = []
     for turn in (history or [])[-8:]:
         role = "assistant" if turn.get("role") == "agent" else "user"
@@ -240,7 +247,7 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
                 results.append({"type": "tool_result", "tool_use_id": blk.id, "content": content})
             messages.append({"role": "user", "content": results})
             if proposal:
-                return {"answer": _proposal_line(proposal), "proposal": proposal}
+                return {"answer": _proposal_line(proposal, own_email), "proposal": proposal}
         return {"answer": "בדקתי כמה דפים ולא הגעתי לתשובה חד-משמעית — נסו לשאול בצורה ממוקדת יותר.", "proposal": proposal}
     except Exception as e:  # noqa: BLE001
         logger.warning("office agent ask failed: %s", e)

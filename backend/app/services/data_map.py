@@ -253,7 +253,7 @@ def page_mail(ctx: MapContext) -> str:
         if m.linked_customer_id_number:
             links.append(f"[לקוח](customers/{m.linked_customer_id_number}.md)")
         draft = " · יש טיוטה" if m.draft_body else ""
-        lines.append(f"- {m.from_name or m.from_address} ({m.category or 'מייל'}): {m.summary or m.subject}{draft} {' '.join(links)}")
+        lines.append(f"- {m.from_name or m.from_address} <{m.from_address}> ({m.category or 'מייל'}): {m.summary or m.subject}{draft} {' '.join(links)}")
     if len(lines) == 2:
         lines.append("אין מיילים פתוחים.")
     return "\n".join(lines)
@@ -281,7 +281,9 @@ def page_search(ctx: MapContext, text: str) -> str:
     for m in ctx.mails:
         if t and (t in (m.from_name or "") or t in (m.summary or "") or t in (m.subject or "")):
             draft = " · יש טיוטה" if m.draft_body else ""
-            hits.append(f"- מייל מ{m.from_name or m.from_address}: {m.summary or m.subject}{draft}")
+            hits.append(f"- מייל מ{m.from_name or m.from_address} <{m.from_address}>: {m.summary or m.subject}{draft}")
+            if m.draft_body:
+                hits.append("  טיוטת התשובה שהוכנה: " + " ".join(m.draft_body.split())[:700])
     lines += hits[:30] or ["לא נמצא לקוח או מייל בשם הזה."]
     return "\n".join(lines)
 

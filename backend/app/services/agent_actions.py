@@ -138,7 +138,8 @@ def build_message(p: dict, sender_email: str, sender_name: str) -> EmailMessage:
         return msg
     # meeting: the agent gets a copy so it lands on their side too
     msg["Subject"] = f"הזמנה: {p['title']} · {when_he(p['start'], p['duration_min'])}"
-    msg["Cc"] = sender_email
+    if p["to_email"].lower() != sender_email.lower():  # a reminder to self needs no copy
+        msg["Cc"] = sender_email
     text = "\n".join(x for x in [
         f"שלום{' ' + p['to_name'] if p.get('to_name') else ''},", "",
         f"קבעתי לנו פגישה: {p['title']}",

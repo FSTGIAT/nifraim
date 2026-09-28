@@ -36,3 +36,9 @@ def test_email_message():
 def test_rejects_bad_proposals(kind, data, err):
     with pytest.raises(aa.ActionError, match=err):
         aa.normalize(kind, data)
+
+
+def test_reminder_to_self_has_no_cc():
+    p = aa.normalize("meeting", {"to_email": "Agent@gmail.com", "title": "תזכורת: להתקשר למגדל", "start": "2026-09-30T09:00", "duration_min": 15})
+    msg = aa.build_message(p, "agent@gmail.com", "קיקו")
+    assert "Cc" not in msg
