@@ -264,7 +264,8 @@ function onAskInput() {
   const el = askEl.value
   if (!el) return
   const caret = el.selectionStart ?? q.value.length
-  const m = /(^|\s)@([^\s@]{0,30})$/.exec(q.value.slice(0, caret))
+  // "ל@דנה" works too; only an email's @ (a latin letter/digit before it) doesn't open it
+  const m = /(^|[^A-Za-z0-9._%+-])@([^\s@]{0,30})$/.exec(q.value.slice(0, caret))
   if (!m) { men.open = false; return }
   men.open = true
   men.start = caret - m[2].length - 1
