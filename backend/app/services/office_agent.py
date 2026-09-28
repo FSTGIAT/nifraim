@@ -150,7 +150,9 @@ ASK_SYSTEM = (
     "to_name — רק שם אמיתי שידוע לך; אחרת השאר ריק (לא 'לקוח'). "
     "תזכורת לסוכן עצמו ('תזכיר לי…') = propose_meeting אל המייל של הסוכן עצמו (מופיע למטה), 15 דקות, כותרת 'תזכורת: …'; 'בבוקר' = 09:00. "
     "כתובת מייל של לקוח שכתב לסוכן מופיעה בדפי המייל/החיפוש בתוך <…> — השתמש בה. "
-    "אל תיתן ייעוץ מקצועי משלך (מס, משפטי, סכומים שלא בדפים). כשיש טיוטת תשובה מוכנה — סכם אותה והצע לשלוח אותה. "
+    "'הלקוח הכי גדול/הגדולים' → top.md (ברירת מחדל: לפי צבירה, ואמור לפי מה דירגת). מילה קטועה או שגיאת כתיב — הבן לבד ואל תשאל. "
+    "מייל 'עם מידע מפורט' ללקוח = פתח את דף הלקוח וכתוב את המוצרים שלו (חברה, מוצר, צבירה) מהדף בלבד. "
+        "אל תיתן ייעוץ מקצועי משלך (מס, משפטי, סכומים שלא בדפים). כשיש טיוטת תשובה מוכנה — סכם אותה והצע לשלוח אותה. "
         "יום ושעה שהסוכן אמר — קובעים בדיוק אותם, בלי ויכוח ובלי הערות על חגים. נמען שהסוכן נתן — לא צריך לאמת אותו מול הנתונים. "
     "שעה שלא נאמרה — הצע בעצמך את יום העבודה הקרוב ב-10:00, 30 דקות (ימים א-ה); אל תשאל על זה. "
     "כותרת ברירת מחדל: 'פגישת היכרות' ללקוח חדש, אחרת לפי ההקשר. "
@@ -165,7 +167,7 @@ OPEN_PAGE_TOOL = {
     "description": "פתיחת דף במפת הנתונים של הסוכן (Markdown). נתיבים כמו index.md, companies.md, companies/<key>.md, customers/<ת.ז>.md, search/<שם>.md, unpaid.md, mail.md, agreements.md — בדיוק כפי שמופיעים בקישורים.",
     "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
 }
-MAX_HOPS = 5
+MAX_HOPS = 7
 # Sonnet, not Haiku: Haiku kept asking for details it didn't need instead of acting
 ASK_MODEL = "claude-sonnet-5"
 
@@ -181,18 +183,18 @@ def _proposal_line(p: dict, own_email: str = "") -> str:
     return f"הכנתי מייל {to}: «{p['subject']}». מחכה לאישור שלך."
 
 
-async def ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None) -> dict:
+async def ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None, mentions: list[dict] | None = None) -> dict:
     import time as _t
     t0 = _t.monotonic()
-    out = await _ask(db, user, question, history)
+    out = await _ask(db, user, question, history, mentions)
     p = out.get("proposal")
-    trace.info("NIFRA-ASK user=%s hist=%d %.1fs | Q: %s | A: %s%s", user.email, len(history or []), _t.monotonic() - t0,
+    trace.info("NIFRA-ASK user=%s hist=%d @%d %.1fs | Q: %s | A: %s%s", user.email, len(history or []), len(mentions or []), _t.monotonic() - t0,
                question.replace("\n", " ")[:300], (out.get("answer") or "").replace("\n", " ")[:400],
                f" | PROPOSAL {p}" if p else "")
     return out
 
 
-async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None) -> dict:
+async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None, mentions: list[dict] | None = None) -> dict:
     """Answer — or ACT on — a short request. The model reads the data map
     (services/data_map) and may prepare ONE action (services/agent_actions):
     an email or a meeting invitation, returned as `proposal` for the agent to
@@ -219,21 +221,44 @@ async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] 
     if messages and messages[0]["role"] == "assistant":
         messages.insert(0, {"role": "user", "content": "שלום"})
     q = f"index.md:\n{index}\n\nבקשה: {question[:500]}"
+    if mentions:
+        # the agent @-picked these from their contacts — exact, use them as given
+        rows = []
+        for m in mentions[:10]:
+            bits = [str(m.get("name") or "")[:80]]
+            if m.get("id_number"):
+                bits.append(f"ת.ז {str(m['id_number'])[:12]} (customers/{str(m['id_number'])[:12]}.md)")
+            if m.get("email"):
+                bits.append(f"מייל {str(m['email'])[:120]}")
+            bits.append({"customer": "לקוח", "company": "איש קשר בחברה", "mail": "שלח מייל"}.get(m.get("kind"), ""))
+            rows.append(" · ".join(b for b in bits if b))
+        q += "\nאנשי קשר שסומנו ב-@ (מדויקים):\n" + "\n".join("- " + r for r in rows)
     if messages and messages[-1]["role"] == "user":
         messages[-1]["content"] += "\n" + q
     else:
         messages.append({"role": "user", "content": q})
     proposal = None
+    nudged = False
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         for _ in range(MAX_HOPS):
             r = await client.messages.create(
-                model=ASK_MODEL, max_tokens=900, system=system,
+                model=ASK_MODEL, max_tokens=2500, system=system,
                 tools=[OPEN_PAGE_TOOL, *agent_actions.TOOLS], messages=messages,
             )
             text = "".join(x.text for x in r.content if getattr(x, "type", "") == "text").strip()
             if r.stop_reason != "tool_use":
+                claims = not proposal and any(w in text for w in ("הכנתי", "מחכה לאישור", "מחכה לאישורך"))
+                if claims and not nudged:
+                    # it SAID it prepared something but never called the tool (or the call
+                    # was cut off by max_tokens) — send it back once to actually do it
+                    nudged = True
+                    messages.append({"role": "assistant", "content": text or "…"})
+                    messages.append({"role": "user", "content": "לא הכנת בפועל — לא קראת לכלי. קרא עכשיו ל-propose_email / propose_meeting עם הפרטים. גוף מייל עד 15 שורות."})
+                    continue
+                if claims:
+                    text = "לא הצלחתי להכין את זה עד הסוף — נסו לבקש שוב בקצרה."
                 return {"answer": text or ("הכנתי — מחכה לאישור שלך." if proposal else "אין לי תשובה כרגע."), "proposal": proposal}
             # plain dicts — re-sending the SDK's block objects trips its serializer
             blocks = []
@@ -266,6 +291,57 @@ async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] 
     except Exception as e:  # noqa: BLE001
         trace.warning("NIFRA-ASK failed: %r", e)
         return {"answer": "לא הצלחתי לענות כרגע — נסו שוב בעוד רגע.", "proposal": None}
+
+
+# ─────────────────────────── @ contacts (the ask box mention search) ───────
+
+async def contacts(db: AsyncSession, user: User, q: str = "", limit: int = 12) -> list[dict]:
+    """Who the agent can @-mention: customers from the active production files
+    (name · ת.ז · email/phone when the file has them), saved insurer contacts,
+    and people who mailed in. `q` matches name, ID prefix or email."""
+    from sqlalchemy import func, or_
+    from app.api.production import _get_production_upload_ids
+    from app.models.company_contact import CompanyContact
+    from app.models.record import ClientRecord
+
+    q = (q or "").strip()
+    out: list[dict] = []
+    ql = q.lower()
+    # insurer contacts + mail senders first — few, and usually what an action needs
+    for c in (await db.execute(select(CompanyContact).where(CompanyContact.user_id == user.id))).scalars():
+        if not q or ql in (c.company_name or "").lower() or ql in (c.contact_name or "").lower() or ql in (c.email or "").lower():
+            out.append({"kind": "company", "name": c.company_name, "sub": c.contact_name or "", "email": c.email, "id_number": None})
+    seen_mail = set()
+    for m in (await db.execute(select(MailItem).where(MailItem.user_id == user.id).order_by(MailItem.received_at.desc()).limit(200))).scalars():
+        addr = (m.from_address or "").lower()
+        if addr in seen_mail:
+            continue
+        seen_mail.add(addr)
+        if not q or ql in (m.from_name or "").lower() or ql in addr:
+            out.append({"kind": "mail", "name": m.from_name or m.from_address, "sub": "", "email": m.from_address, "id_number": None})
+
+    ids = await _get_production_upload_ids(db, user.id)
+    if ids:
+        full = func.concat(func.coalesce(ClientRecord.first_name, ""), " ", func.coalesce(ClientRecord.last_name, ""))
+        stmt = (
+            select(ClientRecord.id_number, func.max(ClientRecord.first_name), func.max(ClientRecord.last_name),
+                   func.max(ClientRecord.client_email), func.max(ClientRecord.client_phone))
+            .where(ClientRecord.user_id == user.id, ClientRecord.upload_id.in_(ids), ClientRecord.id_number.isnot(None))
+            .group_by(ClientRecord.id_number)
+            .order_by(func.max(ClientRecord.last_name), func.max(ClientRecord.first_name))
+            .limit(limit)
+        )
+        if q:
+            digits = q.lstrip("0")
+            conds = [full.ilike(f"%{q}%"), func.concat(func.coalesce(ClientRecord.last_name, ""), " ",
+                     func.coalesce(ClientRecord.first_name, "")).ilike(f"%{q}%"), ClientRecord.client_email.ilike(f"%{q}%")]
+            if digits.isdigit():
+                conds.append(func.ltrim(ClientRecord.id_number, "0").like(f"{digits}%"))
+            stmt = stmt.where(or_(*conds))
+        for idn, fn, ln, em, ph in (await db.execute(stmt)).all():
+            name = " ".join(x for x in (fn, ln) if x).strip() or str(idn)
+            out.append({"kind": "customer", "name": name, "sub": ph or "", "email": em or "", "id_number": str(idn)})
+    return out[: limit + 6]
 
 
 # ─────────────────────────── the written brief (Nifra Agent speaks) ────────

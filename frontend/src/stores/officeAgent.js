@@ -70,14 +70,19 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  async function ask(question) {
+  // the @ search in the ask box
+  async function searchContacts(q) {
+    try { return (await api.get('/office-agent/contacts', { params: { q } })).data || [] } catch { return [] }
+  }
+
+  async function ask(question, mentions = []) {
     const q = (question || '').trim()
     if (!q) return
     const history = thread.value.slice(-8).map((m) => ({ role: m.role, text: m.text }))
     thread.value.push({ role: 'user', text: q })
     busy.value = 'ask'
     try {
-      const { data } = await api.post('/office-agent/ask', { question: q, history })
+      const { data } = await api.post('/office-agent/ask', { question: q, history, mentions })
       // proposal = an email / meeting invite the agent prepared; sent only on approve()
       thread.value.push({ role: 'agent', text: data.answer, proposal: data.proposal ? { ...data.proposal, status: 'open' } : null })
     } catch {
@@ -108,5 +113,5 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  return { approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
+  return { searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, load, narrate, act, ask }
 })

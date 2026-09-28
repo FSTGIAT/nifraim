@@ -20,6 +20,7 @@ class Turn(BaseModel):
 class AskIn(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     history: list[Turn] = Field(default_factory=list, max_length=20)
+    mentions: list[dict] = Field(default_factory=list, max_length=10)  # @-picked contacts
 
 
 class ActIn(BaseModel):
@@ -40,7 +41,13 @@ async def get_narrate(db: AsyncSession = Depends(get_db), user: User = Depends(g
 
 @router.post("/ask")
 async def ask(body: AskIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
-    return await svc.ask(db, user, body.question, [t.model_dump() for t in body.history])
+    return await svc.ask(db, user, body.question, [t.model_dump() for t in body.history], body.mentions)
+
+
+@router.get("/contacts")
+async def contacts(q: str = "", db: AsyncSession = Depends(get_db), user: User = Depends(get_paid_user)):
+    """The @ search in the ask box: customers (name · ת.ז), insurer contacts, mail senders."""
+    return await svc.contacts(db, user, q[:60])
 
 
 @router.post("/act")

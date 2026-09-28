@@ -128,7 +128,38 @@
           </div>
 
           <form class="na-ask" @submit.prevent="askNow">
-            <input v-model="q" class="na-ask-input" placeholder="דברו עם Nifra Agent…" maxlength="500" />
+            <!-- @ — the agent's contacts: customers (name · ת.ז), insurer contacts, mail senders -->
+            <Transition name="na-sheet">
+              <div v-if="men.open" class="na-men" role="listbox" aria-label="אנשי קשר">
+                <div class="na-men-head">
+                  <span>אנשי קשר</span>
+                  <b v-if="men.query" class="na-men-q">{{ men.query }}</b>
+                </div>
+                <ul v-if="men.items.length" class="na-men-list">
+                  <li v-for="(c, k) in men.items" :key="c.kind + (c.id_number || c.email) + k"
+                      class="na-men-row" :class="{ 'is-active': k === men.active }" role="option" :aria-selected="k === men.active"
+                      @mousedown.prevent="pick(c)" @mouseenter="men.active = k">
+                    <span class="na-men-ic" :class="'na-men-ic--' + c.kind" aria-hidden="true">
+                      <svg v-if="c.kind === 'company'" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+                      <svg v-else-if="c.kind === 'mail'" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
+                      <template v-else>{{ (c.name || '?').trim().charAt(0) }}</template>
+                    </span>
+                    <span class="na-men-txt">
+                      <strong>{{ c.name }}</strong>
+                      <small>
+                        <span v-if="c.id_number">ת.ז <span class="ltr-number">{{ c.id_number }}</span></span>
+                        <span v-if="c.email" class="na-men-mail" dir="ltr">{{ c.email }}</span>
+                        <span v-else-if="c.sub">{{ c.sub }}</span>
+                      </small>
+                    </span>
+                  </li>
+                </ul>
+                <p v-else class="na-men-empty">{{ men.loading ? 'מחפש…' : 'לא נמצא איש קשר' }}</p>
+              </div>
+            </Transition>
+            <button type="button" class="na-at" aria-label="בחירת איש קשר" title="איש קשר (@)" @click="openAt">@</button>
+            <input ref="askEl" v-model="q" class="na-ask-input" placeholder="דברו עם Nifra Agent… (@ לאנשי קשר)" maxlength="500"
+                   @input="onAskInput" @keydown="onAskKey" @click="onAskInput" @blur="closeMenSoon" />
             <button class="na-ask-send" type="submit" :disabled="!q.trim() || store.busy === 'ask'" aria-label="שלח">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14 9 9 4 4 9"/><path d="M20 20h-7a4 4 0 0 1-4-4V4"/></svg>
             </button>
@@ -223,10 +254,86 @@ function setStart(p, date, time) {
 
 const q = ref('')
 const feedEl = ref(null)
+// ── @ mentions ──
+const askEl = ref(null)
+const picked = ref([]) // contacts chosen with @ — sent with the question as exact context
+const men = reactive({ open: false, query: '', start: -1, items: [], active: 0, loading: false })
+let menTimer = 0
+let menSeq = 0
+function onAskInput() {
+  const el = askEl.value
+  if (!el) return
+  const caret = el.selectionStart ?? q.value.length
+  const m = /(^|\s)@([^\s@]{0,30})$/.exec(q.value.slice(0, caret))
+  if (!m) { men.open = false; return }
+  men.open = true
+  men.start = caret - m[2].length - 1
+  if (m[2] === men.query && men.items.length) return
+  men.query = m[2]
+  men.active = 0
+  men.loading = true
+  clearTimeout(menTimer)
+  const seq = ++menSeq
+  menTimer = setTimeout(async () => {
+    const items = await store.searchContacts(men.query)
+    if (seq !== menSeq) return
+    men.items = items
+    men.loading = false
+  }, 120)
+}
+function onAskKey(e) {
+  if (!men.open) return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const n = men.items.length || 1
+    men.active = (men.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n
+  } else if ((e.key === 'Enter' || e.key === 'Tab') && men.items[men.active]) {
+    e.preventDefault()
+    pick(men.items[men.active])
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    men.open = false
+  }
+}
+async function pick(c) {
+  const el = askEl.value
+  const caret = el?.selectionStart ?? q.value.length
+  const tag = '@' + c.name + ' '
+  q.value = q.value.slice(0, men.start) + tag + q.value.slice(caret)
+  if (!picked.value.some((p) => p.name === c.name && p.id_number === c.id_number)) picked.value.push(c)
+  men.open = false
+  men.query = ''
+  men.items = []
+  await nextTick()
+  const pos = men.start + tag.length
+  el?.focus()
+  el?.setSelectionRange(pos, pos)
+}
+async function openAt() {
+  const el = askEl.value
+  const caret = el?.selectionStart ?? q.value.length
+  const before = q.value.slice(0, caret)
+  const pad = before && !/\s$/.test(before) ? ' ' : ''
+  q.value = before + pad + '@' + q.value.slice(caret)
+  await nextTick()
+  const pos = caret + pad.length + 1
+  el?.focus()
+  el?.setSelectionRange(pos, pos)
+  men.items = []
+  onAskInput()
+}
+function closeMenSoon() { setTimeout(() => { men.open = false }, 120) }
+
 async function askNow() {
+  if (men.open) return
   const text = q.value
+  const mentions = picked.value
+    .filter((c) => text.includes('@' + c.name))
+    .map(({ kind, name, id_number, email }) => ({ kind, name, id_number, email }))
   q.value = ''
-  const p = store.ask(text)
+  picked.value = []
+  const p = store.ask(text, mentions)
   await nextTick()
   feedEl.value?.scrollTo({ top: feedEl.value.scrollHeight, behavior: 'smooth' })
   await p
@@ -382,9 +489,38 @@ async function close() {
   box-shadow: 0 12px 34px rgba(8, 40, 38, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
 }
 .na-ask:focus-within { box-shadow: 0 14px 38px rgba(8, 40, 38, 0.16), inset 0 0 0 1px rgba(14, 140, 138, 0.4); }
-.na-ask-input { width: 100%; box-sizing: border-box; height: 54px; padding: 0 20px 0 56px; border: none; outline: none; background: transparent; font-family: inherit; font-size: 15.5px; color: #10201F; }
+.na-ask-input { width: 100%; box-sizing: border-box; height: 54px; padding: 0 20px 0 96px; border: none; outline: none; background: transparent; font-family: inherit; font-size: 15.5px; color: #10201F; }
 .na-ask-send { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 13px; border: none; cursor: pointer; display: grid; place-items: center; color: #fff; background: #0E8C8A; }
 .na-ask-send:disabled { opacity: 0.3; cursor: default; }
+.na-at {
+  position: absolute; left: 52px; top: 50%; transform: translateY(-50%); z-index: 1;
+  width: 34px; height: 34px; border-radius: 12px; border: none; cursor: pointer;
+  font-family: inherit; font-size: 17px; font-weight: 800; color: #0A6664; background: rgba(14, 140, 138, 0.1);
+}
+.na-at:hover { background: rgba(14, 140, 138, 0.18); }
+/* @ contacts popover — floats above the ask pill */
+.na-men {
+  position: absolute; bottom: calc(100% + 10px); inset-inline: 0; z-index: 4;
+  max-height: 320px; display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 20px; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(16px);
+  box-shadow: 0 18px 50px rgba(8, 40, 38, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+}
+.na-men-head { display: flex; align-items: center; gap: 8px; padding: 10px 16px 6px; font-size: 12px; font-weight: 800; color: #4A5B5A; }
+.na-men-q { padding: 1px 8px; border-radius: 999px; background: rgba(14, 140, 138, 0.1); color: #0A6664; font-size: 12px; }
+.na-men-list { list-style: none; margin: 0; padding: 4px 6px 8px; overflow-y: auto; }
+.na-men-row { display: flex; align-items: center; gap: 11px; padding: 7px 10px; border-radius: 13px; cursor: pointer; }
+.na-men-row.is-active { background: rgba(14, 140, 138, 0.1); }
+.na-men-ic {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 14px; font-weight: 800; color: #0A6664; background: rgba(14, 140, 138, 0.12);
+}
+.na-men-ic--company { color: #2C5F6B; background: rgba(44, 95, 107, 0.12); border-radius: 10px; }
+.na-men-ic--mail { color: #2F6C94; background: rgba(47, 108, 148, 0.12); border-radius: 10px; }
+.na-men-txt { min-width: 0; display: flex; flex-direction: column; }
+.na-men-txt strong { font-size: 14px; font-weight: 800; color: #10201F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.na-men-txt small { display: flex; gap: 10px; font-size: 12px; color: #5A6968; white-space: nowrap; overflow: hidden; }
+.na-men-mail { overflow: hidden; text-overflow: ellipsis; }
+.na-men-empty { margin: 0; padding: 6px 16px 14px; font-size: 13px; color: #5A6968; }
 
 .na-fade-enter-active, .na-fade-leave-active { transition: opacity 0.25s ease; }
 .na-fade-enter-from, .na-fade-leave-to { opacity: 0; }

@@ -1258,6 +1258,10 @@ flowchart RL
   - `propose_meeting` schedules a meeting. It becomes a real **iCalendar REQUEST invite** (accept/decline in Gmail/Outlook) to the invitee, with a Cc to the agent. There is no Google Calendar consent (the mailbox is IMAP/SMTP), so the invite IS the scheduling channel.
   - The tools only PREPARE. `ask` returns `{answer, proposal}`; the panel shows an editable sheet, and **`POST /api/office-agent/act` sends only on the agent's approve click**, via `send_as_agent`. The only question it may ask is a missing recipient email. Tests: `tests/test_agent_actions.py`.
 
+- **@ contacts:** typing `@` (or the @ button) in the ask box opens a search. `GET /api/office-agent/contacts?q=` returns customers from the active production files (name, ת.ז, email/phone), saved insurer contacts and mail senders. The picked contacts go with the question as `mentions`, so the agent gets the exact ID and email.
+- **No false "done":** if the model's final text claims it prepared something (`הכנתי` / `מחכה לאישור`) but no proposal exists (the tool was never called, or it was cut off by `max_tokens`), it is sent back once to call the tool. Otherwise the answer says it failed. It never claims an action that wasn't prepared.
+- **`top.md`:** ranks the biggest customers by accumulation, premium and commission received (for "הלקוח הכי גדול").
+
 ### 17a. The data map (`services/data_map.py`) — the agent's data as Markdown the AI navigates
 
 The AI never gets one giant dump. It gets `index.md` (categories, a one-line fact each, links) and **drills down** with the `open_page` tool, following the connections the answer needs:

@@ -142,6 +142,7 @@ def page_index(ctx: MapContext) -> str:
         f"- [חברות](companies.md) — {len(comp)} חברות בתיק",
         f"- [לא שולם](unpaid.md) — {s.get('only_in_production', 0)} לקוחות בלי עמלה · {len(unpaid_cases)} חברות בטיפול גבייה",
         f"- [מיילים פתוחים](mail.md) — {len(ctx.mails)} מיילים שמחכים לטיפול",
+        "- [לקוחות מובילים](top.md) — הלקוחות הגדולים לפי צבירה, פרמיה ועמלה",
         f"- [הסכמי עמלות](agreements.md) — {sum(len(v) for v in ctx.rates.values())} שיעורים ב-{len(ctx.rates)} חברות",
         "- לקוח לפי ת.ז: `customers/<ת.ז>.md` · חיפוש לפי שם: `search/<שם>.md`",
         "",
@@ -231,6 +232,32 @@ def page_customer(ctx: MapContext, idn: str) -> str:
     return "\n".join(lines)
 
 
+def page_top(ctx: MapContext) -> str:
+    """The biggest customers — "הלקוח הכי גדול" has three honest meanings, so
+    rank all three: accumulation (צבירה), premium, commission received."""
+    rows = []
+    for c in ctx.customers:
+        prods = c.get("production_products") or []
+        acc = sum(float(p.get("accumulation") or 0) for p in prods)
+        prem = sum(float(p.get("premium") or 0) for p in prods)
+        exp = sum(float(p.get("expected_commission") or 0) for p in prods)
+        paid = float(c.get("total_commission") or 0)
+        nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x) or str(c.get("id_number"))
+        rows.append((nm, str(c.get("id_number")), acc, prem, exp, paid, len(prods)))
+
+    def block(title, idx):
+        top = [r for r in sorted(rows, key=lambda r: -r[idx]) if r[idx] > 0][:12]
+        out = ["", f"## {title}"]
+        out += [f"{i}. [{r[0]}](customers/{r[1]}.md) · {_money(r[idx])} · {r[6]} מוצרים"
+                + (f" · צבירה {_money(r[2])}" if idx != 2 and r[2] else "")
+                + (f" · צפי עמלה {_money(r[4])}" if r[4] else "") for i, r in enumerate(top, 1)]
+        return out if top else out + ["אין נתונים."]
+
+    lines = ["# לקוחות מובילים", "הלקוח \"הכי גדול\" לפי צבירה, לפי פרמיה ולפי עמלה שהתקבלה."]
+    lines += block("לפי צבירה", 2) + block("לפי פרמיה חודשית", 3) + block("לפי עמלה שהתקבלה", 5)
+    return "\n".join(lines)
+
+
 def page_unpaid(ctx: MapContext) -> str:
     lines = ["# לא שולם", ""]
     for k, c in sorted(ctx.cases.items(), key=lambda kv: -kv[1].expected_total):
@@ -294,6 +321,8 @@ def render(ctx: MapContext, path: str) -> str:
         return page_index(ctx)
     if path == "companies.md":
         return page_companies(ctx)
+    if path == "top.md":
+        return page_top(ctx)
     if path == "unpaid.md":
         return page_unpaid(ctx)
     if path == "mail.md":
