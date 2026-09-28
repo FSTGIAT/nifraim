@@ -589,6 +589,145 @@ export function ProductionLoop() {
   )
 }
 
+/* ═══════════ PRODUCTION · FILE COMPARE — cobalt ═══════════
+   Last month's sheet (faint, right) and this month's (bold, left). Rows move
+   between them: a green "+" row slides in (new), a red row falls out
+   (removed), a blue row's bar changes length (changed). */
+export function ProdCompareLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7', GREEN = '#2E844A', RED = '#E04B48'
+  const p = loopPhase(frame, 240)
+  const cl = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
+  const inT = interpolate(p, [0.08, 0.3], [0, 1], { ...cl, easing: Easing.out(Easing.cubic) })
+  const inOp = interpolate(p, [0.06, 0.12, 0.88, 0.96], [0, 1, 1, 0], cl)
+  const outY = interpolate(p, [0.36, 0.56], [0, 60], { ...cl, easing: Easing.in(Easing.cubic) })
+  const outOp = interpolate(p, [0, 0.36, 0.56, 0.9, 1], [1, 1, 0, 0, 1], cl)
+  const grow = interpolate(p, [0.6, 0.74, 0.9, 1], [0, 1, 1, 0], { ...cl, easing: Easing.inOut(Easing.cubic) })
+  const twinkle = 0.6 + 0.4 * Math.abs(Math.sin((frame / 240) * Math.PI * 4))
+  const Sheet = ({ x, strong }: { x: number; strong: boolean }) => (
+    <g transform={`translate(${x} 70)`} opacity={strong ? 1 : 0.55}>
+      <rect width={118} height={160} rx={12} fill="#FFFFFF" stroke={strong ? SOFT : PALE} strokeWidth={3} />
+      <rect width={118} height={24} rx={12} fill={strong ? ACC : SOFT} />
+      <rect y={12} width={118} height={12} fill={strong ? ACC : SOFT} />
+    </g>
+  )
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <Sheet x={262} strong={false} />
+        <Sheet x={40} strong />
+        {/* last month rows */}
+        {[0, 1, 2].map((i) => <rect key={i} x={276} y={108 + i * 26} width={70} height={10} rx={3} fill={PALE} />)}
+        <g opacity={outOp} transform={`translate(0 ${outY})`}>
+          <rect x={276} y={186} width={70} height={10} rx={3} fill={RED} opacity={0.75} />
+        </g>
+        {/* this month rows */}
+        {[0, 1].map((i) => <rect key={i} x={54} y={108 + i * 26} width={70} height={10} rx={3} fill={i ? SOFT : ACC} opacity={0.85} />)}
+        <rect x={54} y={160} width={40 + 42 * grow} height={10} rx={3} fill={INK} />
+        {/* the new row flies from the middle into this month's sheet */}
+        <g opacity={inOp} transform={`translate(${interpolate(inT, [0, 1], [210, 54])} ${interpolate(inT, [0, 1], [60, 186])})`}>
+          <rect width={70} height={10} rx={3} fill={GREEN} />
+          <circle cx={84} cy={5} r={8} fill={GREEN} />
+          <path d="M80 5h8M84 1v8" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" />
+        </g>
+        {/* compare arrows */}
+        <path d="M232 128 H186 M196 118 L186 128 L196 138" fill="none" stroke={SOFT} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M188 162 H234 M224 152 L234 162 L224 172" fill="none" stroke={PALE} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        <Spark cx={372} cy={52} r={9} fill={ACC} k={twinkle} />
+        <Spark cx={210} cy={256} r={6} fill={SOFT} k={2 - twinkle} />
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
+/* ═══════════ PRODUCTION · VOLUME — cobalt + gold ═══════════
+   A multi-sheet volume report (tabs on top) feeds bars that climb toward a
+   dashed target; when the last one crosses it, the bonus coin shines. */
+export function ProdVolumeLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7', GOLD = '#C9A227'
+  const p = loopPhase(frame, 240)
+  const cl = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
+  const bar = (i: number) => interpolate(p, [0.1 + i * 0.1, 0.3 + i * 0.1, 0.88, 1], [0, 1, 1, 0], { ...cl, easing: Easing.out(Easing.cubic) })
+  const H = [58, 84, 104, 128]
+  const coin = interpolate(p, [0.56, 0.64, 0.68, 0.88, 0.96], [0, 1.15, 1, 1, 0], cl)
+  const shine = Math.abs(Math.sin((frame / 240) * Math.PI * 6))
+  const tab = Math.floor(p * 3) % 3
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* report with sheet tabs */}
+        <g transform="translate(38 74)">
+          <rect width={116} height={150} rx={12} fill="#FFFFFF" stroke={SOFT} strokeWidth={3} />
+          {[0, 1, 2, 3].map((i) => <rect key={i} x={14} y={24 + i * 26} width={i % 2 ? 60 : 86} height={10} rx={3} fill={i % 2 ? PALE : SOFT} />)}
+          {[0, 1, 2].map((i) => (
+            <rect key={i} x={10 + i * 34} y={156} width={30} height={14} rx={5} fill={i === tab ? ACC : PALE} />
+          ))}
+        </g>
+        {/* bars toward the target */}
+        <g transform="translate(200 238)">
+          <rect x={-8} y={0} width={176} height={4} rx={2} fill={SOFT} />
+          <line x1={-8} y1={-112} x2={168} y2={-112} stroke={GOLD} strokeWidth={2.5} strokeDasharray="6 7" strokeLinecap="round" />
+          {H.map((h, i) => {
+            const k = bar(i)
+            return <rect key={i} x={i * 42} y={-h * k} width={28} height={h * k} rx={7} fill={i === 3 ? INK : ACC} opacity={0.45 + i * 0.18} />
+          })}
+        </g>
+        {/* the bonus coin */}
+        <g transform={`translate(${200 + 3 * 42 + 14} ${238 - 128 - 32}) scale(${coin})`}>
+          <circle r={20} fill={GOLD} />
+          <circle r={14} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={2} />
+          <path d="M-4 -7 h6 a4 4 0 0 1 0 8 h-4 a4 4 0 0 0 0 8 h6 M0 -11 v4 M0 9 v4" stroke="#fff" strokeWidth={2.2} fill="none" strokeLinecap="round" />
+          <circle r={26 + shine * 6} fill="none" stroke={GOLD} strokeOpacity={0.35 * (1 - shine)} strokeWidth={2} />
+        </g>
+        <Spark cx={372} cy={60} r={8} fill={GOLD} k={0.6 + 0.4 * shine} />
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
+/* ═══════════ PRODUCTION · HISTORY — cobalt ═══════════
+   A month rail: a file drops into each month in turn and the "today" marker
+   walks along with it. */
+export function ProdHistoryLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#2F73C4', INK = '#1F5496', SOFT = '#9DBFE6', PALE = '#DCE8F7'
+  const p = loopPhase(frame, 240)
+  const cl = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const
+  const X = [70, 160, 250, 340]
+  const drop = (i: number) => interpolate(p, [0.06 + i * 0.2, 0.2 + i * 0.2], [0, 1], { ...cl, easing: Easing.out(Easing.back(1.6)) })
+  const fade = interpolate(p, [0.9, 1], [1, 0], cl)
+  const cur = Math.min(3, Math.floor(p / 0.2))
+  const hand = p * 360 * 2
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* clock */}
+        <g transform="translate(360 64)">
+          <circle r={24} fill="#fff" stroke={SOFT} strokeWidth={3} />
+          <line x1={0} y1={0} x2={0} y2={-14} stroke={INK} strokeWidth={3} strokeLinecap="round" transform={`rotate(${hand})`} />
+          <line x1={0} y1={0} x2={9} y2={0} stroke={ACC} strokeWidth={3} strokeLinecap="round" transform={`rotate(${hand / 12})`} />
+          <circle r={3} fill={INK} />
+        </g>
+        {/* rail */}
+        <line x1={40} y1={214} x2={380} y2={214} stroke={PALE} strokeWidth={4} strokeLinecap="round" />
+        {X.map((x, i) => {
+          const k = drop(i) * fade
+          return (
+            <g key={i}>
+              <circle cx={x} cy={214} r={i === cur ? 9 : 6} fill={i <= cur ? ACC : PALE} />
+              <rect x={x - 16} y={236} width={32} height={8} rx={4} fill={i <= cur ? SOFT : PALE} />
+              <g opacity={k} transform={`translate(${x} ${interpolate(k, [0, 1], [90, 170])})`}>
+                <Doc x={-17} y={-24} w={34} h={46} fill={i === cur ? INK : ACC} line={PALE} opacity={i === cur ? 1 : 0.6} />
+              </g>
+            </g>
+          )
+        })}
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
@@ -600,6 +739,9 @@ export const TAB_HERO_SCENES = {
   comparison: ComparisonMatchLoop,
   mail: AiInboxLoop,
   production: ProductionLoop,
+  'prod-compare': ProdCompareLoop,
+  'prod-volume': ProdVolumeLoop,
+  'prod-history': ProdHistoryLoop,
 } as const
 
 export type TabHeroScene = keyof typeof TAB_HERO_SCENES

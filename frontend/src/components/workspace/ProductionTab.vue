@@ -271,18 +271,21 @@
 
         <!-- Tab content: History (production files by month) -->
         <div v-if="innerTab === 'history'" class="history-panel">
-          <div v-if="!productionStore.history.length" class="history-empty">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <p>אין עדיין קבצי פרודוקציה היסטוריים.</p>
-            <small>קבצים שתחליף יעברו לכאן ויקובצו לפי חודש.</small>
-          </div>
+          <ProdSectionHero
+            kicker="היסטוריה"
+            title="כל קובץ,"
+            accent="לפי חודש"
+            line="כל קובץ פרודוקציה שהעליתם או שהורד אוטומטית — מסודר לפי החודש שהוא מתאר."
+            scene="prod-history"
+          />
+          <p v-if="!historyByMonth.length" class="history-empty">עוד אין קבצי פרודוקציה.</p>
 
+          <div v-if="historyByMonth.length" class="history-timeline">
           <section
-            v-for="grp in historyByMonth"
+            v-for="(grp, gi) in historyByMonth"
             :key="grp.key"
             class="month-group"
+            :class="{ 'is-latest': gi === 0 }"
           >
             <header
               class="month-head"
@@ -302,6 +305,7 @@
                 v-for="f in grp.files"
                 :key="f.id"
                 class="hist-file"
+                :class="{ 'is-current': productionStore.currentFile && f.id === productionStore.currentFile.id }"
               >
                 <div class="hf-main">
                   <div class="hf-icon" :title="(f.format_type || '').includes('production') ? 'פרודוקציה' : f.format_type">
@@ -316,7 +320,10 @@
                     </svg>
                   </div>
                   <div class="hf-text">
-                    <div class="hf-name" :title="f.filename">{{ f.filename }}</div>
+                    <div class="hf-name" :title="f.filename">
+                      {{ f.filename }}
+                      <span v-if="productionStore.currentFile && f.id === productionStore.currentFile.id" class="hf-live">פעיל</span>
+                    </div>
                     <div class="hf-meta">
                       <span v-if="f.company_source">{{ f.company_source }}</span>
                       <span class="ltr-number">{{ (f.record_count || 0).toLocaleString() }} רשומות</span>
@@ -340,6 +347,7 @@
               </li>
             </ul>
           </section>
+          </div>
         </div>
       </template>
     </template>
@@ -394,6 +402,7 @@ import AppIcon from '../icons/AppIcon.vue'
 import PointingHand from './PointingHand.vue'
 import { relativeHebrew } from '../../utils/relativeTime.js'
 import CycleLockedState from './CycleLockedState.vue'
+import ProdSectionHero from './ProdSectionHero.vue'
 import { useCycleStore } from '../../stores/cycle.js'
 import { useAuthStore } from '../../stores/auth.js'
 
@@ -786,24 +795,36 @@ async function handleCompare(currentId, previousId) {
   gap: 12px;
   padding: 8px 0 24px;
 }
-.history-empty {
-  text-align: center;
-  padding: 48px 16px;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+.history-empty { margin: 0; text-align: center; padding: 24px 16px; font-size: 14px; font-weight: 600; color: var(--text-secondary, #706E6B); }
+
+/* month timeline: a rail on the start side, one node per month */
+.history-timeline { position: relative; display: flex; flex-direction: column; gap: 12px; padding-inline-start: 30px; }
+.history-timeline::before {
+  content: ''; position: absolute; inset-inline-start: 9px; top: 18px; bottom: 18px; width: 2px;
+  background: linear-gradient(180deg, var(--tab-production), color-mix(in srgb, var(--tab-production) 12%, transparent));
+  border-radius: 2px;
 }
-.history-empty p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
-.history-empty small { font-size: 12px; line-height: 1.6; }
+.month-group { position: relative; box-shadow: var(--shadow-sm); }
+.month-group::before {
+  content: ''; position: absolute; inset-inline-start: -27px; top: 16px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--card-bg); border: 3px solid color-mix(in srgb, var(--tab-production) 45%, transparent);
+}
+.month-group.is-latest::before { background: var(--tab-production); border-color: color-mix(in srgb, var(--tab-production) 30%, var(--card-bg)); box-shadow: 0 0 0 4px var(--tab-production-wash); }
+.hf-live {
+  display: inline-flex; align-items: center; margin-inline-start: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent);
+  vertical-align: 1px;
+}
+.hist-file.is-current { background: color-mix(in srgb, var(--tab-production) 4%, transparent); }
 
 .month-group {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  overflow: hidden;
+  border-radius: 14px;
 }
+.month-group > .month-head { border-radius: 14px 14px 0 0; }
+.month-group > .month-head.is-collapsed { border-radius: 14px; }
+.month-group .month-files { border-radius: 0 0 14px 14px; overflow: hidden; }
 .month-head {
   display: flex;
   align-items: center;
@@ -816,7 +837,7 @@ async function handleCompare(currentId, previousId) {
 }
 .month-head:hover { background: rgba(47, 115, 196, 0.07); }
 .month-chevron {
-  color: var(--primary);
+  color: var(--tab-production);
   transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
   flex-shrink: 0;
 }
@@ -937,15 +958,19 @@ async function handleCompare(currentId, previousId) {
 .inner-tabs-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  border-bottom: 2px solid var(--border-subtle);
-  padding-bottom: 0;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
+/* segmented control: white card, the active section filled in the tab colour */
 .inner-tabs {
   display: flex;
   gap: 4px;
+  padding: 5px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
@@ -957,29 +982,32 @@ async function handleCompare(currentId, previousId) {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 600;
+  height: 38px;
+  padding: 0 16px;
+  font-size: 13.5px;
+  font-weight: 700;
   font-family: inherit;
-  color: var(--text-muted);
+  color: var(--text-secondary, #706E6B);
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.25s var(--transition);
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   white-space: nowrap;
 }
 
-.inner-tab:hover { color: var(--text-secondary); }
+.inner-tab:hover { color: var(--tab-production); background: var(--tab-production-wash); }
+.inner-tab:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 1px; }
 
 .inner-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: #fff;
+  background: var(--tab-production);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-production) 30%, transparent);
 }
 
-.inner-tab svg { opacity: 0.5; }
-.inner-tab.active svg { opacity: 1; color: var(--primary); }
+.inner-tab svg { opacity: 0.7; }
+.inner-tab.active svg { opacity: 1; color: #fff; }
+.inner-tab.active .tab-dot { background: #fff; box-shadow: none; }
 
 .tab-dot {
   width: 7px;
@@ -994,11 +1022,13 @@ async function handleCompare(currentId, previousId) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px;
-  background: var(--green-light);
-  border: 1px solid rgba(46, 132, 74, 0.15);
-  border-radius: 100px;
-  font-size: 12px;
+  height: 38px;
+  padding: 0 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
   margin-inline-start: auto;
   max-width: 280px;
 }
@@ -1050,30 +1080,32 @@ async function handleCompare(currentId, previousId) {
 
 /* Upload icon button */
 .upload-icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--green-light);
-  color: var(--accent-emerald);
-  border: 1.5px solid rgba(46, 132, 74, 0.15);
+  background: var(--card-bg);
+  color: var(--tab-production);
+  border: 1px solid color-mix(in srgb, var(--tab-production) 30%, transparent);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: all 0.25s var(--transition);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   flex-shrink: 0;
 }
 
 .upload-icon-btn:hover {
-  background: var(--accent-emerald);
+  background: var(--tab-production);
   color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(46, 132, 74, 0.2);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-production) 30%, transparent);
 }
+.upload-icon-btn:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
 
 /* Upload closed this cycle → small status icon + tooltip */
 .gate-icon {
-  position: relative; width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  position: relative; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; cursor: help;
   background: var(--tab-production-wash); color: var(--tab-production);
   border: 1.5px solid rgba(47, 115, 196, 0.18);

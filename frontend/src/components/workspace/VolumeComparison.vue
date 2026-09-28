@@ -57,32 +57,45 @@
         </svg>
       </div>
 
-      <button class="upload-btn" @click="$refs.fileInput.click()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        <span>העלה דוח היקפים להשוואה</span>
-      </button>
-      <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileSelect" style="display:none" />
+      <ProdSectionHero
+        kicker="השוואה מול היקפים"
+        title="דוח היקפים מול"
+        accent="הפרודוקציה"
+        line="מעלים את דוח ההיקפים של החברה — ורואים מי נספר, מי חסר ומה הבונוס."
+        scene="prod-volume"
+      />
 
-      <!-- Encrypted file option -->
-      <div class="options-row">
-        <label class="toggle-label">
-          <div class="toggle" :class="{ on: needPassword }">
-            <input type="checkbox" v-model="needPassword" />
-            <div class="toggle-track"><div class="toggle-thumb"></div></div>
-          </div>
-          <span>קובץ מוצפן</span>
-        </label>
-      </div>
+      <div class="vc-stage">
+        <BigAddButton label="העלאת דוח היקפים" color="var(--tab-production)" :size="200" @click="$refs.fileInput.click()">
+          <svg viewBox="0 0 24 24" width="68" height="68" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" />
+          </svg>
+        </BigAddButton>
+        <ol class="vc-steps" aria-label="איך זה עובד">
+          <li v-for="(st, i) in VOLUME_STEPS" :key="st">
+            <span class="vc-step-n ltr-number">{{ String(i + 1).padStart(2, '0') }}</span>
+            <span>{{ st }}</span>
+          </li>
+        </ol>
+        <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileSelect" style="display:none" />
 
-      <Transition name="slide-down">
-        <div class="password-field" v-if="needPassword">
-          <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
+        <!-- Encrypted file option -->
+        <div class="options-row">
+          <label class="toggle-label">
+            <div class="toggle" :class="{ on: needPassword }">
+              <input type="checkbox" v-model="needPassword" />
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            </div>
+            <span>קובץ מוצפן</span>
+          </label>
         </div>
-      </Transition>
+
+        <Transition name="slide-down">
+          <div class="password-field" v-if="needPassword">
+            <input type="password" v-model="password" placeholder="סיסמת הקובץ..." dir="ltr" />
+          </div>
+        </Transition>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -239,6 +252,10 @@ import { ref, computed, watch } from 'vue'
 import { useVolumeStore } from '../../stores/volume.js'
 import { useProductionStore } from '../../stores/production.js'
 import VolumeBonus from './VolumeBonus.vue'
+import ProdSectionHero from './ProdSectionHero.vue'
+import BigAddButton from './BigAddButton.vue'
+
+const VOLUME_STEPS = ['מעלים את דוח ההיקפים (כל הגיליונות)', 'מתאימים מול הפרודוקציה לפי ת"ז', 'רואים מי חסר ומחשבים בונוס']
 
 const volumeStore = useVolumeStore()
 const productionStore = useProductionStore()
@@ -381,8 +398,6 @@ function submitWithPassword() {
 
 /* Upload */
 .upload-section {
-  max-width: 560px;
-  margin: 0 auto;
   position: relative;
 }
 
@@ -883,4 +898,30 @@ td {
   .summary-strip { grid-template-columns: repeat(2, 1fr); }
   .volume-totals { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── dedicated upload screen ── */
+.upload-section { display: flex; flex-direction: column; gap: 16px; align-items: stretch; }
+.vc-stage {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 22px;
+  padding: 34px 24px 28px; border: 1px solid var(--border-subtle); border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--tab-production) 14%, transparent) 0, transparent 42%),
+    radial-gradient(color-mix(in srgb, var(--tab-production) 14%, transparent) 1.2px, transparent 1.4px) 0 0 / 22px 22px,
+    var(--card-bg);
+}
+.vc-steps {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+}
+.vc-steps li {
+  display: inline-flex; align-items: center; gap: 9px; padding: 8px 14px 8px 16px; border-radius: 999px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
+  font-size: 13px; font-weight: 600; color: var(--text-primary, #181818);
+}
+.vc-step-n {
+  font-size: 11.5px; font-weight: 800; color: var(--tab-production);
+  background: var(--tab-production-wash); border-radius: 999px; padding: 2px 7px;
+}
+.vc-stage .options-row { margin-top: 0; }
+.vc-stage .password-field { width: min(320px, 100%); }
 </style>

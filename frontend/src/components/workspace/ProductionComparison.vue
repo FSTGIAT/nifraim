@@ -1,11 +1,30 @@
 <template>
   <div class="prod-comparison">
-    <!-- No history -->
-    <div v-if="!history.length && !comparisonResult" class="empty-state">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-      </svg>
-      <p>אין קבצים קודמים להשוואה — החלף את קובץ הפרודוקציה ותוכל להשוות</p>
+    <ProdSectionHero
+      v-if="!comparisonResult && !comparing"
+      kicker="השוואת קבצים"
+      title="חודש מול"
+      accent="חודש"
+      :line="history.length ? 'בחרו קובץ קודם — ונראה מי הצטרף, מי עזב ומה השתנה.' : 'כשיגיע קובץ הפרודוקציה הבא — נראה כאן מי הצטרף, מי עזב ומה השתנה.'"
+      scene="prod-compare"
+    />
+
+    <!-- No history: what this screen will show, as a preview -->
+    <div v-if="!history.length && !comparisonResult" class="pc-preview">
+      <article v-for="c in PREVIEW" :key="c.key" class="pc-card" :style="{ '--k': c.color }">
+        <span class="pc-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <template v-if="c.key === 'new'"><circle cx="9" cy="8" r="3.5" fill="currentColor" fill-opacity="0.18"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><path d="M19 8v6M16 11h6"/></template>
+            <template v-else-if="c.key === 'gone'"><circle cx="9" cy="8" r="3.5" fill="currentColor" fill-opacity="0.18"/><path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1"/><path d="M16 11h6"/></template>
+            <template v-else><path d="M4 7h13l-3-3M20 17H7l3 3" /><circle cx="12" cy="12" r="2.2" fill="currentColor" fill-opacity="0.18"/></template>
+          </svg>
+        </span>
+        <strong>{{ c.title }}</strong>
+        <span>{{ c.text }}</span>
+        <span class="pc-ghost" aria-hidden="true">
+          <i v-for="n in 3" :key="n" :style="{ width: (92 - n * 18) + '%' }"></i>
+        </span>
+      </article>
     </div>
 
     <!-- File selector -->
@@ -1070,6 +1089,14 @@
 </template>
 
 <script setup>
+import ProdSectionHero from './ProdSectionHero.vue'
+// What the file-to-file comparison shows once there are two files.
+const PREVIEW = [
+  { key: 'new', title: 'לקוחות חדשים', text: 'מי הצטרף מאז הקובץ הקודם', color: 'var(--green)' },
+  { key: 'gone', title: 'לקוחות שעזבו', text: 'מי כבר לא מופיע', color: 'var(--red)' },
+  { key: 'changed', title: 'שינויים', text: 'פרמיה, צבירה ומוצרים שזזו', color: 'var(--tab-production)' },
+]
+
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import { openMailCompose } from '../../utils/mailHelper.js'
@@ -3873,4 +3900,26 @@ function formatVal(val) {
 .mp-open:hover { background: var(--primary-deep); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ── empty state: preview of what the comparison shows ── */
+.prod-comparison { display: flex; flex-direction: column; gap: 16px; }
+.pc-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pc-card {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px; padding: 18px 18px 58px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: var(--shadow-sm);
+}
+.pc-card strong { font-size: 16px; font-weight: 800; color: var(--text-primary, #181818); }
+.pc-card > span:not(.pc-ic):not(.pc-ghost) { font-size: 13px; color: var(--text-secondary, #706E6B); }
+.pc-ic {
+  width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; margin-bottom: 6px;
+  color: var(--k); background: color-mix(in srgb, var(--k) 12%, var(--card-bg));
+}
+/* skeleton rows: the list that will fill in */
+.pc-ghost { position: absolute; inset-inline: 18px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.pc-ghost i {
+  display: block; height: 7px; border-radius: 4px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--k) 16%, transparent), color-mix(in srgb, var(--k) 6%, transparent));
+}
+@media (max-width: 720px) { .pc-preview { grid-template-columns: 1fr; } }
 </style>
