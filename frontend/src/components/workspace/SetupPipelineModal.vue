@@ -1,8 +1,9 @@
 <template>
   <Teleport to="body">
     <Transition name="spm">
-      <div v-if="setupState.modalOpen" class="spm-overlay" @click.self="close">
+      <div v-if="setupState.modalOpen" ref="overlayEl" class="spm-overlay" :class="{ 'spm-overlay--morph': morphing }" @click.self="close">
         <div
+          ref="cardEl"
           class="spm-card"
           dir="rtl"
           role="dialog"
@@ -195,7 +196,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import { setupState, closeSetup, leaveSetupFor } from '../../utils/setupState.js'
 import { useSetupPipeline, SETUP_ACCENTS } from '../../composables/useSetupPipeline.js'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
@@ -366,7 +368,46 @@ function select(id) {
   selectedId.value = id
   if (id !== 'phone') redirectNote.value = ''
 }
-function close() { closeSetup() }
+// iPhone-style: the wizard grows out of the home "הפעלת האוטומציה" card and folds
+// back into it on X. Opened from elsewhere (bell, another tab) → the card isn't
+// on screen, both calls no-op, and the plain fade plays.
+const morph = useOriginMorph()
+const overlayEl = ref(null)
+const cardEl = ref(null)
+const morphing = ref(false)
+const homeCard = () => {
+  const el = document.querySelector('.spc')
+  const r = el?.getBoundingClientRect()
+  return r && r.width && r.bottom > 0 && r.top < window.innerHeight ? el : null
+}
+function fadeScrim(dir) {
+  const o = overlayEl.value
+  if (!o) return
+  const bg = getComputedStyle(o).backgroundColor
+  o.animate(dir === 'in' ? [{ backgroundColor: 'rgba(24,24,24,0)' }, { backgroundColor: bg }]
+                         : [{ backgroundColor: bg }, { backgroundColor: 'rgba(24,24,24,0)' }],
+            { duration: dir === 'in' ? 560 : 380, easing: 'ease', fill: dir === 'in' ? 'none' : 'forwards' })
+}
+watch(() => setupState.modalOpen, async (open) => {
+  if (!open) return
+  const origin = homeCard()
+  if (!origin) return
+  morphing.value = true
+  morph.remember(origin)
+  await nextTick()
+  fadeScrim('in')
+  morph.grow(cardEl.value)
+  setTimeout(() => { morphing.value = false }, 600)
+})
+async function close() {
+  const origin = homeCard()
+  if (origin && cardEl.value) {
+    morph.remember(origin)
+    fadeScrim('out')
+    await morph.shrink(cardEl.value)
+  }
+  closeSetup()
+}
 
 function ctaStyle(id) {
   const a = ACCENTS[id]
@@ -896,6 +937,9 @@ onBeforeUnmount(() => {
 .spm-leave-active { transition: opacity 0.22s ease; }
 .spm-enter-from, .spm-leave-to { opacity: 0; }
 .spm-enter-active .spm-card { animation: spm-card-in 0.38s cubic-bezier(0.22, 1, 0.36, 1); }
+/* growing out of the home card: the morph owns the motion (no fade, no slide-in) */
+.spm-enter-active.spm-overlay--morph { transition: none; }
+.spm-enter-active.spm-overlay--morph .spm-card { animation: none; }
 @keyframes spm-card-in { from { transform: translateY(18px) scale(0.98); opacity: 0; } }
 
 /* responsive: visual pane stacks on top */
