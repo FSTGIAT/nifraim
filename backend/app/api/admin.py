@@ -47,6 +47,25 @@ def _user_admin_out(u: User) -> UserAdminOut:
     )
 
 
+def _sim_offset_for(today_value) -> int | None:
+    """Seconds between the real clock and a TEST user's chosen "today" (same
+    time of day, Israel time). None when no date was given."""
+    if not today_value:
+        return None
+    from datetime import date as _date
+    from zoneinfo import ZoneInfo
+
+    from app.services.cycle_service import utc_now
+
+    try:
+        d = _date.fromisoformat(str(today_value))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="תאריך 'היום' לא תקין") from e
+    now_il = utc_now().astimezone(ZoneInfo("Asia/Jerusalem"))
+    target = now_il.replace(year=d.year, month=d.month, day=d.day)
+    return int((target - now_il).total_seconds()) or None
+
+
 @router.post("/users", response_model=UserAdminOut, status_code=201)
 async def create_user(
     body: UserAdminCreate,
@@ -61,11 +80,14 @@ async def create_user(
     # `username` is NOT NULL — admin-created accounts don't choose one, so derive
     # it from the email. The user can rename via PATCH /api/auth/me/username.
     created_at = None
-    if body.signup_date:
+    signup_value = body.signup_date or body.sim_today
+    if body.signup_date and body.sim_today and body.signup_date > body.sim_today:
+        raise HTTPException(status_code=400, detail="תאריך ההרשמה אחרי 'היום' של המשתמש")
+    if signup_value:
         from datetime import date as _date
         from zoneinfo import ZoneInfo
         try:
-            d = _date.fromisoformat(body.signup_date)
+            d = _date.fromisoformat(signup_value)
         except ValueError as e:
             raise HTTPException(status_code=400, detail="תאריך הרשמה לא תקין") from e
         created_at = (datetime(d.year, d.month, d.day, 12, 0, tzinfo=ZoneInfo("Asia/Jerusalem"))
@@ -81,6 +103,7 @@ async def create_user(
         is_active=True,  # admin-created accounts are active immediately
         is_admin=body.is_admin,
         **({"created_at": created_at} if created_at else {}),
+        sim_clock_offset_s=_sim_offset_for(body.sim_today),
     )
     db.add(user)
     await db.commit()
@@ -136,7 +159,12 @@ async def create_test_user(
     if (await db.execute(select(User).where(User.email == email))).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="האימייל כבר רשום")
 
-    signup_at = at_noon_utc(body.get("signup_date"), "תאריך הרשמה")
+    sim_offset = _sim_offset_for(body.get("sim_today"))
+    sim_today_utc = (at_noon_utc(body.get("sim_today"), "היום המדומה")
+                     if body.get("sim_today") else None)
+    signup_at = at_noon_utc(body.get("signup_date") or body.get("sim_today"), "תאריך הרשמה")
+    if sim_today_utc and signup_at > sim_today_utc:
+        raise HTTPException(status_code=400, detail="תאריך ההרשמה אחרי 'היום' של המשתמש")
     status = str(body.get("maslaka_status") or NOT_STARTED)
     if status not in (NOT_STARTED, SUBMITTED, APPROVED):
         raise HTTPException(status_code=400, detail="מצב שיוך לא תקין")
@@ -149,6 +177,9 @@ async def create_test_user(
         approved_at = at_noon_utc(body.get("maslaka_approved_date"), "תאריך אישור שיוך")
         if approved_at < submitted_at:
             raise HTTPException(status_code=400, detail="אישור השיוך לפני ההגשה")
+    for when in (submitted_at, approved_at):
+        if sim_today_utc and when and when > sim_today_utc:
+            raise HTTPException(status_code=400, detail="תאריך שיוך אחרי 'היום' של המשתמש")
 
     user = User(
         email=email,
@@ -158,6 +189,7 @@ async def create_test_user(
         is_active=True,
         is_admin=False,
         created_at=signup_at,
+        sim_clock_offset_s=sim_offset,
     )
     db.add(user)
     await db.flush()

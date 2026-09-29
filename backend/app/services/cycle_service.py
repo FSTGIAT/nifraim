@@ -293,8 +293,16 @@ def manual_run_allowed(user, state: "CycleState") -> bool:
     return bool(getattr(user, "is_admin", False))
 
 
+def user_now(user) -> datetime:
+    """"Now" for one user: the real (or CYCLE_NOW_OVERRIDE) clock, shifted by
+    the user's simulated offset when an admin made them a TEST user with a
+    chosen "today". Real agents have no offset → identical to utc_now()."""
+    off = getattr(user, "sim_clock_offset_s", None)
+    return utc_now() + timedelta(seconds=off) if off else utc_now()
+
+
 async def user_cycle_state(db: AsyncSession, user, now: datetime | None = None) -> CycleState:
-    now_utc = (now or utc_now()).astimezone(timezone.utc).replace(tzinfo=None)
+    now_utc = (now or user_now(user)).astimezone(timezone.utc).replace(tzinfo=None)
     now_aware = now_utc.replace(tzinfo=timezone.utc)
 
     fy, fm = first_cycle_for(user.created_at or now_utc)
@@ -552,7 +560,9 @@ async def run_cycle_tick(now: datetime | None = None) -> None:
     try:
         async with async_session() as db:
             users = (await db.execute(
-                select(User).where(User.is_active.is_(True))
+                # Test users on a simulated clock never take part in the real
+                # cycle — no batches queued, no emails sent.
+                select(User).where(User.is_active.is_(True), User.sim_clock_offset_s.is_(None))
             )).scalars().all()
             for user in users:
                 try:

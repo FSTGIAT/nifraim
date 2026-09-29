@@ -79,6 +79,9 @@ class UserAdminCreate(BaseModel):
     # "As if" they signed up on this day (YYYY-MM-DD) — drives the first
     # cycle and every date a new agent sees. Empty = now.
     signup_date: str | None = None
+    # TESTS ONLY: this user's simulated "today" (YYYY-MM-DD). Their cycle and
+    # מסלקה dates run from it; they are left out of the real monthly cycle.
+    sim_today: str | None = None
 
 
 class AgentStatusOut(BaseModel):

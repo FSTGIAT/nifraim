@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Boolean
+from sqlalchemy import BigInteger, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,10 @@ class User(Base):
     password_reset_expires: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     phone_forward_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # TEST USERS ONLY: seconds added to the real clock for this user's cycle /
+    # מסלקה dates (a simulated "today"). NULL for every real agent. Such users
+    # are skipped by the real monthly cycle (cycle_service.run_cycle_tick).
+    sim_clock_offset_s: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     uploads = relationship("FileUpload", back_populates="user", cascade="all, delete-orphan")
     records = relationship("ClientRecord", back_populates="user", cascade="all, delete-orphan")

@@ -216,8 +216,8 @@ async def production_files(
 
     # Production answers are due by the 15th — the next 15th in Israel time,
     # on the cycle's clock (CYCLE_NOW_OVERRIDE) so it agrees with every other date.
-    from app.services.cycle_service import utc_now
-    today = utc_now().astimezone(ZoneInfo("Asia/Jerusalem")).date()
+    from app.services.cycle_service import user_now
+    today = user_now(user).astimezone(ZoneInfo("Asia/Jerusalem")).date()
     if today.day < 15:
         next_due = _date(today.year, today.month, 15)
     else:

@@ -149,6 +149,11 @@
               <label class="sim-field"><span>סיסמה</span><input v-model="sim.password" type="text" dir="ltr" required autocomplete="off" /></label>
               <label class="sim-field"><span>שם</span><input v-model="sim.full_name" type="text" /></label>
               <label class="sim-field"><span>תאריך הרשמה</span><input v-model="sim.signup_date" type="date" dir="ltr" required /></label>
+              <label class="sim-field sim-field--wide">
+                <span>היום של המשתמש</span>
+                <input v-model="sim.sim_today" type="date" dir="ltr" />
+                <small class="sim-hint">ריק = היום האמיתי. תאריך עתידי = כל התאריכים שלו נספרים ממנו, והוא לא משתתף במחזור האמיתי.</small>
+              </label>
             </div>
 
             <fieldset class="sim-seg">
@@ -226,7 +231,7 @@ function openSim() {
   Object.assign(sim, {
     open: true, busy: false, error: '', done: '',
     email: `test${n}@nifraim-test.com`, password: 'test123', full_name: `סוכן בדיקה ${n}`,
-    signup_date: isoToday(), maslaka_status: 'not_started',
+    signup_date: isoToday(), sim_today: '', maslaka_status: 'not_started',
     maslaka_submitted_date: isoToday(), maslaka_approved_date: isoToday(),
   })
 }
@@ -239,6 +244,7 @@ async function createSim() {
       email: sim.email, password: sim.password, full_name: sim.full_name,
       signup_date: sim.signup_date, maslaka_status: sim.maslaka_status,
     }
+    if (sim.sim_today) body.sim_today = sim.sim_today
     if (sim.maslaka_status !== 'not_started') body.maslaka_submitted_date = sim.maslaka_submitted_date
     if (sim.maslaka_status === 'approved') body.maslaka_approved_date = sim.maslaka_approved_date
     const { data: u } = await api.post('/admin/test-users', body)
@@ -381,6 +387,8 @@ function ago(iso) {
 .sim-field { display: flex; flex-direction: column; gap: 5px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
 .sim-field input { height: 40px; padding: 0 12px; font-family: inherit; font-size: 0.9rem; color: var(--text); background: var(--card-bg, #fff); border: 1px solid var(--border); border-radius: 8px; }
 .sim-field input:focus { outline: none; border-color: var(--primary, #181818); box-shadow: 0 0 0 3px var(--primary-light, #eee); }
+.sim-field--wide { grid-column: 1 / -1; }
+.sim-hint { font-size: 11.5px; font-weight: 400; line-height: 1.4; color: var(--text-muted); }
 .sim-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: none; }
 .sim-seg legend { width: 100%; margin-bottom: 6px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
 .sim-seg-opt { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.84rem; font-weight: 600; cursor: pointer; }
