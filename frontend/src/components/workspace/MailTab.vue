@@ -64,12 +64,22 @@
     <div v-if="!summary" class="ml-loading"><div class="spinner"></div></div>
 
     <!-- No mailbox -->
-    <section v-else-if="!summary.mailbox_connected" class="ml-empty">
+    <template v-else-if="!summary.mailbox_connected">
+    <section class="ml-empty">
       <BigAddButton label="חיבור תיבת המייל" color="var(--tab-mail)" :size="156" @click="mailboxOpen = true">
         <AppIcon name="mail" :size="52" />
       </BigAddButton>
       <p class="ml-empty-title">חברו את תיבת המייל</p>
     </section>
+    <!-- the people who'll write in: customers, insurers, employers — walking by -->
+    <section class="ml-crowd">
+      <div class="ml-crowd-head">
+        <span class="ml-crowd-kicker">לקוחות · חברות ביטוח · מעסיקים</span>
+        <h3 class="ml-crowd-title">חברו את המייל — <span>ואני אקרא בשבילכם</span></h3>
+      </div>
+      <CrowdCanvasIsland ink="#4E9DD0" height="80%" :scale="0.5" :crowd="200" :opacity="0.8" :speed="0.4" />
+    </section>
+    </template>
 
     <!-- Connected, nobody watched -->
     <template v-else-if="!summary.watched_senders">
@@ -193,6 +203,14 @@
           </li>
         </ul>
       </section>
+    <!-- the people who'll write in: customers, insurers, employers — walking by -->
+    <section class="ml-crowd">
+      <div class="ml-crowd-head">
+        <span class="ml-crowd-kicker">לקוחות · חברות ביטוח · מעסיקים</span>
+        <h3 class="ml-crowd-title">מקשיב ל-<span class="ltr-number">{{ summary.watched_senders }}</span> שולחים — <span>ואני אטפל בשבילכם</span></h3>
+      </div>
+      <CrowdCanvasIsland ink="#4E9DD0" height="80%" :scale="0.5" :crowd="200" :opacity="0.8" :speed="0.4" />
+    </section>
     </template>
 
     <!-- The open mail — an envelope opens (Remotion, one-shot), then the
