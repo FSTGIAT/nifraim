@@ -61,7 +61,10 @@
           </thead>
           <tbody>
             <tr v-for="u in users" :key="u.id">
-              <td>{{ u.full_name || '—' }}</td>
+              <td>
+                {{ u.full_name || '—' }}
+                <span v-if="u.is_test_user" class="status-badge test-badge">בדיקה</span>
+              </td>
               <td class="ltr-number">{{ u.email }}</td>
               <td class="ltr-number">{{ u.phone || '—' }}</td>
               <td>{{ u.company_name || '—' }}</td>
@@ -90,6 +93,12 @@
                 >
                   {{ u.is_admin ? 'הסר אדמין' : 'הגדר אדמין' }}
                 </button>
+                <template v-if="!u.is_admin">
+                  <button v-if="!u.is_test_user" class="action-btn" @click="markTest(u)">סמן כבדיקה</button>
+                  <button v-else class="action-btn delete-btn" :disabled="deletingId === u.id" @click="deleteTestUser(u)">
+                    {{ deletingId === u.id ? 'מוחק…' : 'מחק' }}
+                  </button>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -213,6 +222,10 @@
                 <small class="cu-hint">תאריך עתידי = המשתמש חי ביום הזה: כל התאריכים שלו נספרים ממנו, והוא לא משתתף במחזור האמיתי. ריק = היום האמיתי.</small>
               </label>
               <label class="cu-check">
+                <input v-model="createForm.is_test_user" type="checkbox" />
+                <span>משתמש בדיקה (אפשר למחוק אותו אחר כך)</span>
+              </label>
+              <label class="cu-check">
                 <input v-model="createForm.is_admin" type="checkbox" />
                 <span>הרשאות אדמין</span>
               </label>
@@ -259,7 +272,7 @@ const onlineCount = computed(() => agents.value.filter((a) => a.worker_online).l
 const showCreate = ref(false)
 const creating = ref(false)
 const createError = ref('')
-const createForm = ref({ email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '', sim_today: '' })
+const createForm = ref({ email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '', sim_today: '', is_test_user: false })
 
 // Poll agents-status while the agents tab is open so online state stays fresh.
 let agentsTimer = null
@@ -318,7 +331,7 @@ async function fetchAgents() {
 
 function openCreate() {
   createError.value = ''
-  createForm.value = { email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '', sim_today: '' }
+  createForm.value = { email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '', sim_today: '', is_test_user: false }
   showCreate.value = true
 }
 
@@ -372,6 +385,30 @@ async function toggleAdmin(user) {
     Object.assign(user, res.data)
   } catch (e) {
     console.error('Failed to update user:', e)
+  }
+}
+
+async function markTest(u) {
+  if (!confirm(`לסמן את ${u.email} כמשתמש בדיקה? משתמש בדיקה אפשר למחוק עם כל הנתונים שלו.`)) return
+  try {
+    const res = await api.patch(`/admin/users/${u.id}`, { is_test_user: true })
+    Object.assign(u, res.data)
+  } catch (e) {
+    alert(e.response?.data?.detail || 'הסימון נכשל')
+  }
+}
+
+const deletingId = ref(null)
+async function deleteTestUser(u) {
+  if (!confirm(`למחוק את ${u.email} וכל הנתונים שלו? אי אפשר לבטל.`)) return
+  deletingId.value = u.id
+  try {
+    await api.delete(`/admin/users/${u.id}`)
+    users.value = users.value.filter(x => x.id !== u.id)
+  } catch (e) {
+    alert(e.response?.data?.detail || 'המחיקה נכשלה')
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -725,6 +762,9 @@ function formatDateTime(dateStr) {
   gap: 14px;
 }
 
+.test-badge { margin-inline-start: 6px; background: var(--amber-light, #FBF4DC); color: var(--amber, #8A6300); }
+.delete-btn { color: var(--red-deep, #B91C1C); border-color: color-mix(in srgb, var(--red, #EA001E) 35%, transparent); }
+.delete-btn:hover:not(:disabled) { background: var(--red-light, #FDEDEC); }
 .cu-hint { font-size: 11.5px; line-height: 1.4; color: var(--text-muted, #706E6B); }
 .cu-field {
   display: flex;

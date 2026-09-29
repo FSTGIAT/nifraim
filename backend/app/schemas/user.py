@@ -60,6 +60,7 @@ class UserAdminOut(BaseModel):
     is_active: bool
     is_admin: bool
     created_at: str
+    is_test_user: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -67,6 +68,7 @@ class UserAdminOut(BaseModel):
 class UserAdminUpdate(BaseModel):
     is_active: bool | None = None
     is_admin: bool | None = None
+    is_test_user: bool | None = None
 
 
 class UserAdminCreate(BaseModel):
@@ -82,6 +84,8 @@ class UserAdminCreate(BaseModel):
     # TESTS ONLY: this user's simulated "today" (YYYY-MM-DD). Their cycle and
     # מסלקה dates run from it; they are left out of the real monthly cycle.
     sim_today: str | None = None
+    # A test account — deletable from the admin later.
+    is_test_user: bool = False
 
 
 class AgentStatusOut(BaseModel):

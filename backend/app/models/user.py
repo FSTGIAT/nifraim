@@ -33,6 +33,8 @@ class User(Base):
     # מסלקה dates (a simulated "today"). NULL for every real agent. Such users
     # are skipped by the real monthly cycle (cycle_service.run_cycle_tick).
     sim_clock_offset_s: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Made by an admin for testing. Only these can be deleted from the admin.
+    is_test_user: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     uploads = relationship("FileUpload", back_populates="user", cascade="all, delete-orphan")
     records = relationship("ClientRecord", back_populates="user", cascade="all, delete-orphan")

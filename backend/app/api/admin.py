@@ -44,6 +44,7 @@ def _user_admin_out(u: User) -> UserAdminOut:
         is_active=u.is_active,
         is_admin=u.is_admin,
         created_at=u.created_at.isoformat() if u.created_at else "",
+        is_test_user=bool(getattr(u, "is_test_user", False)),
     )
 
 
@@ -104,6 +105,8 @@ async def create_user(
         is_admin=body.is_admin,
         **({"created_at": created_at} if created_at else {}),
         sim_clock_offset_s=_sim_offset_for(body.sim_today),
+        # A simulated "today" only makes sense on a test account.
+        is_test_user=bool(body.is_test_user or body.sim_today) and not body.is_admin,
     )
     db.add(user)
     await db.commit()
@@ -190,6 +193,7 @@ async def create_test_user(
         is_admin=False,
         created_at=signup_at,
         sim_clock_offset_s=sim_offset,
+        is_test_user=True,
     )
     db.add(user)
     await db.flush()
@@ -206,6 +210,36 @@ async def create_test_user(
     await db.commit()
     await db.refresh(user)
     return _user_admin_out(user)
+
+
+@router.delete("/users/{user_id}")
+async def delete_test_user(
+    user_id: str,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a TEST user and all their data. Refuses anyone not marked
+    `is_test_user`, any admin, and the caller — a real agent's account and
+    data are never deletable from here."""
+    from app.services.test_user_purge import purge_user
+
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="מזהה לא תקין") from e
+    user = await db.get(User, uid)
+    if user is None:
+        raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+    if not user.is_test_user or user.is_admin or user.id == admin.id:
+        raise HTTPException(status_code=403, detail="אפשר למחוק רק משתמשי בדיקה")
+    email = user.email
+    try:
+        counts = await purge_user(db, uid)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"המחיקה נכשלה: {e}") from e
+    return {"deleted": email, "rows": counts}
 
 
 @router.get("/agents-status", response_model=list[AgentStatusOut])
@@ -255,6 +289,10 @@ async def update_user(
         user.is_active = body.is_active
     if body.is_admin is not None:
         user.is_admin = body.is_admin
+    if body.is_test_user is not None:
+        if body.is_test_user and user.is_admin:
+            raise HTTPException(status_code=400, detail="אדמין לא יכול להיות משתמש בדיקה")
+        user.is_test_user = body.is_test_user
 
     await db.commit()
     await db.refresh(user)
