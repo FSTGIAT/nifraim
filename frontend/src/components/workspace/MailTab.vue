@@ -88,7 +88,7 @@
     <!-- the people who'll write in: customers, insurers, employers — walking by -->
     <section class="ml-crowd">
       <p class="ml-crowd-line">לקוחות, חברות ביטוח, מעסיקים — בחרו ממי לקרוא, ואני אטפל בשבילכם</p>
-      <CrowdCanvasIsland ink="#4E9DD0" height="78%" :scale="0.4" :crowd="18" :opacity="0.75" />
+      <CrowdCanvasIsland ink="#4E9DD0" height="80%" :scale="0.5" :crowd="200" :opacity="0.8" />
     </section>
     </template>
 

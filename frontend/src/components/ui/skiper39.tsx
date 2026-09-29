@@ -73,8 +73,10 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, ink, exclude = [], scale = 1, m
     // TWEEN FACTORIES
     const resetPeep = ({ stage, peep }: { stage: any; peep: any }) => {
       const direction = Math.random() > 0.5 ? 1 : -1;
-      // depth spread in the original's px, scaled with the peeps (else small peeps float mid-air)
-      const offsetY = (100 - 250 * gsap.parseEase("power2.in")(Math.random())) * scale;
+      // The sprites are cut at the waist: a peep standing HIGHER than the bottom
+      // edge shows as a floating half-body. So depth only ever sinks a peep
+      // (0 → 40% of its height below the edge) — never lifts it.
+      const offsetY = peep.height * 0.4 * gsap.parseEase("power2.in")(Math.random());
       const startY = stage.height - peep.height + offsetY;
       let startX: number;
       let endX: number;
