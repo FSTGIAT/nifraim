@@ -136,7 +136,10 @@
           <i class="tl-dot" :style="{ background: it.color }"></i>{{ it.name }}
         </li>
       </ul>
-      <div class="trend-chart-wrap">
+      <!-- Hide the tooltip the moment the pointer leaves the chart: ApexCharts
+           otherwise fades it out, and keeps it up while the pointer rests on
+           the tooltip itself. -->
+      <div class="trend-chart-wrap" @mouseleave="hideTooltip">
         <apexchart
           type="bar"
           height="320"
@@ -189,6 +192,11 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+
+function hideTooltip(e) {
+  e.currentTarget?.querySelectorAll('.apexcharts-tooltip.apexcharts-active')
+    .forEach(el => el.classList.remove('apexcharts-active'))
+}
 import api from '../../api/client.js'
 import { useProductionStore } from '../../stores/production.js'
 import { CHART_PALETTE, assignCompanyColors, VALIDATED_SLOTS } from '../../utils/chartPalette.js'
@@ -903,6 +911,9 @@ const chartOptions = computed(() => ({
 <style>
 /* Custom tooltip for the stacked commission chart. Unscoped on purpose:
    ApexCharts injects this markup outside the component's DOM. */
+/* The tooltip never catches the pointer (so it can't hold itself open) and
+   appears/disappears without ApexCharts' slow fade. */
+.trend-chart-wrap .apexcharts-tooltip { pointer-events: none !important; transition: none !important; }
 .apexcharts-tooltip .tt { font-family: Heebo, sans-serif; direction: rtl; padding: 4px 0; min-width: 340px; }
 .apexcharts-tooltip .tt-head {
   display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
