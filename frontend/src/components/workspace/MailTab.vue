@@ -39,16 +39,19 @@
             <span>שולחים</span>
             <span class="ml-count ltr-number">{{ summary.watched_senders }}</span>
           </button>
-          <!-- Once the workshop is done, the big animated door shrinks to this
-               pencil beside שולחים (it "lands" here right after finishing). -->
+          <!-- the writing-style workshop: always here, beside שולחים; a pulsing dot
+               until it's been done once (was a big dashed door in the page). -->
           <button
-            v-if="styleDone" class="ml-icon-btn ml-icon-btn--only" :class="{ 'ml-pencil--land': pencilLand }"
-            type="button" title="סגנון הכתיבה שלי" aria-label="סגנון הכתיבה שלי" @click="store.workshopOpen = true"
+            class="ml-icon-btn ml-style-btn" :class="{ 'ml-pencil--land': pencilLand }"
+            type="button" :title="styleDone ? 'סגנון הכתיבה שלי' : 'סגנון הכתיבה שלי — עוד לא הוגדר'"
+            @click="store.workshopOpen = true"
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </svg>
+            <span>סגנון כתיבה</span>
+            <span v-if="!styleDone" class="ml-style-dot" aria-hidden="true"></span>
           </button>
           <Transition name="fade"><span v-if="pollNote" class="ml-poll-note" role="status">{{ pollNote }}</span></Transition>
         </div>
@@ -80,14 +83,14 @@
             </svg>
           </BigAddButton>
         </div>
-        <div v-if="!styleDone" class="ml-door">
-          <StyleDoor :nudge="styleSkipped" @click="store.workshopOpen = true" />
-        </div>
       </div>
     </section>
     <!-- the people who'll write in: customers, insurers, employers — walking by -->
     <section class="ml-crowd">
-      <p class="ml-crowd-line">לקוחות, חברות ביטוח, מעסיקים — בחרו ממי לקרוא, ואני אטפל בשבילכם</p>
+      <div class="ml-crowd-head">
+        <span class="ml-crowd-kicker">לקוחות · חברות ביטוח · מעסיקים</span>
+        <h3 class="ml-crowd-title">בחרו ממי לקרוא — <span>ואני אטפל בשבילכם</span></h3>
+      </div>
       <CrowdCanvasIsland ink="#4E9DD0" height="80%" :scale="0.5" :crowd="200" :opacity="0.8" :speed="0.4" />
     </section>
     </template>
@@ -142,7 +145,6 @@
             <span>{{ store.polling ? 'סורק…' : 'מאזין' }}</span>
             <span v-if="!store.polling" class="ml-listen-n ltr-number">{{ summary.watched_senders }}</span>
           </p>
-          <StyleDoor v-if="!styleDone" small :nudge="styleSkipped" @click="store.workshopOpen = true" />
           <div v-if="topSuggestions.length" class="ml-quick">
             <span class="ml-quick-label">להוסיף?</span>
             <button
@@ -390,7 +392,6 @@ import CrowdCanvasIsland from './CrowdCanvasIsland.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import MailEnvelopeIntro from './MailEnvelopeIntro.vue'
 import MailListenRadar from './MailListenRadar.vue'
-import StyleDoor from './StyleDoor.vue'
 
 const store = useMailAgentStore()
 const summary = computed(() => store.summary)
@@ -402,7 +403,6 @@ const STATUS = {
 }
 
 // "אחר כך" was pressed and the workshop never finished — keep a quiet nudge.
-const styleSkipped = computed(() => !!store.profileState && !store.profileState.completed_at)
 const styleDone = computed(() => !!store.profileState?.completed_at)
 // Right after "זה נשמע כמוני" the pencil plays a one-time landing.
 const pencilLand = ref(false)
@@ -719,6 +719,13 @@ onUnmounted(() => {
 .ml-icon-btn:disabled { opacity: 0.6; cursor: default; }
 .ml-icon-btn:focus-visible { outline: 2px solid var(--ml-acc); outline-offset: 2px; }
 .ml-icon-btn--only { padding-inline: 9px; }
+.ml-style-btn { position: relative; }
+.ml-style-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ml-acc);
+  box-shadow: 0 0 0 0 var(--ml-acc); animation: ml-nudge 1.8s ease-out infinite;
+}
+@keyframes ml-nudge { 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .ml-style-dot { animation: none; } }
 .ml-pencil--land { animation: ml-land 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes ml-land {
   0% { transform: scale(2.6) translateY(40px); opacity: 0; box-shadow: 0 0 0 0 var(--ml-wash); }
@@ -784,10 +791,14 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   background: linear-gradient(180deg, #FFFFFF 0%, #F1F7FC 55%, #E6F0F8 100%);
 }
-.ml-crowd-line {
-  position: relative; z-index: 1; margin: 22px auto 0; max-width: 32ch; text-align: center;
-  font-size: 15px; font-weight: 700; line-height: 1.5; color: #2F6C94;
+.ml-crowd-head { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 24px; padding: 0 16px; text-align: center; }
+.ml-crowd-kicker {
+  padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 0 rgba(47, 108, 148, 0.08), inset 0 0 0 1px rgba(78, 157, 208, 0.25);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.02em; color: #2F6C94;
 }
+.ml-crowd-title { margin: 0; font-size: clamp(20px, 2.6vw, 28px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.2; color: var(--text); }
+.ml-crowd-title span { color: #2F6C94; }
 .ml-empty-title { margin: 12px 0 0; font-size: 16px; font-weight: 800; color: var(--text); }
 
 /* ── Sections ───────────────────────────────────────────────── */
