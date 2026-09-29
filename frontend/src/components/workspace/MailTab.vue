@@ -69,7 +69,8 @@
     </section>
 
     <!-- Connected, nobody watched -->
-    <section v-else-if="!summary.watched_senders" class="ml-empty">
+    <template v-else-if="!summary.watched_senders">
+    <section class="ml-empty">
       <div class="ml-doors">
         <div class="ml-door">
           <BigAddButton label="בחירת שולחים" color="var(--tab-mail)" :size="156" @click="openSenders">
@@ -84,6 +85,12 @@
         </div>
       </div>
     </section>
+    <!-- the people who'll write in: customers, insurers, employers — walking by -->
+    <section class="ml-crowd">
+      <p class="ml-crowd-line">לקוחות, חברות ביטוח, מעסיקים — בחרו ממי לקרוא, ואני אטפל בשבילכם</p>
+      <CrowdCanvasIsland ink="#4E9DD0" height="78%" :scale="0.4" :crowd="18" :opacity="0.75" />
+    </section>
+    </template>
 
     <template v-else>
       <!-- 1. The stage: what needs you (or, when nothing does, the AI at work)
@@ -379,6 +386,7 @@ import { useMailAgentStore } from '../../stores/mailAgent.js'
 import AppIcon from '../icons/AppIcon.vue'
 import BigAddButton from './BigAddButton.vue'
 import HachsharaMailModal from './HachsharaMailModal.vue'
+import CrowdCanvasIsland from './CrowdCanvasIsland.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import MailEnvelopeIntro from './MailEnvelopeIntro.vue'
 import MailListenRadar from './MailListenRadar.vue'
@@ -770,6 +778,15 @@ onUnmounted(() => {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px 34px;
   background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   color: var(--ml-acc);
+}
+.ml-crowd {
+  position: relative; overflow: hidden; height: clamp(230px, 32vh, 300px);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F7FC 55%, #E6F0F8 100%);
+}
+.ml-crowd-line {
+  position: relative; z-index: 1; margin: 22px auto 0; max-width: 32ch; text-align: center;
+  font-size: 15px; font-weight: 700; line-height: 1.5; color: #2F6C94;
 }
 .ml-empty-title { margin: 12px 0 0; font-size: 16px; font-weight: 800; color: var(--text); }
 
