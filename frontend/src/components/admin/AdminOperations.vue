@@ -16,6 +16,10 @@
         </p>
       </div>
       <div class="ops-actions">
+        <button type="button" class="ops-new" @click="openSim">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          משתמש בדיקה
+        </button>
         <span v-if="updatedAt" class="ops-updated">עודכן {{ ago(updatedAt) }}</span>
         <button type="button" class="ops-refresh" :disabled="loading" @click="load">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" :class="{ spin: loading }"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
@@ -125,11 +129,56 @@
         </tbody>
       </table>
     </div>
-  </section>
+  
+    <!-- Test user "as if" signed up on a chosen date — to see the cycle and
+         מסלקה dates a new agent gets. POST /api/admin/test-users. -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="sim.open" class="sim-overlay" @click.self="sim.open = false">
+          <form class="sim-card" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="sim-title" @submit.prevent="createSim">
+            <header class="sim-head">
+              <h3 id="sim-title">משתמש בדיקה</h3>
+              <button type="button" class="sim-x" aria-label="סגור" @click="sim.open = false">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </header>
+            <p class="sim-lead">משתמש שנרשם בתאריך שתבחרו — לבדיקת התאריכים שסוכן חדש רואה.</p>
+
+            <div class="sim-grid">
+              <label class="sim-field"><span>אימייל</span><input v-model="sim.email" type="email" dir="ltr" required autocomplete="off" /></label>
+              <label class="sim-field"><span>סיסמה</span><input v-model="sim.password" type="text" dir="ltr" required autocomplete="off" /></label>
+              <label class="sim-field"><span>שם</span><input v-model="sim.full_name" type="text" /></label>
+              <label class="sim-field"><span>תאריך הרשמה</span><input v-model="sim.signup_date" type="date" dir="ltr" required /></label>
+            </div>
+
+            <fieldset class="sim-seg">
+              <legend>שיוך למסלקה</legend>
+              <label v-for="o in SIM_STATES" :key="o.id" class="sim-seg-opt" :class="{ on: sim.maslaka_status === o.id }">
+                <input v-model="sim.maslaka_status" type="radio" :value="o.id" />{{ o.label }}
+              </label>
+            </fieldset>
+            <div v-if="sim.maslaka_status !== 'not_started'" class="sim-grid">
+              <label class="sim-field"><span>הוגש ב</span><input v-model="sim.maslaka_submitted_date" type="date" dir="ltr" required /></label>
+              <label v-if="sim.maslaka_status === 'approved'" class="sim-field"><span>אושר ב</span><input v-model="sim.maslaka_approved_date" type="date" dir="ltr" required /></label>
+            </div>
+
+            <p v-if="sim.error" class="sim-error" role="alert">{{ sim.error }}</p>
+            <p v-if="sim.done" class="sim-done" role="status">
+              נוצר <strong dir="ltr">{{ sim.done }}</strong> — התחברו איתו בחלון פרטי כדי לראות מה סוכן חדש רואה.
+            </p>
+
+            <footer class="sim-foot">
+              <button type="submit" class="sim-primary" :disabled="sim.busy">{{ sim.busy ? 'יוצר…' : 'יצירה' }}</button>
+            </footer>
+          </form>
+        </div>
+      </Transition>
+    </Teleport>
+</section>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import api from '../../api/client.js'
 
 const CYCLE = {
@@ -161,6 +210,46 @@ const FILTERS = [
   { id: 'nomail', label: 'בלי Mail Agent' },
   { id: 'maslaka', label: 'מסלקה פעילה' },
 ]
+
+// ── Test user with a chosen signup date ──────────────────────────────────
+const SIM_STATES = [
+  { id: 'not_started', label: 'לא הוגש' },
+  { id: 'submitted', label: 'הוגש' },
+  { id: 'approved', label: 'אושר' },
+]
+function isoToday() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+}
+const sim = reactive({ open: false, busy: false, error: '', done: '' })
+function openSim() {
+  const n = Math.floor(1000 + Math.random() * 9000)
+  Object.assign(sim, {
+    open: true, busy: false, error: '', done: '',
+    email: `test${n}@nifraim-test.com`, password: 'test123', full_name: `סוכן בדיקה ${n}`,
+    signup_date: isoToday(), maslaka_status: 'not_started',
+    maslaka_submitted_date: isoToday(), maslaka_approved_date: isoToday(),
+  })
+}
+async function createSim() {
+  sim.busy = true
+  sim.error = ''
+  sim.done = ''
+  try {
+    const body = {
+      email: sim.email, password: sim.password, full_name: sim.full_name,
+      signup_date: sim.signup_date, maslaka_status: sim.maslaka_status,
+    }
+    if (sim.maslaka_status !== 'not_started') body.maslaka_submitted_date = sim.maslaka_submitted_date
+    if (sim.maslaka_status === 'approved') body.maslaka_approved_date = sim.maslaka_approved_date
+    const { data: u } = await api.post('/admin/test-users', body)
+    sim.done = `${u.email} / ${sim.password}`
+    load()
+  } catch (e) {
+    sim.error = e.response?.data?.detail || 'היצירה נכשלה'
+  } finally {
+    sim.busy = false
+  }
+}
 
 const data = ref(null)
 const loading = ref(false)
@@ -272,6 +361,39 @@ function ago(iso) {
   display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 10px;
   border: 1px solid var(--border-subtle, #E5E5E5); background: #fff; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
 }
+.ops-new {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--primary, #181818); background: var(--primary, #181818); color: #fff;
+  font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+}
+.ops-new:hover { background: var(--primary-deep, #000); }
+.ops-new:focus-visible { outline: 2px solid var(--primary, #181818); outline-offset: 2px; }
+
+.sim-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.45); }
+.sim-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; background: var(--card-bg, #fff); border-radius: 16px; box-shadow: var(--shadow-lg); }
+.sim-head { display: flex; align-items: center; justify-content: space-between; }
+.sim-head h3 { margin: 0; font-size: 1.15rem; font-weight: 800; }
+.sim-x { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.sim-x:hover { background: var(--bg); color: var(--text); }
+.sim-lead { margin: -6px 0 0; font-size: 0.85rem; color: var(--text-muted); }
+.sim-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 520px) { .sim-grid { grid-template-columns: 1fr; } }
+.sim-field { display: flex; flex-direction: column; gap: 5px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.sim-field input { height: 40px; padding: 0 12px; font-family: inherit; font-size: 0.9rem; color: var(--text); background: var(--card-bg, #fff); border: 1px solid var(--border); border-radius: 8px; }
+.sim-field input:focus { outline: none; border-color: var(--primary, #181818); box-shadow: 0 0 0 3px var(--primary-light, #eee); }
+.sim-seg { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: none; }
+.sim-seg legend { width: 100%; margin-bottom: 6px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.sim-seg-opt { display: inline-flex; align-items: center; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+.sim-seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.sim-seg-opt.on { background: var(--primary, #181818); border-color: var(--primary, #181818); color: #fff; }
+.sim-seg-opt:focus-within { outline: 2px solid var(--primary, #181818); outline-offset: 2px; }
+.sim-error { margin: 0; font-size: 0.84rem; font-weight: 600; color: var(--red-deep, #B91C1C); }
+.sim-done { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--green-light, #EAF5EE); font-size: 0.84rem; color: var(--text); }
+.sim-foot { display: flex; justify-content: flex-start; }
+.sim-primary { height: 42px; padding: 0 24px; border: none; border-radius: 10px; background: var(--primary, #181818); color: #fff; font-family: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+.sim-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
 .spin { animation: opsSpin 0.9s linear infinite; }
 @keyframes opsSpin { to { transform: rotate(-360deg); } }
 .ops-error { padding: 10px 14px; border-radius: 10px; background: rgba(234, 0, 30, 0.06); color: #B91C1C; font-weight: 600; }

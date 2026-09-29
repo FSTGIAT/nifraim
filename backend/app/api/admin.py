@@ -77,6 +77,93 @@ async def create_user(
     return _user_admin_out(user)
 
 
+@router.post("/test-users", response_model=UserAdminOut, status_code=201)
+async def create_test_user(
+    body: dict,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """A user "as if" they signed up on a chosen date — to see how the app
+    shows the cycle and מסלקה dates to a new agent (first cycle, locked
+    Production tab, שיוך deadline → the 15th production arrives).
+
+    Optional שיוך state (`maslaka_status`: not_started | submitted | approved,
+    with its own dates). A test link NEVER carries an agent ID or the
+    auto-production consent, so approval opens no real subscription at the
+    מסלקה (orchestration.ensure_monthly_subscriptions requires both).
+    """
+    from datetime import date as _date
+    from zoneinfo import ZoneInfo
+
+    from app.models.maslaka_agent_link import (
+        APPROVED, NOT_STARTED, SUBMITTED, MaslakaAgentLink,
+    )
+
+    il = ZoneInfo("Asia/Jerusalem")
+
+    def at_noon_utc(value, field: str) -> datetime:
+        try:
+            d = _date.fromisoformat(str(value))
+        except (TypeError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"{field}: תאריך לא תקין") from e
+        # Noon Israel time, stored naive-UTC like every created_at in the app.
+        return (datetime(d.year, d.month, d.day, 12, 0, tzinfo=il)
+                .astimezone(ZoneInfo("UTC")).replace(tzinfo=None))
+
+    email = str(body.get("email") or "").strip().lower()
+    password = str(body.get("password") or "")
+    # Same validator as /auth/login — an address login rejects (e.g. *.local)
+    # would make an account nobody can sign into.
+    from pydantic import EmailStr, TypeAdapter, ValidationError
+    try:
+        TypeAdapter(EmailStr).validate_python(email)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail="אימייל לא תקין (לא ניתן להתחבר איתו)") from e
+    if len(password) < 4:
+        raise HTTPException(status_code=400, detail="סיסמה של 4 תווים לפחות")
+    if (await db.execute(select(User).where(User.email == email))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="האימייל כבר רשום")
+
+    signup_at = at_noon_utc(body.get("signup_date"), "תאריך הרשמה")
+    status = str(body.get("maslaka_status") or NOT_STARTED)
+    if status not in (NOT_STARTED, SUBMITTED, APPROVED):
+        raise HTTPException(status_code=400, detail="מצב שיוך לא תקין")
+    submitted_at = approved_at = None
+    if status in (SUBMITTED, APPROVED):
+        submitted_at = at_noon_utc(body.get("maslaka_submitted_date"), "תאריך הגשת שיוך")
+        if submitted_at < signup_at:
+            raise HTTPException(status_code=400, detail="הגשת השיוך לפני ההרשמה")
+    if status == APPROVED:
+        approved_at = at_noon_utc(body.get("maslaka_approved_date"), "תאריך אישור שיוך")
+        if approved_at < submitted_at:
+            raise HTTPException(status_code=400, detail="אישור השיוך לפני ההגשה")
+
+    user = User(
+        email=email,
+        username=await generate_unique_username(db, email),
+        hashed_password=hash_password(password),
+        full_name=str(body.get("full_name") or "").strip() or "משתמש בדיקה",
+        is_active=True,
+        is_admin=False,
+        created_at=signup_at,
+    )
+    db.add(user)
+    await db.flush()
+    if status != NOT_STARTED:
+        db.add(MaslakaAgentLink(
+            user_id=user.id,
+            status=status,
+            agent_name=user.full_name,
+            submitted_at=submitted_at,
+            approved_at=approved_at,
+            decided_via="admin" if status == APPROVED else None,
+            auto_production=False,
+        ))
+    await db.commit()
+    await db.refresh(user)
+    return _user_admin_out(user)
+
+
 @router.get("/agents-status", response_model=list[AgentStatusOut])
 async def agents_status(
     _admin: User = Depends(get_admin_user),
