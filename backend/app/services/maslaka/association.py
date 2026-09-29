@@ -15,7 +15,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -49,49 +49,44 @@ BEIT_TOCHNA_ID = "558638623"
 ASSETS = Path(__file__).resolve().parents[2] / "assets" / "maslaka"
 BLANK_FORM = ASSETS / "shiyuch_form_blank.pdf"
 
-# Overlay positions, in PDF points from the bottom-left of page 1 (A4:
-# 595.32 × 841.92). The form has ZERO AcroForm fields and its labels are a
-# sliced scan, so there is nothing to anchor to programmatically — these are
-# measured by eye against the blank and live here so calibration is one edit.
+FONT_FILE = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "Heebo.ttf"
+
+# Overlay geometry, in PDF points from the bottom-left (A4: 595.32 × 841.92),
+# for the 2-page `טופס בקשה – שיוך לבית תוכנה או בית סוכן` BLANK (vendored
+# 2026-09-29). The form has no AcroForm fields, so it is a coordinate overlay.
+# The digit boxes are vector paths — their positions below were READ from the
+# PDF (pypdfium2 object bounds), not eyeballed: every row has a 13.25pt pitch.
 #
-# CALIBRATED against the 2-page `שיוך לבית תוכנה או בית סוכן` form, by rendering
-# a FILLED copy and measuring where the מסלקה's own values sit — that copy shows
-# the intended position of every field, which a blank cannot.
-#
-# Conversion used (render scale 1.4 on A4 595.32 × 841.92):
-#     pdf_x = img_x / 1.4        pdf_y = 841.92 - img_y / 1.4
-#
-# ⚠️ Specific to the 2-PAGE variant. The 1-page `בית סוכן` form has different
-# geometry and no בית-תוכנה choice; recalibrate if that one is ever vendored.
-# Always verify by rendering to PNG and LOOKING — text extraction reported an
-# earlier set as correct while both numbers sat visibly outside their boxes:
+# Always verify by rendering to PNG and LOOKING:
 #     import pypdfium2 as pdfium
 #     pdfium.PdfDocument("out.pdf")[0].render(scale=1.4).to_pil().save("out.png")
-FIELD_POSITIONS: dict[str, tuple[float, float]] = {
-    "agent_name": (266.0, 657.0),          # שם סוכן/סוכנות/מעסיק/מייצג
-    "agent_id": (274.0, 620.0),            # מספר מזהה (ת"ז/ח.פ) — boxed digits
-    "beit_tochna_checkbox": (447.0, 408.0),  # the לבית תוכנה tick
-    # ON the ruled line (y≈355), not floating above it. Copying the filled
-    # sample put this 20pt high — the sample was typed loosely, so match the
-    # FORM's geometry here, not the sample's. Centred on the line span
-    # (x 210..367). Always "Nifraim.com": it is our side of the form and the
-    # one value an agent must never be left to type.
-    "beit_tochna_name": (255.0, 358.0),    # שם בית תוכנה/בית סוכן
-    "beit_tochna_id": (239.0, 331.0),      # ח.פ/ת"ז בית תוכנה — boxed digits
-    # Section 3, "האם לחבר בנוסף?" — deliberately NOT drawn. Choosing between
-    # במקום and בנוסף replaces or keeps an agent's existing association, which
-    # is theirs to decide on paper, not ours to assume.
-    "connect_in_addition": (499.0, 140.0),
+BOX_PITCH = 13.25
+BOX_WIDTH = 13.2
+# (left edge of the first box, bottom of the row) per digit row.
+DIGIT_ROWS: dict[str, tuple[int, float, float]] = {       # name → (page, x0, y0)
+    "agent_id": (0, 273.2, 616.3),          # מספר מזהה (ת"ז/ח.פ)
+    "beit_tochna_id": (0, 235.3, 325.5),    # ח.פ/ת"ז בית תוכנה/בית סוכן
+    "signer_id": (1, 301.6, 724.5),         # ת.ז of the signer, page 2
 }
-
-# Horizontal pitch of one digit box, in points, per row. The מסלקה prints
-# identity numbers as a row of empty squares; a plain drawString bunches the
-# digits at the left and they read as written outside the grid.
-BOX_PITCH: dict[str, float] = {
-    "agent_id": 14.05,
-    "beit_tochna_id": 13.5,
+# Text anchors: (page, x, y, align). Right-aligned Hebrew sits on its line the
+# way a hand would write it in an RTL form.
+TEXT_ANCHORS: dict[str, tuple[int, float, float, str]] = {
+    "agent_name": (0, 351.0, 646.0, "right"),        # שם סוכן/סוכנות/מעסיק/מייצג
+    "beit_tochna_name": (0, 287.0, 355.5, "center"),  # שם בית תוכנה/בית סוכן
+    "signer_name": (1, 489.0, 724.5, "center"),      # שם החותם
+    "sign_date": (1, 237.0, 724.5, "center"),        # תאריך
 }
-
+# V ticks — the form says "סמן את המתאים בV". (page, centre x, centre y, size)
+TICKS: dict[str, tuple[int, float, float, float]] = {
+    "beit_tochna_checkbox": (0, 452.1, 412.8, 11.0),  # לבית תוכנה
+    # Section 3, "האם לחבר בנוסף?". בנוסף keeps any association the agent
+    # already has and ADDS Nifraim — the only choice that cannot disconnect
+    # them from an existing בית תוכנה, so it is the one we fill.
+    "connect_in_addition": (0, 499.3, 139.8, 10.0),
+}
+# The box the drawn signature is fitted into, bottom-anchored on the
+# חתימת איש קשר ראשי line (page 2).
+SIGNATURE_BOX = (1, 70.0, 723.0, 98.0, 40.0)   # page, x, y, w, h
 
 class FormTemplateMissing(RuntimeError):
     """The blank מסלקה form has not been vendored. Deliberately fatal: serving
@@ -208,11 +203,23 @@ def read_signed_pdf(link: MaslakaAgentLink) -> bytes | None:
 
 
 # ─── Form pre-fill ─────────────────────────────────────────────────────────
-def build_prefilled_form(*, agent_name: str, agent_id_number: str) -> bytes:
+def build_prefilled_form(
+    *,
+    agent_name: str,
+    agent_id_number: str,
+    signer_name: str | None = None,
+    signer_id_number: str | None = None,
+    signature_png: bytes | None = None,
+    sign_date: date | None = None,
+) -> bytes:
     """Overlay the agent's details onto the מסלקה's own blank form.
 
     Not a re-typeset copy: this draws on top of THEIR document, because a
     regulator's form re-created from a screenshot is a form they may refuse.
+
+    With `signature_png` it is the finished, signed form — name, ת.ז, date and
+    signature on page 2 — the thing that is emailed to the helpdesk. Without
+    it, page 2 is left for a hand.
     """
     if not BLANK_FORM.exists():
         raise FormTemplateMissing(
@@ -229,37 +236,173 @@ def build_prefilled_form(*, agent_name: str, agent_id_number: str) -> bytes:
     c = canvas.Canvas(packet, pagesize=A4)
     font = _register_hebrew_font()
 
-    c.setFont(font, 11)
-    c.drawString(*FIELD_POSITIONS["agent_name"], _shape_hebrew(agent_name))
-    c.setFont("Helvetica", 10)
-    _draw_boxed_digits(c, agent_id_number, *FIELD_POSITIONS["agent_id"],
-                       pitch=BOX_PITCH["agent_id"])
-    _draw_boxed_digits(c, BEIT_TOCHNA_ID, *FIELD_POSITIONS["beit_tochna_id"],
-                       pitch=BOX_PITCH["beit_tochna_id"])
-    c.setFont("Helvetica", 11)
-    c.drawString(*FIELD_POSITIONS["beit_tochna_name"], BEIT_TOCHNA_NAME)
+    pages: dict[int, list] = {0: [], 1: []}
+
+    def text(key: str, value: str, *, hebrew: bool, size: float = 11) -> None:
+        pg, x, y, align = TEXT_ANCHORS[key]
+        pages[pg].append(("text", x, y, align, _shape_hebrew(value) if hebrew else value,
+                          font if hebrew else "Helvetica", size))
+
+    def digits(key: str, value: str) -> None:
+        pg, x0, y0 = DIGIT_ROWS[key]
+        pages[pg].append(("digits", x0, y0, value))
+
+    def tick(key: str) -> None:
+        pg, cx, cy, size = TICKS[key]
+        pages[pg].append(("tick", cx, cy, size))
+
+    text("agent_name", agent_name, hebrew=True)
+    digits("agent_id", agent_id_number)
     # לבית תוכנה — always ticked; an agent joining Nifraim is never joining a
     # בית סוכן, and a mis-ticked box sends the association to the wrong entity.
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(*FIELD_POSITIONS["beit_tochna_checkbox"], "X")
+    tick("beit_tochna_checkbox")
+    text("beit_tochna_name", BEIT_TOCHNA_NAME, hebrew=False)
+    digits("beit_tochna_id", BEIT_TOCHNA_ID)
+    tick("connect_in_addition")
+
+    if signature_png:
+        text("signer_name", signer_name or agent_name, hebrew=True)
+        digits("signer_id", signer_id_number or agent_id_number)
+        text("sign_date", (sign_date or israel_today()).strftime("%d/%m/%Y"), hebrew=False)
+        pages[SIGNATURE_BOX[0]].append(("signature", signature_png))
+
+    for pg in (0, 1):
+        for op in pages[pg]:
+            _draw_op(c, op, font)
+        c.showPage()
     c.save()
     packet.seek(0)
 
+    overlay = PdfReader(packet)
     writer = PdfWriter()
-    overlay = PdfReader(packet).pages[0]
     for i, page in enumerate(reader.pages):
-        if i == 0:
-            page.merge_page(overlay)
+        if i < len(overlay.pages):
+            page.merge_page(overlay.pages[i])
         writer.add_page(page)
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
 
 
+def _draw_op(c, op: tuple, font: str) -> None:
+    kind = op[0]
+    if kind == "text":
+        _, x, y, align, value, face, size = op
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont(face, size)
+        {"right": c.drawRightString, "center": c.drawCentredString}.get(
+            align, c.drawString)(x, y, value)
+    elif kind == "digits":
+        _, x0, y0, value = op
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica", 10.5)
+        for i, ch in enumerate((value or "")[:9]):
+            c.drawCentredString(x0 + i * BOX_PITCH + BOX_WIDTH / 2 + 0.7, y0 + 4.6, ch)
+    elif kind == "tick":
+        _, cx, cy, size = op
+        # A hand-drawn V: short left stroke down to the base, long right stroke up.
+        c.setStrokeColorRGB(0.05, 0.1, 0.35)
+        c.setLineWidth(1.4)
+        c.setLineCap(1)
+        c.setLineJoin(1)
+        h = size / 2
+        p = c.beginPath()
+        p.moveTo(cx - h * 0.85, cy + h * 0.05)
+        p.lineTo(cx - h * 0.2, cy - h * 0.75)
+        p.lineTo(cx + h * 0.95, cy + h * 0.95)
+        c.drawPath(p, stroke=1, fill=0)
+    elif kind == "signature":
+        from reportlab.lib.utils import ImageReader
+
+        _, x, y, w, h = SIGNATURE_BOX
+        img = ImageReader(io.BytesIO(op[1]))
+        iw, ih = img.getSize()
+        scale = min(w / iw, h / ih)
+        dw, dh = iw * scale, ih * scale
+        # Centred on the line, sitting ON it (bottom-anchored), like ink.
+        c.drawImage(img, x + (w - dw) / 2, y, dw, dh, mask="auto")
+
+
+def israel_today() -> date:
+    """The date the agent signed, in THEIR day — the server runs on UTC, and a
+    form signed at 01:00 Israel time must not carry yesterday's date."""
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo("Asia/Jerusalem")).date()
+
+
+class SignatureInvalid(ValueError):
+    pass
+
+
+def decode_signature(data_url: str) -> bytes:
+    """The drawn signature, from the wizard's canvas, as a trimmed PNG.
+
+    Trimmed to its ink so it can be scaled to the line — a signature drawn in
+    the corner of a wide pad would otherwise print as a speck. Kept in memory
+    only: it exists on disk solely inside the encrypted signed form.
+    """
+    import base64
+
+    from PIL import Image
+
+    prefix = "data:image/png;base64,"
+    if not isinstance(data_url, str) or not data_url.startswith(prefix):
+        raise SignatureInvalid("חתימה לא תקינה")
+    if len(data_url) > 2_000_000:
+        raise SignatureInvalid("החתימה גדולה מדי")
+    try:
+        raw = base64.b64decode(data_url[len(prefix):], validate=True)
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+    except Exception as e:                                       # noqa: BLE001
+        raise SignatureInvalid("חתימה לא תקינה") from e
+    img = img.convert("RGBA")
+    bbox = img.getchannel("A").getbbox()
+    if not bbox or (bbox[2] - bbox[0]) < 20 or (bbox[3] - bbox[1]) < 8:
+        raise SignatureInvalid("נא לחתום בתוך המסגרת")
+    pad = 6
+    img = img.crop((max(bbox[0] - pad, 0), max(bbox[1] - pad, 0),
+                    min(bbox[2] + pad, img.width), min(bbox[3] + pad, img.height)))
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
+def normalize_id(value: str) -> str:
+    """Same rule as `set_agent_identity`: digits only, a ת"ז keeps its leading
+    zero."""
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    if not digits or len(digits) > 9:
+        raise ValueError("מספר זהות חייב להכיל עד 9 ספרות")
+    return digits.zfill(9)
+
+
+def render_preview_pngs(pdf_bytes: bytes, *, scale: float = 1.6) -> list[bytes]:
+    """The filled form as page images, for the wizard to SHOW the agent before
+    sending. Images rather than an <iframe> of the PDF: mobile browsers
+    (Android Chrome) render an embedded PDF as a blank box."""
+    import pypdfium2 as pdfium
+
+    doc = pdfium.PdfDocument(pdf_bytes)
+    pngs = []
+    for i in range(len(doc)):
+        buf = io.BytesIO()
+        img = doc[i].render(scale=scale).to_pil()
+        if i > 0:
+            # Page 2 holds only the signature row under the letterhead; the
+            # rest is blank paper that would push the signature out of view.
+            img = img.crop((0, 0, img.width, int(img.height * 0.22)))
+        img.save(buf, format="PNG", optimize=True)
+        pngs.append(buf.getvalue())
+    return pngs
+
+
 def _register_hebrew_font() -> str:
-    """Heebo ships with the frontend; reuse it rather than vendoring a second
-    Hebrew font. Falls back to Helvetica, which renders Hebrew as blanks — so
-    the caller gets a visibly wrong form rather than a silently wrong one."""
+    """Heebo (OFL), vendored under assets/fonts — the production image carries
+    only the BUILT frontend, so the frontend's font files are not there to
+    borrow. Falls back to Helvetica, which renders Hebrew as blanks — so the
+    caller gets a visibly wrong form rather than a silently wrong one."""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -267,7 +410,7 @@ def _register_hebrew_font() -> str:
     if name in pdfmetrics.getRegisteredFontNames():
         return name
     for candidate in (
-        Path("/home/roygi/test/frontend/src/assets/fonts/Heebo-Regular.ttf"),
+        FONT_FILE,
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ):
         if candidate.exists():
@@ -284,9 +427,9 @@ def _shape_hebrew(text: str) -> str:
     """reportlab has no bidi engine, so a Hebrew string is drawn left-to-right
     and comes out mirrored. Reversing gives the correct visual order for a plain
     run of Hebrew. Numbers inside the string would themselves be reversed, which
-    is why only the NAME goes through here — the ת"ז and ח.פ are drawn as plain
-    Latin digits (the same trap as the visual-Hebrew parsers elsewhere in this
-    repo, where reversing had to protect numeric runs)."""
+    is why only NAMES go through here — the ת"ז, ח.פ and date are drawn as
+    plain Latin digits (the same trap as the visual-Hebrew parsers elsewhere in
+    this repo, where reversing had to protect numeric runs)."""
     return (text or "")[::-1]
 
 
@@ -418,17 +561,6 @@ def _assert_template_is_blank() -> None:
             "which only a completed copy carries. Serving it would leak one "
             "agent's details to another. Replace it with the blank from Swiftness."
         )
-
-
-def _draw_boxed_digits(c, digits: str, x: float, y: float, *, pitch: float) -> None:
-    """One digit per printed box, advancing by the grid's own pitch.
-
-    The boxes are part of the scanned/printed form, so nothing aligns them for
-    us — the digits have to be stepped manually or they bunch up at the left and
-    read as written outside the grid.
-    """
-    for i, ch in enumerate(digits or ""):
-        c.drawString(x + i * pitch, y, ch)
 
 
 def template_is_servable() -> bool:

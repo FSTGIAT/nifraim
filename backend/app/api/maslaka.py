@@ -770,6 +770,115 @@ async def association_form(
     )
 
 
+def _signed_form_from_payload(link, user: User, payload: dict) -> bytes:
+    """Build the finished, signed form from what the agent entered in the
+    wizard. The PDF is always rebuilt HERE from these inputs — never accepted
+    as a client-made blob — so what reaches the helpdesk is our overlay on the
+    מסלקה's own blank, whatever the browser sends."""
+    from app.services.maslaka import association
+
+    if not link.agent_id_number:
+        raise HTTPException(status_code=400, detail="יש להזין מספר זהות לפני החתימה")
+    try:
+        signature = association.decode_signature(payload.get("signature") or "")
+        signer_id = association.normalize_id(
+            str(payload.get("signer_id_number") or link.agent_id_number))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    agent_name = link.agent_name or user.full_name or ""
+    signer_name = str(payload.get("signer_name") or "").strip()[:80] or agent_name
+    try:
+        return association.build_prefilled_form(
+            agent_name=agent_name,
+            agent_id_number=link.agent_id_number,
+            signer_name=signer_name,
+            signer_id_number=signer_id,
+            signature_png=signature,
+        )
+    except association.FormTemplateMissing as e:
+        raise HTTPException(
+            status_code=503,
+            detail="טופס השיוך עדיין לא הוטמע במערכת. פנו לתמיכה.",
+        ) from e
+
+
+@router.post("/association/preview")
+async def association_preview(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The signed form as the agent will send it — page images to SHOW before
+    sending (the wizard's review step). Nothing is stored: the signature lives
+    only in this request until the agent presses send."""
+    import base64
+
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    pdf = _signed_form_from_payload(link, user, payload)
+    pages = association.render_preview_pngs(pdf)
+    await association.mark_form_downloaded(db, link)
+    return {"pages": [
+        "data:image/png;base64," + base64.b64encode(p).decode() for p in pages
+    ]}
+
+
+@router.post("/association/sign")
+async def association_sign(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Sign in the app and send: build the signed form from the drawn
+    signature, store it encrypted, email it to the מסלקה helpdesk. Replaces
+    download → print → sign → scan → upload. Same storage/delivery contract as
+    `/association/submit`: the form is stored before the send, so a delivery
+    failure never loses it."""
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    pdf = _signed_form_from_payload(link, user, payload)
+    if payload.get("auto_production") and not link.auto_production:
+        link.auto_production = True
+        link.auto_production_at = datetime.utcnow()
+    await association.record_submission(
+        db, link, pdf_bytes=pdf,
+        filename=f"shiyuch-{link.agent_id_number}.pdf",
+    )
+    try:
+        to = await association.deliver_to_helpdesk(
+            link=link, pdf_bytes=pdf, agent_email=user.email,
+        )
+        note = f"נשלח ל-{to}"
+    except Exception as e:                                       # noqa: BLE001
+        logger.error("maslaka.association: delivery failed for %s: %s", user.id, e)
+        note = f"הטופס נשמר אך המשלוח נכשל: {e}"
+    link.delivery_note = note[:500]
+    await db.commit()
+    return {"status": link.status, "delivery_note": note}
+
+
+@router.get("/association/signed")
+async def association_signed(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The agent's own signed form, as it was sent — to open it again later."""
+    from fastapi.responses import Response
+
+    from app.services.maslaka import association
+
+    link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
+    pdf = association.read_signed_pdf(link)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="אין טופס חתום")
+    return Response(
+        pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="maslaka-shiyuch.pdf"'},
+    )
+
+
 @router.post("/association/submit")
 async def association_submit(
     db: AsyncSession = Depends(get_db),

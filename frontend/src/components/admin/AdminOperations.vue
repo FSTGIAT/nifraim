@@ -146,7 +146,7 @@ const CYCLE = {
 }
 const MASLAKA = {
   not_started: { label: 'לא התחיל', tone: 'muted' },
-  form_downloaded: { label: 'הורד טופס', tone: 'info' },
+  form_downloaded: { label: 'בחתימה', tone: 'info' },
   submitted: { label: 'הוגש — ממתין', tone: 'warn' },
   approved: { label: 'מאושר', tone: 'ok' },
   rejected: { label: 'נדחה', tone: 'bad' },

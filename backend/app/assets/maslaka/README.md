@@ -1,20 +1,17 @@
 # מסלקה form assets
 
-## `shiyuch_form_blank.pdf` — right variant, but a FILLED copy (placeholder)
+## `shiyuch_form_blank.pdf` — the genuine BLANK (2026-09-29)
 
-Currently vendored (2026-09-24, commit `85790d8`): the **2-page `טופס בקשה – שיוך לבית תוכנה או
-בית סוכן`**, the variant with the לבית תוכנה / לבית סוכן choice. This is the correct form for
-Nifraim (a **בית תוכנה**), and `FIELD_POSITIONS` is calibrated against it.
+The **2-page `טופס בקשה – שיוך לבית תוכנה או בית סוכן`**, clean — supplied by the owner on
+2026-09-29 and replacing the filled placeholder that was here before. The blank-template guard
+passes it without `MASLAKA_ALLOW_FILLED_TEMPLATE`, so that flag should now be OFF everywhere.
 
-⚠️ **It is not blank.** It is an agent's filled copy, so the blank-template guard refuses it
-unless `MASLAKA_ALLOW_FILLED_TEMPLATE=true`. That flag is set on production because kiko is the
-only agent, and he downloads his own form. **A second agent would get kiko's details underneath
-their own overlay.** Before anyone else signs up, either unset the flag or vendor the genuine blank
-from `helpdesk@swiftness.co.il`. That blank is not on the public forms page.
-
-History: the 1-page `בקשת שיוך לבית סוכן`
-(<https://www.swiftness.co.il/agents/טפסים-ונהלי-עבודה/>) was vendored briefly and replaced
-because it is the wrong entity type.
+The agent never prints it: the wizard fills page 1 (name, ID, לבית תוכנה ✓, Nifraim.com +
+ח.פ, section 3 **בנוסף** ✓), the agent draws a signature in the app, and page 2 gets the signer's
+name, ת"ז, the Israel date and the signature. The server rebuilds the PDF from those inputs
+(`POST /api/maslaka/association/preview` → page PNGs to review, `/sign` → store + email).
+Positions: `association.py` `DIGIT_ROWS` / `TEXT_ANCHORS` / `TICKS` / `SIGNATURE_BOX`, read
+from the PDF's own vector boxes (13.25pt pitch). Font: `assets/fonts/Heebo.ttf` (OFL).
 
 ## Why there is a guard
 

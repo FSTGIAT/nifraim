@@ -82,47 +82,11 @@
               </div>
             </section>
 
-            <!-- ── 2. Download ───────────────────────────────────── -->
+            <!-- ── 2. Sign ───────────────────────────────────────── -->
             <section v-else-if="step === 1" class="ma-pane">
               <p class="ma-lead">
-                הכנו לכם את טופס השיוך של המסלקה, כבר ממולא. בדקו שהפרטים נכונים:
+                מילאנו את כל הטופס בשבילכם. נשאר רק לחתום.
               </p>
-
-              <!-- The one memorable thing: the form's own vernacular — identity
-                   numbers written one digit per box, as they will be on paper. -->
-              <div class="ma-slip" aria-label="הפרטים שימולאו בטופס">
-                <div class="ma-slip-row">
-                  <span class="ma-slip-label">שם הסוכן</span>
-                  <span class="ma-slip-text">{{ assoc?.agent_name || name }}</span>
-                </div>
-                <div class="ma-slip-row">
-                  <span class="ma-slip-label">ת"ז / ח.פ</span>
-                  <span class="ma-boxes" dir="ltr">
-                    <span v-for="(d, i) in boxes(assoc?.agent_id_number)" :key="i" class="ma-box">{{ d }}</span>
-                  </span>
-                </div>
-                <div class="ma-slip-rule" aria-hidden="true"></div>
-                <div class="ma-slip-row">
-                  <span class="ma-slip-label">שיוך ל</span>
-                  <span class="ma-slip-tick">
-                    <span class="ma-tickbox" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                           stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
-                    </span>
-                    בית תוכנה
-                  </span>
-                </div>
-                <div class="ma-slip-row">
-                  <span class="ma-slip-label">שם בית התוכנה</span>
-                  <span class="ma-slip-text ltr-number">{{ assoc?.beit_tochna?.name }}</span>
-                </div>
-                <div class="ma-slip-row">
-                  <span class="ma-slip-label">ח.פ בית התוכנה</span>
-                  <span class="ma-boxes" dir="ltr">
-                    <span v-for="(d, i) in boxes(assoc?.beit_tochna?.id)" :key="i" class="ma-box">{{ d }}</span>
-                  </span>
-                </div>
-              </div>
 
               <div v-if="!assoc?.template_ready" class="ma-note ma-note--wait" role="status">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -130,50 +94,70 @@
                   <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
                 </svg>
                 <span>
-                  הטופס עצמו עוד לא זמין להורדה במערכת. הפרטים שלכם נשמרו, ונעדכן כאן ברגע שיהיה אפשר להמשיך.
+                  הטופס עצמו עוד לא זמין במערכת. הפרטים שלכם נשמרו, ונעדכן כאן ברגע שיהיה אפשר להמשיך.
                 </span>
               </div>
 
               <template v-else>
-                <ol class="ma-howto">
-                  <li>הורידו את הטופס והדפיסו אותו.</li>
-                  <li>בסעיף 3 סמנו בעצמכם אם השיוך <strong>במקום</strong> שיוך קיים או <strong>בנוסף</strong> לו. את זה לא מילאנו, כי זו החלטה שלכם.</li>
-                  <li>חתמו בכתב יד, וסרקו או צלמו את הטופס לקובץ PDF.</li>
-                </ol>
+                <!-- The signer is the person, so their ת"ז — an agency's ח.פ
+                     does not belong here. Pre-filled from step 1, editable. -->
+                <div class="ma-fields">
+                  <div class="ma-field">
+                    <label for="ma-signer">שם החותם</label>
+                    <input id="ma-signer" v-model="signerName" autocomplete="name" />
+                  </div>
+                  <div class="ma-field">
+                    <label for="ma-signer-id">ת"ז החותם</label>
+                    <input
+                      id="ma-signer-id"
+                      v-model="signerId"
+                      dir="ltr"
+                      inputmode="numeric"
+                      maxlength="9"
+                      autocomplete="off"
+                    />
+                  </div>
+                </div>
+
+                <div class="ma-sign">
+                  <div class="ma-sign-head">
+                    <span class="ma-sign-label">חתימה</span>
+                    <span class="ma-help">
+                      תאריך: <span class="ltr-number">{{ todayLabel }}</span>
+                    </span>
+                    <button v-if="hasInk" type="button" class="ma-link" @click="clearPad">ניקוי</button>
+                  </div>
+                  <div class="ma-pad" :class="{ 'ma-pad--ink': hasInk }">
+                    <canvas
+                      ref="padEl"
+                      class="ma-pad-canvas"
+                      aria-label="משטח חתימה"
+                      @pointerdown="padDown"
+                      @pointermove="padMove"
+                      @pointerup="padUp"
+                      @pointercancel="padUp"
+                      @pointerleave="padUp"
+                    ></canvas>
+                    <span v-if="!hasInk" class="ma-pad-hint" aria-hidden="true">חתמו כאן, עם העכבר או האצבע</span>
+                    <span class="ma-pad-line" aria-hidden="true"></span>
+                  </div>
+                </div>
               </template>
             </section>
 
-            <!-- ── 3. Upload ─────────────────────────────────────── -->
+            <!-- ── 3. Review + send ──────────────────────────────── -->
             <section v-else-if="step === 2" class="ma-pane">
-              <label
-                class="ma-drop"
-                :class="{ 'ma-drop--over': dragOver, 'ma-drop--has': !!file }"
-                @dragover.prevent="dragOver = true"
-                @dragleave="dragOver = false"
-                @drop.prevent="onDrop"
-              >
-                <input type="file" accept="application/pdf,.pdf" class="ma-drop-input" @change="onPick" />
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
-                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" />
-                  <path v-if="!file" d="M12 17v-6M9.5 13.5 12 11l2.5 2.5" />
-                  <path v-else d="m9 14 2 2 4-4" />
-                </svg>
-                <span v-if="file" class="ma-drop-name ltr-number">{{ file.name }}</span>
-                <span v-else class="ma-drop-text">גררו לכאן את ה-PDF החתום, או לחצו לבחירה</span>
-                <span class="ma-help">PDF בלבד, עד <span class="ltr-number">15MB</span></span>
-              </label>
-              <p v-if="assoc?.status === 'rejected'" class="ma-help">
-                שליחה חוזרת מחליפה את הטופס הקודם.
-              </p>
-              <label class="ma-consent">
-                <input type="checkbox" v-model="autoProduction" />
-                <span>
-                  <strong>קבלת דוחות פרודוקציה אוטומטית כל חודש.</strong>
-                  מיד עם אישור המסלקה נרשום אותך למנוי חודשי אצל כל הגופים שיש לך בהם לקוחות,
-                  והנתונים יגיעו לבד עד ה-15 בכל חודש. לפי כללי המסלקה, מנוי חודשי מחייב לפחות 5 חודשים.
-                </span>
-              </label>
+              <p class="ma-lead">זה הטופס החתום שיישלח למסלקה. בדקו שהכול נכון ושלחו.</p>
+              <!-- Phones: the side pane is hidden, so the form shows here. -->
+              <div class="ma-preview">
+                <img
+                  v-for="(src, i) in previewPages"
+                  :key="i"
+                  :src="src"
+                  :alt="`עמוד ${i + 1} של הטופס החתום`"
+                  class="ma-preview-page"
+                />
+              </div>
             </section>
 
             <!-- ── 4. Waiting / rejected ─────────────────────────── -->
@@ -260,26 +244,16 @@
               <button
                 class="ma-primary"
                 type="button"
-                :disabled="!assoc?.template_ready || busy"
-                @click="downloadForm"
+                :disabled="!assoc?.template_ready || !canSign || busy"
+                @click="makePreview"
               >
                 <span v-if="busy" class="ma-spinner" aria-hidden="true"></span>
-                <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" />
-                </svg>
-                <span>{{ assoc?.form_downloaded_at ? 'הורדת הטופס שוב' : 'הורדת הטופס' }}</span>
+                <span>{{ busy ? 'מכין את הטופס…' : 'הצגת הטופס החתום' }}</span>
               </button>
-              <button
-                v-if="assoc?.form_downloaded_at"
-                class="ma-secondary"
-                type="button"
-                @click="step = 2"
-              >יש לי טופס חתום</button>
             </template>
 
             <template v-else-if="step === 2">
-              <button class="ma-primary" type="button" :disabled="!file || busy" @click="submit">
+              <button class="ma-primary" type="button" :disabled="!signatureData || busy" @click="submit">
                 <span v-if="busy" class="ma-spinner" aria-hidden="true"></span>
                 <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
                      stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -287,18 +261,33 @@
                 </svg>
                 <span>{{ busy ? 'שולח…' : 'שליחה למסלקה' }}</span>
               </button>
+              <button class="ma-secondary" type="button" :disabled="busy" @click="step = 1">חתימה מחדש</button>
             </template>
 
             <template v-else>
               <button v-if="assoc?.status === 'rejected'" class="ma-primary" type="button" @click="step = 1">
-                הורדת הטופס מחדש
+                חתימה מחדש
               </button>
-              <button v-else class="ma-secondary" type="button" @click="close">סגירה</button>
+              <button v-if="assoc?.signed_pdf_filename" class="ma-secondary" type="button" @click="openSigned">
+                הטופס שנשלח
+              </button>
+              <button v-if="assoc?.status !== 'rejected' && !inline" class="ma-secondary" type="button" @click="close">סגירה</button>
             </template>
           </footer>
           </div>
 
-          <aside class="ma-art" aria-hidden="true">
+          <!-- On the review step the photo gives way to the signed form itself:
+               the one thing the agent must look at before sending. -->
+          <aside v-if="step === 2 && previewPages.length" class="ma-art ma-art--doc" aria-label="הטופס החתום">
+            <img
+              v-for="(src, i) in previewPages"
+              :key="i"
+              :src="src"
+              :alt="`עמוד ${i + 1} של הטופס החתום`"
+              class="ma-doc-page"
+            />
+          </aside>
+          <aside v-else class="ma-art" aria-hidden="true">
             <img :src="artwork" alt="" />
             <div class="ma-art-veil"></div>
           </aside>
@@ -309,7 +298,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import api from '../../api/client.js'
 import artwork from '../../assets/maslaka/association.webp'
 
@@ -325,19 +314,23 @@ const emit = defineEmits(['close', 'changed'])
 
 const STEPS = [
   { id: 'identity', label: 'הפרטים שלכם' },
-  { id: 'form', label: 'הטופס' },
-  { id: 'upload', label: 'שליחה' },
+  { id: 'sign', label: 'חתימה' },
+  { id: 'review', label: 'בדיקה ושליחה' },
   { id: 'approval', label: 'אישור המסלקה' },
 ]
 
 const step = ref(0)
-// Consent to automatic monthly production (2100) on approval — see the upload step.
-const autoProduction = ref(true)
 const name = ref('')
 const idNumber = ref('')
 const idTouched = ref(false)
-const file = ref(null)
-const dragOver = ref(false)
+// Signing: the drawn signature, the signer, and the server-rendered pages the
+// agent reviews before sending. None of it is stored until they press send.
+const signerName = ref('')
+const signerId = ref('')
+const padEl = ref(null)
+const hasInk = ref(false)
+const signatureData = ref('')
+const previewPages = ref([])
 const busy = ref(false)
 const error = ref('')
 const deliveryNote = ref('')
@@ -347,13 +340,17 @@ const reached = computed(() => {
   const a = props.assoc
   if (!a) return 0
   if (['submitted', 'approved', 'rejected'].includes(a.status)) return 3
-  if (a.status === 'form_downloaded') return 2
-  return a.agent_id_number ? 1 : 0
+  if (!a.agent_id_number) return 0
+  return previewPages.value.length ? 2 : 1
 })
 
 const idDigits = computed(() => idNumber.value.replace(/\D/g, ''))
 const showIdError = computed(() => idTouched.value && !!idNumber.value && (idDigits.value.length === 0 || idDigits.value.length > 9))
 const canSaveIdentity = computed(() => idDigits.value.length >= 5 && idDigits.value.length <= 9 && !!name.value.trim())
+const signerDigits = computed(() => signerId.value.replace(/\D/g, ''))
+const canSign = computed(() => hasInk.value && !!signerName.value.trim()
+  && signerDigits.value.length >= 5 && signerDigits.value.length <= 9)
+const todayLabel = computed(() => new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Jerusalem' }))
 const deliveryFailed = computed(() => deliveryNote.value.includes('נכשל'))
 
 // Open on the step the agent actually has to do next.
@@ -363,17 +360,16 @@ watch(() => props.open, (isOpen) => {
   name.value = a.agent_name || ''
   idNumber.value = a.agent_id_number || ''
   idTouched.value = false
-  file.value = null
+  signerName.value = a.agent_name || ''
+  signerId.value = a.agent_id_number || ''
+  signatureData.value = ''
+  previewPages.value = []
+  hasInk.value = false
   error.value = ''
   // Prefer the server's note if it reports one; else keep the last submit's.
   deliveryNote.value = a.delivery_note || deliveryNote.value
   step.value = reached.value
 }, { immediate: true })
-
-function boxes(value) {
-  const s = String(value || '').padStart(9, ' ').slice(-9)
-  return s.split('')
-}
 
 const replyTitle = computed(() => {
   const a = props.assoc
@@ -410,6 +406,8 @@ async function saveIdentity() {
       agent_id_number: idDigits.value,
       agent_name: name.value.trim(),
     })
+    signerName.value = name.value.trim()
+    signerId.value = idDigits.value
     emit('changed')
     step.value = 1
   } catch (e) {
@@ -419,69 +417,130 @@ async function saveIdentity() {
   }
 }
 
-async function downloadForm() {
+// ── Signature pad ────────────────────────────────────────────────
+// Transparent background: the server trims the PNG to its ink and lays it on
+// the form's signature line, so only the strokes may be opaque.
+let drawing = false
+let last = null
+
+function setupPad() {
+  const c = padEl.value
+  if (!c) return
+  const dpr = window.devicePixelRatio || 1
+  const r = c.getBoundingClientRect()
+  c.width = Math.round(r.width * dpr)
+  c.height = Math.round(r.height * dpr)
+  const ctx = c.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.lineWidth = 2.4
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = '#14215a'
+  hasInk.value = false
+}
+
+watch(step, async (s) => {
+  if (s !== 1) return
+  await nextTick()
+  setupPad()
+}, { immediate: true })
+watch(() => props.assoc?.template_ready, async () => {
+  if (step.value !== 1) return
+  await nextTick()
+  setupPad()
+})
+
+function padPoint(e) {
+  const r = padEl.value.getBoundingClientRect()
+  return { x: e.clientX - r.left, y: e.clientY - r.top }
+}
+function padDown(e) {
+  if (!padEl.value) return
+  padEl.value.setPointerCapture?.(e.pointerId)
+  drawing = true
+  last = padPoint(e)
+  const ctx = padEl.value.getContext('2d')
+  ctx.beginPath()
+  ctx.arc(last.x, last.y, 1.1, 0, Math.PI * 2)
+  ctx.fillStyle = ctx.strokeStyle
+  ctx.fill()
+}
+function padMove(e) {
+  if (!drawing) return
+  const p = padPoint(e)
+  const ctx = padEl.value.getContext('2d')
+  ctx.beginPath()
+  ctx.moveTo(last.x, last.y)
+  ctx.lineTo(p.x, p.y)
+  ctx.stroke()
+  last = p
+  hasInk.value = true
+}
+function padUp() {
+  drawing = false
+  last = null
+}
+function clearPad() {
+  setupPad()
+  signatureData.value = ''
+  previewPages.value = []
+}
+
+async function makePreview() {
+  if (!canSign.value || !padEl.value) return
   error.value = ''
   busy.value = true
   try {
-    const { data } = await api.get('/maslaka/association/form', { responseType: 'blob' })
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'טופס-שיוך-מסלקה.pdf'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    const signature = padEl.value.toDataURL('image/png')
+    const { data } = await api.post('/maslaka/association/preview', {
+      signature,
+      signer_name: signerName.value.trim(),
+      signer_id_number: signerDigits.value,
+    })
+    signatureData.value = signature
+    previewPages.value = data.pages || []
     emit('changed')
+    step.value = 2
   } catch (e) {
-    // responseType blob → the JSON error body arrives as a Blob too.
-    let msg = 'הורדת הטופס נכשלה'
-    const body = e?.response?.data
-    if (body instanceof Blob) {
-      try { msg = JSON.parse(await body.text()).detail || msg } catch { /* keep fallback */ }
-    }
-    error.value = msg
+    error.value = detailOf(e, 'הכנת הטופס נכשלה')
   } finally {
     busy.value = false
   }
 }
 
-function takeFile(f) {
-  error.value = ''
-  if (!f) return
-  if (f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
-    error.value = 'יש להעלות קובץ PDF'
-    return
-  }
-  if (f.size > 15 * 1024 * 1024) {
-    error.value = 'הקובץ גדול מ-15MB'
-    return
-  }
-  file.value = f
-}
-function onPick(e) { takeFile(e.target.files?.[0]) }
-function onDrop(e) {
-  dragOver.value = false
-  takeFile(e.dataTransfer?.files?.[0])
-}
-
 async function submit() {
-  if (!file.value) return
+  if (!signatureData.value) return
   error.value = ''
   busy.value = true
   try {
-    const fd = new FormData()
-    fd.append('file', file.value)
-    fd.append('auto_production', autoProduction.value ? 'true' : 'false')
-    const { data } = await api.post('/maslaka/association/submit', fd)
+    const { data } = await api.post('/maslaka/association/sign', {
+      signature: signatureData.value,
+      signer_name: signerName.value.trim(),
+      signer_id_number: signerDigits.value,
+      // Monthly production (2100) opens on approval — always on, not a question for the agent.
+      auto_production: true,
+    })
     deliveryNote.value = data.delivery_note || ''
-    file.value = null
+    signatureData.value = ''
+    previewPages.value = []
     emit('changed')
     step.value = 3
   } catch (e) {
     error.value = detailOf(e, 'שליחת הטופס נכשלה')
   } finally {
     busy.value = false
+  }
+}
+
+async function openSigned() {
+  error.value = ''
+  try {
+    const { data } = await api.get('/maslaka/association/signed', { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch {
+    error.value = 'פתיחת הטופס נכשלה'
   }
 }
 </script>
@@ -629,70 +688,94 @@ async function submit() {
 .ma-help { font-size: 0.72rem; line-height: 1.4; color: var(--text-muted); }
 .ma-help--bad { color: var(--red-deep); font-weight: 600; }
 
-/* ── The form slip ──────────────────────────────────────────── */
-.ma-slip {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 18px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: var(--shadow-sm);
-}
-.ma-slip-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.ma-slip-label { flex: 0 0 118px; font-size: 0.76rem; color: var(--text-muted); }
-.ma-slip-text { font-size: 0.95rem; font-weight: 700; color: var(--text); }
-.ma-slip-rule { height: 1px; background: var(--border-subtle); }
-.ma-boxes { display: inline-flex; }
-.ma-box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 26px;
-  border: 1px solid var(--text-muted);
-  margin-inline-start: -1px;
-  font-size: 0.95rem;
+/* ── Signature ──────────────────────────────────────────────── */
+.ma-sign { display: flex; flex-direction: column; gap: 6px; }
+.ma-sign-head { display: flex; align-items: baseline; gap: 12px; }
+.ma-sign-label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.ma-link {
+  margin-inline-start: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.78rem;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
   color: var(--tab-maslaka);
+  cursor: pointer;
 }
-.ma-slip-tick { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700; color: var(--text); }
-.ma-tickbox {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--text-muted);
-  color: var(--tab-maslaka);
-}
-
-.ma-howto { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 0.86rem; line-height: 1.6; color: var(--text-secondary); }
-
-/* ── Upload ─────────────────────────────────────────────────── */
-.ma-drop {
+.ma-link:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.ma-pad {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 26px 16px;
+  height: 170px;
   border: 1.5px dashed var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg);
-  color: var(--text-muted);
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  background: var(--card-bg);
+  transition: border-color 0.15s;
 }
-.ma-drop:hover, .ma-drop--over { border-color: var(--tab-maslaka); background: var(--tab-maslaka-wash); }
-.ma-drop--has { border-style: solid; border-color: var(--tab-maslaka); color: var(--tab-maslaka); }
-.ma-drop:focus-within { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
-.ma-drop-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.ma-drop-text { font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); }
-.ma-drop-name { font-size: 0.88rem; font-weight: 700; color: var(--text); word-break: break-all; }
+.ma-pad:hover, .ma-pad--ink { border-color: var(--tab-maslaka); border-style: solid; }
+.ma-pad-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+  z-index: 1;
+}
+.ma-pad-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.ma-pad-line {
+  position: absolute;
+  inset-inline: 28px;
+  bottom: 38px;
+  border-bottom: 1px solid var(--border);
+  pointer-events: none;
+}
+
+/* ── Review ───────────────────────────────────────────────────── */
+.ma-art--doc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--tab-maslaka) 10%, var(--bg));
+}
+.ma-art .ma-doc-page {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 3px;
+  box-shadow: var(--shadow-md, var(--shadow-sm));
+  background: #fff;
+}
+.ma-preview {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.ma-preview-page {
+  width: 100%;
+  display: block;
+  border-radius: 3px;
+  box-shadow: var(--shadow-sm);
+  background: #fff;
+}
+@media (max-width: 860px) { .ma-preview { display: flex; } }
 
 /* ── State + notes ──────────────────────────────────────────── */
 .ma-state {
@@ -797,20 +880,10 @@ async function submit() {
   .ma-head, .ma-body, .ma-foot { padding-inline: 16px; }
   .ma-track { margin-inline: 16px; }
   .ma-track-label { font-size: 0.7rem; }
-  .ma-slip-label { flex-basis: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ma-spinner { animation: none; }
   .modal-enter-active, .modal-leave-active,
   .modal-enter-active .ma-card, .modal-leave-active .ma-card { transition: none; }
 }
-.ma-consent {
-  display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
-  padding: 10px 12px; border-radius: 8px; cursor: pointer;
-  border-inline-start: 3px solid var(--tab-maslaka);
-  background: color-mix(in srgb, var(--tab-maslaka) 7%, transparent);
-  font-size: 0.8rem; line-height: 1.55; color: var(--text-secondary);
-}
-.ma-consent strong { color: var(--text); font-weight: 600; }
-.ma-consent input { accent-color: var(--tab-maslaka); margin-top: 3px; flex-shrink: 0; }
 </style>
