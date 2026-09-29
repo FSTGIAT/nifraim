@@ -2,6 +2,24 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="hm-overlay" @click.self="$emit('close')">
+          <!-- connected: a moment you can't miss, then the window closes by itself -->
+          <Transition name="hm-win">
+            <div v-if="success" class="hm-win" role="status" aria-live="polite">
+              <span class="hm-confetti" aria-hidden="true">
+                <i v-for="n in 34" :key="n" :style="confettiStyle(n)"></i>
+              </span>
+              <svg class="hm-win-check" viewBox="0 0 96 96" aria-hidden="true">
+                <circle class="hm-win-ring" cx="48" cy="48" r="40" pathLength="1" />
+                <path class="hm-win-tick" d="M30 49l12 12 25-27" pathLength="1" />
+              </svg>
+              <h4 class="hm-win-title" dir="ltr"><span>Nifraim</span> <span class="hm-title-acc">Mail Agent</span></h4>
+              <p class="hm-win-big">מחובר!</p>
+              <p class="hm-win-sub"><span class="ltr-number">{{ connectedAddress }}</span></p>
+              <p class="hm-win-sub">מעכשיו אקרא את המיילים, אכין תשובות מהנתונים ואשלח באישורכם.</p>
+            </div>
+          </Transition>
+
+
         <div class="hm-card hm-card--wide">
           <!-- visual pane: the Mail Agent story as a loop instead of a paragraph -->
           <aside class="hm-visual" aria-hidden="true">
@@ -191,7 +209,7 @@ const props = defineProps({
   // 'general'   = the setup wizard's "connect your mailbox" (send + track).
   purpose: { type: String, default: 'hachshara' },
 })
-defineEmits(['close'])
+const emit = defineEmits(['close'])
 
 const store = useMailboxStore()
 // Reduced-motion still for the visual pane (the wizard's Mail Agent picture).
@@ -254,7 +272,7 @@ function onProblemAction() {
 }
 
 watch(() => props.open, async (isOpen) => {
-  if (!isOpen) return
+  if (!isOpen) { clearTimeout(winTimer); success.value = false; return }
   copied.value = false
   adminCopied.value = false
   manual.value = false
@@ -283,9 +301,38 @@ async function connectMicrosoft() {
 }
 
 async function saveGoogle() {
-  await store.save({ emailAddress: email.value, appPassword: appPassword.value, mailHost: 'google' })
+  try {
+    await store.save({ emailAddress: email.value, appPassword: appPassword.value, mailHost: 'google' })
+  } catch { return } // the store's own error copy shows
   appPassword.value = ''
   await store.pollNow()
+  if (store.config?.connected && !store.config?.last_error) celebrate()
+}
+
+// ── success moment ──
+const success = ref(false)
+const connectedAddress = ref('')
+let winTimer = 0
+const CONFETTI = ['#2F6C94', '#4E9DD0', '#0E8C8A', '#2E844A', '#B79CEB', '#D6336C', '#2F73C4', '#8E44AD']
+function confettiStyle(n) {
+  const x = (n * 37) % 100
+  return {
+    left: x + '%',
+    background: CONFETTI[n % CONFETTI.length],
+    width: (6 + (n % 3) * 2) + 'px',
+    height: (n % 2 ? 10 : 6) + 'px',
+    borderRadius: n % 4 === 0 ? '50%' : '2px',
+    animationDelay: ((n % 9) * 0.06) + 's',
+    animationDuration: (1.6 + (n % 5) * 0.22) + 's',
+    '--drift': ((n % 7) - 3) * 18 + 'px',
+    '--spin': (n % 2 ? 1 : -1) * (360 + (n % 4) * 180) + 'deg',
+  }
+}
+function celebrate() {
+  connectedAddress.value = store.config?.email_address || email.value
+  success.value = true
+  clearTimeout(winTimer)
+  winTimer = setTimeout(() => { success.value = false; emit('close') }, 2600)
 }
 
 async function saveOther() {
@@ -323,6 +370,40 @@ async function disconnect() {
 </script>
 
 <style scoped>
+/* ── connected moment ── */
+.hm-win {
+  /* over the card, centred in the viewport — the card scrolls, this doesn't */
+  position: absolute; z-index: 5; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px)); min-height: min(460px, calc(100vh - 32px));
+  border-radius: 28px; overflow: hidden; box-shadow: 0 30px 80px rgba(24, 24, 24, 0.35);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 32px;
+  background: radial-gradient(120% 80% at 50% 30%, #FFFFFF 0%, #F1F7FC 60%, #E6F0F8 100%);
+  text-align: center; font-family: 'Heebo', sans-serif;
+}
+.hm-win-check { width: 112px; height: 112px; margin-bottom: 8px; filter: drop-shadow(0 12px 26px rgba(46, 132, 74, 0.28)); }
+.hm-win-ring { fill: #fff; stroke: #2E844A; stroke-width: 5; stroke-dasharray: 1; stroke-dashoffset: 1; animation: hmDraw .6s cubic-bezier(.55,.1,.35,1) .1s forwards; }
+.hm-win-tick { fill: none; stroke: #2E844A; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: hmDraw .45s cubic-bezier(.55,.1,.35,1) .6s forwards; }
+@keyframes hmDraw { to { stroke-dashoffset: 0; } }
+.hm-win-title { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.03em; color: #181818; }
+.hm-win-big { margin: -4px 0 6px; font-size: clamp(40px, 6vw, 56px); font-weight: 900; letter-spacing: -0.04em; color: #2E844A; animation: hmPop .5s cubic-bezier(.3,1.6,.5,1) .75s both; }
+@keyframes hmPop { from { transform: scale(.6); opacity: 0; } }
+.hm-win-sub { margin: 0; font-size: 15px; color: #3E4B4A; max-width: 380px; line-height: 1.6; animation: hmUp .4s ease .95s both; }
+@keyframes hmUp { from { transform: translateY(8px); opacity: 0; } }
+.hm-confetti { position: absolute; inset: 0; pointer-events: none; }
+.hm-confetti i { position: absolute; top: -14px; opacity: 0; animation-name: hmFall; animation-timing-function: cubic-bezier(.2,.6,.4,1); animation-fill-mode: forwards; }
+@keyframes hmFall {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--drift), 110vh) rotate(var(--spin)); opacity: .9; }
+}
+.hm-win-enter-active { transition: opacity .25s ease; }
+.hm-win-leave-active { transition: opacity .2s ease; }
+.hm-win-enter-from, .hm-win-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .hm-win-ring, .hm-win-tick { animation: none; stroke-dashoffset: 0; }
+  .hm-win-big, .hm-win-sub { animation: none; }
+  .hm-confetti { display: none; }
+}
+
 .hm-overlay {
   position: fixed; inset: 0; z-index: 1300;
   display: flex; align-items: center; justify-content: center;
