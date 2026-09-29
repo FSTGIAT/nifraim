@@ -19,6 +19,7 @@ interface CrowdCanvasProps {
   exclude?: number[];
   scale?: number;      // peep size vs. the sprite cell (the original draws them 1:1)
   maxCrowd?: number;   // how many walk at once (the original walks ALL of them)
+  speed?: number;      // 1 = the original pace
   style?: React.CSSProperties;
 }
 
@@ -50,7 +51,7 @@ function tintSprite(img: HTMLImageElement, ink: string): CanvasImageSource {
   return c;
 }
 
-const CrowdCanvas = ({ src, rows = 15, cols = 7, ink, exclude = [], scale = 1, maxCrowd = Infinity, style }: CrowdCanvasProps) => {
+const CrowdCanvas = ({ src, rows = 15, cols = 7, ink, exclude = [], scale = 1, maxCrowd = Infinity, speed = 1, style }: CrowdCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -104,7 +105,7 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, ink, exclude = [], scale = 1, m
       const yDuration = 0.25;
 
       const tl = gsap.timeline();
-      tl.timeScale(randomRange(0.5, 1.5));
+      tl.timeScale(randomRange(0.5, 1.5) * speed);
       tl.to(peep, { duration: xDuration, x: endX, ease: "none" }, 0);
       tl.to(peep, { duration: yDuration, repeat: xDuration / yDuration, yoyo: true, y: startY - 10 }, 0);
       void startX;
@@ -256,7 +257,7 @@ const CrowdCanvas = ({ src, rows = 15, cols = 7, ink, exclude = [], scale = 1, m
         if (peep.walk) peep.walk.kill();
       });
     };
-  }, [src, rows, cols, ink, scale, maxCrowd]);
+  }, [src, rows, cols, ink, scale, maxCrowd, speed]);
 
   return (
     <canvas

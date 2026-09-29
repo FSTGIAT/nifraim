@@ -14,6 +14,7 @@ const props = defineProps({
   scale: { type: Number, default: 0.42 },
   crowd: { type: Number, default: 14 },
   opacity: { type: Number, default: 0.7 },
+  speed: { type: Number, default: 0.4 },
 })
 
 // cells of the sprite sheet holding a kitchen knife — not for an insurance app
@@ -29,7 +30,7 @@ onMounted(async () => {
     root = rd.createRoot(mountEl.value)
     root.render(react.createElement(ui.CrowdCanvas, {
       src: sprite, rows: 15, cols: 7, ink: props.ink, exclude: EXCLUDE,
-      scale: props.scale, maxCrowd: props.crowd,
+      scale: props.scale, maxCrowd: props.crowd, speed: props.speed,
       style: { height: props.height, opacity: props.opacity },
     }))
   } catch (e) {
