@@ -153,6 +153,80 @@ async def production_report_bodies(
     return await orchestration.agent_bodies(db, user.id)
 
 
+@router.get("/production-files")
+async def production_files(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The agent's production as the מסלקה delivers it — one "file" per month,
+    newest first, plus when the next one is due.
+
+    A month's file is every holding that 2000/2100 answers brought in for that
+    reporting month (information_date, else the month it arrived). The agent
+    never sees the per-body requests behind it — only what arrived and what is
+    next.
+    """
+    from datetime import date as _date
+    from zoneinfo import ZoneInfo
+
+    from app.models.pension_holding import PensionHolding
+
+    prod_codes = ("events_v007:2000", "events_v007:2100")
+    rows = (await db.execute(
+        select(
+            PensionInquiry.information_date,
+            func.date_trunc("month", PensionHolding.created_at).label("arrived_month"),
+            func.max(PensionHolding.created_at).label("received_at"),
+            func.count(func.distinct(PensionInquiry.target_yatzran_id)).label("bodies"),
+            func.count(func.distinct(PensionHolding.customer_id_number)).label("customers"),
+            func.count(PensionHolding.id).label("products"),
+        )
+        .join(PensionInquiry, PensionInquiry.id == PensionHolding.inquiry_id)
+        .where(
+            PensionHolding.user_id == user.id,
+            PensionInquiry.interface_code.in_(prod_codes),
+        )
+        .group_by(PensionInquiry.information_date, "arrived_month")
+    )).all()
+
+    months: dict[str, dict] = {}
+    for r in rows:
+        if r.information_date and len(r.information_date) >= 6:
+            key = f"{r.information_date[:4]}-{r.information_date[4:6]}"
+        else:
+            key = r.arrived_month.strftime("%Y-%m")
+        m = months.setdefault(key, {"period": f"{key}-01", "received_at": None,
+                                    "bodies": 0, "customers": 0, "products": 0})
+        m["bodies"] += r.bodies
+        m["customers"] = max(m["customers"], r.customers)
+        m["products"] += r.products
+        if m["received_at"] is None or r.received_at > m["received_at"]:
+            m["received_at"] = r.received_at
+    files = sorted(months.values(), key=lambda m: m["period"], reverse=True)
+    for m in files:
+        m["received_at"] = m["received_at"].isoformat() if m["received_at"] else None
+
+    open_subs = (await db.execute(
+        select(func.count(func.distinct(PensionInquiry.target_yatzran_id))).where(
+            PensionInquiry.user_id == user.id,
+            PensionInquiry.interface_code == "events_v007:2100",
+            PensionInquiry.status.in_(("pending", "submitted", "acknowledged", "partial")),
+        )
+    )).scalar() or 0
+
+    # Production answers are due by the 15th — the next 15th in Israel time,
+    # on the cycle's clock (CYCLE_NOW_OVERRIDE) so it agrees with every other date.
+    from app.services.cycle_service import utc_now
+    today = utc_now().astimezone(ZoneInfo("Asia/Jerusalem")).date()
+    if today.day < 15:
+        next_due = _date(today.year, today.month, 15)
+    else:
+        y, mo = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+        next_due = _date(y, mo, 15)
+
+    return {"files": files, "next_due": next_due.isoformat(), "subscribed_bodies": open_subs}
+
+
 @router.post("/association/auto-production")
 async def association_auto_production(
     payload: dict,

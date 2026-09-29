@@ -860,35 +860,33 @@ const chartOptions = computed(() => ({
       const pt = compareByLabel.value.get(label)
       let pair = ''
       if (mode.value === 'actual' && pt && pt.expected > 0) {
+        // Kept SHORT on purpose: a 20-row tooltip is taller than the chart, so
+        // ApexCharts can only park it over the middle of the bars. Summary as
+        // three figures on one line; per-company gaps only for the biggest
+        // shortfalls — the actionable part.
         const gap = pt.actual - pt.expected
         const gapCls = gap < 0 ? 'tt-neg' : 'tt-pos'
-        const per = [...pt.companies]
+        const short = [...pt.companies]
           .map(c => ({ c, d: (Number(pt.paid[c]) || 0) - (Number(pt.exp[c]) || 0) }))
+          .filter(r => r.d < 0)
           .sort((x, y) => x.d - y.d)
-          .map(r => '<div class="tt-row tt-sub">'
-            + '<span class="tt-dot" style="background:transparent"></span>'
-            + `<span class="tt-name">${r.c}</span>`
-            + `<span class="tt-val">${formatSignedCurrency(r.d)}</span></div>`)
+          .slice(0, 3)
+          .map(r => `<span class="tt-gap-item">${r.c} <b>${formatSignedCurrency(r.d)}</b></span>`)
           .join('')
-        pair = '<div class="tt-row tt-sep">'
-          + `<span class="tt-dot" style="background:${EXPECTED_BAR_COLOR}"></span>`
-          + '<span class="tt-name">צפוי לפי ההסכמים</span>'
-          + `<span class="tt-val">${formatCurrency(pt.expected)}</span></div>`
-          + '<div class="tt-row tt-sub"><span class="tt-dot" style="background:transparent"></span>'
-          + `<span class="tt-name">מתוכו התקבל (${pt.companies.length} חברות בנות-השוואה)</span>`
-          + `<span class="tt-val">${formatCurrency(pt.actual)}</span></div>`
-          + `<div class="tt-row ${gapCls}"><span class="tt-dot" style="background:transparent"></span>`
-          + '<span class="tt-name">פער</span>'
-          + `<span class="tt-val">${formatSignedCurrency(gap)}</span></div>`
-          + per
+        pair = '<div class="tt-sum">'
+          + `<div class="tt-sum-cell"><span class="tt-sum-l"><span class="tt-dot" style="background:${EXPECTED_BAR_COLOR}"></span>צפוי</span><span class="tt-sum-v">${formatCurrency(pt.expected)}</span></div>`
+          + `<div class="tt-sum-cell"><span class="tt-sum-l">התקבל (${pt.companies.length})</span><span class="tt-sum-v">${formatCurrency(pt.actual)}</span></div>`
+          + `<div class="tt-sum-cell ${gapCls}"><span class="tt-sum-l">פער</span><span class="tt-sum-v">${formatSignedCurrency(gap)}</span></div>`
+          + '</div>'
+          + (short ? `<div class="tt-gaps">${short}</div>` : '')
       }
-      const body = rows.map(r => (
+      const body = '<div class="tt-grid">' + rows.map(r => (
         '<div class="tt-row">'
         + `<span class="tt-dot" style="background:${r.color}"></span>`
         + `<span class="tt-name">${r.name}</span>`
         + `<span class="tt-val">${formatCurrency(r.value)}</span>`
         + '</div>'
-      )).join('')
+      )).join('') + '</div>'
       return `<div class="tt"><div class="tt-head">${label}`
         + `<span class="tt-total">${formatCurrency(total)}</span></div>${body}${pair}</div>`
     },
@@ -905,7 +903,7 @@ const chartOptions = computed(() => ({
 <style>
 /* Custom tooltip for the stacked commission chart. Unscoped on purpose:
    ApexCharts injects this markup outside the component's DOM. */
-.apexcharts-tooltip .tt { font-family: Heebo, sans-serif; direction: rtl; padding: 4px 0; min-width: 190px; }
+.apexcharts-tooltip .tt { font-family: Heebo, sans-serif; direction: rtl; padding: 4px 0; min-width: 340px; }
 .apexcharts-tooltip .tt-head {
   display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
   padding: 6px 12px 7px; border-bottom: 1px solid #E5E5E5;
@@ -918,6 +916,20 @@ const chartOptions = computed(() => ({
 .apexcharts-tooltip .tt-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
 .apexcharts-tooltip .tt-name { color: #3E3E3C; flex: 1; }
 .apexcharts-tooltip .tt-val { color: #706E6B; direction: ltr; }
+/* Two columns of companies + a one-line summary: short enough to sit beside
+   the hovered bar instead of being clamped over the middle of the chart. */
+.apexcharts-tooltip .tt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; }
+.apexcharts-tooltip .tt-grid .tt-row { padding: 3px 12px; }
+.apexcharts-tooltip .tt-sum { display: flex; gap: 6px; margin: 6px 10px 0; padding-top: 7px; border-top: 1px solid #E5E5E5; }
+.apexcharts-tooltip .tt-sum-cell { flex: 1; display: flex; flex-direction: column; gap: 1px; padding: 5px 8px; border-radius: 6px; background: #F3F3F3; }
+.apexcharts-tooltip .tt-sum-l { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #706E6B; }
+.apexcharts-tooltip .tt-sum-v { font-size: 13px; font-weight: 700; color: #3E3E3C; direction: ltr; text-align: end; }
+.apexcharts-tooltip .tt-sum-cell.tt-neg { background: #FDEDEC; }
+.apexcharts-tooltip .tt-sum-cell.tt-neg .tt-sum-v, .apexcharts-tooltip .tt-sum-cell.tt-neg .tt-sum-l { color: #C23934; }
+.apexcharts-tooltip .tt-sum-cell.tt-pos { background: #EAF5EE; }
+.apexcharts-tooltip .tt-sum-cell.tt-pos .tt-sum-v, .apexcharts-tooltip .tt-sum-cell.tt-pos .tt-sum-l { color: #2E844A; }
+.apexcharts-tooltip .tt-gaps { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px 2px; font-size: 11px; color: #706E6B; }
+.apexcharts-tooltip .tt-gap-item b { color: #C23934; font-weight: 700; direction: ltr; unicode-bidi: isolate; }
 .apexcharts-tooltip .tt-empty { padding: 8px 12px; font-size: 12px; color: #706E6B; }
 /* The gap row in the בפועל-מול-צפוי tooltip. Paid-less is the actionable
    direction, so it gets the loss hue; paid-more is worth knowing, not chasing. */
