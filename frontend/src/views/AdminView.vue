@@ -202,6 +202,11 @@
                 <span>חברה</span>
                 <input v-model="createForm.company_name" type="text" />
               </label>
+              <label class="cu-field">
+                <span>תאריך הרשמה</span>
+                <input v-model="createForm.signup_date" type="date" dir="ltr" />
+                <small class="cu-hint">כאילו נרשם ביום הזה — קובע את המחזור הראשון ואת כל התאריכים שהוא רואה. ריק = היום.</small>
+              </label>
               <label class="cu-check">
                 <input v-model="createForm.is_admin" type="checkbox" />
                 <span>הרשאות אדמין</span>
@@ -249,7 +254,7 @@ const onlineCount = computed(() => agents.value.filter((a) => a.worker_online).l
 const showCreate = ref(false)
 const creating = ref(false)
 const createError = ref('')
-const createForm = ref({ email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false })
+const createForm = ref({ email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '' })
 
 // Poll agents-status while the agents tab is open so online state stays fresh.
 let agentsTimer = null
@@ -308,7 +313,7 @@ async function fetchAgents() {
 
 function openCreate() {
   createError.value = ''
-  createForm.value = { email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false }
+  createForm.value = { email: '', password: '', full_name: '', phone: '', company_name: '', is_admin: false, signup_date: '' }
   showCreate.value = true
 }
 
@@ -715,6 +720,7 @@ function formatDateTime(dateStr) {
   gap: 14px;
 }
 
+.cu-hint { font-size: 11.5px; line-height: 1.4; color: var(--text-muted, #706E6B); }
 .cu-field {
   display: flex;
   flex-direction: column;

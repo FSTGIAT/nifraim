@@ -60,6 +60,17 @@ async def create_user(
 
     # `username` is NOT NULL — admin-created accounts don't choose one, so derive
     # it from the email. The user can rename via PATCH /api/auth/me/username.
+    created_at = None
+    if body.signup_date:
+        from datetime import date as _date
+        from zoneinfo import ZoneInfo
+        try:
+            d = _date.fromisoformat(body.signup_date)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="תאריך הרשמה לא תקין") from e
+        created_at = (datetime(d.year, d.month, d.day, 12, 0, tzinfo=ZoneInfo("Asia/Jerusalem"))
+                      .astimezone(ZoneInfo("UTC")).replace(tzinfo=None))
+
     user = User(
         email=email,
         username=await generate_unique_username(db, email),
@@ -69,6 +80,7 @@ async def create_user(
         company_name=body.company_name,
         is_active=True,  # admin-created accounts are active immediately
         is_admin=body.is_admin,
+        **({"created_at": created_at} if created_at else {}),
     )
     db.add(user)
     await db.commit()

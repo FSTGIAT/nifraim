@@ -76,6 +76,9 @@ class UserAdminCreate(BaseModel):
     phone: str | None = None
     company_name: str | None = None
     is_admin: bool = False
+    # "As if" they signed up on this day (YYYY-MM-DD) — drives the first
+    # cycle and every date a new agent sees. Empty = now.
+    signup_date: str | None = None
 
 
 class AgentStatusOut(BaseModel):
