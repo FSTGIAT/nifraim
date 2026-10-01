@@ -64,7 +64,16 @@
               <span class="cl-detail-co">{{ p.track || '—' }}</span>
               <span class="cl-detail-co ltr-number">{{ mgmtFee(p) }}</span>
               <span class="ltr-number">{{ p.premium ? money(p.premium) : '—' }}</span>
-              <span class="ltr-number">{{ p.accumulation ? money(p.accumulation) : '—' }}</span>
+              <!-- A balance the production file reported as ₪0 and the
+                   company's own נפרעים supplied is marked, so it is never
+                   mistaken for the clearinghouse's figure. -->
+              <span class="cl-acc">
+                <span class="ltr-number">{{ p.accumulation ? money(p.accumulation) : '—' }}</span>
+                <small v-if="p.accumulation_source === 'nifraim'" class="cl-acc-src"
+                       title="בקובץ הפרודוקציה הצבירה של המוצר הזה היא ₪0; הסכום לקוח מדוח הנפרעים של החברה לאותה פוליסה ולאותו חודש">
+                  מדוח הנפרעים
+                </small>
+              </span>
               <span class="ltr-number" :title="p.rate_percent ? p.rate_percent + '%' : ''">
                 {{ p.commission ? money(p.commission) : '—' }}
               </span>
@@ -223,4 +232,6 @@ watch(() => props.rows, play)
   .cl-row { opacity: 1; transform: none; transition: none; }
   .cl-bar { transition: none; }
 }
+.cl-acc { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.cl-acc-src { font-size: 10px; font-weight: 600; color: var(--tab-production); white-space: nowrap; }
 </style>

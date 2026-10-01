@@ -29,18 +29,36 @@
                  :options="companyOptions" :series="companySeries" />
       <p v-else class="pb-none">אין נתוני פרודוקציה להצגה</p>
 
+      <!-- A bar that includes balances the production file reported as ₪0
+           and the company's own נפרעים supplied says so — the agent compares
+           these totals with the insurer's portal (QA 2026-09-30: מור read
+           ₪90.6M in the chart, ₪97.2M in the agent's book). -->
+      <p v-if="coMetric === 'accumulation' && backfilled.length" class="pb-backfill">
+        <template v-for="(b, i) in backfilled" :key="b.company">
+          <span v-if="i">; </span>
+          ב<strong>{{ b.company }}</strong>{{ ' ' }}<span class="ltr-number">{{ money(b.amount) }}</span>
+          צבירה ב-<span class="ltr-number">{{ b.policies }}</span> פוליסות
+        </template>
+        נלקחו מדוח הנפרעים של החברה לאותו חודש — בקובץ הפרודוקציה הצבירה שלהן מדווחת ₪0.
+      </p>
+
       <!-- A zero bar has to say WHY it is zero. The three causes need
            different actions and must not read alike. -->
       <div v-if="zeroCompanies.length" class="pb-zeros">
         <div v-for="c in zeroCompanies" :key="c.company" class="pb-zero"
              @click="openCompany = c.company">
           <span class="pb-zero-name">{{ c.company }}</span>
+          <!-- Only the measures that exist — never a dash (app rule). -->
           <span class="pb-zero-nums">
-            <span class="pb-zero-unit">צבירה</span>
-            <span class="ltr-number">{{ c.accumulation ? money(c.accumulation) : '—' }}</span>
-            <span class="pb-zero-sep">·</span>
-            <span class="pb-zero-unit">פרמיה</span>
-            <span class="ltr-number">{{ c.premium ? money(c.premium) : '—' }}</span>
+            <template v-if="c.accumulation">
+              <span class="pb-zero-unit">צבירה</span>
+              <span class="ltr-number">{{ money(c.accumulation) }}</span>
+            </template>
+            <template v-if="c.premium">
+              <span v-if="c.accumulation" class="pb-zero-sep">·</span>
+              <span class="pb-zero-unit">פרמיה</span>
+              <span class="ltr-number">{{ money(c.premium) }}</span>
+            </template>
             <template v-if="c.commission">
               <span class="pb-zero-sep">·</span>
               <span class="pb-zero-unit">עמלה</span>
@@ -80,7 +98,7 @@
     <div class="charts-row">
       <div v-for="cat in CATS" :key="cat.key" class="chart-card">
         <div class="chart-header"><h3>{{ cat.title }}</h3></div>
-        <p class="pb-hint">בחר מוצר כדי לראות את הלקוחות שמחזיקים בו</p>
+        <p class="pb-hint">{{ usesTracks(cat) ? 'בחר אפיק כדי לראות את הלקוחות שמושקעים בו' : 'בחר מוצר כדי לראות את הלקוחות שמחזיקים בו' }}</p>
         <!-- An empty category is never just "no data". Two different things
              produce it, and both are worth saying:
                * the companies that would supply financial production publish
@@ -89,7 +107,7 @@
                  carry premium, which classifies them as ביטוח. That money is
                  in the book, just on the other card — and a bare "אין נתונים"
                  beside ₪1.77M of held balance reads as data loss. -->
-        <div v-if="!products[cat.key].length" class="pb-empty">
+        <div v-if="!chartRows(cat).length" class="pb-empty">
           <p class="pb-empty-lead">אין מוצרים בקטגוריה זו</p>
           <p v-if="cat.key === 'financial' && crossAccumulation > 0" class="pb-empty-note">
             עם זאת, <strong class="ltr-number">{{ money(crossAccumulation) }}</strong> של צבירה
@@ -105,65 +123,59 @@
             נרשמים על מוצרים שמסווגים כפיננסיים.
           </p>
         </div>
-        <apexchart v-else type="bar" :height="productHeight(cat.key)"
+        <apexchart v-else type="bar" :height="rowsHeight(cat)"
                    :options="productOptions(cat)" :series="productSeries(cat)" />
       </div>
     </div>
 
     <!-- ── One company's internals ─────────────────────────────────────── -->
-    <DataModal :open="!!openCompanyRow" :title="companyModalTitle" @close="openCompany = null">
-      <template v-if="openCompanyRow">
-        <p v-if="openCompanyRow.entities.length > 1" class="pb-entities">
-          כולל {{ openCompanyRow.entities.join(' · ') }}
-        </p>
-        <div class="pb-split">
-          <section v-for="cat in CATS" :key="cat.key">
-            <h5>{{ cat.label }}</h5>
-            <CompanyProductRows :rows="labelled(cat.key, openCompanyRow.products[cat.key])"
-                                @drill="drill(cat.key, $event.product, openCompanyRow.company)" />
-          </section>
-        </div>
-      </template>
+    <DataModal :open="!!openCompanyRow" :origin="pressOrigin" :title="companyModalTitle" @close="openCompany = null">
+      <CompanyProducts v-if="openCompanyRow" :company="openCompanyRow" :label-for="productLabel"
+                       @drill="e => drill(e.category, e.product, openCompanyRow.company)" />
     </DataModal>
 
     <!-- ── The clients behind a product ────────────────────────────────── -->
-    <DataModal :open="drillOpen" :title="drillTitle"
-               :subtitle="drillLoading ? '' : `${drillClients.length} לקוחות`"
+    <DataModal :open="drillOpen" :origin="pressOrigin" :title="drillTitle"
                @close="closeDrill">
-      <!-- Filters requested by QA 2026-09-18: cut the drill by חברה, by מוצר
-           and by ת.ז. Company/product narrow the SERVER query (the same
-           params the chart already uses); the text box filters in place so
-           typing an id stays instant. -->
-      <div class="pb-filters">
-        <select v-model="fCompany" @change="refetchDrill">
-          <option :value="null">כל החברות</option>
-          <option v-for="c in companies" :key="c.company" :value="c.company">{{ c.company }}</option>
-        </select>
-        <select v-model="fProduct" @change="refetchDrill">
-          <option :value="null">כל המוצרים</option>
-          <option v-for="o in drillProductOptions" :key="o.key" :value="o.key">{{ o.label }}</option>
-        </select>
-        <input v-model="fQuery" type="search" placeholder="חיפוש לפי ת.ז או שם" />
-        <button v-if="fCompany || fProduct || fQuery" class="pb-filters-clear"
-                @click="clearFilters">נקה</button>
-      </div>
-      <p v-if="drillLoading" class="pb-none">טוען…</p>
-      <p v-else-if="!filteredDrill.length" class="pb-none">אין לקוחות להצגה</p>
-      <ClientRows v-else :rows="filteredDrill" :identical="drillIdentical" />
+      <!-- A track bucket names the fund houses' own tracks behind it, so the
+           grouping ("כללי" = 'הפניקס כללי', 'מור השתלמות - כללי' …) is never a
+           black box. -->
+      <p v-if="fTrack && trackNames.length" class="pb-track-names">
+        כולל: {{ trackNames.join(' · ') }}
+      </p>
+      <!-- Same cards as the KPI client list; company tabs, search and sort
+           live inside and are instant (QA 2026-10-01). -->
+      <ClientCards :rows="drillClients" :loading="drillLoading">
+        <template #note>
+          <p v-if="drillIdentical" class="pb-identical">
+            <span class="ltr-number">{{ drillIdentical.clients }}</span> לקוחות נושאים בדיוק אותו סכום
+            (<span class="ltr-number">{{ money(drillIdentical.value) }}</span>
+            {{ drillIdentical.field === 'premium' ? 'פרמיה' : 'צבירה' }}) — בדרך כלל סימן שסכום קבוצתי
+            נרשם על כל שורה בקובץ המקור, ולא סכום אישי.
+          </p>
+        </template>
+      </ClientCards>
     </DataModal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import api from '../../api/client'
 import DataModal from './DataModal.vue'
-import CompanyProductRows from './CompanyProductRows.vue'
-import ClientRows from './ClientRows.vue'
+import CompanyProducts from './CompanyProducts.vue'
+import ClientCards from './ClientCards.vue'
 import { assignCompanyColors, CHART_PALETTE } from '../../utils/chartPalette'
 import { money, axisMoney, BASE_CHART } from '../../utils/chartDefaults'
 
-// The פיננסים card is titled "לפי אפיק", and an agent expects to read
+// --tab-production (#2F73C4) at ~50% on white. The value labels sit INSIDE the
+// bars in dark ink; on full cobalt that is ~2.3:1, on this tint ~6:1, and a
+// short bar's label that spills onto the card stays readable too.
+const TAB_PRODUCTION = '#97B9E1'
+
+// The פיננסים CHART is by investment track (`tracks` from /breakdown — QA
+// 2026-09-30 #7: it said "לפי אפיק" while plotting products). These labels
+// still serve the per-company modal, which lists products; an agent expects to read
 // גמל / השתלמות / פוליסות חיסכון there. `product_taxonomy` already produces
 // those keys, but two real savings families arrive under names that mean
 // nothing on a savings axis: Harel prices its savings policies as `מגוון`,
@@ -199,6 +211,22 @@ const loaded = ref(false)
 const companies = ref([])
 const products = ref({ insurance: [], financial: [] })
 const missing = ref([])
+const backfilled = ref([])
+// The savings book by investment track (canonical אפיק); the פיננסים chart
+// plots these. Older data without tracks falls back to products.
+const tracks = ref([])
+const usesTracks = cat => cat.key === 'financial' && tracks.value.length > 0
+function chartRows(cat) {
+  if (usesTracks(cat)) {
+    return tracks.value.map(t => ({
+      product: t.track, accumulation: t.accumulation, premium: 0,
+      clients: t.clients, count: t.policies, names: t.names,
+    }))
+  }
+  return products.value[cat.key] || []
+}
+const trackNames = computed(() => (tracks.value.find(t => t.track === fTrack.value)?.names || []))
+const rowsHeight = cat => Math.max(180, chartRows(cat).length * 46 + 60)
 const coMetric = ref('accumulation')
 const openCompany = ref(null)
 
@@ -328,12 +356,13 @@ const companyOptions = computed(() => ({
 function productSeries(cat) {
   return [{
     name: cat.metricLabel,
-    data: products.value[cat.key].map(p => Number(p[cat.metric]) || 0),
+    data: chartRows(cat).map(p => Number(p[cat.metric]) || 0),
   }]
 }
 
 function productOptions(cat) {
-  const rows = products.value[cat.key]
+  const rows = chartRows(cat)
+  const byTrack = usesTracks(cat)
   return {
     ...BASE_CHART,
     chart: {
@@ -342,12 +371,15 @@ function productOptions(cat) {
       events: {
         dataPointSelection: (_e, _ctx, cfg) => {
           const p = rows[cfg.dataPointIndex]
-          if (p) drill(cat.key, p.product, null)
+          if (p && byTrack) drill(cat.key, null, null, false, p.product)
+          else if (p) drill(cat.key, p.product, null)
         },
       },
     },
-    colors: rows.map((_, i) => CHART_PALETTE[i % 11]),
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '62%', distributed: true } },
+    // One measure per chart → one colour, the Production tab's cobalt. A
+    // colour per product read as a legend that did not exist (QA 2026-09-30).
+    colors: [TAB_PRODUCTION],
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '62%' } },
     dataLabels: {
       enabled: true,
       formatter: v => money(v),
@@ -356,7 +388,10 @@ function productOptions(cat) {
     },
     legend: { show: false },
     xaxis: {
-      categories: rows.map(p => productLabel(cat.key, p.product)),
+      // ApexCharts draws axis labels as left-to-right SVG text, so a mixed
+      // label reorders ("עוקב מדד S&P 500" → "S&P 500 עוקב מדד"). An RTL
+      // embedding (RLE … PDF) keeps each label in Hebrew order.
+      categories: rows.map(p => '\u202B' + (byTrack ? p.product : productLabel(cat.key, p.product)) + '\u202C'),
       labels: { formatter: axisMoney, style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B' } },
     },
     yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', colors: '#706E6B', fontSize: '13px' } } },
@@ -365,16 +400,44 @@ function productOptions(cat) {
       y: {
         formatter: (v, o) => {
           const p = rows[o.dataPointIndex]
-          return `${money(v)} · ${p?.clients ?? 0} לקוחות`
+          return byTrack
+            ? `${money(v)} · ${p?.clients ?? 0} לקוחות · ${p?.count ?? 0} פוליסות`
+            : `${money(v)} · ${p?.clients ?? 0} לקוחות`
         },
       },
     },
   }
 }
 
+// iPhone-style opens: whatever the agent pressed — a chart bar, a company row,
+// a product row inside the company modal — is where the next drill grows
+// from. Chart clicks arrive through ApexCharts callbacks and rows through
+// several components (one of them teleported), so the pressed element is
+// taken from a document-level capture listener instead of threading an event
+// through each path.
+//
+// The press is kept in a PLAIN variable. As a ref it re-rendered this
+// component on every pointerdown, which rebuilt the chart options, so
+// ApexCharts redrew between mousedown and mouseup and swallowed the click —
+// no drill opened at all. It becomes reactive only when a drill opens
+// (sync watcher below), in the same update that opens the modal.
+let lastPress = null
+function onPress(e) {
+  const t = e.target
+  if (!(t instanceof Element)) return
+  lastPress = t.closest('.apexcharts-bar-area, button, li, tr, .pb-zero') || t
+}
+onMounted(() => document.addEventListener('pointerdown', onPress, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onPress, true))
+const pressOrigin = shallowRef(null)
+watch(() => [drillOpen.value, openCompany.value], ([d, c], [pd, pc] = []) => {
+  if ((d && !pd) || (c && c !== pc)) pressOrigin.value = lastPress
+}, { flush: 'sync' })
+
 const fCompany = ref(null)
 const fProduct = ref(null)
 const fQuery = ref('')
+const fTrack = ref(null)
 const drillCategory = ref(null)
 
 // Every product available in the drilled category, with the same display
@@ -404,10 +467,10 @@ function clearFilters() {
 }
 
 async function refetchDrill() {
-  await drill(drillCategory.value, fProduct.value, fCompany.value, true)
+  await drill(drillCategory.value, fProduct.value, fCompany.value, true, fTrack.value)
 }
 
-async function drill(category, product, company, keepFilters = false) {
+async function drill(category, product, company, keepFilters = false, track = null) {
   // Close the company modal first — both overlays are z-index 1010, so
   // opening the client list on top of it stacked two dimmed layers and the
   // Esc key closed only the upper one.
@@ -420,18 +483,21 @@ async function drill(category, product, company, keepFilters = false) {
   if (!keepFilters) {
     fCompany.value = company || null
     fProduct.value = product || null
+    fTrack.value = track || null
     fQuery.value = ''
   }
   const shownProduct = product ? productLabel(category, product) : null
+  const shown = [shownProduct, fTrack.value ? `אפיק ${fTrack.value}` : null].filter(Boolean).join(' · ')
   drillTitle.value = company
-    ? `${company}${shownProduct ? ' · ' + shownProduct : ''}`
-    : (shownProduct || 'כל הלקוחות')
+    ? `${company}${shown ? ' · ' + shown : ''}`
+    : (shown || 'כל הלקוחות')
   try {
     const res = await api.get('/production/breakdown/clients', {
       params: {
         category: category || undefined,
         product: product || undefined,
         company: company || undefined,
+        track: fTrack.value || undefined,
       },
     })
     drillClients.value = res.data.clients || []
@@ -453,6 +519,8 @@ onMounted(async () => {
     companies.value = res.data.companies || []
     products.value = res.data.products || { insurance: [], financial: [] }
     missing.value = res.data.missing || []
+    backfilled.value = res.data.backfilled || []
+    tracks.value = res.data.tracks || []
     loaded.value = companies.value.length > 0
   } catch (e) {
     loaded.value = false
@@ -567,4 +635,15 @@ onMounted(async () => {
 .pb-row:hover { background: var(--border-subtle); }
 .pb-sub > td { padding: 0 0 8px 0; background: var(--border-subtle); }
 .pb-table--sub th, .pb-table--sub td { font-size: 12px; }
+.pb-backfill {
+  margin-top: 8px; font-size: 12px; line-height: 1.7; color: var(--text-muted);
+  padding: 8px 12px; border-radius: 10px; background: var(--tab-production-wash);
+}
+.pb-backfill strong { color: var(--text); font-weight: 600; }
+.pb-track-names { font-size: 11.5px; color: var(--text-muted); line-height: 1.7; margin: 0 0 10px; }
+.pb-identical {
+  margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--bg);
+  font-size: 12.5px; line-height: 1.7; color: var(--text-muted);
+}
+.pb-identical .ltr-number { font-weight: 700; color: var(--text); }
 </style>

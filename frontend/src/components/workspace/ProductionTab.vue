@@ -127,6 +127,13 @@
           <div v-else-if="emptyCta.title" class="pt-cta-copy">
             <strong>{{ emptyCta.title }}</strong>
             <span>{{ emptyCta.note }}</span>
+            <!-- The ring's label was only a hover tooltip; the action is now
+                 a real, visible button — plus manual upload beside it. -->
+            <div class="pt-cta-actions">
+              <button type="button" class="pt-cta-btn" @click="onEmptyCta">{{ emptyCta.label }}</button>
+              <button v-if="canUpload && emptyCta.action !== 'upload'" type="button"
+                      class="pt-cta-btn pt-cta-btn--ghost" @click="openFilePicker">העלאת קובץ ידנית</button>
+            </div>
           </div>
         </div>
       </section>
@@ -253,6 +260,7 @@
             v-else-if="productionStore.analytics"
             :analytics="productionStore.analytics"
             @go-to-automation="$emit('go-to-portal-automation')"
+            @navigate="$emit('navigate', $event)"
           />
         </div>
 
@@ -412,7 +420,7 @@ import ProdBackdrop from './ProdBackdrop.vue'
 import { useCycleStore } from '../../stores/cycle.js'
 import { useAuthStore } from '../../stores/auth.js'
 
-const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-maslaka'])
+const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-maslaka', 'navigate'])
 
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()
@@ -436,7 +444,13 @@ const uploadError = ref('')
 // Empty-state call, per cycle state (see the template comment).
 const emptyCta = computed(() => {
   const st = cycleStore.status
-  const legacy = { label: 'מעבר להורדה אוטומטית', icon: 'automation', action: 'automation', title: '', note: '' }
+  // Every state says what happens and what to press. The pre-launch state
+  // had no title or note, so the stage showed a lone icon (QA 2026-09-30).
+  const legacy = {
+    label: 'מעבר להורדה אוטומטית', icon: 'automation', action: 'automation',
+    title: 'עוד אין כאן פרודוקציה',
+    note: 'חברו את ההורדה האוטומטית מהחברות — והפרודוקציה תגיע לכאן לבד. אפשר גם להעלות קובץ ידנית.',
+  }
   if (!st || st.prelaunch) return legacy
   const period = st.current_period_label
   if (st.manual_upload_open) {
@@ -728,7 +742,7 @@ async function handleCompare(currentId, previousId) {
 }
 /* the bar and the KPI row sit INSIDE the panel, with room to breathe */
 .production-tab--band > .inner-tabs-bar { margin: 18px 22px 0; }
-.production-tab--band :deep(.kpi-row) { margin: -4px 22px -8px; } /* ~12px from the panel to the next card */
+.production-tab--band :deep(.kpi-row) { margin: -4px 22px 12px; } /* the panel ends 16px under the KPIs; the next card starts 16px after it (was -8px: overlapped by 4px) */
 @media (max-width: 640px) {
   .production-tab--band > .inner-tabs-bar { margin: 12px 12px 0; }
   .production-tab--band :deep(.kpi-row) { margin-inline: 12px; }
@@ -783,6 +797,20 @@ async function handleCompare(currentId, previousId) {
 .pt-cta-copy { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; max-width: 440px; }
 .pt-cta-copy strong { font-size: 19px; font-weight: 800; color: var(--text-primary, #181818); }
 .pt-cta-copy span { font-size: 14px; line-height: 1.6; color: var(--text-secondary, #706E6B); }
+.pt-cta-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 12px; }
+.pt-cta-btn {
+  border: none; border-radius: 10px; padding: 11px 20px; font: inherit; font-size: 14px; font-weight: 700;
+  background: var(--tab-production); color: #fff; cursor: pointer;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-production) 28%, transparent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pt-cta-btn:hover { transform: translateY(-1px); }
+.pt-cta-btn:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+.pt-cta-btn--ghost {
+  background: var(--card-bg); color: var(--tab-production); box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--tab-production) 40%, var(--border-subtle));
+}
+@media (prefers-reduced-motion: reduce) { .pt-cta-btn { transition: none; } }
 /* Cycle "upload" state: chip → two-tone title → 3-step flow */
 .pt-ready { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
 .pt-ready-chip {

@@ -3,7 +3,7 @@
     <li v-for="(c, i) in rows" :key="c.company"
         class="ar-row" :class="{ 'ar-row--in': shown, 'ar-row--flat': !c.comparable }"
         :style="{ transitionDelay: (i * 40) + 'ms' }"
-        @click="c.comparable && $emit('pick', c)">
+        @click="c.comparable && $emit('pick', c, $event.currentTarget)">
       <span class="ar-name" :title="c.company">{{ c.company }}</span>
 
       <!-- Two bars on ONE scale across ALL companies, so a row can be compared
@@ -19,7 +19,7 @@
              one: it names WHY the company can't be compared and opens the list
              of everyone in the same position, with what it would take to fix. -->
         <button class="ar-reason" :class="{ 'ar-reason--missing': c.no_commission_data }"
-                @click.stop="$emit('explain', c)">
+                @click.stop="$emit('explain', c, $event.currentTarget)">
           {{ reasonText(c) }}
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -28,9 +28,19 @@
         </button>
       </span>
 
-      <span class="ar-amt ltr-number">{{ money(c.comparable ? c.paid_firm : c.paid) }}</span>
+      <!-- The amount is what the insurer PAID — all of it. It used to show
+           only the checkable share, so מור read ₪1,956 when it paid ₪19,373
+           (QA 2026-09-30). The share the bars and the gap cover is named
+           under it when it isn't the whole. -->
+      <span class="ar-amt">
+        <!-- Money only when there is money — never a dash (app rule). -->
+        <span v-if="c.paid > 0" class="ltr-number">{{ money(c.paid) }}</span>
+        <small v-if="c.comparable && checkedPct(c) < 95" class="ar-cov">
+          נבדק <span class="ltr-number">{{ checkedPct(c) }}%</span>
+        </small>
+      </span>
       <span class="ar-gap ltr-number" :class="gapTone(c)">
-        {{ c.comparable ? signedMoney(c.gap) : '—' }}
+        {{ c.comparable ? signedMoney(c.gap) : '' }}
       </span>
     </li>
   </ul>
@@ -78,6 +88,10 @@ function pct(v) {
   if (!shown.value) return '0%'
   // 1.5% floor so a small-but-real figure is still a mark, not nothing.
   return Math.max(1.5, (Math.abs(Number(v) || 0) / max.value) * 100) + '%'
+}
+
+function checkedPct(c) {
+  return c.paid > 0 ? Math.round((c.paid_firm / c.paid) * 100) : 0
 }
 
 function gapTone(c) {
@@ -138,7 +152,11 @@ onMounted(() => { requestAnimationFrame(() => { shown.value = true }) })
 }
 .ar-reason--missing:hover { color: var(--amber); opacity: 1; }
 
-.ar-amt { font-size: 13px; font-weight: 700; color: var(--text); text-align: left; }
+.ar-amt {
+  font-size: 13px; font-weight: 700; color: var(--text); text-align: left;
+  display: flex; flex-direction: column; line-height: 1.25;
+}
+.ar-cov { font-size: 10.5px; font-weight: 500; color: var(--text-muted); }
 .ar-gap { font-size: 13px; font-weight: 700; text-align: left; }
 .ar-gap.is-up { color: var(--chart-gain); }
 .ar-gap.is-down { color: var(--chart-loss); }

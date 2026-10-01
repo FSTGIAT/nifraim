@@ -428,7 +428,53 @@ def schedule_post_ingest(
     DB session.
     """
     if file_category == "production":
-        asyncio.create_task(_create_snapshots_bg(user_id, upload_id))
-        asyncio.create_task(_compute_summary_bg(user_id, upload_id))
+        asyncio.create_task(_after_production_bg(user_id, upload_id))
     elif file_category == "commission":
-        asyncio.create_task(_auto_compare_after_commission_bg(user_id, upload_id))
+        asyncio.create_task(_after_commission_bg(user_id, upload_id))
+
+
+async def _backfill_bg(user_id: uuid.UUID) -> bool:
+    """A production policy the file reports at ₪0 takes the balance the same
+    company's נפרעים reports for it (services/accumulation_backfill). Runs
+    whichever of the two files lands LAST, before anything reads accumulation.
+    Returns True when a production figure changed."""
+    from app.database import async_session
+    from app.services.accumulation_backfill import backfill_zero_accumulation
+    try:
+        async with async_session() as db:
+            res = await backfill_zero_accumulation(db, user_id)
+        return bool(res["filled"])
+    except Exception as e:
+        logger.warning("accumulation backfill failed (user %s): %s", user_id, e)
+        return False
+
+
+async def _after_production_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
+    await _backfill_bg(user_id)
+    await asyncio.gather(
+        _create_snapshots_bg(user_id, upload_id),
+        _compute_summary_bg(user_id, upload_id),
+    )
+
+
+async def _after_commission_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
+    await _backfill_bg(user_id)
+    # Always refresh the active production summaries: a replaced נפרעים file can
+    # also REMOVE a fill, which changes production just as much as adding one.
+    await _refresh_production_summaries_bg(user_id)
+    await _auto_compare_after_commission_bg(user_id, upload_id)
+
+
+async def _refresh_production_summaries_bg(user_id: uuid.UUID) -> None:
+    from sqlalchemy import select
+    from app.database import async_session
+    from app.models.upload import FileUpload
+    try:
+        async with async_session() as db:
+            ids = (await db.execute(select(FileUpload.id).where(
+                FileUpload.user_id == user_id, FileUpload.is_production.is_(True),
+            ))).scalars().all()
+        for uid in ids:
+            await _compute_summary_bg(user_id, uid)
+    except Exception as e:
+        logger.warning("production summary refresh failed (user %s): %s", user_id, e)

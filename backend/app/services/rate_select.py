@@ -40,6 +40,7 @@ skipped. `select_rate` returns a `route` explaining every decision, and
 from __future__ import annotations
 
 import functools
+import re
 from typing import Callable
 
 from app.utils.company_norm import company_residue, company_stem, normalize_company
@@ -322,6 +323,11 @@ def is_seeded(rate_row) -> bool:
     return getattr(rate_row, "source_document_id", None) is None
 
 
+# Words that mark a savings product in a record's own text — used to exempt
+# savings records from the one-word magnitude check in `select_rate`.
+_SAVINGS_WORDS = re.compile(r"גמל|השתלמות|פנסי|חיסכון|חסכון|מבטחים החדשה|מקפת")
+
+
 def select_rate(user_rates, company: str, product: str | None,
                 product_type: str | None, is_accum: bool,
                 ceiling: float | None = None) -> tuple[float, str]:
@@ -396,9 +402,45 @@ def select_rate(user_rates, company: str, product: str | None,
 
             best_row = min(matches, key=lambda r: (_unmatched(r), len(r.product or "")))
             target = (best_row.product or "").lower()
+            # The tie-break above is for a general line vs its OWN special
+            # cases — every other tied line is the chosen one plus more words.
+            # Tied lines that are different products (kikohib, מנורה: 'טופ
+            # לילד' tied 'קרן אור טופ' 19.2%, 'טופ 5000' 1.5%, 'טופ לעתיד' 9%
+            # and 'מטריה טופ' 8% on the one word טופ, and 9% was reported as a
+            # firm rate) leave the record ambiguous: no product rate, so it
+            # falls to the non-firm tiers and is never shown as a claim.
+            # Ambiguous only when the unrelated tied lines DISAGREE WILDLY
+            # (top rate > 2× the lowest): lines that roughly agree — מנורה's
+            # health lines at 18.2% / 19.2%, the gemel general line vs its
+            # power-of-attorney case at 0.27% / 0.20% — still price firmly.
+            target_tokens = _tokens(target)
+            others = [r for r in matches if (r.product or "").lower() != target
+                      and not target_tokens <= _tokens((r.product or "").lower())]
+            # Savings records keep the tie-break: their tied lines are variants
+            # of one family (גמל / השתלמות at 0.2–0.3%), and a fallback median
+            # priced 'מגדל השתלמות' at 3% instead of 0.24%.
+            is_savings = (is_accum or savings_product_type(product_type)
+                          or bool(_SAVINGS_WORDS.search(text)))
+            ambiguous = False
+            if others and not is_savings:
+                by_prod: dict[str, list] = {}
+                for r in [*matches]:
+                    by_prod.setdefault((r.product or "").lower(), []).append(r)
+                # Only rates this record could actually take count as
+                # disagreement — a 60% one-time line the magnitude guard
+                # already rejects must not make a clean 5% match "ambiguous".
+                vals = [v for v in (_effective_rate(rs) for rs in by_prod.values()) if _ok(v)]
+                ambiguous = bool(vals) and max(vals) > 2 * min(vals)
             matches = [r for r in matches if (r.product or "").lower() == target]
             rate = _effective_rate(matches)
-            if _ok(rate):
+            # One shared word is weak evidence. On that alone, a NON-savings
+            # record may not take a savings-magnitude rate: 'הגנה משלימה -
+            # שיניים' (a health rider) matched 'פנסיה מקיפה … ופנסיה משלימה'
+            # on "משלימה" and was priced at 0.4% (QA 2026-09-30). Savings
+            # records (גמל / השתלמות / פנסיה / חיסכון) are exempt — for them a
+            # sub-1% rate is the normal magnitude.
+            weak = best == 1 and not is_savings and not _ok_fallback(rate)
+            if _ok(rate) and not ambiguous and not weak:
                 return rate, f"{tier}:product"
 
     # 2. Company-default rows (product IS NULL).

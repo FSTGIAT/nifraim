@@ -1,5 +1,5 @@
 <template>
-  <div class="comparison-tab">
+  <div ref="tabRoot" class="comparison-tab">
     <!-- No production file AND no persisted comparison data → full empty state -->
     <!-- Nothing to compare yet: the tab's identity hero (same pattern as the
          other tabs) + one big pulsing door to the automation tab, which is
@@ -45,7 +45,9 @@
       </div>
 
       <!-- Toolbar: production badge + category toggle -->
-      <div class="comparison-toolbar">
+      <!-- Joined to the KPI panel below when the dashboard follows directly:
+           one card, file bar on top, KPIs under a thin divider (QA 2026-10-01). -->
+      <div class="comparison-toolbar" :class="{ 'comparison-toolbar--joined': toolbarJoined }">
         <div class="toolbar-sources">
           <div v-if="productionStore.currentFile" class="toolbar-production">
             <div class="toolbar-prod-dot"></div>
@@ -121,6 +123,7 @@
           </div>
 
           <ComparisonDashboard
+            :joined="toolbarJoined"
             :customers="relevantCustomers"
             :categoryLabel="displayResult?.commission_category_label || ''"
             :companySource="displayResult?.commission_company_source || ''"
@@ -143,6 +146,10 @@
         :company-breakdown="dashRef?.companyBreakdownAll || []"
         @show-customers="onShowCustomers"
       />
+
+      <!-- Reaching the bottom draws the same quiet growth chart as Production,
+           behind the cards, in this tab's green. -->
+      <ProdScrollGraph color="var(--tab-comparison)" />
     </template>
   </div>
 </template>
@@ -157,6 +164,8 @@ import ComparisonDashboard from '../comparison/ComparisonDashboard.vue'
 
 import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboard.vue'
 import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
+import { useScrollReveal } from '../../composables/useScrollReveal'
+import ProdScrollGraph from './ProdScrollGraph.vue'
 import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import BigAddButton from './BigAddButton.vue'
@@ -212,6 +221,16 @@ const displayResult = computed(() => comparisonStore.singleFileView?.result || c
  * only show production products from that company as "not paid".
  * Products from other companies (e.g. אלטשולר) won't be in a הפניקס file — that's expected.
  */
+// Scroll reveal: the tab's cards rise and fade in as the agent scrolls to
+// them (QA 2026-10-01).
+const tabRoot = ref(null)
+useScrollReveal(tabRoot, '.kpi-panel, .hero-card, .chart-card, .crs')
+
+// The file bar and the KPI panel form one card only when the dashboard sits
+// directly under the bar (not in the insights view, not behind the
+// single-file banner).
+const toolbarJoined = computed(() => !!displayResult.value && !comparisonStore.singleFileView)
+
 const relevantCustomers = computed(() => {
   if (!displayResult.value) return []
 
@@ -267,16 +286,13 @@ const relevantCustomers = computed(() => {
         production_count: relevantProducts.length,
         product_matches: {
           matched: [],
-          unmatched_production: relevantProducts.map(p => ({
-            product: p.product,
-            product_type: p.product_type,
-            company: p.company,
-            company_full: p.company_full,
-            premium: p.premium,
-            policy_number: p.policy_number,
-            accumulation: p.accumulation,
-            sign_date: p.sign_date,
-          })),
+          // Keep EVERY field of the product. Copying eight named ones dropped
+          // the backend's canonical price (rate, expected_commission,
+          // expected_is_estimate, track), so the customer window fell back to
+          // a company-name matcher and priced a savings policy at a 9.2%
+          // health rate: ₪2,195 "expected" where the backend says ₪57
+          // (QA 2026-10-01).
+          unmatched_production: relevantProducts.map(p => ({ ...p })),
           unmatched_commission: [],
         },
       }
@@ -363,6 +379,9 @@ onMounted(async () => {
 <style scoped>
 .comparison-tab {
   animation: slideUp 0.4s var(--transition);
+  /* Own stacking layer: the bottom growth graph (z-index −1) paints above the
+     page canvas but behind every card. */
+  position: relative; z-index: 0;
 }
 
 .cmp-empty { display: flex; flex-direction: column; gap: 18px; }
@@ -449,6 +468,10 @@ onMounted(async () => {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: 20px;
+}
+.comparison-toolbar--joined {
+  margin-bottom: 0; border-bottom: none;
+  border-radius: 18px 18px 0 0;
 }
 
 .toolbar-sources {

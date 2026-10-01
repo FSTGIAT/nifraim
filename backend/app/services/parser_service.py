@@ -113,6 +113,15 @@ _RE_DDMMYYYY_SEP = _re_month_helper.compile(
     r"(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])[-/._]"
     r"(?P<month>0?[1-9]|1[0-2])[-/._](?P<year>20\d{2})(?!\d)"
 )
+# REPORT month followed by the GENERATION stamp, as the מסלקה / portal
+# "מוצרים בניהול" export names its file:
+# "דוח_מוצרים_בניהול_07_2026_28-9-2026_11-58-12.xlsx" → 2026-07.
+# Must be tried before `_RE_DDMMYYYY_SEP`, which otherwise takes the stamp
+# (28-9-2026) and files July production as September (QA 2026-09-30).
+_RE_MMYYYY_THEN_STAMP = _re_month_helper.compile(
+    r"(?<!\d)(?P<month>0?[1-9]|1[0-2])_(?P<year>20\d{2})_"
+    r"(?:0?[1-9]|[12]\d|3[01])-(?:0?[1-9]|1[0-2])-20\d{2}(?!\d)"
+)
 # A standalone 6-digit YYYYMM token: "phoenix_production_202606.xlsx" → 2026-06.
 # Standalone on purpose — bounded by non-digits on both sides — so the `2019` in
 # a policy number can never be read as a year.
@@ -179,6 +188,9 @@ def detect_period_month(filename: str | None, records: list[dict] | None = None,
                 return _date(int(m.group("year")), int(m.group("month")), 1)
             except ValueError:
                 pass
+        m = _RE_MMYYYY_THEN_STAMP.search(filename)
+        if m:
+            return _date(int(m.group("year")), int(m.group("month")), 1)
         # Before _RE_NUM_MONTH — a full DD-MM-YYYY must not be read as MM-YY.
         m = _RE_DDMMYYYY_SEP.search(filename)
         if m:
@@ -571,7 +583,8 @@ def parse_excel(
     # Read ALL relevant sheets (מוצרי ביטוח + מוצרי חיסכון) and concatenate
     # מסלולי השקעה is read separately and merged by (id_number, fund_policy_number)
     df = None
-    track_lookup = {}  # (id_number, fund_policy_number) → track name
+    track_lookup = {}  # (id_number, fund_policy_number) → track name (the largest)
+    track_split_lookup = {}  # same key → [{"track", "amount"}] when split
     if ext == "xlsx":
         xls = pd.ExcelFile(buf, engine=engine)
         # Strip whitespace from sheet names for matching
@@ -592,7 +605,14 @@ def parse_excel(
                 id_col = next((c for c in track_df.columns if c in ("מספר ת.ז", "ת.ז", "ת.ז.")), None)
                 acct_col = next((c for c in track_df.columns if c in ("מס' חשבון/פוליסה", "מספר חשבון/פוליסה")), None)
                 track_col = next((c for c in track_df.columns if c in ("שם מסלול",)), None)
+                amt_col = next((c for c in track_df.columns if c in ("צבירה במסלול",)), None)
                 if id_col and acct_col and track_col:
+                    # One policy can sit in SEVERAL tracks, one row each, with
+                    # its own "צבירה במסלול" (kikohib: 244 policies, ₪73.3M).
+                    # Keeping only the last row put the whole balance under one
+                    # track; now every track keeps its amount, and `track` is
+                    # the largest one.
+                    per_policy: dict = {}
                     for _, trow in track_df.iterrows():
                         tid = trow.get(id_col)
                         tacct = trow.get(acct_col)
@@ -604,7 +624,17 @@ def parse_excel(
                             tacct_str = str(tacct).strip()
                             if tacct_str.endswith(".0"):
                                 tacct_str = tacct_str[:-2]
-                            track_lookup[(tid_str, tacct_str)] = str(tname).strip()
+                            amt = parse_numeric(trow.get(amt_col)) if amt_col else None
+                            bucket = per_policy.setdefault((tid_str, tacct_str), {})
+                            name = str(tname).strip()
+                            bucket[name] = bucket.get(name, 0.0) + float(amt or 0)
+                    for key, tracks in per_policy.items():
+                        track_lookup[key] = max(tracks.items(), key=lambda kv: kv[1])[0]
+                        if len(tracks) > 1:
+                            track_split_lookup[key] = [
+                                {"track": n, "amount": round(a, 2)}
+                                for n, a in sorted(tracks.items(), key=lambda kv: -kv[1])
+                            ]
         else:
             # Use openpyxl read_only mode to find actual row count first,
             # avoiding loading 1M+ empty rows into memory
@@ -723,7 +753,8 @@ def parse_excel(
     elif file_format == "company_report":
         return _parse_company_report(df)
     elif file_format == "production":
-        return _parse_production(df, track_lookup=track_lookup)
+        return _parse_production(df, track_lookup=track_lookup,
+                                 track_split_lookup=track_split_lookup)
     elif file_format == "nifraim":
         return _parse_nifraim(df)
     elif file_format == "hachshara_nifraim":
@@ -900,7 +931,8 @@ def _parse_company_report(df: pd.DataFrame) -> dict:
     }
 
 
-def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None) -> dict:
+def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None,
+                      track_split_lookup: dict | None = None) -> dict:
     """Parse production file (קובץ פרודוקציה)."""
     records = []
 
@@ -954,6 +986,9 @@ def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None) -> dic
             track_val = track_lookup.get((record["id_number"], fpn))
             if track_val:
                 record["track"] = track_val
+            split = (track_split_lookup or {}).get((record["id_number"], fpn))
+            if split:
+                record["track_split"] = split
 
         # Map product_status to is_active
         ps = record.get("product_status", "")

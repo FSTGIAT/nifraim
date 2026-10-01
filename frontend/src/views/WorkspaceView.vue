@@ -204,7 +204,7 @@
             <!-- Same rule as the view switch: while the morph is running it
                  owns the swap, or the tab slide plays underneath it. -->
             <Transition :name="morphRunning ? 'view-none' : 'tab-switch'" mode="out-in">
-              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" @go-to-maslaka="onCardSelect('maslaka')" />
+              <ProductionTab v-if="activeTab === 'production'" key="production" @go-to-comparison="onCardSelect('comparison')" @go-to-portal-automation="activeTab = 'portal-automation'" @go-to-maslaka="onCardSelect('maslaka')" @navigate="onCardSelect" />
               <ComparisonTab v-else-if="activeTab === 'comparison'" key="comparison" @go-to-portal-automation="activeTab = 'portal-automation'" />
               <CommissionRatesTab v-else-if="activeTab === 'commission-rates'" key="commission-rates" />
               <PortalTab v-else-if="activeTab === 'portal'" key="portal" />
@@ -1066,6 +1066,15 @@ async function openFundDetail(trackId) {
 .tab-content {
   min-height: 400px;
 }
+/* The top-right corner holds floating widgets (the AI orb, the cycle clock).
+   The tab strip already keeps clear of them; the page did not, so between
+   phone width and ~1380px (where the centred 1200px column reaches that
+   corner) they sat on top of content — a hero label read as "דוקציה…" (QA
+   2026-09-30). Reserve the same gutter on that side. RTL: inline-start = right. */
+@media (min-width: 701px) and (max-width: 1380px) {
+  .workspace-main { padding-inline-start: 88px; }
+}
+
 
 /* ── iOS-style app launch ──────────────────────────────────────────────── */
 .launch-surface {
@@ -1252,6 +1261,9 @@ async function openFundDetail(trackId) {
 @media (max-width: 768px) {
   .workspace-main {
     padding: 24px 16px 40px;
+    /* The corner widgets stack down the right edge on small screens; keep
+       the page clear of them, lined up under the tab strip's 64px gutter. */
+    padding-inline-start: 64px;
   }
 }
 .setup-return {

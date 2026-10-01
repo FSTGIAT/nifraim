@@ -29,6 +29,7 @@ from app.services.rate_select import (
     compute_expected_commission,
 )
 from app.utils.company_norm import company_stem
+from app.utils.track_taxonomy import canonical_track
 from app.utils.product_taxonomy import classify_product
 from app.services.commission_basis import detect_vat_basis, ex_vat_commission
 from app.models.commission_rate import CommissionRate
@@ -48,6 +49,10 @@ async def _compute_summary_bg(user_id, upload_id):
     """Background task to compute production summary after upload."""
     from app.database import async_session
     from app.services.summary_service import compute_production_summary
+    from app.services.upload_ingest import _backfill_bg
+    # ₪0 policies take the balance their נפרעים reports — before the summary
+    # reads accumulation (services/accumulation_backfill).
+    await _backfill_bg(user_id)
     async with async_session() as db:
         await compute_production_summary(db, user_id, upload_id)
 
@@ -149,6 +154,11 @@ UNCOVERED_BUCKETS = ("no_company", "no_rate", "risk_no_premium", "no_base")
 # truncated to 50 clients while `unpaid_total` carries the true count; adding a
 # per-policy array multiplies the payload, so it gets its own ceiling.
 UNPAID_ITEMS_PER_CLIENT = 40
+# The drill-down slices the unpaid list by company and product type on the
+# client, so it needs the WHOLE list: at the old 50-row cap the tile said 58
+# and every chip counted only the first 50 (QA 2026-09-30). This is a payload
+# safety ceiling, not a display limit.
+UNPAID_CLIENTS_MAX = 2000
 
 
 def _uncovered_bucket(rate: float, route: str, is_accum: bool,
@@ -593,8 +603,10 @@ async def upload_production(
     await db.refresh(upload)
 
     # Create portal snapshots and production summary in background (non-blocking)
-    background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
+    # Summary first: it runs the ₪0-accumulation backfill, and BackgroundTasks
+    # run in order, so the portal snapshot then reads the filled balances.
     background_tasks.add_task(_compute_summary_bg, user.id, upload.id)
+    background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
     if cycle_period is not None:
         # Monthly cycle: the cycle's נפרעים are already in — compare now.
         from app.services.cycle_service import compare_now
@@ -1192,69 +1204,106 @@ async def get_production_alerts(
     unpaid_list.sort(key=lambda u: -(u["premium"] + u["accumulation"] / 12.0))
 
     # ── month over month, by company and by client ────────────────────────
-    prev_upload = None
+    # BOTH sides are whole months. The previous side used to read ONE file
+    # (`.limit(1)`) while the current side read every file of the month, so a
+    # company missing from that one file showed its ENTIRE payment as an
+    # increase (QA 2026-10-01: "+₪7,680 מנורה" = all of מנורה). Now the
+    # previous period's files go through the same `_select_unified_uploads`,
+    # and only companies that reported in BOTH months are compared.
+    prev_period = None
+    prev_uploads: list = []
     if comm_uploads:
         cur_period = max((u.period_month for u in comm_uploads if u.period_month),
                          default=None)
-        prev_q = await db.execute(
-            select(FileUpload).where(
-                FileUpload.user_id == user.id,
-                FileUpload.is_production == False,
-                FileUpload.file_category == "commission",
-                FileUpload.id.notin_(comm_ids),
-                FileUpload.period_month.isnot(None),
-                *( [FileUpload.period_month < cur_period] if cur_period else [] ),
-            ).order_by(FileUpload.period_month.desc()).limit(1)
-        )
-        prev_upload = prev_q.scalar_one_or_none()
+        if cur_period:
+            prev_period = (await db.execute(
+                select(func.max(FileUpload.period_month)).where(
+                    FileUpload.user_id == user.id,
+                    FileUpload.is_production == False,
+                    FileUpload.file_category == "commission",
+                    FileUpload.id.notin_(comm_ids),
+                    FileUpload.period_month < cur_period,
+                )
+            )).scalar()
+        if prev_period:
+            prev_uploads = _select_unified_uploads(list((await db.execute(
+                select(FileUpload).where(
+                    FileUpload.user_id == user.id,
+                    FileUpload.is_production == False,
+                    FileUpload.file_category == "commission",
+                    FileUpload.id.notin_(comm_ids),
+                    FileUpload.period_month == prev_period,
+                ).order_by(FileUpload.uploaded_at.desc())
+            )).scalars().all()))
 
     company_movers, client_movers = [], []
-    if prev_upload is not None:
+    if prev_uploads:
         comm_prev: dict[str, float] = defaultdict(float)
-        prev_client: dict[str, dict] = {}
-        for r in (await db.execute(select(ClientRecord).where(
-            ClientRecord.upload_id == prev_upload.id
-        ))).scalars().all():
-            amount = float(_get_commission({
-                "commission_paid": r.commission_paid,
-                "commission_before_fee": r.commission_before_fee,
-                "actual_amount": r.actual_amount,
-            }) or 0)
+        prev_rows = (await db.execute(select(ClientRecord).where(
+            ClientRecord.upload_id.in_([u.id for u in prev_uploads])
+        ))).scalars().all()
+        for r in prev_rows:
             stem = company_stem(r.receiving_company)
             if stem:
-                comm_prev[stem] += amount
-            key = _normalize_id(r.id_number)
-            if key:
-                e = prev_client.setdefault(
-                    key, {"name": _display_name(r.first_name, r.last_name, r.id_number),
-                          "amount": 0.0})
-                e["amount"] += amount
+                comm_prev[stem] += float(_get_commission({
+                    "commission_paid": r.commission_paid,
+                    "commission_before_fee": r.commission_before_fee,
+                    "actual_amount": r.actual_amount,
+                }) or 0)
+        # Companies with a report in BOTH months — the only ones a change can
+        # be measured for.
+        both = set(comm_now) & set(comm_prev)
 
         for stem in set(comm_now) | set(comm_prev):
             now, before = comm_now.get(stem, 0.0), comm_prev.get(stem, 0.0)
-            if round(now - before, 2):
-                company_movers.append({
-                    "company": stem, "now": round(now, 2), "previous": round(before, 2),
-                    "delta": round(now - before, 2),
-                    "delta_pct": round((now - before) / before * 100.0, 1) if before else None,
-                    # A company that sent no report this period has not "dropped
-                    # to zero" — it is missing. Live, הראל reads 6,788 → 0
-                    # (−100%) purely because its נפרעים download failed, and
-                    # presenting that as the month's biggest business decline
-                    # would send the agent chasing an insurer instead of a
-                    # failed run.
-                    "reported": stem in covered,
-                })
-        company_movers.sort(key=lambda m: -abs(m["delta"]))
+            comparable = stem in both
+            if comparable and not round(now - before, 2):
+                continue
+            company_movers.append({
+                "company": stem, "now": round(now, 2), "previous": round(before, 2),
+                "delta": round(now - before, 2) if comparable else 0.0,
+                "delta_pct": round((now - before) / before * 100.0, 1)
+                             if comparable and before else None,
+                # No report THIS month: missing, not "dropped to zero" (a
+                # failed download is not a business decline).
+                "reported": stem in covered,
+                # No report LAST month: new, not "grew by everything".
+                "new": stem not in comm_prev,
+                "comparable": comparable,
+            })
+        company_movers.sort(key=lambda m: (not m["comparable"], -abs(m["delta"])))
 
-        for key in set(comm_now_client) | set(prev_client):
-            now = comm_now_client.get(key, {}).get("amount", 0.0)
-            before = prev_client.get(key, {}).get("amount", 0.0)
+        # Clients, over the comparable companies only — otherwise a client
+        # whose insurer's file was missing last month "rises" by its whole
+        # payment.
+        def _per_client(rows) -> dict:
+            out: dict[str, dict] = {}
+            for r in rows:
+                if company_stem(r.receiving_company) not in both:
+                    continue
+                key = _normalize_id(r.id_number)
+                if not key:
+                    continue
+                e = out.setdefault(key, {"id_number": r.id_number,
+                                         "name": _display_name(r.first_name, r.last_name, r.id_number),
+                                         "amount": 0.0})
+                e["amount"] += float(_get_commission({
+                    "commission_paid": r.commission_paid,
+                    "commission_before_fee": r.commission_before_fee,
+                    "actual_amount": r.actual_amount,
+                }) or 0)
+            return out
+        now_rows = (await db.execute(select(ClientRecord).where(
+            ClientRecord.upload_id.in_(comm_ids)
+        ))).scalars().all()
+        now_c, prev_c = _per_client(now_rows), _per_client(prev_rows)
+        for key in set(now_c) | set(prev_c):
+            now = now_c.get(key, {}).get("amount", 0.0)
+            before = prev_c.get(key, {}).get("amount", 0.0)
             if round(now - before, 2):
                 client_movers.append({
-                    "id_number": comm_now_client.get(key, {}).get("id_number") or key,
-                    "name": (comm_now_client.get(key, {}).get("name")
-                             or prev_client.get(key, {}).get("name") or ""),
+                    "id_number": (now_c.get(key) or prev_c.get(key))["id_number"],
+                    "name": (now_c.get(key, {}).get("name") or prev_c.get(key, {}).get("name") or ""),
                     "now": round(now, 2), "previous": round(before, 2),
                     "delta": round(now - before, 2),
                 })
@@ -1302,7 +1351,7 @@ async def get_production_alerts(
         )
 
     return {
-        "unpaid": unpaid_list[:50],
+        "unpaid": unpaid_list[:UNPAID_CLIENTS_MAX],
         "unpaid_total": len(unpaid_list),
         "checked_companies": checked,
         "no_value_companies": no_value_companies,
@@ -1311,8 +1360,9 @@ async def get_production_alerts(
         "covered_companies": sorted(covered),
         "client_movers": client_movers[:10],
         "company_movers": company_movers[:10],
-        "previous_period": (prev_upload.period_month.strftime("%Y-%m")
-                            if prev_upload is not None and prev_upload.period_month else None),
+        "previous_period": prev_period.strftime("%Y-%m") if prev_uploads and prev_period else None,
+        "current_period": (max((u.period_month for u in comm_uploads if u.period_month), default=None)
+                           .strftime("%Y-%m") if comm_uploads and any(u.period_month for u in comm_uploads) else None),
     }
 
 
@@ -1485,9 +1535,24 @@ async def get_rate_audit(
                 "product": r.product, "total_premium": premium,
                 "accumulation": accum,
             })
+            # Group on the REAL product, not only its category. The category
+            # label merged different agreement products under one line and one
+            # rate: Phoenix "פיננסים וזמן פרישה" held חיסכון פרט (₪50M, priced
+            # at 0.32%) and מסלול לזמן פרישה (0.24%) and displayed 0.32% for
+            # both (QA 2026-09-30). The category stays as `category`.
+            label = prod or "ללא שם מוצר"
+            real = (r.product or "").strip()
+            name = real if real and real != label and any(ch.isalpha() for ch in real) else label
             pp = per_product.setdefault(
-                prod or "ללא שם מוצר",
-                {"product": prod or "ללא שם מוצר", "paid": 0.0, "expected": 0.0,
+                (label, name),
+                {"product": name, "category": label if name != label else None,
+                 "paid": 0.0, "expected": 0.0,
+                 # The FIRM share of this product — rows whose rate the
+                 # agreement names. The company's gap is built from exactly
+                 # these rows, so the drill must be too: summing whole
+                 # products let a partly-≈ product carry its estimated rows
+                 # into "נבדק" (מנורה: row +₪1,519, drill +₪2,394; QA 2026-09-30).
+                 "paid_firm": 0.0, "expected_firm": 0.0, "base_firm": 0.0,
                  "records": 0, "estimated": 0,
                  # How the expected figure was reached, so "why does it say I'm
                  # owed this" is answerable without reading the code:
@@ -1508,6 +1573,10 @@ async def get_rate_audit(
                 pp["route"] = route
             if rate > 0 and is_estimate:
                 pp["estimated"] += 1
+            elif rate > 0:
+                pp["paid_firm"] += row_paid
+                pp["expected_firm"] += row_exp
+                pp["base_firm"] += accum if is_accum else premium
 
         base = accum_base if accum_base > prem_base else prem_base
         base_kind = "accumulation" if accum_base > prem_base else "premium"
@@ -1526,10 +1595,53 @@ async def get_rate_audit(
         gap_pct = ((paid_firm - expected_firm) / expected_firm * 100.0) \
             if expected_firm > 0 else None
 
+        # Split a category into its real products ONLY where they resolve to
+        # different rates — that is when one line would hide which rate priced
+        # what. Same rate (Phoenix's 30 gemel investment tracks at 0.27%) →
+        # one category line, not thirty rows of noise.
+        by_label: dict[str, list] = defaultdict(list)
+        for (label, _), pp in per_product.items():
+            by_label[label].append(pp)
+        merged: dict = {}
+        for label, parts in by_label.items():
+            if len(parts) > 1 and len({(pp["rate"], pp["route"]) for pp in parts}) == 1:
+                m = dict(parts[0], product=label, category=None)
+                for k in ("paid", "expected", "records", "estimated", "base",
+                          "paid_firm", "expected_firm", "base_firm"):
+                    m[k] = sum(pp[k] for pp in parts)
+                merged[label] = m
+            else:
+                for pp in parts:
+                    merged[(label, pp["product"])] = pp
+        per_product = merged
+
         for pp in per_product.values():
-            pp["paid"] = round(pp["paid"], 2)
-            pp["expected"] = round(pp["expected"], 2)
-            pp["base"] = round(pp["base"], 2)
+            # The rate the insurer ACTUALLY paid on this product, on the same
+            # basis the agreement uses — "0.12% paid vs 0.32% agreed" is the
+            # sentence the agent takes to the insurer; the two money figures
+            # alone don't say it.
+            if pp["base"] > 0 and pp["paid"] > 0:
+                pp["paid_rate"] = round(
+                    pp["paid"] * 12.0 / pp["base"] if pp["basis"] == "accumulation"
+                    else pp["paid"] / pp["base"], 6)
+            else:
+                pp["paid_rate"] = None
+            # Rows of one product can resolve different rates (a category
+            # holding several agreement lines); report the rate the expected
+            # figure really implies, not whichever row came first.
+            if pp["base"] > 0 and pp["expected"] > 0:
+                pp["rate"] = round(
+                    pp["expected"] * 12.0 / pp["base"] if pp["basis"] == "accumulation"
+                    else pp["expected"] / pp["base"], 6)
+            # Same two rates on the firm rows only — what the drill compares.
+            fb = pp["base_firm"]
+            is_acc = pp["basis"] == "accumulation"
+            pp["paid_rate_firm"] = round(pp["paid_firm"] * (12.0 if is_acc else 1.0) / fb, 6) \
+                if fb > 0 and pp["paid_firm"] > 0 else None
+            pp["rate_firm"] = round(pp["expected_firm"] * (12.0 if is_acc else 1.0) / fb, 6) \
+                if fb > 0 and pp["expected_firm"] > 0 else None
+            for k in ("paid", "expected", "base", "paid_firm", "expected_firm", "base_firm"):
+                pp[k] = round(pp[k], 2)
             # A rate that came from a default or a median is not a rate FOR this
             # product — the UI has to be able to say which it is.
             pp["firm"] = bool(pp["route"] and pp["route"].endswith((":product", ":residue")))
@@ -1703,8 +1815,26 @@ async def get_production_breakdown(
             ClientRecord.total_premium,
             ClientRecord.accumulation,
             ClientRecord.id_number,
+            ClientRecord.fund_policy_number,
+            ClientRecord.track,
+            ClientRecord.track_split,
         ).where(ClientRecord.upload_id.in_(uids))
     )).all()
+
+    # Balances the production file reported as ₪0 and the company's own
+    # נפרעים supplied (accumulation_backfill) — named under the chart so a bar
+    # that grew is never read as the clearinghouse's figure.
+    backfilled: dict[str, dict] = {}
+    for co, n, amt in (await db.execute(
+        select(ClientRecord.receiving_company, func.count(), func.sum(ClientRecord.accumulation))
+        .where(ClientRecord.upload_id.in_(uids),
+               ClientRecord.accumulation_source == "nifraim")
+        .group_by(ClientRecord.receiving_company)
+    )).all():
+        brand = company_stem(co) or (co or "")
+        b = backfilled.setdefault(brand, {"company": brand, "policies": 0, "amount": 0.0})
+        b["policies"] += n
+        b["amount"] += float(amt or 0)
 
     # The agreement shelf, so every cell can also answer "and what does this
     # PAY me?" — QA 2026-09-18 asked for the commission beside the balance.
@@ -1723,7 +1853,25 @@ async def get_production_breakdown(
     all_clients: set[str] = set()
     tot_p = tot_a = 0.0
 
-    for company, ptype, ftype, pname, premium, accum, idn in rows:
+    # פיננסים "לפי אפיק": the savings book by INVESTMENT TRACK (QA 2026-09-30
+    # #7 — the card said אפיק and showed products). A policy split across
+    # tracks contributes each track's own amount, once per policy (a pension
+    # policy can span two production rows that carry the same split).
+    tracks: dict[str, dict] = {}
+    seen_split: set = set()
+
+    def _add_track(name, amount, idn):
+        key = canonical_track(name)
+        t = tracks.setdefault(key, {"track": key, "accumulation": 0.0, "policies": 0,
+                                    "clients": set(), "names": {}})
+        t["accumulation"] += amount
+        t["policies"] += 1
+        if idn:
+            t["clients"].add(idn)
+        if name:
+            t["names"][name] = t["names"].get(name, 0.0) + amount
+
+    for company, ptype, ftype, pname, premium, accum, idn, policy, track, split in rows:
         if not company or company in ("nan", "None"):
             continue
         prem = float(premium or 0)
@@ -1784,6 +1932,16 @@ async def get_production_breakdown(
         tot_p += prem
         tot_a += acc
 
+        if category == "financial" and acc > 0:
+            if split:
+                k = (idn, policy)
+                if k not in seen_split:
+                    seen_split.add(k)
+                    for part in split:
+                        _add_track(part.get("track"), float(part.get("amount") or 0), idn)
+            else:
+                _add_track(track, acc, idn)
+
     def _emit(cells: dict, sort_key: str) -> list[dict]:
         out = [
             {"product": name, "premium": round(c["premium"], 2),
@@ -1839,6 +1997,17 @@ async def get_production_breakdown(
     return {
         "companies": company_list,
         "missing": missing,
+        "tracks": sorted(
+            ({"track": t["track"], "accumulation": round(t["accumulation"], 2),
+              "policies": t["policies"], "clients": len(t["clients"]),
+              # The fund houses' own names behind the bucket, biggest first —
+              # shown in the drill so a grouping is never a black box.
+              "names": [n for n, _ in sorted(t["names"].items(), key=lambda kv: -kv[1])][:12]}
+             for t in tracks.values() if t["accumulation"] > 0),
+            key=lambda t: -t["accumulation"]),
+        "backfilled": sorted(
+            ({**b, "amount": round(b["amount"], 2)} for b in backfilled.values()),
+            key=lambda b: -b["amount"]),
         "products": {
             "insurance": _emit(products["insurance"], "premium"),
             "financial": _emit(products["financial"], "accumulation"),
@@ -1857,6 +2026,7 @@ async def get_breakdown_clients(
     product: str | None = None,
     company: str | None = None,
     q: str | None = None,
+    track: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1887,6 +2057,8 @@ async def get_breakdown_clients(
             ClientRecord.track,
             ClientRecord.management_fee,
             ClientRecord.management_fee_amount,
+            ClientRecord.accumulation_source,
+            ClientRecord.track_split,
         ).where(ClientRecord.upload_id.in_(uids))
     )).all()
 
@@ -1898,7 +2070,7 @@ async def get_breakdown_clients(
 
     clients: dict[str, dict] = {}
     for (idn, first, last, co, ptype, ftype, pname, premium, accum, status,
-         track, mgmt_fee, mgmt_fee_amount) in rows:
+         track_name, mgmt_fee, mgmt_fee_amount, accum_source, split) in rows:
         if not idn:
             continue
         prem = float(premium or 0)
@@ -1914,6 +2086,12 @@ async def get_breakdown_clients(
             continue
         if company and brand != company:
             continue
+        # "לפי אפיק" drill: the canonical track, over every track the policy
+        # holds (a split policy belongs to each of its tracks).
+        if track:
+            held = [p.get("track") for p in split] if split else [track_name]
+            if track not in {canonical_track(t) for t in held}:
+                continue
         name = f"{first or ''} {last or ''}".strip()
         # Free-text filter over the identity the agent actually types: the
         # ת"ז or any part of the name.
@@ -1939,11 +2117,14 @@ async def get_breakdown_clients(
             "product": prod, "raw_product": pname or ptype or ftype or "",
             "company": brand, "category": cat,
             "premium": round(prem, 2), "accumulation": round(acc, 2),
+            # 'nifraim' = the production file said ₪0; this balance is the one
+            # the company's נפרעים reports for the policy (accumulation_backfill).
+            "accumulation_source": accum_source,
             "status": status,
             "commission": round(exp, 2),
             # Rate as a PERCENT for display; the DB stores a fraction.
             "rate_percent": round(rate * 100, 4) if rate > 0 else None,
-            "track": track or None,
+            "track": track_name or None,
             "management_fee": float(mgmt_fee) if mgmt_fee is not None else None,
             "management_fee_amount": (
                 float(mgmt_fee_amount) if mgmt_fee_amount is not None else None

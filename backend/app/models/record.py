@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import String, Date, DateTime, Numeric, Text, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,6 +42,13 @@ class ClientRecord(Base):
     product_type: Mapped[str | None] = mapped_column(String(100))
     total_premium: Mapped[float | None] = mapped_column(Numeric(15, 2))
     accumulation: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    # NULL = from the production file. 'nifraim' = the file said ₪0 and the
+    # same company's נפרעים for the same period carried a balance on the same
+    # policy (services/accumulation_backfill.py).
+    accumulation_source: Mapped[str | None] = mapped_column(String(20))
+    # [{"track": name, "amount": ₪}] when the policy is split across several
+    # investment tracks (מסלולי השקעה sheet); NULL when it sits in one.
+    track_split: Mapped[list | None] = mapped_column(JSONB)
     product_status: Mapped[str | None] = mapped_column(String(20))
 
     # Nifraim (commission report) fields

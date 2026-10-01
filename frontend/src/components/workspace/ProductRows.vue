@@ -1,65 +1,106 @@
 <template>
+  <!-- One company's products: paid vs the agreement. Redesigned (QA
+       2026-09-30): an 8-column table mixed the products that CAN be checked
+       with ≈ estimates that cannot, and its "לפי ההסכם" total added a ₪107K
+       estimate for pension that is no claim at all. Now: the strip states only
+       what was checked, each checked product is a card whose one bar says
+       "paid this much of what the agreement says", and the estimates fold away
+       with the reason. One colour; red/green only on a real gap. -->
   <div class="pr">
-    <!-- A real header row on the SAME grid as the data rows, so each label
-         sits over the column it names. It was a single run of dot-separated
-         text floating to one side, which named the columns in the right order
-         and pointed at none of them. -->
-    <div class="pr-row pr-head">
-      <span class="pr-keys">
-        <i class="pr-key pr-key--paid"></i>שולם
-        <i class="pr-key pr-key--agreed"></i>לפי ההסכם
-      </span>
-      <span></span>
-      <span>שולם</span>
-      <span>לפי ההסכם</span>
-      <span>שיעור</span>
-      <span>הפרש</span>
-      <span>שורות</span>
+    <!-- מגיע leads: "how much should I have got" is the number the agent
+         acts on (QA 2026-09-30). Then what arrived, then the difference. -->
+    <div v-if="checked.length" class="pr-stats">
+      <div class="pr-stat pr-stat--lead">
+        <span class="pr-stat-lbl">מגיע לפי ההסכם</span>
+        <span class="pr-stat-val ltr-number">{{ money(checkedTotals.expected) }}</span>
+      </div>
+      <div class="pr-stat">
+        <span class="pr-stat-lbl">התקבל</span>
+        <span class="pr-stat-val ltr-number">{{ money(checkedTotals.paid) }}</span>
+      </div>
+      <div class="pr-stat">
+        <span class="pr-stat-lbl">הפרש</span>
+        <span class="pr-stat-val ltr-number" :class="gapTone(checkedTotals.paid, checkedTotals.expected)">
+          {{ signedMoney(checkedTotals.paid - checkedTotals.expected) }}
+        </span>
+      </div>
     </div>
-
-    <ul class="pr-list">
-      <li v-for="(p, i) in ordered" :key="p.product"
-          class="pr-row" :class="{ 'pr-row--in': shown, 'pr-row--soft': isEstimate(p) }"
-          :style="{ transitionDelay: Math.min(i, 14) * 30 + 'ms' }">
-        <span class="pr-name" :title="p.product">
-          {{ p.product }}
-          <!-- Own tooltip rather than the browser's: a native `title` rendered
-               a black box that covered the row beside it. -->
-          <span v-if="p.estimated" class="pr-est" :data-tip="estTip(p)">≈</span>
-        </span>
-
-        <span class="pr-track">
-          <span class="pr-bar pr-bar--paid" :style="{ width: w(p.paid) }"></span>
-          <span class="pr-bar pr-bar--agreed" :style="{ width: w(p.expected) }"></span>
-        </span>
-
-        <span class="pr-val ltr-number">{{ money(p.paid) }}</span>
-        <!-- The expected figure carries its own derivation: base × rate. The
-             question "where does this number come from" should not require
-             reading the code. -->
-        <span class="pr-val pr-val--muted ltr-number" :title="formula(p)">
-          {{ money(p.expected) }}
-        </span>
-        <span class="pr-rate ltr-number" :class="{ 'pr-rate--soft': !p.firm }"
-              :title="p.firm ? 'שיעור מההסכם, למוצר הזה' : 'אין שיעור למוצר הזה בהסכם — חושב לפי ברירת מחדל'">
-          {{ p.rate ? pctText(p.rate) : '—' }}
-        </span>
-        <span class="pr-diff ltr-number" :class="tone(p)">
-          {{ isEstimate(p) ? '—' : signedMoney(p.paid - p.expected) }}
-        </span>
-        <span class="pr-rows ltr-number">{{ p.records }}</span>
-      </li>
-    </ul>
-
-    <button v-if="hidden && !expanded" class="pr-more" @click="expanded = true">
-      הצג עוד {{ hidden }} מוצרים
-    </button>
-
-    <p class="pr-foot">
-      <span class="pr-est pr-est--static">≈</span>
-      מוצר שחלק משורותיו אינן נושאות שיעור עמלה מפורש בהסכם. שיעור שנגזר מברירת מחדל
-      אינו טענה על חוב — כשכל השורות כאלה, ההפרש אינו מוצג כלל.
+    <p class="pr-total-note">
+      סה״כ שולם מהחברה <strong class="ltr-number">{{ money(totals.paid) }}</strong>
+      <template v-if="unchecked.length && checked.length">
+        — כולל <span class="ltr-number">{{ money(uncheckedPaid) }}</span> על מוצרים שלא ניתן לבדוק מול ההסכם
+      </template>
     </p>
+
+    <!-- Checked against the agreement -->
+    <section v-if="checked.length" class="pr-sec">
+      <h5 class="pr-sec-title">נבדקו מול ההסכם <span class="ltr-number">{{ checked.length }}</span></h5>
+      <ul class="pr-list">
+        <li v-for="(p, i) in checked" :key="p.product" class="pr-card" :style="{ '--d': i * 40 + 'ms' }">
+          <!-- Three figures in fixed columns, the same order as the summary,
+               so they line up card to card. No bar: a track with a tick had to
+               be decoded; three labelled numbers do not. -->
+          <div class="pr-row">
+            <span class="pr-name" :title="p.product">
+              {{ p.product }}
+              <small v-if="p.category">{{ p.category }}</small>
+            </span>
+            <span class="pr-fig pr-fig--lead">
+              <small>מגיע</small>
+              <span class="ltr-number">{{ money(fExp(p)) }}</span>
+            </span>
+            <span class="pr-fig">
+              <small>התקבל</small>
+              <span class="ltr-number">{{ money(fPaid(p)) }}</span>
+            </span>
+            <span class="pr-fig">
+              <small>הפרש</small>
+              <span class="ltr-number pr-gap" :class="gapTone(fPaid(p), fExp(p))">{{ signedMoney(fPaid(p) - fExp(p)) }}</span>
+            </span>
+          </div>
+          <div class="pr-rates" :title="formula(p)">
+            שיעור בהסכם <span class="ltr-number">{{ rateText(p.rate_firm ?? p.rate) }}</span>
+            · שיעור בפועל <span class="ltr-number" :class="gapTone(fPaid(p), fExp(p))">{{ rateText(p.paid_rate_firm ?? p.paid_rate) }}</span>
+            <!-- The rows of this product the comparison left out, and their
+                 money — said, so the card's figures never look incomplete. -->
+            <span v-if="p.estimated" class="pr-partial">
+              ≈ <span class="ltr-number">{{ p.estimated }}</span> מתוך <span class="ltr-number">{{ p.records }}</span>
+              שורות בלי שיעור מפורש<template v-if="(p.paid || 0) - fPaid(p) > 0.5"> (<span class="ltr-number">{{ money((p.paid || 0) - fPaid(p)) }}</span>) — לא נכללו</template>
+            </span>
+          </div>
+        </li>
+      </ul>
+    </section>
+    <p v-else class="pr-none">לאף מוצר של החברה אין שיעור מפורש בהסכם, ולכן אין מה לבדוק.</p>
+
+    <!-- Cannot be checked -->
+    <section v-if="unchecked.length" class="pr-sec">
+      <button class="pr-fold-head" :aria-expanded="openUnchecked" @click="openUnchecked = !openUnchecked">
+        <span>לא ניתן לבדוק <span class="ltr-number">{{ unchecked.length }}</span></span>
+        <small>שולמו <span class="ltr-number">{{ money(sum(unchecked, 'paid')) }}</span> — אין להם שיעור מפורש בהסכם</small>
+        <svg :class="{ open: openUnchecked }" width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <div class="pr-fold" :class="{ open: openUnchecked }">
+        <div class="pr-fold-inner">
+          <p class="pr-why">
+            הסכום שהתקבל מוצג, אבל בלי שיעור בהסכם למוצר הזה אי אפשר לדעת אם הוא נכון —
+            ולכן אין כאן טענה על חוב. להוספה: לשונית מדף ההסכמים.
+          </p>
+          <ul class="pr-quiet">
+            <li v-for="p in unchecked" :key="p.product">
+              <span class="pr-name">{{ p.product }}<small v-if="p.category">{{ p.category }}</small></span>
+              <span class="pr-quiet-rate">
+                שיעור בפועל <span class="ltr-number">{{ rateText(p.paid_rate) }}</span>
+              </span>
+              <span class="pr-quiet-amt ltr-number">{{ money(p.paid) }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -67,74 +108,68 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { money, signedMoney } from '../../utils/chartDefaults'
 
+// Same thresholds as the rest of the agreement panel — a gap is coloured only
+// past BOTH (insurers round; a commission can straddle a month boundary).
 const GAP_MIN_PCT = 10
 const GAP_MIN_SHEKEL = 100
 
 const props = defineProps({ products: { type: Array, default: () => [] } })
 const shown = ref(false)
+const openUnchecked = ref(false)
 
-const TOP = 12
+/** Every row priced off a fallback rate — no claim. */
+const isEstimate = p => (p.estimated || 0) >= (p.records || 0)
+// Only the FIRM share of a product is compared — the rows the agreement names.
+// That is exactly what the company row's gap is built from, so the drill and
+// the row always agree (QA 2026-09-30: מנורה row +₪1,519, drill was +₪2,394,
+// because a partly-≈ product brought its estimated rows along).
+// `?? p.paid` keeps an older payload (no firm fields) readable.
+const fPaid = p => Number(p.paid_firm ?? p.paid) || 0
+const fExp = p => Number(p.expected_firm ?? p.expected) || 0
+const checked = computed(() => props.products
+  .filter(p => fExp(p) > 0)
+  .sort((a, b) => ((fPaid(a) - fExp(a)) - (fPaid(b) - fExp(b)))))  // worst first
+const unchecked = computed(() => props.products
+  .filter(p => !checked.value.includes(p))
+  .sort((a, b) => (b.paid || 0) - (a.paid || 0)))
 
-const sorted = computed(
-  () => [...props.products].sort((a, b) => (b.paid || 0) - (a.paid || 0)),
-)
-const expanded = ref(false)
-const ordered = computed(
-  () => (expanded.value ? sorted.value : sorted.value.slice(0, TOP)),
-)
-const hidden = computed(() => Math.max(0, sorted.value.length - TOP))
+const sum = (rows, k) => rows.reduce((s, p) => s + (Number(p[k]) || 0), 0)
+const totals = computed(() => ({ paid: sum(props.products, 'paid') }))
+const checkedTotals = computed(() => ({
+  paid: checked.value.reduce((s, p) => s + fPaid(p), 0),
+  expected: checked.value.reduce((s, p) => s + fExp(p), 0),
+}))
+// Everything paid that is NOT in the comparison: unchecked products plus the
+// ≈ rows inside partly-checked ones.
+const uncheckedPaid = computed(() => totals.value.paid - checkedTotals.value.paid)
 
-// One scale across the visible rows — but a WHOLLY-ESTIMATED expected is not a
-// real figure, and letting it set the scale destroys the chart. מנורה's
-// "מבטחים יותר" carries a fallback expected of ₪12,001 against ₪361 paid; with
-// it in the scale, all 62 other products rendered as 1px slivers. Those bars
-// are clamped instead, and the row already reads "—" with a ≈.
-const max = computed(() => Math.max(
-  1,
-  ...ordered.value.map(p => Number(p.paid) || 0),
-  ...ordered.value.filter(p => !isEstimate(p)).map(p => Number(p.expected) || 0),
-))
-
-function w(v) {
-  if (!shown.value) return '0%'
-  const pct = (Math.abs(Number(v) || 0) / max.value) * 100
-  return Math.min(100, Math.max(1.5, pct)) + '%'
-}
-
-/** Every row priced off a fallback rate — there is no claim here. */
-function isEstimate(p) {
-  return (p.estimated || 0) >= (p.records || 0)
-}
-
-function tone(p) {
-  if (isEstimate(p) || p.estimated) return 'is-none'
-  const diff = (p.paid || 0) - (p.expected || 0)
-  const base = Math.abs(Number(p.expected) || 0)
-  if (Math.abs(diff) < GAP_MIN_SHEKEL) return 'is-none'
-  if (base && (Math.abs(diff) / base) * 100 < GAP_MIN_PCT) return 'is-none'
+function gapTone(paid, expected) {
+  const diff = (Number(paid) || 0) - (Number(expected) || 0)
+  const base = Math.abs(Number(expected) || 0)
+  if (Math.abs(diff) < GAP_MIN_SHEKEL) return ''
+  if (base && (Math.abs(diff) / base) * 100 < GAP_MIN_PCT) return ''
   return diff < 0 ? 'is-down' : 'is-up'
 }
 
-function estTip(p) {
-  return `${p.estimated} מתוך ${p.records} שורות ללא שיעור עמלה מפורש בהסכם`
-}
-
-function pctText(rate) {
+function rateText(rate) {
+  if (!rate) return '—'
   const n = Number(rate) * 100
   return (n < 1 ? n.toFixed(3) : n.toFixed(2)) + '%'
 }
 
-/** "₪8,513 פרמיה × 19.2% = ₪1,635" — the arithmetic behind the expected cell. */
+/** "₪8,513 פרמיה × 19.2% = ₪1,635" — the arithmetic behind the agreed figure. */
 function formula(p) {
-  if (!p.rate || !p.base) return ''
+  const rate = p.rate_firm ?? p.rate
+  const base = p.base_firm ?? p.base
+  if (!rate || !base) return ''
   const basis = p.basis === 'accumulation' ? 'צבירה' : 'פרמיה'
   const per = p.basis === 'accumulation' ? ' ÷ 12' : ''
-  return `${money(p.base)} ${basis} × ${pctText(p.rate)}${per} = ${money(p.expected)}`
+  return `${money(base)} ${basis} × ${rateText(rate)}${per} = ${money(fExp(p))}`
 }
 
 function play() {
-  expanded.value = false
   shown.value = false
+  openUnchecked.value = false
   requestAnimationFrame(() => requestAnimationFrame(() => { shown.value = true }))
 }
 onMounted(play)
@@ -142,90 +177,87 @@ watch(() => props.products, play)
 </script>
 
 <style scoped>
-/* `.pr-row` sets opacity:0 until its enter transition runs, and it is declared
-   AFTER this block — so a bare `.pr-head` lost the cascade and the header row
-   rendered invisible. Qualified with `.pr-row` it wins on specificity wherever
-   it sits in the file. */
-.pr-row.pr-head {
-  font-size: 11px; color: var(--text-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 7px; opacity: 1; transform: none; transition: none;
-}
-.pr-row.pr-head:hover { background: none; }
-.pr-row.pr-head > span:not(.pr-keys) { text-align: left; }
-.pr-row.pr-head > span:first-child { text-align: right; }
-.pr-keys { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.pr-keys .pr-key:not(:first-child) { margin-right: 8px; }
-.pr-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.pr-key--paid { background: var(--chart-9); }
-.pr-key--agreed { background: var(--text-muted); opacity: 0.38; }
+.pr { display: flex; flex-direction: column; gap: 18px; }
 
-.pr-list { list-style: none; display: flex; flex-direction: column; }
+.pr-stats { display: grid; grid-template-columns: 1.25fr 1fr 1fr; border: 1px solid var(--border-subtle); border-radius: 14px; overflow: hidden; }
+.pr-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 18px; }
+.pr-stat + .pr-stat { border-inline-start: 1px solid var(--border-subtle); }
+.pr-stat-val { font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
+.pr-stat-lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.pr-stat--lead { }
+.pr-stat--lead .pr-stat-val { font-size: 26px; color: var(--tab-production); }
+.pr-total-note { font-size: 12px; color: var(--text-muted); margin: -8px 2px 0; }
+.pr-total-note strong { color: var(--text); }
+
+.pr-sec { display: flex; flex-direction: column; gap: 8px; }
+.pr-sec-title { font-size: 13px; font-weight: 700; color: var(--text); display: flex; gap: 6px; align-items: baseline; }
+.pr-sec-title .ltr-number { color: var(--text-muted); font-weight: 500; }
+
+.pr-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.pr-card {
+  border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px; background: var(--card-bg);
+  animation: prIn 0.35s cubic-bezier(0.2, 0, 0.2, 1) both; animation-delay: var(--d);
+}
+@keyframes prIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .pr-row {
-  display: grid;
-  grid-template-columns: minmax(110px, 1.3fr) 1.4fr 70px 70px 58px 70px 40px;
-  align-items: center; gap: 12px;
-  padding: 8px; border-bottom: 1px solid var(--border-subtle);
-  opacity: 0; transform: translateY(4px);
-  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0, 0.2, 1);
+  display: grid; align-items: center; gap: 12px;
+  grid-template-columns: minmax(0, 1.4fr) 1.1fr 1fr 1fr;
 }
-.pr-row--in { opacity: 1; transform: none; }
-.pr-row:last-child { border-bottom: none; }
-.pr-row:hover { background: var(--border-subtle); }
-/* A wholly-estimated row is context, not a finding — it recedes. */
-.pr-row--soft .pr-name, .pr-row--soft .pr-val { opacity: 0.72; }
+.pr-name { display: flex; flex-direction: column; font-size: 14px; font-weight: 600; color: var(--text); min-width: 0; }
+.pr-name small { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+.pr-fig { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-size: 15px; font-weight: 700; color: var(--text); }
+.pr-fig small { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.pr-fig--lead { color: var(--tab-production); font-size: 16px; }
+.pr-gap { color: var(--text-muted); }
+.pr-rates { font-size: 12px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.pr-partial {
+  margin-inline-start: 6px; font-size: 11px; padding: 1px 7px; border-radius: 8px;
+  background: var(--bg); color: var(--text-muted);
+}
 
-.pr-name {
-  font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 6px;
-  overflow: hidden;
-}
-.pr-name > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-down { color: var(--chart-loss) !important; }
+.is-up { color: var(--chart-gain) !important; }
 
-.pr-track { display: flex; flex-direction: column; gap: 3px; direction: ltr; }
-.pr-bar {
-  display: block; height: 8px; border-radius: 4px;
-  transition: width 0.6s cubic-bezier(0.2, 0, 0.2, 1);
-}
-.pr-bar--paid { background: var(--chart-9); }
-.pr-bar--agreed { background: var(--text-muted); opacity: 0.38; }
+.pr-none { font-size: 13px; color: var(--text-muted); text-align: center; padding: 12px; }
 
-.pr-val { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; }
-.pr-val--muted { color: var(--text-muted); font-weight: 500; }
-.pr-diff { font-size: 12px; font-weight: 700; text-align: left; }
-.pr-diff.is-up { color: var(--chart-gain); }
-.pr-diff.is-down { color: var(--chart-loss); }
-.pr-diff.is-none { color: var(--text-muted); font-weight: 500; }
-.pr-rate { font-size: 12px; font-weight: 600; color: var(--text); text-align: left; cursor: help; }
-/* A rate that came from a default is context, not the agreement's word. */
-.pr-rate--soft { color: var(--text-muted); font-weight: 500; font-style: italic; }
-.pr-rows { font-size: 11px; color: var(--text-muted); text-align: left; }
+.pr-fold-head {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  border: 1px dashed var(--border-subtle); border-radius: 12px; background: none;
+  padding: 11px 14px; font: inherit; color: var(--text); cursor: pointer; text-align: right;
+}
+.pr-fold-head > span { font-size: 13px; font-weight: 700; }
+.pr-fold-head small { font-size: 12px; color: var(--text-muted); }
+.pr-fold-head svg { margin-inline-start: auto; align-self: center; color: var(--text-muted); transition: transform 0.25s ease; }
+.pr-fold-head svg.open { transform: rotate(180deg); }
+.pr-fold-head:hover { border-color: var(--text-muted); }
+.pr-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.3s cubic-bezier(0.2, 0, 0.2, 1); }
+.pr-fold.open { grid-template-rows: 1fr; }
+.pr-fold-inner { overflow: hidden; min-height: 0; }
+.pr-why { font-size: 12px; color: var(--text-muted); line-height: 1.7; margin: 10px 2px 6px; }
+.pr-quiet { list-style: none; display: flex; flex-direction: column; }
+.pr-quiet li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 100px; align-items: center; gap: 12px;
+  padding: 9px 4px; border-bottom: 1px solid var(--border-subtle);
+}
+.pr-quiet li:last-child { border-bottom: none; }
+.pr-quiet .pr-name { font-weight: 500; font-size: 13px; }
+.pr-quiet-rate { font-size: 12px; color: var(--text-muted); }
+.pr-quiet-amt { font-size: 13px; font-weight: 700; text-align: left; }
 
-.pr-est {
-  position: relative; flex-shrink: 0;
-  width: 16px; height: 16px; line-height: 15px; text-align: center;
-  border-radius: 50%; background: var(--border-subtle); color: var(--text-muted);
-  font-size: 11px; font-weight: 700; cursor: help;
+@media (max-width: 640px) {
+  .pr-stats { grid-template-columns: 1fr 1fr; }
+  .pr-stat--lead { grid-column: 1 / -1; }
+  .pr-stat + .pr-stat { border-inline-start: none; border-top: 1px solid var(--border-subtle); }
+  .pr-stat { padding: 10px 14px; }
+  .pr-stat-val { font-size: 19px; }
+  .pr-row { grid-template-columns: 1fr 1fr 1fr; }
+  .pr-name { grid-column: 1 / -1; }
+  .pr-quiet li { grid-template-columns: minmax(0, 1fr) 90px; }
+  .pr-quiet-rate { display: none; }
 }
-.pr-est--static { display: inline-block; cursor: default; vertical-align: -3px; }
-.pr-est[data-tip]:hover::after {
-  content: attr(data-tip);
-  position: absolute; bottom: calc(100% + 6px); right: 0;
-  white-space: nowrap; z-index: 5;
-  background: var(--text); color: #fff;
-  padding: 5px 9px; border-radius: var(--radius-sm);
-  font-size: 11px; font-weight: 500;
-}
-.pr-more {
-  margin-top: 10px; padding: 6px 14px; width: 100%;
-  border: 1px dashed var(--border-subtle); border-radius: var(--radius-sm);
-  background: none; color: var(--text-muted);
-  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-}
-.pr-more:hover { color: var(--text); border-color: var(--text-muted); }
-.pr-foot { font-size: 11px; color: var(--text-muted); margin-top: 14px; line-height: 1.7; }
-
 @media (prefers-reduced-motion: reduce) {
-  .pr-row { opacity: 1; transform: none; transition: none; }
-  .pr-bar { transition: none; }
+  .pr-card { animation: none; }
+  .pr-fold, .pr-fold-head svg { transition: none; }
 }
 </style>

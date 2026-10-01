@@ -341,4 +341,19 @@ a {
   opacity: 0;
   transform: translateY(-4px);
 }
+
+/* Scroll reveal (composables/useScrollReveal): sections rise and fade in the
+   first time they enter the viewport — long, soft ease. */
+.sr {
+  /* Clearly visible (QA 2026-10-01: 28px read as "opens regularly"). */
+  opacity: 0;
+  transform: translateY(64px) scale(0.965);
+  transform-origin: 50% 0;
+  transition: opacity 1s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 1.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sr.sr--in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .sr { opacity: 1; transform: none; transition: none; }
+}
 </style>

@@ -1,26 +1,19 @@
 <template>
-  <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="customer" class="modal-overlay" @click.self="$emit('close')">
-        <div class="modal-card">
-          <!-- Header -->
-          <div class="modal-header">
-            <button class="modal-close" @click="$emit('close')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-            <div class="header-right">
-              <div class="header-name">{{ customer.name }}</div>
-              <div class="header-id ltr-number">ת.ז {{ customer.id_number }}</div>
-              <div v-if="customer.client_phone || customer.client_email || customer.employer_name" class="header-contact">
-                <span v-if="customer.client_phone" class="contact-item ltr-number">{{ customer.client_phone }}</span>
-                <span v-if="customer.client_email" class="contact-item ltr-number">{{ customer.client_email }}</span>
-                <span v-if="customer.employer_name" class="contact-item">{{ customer.employer_name }}</span>
-              </div>
-            </div>
-            <div class="header-chips">
-              <span class="chip chip-commission" v-if="customer.commission_count > 0">{{ customer.commission_count }} מוצרים</span>
-              <span class="chip chip-success" v-if="customer.paid_count > 0">{{ customer.paid_count }} שולם</span>
-            </div>
+  <!-- Customer detail — in the shared centred drill (iPhone-style grow from
+       the row pressed, above the list it came from) and the Production drill
+       language, in the comparison green (QA 2026-10-01). Logic unchanged:
+       paid checkbox, mail to company, drill. -->
+  <DataModal :open="!!customer" :origin="origin" :title="customer ? customer.name : ''"
+             :subtitle="customer ? 'ת.ז ' + customer.id_number : ''"
+             accent="var(--tab-comparison)" :layer="1020" @close="$emit('close')">
+    <div v-if="customer" class="cd">
+          <div v-if="customer.client_phone || customer.client_email || customer.employer_name || customer.commission_count > 0 || customer.paid_count > 0"
+               class="cd-meta">
+            <span v-if="customer.client_phone" class="ltr-number">{{ customer.client_phone }}</span>
+            <span v-if="customer.client_email" class="ltr-number">{{ customer.client_email }}</span>
+            <span v-if="customer.employer_name">{{ customer.employer_name }}</span>
+            <span v-if="customer.commission_count > 0" class="cd-chip">{{ customer.commission_count }} מוצרים בנפרעים</span>
+            <span v-if="customer.paid_count > 0" class="cd-chip cd-chip--ok">{{ customer.paid_count }} שולמו</span>
           </div>
 
           <!-- Summary KPI strip -->
@@ -135,14 +128,13 @@
               שלח מייל לחברה
             </button>
           </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </DataModal>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import DataModal from '../workspace/DataModal.vue'
 import api from '../../api/client.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import { calcExpectedCommission } from '../../utils/commissionCalc.js'
@@ -152,6 +144,8 @@ const props = defineProps({
   commissionRates: { type: Array, default: () => [] },
   category: { type: String, default: '' },
   userName: { type: String, default: '' },
+  // The row / element this drill grows out of.
+  origin: { type: null, default: null },
 })
 
 const emit = defineEmits(['close', 'drill'])
@@ -366,238 +360,80 @@ function fmtCell(val) {
 </script>
 
 <style scoped>
-/* Overlay */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1010;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
+/* Production-drill language in the comparison green (QA 2026-10-01). */
+.cd { --acc: var(--tab-comparison); display: flex; flex-direction: column; gap: 14px; }
 
-/* Card */
-.modal-card {
-  width: 100%;
-  max-width: 600px;
-  max-height: 85vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
-}
+.cd-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12.5px; color: var(--text-muted); }
+.cd-chip { padding: 2px 10px; border-radius: 10px; background: var(--bg); color: var(--text); font-weight: 600; }
+.cd-chip--ok { background: var(--tab-comparison-wash, var(--bg)); color: var(--acc); }
 
-/* ── Header ── */
-.modal-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: #F3F3F3;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  position: relative;
-}
+/* summary strip */
+.kpi-strip { display: flex; border: 1px solid var(--border-subtle); border-radius: 14px; overflow: hidden; }
+.kpi { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 13px 16px; }
+.kpi + .kpi { border-inline-start: 1px solid var(--border-subtle); }
+.kpi-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.kpi-val { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
+.kpi:first-child .kpi-val { color: var(--acc); }
 
-.header-right { flex: 1; min-width: 0; }
-.header-name { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.header-id { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-.header-contact { display: flex; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-.contact-item + .contact-item::before { content: '·'; margin-left: 8px; color: var(--light-gray); }
-
-.header-chips { display: flex; gap: 5px; flex-shrink: 0; }
-.chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-.chip-commission { background: rgba(127, 86, 217, 0.08); color: var(--accent-violet); }
-.chip-success { background: var(--green-light); color: var(--green); }
-
-.modal-close {
-  position: absolute; top: 10px; left: 10px;
-  background: transparent; border: 1px solid var(--border);
-  color: var(--text-muted); width: 26px; height: 26px;
-  border-radius: 6px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s; z-index: 2;
-}
-.modal-close:hover { background: var(--border-subtle); color: var(--text); }
-
-/* ── KPI strip ── */
-.kpi-strip {
-  display: flex;
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-  background: #F3F3F3;
-}
-
-.kpi {
-  flex: 1;
-  padding: 8px 12px;
-  text-align: center;
-  border-left: 1px solid var(--border-subtle);
-}
-.kpi:last-child { border-left: none; }
-
-.kpi-label { display: block; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.2px; }
-.kpi-val { display: block; font-size: 13px; font-weight: 800; color: var(--text); margin-top: 1px; }
-.kpi-green { color: var(--green); }
-.kpi-cyan { color: #7F56D9; }
-.kpi-expected { color: var(--accent-emerald, #2E844A); }
-
-/* ── Product rows ── */
-.products-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 0;
-}
-
-.products-scroll::-webkit-scrollbar { width: 4px; }
-.products-scroll::-webkit-scrollbar-track { background: transparent; }
-.products-scroll::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 4px; }
-
+/* product cards */
+.products-scroll { display: flex; flex-direction: column; gap: 8px; }
 .p-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  transition: background 0.12s;
+  display: grid; grid-template-columns: 26px minmax(150px, 1fr) minmax(0, 1.6fr); align-items: center; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg);
 }
+/* The row's state is carried by one quiet mark on the start edge, not a tint. */
+.p-row.p-production-only { box-shadow: inset -3px 0 0 var(--amber); }
+.p-row.p-paid { box-shadow: inset -3px 0 0 var(--acc); }
+.p-row.p-commission { box-shadow: inset -3px 0 0 var(--border-subtle); }
 
-.p-row:hover { background: #F3F3F3; }
-
-.p-production-only {
-  border-right: 3px solid var(--amber);
-  background: rgba(201, 162, 39, 0.03);
-}
-
-.p-commission {
-  border-right: 3px solid var(--accent-violet);
-  background: rgba(127, 86, 217, 0.03);
-}
-
-.p-paid {
-  border-right: 3px solid var(--green);
-}
-
-/* Checkbox */
 .p-cb {
-  width: 20px; height: 20px; border-radius: 4px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; cursor: pointer;
-  border: 2px solid; background: transparent; padding: 0;
-  margin-top: 1px; transition: all 0.12s;
+  width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
 }
-.cb-off { border-color: var(--light-gray); color: transparent; }
-.cb-off:hover { border-color: var(--green); background: var(--green-light); }
-.cb-on { border-color: var(--green); background: var(--green-light); color: var(--green); }
-.cb-on:hover { border-color: var(--red); background: var(--red-light); }
+.cb-off { background: var(--card-bg); border: 1.5px solid var(--border-subtle); color: transparent; }
+.cb-off:hover { border-color: var(--acc); }
+.cb-on { background: var(--acc); border: 1.5px solid var(--acc); color: #fff; }
 
-/* Identity */
-.p-identity { flex: 1; min-width: 0; }
-.p-name {
-  font-size: 12px; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  line-height: 1.4;
-}
-.p-sub {
-  display: flex; gap: 6px; align-items: center;
-  font-size: 11px; color: var(--text-muted); margin-top: 1px;
-}
-.p-sub span + span::before { content: '·'; margin-left: 6px; color: var(--light-gray); }
+.p-identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.p-name { font-size: 14px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-sub { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }
+.p-tag-info { color: var(--text-muted); }
+.p-tag-production { padding: 1px 8px; border-radius: 8px; background: var(--amber-light); color: var(--amber); font-weight: 600; }
 
-.p-tag-info {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 6px;
-  background: rgba(46, 132, 74, 0.06);
-  color: var(--primary);
-}
+.p-amounts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; }
+.amt { display: flex; flex-direction: column; align-items: flex-start; min-width: 64px; }
+.amt-lbl { font-size: 11px; color: var(--text-muted); }
+.amt-val { font-size: 14px; font-weight: 700; color: var(--text); }
+.amt-green { color: var(--acc); }
+.amt-muted { color: var(--text-muted); font-weight: 600; }
+.amt-expected { color: var(--text); }
+.amt-gap { color: var(--text); }
+.amt-date { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 
-.p-tag-production {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 6px;
-  background: rgba(201, 162, 39, 0.08);
-  color: var(--amber);
-  border: 1px solid rgba(201, 162, 39, 0.12);
-}
+.empty-msg { text-align: center; color: var(--text-muted); font-size: 13px; padding: 18px; }
 
-/* Amounts grid — right side */
-.p-amounts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  flex-shrink: 0;
-  max-width: 280px;
-  justify-content: flex-end;
-}
-
-.amt {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.amt-lbl {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.amt-val {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.amt-green { color: var(--green); }
-.amt-muted { color: var(--primary); font-weight: 600; }
-.amt-expected { color: var(--accent-emerald, #2E844A); font-weight: 700; }
-.amt-date { color: var(--text-muted); font-size: 11px; font-weight: 500; }
-
-/* Empty state */
-.empty-msg {
-  text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px;
-}
-
-/* ── Footer ── */
+/* action pinned at the bottom of the scrolling drill */
 .modal-footer {
-  padding: 8px 12px;
-  border-top: 1px solid var(--border-subtle);
-  flex-shrink: 0;
+  position: sticky; bottom: -16px; margin: 4px -20px -16px; padding: 12px 20px 16px;
+  background: linear-gradient(to top, var(--card-bg) 75%, transparent);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
-
 .btn-mail-footer {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; padding: 8px;
-  border: 1px solid var(--primary); border-radius: 6px;
-  background: var(--primary-light); color: var(--primary);
-  font-size: 12px; font-weight: 600; font-family: inherit;
-  cursor: pointer; transition: all 0.15s;
+  width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 18px; border: none; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700;
+  background: var(--acc); color: #fff; cursor: pointer;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--acc) 28%, transparent);
+  transition: transform 0.15s ease;
 }
-.btn-mail-footer:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-mail-footer:hover { transform: translateY(-1px); }
+.btn-mail-footer:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
-/* Transition */
-.modal-enter-active { animation: modalIn 0.2s ease-out; }
-.modal-leave-active { animation: modalIn 0.12s ease reverse; }
-@keyframes modalIn {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+@media (max-width: 640px) {
+  .kpi-strip { flex-wrap: wrap; }
+  .kpi { flex: 1 1 45%; padding: 10px 12px; }
+  .kpi-val { font-size: 17px; }
+  .p-row { grid-template-columns: 24px minmax(0, 1fr); }
+  .p-amounts { grid-column: 1 / -1; justify-content: flex-start; }
 }
-
-.ltr-number { direction: ltr; unicode-bidi: isolate; }
-.amt-gap { color: var(--red); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .p-cb, .btn-mail-footer { transition: none; } }
 </style>

@@ -24,16 +24,24 @@
           <span class="trend-badge-sub">לעומת {{ previousLabel }}</span>
         </span>
       </div>
-      <div v-if="hasData" class="trend-current">
-        <span class="trend-current-label">צפוי {{ latestLabel }}</span>
-        <span class="trend-current-value ltr-number">{{ formatCurrency(latestValue) }}</span>
+      <!-- The headline is the LAST month the chart draws, in the view the
+           chart is in — never a figure from the other view. It used to show
+           the expected view's "צפוי 2026-09 ₪78,868" (production month, whole
+           book) above an actual chart whose grey bar was 2026-07 ₪41,428
+           (נפרעים month, firm rates only): two months, two measures, nothing
+           on screen matched (QA 2026-09-30). -->
+      <div v-if="hasData && headline.expected > 0" class="trend-current">
+        <span class="trend-current-label">
+          {{ mode === 'actual' ? 'צפוי לפי ההסכמים' : 'צפוי' }} {{ headline.label }}
+        </span>
+        <span class="trend-current-value ltr-number">{{ formatCurrency(headline.expected) }}</span>
       </div>
       <!-- Actual received — deliberately its own figure. It used to be folded
            into the expected bar for companies with no priceable base, which
            made the headline a mix of money owed and money already paid. -->
-      <div v-if="hasData && receivedTotal > 0" class="trend-current trend-current--actual">
-        <span class="trend-current-label">התקבל בפועל</span>
-        <span class="trend-current-value ltr-number">{{ formatCurrency(receivedTotal) }}</span>
+      <div v-if="hasData && headline.received > 0" class="trend-current trend-current--actual">
+        <span class="trend-current-label">התקבל בפועל {{ headline.label }}</span>
+        <span class="trend-current-value ltr-number">{{ formatCurrency(headline.received) }}</span>
       </div>
       <!-- Which measure the bars show. Expected is computable only where an
            agreement and a priceable base exist, so it covers a fraction of the
@@ -68,7 +76,16 @@
          the chart says so. Without this line the shorter grey bar reads as
          "the insurers paid us more than we are owed" — the exact opposite of
          what it means. -->
-    <div v-if="mode === 'actual' && hasExpectedBar" class="trend-compare-note">
+    <!-- Folded by default (QA 2026-09-30): four lines of notes above the
+         chart buried the two numbers the card exists for. The one-line
+         summary keeps the key fact visible; the rest is one press away. -->
+    <details v-if="mode === 'actual' && hasExpectedBar" class="trend-compare-note trend-how">
+      <summary>
+        <span v-if="compareCoverage">
+          צפי מחושב ל-<span class="ltr-number">{{ compareCoverage.pct }}%</span> מהעמלות שהתקבלו
+        </span>
+        <span class="trend-how-link">איך זה מחושב</span>
+      </summary>
       <p class="tcn-lead">
         עמודת <strong>צפוי לפי ההסכמים</strong> מחושבת ל-<strong>{{ compareCompanies.join(', ') }}</strong>
         — רק חברות שיש להן שיעור מפורש בהסכם. היא נמוכה מהעמודה הצבעונית מפני
@@ -89,7 +106,7 @@
           ועוד <span class="ltr-number">{{ compareDroppedMore }}</span>
         </li>
       </ul>
-    </div>
+    </details>
 
     <!-- Insight card: biggest drop + CTA to automation -->
     <div v-if="insight && mode === 'expected'" class="trend-insight" :class="`trend-insight--${insight.severity}`">
@@ -154,13 +171,18 @@
       <!-- Why companies are missing from the bar. Without this, an agent
            seeing 2 of 7 companies can't tell "no agreement rate for these"
            from "the app lost my data". -->
-      <p v-if="uncovered.length && mode !== 'compare'" class="trend-uncovered">
-        <span class="tu-lead">לא נכללות בחישוב:</span>
-        <span v-for="u in uncovered" :key="u.company" class="tu-item">
-          {{ u.company }}
-          <span class="tu-why">{{ uncoveredReason(u) }}</span>
-        </span>
-      </p>
+      <details v-if="uncovered.length && mode !== 'compare'" class="trend-how trend-how--below">
+        <summary>
+          <span><span class="ltr-number">{{ uncovered.length }}</span> חברות לא נכללות בצפי</span>
+          <span class="trend-how-link">למה</span>
+        </summary>
+        <p class="trend-uncovered">
+          <span v-for="u in uncovered" :key="u.company" class="tu-item">
+            {{ u.company }}
+            <span class="tu-why">{{ uncoveredReason(u) }}</span>
+          </span>
+        </p>
+      </details>
     </template>
 
     <div v-else-if="loading" class="trend-empty">
@@ -380,7 +402,7 @@ watch(() => productionStore?.trendTick, (tick, prev) => {
   if (tick !== undefined && tick !== prev) load()
 })
 
-const hasTrend = computed(() => points.value.length >= 2)
+const hasTrend = computed(() => shownPoints.value.length >= 2)
 const hasData = computed(() => points.value.length >= 1)
 const isSingleMonth = computed(() => points.value.length === 1)
 
@@ -408,19 +430,26 @@ const emptyState = computed(() => {
   }
 })
 
-const totals = computed(() => points.value.map(p => Number(p.total_expected) || 0))
+// Headline + month-over-month badge read the series the chart is DRAWING
+// (`shownPoints`), so the number above the bars is always one of the bars.
+const totals = computed(() => shownPoints.value.map(p => Number(p.total_expected) || 0))
 
 const previousLabel = computed(() =>
-  points.value.length < 2 ? '' : points.value[points.value.length - 2].period_label || ''
+  shownPoints.value.length < 2 ? '' : shownPoints.value[shownPoints.value.length - 2].period_label || ''
 )
 
-const latestLabel = computed(() =>
-  points.value.length ? points.value[points.value.length - 1].period_label || '' : ''
-)
-
-const latestValue = computed(() =>
-  points.value.length ? totals.value[totals.value.length - 1] : 0
-)
+const headline = computed(() => {
+  const last = shownPoints.value[shownPoints.value.length - 1]
+  if (!last) return { label: '', expected: 0, received: 0 }
+  if (mode.value === 'actual') {
+    return {
+      label: last.period_label || '',
+      received: Number(last.total_expected) || 0,
+      expected: compareByLabel.value.get(last.period_label)?.expected || 0,
+    }
+  }
+  return { label: last.period_label || '', expected: Number(last.total_expected) || 0, received: 0 }
+})
 
 const momPct = computed(() => {
   const v = totals.value
@@ -1012,7 +1041,7 @@ const chartOptions = computed(() => ({
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 20px;
-  margin-top: 16px;
+  /* No extra top margin — the dashboard's gap spaces it (it doubled to 36px). */
 }
 
 .trend-header {
@@ -1222,4 +1251,26 @@ const chartOptions = computed(() => ({
 .tu-item { white-space: nowrap; }
 .tu-why { color: var(--chart-4); }
 .tu-why::before { content: '— '; }
+/* "איך זה מחושב" — explanation on demand, one line when closed. */
+.trend-how {
+  margin: 4px 0 8px; font-size: 12px; color: var(--text-muted);
+  border: 1px solid var(--border-subtle); border-radius: 10px; padding: 7px 12px;
+  background: var(--card-bg);
+}
+.trend-how--below { margin-top: 10px; }
+.trend-how > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+}
+.trend-how > summary::-webkit-details-marker { display: none; }
+.trend-how-link {
+  margin-inline-start: auto; color: var(--tab-production); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.trend-how-link::after {
+  content: ''; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.8px 1.8px 0;
+  transform: rotate(45deg) translateY(-2px); transition: transform 0.2s ease;
+}
+.trend-how[open] .trend-how-link::after { transform: rotate(-135deg) translateY(-1px); }
+.trend-how[open] > summary { margin-bottom: 8px; }
+.trend-how .trend-uncovered { margin: 0; }
 </style>

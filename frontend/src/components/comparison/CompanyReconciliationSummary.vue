@@ -31,157 +31,107 @@
       <div class="crs-chart-head">
         <h4 class="crs-chart-title">{{ focusRow ? focusRow.company : 'לקוחות לפי חברה' }}</h4>
         <span class="crs-chart-sub">{{ focusRow ? 'לחצו על חלק לרשימת הלקוחות' : 'לחצו על חברה לפירוט' }}</span>
-        <button v-if="focusRow" type="button" class="crs-back" @click="focusKey = null">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-          </svg>
-          חזרה לכל החברות
-        </button>
       </div>
-      <div class="crs-chart-wrap">
-        <apexchart
-          :key="focusKey || '__all__'"
-          type="donut"
-          height="300"
-          width="100%"
-          :options="donutOptions"
-          :series="donutData.series"
-        />
-      </div>
-    </div>
-
-    <div class="crs-table-wrap">
-      <table class="crs-table">
-        <thead>
-          <tr>
-            <th class="t-name">חברה</th>
-            <th>מוצרים מופקים</th>
-            <th>מוצרים תואמו</th>
-            <th>לקוחות לא שולמו</th>
-            <th>התקבל</th>
-            <th>צפי</th>
-            <th>פער</th>
-            <th class="t-bar">ביצוע גבייה</th>
-            <th class="t-go"><span class="sr-only">מעבר לפירוט</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in rows"
-            :key="row.company"
-            class="crs-row"
-            tabindex="0"
-            role="button"
-            :aria-label="'פירוט ' + row.company"
-            @click="openRow(row)"
-            @keydown.enter.prevent="openRow(row)"
-            @keydown.space.prevent="openRow(row)"
-          >
-            <td class="t-name">
-              <span
-                class="crs-avatar"
-                :style="avatarStyle(row.company)"
-                aria-hidden="true"
-              >
-                <CompanyLogo :company="row.company" :size="18" :frame="false" />
-              </span>
-              <span class="crs-company">{{ row.company }}</span>
-            </td>
-            <td><span class="ltr-number">{{ fmtInt(row.produced) }}</span></td>
-            <td><span class="ltr-number num-matched">{{ fmtInt(row.matched) }}</span></td>
-            <td>
-              <span
-                v-if="row.unpaid > 0"
-                class="crs-chip crs-chip--warn ltr-number"
-                :title="fmtInt(row.unpaid_products) + ' מוצרים'"
-              >{{ fmtInt(row.unpaid) }}</span>
-              <span v-else class="ltr-number num-muted">0</span>
-            </td>
-            <td><span class="ltr-number">{{ fmtMoney(row.received) }}</span></td>
-            <td><span class="ltr-number num-muted">{{ fmtMoney(row.expected) }}</span></td>
-            <td>
-              <span class="ltr-number" :class="row.gap > 0 ? 'num-gap' : 'num-muted'">{{ fmtMoney(row.gap) }}</span>
-            </td>
-            <td class="t-bar">
-              <div
-                class="crs-progress"
-                role="img"
-                :aria-label="'נגבו ' + pctLabel(row) + ' מהצפי'"
-              >
-                <div class="crs-progress-track" :class="{ 'has-gap': row.gap > 0 }">
-                  <div
-                    class="crs-progress-fill"
-                    :style="{ width: pctWidth(row), background: companyColor(row.company) }"
-                  ></div>
-                </div>
-                <span class="crs-progress-pct ltr-number">{{ pctLabel(row) }}</span>
-              </div>
-            </td>
-            <td class="t-go">
-              <svg class="crs-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 18-6-6 6-6" />
+      <!-- The way back sits BESIDE the pie and slides in when a company is
+           open (QA 2026-10-01: it was a pill far off in the header). -->
+      <div class="crs-chart-stage">
+        <Transition name="crs-back">
+          <button v-if="focusRow" type="button" class="crs-back" @click="focusKey = null"
+                  title="חזרה לכל החברות" aria-label="חזרה לכל החברות">
+            <span class="crs-back-ic">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
               </svg>
-            </td>
-          </tr>
-        </tbody>
-        <tfoot v-if="totals">
-          <tr class="crs-total">
-            <td class="t-name">סה״כ</td>
-            <td><span class="ltr-number">{{ fmtInt(totals.produced) }}</span></td>
-            <td><span class="ltr-number">{{ fmtInt(totals.matched) }}</span></td>
-            <td><span class="ltr-number">{{ fmtInt(totals.unpaid) }}</span></td>
-            <td><span class="ltr-number">{{ fmtMoney(totals.received) }}</span></td>
-            <td><span class="ltr-number">{{ fmtMoney(totals.expected) }}</span></td>
-            <td><span class="ltr-number" :class="totals.gap > 0 ? 'num-gap' : 'num-muted'">{{ fmtMoney(totals.gap) }}</span></td>
-            <td class="t-bar">
-              <div class="crs-progress">
-                <div class="crs-progress-track" :class="{ 'has-gap': totals.gap > 0 }">
-                  <div class="crs-progress-fill crs-progress-fill--total" :style="{ width: pctWidth(totals) }"></div>
-                </div>
-                <span class="crs-progress-pct ltr-number">{{ pctLabel(totals) }}</span>
-              </div>
-            </td>
-            <td class="t-go"></td>
-          </tr>
-        </tfoot>
-      </table>
+            </span>
+            <span class="crs-back-txt">כל החברות</span>
+          </button>
+        </Transition>
+        <div class="crs-chart-wrap">
+          <Transition name="crs-pie" mode="out-in">
+            <apexchart
+              :key="focusKey || '__all__'"
+              type="donut"
+              height="380"
+              width="100%"
+              :options="donutOptions"
+              :series="donutData.series"
+            />
+          </Transition>
+        </div>
+      </div>
     </div>
 
-    <!-- Stacked cards below ~720px (table hidden, same data) -->
-    <ul class="crs-cards">
-      <li v-for="row in rows" :key="'c-' + row.company">
-        <button type="button" class="crs-card" @click="openRow(row)">
-          <div class="crs-card-top">
+    <!-- Company rows as cards — the app's drill language (QA 2026-10-01: the
+         wide table read as a spreadsheet). One card per insurer, labelled
+         figures in fixed columns, the collection bar, and a matching total
+         card. Works on every width — no separate phone table. -->
+    <ul class="cr-list">
+      <li v-for="(row, i) in rows" :key="row.company" :style="{ '--d': Math.min(i, 10) * 40 + 'ms' }">
+        <button type="button" class="cr-row" :aria-label="'פירוט ' + row.company" @click="openRow(row)">
+          <span class="cr-co">
             <span class="crs-avatar" :style="avatarStyle(row.company)" aria-hidden="true">
               <CompanyLogo :company="row.company" :size="18" :frame="false" />
             </span>
-            <span class="crs-company">{{ row.company }}</span>
-            <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn ltr-number">{{ fmtInt(row.unpaid) }} לקוחות לא שולמו</span>
-            <svg class="crs-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-          </div>
-          <div class="crs-card-nums">
-            <div class="crs-card-stat">
-              <span class="crs-card-label">התקבל</span>
-              <span class="ltr-number">{{ fmtMoney(row.received) }}</span>
-            </div>
-            <div class="crs-card-stat">
-              <span class="crs-card-label">צפי</span>
-              <span class="ltr-number num-muted">{{ fmtMoney(row.expected) }}</span>
-            </div>
-            <div class="crs-card-stat">
-              <span class="crs-card-label">פער</span>
-              <span class="ltr-number" :class="row.gap > 0 ? 'num-gap' : 'num-muted'">{{ fmtMoney(row.gap) }}</span>
-            </div>
-          </div>
-          <div class="crs-progress">
-            <div class="crs-progress-track" :class="{ 'has-gap': row.gap > 0 }">
-              <div class="crs-progress-fill" :style="{ width: pctWidth(row), background: companyColor(row.company) }"></div>
-            </div>
+            <span class="cr-co-txt">
+              <span class="cr-name">{{ row.company }}</span>
+              <small v-if="row.produced || row.matched">
+                <span class="ltr-number">{{ fmtInt(row.produced) }}</span> מוצרים ·
+                <span class="ltr-number">{{ fmtInt(row.matched) }}</span> תואמו
+              </small>
+            </span>
+          </span>
+          <span class="cr-fig">
+            <template v-if="row.received >= 0.5">
+              <small>התקבל</small><span class="ltr-number">{{ fmtMoney(row.received) }}</span>
+            </template>
+          </span>
+          <span class="cr-fig cr-fig--muted">
+            <template v-if="row.expected >= 0.5">
+              <small>צפי</small><span class="ltr-number">{{ fmtMoney(row.expected) }}</span>
+            </template>
+          </span>
+          <span class="cr-fig">
+            <template v-if="row.gap >= 0.5">
+              <small>פער</small><span class="ltr-number" :class="gapClass(row)">{{ fmtMoney(row.gap) }}</span>
+            </template>
+          </span>
+          <span class="cr-unpaid">
+            <span v-if="row.unpaid > 0" class="crs-chip crs-chip--warn"
+                  :title="fmtInt(row.unpaid_products) + ' מוצרים'">
+              <span class="ltr-number">{{ fmtInt(row.unpaid) }}</span> לא שולמו
+            </span>
+          </span>
+          <span class="crs-progress" :class="'is-' + pctState(row)" role="img"
+                :aria-label="'נגבו ' + pctLabel(row) + ' מהצפי'" :title="pctTitle(row)">
+            <span class="crs-progress-track"><span class="crs-progress-fill" :style="{ width: pctWidth(row) }"></span></span>
             <span class="crs-progress-pct ltr-number">{{ pctLabel(row) }}</span>
-          </div>
+          </span>
+          <svg class="crs-chevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
         </button>
+      </li>
+      <li v-if="totals">
+        <div class="cr-row cr-row--total">
+          <span class="cr-co">
+            <span class="cr-co-txt">
+              <span class="cr-name">סה״כ</span>
+              <small><span class="ltr-number">{{ fmtInt(totals.produced) }}</span> מוצרים ·
+                <span class="ltr-number">{{ fmtInt(totals.matched) }}</span> תואמו</small>
+            </span>
+          </span>
+          <span class="cr-fig"><template v-if="totals.received >= 0.5"><small>התקבל</small><span class="ltr-number">{{ fmtMoney(totals.received) }}</span></template></span>
+          <span class="cr-fig cr-fig--muted"><template v-if="totals.expected >= 0.5"><small>צפי</small><span class="ltr-number">{{ fmtMoney(totals.expected) }}</span></template></span>
+          <span class="cr-fig"><template v-if="totals.gap >= 0.5"><small>פער</small><span class="ltr-number" :class="gapClass(totals)">{{ fmtMoney(totals.gap) }}</span></template></span>
+          <span class="cr-unpaid">
+            <span v-if="totals.unpaid > 0" class="crs-chip crs-chip--warn"><span class="ltr-number">{{ fmtInt(totals.unpaid) }}</span> לא שולמו</span>
+          </span>
+          <span class="crs-progress" :class="'is-' + pctState(totals)" :title="pctTitle(totals)">
+            <span class="crs-progress-track"><span class="crs-progress-fill" :style="{ width: pctWidth(totals) }"></span></span>
+            <span class="crs-progress-pct ltr-number">{{ pctLabel(totals) }}</span>
+          </span>
+          <span></span>
+        </div>
       </li>
     </ul>
     <UnpaidCompanyModal
@@ -344,7 +294,7 @@ const donutOptions = computed(() => ({
   },
   labels: donutData.value.labels,
   colors: donutData.value.colors,
-  stroke: { width: 2, colors: ['#ffffff'] },
+  stroke: { width: 3, colors: ['#ffffff'] },
   dataLabels: {
     enabled: true,
     // % of REAL customers — the grey no-data slivers must not dilute it.
@@ -353,12 +303,17 @@ const donutOptions = computed(() => ({
       const v = Number(o.w.globals.series[o.seriesIndex]) || 0
       const real = donutData.value.series.reduce((a, x, i) => a + (isEmptySlice(i) ? 0 : x), 0)
       const pct = real ? (v / real) * 100 : 0
-      return pct < 4 ? '' : `${Math.round(pct)}%`
+      // No legend any more — a large slice names itself; small ones on hover.
+      if (pct < 4) return ''
+      const name = o.w.globals.labels[o.seriesIndex] || ''
+      return pct >= 7 ? [name, `${Math.round(pct)}%`] : `${Math.round(pct)}%`
     },
-    style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px', fontWeight: 700 },
+    style: { fontFamily: 'Heebo, sans-serif', fontSize: '12px', fontWeight: 700 },
     dropShadow: { enabled: false },
   },
+  // Legend removed (QA 2026-10-01): slices carry their names.
   legend: {
+    show: false,
     position: 'bottom',
     fontFamily: 'Heebo, sans-serif',
     fontSize: '12px',
@@ -371,14 +326,14 @@ const donutOptions = computed(() => ({
     pie: {
       expandOnClick: false,
       donut: {
-        size: '66%',
+        size: '52%',   /* a thicker ring (was 66%) */
         labels: {
           show: true,
           name: { fontFamily: 'Heebo, sans-serif', fontSize: '12px', color: '#706E6B' },
           value: {
             fontFamily: 'Heebo, sans-serif',
-            fontSize: '20px',
-            fontWeight: 700,
+            fontSize: '26px',
+            fontWeight: 800,
             color: '#181818',
             formatter: (v, w) => {
               const i = w?.globals?.series?.indexOf(Number(v))
@@ -434,14 +389,50 @@ function pct(row) {
   return Math.min(received / expected, 1)
 }
 
+// Collection % is only honest when every unpaid customer has an expected
+// amount. Unpaid products with none (no agreement rate / no base) add ₪0 to
+// the gap, so "received ÷ expected" reads 100% while customers went unpaid
+// (QA 2026-10-01: מנורה, 156 unpaid, 100%).
+//   unknown — unpaid customers exist and NONE were priced → can't compute
+//   partial — some unpriced → the % is an upper bound ("עד X%")
+function pctState(row) {
+  const unpriced = Number(row?.unpriced_products || 0)
+  if (Number(row?.unpaid || 0) > 0 && Number(row?.gap || 0) < 0.5) return 'unknown'
+  if (unpriced > 0) return 'partial'
+  return 'ok'
+}
+
 function pctWidth(row) {
+  if (pctState(row) === 'unknown') return '0%'
   const p = pct(row)
   return p === null ? '0%' : `${Math.round(p * 100)}%`
 }
 
 function pctLabel(row) {
+  const st = pctState(row)
+  if (st === 'unknown') return 'לא ניתן לחשב'
   const p = pct(row)
-  return p === null ? '—' : `${Math.round(p * 100)}%`
+  if (p === null) return ''
+  return (st === 'partial' ? 'עד ' : '') + `${Math.round(p * 100)}%`
+}
+
+function pctTitle(row) {
+  const st = pctState(row)
+  if (st === 'unknown') {
+    return `${fmtInt(row.unpaid)} לקוחות לא שולמו בלי סכום צפוי — אין שיעור הסכם או בסיס לחישוב, ולכן אי אפשר לדעת כמה נגבה`
+  }
+  if (st === 'partial') {
+    return `${fmtInt(row.unpriced_products)} מוצרים שלא שולמו אינם מתומחרים — האחוז האמיתי נמוך מזה`
+  }
+  return ''
+}
+
+// Red only for a gap worth chasing — the same thresholds as every other gap in
+// the app (≥ ₪100 AND ≥ 10% of what was expected); smaller ones stay grey.
+function gapClass(row) {
+  const gap = Number(row.gap) || 0
+  const exp = Number(row.expected) || 0
+  return gap >= 100 && (!exp || gap / exp >= 0.1) ? 'num-gap' : 'num-muted'
 }
 
 function fmtInt(n) {
@@ -562,30 +553,50 @@ function fmtMoney(n) {
   color: var(--text-muted, #706E6B);
 }
 
-.crs-chart-wrap {
-  direction: ltr;
-  max-width: 460px;
-  margin: 0 auto;
+/* Three columns: the back button's own slot, the pie, an equal empty slot —
+   so the pie never shifts when the button slides in. */
+.crs-chart-stage {
+  display: grid; grid-template-columns: 90px minmax(0, 560px) 90px;
+  align-items: center; justify-content: center; gap: 12px;
 }
+.crs-chart-stage > .crs-back { grid-column: 1; justify-self: center; }
+.crs-chart-stage > .crs-chart-wrap { grid-column: 2; }
+.crs-chart-wrap { direction: ltr; width: 100%; }
 
+/* Back to all companies — beside the pie, medium, the tab's green. */
 .crs-back {
-  margin-inline-start: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle, #e5e7eb);
-  background: var(--card-bg, #fff);
-  color: var(--text-secondary, #3E3E3C);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  display: inline-flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 0; border: none; background: none; font: inherit; cursor: pointer;
+  color: var(--tab-comparison, #2E844A);
 }
-.crs-back:hover { background: var(--bg, #F3F3F3); border-color: var(--text-muted, #706E6B); }
-.crs-back:focus-visible { outline: 2px solid var(--tab-comparison, #2E844A); outline-offset: 2px; }
+.crs-back-ic {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1.5px solid color-mix(in srgb, var(--tab-comparison, #2E844A) 45%, transparent);
+  background: var(--card-bg, #fff);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-comparison, #2E844A) 16%, transparent);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+.crs-back:hover .crs-back-ic { background: var(--tab-comparison, #2E844A); color: #fff; transform: translateX(3px); }
+.crs-back-txt { font-size: 12px; font-weight: 700; }
+.crs-back:focus-visible { outline: none; }
+.crs-back:focus-visible .crs-back-ic { outline: 2px solid var(--tab-comparison, #2E844A); outline-offset: 3px; }
+.crs-back-enter-active { transition: opacity 0.45s ease 0.15s, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.15s; }
+.crs-back-leave-active { transition: opacity 0.2s ease, transform 0.25s ease; }
+.crs-back-enter-from, .crs-back-leave-to { opacity: 0; transform: translateX(16px) scale(0.9); }
+
+/* The pie swaps level with a soft scale-fade. */
+.crs-pie-enter-active { transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+.crs-pie-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.crs-pie-enter-from { opacity: 0; transform: scale(0.94); }
+.crs-pie-leave-to { opacity: 0; transform: scale(1.03); }
+@media (prefers-reduced-motion: reduce) {
+  .crs-back-enter-active, .crs-back-leave-active, .crs-pie-enter-active, .crs-pie-leave-active, .crs-back-ic { transition: none; }
+}
+@media (max-width: 640px) {
+  .crs-chart-stage { grid-template-columns: minmax(0, 1fr); }
+  .crs-chart-stage > .crs-back, .crs-chart-stage > .crs-chart-wrap { grid-column: 1; }
+}
 
 /* Table */
 .crs-table-wrap { overflow-x: auto; }
@@ -695,29 +706,31 @@ function fmtMoney(n) {
   gap: 8px;
 }
 
+/* A bar, not a hairline (QA 2026-10-01): 14px, softly squared ends. */
 .crs-progress-track {
   flex: 1;
-  height: 7px;
-  border-radius: 999px;
+  height: 14px;
+  border-radius: 5px;
   background: var(--bg, #F0F0F0);
   overflow: hidden;
   min-width: 70px;
 }
 
 /* When money is missing, the uncollected remainder reads as a red tint */
-.crs-progress-track.has-gap {
-  background: color-mix(in srgb, var(--red, #EA001E) 14%, white);
-}
+/* One colour for every bar (QA 2026-10-01) — the gap is carried by the red
+   number, not by a red-tinted track. */
+.crs-progress-track.has-gap { background: var(--bg, #F0F0F0); }
 
 .crs-progress-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 5px;
+  background: var(--tab-comparison, #2E844A);
+  transform-origin: right center;   /* RTL: grows from the start side */
+  animation: crsBarIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
   transition: width 0.4s var(--transition, ease);
 }
-
-.crs-progress-fill--total {
-  background: var(--green, #2E844A);
-}
+@keyframes crsBarIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .crs-progress-fill { animation: none; } }
 
 .crs-progress-pct {
   font-size: 11px;
@@ -728,11 +741,11 @@ function fmtMoney(n) {
 }
 
 /* Totals row */
+/* Same height as every other row — a thin divider, not a thick band. */
 .crs-total td {
-  border-top: 2px solid var(--border-subtle, #e5e7eb);
+  border-top: 1px solid var(--border-subtle, #e5e7eb);
   font-weight: 700;
   color: var(--text, #181818);
-  padding-top: 12px;
 }
 
 .crs-total td.t-name { display: table-cell; }
@@ -817,4 +830,45 @@ function fmtMoney(n) {
 @media (prefers-reduced-motion: reduce) {
   .crs-progress-fill, .crs-chevron, .crs-row { transition: none; }
 }
+/* ── Company cards (replace the table) ── */
+.cr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cr-list li { animation: crIn 0.4s cubic-bezier(0.2, 0, 0.2, 1) both; animation-delay: var(--d); }
+@keyframes crIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.cr-row {
+  width: 100%; display: grid; align-items: center; gap: 14px;
+  grid-template-columns: minmax(170px, 1.5fr) 100px 100px 90px 110px minmax(150px, 1.3fr) 16px;
+  padding: 12px 16px; border: 1px solid var(--border-subtle, #e5e7eb); border-radius: 12px;
+  background: var(--card-bg, #fff); font: inherit; color: var(--text, #181818); text-align: right;
+  cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.cr-row:hover { border-color: var(--tab-comparison, #2E844A); box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-comparison, #2E844A) 12%, transparent); }
+.cr-row:focus-visible { outline: 2px solid var(--tab-comparison, #2E844A); outline-offset: 2px; }
+.cr-row--total { cursor: default; background: var(--bg, #F3F3F3); border-color: transparent; }
+.cr-row--total:hover { box-shadow: none; border-color: transparent; }
+.cr-co { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cr-co-txt { display: flex; flex-direction: column; min-width: 0; }
+.cr-name { font-size: 14.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-co-txt small { font-size: 11.5px; color: var(--text-muted, #706E6B); }
+.cr-fig { display: flex; flex-direction: column; align-items: flex-start; font-size: 15px; font-weight: 800; }
+.cr-fig small { font-size: 11px; font-weight: 500; color: var(--text-muted, #706E6B); }
+.cr-fig--muted > span { color: var(--text-secondary, #3E3E3C); font-weight: 700; }
+.cr-unpaid { display: flex; }
+.cr-row .crs-progress { display: flex; align-items: center; gap: 8px; }
+/* spans in the card → make the bar parts blocks, or their width is ignored */
+.cr-row .crs-progress-track, .cr-row .crs-progress-fill { display: block; }
+.cr-row .crs-chevron { color: var(--text-muted, #706E6B); }
+@media (max-width: 900px) {
+  .cr-row { grid-template-columns: minmax(0, 1fr) 90px 90px 14px; row-gap: 10px; }
+  .cr-row > .cr-fig--muted, .cr-row > .cr-unpaid { display: none; }
+  .cr-row > .crs-progress { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .cr-list li { animation: none; } .cr-row { transition: none; } }
+/* Collection % that can't be trusted says so. */
+.crs-progress.is-unknown .crs-progress-pct { color: var(--amber, #8A6300); font-weight: 700; white-space: nowrap; }
+.crs-progress.is-unknown .crs-progress-track {
+  background: repeating-linear-gradient(-45deg, var(--bg, #F3F3F3) 0 6px, color-mix(in srgb, var(--amber, #8A6300) 10%, var(--bg, #F3F3F3)) 6px 12px);
+}
+.crs-progress.is-partial .crs-progress-pct { color: var(--text, #181818); font-weight: 700; white-space: nowrap; }
+.crs-progress.is-partial .crs-progress-fill { opacity: 0.55; }
+.crs-progress[title]:not([title=""]) { cursor: help; }
 </style>

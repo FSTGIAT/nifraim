@@ -2,10 +2,14 @@
   <div class="bi-dashboard">
     <!-- KPI Cards Row — same design as the Production KPIs: category colour,
          duotone badge + oversized corner glyph (KpiGlyph), calm hover. -->
+    <!-- KPIs in one panel, spaced from the bar above and the hero below. The
+         "לא שולם" card is the one that needs the agent — it breathes softly
+         and glows on hover (QA 2026-10-01). -->
+    <div class="kpi-panel" :class="{ 'kpi-panel--joined': props.joined }">
     <div class="kpi-row">
       <div
         v-for="k in kpiCards" :key="k.key"
-        class="kpi-card" :class="{ clickable: !!k.open }"
+        class="kpi-card" :class="{ clickable: !!k.open, 'kpi-card--alert': k.key === 'unpaid' && Number(k.value) > 0 }"
         :style="{ '--k': k.color, '--k-ink': k.ink }"
         :title="k.title || null"
         :role="k.open ? 'button' : null" :tabindex="k.open ? 0 : null"
@@ -17,15 +21,11 @@
           <span class="kpi-value" :class="{ 'ltr-number': k.ltr }">{{ k.value }}</span>
           <span class="kpi-label">{{ k.label }}</span>
         </span>
-        <span v-if="k.actions" class="kpi-actions">
-          <button class="kpi-action-btn" type="button" :title="k.actions.mailTitle" @click.stop="k.actions.mail()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
-          </button>
-          <button class="kpi-action-btn" type="button" title="הורד לאקסל" @click.stop="k.actions.excel()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
-          </button>
-        </span>
+        <!-- Mail / Excel moved into the list this card opens (they covered
+             the number here — QA 2026-10-01). -->
       </div>
+    </div>
+
     </div>
 
     <!-- HERO: Customer Status Distribution -->
@@ -77,47 +77,12 @@
       </div>
     </div>
 
-    <!-- Company filter (when multiple commission files) -->
-    <div v-if="props.companySources.length > 1" class="company-filter-bar">
-      <button class="company-pill" :class="{ active: !companyFilter }" @click="companyFilter = null">הכל ({{ props.customers.length }})</button>
-      <button v-for="src in props.companySources" :key="src" class="company-pill" :class="{ active: companyFilter === src }" @click="companyFilter = src">{{ src }}</button>
-    </div>
+    <!-- The company pill bar was removed (QA 2026-10-01). Company drills now
+         filter only the list they open, never the whole page. -->
 
 
-    <!-- Unpaid notification strip -->
-    <Transition name="unpaid-strip">
-      <div v-if="showUnpaidStrip && effectiveUnpaidCustomers.length > 0" class="unpaid-strip">
-        <div class="unpaid-strip-pulse"></div>
-        <div class="unpaid-strip-content">
-          <div class="unpaid-strip-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </div>
-          <div class="unpaid-strip-text">
-            <strong>{{ effectiveUnpaidCustomers.length }}</strong> לקוחות ללא תשלום עמלה
-            <span v-if="totalUnpaidCharge > 0" class="unpaid-strip-amount">
-              — הפסד משוער <strong class="ltr-number">{{ formatAmount(totalUnpaidCharge) }}</strong>
-            </span>
-          </div>
-          <div class="unpaid-strip-actions">
-            <button class="unpaid-strip-btn unpaid-strip-view" @click="onLegendClick('only_production')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              הצג
-            </button>
-            <button class="unpaid-strip-btn unpaid-strip-mail" @click="sendAllUnpaidMail()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
-              שלח מייל
-            </button>
-            <button class="unpaid-strip-btn unpaid-strip-excel" @click="downloadUnpaidExcel()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
-              Excel
-            </button>
-          </div>
-        </div>
-        <button class="unpaid-strip-dismiss" @click="showUnpaidStrip = false" title="הסתר">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </Transition>
+    <!-- The unpaid card was removed (QA 2026-10-01): the "לא שולם" KPI above
+         already opens the same list and carries mail + Excel. -->
 
     <!-- Top Clients -->
     <div v-if="topClientsData.length > 0" class="chart-card wide-card tc-card">
@@ -175,6 +140,7 @@
     <!-- Detail Modal (single customer) -->
     <CustomerDetailModal
       :customer="detailCustomer"
+      :origin="detailOrigin"
       :commissionRates="commissionRates"
       :category="props.categoryLabel"
       :userName="authStore.user?.full_name || ''"
@@ -182,70 +148,16 @@
       @drill="onDrillFromModal"
     />
 
-    <!-- Filter Modal (customer list from chart click) -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="filterModal.open" class="fm-overlay" @click.self="closeFilterModal">
-          <div ref="fmCardEl" class="fm-card">
-            <div class="fm-header">
-              <div class="fm-title">{{ filterModal.title }}</div>
-              <span class="fm-count">{{ filteredModalCustomers.length }} לקוחות</span>
-              <button class="fm-close" @click="closeFilterModal">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-            <div v-if="modalProducts.length > 1" class="fm-filter-collapse">
-              <button class="fm-filter-trigger" :class="{ 'is-active': productFilter }" @click="productFilterOpen = !productFilterOpen">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-                </svg>
-                <span>{{ productFilter || 'סנן לפי מוצר' }}</span>
-                <span class="fm-filter-count">{{ modalProducts.length }}</span>
-                <button v-if="productFilter" class="fm-filter-clear" @click.stop="productFilter = null" title="נקה סינון">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-                <svg class="fm-filter-chevron" :class="{ open: productFilterOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-              <div v-if="productFilterOpen" class="fm-product-filter">
-                <button class="company-pill" :class="{ active: !productFilter }" @click="productFilter = null; productFilterOpen = false">הכל</button>
-                <button v-for="p in modalProducts" :key="p" class="company-pill" :class="{ active: productFilter === p }" @click="productFilter = p; productFilterOpen = false">{{ p }}</button>
-              </div>
-            </div>
-            <div class="fm-search-wrap">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input v-model="filterSearchQuery" class="fm-search" placeholder="חיפוש לפי שם או ת.ז." />
-            </div>
-            <div class="fm-list">
-              <div
-                v-for="c in filteredModalCustomers"
-                :key="c.id_number"
-                class="fm-row"
-                @click="openDetailFromFilter(c)"
-              >
-                <div class="fm-row-info">
-                  <div class="fm-row-name">{{ customerName(c) }}</div>
-                  <div class="fm-row-sub">
-                    <span class="ltr-number">{{ c.id_number }}</span>
-                    <span v-if="c.commission_count">{{ c.commission_count }} מוצרים</span>
-                  </div>
-                </div>
-                <div class="fm-row-stats">
-                  <span v-if="c.total_commission > 0" class="fm-chip fm-chip-commission">{{ formatCompact(c.total_commission) }}</span>
-                  <span v-if="c.match_status === 'matched'" class="fm-chip fm-chip-ok">בשניהם</span>
-                  <span v-else-if="c.match_status === 'only_commission'" class="fm-chip fm-chip-violet">רק בנפרעים</span>
-                </div>
-                <svg class="fm-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-              </div>
-              <div v-if="filteredModalCustomers.length === 0" class="fm-empty">אין תוצאות</div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <!-- Customer list (chart / KPI click) — the shared centred drill with
+         the iPhone-style grow, in the comparison green (QA 2026-10-01). -->
+    <DataModal :open="filterModal.open" :origin="fmOrigin" :title="filterModal.title"
+               :badge="filterModal.customers.length" :period="periodLabel"
+               accent="var(--tab-comparison)" @close="closeFilterModal">
+      <CompareCustomerList :customers="filterModal.customers" :rates="commissionRates"
+                           :actions="filterModal.actions || null"
+                           :category="props.categoryLabel"
+                           @open="(c, el) => openDetailFromFilter(c, el)" />
+    </DataModal>
 
   </div>
 </template>
@@ -262,6 +174,9 @@ import { calcExpectedCommission } from '../../utils/commissionCalc.js'
 import { CHART_PALETTE, STATUS_COLORS } from '../../utils/chartPalette.js'
 import { companyStatusBreakdown } from '../../utils/companyStatusBreakdown.js'
 import CustomerDetailModal from './CustomerDetailModal.vue'
+import CompareCustomerList from './CompareCustomerList.vue'
+import { expectedFor } from '../../utils/expectedCommission.js'
+import DataModal from '../workspace/DataModal.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
 import { useAiContextStore } from '../../stores/aiContext.js'
 
@@ -279,6 +194,8 @@ const props = defineProps({
   // "עמלות שהתקבלו" KPI labels itself with the period — so the user can
   // see at a glance "this is April's commissions, not lifetime totals".
   periodMonth: { type: String, default: '' },
+  // Sits directly under the tab's file bar → drawn as one card with it.
+  joined: { type: Boolean, default: false },
   periodFilesCount: { type: Number, default: 0 },
   periodFilesExcluded: { type: Number, default: 0 },
 })
@@ -343,9 +260,8 @@ watch(
     if (!company || !(sources || []).length) return
     // The pill bar only renders for >1 sources — never apply a filter the
     // user can't see or clear.
-    if (sources.length > 1) {
-      companyFilter.value = sources.find((src) => fuzzyCompanyMatch(src, company)) || null
-    }
+    // No page-wide filter any more (the pill bar that showed and cleared it
+    // is gone) — the whole book stays in view.
     emit('initial-company-applied')
   },
   { immediate: true },
@@ -476,11 +392,11 @@ function unpaidChargeOf(list) {
   let rawTotal = 0
   for (const c of list) {
     for (const p of (c.production_products || [])) {
-      const rate = findRate(p)
-      if (rate) {
-        const exp = calcExpectedCommission(p, rate)
-        if (exp != null) expectedTotal += exp
-      }
+      // The shared rule (backend price first) — the same number the customer
+      // list and the customer window show. The old company-name matcher made
+      // this card read ₪3,636 against ₪254 in the list it opens.
+      const exp = expectedFor(p, commissionRates.value, props.categoryLabel)
+      if (exp != null) expectedTotal += exp
       rawTotal += (p.premium || 0) || (p.accumulation || 0)
     }
   }
@@ -496,11 +412,11 @@ const kpiCards = computed(() => [
     color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)' },
   { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
     color: '#E04B48', ink: '#C23934',
-    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el),
+    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value) }),
     actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
   { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
     color: '#4E9DD0', ink: '#35719A',
-    open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el),
+    open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el, { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value) }),
     actions: kpiOnlyComm.value.length ? { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value), mailTitle: 'שלח מייל על לקוחות שרק בנפרעים' } : null },
   { key: 'charge', glyph: 'charge', label: 'חיוב לא משולם', value: formatAmount(kpiUnpaidCharge.value), ltr: true, title: 'סה"כ חיוב לא משולם',
     color: '#D6336C', ink: '#C42B60' },
@@ -712,9 +628,12 @@ const companyStatusOptions = computed(() => ({
 // Clicking a segment filters to that company AND opens that status list —
 // the same drill the donut does, one level more specific.
 function onCompanyStatusClick(row, statusKey) {
+  // Filter only for the list being opened: `onLegendClick` reads the filtered
+  // customers synchronously, then the page returns to the whole book — with
+  // the pill bar gone there would be no way to clear a page-wide filter.
   const src = props.companySources.find(s => fuzzyCompanyMatch(s, row.company))
   companyFilter.value = src || row.company
-  onLegendClick(statusKey)
+  try { onLegendClick(statusKey) } finally { companyFilter.value = null }
 }
 
 // Product breakdown
@@ -898,21 +817,19 @@ const filteredModalCustomers = computed(() => {
   return list
 })
 
-// iPhone-style: a modal opened from a KPI card grows out of that card and
-// folds back into it (composables/useOriginMorph). Other callers: plain modal.
-const originMorph = useOriginMorph()
-const fmCardEl = ref(null)
+// The drill grows out of what was pressed (DataModal `origin`).
+const fmOrigin = ref(null)
+const detailOrigin = ref(null)
+const periodLabel = computed(() => (props.periodMonth ? `נפרעים ${String(props.periodMonth).slice(0, 7)}` : ''))
 
-function openFilterModal(title, customers, originEl = null) {
-  originMorph.remember(originEl)
-  filterModal.value = { open: true, title, customers }
+function openFilterModal(title, customers, originEl = null, actions = null) {
+  fmOrigin.value = originEl
+  filterModal.value = { open: true, title, customers, actions }
   productFilter.value = null
   productFilterOpen.value = false
-  if (originEl) nextTick(() => originMorph.grow(fmCardEl.value))
 }
 
-async function closeFilterModal() {
-  if (originMorph.hasOrigin()) await originMorph.shrink(fmCardEl.value)
+function closeFilterModal() {
   filterModal.value = { open: false, title: '', customers: [] }
   filterSearchQuery.value = ''
   productFilter.value = null
@@ -923,7 +840,8 @@ function customerName(c) {
   return [c.first_name, c.last_name].filter(Boolean).join(' ') || '—'
 }
 
-function openDetailFromFilter(c) {
+function openDetailFromFilter(c, el = null) {
+  detailOrigin.value = el
   const matched = (c.product_matches?.matched || []).map(p => ({
     product: p.production_product || p.commission_product || '—',
     company: p.company || '',
@@ -1317,15 +1235,8 @@ function formatCompact(val) {
   overflow: hidden;
 }
 
-.hero-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #4A8B2C 0%, #4A8B2C 40%, #E04B48 40%, #E04B48 60%, #4E9DD0 60%, #4E9DD0 100%);
-}
+/* The three-colour strip across the top of this card was removed (QA
+   2026-10-01: "clean it") — the chart below already carries the colours. */
 
 .hero-header {
   display: flex;
@@ -1450,12 +1361,42 @@ function formatCompact(val) {
    "סה"כ יתרה" dropped onto a second line on every screen. An auto-fill
    minmax() (the production tab's rule) only looks right at some widths — with
    six cards it re-wraps as the container narrows, so the count is explicit. */
+.kpi-panel {
+  margin: 12px 0 18px; padding: 10px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+/* Continues the file bar above: no gap, square top, a thin divider. */
+.kpi-panel--joined {
+  margin-top: 0; border-radius: 0 0 18px 18px;
+  border-top: 1px solid var(--border-subtle);
+}
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 8px;
 }
+/* The unpaid card: a quiet red frame and a slow breath — noticeable, never loud. */
+.kpi-card--alert {
+  border-color: color-mix(in srgb, var(--k) 45%, transparent);
+  background:
+    radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, var(--k) 16%, transparent) 0%, transparent 65%),
+    color-mix(in srgb, var(--k) 4%, var(--card-bg));
+  animation: kpiBreath 3s ease-in-out infinite;
+}
+.kpi-card--alert:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: var(--k);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--k) 14%, transparent),
+              0 14px 32px color-mix(in srgb, var(--k) 30%, transparent);
+  animation-play-state: paused;
+}
+.kpi-card--alert .kpi-value { color: var(--k-ink); }
+@keyframes kpiBreath {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--k) 0%, transparent), var(--shadow-sm); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--k) 12%, transparent), 0 8px 22px color-mix(in srgb, var(--k) 18%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .kpi-card--alert { animation: none; } }
 @media (max-width: 1240px) {
   .kpi-row { grid-template-columns: repeat(3, 1fr); }
 }
@@ -1466,7 +1407,7 @@ function formatCompact(val) {
 .kpi-card {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 12px;
-  padding: 16px 16px 16px 18px; min-height: 84px;
+  padding: 11px 12px 11px 14px; min-height: 68px;
   background:
     radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, var(--k) 9%, transparent) 0%, transparent 60%),
     var(--card-bg);

@@ -21,54 +21,10 @@
          over-received, and a note that nothing could be checked — in one
          colour, one weight, and one icon, with the figure buried mid-sentence.
          Severity now drives the colour and the amount leads. -->
-    <ul v-if="alerts.length" class="ra-alerts">
-      <li v-for="(a, i) in shownAlerts" :key="a.key"
-          class="ra-alert" :class="['ra-alert--' + a.level, { 'ra-alert--in': mounted }]"
-          :style="{ transitionDelay: i * 60 + 'ms' }">
-        <button class="ra-alert-btn" @click="onAlert(a)">
-          <span class="ra-alert-icon" aria-hidden="true">
-            <svg v-if="a.level === 'loss'" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
-            </svg>
-            <svg v-else-if="a.level === 'gain'" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
-            </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-              <polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" />
-              <line x1="9" y1="15" x2="15" y2="15" />
-            </svg>
-          </span>
-
-          <span class="ra-alert-body">
-            <span class="ra-alert-top">
-              <span class="ra-alert-co">{{ a.company }}</span>
-              <span v-if="a.amount" class="ra-alert-amt ltr-number">{{ a.amount }}</span>
-            </span>
-            <span class="ra-alert-txt">{{ a.text }}</span>
-          </span>
-
-          <svg class="ra-alert-go" width="14" height="14" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-               stroke-linejoin="round" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      </li>
-      <li v-if="hiddenAlerts" class="ra-alert-more">
-        <button @click="allAlerts = !allAlerts">
-          {{ allAlerts ? 'הצג פחות' : `הצג עוד ${hiddenAlerts} התראות` }}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-               :class="{ 'ra-chev--open': allAlerts }">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      </li>
-    </ul>
+    <!-- The per-company alert cards that sat here now live once, in the
+         "דורש טיפול" band at the top of the tab (ProductionActions), which
+         opens this panel's drills through `openCompanyByName` / `openExplain`.
+         Showing them in both places listed every finding twice. -->
 
     <!-- One list, not a chart plus a separate list underneath. Companies that
          cannot be compared were rendered in a different visual language from
@@ -78,12 +34,12 @@
       <span><i class="ra-key ra-key--agreed"></i>לפי ההסכם</span>
       <span class="ra-legend-hint">בחר חברה לפירוט לפי מוצר</span>
     </div>
-    <AuditRows :rows="companies" @pick="openCompany = $event"
-               @explain="explainOpen = true" />
+    <AuditRows :rows="companies" @pick="(c, el) => { drillOrigin = el; openCompany = c }"
+               @explain="(c, el) => openExplain(el, c)" />
 
-    <button class="ra-all" @click="tableOpen = true">הצג את כל הנתונים</button>
+    <button class="ra-all" @click="drillOrigin = $event.currentTarget; tableOpen = true">הצג את כל הנתונים</button>
 
-    <DataModal :open="!!openCompany"
+    <DataModal :open="!!openCompany" :origin="drillOrigin"
                :title="openCompany ? openCompany.company + ' — לפי מוצר' : ''"
                :subtitle="openCompany ? `${openCompany.products.length} מוצרים` : ''"
                @close="openCompany = null">
@@ -91,42 +47,70 @@
     </DataModal>
 
     <!-- Who cannot be checked, and what would make them checkable. -->
-    <DataModal :open="explainOpen" title="חברות שאי אפשר להשוות" @close="explainOpen = false">
-      <p class="ra-explain-lead">
-        השוואה בין מה ששולם למה שמגיע דורשת שיעור עמלה מפורש בהסכם. לחברות האלה
-        התקבלו עמלות, אבל אין מולן שיעור לבדוק אותן — הסכום שהתקבל מוצג, ואי אפשר
-        לדעת אם הוא נכון.
-      </p>
-      <ul class="ra-explain">
-        <li v-for="c in notComparable" :key="c.company">
-          <span class="ra-ex-co">{{ c.company }}</span>
-          <span class="ra-ex-amt ltr-number">{{ money(c.paid) }}</span>
-          <span class="ra-ex-why">
-            <!-- A company whose נפרעים never arrived is NOT an agreement
-                 problem, and telling the agent to upload an agreement they
-                 already have sends them to the wrong place. -->
-            <template v-if="c.no_commission_data">
-              לא התקבל דוח נפרעים מהחברה בתקופה הזו — יש
-              <span class="ltr-number">{{ c.records }}</span>
-              רשומות פרודוקציה והסכם עמלות במערכת, אז אין מה להשוות מולן.
-              בדוק את ההורדה האוטומטית של החברה.
-            </template>
-            <template v-else-if="c.no_agreement">אין הסכם עמלות במערכת</template>
-            <template v-else>
-              יש הסכם, אך אין בו שיעור למוצרים האלה:
-              <!-- Naming them is the difference between a status and a task. -->
-              <strong class="ra-ex-prods">{{ (c.unrated_products || []).join(' · ') }}</strong>
-            </template>
-          </span>
-        </li>
-      </ul>
-      <p class="ra-explain-foot">
-        להוספת הסכם: לשונית <strong>מדף ההסכמים</strong> — העלאת מסמך ההסכם, והמערכת
-        תחלץ ממנו את שיעורי העמלה.
-      </p>
+    <!-- Who cannot be checked — grouped by WHY, because each reason has a
+         different fix, and each group ends in the one action that fixes it
+         (QA 2026-09-30: a paragraph, a list and a grey note said the same
+         thing three ways and offered nothing to press). -->
+    <DataModal :open="explainOpen" :origin="drillOrigin" title="חברות שאי אפשר להשוות" @close="explainOpen = false">
+      <!-- Focused, compact (QA 2026-10-01): opens on the group of what was
+           clicked, groups switch by tab, companies are tiles (no empty gap
+           between a name and its amount), the action stays pinned below. -->
+      <div class="nc">
+        <div class="nc-stats">
+          <div class="nc-stat">
+            <span class="nc-stat-lbl">חברות</span>
+            <span class="nc-stat-val ltr-number">{{ notComparable.length }}</span>
+          </div>
+          <div class="nc-stat">
+            <span class="nc-stat-lbl">התקבלו בלי אפשרות לבדוק</span>
+            <span class="nc-stat-val ltr-number">{{ money(notComparablePaid) }}</span>
+          </div>
+        </div>
+
+        <div v-if="ncGroups.length > 1" class="nc-tabs" role="tablist">
+          <button v-for="g in ncGroups" :key="g.key" role="tab" class="nc-tab"
+                  :class="{ on: ncGroup && ncGroup.key === g.key }" :aria-selected="ncGroup && ncGroup.key === g.key"
+                  @click="ncTab = g.key">
+            {{ g.title }} <span class="ltr-number">{{ g.rows.length }}</span>
+          </button>
+        </div>
+
+        <template v-if="ncGroup">
+          <p class="nc-lead">
+            <span class="nc-icon" :class="'nc-icon--' + ncGroup.key" aria-hidden="true">
+              <svg v-if="ncGroup.key === 'report'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            </span>
+            {{ ncGroup.sub }}
+          </p>
+          <ul class="nc-tiles">
+            <li v-for="c in ncGroup.rows" :key="c.company" class="nc-tile"
+                :class="{ 'nc-tile--focus': ncFocus === c.company }">
+              <span class="nc-t-name">{{ c.company }}</span>
+              <template v-if="ncGroup.key === 'report'">
+                <span class="nc-t-val"><span class="ltr-number">{{ c.records }}</span> רשומות</span>
+                <span class="nc-t-cap">ממתינות לדוח</span>
+              </template>
+              <template v-else>
+                <span v-if="c.paid > 0" class="nc-t-val ltr-number">{{ money(c.paid) }}</span>
+                <span v-if="c.paid > 0" class="nc-t-cap">התקבל החודש</span>
+                <span v-if="ncGroup.key === 'rate' && (c.unrated_products || []).length" class="nc-t-cap nc-t-prods">
+                  חסר שיעור ל: {{ c.unrated_products.slice(0, 3).join(' · ') }}{{ c.unrated_products.length > 3 ? ` +${c.unrated_products.length - 3}` : '' }}
+                </span>
+              </template>
+            </li>
+          </ul>
+          <div class="nc-foot">
+            <button class="nc-action" @click="goFix(ncGroup.target)">
+              {{ ncGroup.action }}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+          </div>
+        </template>
+      </div>
     </DataModal>
 
-    <DataModal :open="tableOpen" title="עמלות בפועל מול ההסכמים — כל הנתונים" @close="tableOpen = false">
+    <DataModal :open="tableOpen" :origin="drillOrigin" title="עמלות בפועל מול ההסכמים — כל הנתונים" @close="tableOpen = false">
       <table class="ra-table">
         <thead>
           <tr>
@@ -178,7 +162,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import api from '../../api/client'
+import { cachedGet } from '../../utils/cachedGet'
 import DataModal from './DataModal.vue'
 import AuditRows from './AuditRows.vue'
 import ProductRows from './ProductRows.vue'
@@ -212,6 +196,35 @@ const hiddenAlerts = computed(() => Math.max(0, alerts.value.length - ALERTS_OPE
 const notComparable = computed(() => companies.value.filter(
   c => !c.comparable && (c.paid > 0 || c.no_commission_data),
 ))
+
+// Grouped by reason, each with the one action that fixes it. A missing
+// report is a failed download, not paperwork, so it points at automation.
+const ncGroups = computed(() => {
+  const nc = notComparable.value
+  const groups = [
+    { key: 'agreement', rows: nc.filter(c => !c.no_commission_data && c.no_agreement),
+      title: 'אין הסכם עמלות', sub: 'התקבלו עמלות, אבל אין במערכת הסכם לבדוק אותן מולו',
+      action: 'להעלאת הסכם — מדף ההסכמים', target: 'commission-rates' },
+    { key: 'rate', rows: nc.filter(c => !c.no_commission_data && !c.no_agreement),
+      title: 'יש הסכם, חסרים שיעורים', sub: 'ההסכם לא מכסה את המוצרים שעליהם שולם',
+      action: 'להשלמת השיעורים — מדף ההסכמים', target: 'commission-rates' },
+    { key: 'report', rows: nc.filter(c => c.no_commission_data),
+      title: 'לא התקבל דוח נפרעים', sub: 'יש פרודוקציה והסכם, אבל הדוח של החודש לא הגיע',
+      action: 'לבדיקת ההורדה האוטומטית', target: 'portal-automation' },
+  ]
+  return groups.filter(g => g.rows.length)
+})
+const ncTab = ref(null)
+const ncFocus = ref(null)
+const groupKeyOf = c => (c.no_commission_data ? 'report' : c.no_agreement ? 'agreement' : 'rate')
+// The open group: the one clicked, else the first.
+const ncGroup = computed(() => ncGroups.value.find(g => g.key === ncTab.value) || ncGroups.value[0] || null)
+const notComparablePaid = computed(() => notComparable.value.reduce((s, c) => s + (c.paid || 0), 0))
+const emit = defineEmits(['navigate'])
+function goFix(tab) {
+  explainOpen.value = false
+  emit('navigate', tab)
+}
 
 function gapClass(c) {
   if (!c.comparable || c.gap_pct === null) return ''
@@ -289,12 +302,32 @@ const alerts = computed(() => {
   return out
 })
 
-function onAlert(a) {
-  if (a.explain) explainOpen.value = true
+// The element that opened the current drill — it grows out of it (DataModal).
+const drillOrigin = ref(null)
+
+// The "דורש טיפול" band opens this panel's drills from outside the card.
+function openCompanyByName(name, el) {
+  const c = companies.value.find(x => x.company === name)
+  if (!c) return
+  drillOrigin.value = el || null
+  if (c.comparable) openCompany.value = c
+  else explainOpen.value = true
+}
+function openExplain(el, company = null) {
+  drillOrigin.value = el || null
+  ncFocus.value = company?.company || null
+  ncTab.value = company ? groupKeyOf(company) : null
+  explainOpen.value = true
+}
+defineExpose({ openCompanyByName, openExplain })
+
+function onAlert(a, e) {
+  drillOrigin.value = e?.currentTarget || null
+  if (a.explain) { ncTab.value = null; ncFocus.value = null; explainOpen.value = true }
   else if (a.target) openCompany.value = a.target
 }
 
-api.get('/production/rate-audit')
+cachedGet('/production/rate-audit')
   .finally(() => {
     loading.value = false
     requestAnimationFrame(() => { mounted.value = true })
@@ -466,4 +499,50 @@ api.get('/production/rate-audit')
   font-size: 11px; font-weight: 700; cursor: help;
 }
 .ra-foot { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
+/* ── "חברות שאי אפשר להשוות" ── */
+.nc { display: flex; flex-direction: column; gap: 16px; }
+.nc-stats { display: grid; grid-template-columns: 1fr 1.6fr; border: 1px solid var(--border-subtle); border-radius: 14px; overflow: hidden; }
+.nc-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 18px; }
+.nc-stat + .nc-stat { border-inline-start: 1px solid var(--border-subtle); }
+.nc-stat-lbl { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.nc-stat-val { font-size: 22px; font-weight: 800; color: var(--text); }
+.nc-tabs { display: flex; flex-wrap: wrap; gap: 2px 18px; border-bottom: 1px solid var(--border-subtle); }
+.nc-tab {
+  position: relative; border: none; background: none; font: inherit; font-size: 13.5px; font-weight: 600;
+  color: var(--text-muted); padding: 8px 0 10px; cursor: pointer;
+}
+.nc-tab .ltr-number { font-weight: 500; margin-inline-start: 3px; }
+.nc-tab:hover { color: var(--text); }
+.nc-tab.on { color: var(--tab-production); }
+.nc-tab.on::after { content: ''; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--tab-production); }
+.nc-lead { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); margin: 0; }
+.nc-icon { flex: 0 0 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); }
+.nc-icon--report { background: var(--amber-light); color: var(--amber); }
+.nc-tiles { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.nc-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 14px 16px;
+  border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg);
+}
+.nc-tile--focus { border-color: var(--tab-production); box-shadow: 0 0 0 3px var(--tab-production-wash); }
+.nc-t-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.nc-t-val { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.nc-t-cap { font-size: 11.5px; color: var(--text-muted); }
+.nc-t-prods { line-height: 1.5; }
+/* The action stays in view at the bottom of the scrolling drill. */
+.nc-foot {
+  position: sticky; bottom: -16px; margin: 4px -20px -16px; padding: 12px 20px 16px;
+  background: linear-gradient(to top, var(--card-bg) 75%, transparent);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg); /* keep the drill's rounded corners */
+}
+.nc-action {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 13px; font-weight: 700;
+  background: var(--tab-production); color: #fff; cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-production) 25%, transparent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.nc-action:hover { transform: translateY(-1px); box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-production) 32%, transparent); }
+.nc-action:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+@media (max-width: 640px) { .nc-stats { grid-template-columns: 1fr; } .nc-stat + .nc-stat { border-inline-start: none; border-top: 1px solid var(--border-subtle); } }
+@media (prefers-reduced-motion: reduce) { .nc-action { transition: none; } }
 </style>

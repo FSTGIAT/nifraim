@@ -623,6 +623,12 @@ async def company_summary(
             agg[k] = {
                 "company": name or k,
                 "produced": 0, "matched": 0, "unpaid": 0, "unpaid_products": 0,
+                # Unpaid products with NO expected amount (no agreement rate or
+                # no base). They are in "unpaid" but add ₪0 to the gap, so a
+                # company can read 100% collected while customers went unpaid
+                # (QA 2026-10-01: מנורה 156 unpaid, 100%). The UI uses this to
+                # say "can't be computed" / "up to X%" instead.
+                "unpriced_products": 0,
                 "received": 0.0, "gap": 0.0,
             }
         return agg[k]
@@ -670,17 +676,20 @@ async def company_summary(
         unpaid_sets.setdefault(_key(d.company_name), set()).add(d.customer_id_number)
         b["unpaid_products"] += 1
         b["gap"] += float(d.expected_amount or 0)
+        if not float(d.expected_amount or 0):
+            b["unpriced_products"] += 1
     for k, ids in unpaid_sets.items():
         agg[k]["unpaid"] = len(ids)
 
     companies = []
-    totals = {"produced": 0, "matched": 0, "unpaid": 0, "unpaid_products": 0, "received": 0.0, "expected": 0.0, "gap": 0.0}
+    totals = {"produced": 0, "matched": 0, "unpaid": 0, "unpaid_products": 0, "unpriced_products": 0,
+              "received": 0.0, "expected": 0.0, "gap": 0.0}
     for b in agg.values():
         b["expected"] = round(b["received"] + b["gap"], 2)
         b["received"] = round(b["received"], 2)
         b["gap"] = round(b["gap"], 2)
         companies.append(b)
-        for k in ("produced", "matched", "unpaid", "unpaid_products", "received", "expected", "gap"):
+        for k in ("produced", "matched", "unpaid", "unpaid_products", "unpriced_products", "received", "expected", "gap"):
             totals[k] += b[k]
 
     companies.sort(key=lambda x: x["gap"], reverse=True)

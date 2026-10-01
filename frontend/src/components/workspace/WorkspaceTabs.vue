@@ -554,9 +554,41 @@ const tabs = [
   .home-pill { width: 44px; }
   .strip-divider { margin: 0 2px; }
 }
+/* Narrow bar: the label moves UNDER the icon, smaller, instead of vanishing.
+   Hiding every inactive label left a row of bare glyphs nobody could read, and
+   the active pill's name was clipped ("פרודוק…") — QA 2026-09-30. Stacked,
+   the seven labels fit down to ~540px; below that inactive tabs go icon-only. */
 @container (max-width: 1240px) {
-  .strip-pill:not(.active) .strip-label { display: none; }
-  .strip-pill:not(.active) { padding: 0 10px; }
+  .strip .strip-pill {
+    flex-direction: column; gap: 2px; height: 54px;
+    padding: 0 6px; min-width: 0; flex: 1 1 0;
+  }
+  .strip .strip-label {
+    display: block; font-size: 11.5px; line-height: 1.15; letter-spacing: -0.2px;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  }
+  .strip-icon :deep(svg) { width: 20px; height: 20px; }
+  .strip .home-pill { height: 54px; flex: 0 0 auto; width: 56px; }
+}
+/* Mid widths: a two-word name wraps onto a second line rather than "השוואת נ…". */
+@container (max-width: 820px) {
+  .strip .strip-pill { height: 60px; }
+  .strip .strip-label {
+    white-space: normal; text-align: center; font-size: 11px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+}
+@container (max-width: 540px) {
+  .strip .strip-pill:not(.active) .strip-label { display: none; }
+  .strip .strip-pill:not(.active) { flex: 0 0 auto; padding: 0 8px; }
+  .strip .strip-pill.active { flex: 1 1 auto; }
+  .strip .home-pill { width: 44px; }
+}
+/* Phone: no room for any name — the active tab is carried by its colour. */
+@container (max-width: 400px) {
+  .strip .strip-pill.active .strip-label { display: none; }
+  .strip .strip-pill, .strip .strip-pill:not(.active) { flex: 1 1 0; padding: 0 2px; }
+  .strip .home-pill { flex: 0 0 auto; width: 40px; }
 }
 
 @media (max-width: 960px) {

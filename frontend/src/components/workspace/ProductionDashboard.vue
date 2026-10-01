@@ -1,5 +1,5 @@
 <template>
-  <div class="prod-dashboard">
+  <div ref="dashRoot" class="prod-dashboard">
     <!-- KPI Row -->
     <div class="kpi-row">
       <button
@@ -16,133 +16,87 @@
       </button>
     </div>
 
-    <!-- Hero chart: commission trend (most important — sits directly under KPIs) -->
-    <ProductionTrendChart @go-to-automation="$emit('go-to-automation')" />
+    <!-- What needs the agent's hand, worst first — each line opens its drill. -->
+    <ProductionActions @open="onAction" />
 
-    <!-- Unpaid clients + biggest movers, then actual vs agreed commission. -->
-    <ProductionAlerts />
-
-    <!-- Actual vs agreed commission, per company, with the alerts on top. -->
-    <RateAuditPanel />
-
-    <!-- Company and product distributions.
-         These replace two ApexCharts bar charts that grouped on the RAW
-         columns and discarded which bar was clicked. Raw grouping split one
-         insurer across its legal entities (מנורה ביטוח + מנורה פנסיה וגמל) and
-         reported one product under four spellings (חיים / ביטוח חיים /
-         ר.ת.-מורחב חיים ביטוחים / ר.ת.-מורחב חיים פוליסות = 561 rows), and
-         every `dataPointSelection` handler took no arguments, so clicking any
-         company or product opened the same flat all-companies table. -->
-    <ProductionBreakdown />
-
-    <!-- Row 3: Top Clients (full width; click a bar → drill-down) -->
-    <div class="chart-card" v-if="hasTopClientsData">
-      <div class="chart-header">
-        <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
-        <div class="chart-actions">
-          <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
-          <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
-        </div>
-      </div>
-      <apexchart
-        v-if="topClientsData.length"
-        type="bar"
-        :height="320"
-        :options="topClientsChartOptions"
-        :series="topClientsChartSeries"
-      />
-      <div v-else class="chart-empty">
-        אין נתוני {{ topMetric === 'premium' ? 'פרמיה' : 'צבירה' }} להצגה
-      </div>
+    <!-- Two questions, two views. The tab used to be one 3,500px scroll that
+         alternated between "what is in my book" and "was I paid correctly",
+         card after card at the same weight, and agents got lost in it
+         (QA 2026-09-30). Both halves stay MOUNTED (v-show) so each loads once
+         and the band above can open drills that live in either. -->
+    <div class="pd-switch" role="tablist" aria-label="תצוגה"
+         :style="{ '--pd-i': VIEWS.findIndex(v => v.id === view) }">
+      <!-- One pill that glides to the active half (same gesture as the tab strip). -->
+      <span class="pd-glider" aria-hidden="true"></span>
+      <button v-for="v in VIEWS" :key="v.id" role="tab" class="pd-switch-btn"
+              :class="{ active: view === v.id }" :aria-selected="view === v.id"
+              @click="setView(v.id)">
+        <span class="pd-switch-title">{{ v.label }}</span>
+        <span class="pd-switch-sub">{{ v.sub }}</span>
+      </button>
     </div>
-    <!-- KPI Drill-down Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="drilldown" class="dd-overlay" @click.self="closeDrilldown">
-          <div ref="ddCardEl" class="dd-card">
-            <div class="dd-header">
-              <h4>{{ drilldownTitle }}</h4>
-              <div class="dd-header-right">
-                <span class="dd-count ltr-number">{{ filteredDrillData.length }} שורות</span>
-                <button class="dd-close" @click="closeDrilldown">&times;</button>
-              </div>
-            </div>
-            <div class="dd-search">
-              <input v-model="ddSearch" type="text" placeholder="חיפוש..." class="dd-search-input" />
-            </div>
-            <div class="dd-scroll">
-              <div v-if="clientsLoading" class="dd-loading">
-                <div class="loader"><div class="loader-ring"></div></div>
-                <span>טוען נתונים...</span>
-              </div>
-              <table v-else class="dd-table">
-                <thead>
-                  <tr>
-                    <template v-if="drilldown === 'companies'">
-                      <th>חברה</th>
-                      <th class="th-num">לקוחות</th>
-                      <th class="th-num">מוצרים</th>
-                      <th class="th-num">פרמיה</th>
-                      <th class="th-num">צבירה</th>
-                    </template>
-                    <template v-else-if="drilldown === 'status'">
-                      <th>סטטוס</th>
-                      <th class="th-num">מוצרים</th>
-                      <th class="th-num">אחוז</th>
-                    </template>
-                    <template v-else-if="drilldown === 'products'">
-                      <th>סוג מוצר</th>
-                      <th class="th-num">כמות</th>
-                      <th class="th-num">פרמיה</th>
-                    </template>
-                    <template v-else>
-                      <th>שם</th>
-                      <th>ת.ז</th>
-                      <th class="th-num">מוצרים</th>
-                      <th class="th-num">{{ drilldown === 'accumulation' ? 'צבירה' : 'פרמיה' }}</th>
-                    </template>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(row, i) in filteredDrillData" :key="i">
-                    <template v-if="drilldown === 'companies'">
-                      <td>{{ row.company }}</td>
-                      <td class="td-num"><span class="ltr-number">{{ row.unique_clients?.toLocaleString() }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.premium) }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.accumulation) }}</span></td>
-                    </template>
-                    <template v-else-if="drilldown === 'status'">
-                      <td>{{ row.status }}</td>
-                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ row.pct }}%</span></td>
-                    </template>
-                    <template v-else-if="drilldown === 'products'">
-                      <td>{{ row.product_type }}</td>
-                      <td class="td-num"><span class="ltr-number">{{ row.count?.toLocaleString() }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ formatAmount(row.premium) }}</span></td>
-                    </template>
-                    <template v-else>
-                      <td>{{ row.name }}</td>
-                      <td><span class="ltr-number">{{ row.id_number }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ row.products }}</span></td>
-                      <td class="td-num"><span class="ltr-number">{{ formatAmount(drilldown === 'accumulation' ? row.accumulation : row.premium) }}</span></td>
-                    </template>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+
+    <!-- The half you move to slides in from that side; the other hides at
+         once (v-show + enter-only transition), so they never overlap. -->
+    <Transition :name="'pdv-' + slideDir">
+    <div v-show="view === 'book'" class="pd-view">
+      <!-- Company and product distributions.
+           These replace two ApexCharts bar charts that grouped on the RAW
+           columns and discarded which bar was clicked. Raw grouping split one
+           insurer across its legal entities (מנורה ביטוח + מנורה פנסיה וגמל) and
+           reported one product under four spellings (חיים / ביטוח חיים /
+           ר.ת.-מורחב חיים ביטוחים / ר.ת.-מורחב חיים פוליסות = 561 rows), and
+           every `dataPointSelection` handler took no arguments, so clicking any
+           company or product opened the same flat all-companies table. -->
+      <ProductionBreakdown />
+
+      <!-- Row 3: Top Clients (full width; click a bar → drill-down) -->
+      <div class="chart-card" v-if="hasTopClientsData">
+        <div class="chart-header">
+          <h3>{{ topMetric === 'premium' ? 'לקוחות לפי פרמיה' : 'לקוחות לפי צבירה' }}</h3>
+          <div class="chart-actions">
+            <button class="toggle-btn" :class="{ active: topMetric === 'premium' }" @click="topMetric = 'premium'">פרמיה</button>
+            <button class="toggle-btn" :class="{ active: topMetric === 'accumulation' }" @click="topMetric = 'accumulation'">צבירה</button>
           </div>
         </div>
-      </Transition>
-    </Teleport>
+        <apexchart
+          v-if="topClientsData.length"
+          type="bar"
+          :height="320"
+          :options="topClientsChartOptions"
+          :series="topClientsChartSeries"
+        />
+        <div v-else class="chart-empty">
+          אין נתוני {{ topMetric === 'premium' ? 'פרמיה' : 'צבירה' }} להצגה
+        </div>
+      </div>
+    </div>
+
+    </Transition>
+
+    <Transition :name="'pdv-' + slideDir">
+    <div v-show="view === 'commission'" class="pd-view">
+      <ProductionTrendChart @go-to-automation="$emit('go-to-automation')" />
+      <!-- Actual vs agreed commission, per company. -->
+      <RateAuditPanel ref="auditRef" @navigate="$emit('navigate', $event)" />
+      <!-- Month-over-month movers; also owns the unpaid / checked drills. -->
+      <ProductionAlerts ref="alertsRef" />
+    </div>
+    </Transition>
+
+    <!-- Reaching the bottom draws a quiet growth chart behind the cards. -->
+    <ProdScrollGraph />
+
+    <!-- KPI drill: the shared shell (iPhone-style grow from the card) and
+         the same language as the tab's other drills. -->
+    <DataModal :open="!!drilldown" :origin="ddOrigin" :title="drilldownTitle" @close="drilldown = null">
+      <KpiDrill v-if="drilldown" :kind="drilldown" :analytics="analytics" />
+    </DataModal>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, nextTick } from 'vue'
-import { useOriginMorph } from '../../composables/useOriginMorph.js'
-import api from '../../api/client.js'
 import ProductionTrendChart from './ProductionTrendChart.vue'
 import KpiGlyph from './KpiGlyph.vue'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
@@ -154,14 +108,59 @@ const props = defineProps({
 import ProductionBreakdown from './ProductionBreakdown.vue'
 import RateAuditPanel from './RateAuditPanel.vue'
 import ProductionAlerts from './ProductionAlerts.vue'
+import ProductionActions from './ProductionActions.vue'
+import ProdScrollGraph from './ProdScrollGraph.vue'
+import { useScrollReveal } from '../../composables/useScrollReveal'
+import DataModal from './DataModal.vue'
+import KpiDrill from './KpiDrill.vue'
+import { brandForLabel } from '../../utils/companyBrand'
+import { invalidateCachedGet } from '../../utils/cachedGet'
 
-defineEmits(['go-to-automation'])
+// Fresh view → fresh data. Runs in setup, i.e. before any child mounts and
+// reads the shared cache.
+invalidateCachedGet()
+
+const VIEWS = [
+  { id: 'commission', label: 'העמלות שלי', sub: 'מה התקבל מול מה שמגיע' },
+  { id: 'book', label: 'התיק שלי', sub: 'חברות, מוצרים ולקוחות' },
+]
+// Always opens on "העמלות שלי" (QA 2026-09-30). The last choice is NOT
+// remembered: a remembered "התיק שלי" read as the default being wrong.
+const view = ref('commission')
+// Which way the content slides: toward the half that was chosen. In RTL the
+// first tab sits on the right, so moving to a LATER tab moves leftward.
+const slideDir = ref('left')
+function setView(v) {
+  if (v === view.value) return
+  const from = VIEWS.findIndex(x => x.id === view.value)
+  const to = VIEWS.findIndex(x => x.id === v)
+  slideDir.value = to > from ? 'left' : 'right'
+  view.value = v
+  // Charts in the half that was hidden measured a 0px width when they first
+  // drew; ApexCharts redraws on window resize.
+  nextTick(() => window.dispatchEvent(new Event('resize')))
+}
+
+// Scroll reveal, same as the comparison tab: each card rises and fades in the
+// first time it scrolls into view. A card in the hidden half reveals when that
+// half is opened and it comes on screen.
+const dashRoot = ref(null)
+useScrollReveal(dashRoot, '.pact, .trend-card, .ra-card, .pa-card, .chart-card')
+
+const alertsRef = ref(null)
+const auditRef = ref(null)
+// A "דורש טיפול" line opens the drill that answers it, grown out of the line.
+function onAction({ kind, company, el }) {
+  if (kind === 'unpaid') alertsRef.value?.openUnpaid(el)
+  else if (kind === 'checked') alertsRef.value?.openChecked(el)
+  else if (kind === 'company') auditRef.value?.openCompanyByName(company, el)
+  else if (kind === 'explain') auditRef.value?.openExplain(el)
+}
+
+defineEmits(['go-to-automation', 'navigate'])
 
 const topMetric = ref('premium')
 const drilldown = ref(null)
-const ddSearch = ref('')
-const clientsData = ref([])
-const clientsLoading = ref(false)
 
 const drilldownTitle = computed(() => {
   const titles = {
@@ -175,64 +174,10 @@ const drilldownTitle = computed(() => {
   return titles[drilldown.value] || ''
 })
 
-const drilldownData = computed(() => {
-  if (!drilldown.value) return []
-  const a = props.analytics
-
-  if (drilldown.value === 'companies') {
-    return a.company_breakdown || []
-  }
-  if (drilldown.value === 'status') {
-    const total = a.status_breakdown.reduce((s, r) => s + r.count, 0)
-    return a.status_breakdown.map(r => ({
-      ...r,
-      pct: total ? Math.round((r.count / total) * 100) : 0,
-    }))
-  }
-  if (drilldown.value === 'products') {
-    return a.product_type_breakdown || []
-  }
-  // clients, premium, accumulation → fetched from API
-  return clientsData.value
-})
-
-const filteredDrillData = computed(() => {
-  const q = ddSearch.value.toLowerCase()
-  if (!q) return drilldownData.value
-  return drilldownData.value.filter(r => {
-    const searchable = [r.company, r.name, r.id_number, r.status, r.product_type].filter(Boolean).join(' ').toLowerCase()
-    return searchable.includes(q)
-  })
-})
-
-// iPhone-style: the drill-down grows out of the tapped KPI card and folds back
-// into it (composables/useOriginMorph), like the השוואת נפרעים KPIs.
-const originMorph = useOriginMorph()
-const ddCardEl = ref(null)
-async function closeDrilldown() {
-  if (originMorph.hasOrigin()) await originMorph.shrink(ddCardEl.value)
-  drilldown.value = null
-}
-
-async function openDrilldown(type, originEl = null) {
-  originMorph.remember(originEl)
+const ddOrigin = ref(null)
+function openDrilldown(type, originEl = null) {
+  ddOrigin.value = originEl
   drilldown.value = type
-  if (originEl) nextTick(() => originMorph.grow(ddCardEl.value))
-  ddSearch.value = ''
-  clientsData.value = []
-
-  if (['clients', 'premium', 'accumulation'].includes(type)) {
-    clientsLoading.value = true
-    try {
-      const sort = type === 'accumulation' ? 'accumulation' : 'premium'
-      const res = await api.get('/production/clients', { params: { sort } })
-      clientsData.value = res.data
-    } catch (e) {
-      clientsData.value = []
-    } finally {
-      clientsLoading.value = false
-    }
-  }
 }
 
 function formatAmount(val) {
@@ -254,6 +199,15 @@ const activePercent = computed(() => {
 
 // KPI cards. Colour = category (CHART_PALETTE via --chart-*), products wear the
 // Production tab cobalt; `ink` is the text-safe shade for the badge glyph.
+const brandCount = computed(() => {
+  const set = new Set()
+  for (const r of props.analytics.company_breakdown || []) {
+    const b = brandForLabel(r.company || '')
+    set.add(b && b.label && b.label !== '?' ? b.label : r.company)
+  }
+  return set.size
+})
+
 const kpis = computed(() => {
   const a = props.analytics
   return [
@@ -264,7 +218,9 @@ const kpis = computed(() => {
     { key: 'accumulation', drill: 'accumulation', label: 'סה"כ צבירה', value: formatAmount(a.total_accumulation),
       title: '₪' + Math.round(a.total_accumulation).toLocaleString(),
       color: 'var(--chart-7)', ink: 'var(--tab-recruits-ink, #1E7D78)' },
-    { key: 'companies', drill: 'companies', label: 'חברות', value: String(a.companies_count),
+    // Brands, not legal entities: the card said 16 while its drill and the
+    // company chart show 11 (הפניקס ביטוח + הפניקס אקסלנס are one insurer).
+    { key: 'companies', drill: 'companies', label: 'חברות', value: String(brandCount.value || a.companies_count),
       color: 'var(--chart-4)', ink: 'var(--chart-4)' },
     { key: 'active', drill: 'status', label: 'מוצרים פעילים', value: `${activePercent.value}%`,
       color: 'var(--chart-10)', ink: 'var(--chart-10)' },
@@ -274,6 +230,8 @@ const kpis = computed(() => {
 // Bright-bold categorical palette shared across all chart bars (see
 // utils/chartPalette.js). Each bar/company/category gets a clearly distinct hue.
 const PALETTE_SERIES = CHART_PALETTE
+// --tab-production resolved (ApexCharts can't read CSS variables).
+const TAB_PRODUCTION = '#2F73C4'
 
 // The company / product-type bar charts that lived here were replaced by
 // <ProductionBreakdown>, which groups on the canonical company and product
@@ -293,21 +251,22 @@ const hasTopClientsData = computed(() =>
   props.analytics.top_clients_accumulation.some(c => c.accumulation > 0)
 )
 
-// Each client bar gets its own palette color (distributed). Click → clients drill-down.
+// One measure, one colour: the Production tab's cobalt. A colour per client
+// read as a legend that did not exist. Click → clients drill-down.
 const topClientsChartOptions = computed(() => ({
   chart: {
     type: 'bar', toolbar: { show: false }, fontFamily: 'Heebo, sans-serif',
     animations: { enabled: true, easing: 'easeinout', speed: 700 },
     events: { dataPointSelection: () => openDrilldown(topMetric.value === 'premium' ? 'premium' : 'accumulation') },
   },
-  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '65%', distributed: true } },
+  plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '65%' } },
   dataLabels: { enabled: false },
   xaxis: {
     categories: topClientsData.value.map(c => c.name || c.id_number),
     labels: { style: { fontFamily: 'Heebo, sans-serif' }, formatter: v => '₪' + Math.round(v).toLocaleString() },
   },
   yaxis: { labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } } },
-  colors: PALETTE_SERIES,
+  colors: [TAB_PRODUCTION],
   legend: { show: false },
   states: { active: { filter: { type: 'none' } } },
   tooltip: { y: { formatter: v => '₪' + Math.round(v).toLocaleString() } },
@@ -324,9 +283,60 @@ const topClientsChartSeries = computed(() => [{
 .prod-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;   /* tighter rhythm between blocks (QA 2026-10-01) */
   animation: slideUp 0.4s var(--transition);
 }
+
+/* ── The two views ── */
+.pd-view { display: flex; flex-direction: column; gap: 12px; }
+.pd-switch {
+  position: relative;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  padding: 5px; border-radius: 16px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  position: sticky; top: 86px; z-index: 20; /* under the tab strip, always reachable */
+}
+.pd-switch-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 12px; border-radius: 11px; border: none; background: transparent;
+  font: inherit; color: var(--text-muted); cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.pd-switch-btn:hover:not(.active) { background: var(--tab-production-wash); color: var(--tab-production); }
+.pd-switch-btn { position: relative; z-index: 1; }
+.pd-switch-btn.active { background: transparent; color: #fff; transition: color 0.4s ease 0.2s; }
+/* The gliding pill: half the bar minus the gaps, moved by index. RTL: index 0
+   is on the right, and translateX(-100%) walks it to the left. */
+.pd-glider {
+  position: absolute; top: 5px; bottom: 5px; inset-inline-start: 5px;
+  width: calc(50% - 8px);   /* (bar − 2×5px padding − 6px gap) / 2 */ border-radius: 11px; z-index: 0; pointer-events: none;
+  background: var(--tab-production);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-production) 30%, transparent);
+  transform: translateX(calc(var(--pd-i, 0) * (-100% - 6px)));
+  /* Slow and silky (QA 2026-10-01): a long ease-out that settles softly. */
+  transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Content slide — enter only; the leaving half is hidden immediately. */
+.pdv-left-enter-active, .pdv-right-enter-active {
+  /* The pill leads by a beat; the content follows, short travel, long settle. */
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.1s,
+              transform 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.1s;
+}
+.pdv-left-leave-active, .pdv-right-leave-active { display: none; }
+.pdv-left-enter-from { opacity: 0; transform: translateX(-24px) scale(0.995); }
+.pdv-right-enter-from { opacity: 0; transform: translateX(24px) scale(0.995); }
+@media (prefers-reduced-motion: reduce) {
+  .pd-glider, .pdv-left-enter-active, .pdv-right-enter-active { transition: none; }
+}
+.pd-switch-btn:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+.pd-switch-title { font-size: 15px; font-weight: 700; }
+.pd-switch-sub { font-size: 12px; opacity: 0.8; }
+@media (max-width: 640px) {
+  .pd-switch { top: 70px; }
+  .pd-switch-sub { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .pd-switch-btn { transition: none; } }
 
 /* KPI Row */
 .kpi-row {
