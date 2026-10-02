@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, String, DateTime, Boolean
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,10 @@ class User(Base):
     sim_clock_offset_s: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Made by an admin for testing. Only these can be deleted from the admin.
     is_test_user: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Bumped whenever this agent's data changes (upload ingest, cycle batch end,
+    # מסלקה ingest, mail intake, rate edits). Part of every AI cache key, so a
+    # cached answer can never outlive the data it was computed from.
+    ai_data_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     uploads = relationship("FileUpload", back_populates="user", cascade="all, delete-orphan")
     records = relationship("ClientRecord", back_populates="user", cascade="all, delete-orphan")

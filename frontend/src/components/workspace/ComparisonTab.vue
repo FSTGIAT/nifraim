@@ -125,6 +125,8 @@
           <ComparisonDashboard
             :joined="toolbarJoined"
             :customers="relevantCustomers"
+            :noValueCustomers="displayResult?.no_value_customers || []"
+            :population="displayResult?.summary?.population || null"
             :categoryLabel="displayResult?.commission_category_label || ''"
             :companySource="displayResult?.commission_company_source || ''"
             :companySources="displayResult?.commission_company_sources || []"
@@ -285,7 +287,10 @@ const relevantCustomers = computed(() => {
         production_products: relevantProducts,
         production_count: relevantProducts.length,
         product_matches: {
-          matched: [],
+          // A customer unpaid at one company but paid at another
+          // (partially_paid) keeps the other company's paid lines, so the
+          // customer window still shows what DID arrive.
+          matched: c.partially_paid ? (c.product_matches?.matched || []) : [],
           // Keep EVERY field of the product. Copying eight named ones dropped
           // the backend's canonical price (rate, expected_commission,
           // expected_is_estimate, track), so the customer window fell back to
@@ -293,7 +298,7 @@ const relevantCustomers = computed(() => {
           // health rate: ₪2,195 "expected" where the backend says ₪57
           // (QA 2026-10-01).
           unmatched_production: relevantProducts.map(p => ({ ...p })),
-          unmatched_commission: [],
+          unmatched_commission: c.partially_paid ? (c.product_matches?.unmatched_commission || []) : [],
         },
       }
     })

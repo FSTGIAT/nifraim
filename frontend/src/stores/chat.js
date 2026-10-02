@@ -1,4 +1,5 @@
 import { computed, reactive, ref } from 'vue'
+import { streamAgent } from '../utils/agentStream.js'
 import { defineStore } from 'pinia'
 import { extractionOutcome } from '../utils/extractionReport'
 
@@ -286,63 +287,30 @@ export const useChatStore = defineStore('chat', () => {
     }))
 
     try {
-      const token = localStorage.getItem('token')
-      const body = { question: text, history }
-      if (viewContext) body.view_context = viewContext
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        throw new Error(res.status === 403 ? 'נדרש מנוי פעיל' : 'שגיאה בשרת')
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
-            if (data.text) {
-              messages.value[assistantIdx].content += data.text
-            }
-            if (data.viz) {
-              // Backend may emit 2-3 viz blocks per synthesis answer. Push
-              // each into an array so the panel can render them as a
-              // carousel. Keep `viz` set to the most recent one so any
-              // older consumers still get a value.
-              const msg = messages.value[assistantIdx]
-              if (!Array.isArray(msg.vizs)) msg.vizs = []
-              msg.vizs.push(data.viz)
-              msg.viz = data.viz
-            }
-            if (Array.isArray(data.warnings) && data.warnings.length) {
-              // Post-answer numeric validator flagged amounts that aren't
-              // backed by source data. Render as a yellow chip on the
-              // assistant message so the user knows which numbers to verify.
-              messages.value[assistantIdx].warnings = data.warnings
-            }
-            if (data.done) break
-          } catch {
-            // ignore parse errors
+      // Nifra AI v2: one agent with tools (fast lane for common questions, streamed agent loop otherwise)
+      await streamAgent(
+        { question: text, history: history.map(h => ({ role: h.role, text: h.content })), viewContext },
+        (data) => {
+          const msg = messages.value[assistantIdx]
+          if (data.status) msg.status = data.status
+          if (data.text) {
+            msg.content += data.text
+            msg.status = ''
           }
-        }
-      }
+          if (data.viz) {
+            // one answer may carry 2-3 charts → carousel; `viz` = latest for older consumers
+            if (!Array.isArray(msg.vizs)) msg.vizs = []
+            msg.vizs.push(data.viz)
+            msg.viz = data.viz
+          }
+          if (data.proposal) msg.proposal = { ...data.proposal, status: 'open' }
+          if (Array.isArray(data.warnings) && data.warnings.length) msg.warnings = data.warnings
+          if (data.done) {
+            msg.status = ''
+            msg.lane = data.lane
+          }
+        },
+      )
     } catch (e) {
       error.value = e.message
       // Remove empty assistant message on error

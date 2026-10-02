@@ -204,7 +204,7 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
 # Only an explicit ask to ACT unlocks the action tools. "אילו משימות פתוחות יש לי?"
 # kept turning into a drafted email because the tasks page shows a ready draft.
 ACTION_RE = re.compile(
-    r"(?:^|[\s,.@])(?:ו|ש)?(?:ת?שלח|ת?כין|הכן|ת?קבע|קבע|ת?זמן|ת?זכיר|תענה|ענה|ת?כתוב|כתוב|ת?זיז|תשנה|שנה|ת?אשר|להכין|לשלוח|לקבוע)"
+    r"(?:^|[\s,.@])(?:ו|ש)?(?:ת?שלח|ת?כין|הכן|ת?קבע|קבע|ת?זמן|ת?זכיר|תענה|ענה|ת?כתוב|כתוב|ת?זיז|תשנה|שנה|ת?אשר|להכין|לשלוח|לקבוע|ת?בקש|לבקש|תגיש|להגיש)"
     r"|\b(?:send|email|mail|schedule|remind|draft|reply|book)\b",
     re.IGNORECASE,
 )

@@ -455,6 +455,7 @@ async def _after_production_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None
         _create_snapshots_bg(user_id, upload_id),
         _compute_summary_bg(user_id, upload_id),
     )
+    await _bump_ai_version(user_id, "after_production")
 
 
 async def _after_commission_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
@@ -463,6 +464,15 @@ async def _after_commission_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None
     # also REMOVE a fill, which changes production just as much as adding one.
     await _refresh_production_summaries_bg(user_id)
     await _auto_compare_after_commission_bg(user_id, upload_id)
+    await _bump_ai_version(user_id, "after_commission")
+
+
+async def _bump_ai_version(user_id: uuid.UUID, reason: str) -> None:
+    """The recomputes above write partly with core update() (accumulation backfill),
+    which the ORM version hook can't see — so once they're all done, invalidate the
+    AI cache explicitly (services/agent/versioning)."""
+    from app.services.agent.versioning import bump_now
+    await bump_now(user_id, reason=reason)
 
 
 async def _refresh_production_summaries_bg(user_id: uuid.UUID) -> None:

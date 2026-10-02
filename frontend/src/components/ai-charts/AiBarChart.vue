@@ -1,57 +1,42 @@
 <template>
-  <!-- Ranked bars, RTL: label on the right, bar grows away from it, value in
-       its own tabular column. Emphasis form — the highlighted row carries the
-       full hue, the rest a lighter step of the SAME hue (one series = one
-       colour; colour never encodes rank). -->
-  <div class="aibar" :class="{ 'aibar--in': entered, 'aibar--hovering': hovered !== null }">
-    <p class="aibar-stats">
-      <span v-for="s in stats" :key="s.k">
-        {{ s.k }} <strong class="ltr-number">{{ s.v }}</strong>
-      </span>
-    </p>
+  <!-- Hover-trace bar chart — the agent's chosen style (ported from the React
+       "hover trace" component to Vue, RTL): ink columns, every column at 20%
+       except the traced one, a dashed level line that springs to the traced
+       value with a value pill, and a big spring-animated readout on top.
+       At rest it traces the leader; hovering moves the trace. -->
+  <div class="htb" :class="{ 'htb--in': entered }">
+    <header class="htb-head">
+      <div class="htb-read">
+        <span class="htb-k">[{{ metric }}]</span>
+        <strong class="htb-v ltr-number">{{ fmtFull(springVal, unit) }}</strong>
+      </div>
+      <div class="htb-side">
+        <span class="htb-k">[{{ hovered !== null ? 'נבחר' : 'המוביל' }}]</span>
+        <span class="htb-label">{{ traced?.label }}</span>
+        <span v-if="showShare && traced" class="htb-share ltr-number">{{ fmtPct(Math.abs(traced.value), total) }} מהסך</span>
+      </div>
+    </header>
 
-    <div class="aibar-grid" :style="{ '--rows': rows.length }" @mouseleave="hovered = null">
-      <!-- Hairline grid behind the tracks; ticks are clean round numbers. -->
-      <div class="aibar-gridlines" aria-hidden="true">
-        <span v-for="t in axis.ticks" :key="t" class="aibar-gridline"
-              :class="{ 'aibar-gridline--zero': t === 0 }"
-              :style="{ right: pos(t) + '%' }"></span>
+    <div class="htb-plot" @mouseleave="hovered = null">
+      <!-- the trace: dashed level, pill at the start (right, RTL), dot at the end -->
+      <div v-if="traced && entered" class="htb-line" :style="{ bottom: springPos + '%' }" aria-hidden="true">
+        <b class="htb-pill ltr-number">{{ fmtFull(traced.value, unit) }}</b>
+        <i class="htb-dot"></i>
       </div>
 
-      <template v-for="(r, i) in rows" :key="r.label + i">
-        <div class="aibar-label" :class="{ 'is-hi': r.hi, 'is-hover': hovered === i }"
-             :style="{ gridRow: i + 1 }" :title="r.label">{{ r.label }}</div>
-        <div class="aibar-track" tabindex="0" role="img" :style="{ gridRow: i + 1 }"
-             :aria-label="`${r.label}: ${fmtFull(r.value, unit)}`"
+      <div class="htb-cols">
+        <div v-for="(r, i) in rows" :key="r.label + i" class="htb-col"
+             tabindex="0" role="img" :aria-label="`${r.label}: ${fmtFull(r.value, unit)}`"
              @mouseenter="hovered = i" @focus="hovered = i" @blur="hovered = null">
-          <span class="aibar-bar"
-                :class="[r.neg ? 'aibar-bar--neg' : 'aibar-bar--pos', { 'is-hi': r.hi, 'is-dim': hovered !== null && hovered !== i }]"
-                :style="{
-                  right: r.start + '%',
-                  width: Math.max(r.width, 0.6) + '%',
-                  '--i': i,
-                  '--c': r.hi ? tone.main : tone.soft,
-                }"></span>
-          <Transition name="aibar-tip">
-            <span v-if="hovered === i" class="aibar-tip"
-                  :style="{ right: `min(${r.start + r.width}%, calc(100% - 150px))` }">
-              <span class="aibar-tip-title">{{ r.label }}</span>
-              <strong class="ltr-number">{{ fmtFull(r.value, unit) }}</strong>
-              <span class="aibar-tip-sub">
-                מקום {{ i + 1 }}<template v-if="showShare"> · <span class="ltr-number">{{ fmtPct(Math.abs(r.value), total) }}</span> מהסך</template>
-              </span>
-            </span>
-          </Transition>
+          <span class="htb-bar"
+                :class="{ 'is-on': tracedIdx === i, 'is-hover': hovered === i }"
+                :style="{ height: Math.max(r.h, 0.8) + '%', '--i': i }"></span>
         </div>
-        <div class="aibar-value" :class="{ 'is-hi': r.hi }" :style="{ gridRow: i + 1 }">
-          <span class="ltr-number">{{ fmtFull(r.value, unit) }}</span>
-        </div>
-      </template>
-
-      <div class="aibar-axis" aria-hidden="true" :style="{ gridRow: rows.length + 1 }">
-        <span v-for="t in axis.ticks" :key="t" class="ltr-number"
-              :style="{ right: pos(t) + '%' }">{{ fmtCompact(magnitudes ? Math.abs(t) : t, unit) }}</span>
       </div>
+    </div>
+
+    <div class="htb-x" aria-hidden="true">
+      <span v-for="(r, i) in rows" :key="'x' + i" :class="{ 'is-on': tracedIdx === i }" :title="r.label">{{ short(r.label) }}</span>
     </div>
 
     <p v-if="viz.insight" class="ai-chart-insight">{{ viz.insight }}</p>
@@ -60,62 +45,44 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { fmtFull, fmtCompact, fmtPct, niceTicks, prefersReducedMotion, toneFor } from './format.js'
+import { fmtFull, fmtPct, prefersReducedMotion } from './format.js'
+import { useSpring } from '../../composables/useSpring.js'
 
 const props = defineProps({ viz: { type: Object, required: true } })
 
 const unit = computed(() => props.viz.unit || '')
-const tone = computed(() => toneFor(props.viz.direction))
+const metric = computed(() => props.viz.yLabel || props.viz.title || 'ערך')
 const raw = computed(() =>
   (props.viz.data || [])
     .filter((d) => d && d.label != null && Number.isFinite(Number(d.value)))
-    .slice(0, 12)
+    .slice(0, 16)
     .map((d) => ({ label: String(d.label), value: Number(d.value), id: d.id })),
 )
-
-// "Biggest declines" arrive all-negative. Plot their magnitude from the same
-// baseline as any ranking; the minus sign stays on the value.
-const magnitudes = computed(() => raw.value.length > 0 && raw.value.every((d) => d.value <= 0))
-const plotVals = computed(() => raw.value.map((d) => (magnitudes.value ? Math.abs(d.value) : d.value)))
-
-const axis = computed(() => niceTicks(Math.min(...plotVals.value, 0), Math.max(...plotVals.value, 0), 4))
-function pos(v) {
-  const { lo, hi } = axis.value
-  return ((v - lo) / (hi - lo || 1)) * 100
-}
-
-const highlight = computed(() => props.viz.highlight_label || raw.value[0]?.label)
-const rows = computed(() => {
-  const zero = pos(0)
-  return raw.value.map((d, i) => {
-    const v = plotVals.value[i]
-    const w = Math.abs(pos(v) - zero)
-    return { ...d, neg: v < 0, start: v < 0 ? zero - w : zero, width: w, hi: d.label === highlight.value }
-  })
-})
+// Columns plot magnitude from one baseline; the sign stays on the value.
+const maxAbs = computed(() => Math.max(...raw.value.map((d) => Math.abs(d.value)), 1))
+const rows = computed(() => raw.value.map((d) => ({ ...d, h: (Math.abs(d.value) / maxAbs.value) * 100 })))
 
 const total = computed(() => raw.value.reduce((s, d) => s + Math.abs(d.value), 0))
-// A share of the sum only means something for additive amounts — never for rates.
 const showShare = computed(() => unit.value !== '%' && raw.value.length > 1)
-const stats = computed(() => {
-  const vals = raw.value.map((d) => d.value)
-  if (!vals.length) return []
-  if (!showShare.value) {
-    return [
-      { k: 'גבוה', v: fmtFull(Math.max(...vals), unit.value) },
-      { k: 'נמוך', v: fmtFull(Math.min(...vals), unit.value) },
-      { k: 'פריטים', v: String(vals.length) },
-    ]
-  }
-  const top = rows.value.find((r) => r.hi) || rows.value[0]
-  return [
-    { k: 'סה״כ', v: fmtFull(vals.reduce((a, b) => a + b, 0), unit.value) },
-    { k: 'ממוצע', v: fmtFull(vals.reduce((a, b) => a + b, 0) / vals.length, unit.value) },
-    { k: 'המוביל', v: `${top.label} · ${fmtPct(Math.abs(top.value), total.value)} מהסך` },
-  ]
-})
 
 const hovered = ref(null)
+const leaderIdx = computed(() => {
+  const hi = props.viz.highlight_label
+  const i = hi ? rows.value.findIndex((r) => r.label === hi) : -1
+  if (i >= 0) return i
+  let best = 0
+  rows.value.forEach((r, j) => { if (Math.abs(r.value) > Math.abs(rows.value[best].value)) best = j })
+  return best
+})
+const tracedIdx = computed(() => (hovered.value !== null ? hovered.value : leaderIdx.value))
+const traced = computed(() => rows.value[tracedIdx.value] || null)
+// same spring as the original component (stiffness 110, damping 20)
+const springVal = useSpring(() => traced.value?.value ?? 0, { stiffness: 110, damping: 20 })
+const springPos = useSpring(() => traced.value?.h ?? 0, { stiffness: 110, damping: 20 })
+
+// the original slices labels to 3 letters; Hebrew names need a little more
+const short = (s) => (s.length > 9 ? s.slice(0, 8) + '…' : s)
+
 const entered = ref(false)
 onMounted(() => {
   if (prefersReducedMotion()) { entered.value = true; return }
@@ -124,101 +91,64 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.aibar { width: 100%; }
+.htb { width: 100%; --ink: var(--primary, #181818); }
 
-.aibar-stats {
-  margin: 0 0 18px;
-  display: flex; flex-wrap: wrap; gap: 6px 22px;
-  font-size: 12.5px; color: var(--text-muted);
+.htb-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 0 18px; }
+.htb-read, .htb-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.htb-side { align-items: flex-end; text-align: left; }
+.htb-k { font-size: 11px; color: var(--text-muted); letter-spacing: 0.01em; }
+.htb-v {
+  font-size: 34px; font-weight: 800; letter-spacing: -0.035em; line-height: 1;
+  color: var(--ink); font-variant-numeric: tabular-nums;
 }
-.aibar-stats strong { color: var(--text); font-weight: 650; margin-inline-start: 4px; }
+.htb-label { font-size: 13px; font-weight: 700; color: var(--ink); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.htb-share { font-size: 11.5px; color: var(--text-muted); }
 
-.aibar-grid {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(96px, 30%) 1fr minmax(84px, auto);
-  column-gap: 14px;
-  row-gap: 10px;
-  align-items: center;
-}
+.htb-plot { position: relative; height: 240px; }
+.htb-cols { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 8px; }
+.htb-col { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; outline: none; cursor: default; }
+.htb-col:focus-visible .htb-bar { box-shadow: 0 0 0 2px var(--border); }
 
-.aibar-gridlines {
-  grid-column: 2; grid-row: 1 / span var(--rows);
-  position: relative; align-self: stretch;
-  pointer-events: none;
-}
-.aibar-gridline {
-  position: absolute; top: -4px; bottom: -4px; width: 1px;
-  background: var(--border-subtle);
-}
-.aibar-gridline--zero { background: var(--border); }
-
-.aibar-label {
-  grid-column: 1;
-  font-size: 13.5px; color: var(--text-secondary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  transition: color 0.2s;
-}
-.aibar-label.is-hi { color: var(--text); font-weight: 650; }
-.aibar-label.is-hover { color: var(--text); }
-
-.aibar-track {
-  grid-column: 2;
-  position: relative; height: 26px;
-  outline: none; cursor: default;
-}
-.aibar-track:focus-visible { box-shadow: 0 0 0 2px var(--tab-ai-wash, rgba(106, 72, 201, 0.2)); border-radius: 4px; }
-
-.aibar-bar {
-  position: absolute; top: 50%; height: 18px; margin-top: -9px;
-  background: linear-gradient(to left, var(--c), color-mix(in srgb, var(--c) 72%, white));
-  transform: scaleX(0);
+.htb-bar {
+  width: min(100%, 46px); border-radius: 4px;
+  background: var(--ink); opacity: 0.2;
+  transform: scaleY(0); transform-origin: bottom;
   transition:
-    transform 1.05s cubic-bezier(0.85, 0, 0.15, 1) calc(var(--i) * 55ms),
-    opacity 0.25s ease;
+    transform 1s var(--ease-silk, cubic-bezier(0.32, 0.72, 0, 1)) calc(var(--silk-content-delay, 280ms) + var(--i) * var(--silk-stagger, 40ms)),
+    opacity 0.2s ease, box-shadow 0.2s ease;
 }
-/* 4px rounded data-end, square at the baseline. Positioned with physical
-   `right` (this chart is RTL-only): positive bars grow from the baseline
-   toward the left. Logical inset would flip inside any .ltr-number span. */
-.aibar-bar--pos { transform-origin: right center; border-radius: 4px 0 0 4px; }
-.aibar-bar--neg {
-  transform-origin: left center; border-radius: 0 4px 4px 0;
-  background: linear-gradient(to right, var(--c), color-mix(in srgb, var(--c) 72%, white));
-}
-.aibar--in .aibar-bar { transform: scaleX(1); }
-.aibar-bar.is-dim { opacity: 0.3; }
+.htb--in .htb-bar { transform: scaleY(1); }
+.htb-bar.is-on { opacity: 1; }
+.htb-bar.is-hover { box-shadow: 0 0 0 1px rgba(24, 24, 24, 0.35); }
 
-.aibar-value {
-  grid-column: 3;
-  font-size: 13.5px; color: var(--text-secondary);
-  font-variant-numeric: tabular-nums; text-align: left;
+/* the dashed level line + value pill (RTL: pill at the start/right, dot at the end) */
+.htb-line {
+  position: absolute; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none;
+  border-top: 1.5px dashed var(--ink);
+  animation: htbIn .5s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + 650ms) both;
 }
-.aibar-value.is-hi { color: var(--text); font-weight: 700; }
+.htb-pill {
+  position: absolute; right: 0; top: -10px;
+  padding: 0 7px; border-radius: 4px; line-height: 18px;
+  background: var(--ink); color: #fff; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.htb-dot { position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
+@keyframes htbIn { from { opacity: 0; } to { opacity: 1; } }
 
-.aibar-axis {
-  grid-column: 2; position: relative; height: 16px; margin-top: 2px;
-  font-size: 10.5px; color: var(--text-muted);
+.htb-x { display: flex; gap: 8px; margin-top: 10px; }
+.htb-x span {
+  flex: 1; min-width: 0; text-align: center; font-size: 11.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.2s;
 }
-.aibar-axis span { position: absolute; transform: translateX(50%); white-space: nowrap; }
-
-.aibar-tip {
-  position: absolute; bottom: calc(100% + 6px); z-index: 3;
-  display: flex; flex-direction: column; gap: 1px;
-  min-width: 140px; padding: 8px 11px;
-  background: #1C1B1A; color: #fff;
-  border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
-  pointer-events: none; white-space: nowrap;
-}
-.aibar-tip-title { font-size: 11.5px; opacity: 0.75; }
-.aibar-tip strong { font-size: 15px; font-weight: 700; }
-.aibar-tip-sub { font-size: 11px; opacity: 0.7; }
-.aibar-tip-enter-active, .aibar-tip-leave-active { transition: opacity 0.12s, transform 0.12s; }
-.aibar-tip-enter-from, .aibar-tip-leave-to { opacity: 0; transform: translateY(4px); }
+.htb-x span.is-on { color: var(--ink); font-weight: 700; }
 
 @media (prefers-reduced-motion: reduce) {
-  .aibar-bar { transition: opacity 0.2s; transform: none; }
+  .htb-bar { transition: opacity 0.2s; transform: none; }
+  .htb-line { animation: none; }
 }
 @media (max-width: 560px) {
-  .aibar-grid { grid-template-columns: minmax(70px, 34%) 1fr auto; column-gap: 8px; }
+  .htb-v { font-size: 26px; }
+  .htb-plot { height: 200px; }
+  .htb-cols, .htb-x { gap: 4px; }
 }
 </style>

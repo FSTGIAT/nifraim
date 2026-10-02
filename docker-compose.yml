@@ -35,6 +35,53 @@ services:
     volumes:
       - portal_data:/app/data
 
+  # ── Calls plane (שיחות) — see docs/ARCHITECTURE.md §18 ──────────────────────
+  # Host backend .env: CALLS_ENABLED=true REDIS_URL=redis://localhost:6379
+  #                    CALLS_GATEWAY_URL=http://localhost:8090 CALLS_SECRET=dev
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  calls-gateway:
+    build:
+      context: .
+      dockerfile: services/calls-gateway/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    environment:
+      PORT: "8080"
+      HOST: 0.0.0.0
+      REDIS_URL: redis://redis:6379
+      CALLS_SECRET: ${CALLS_SECRET:-dev}
+    depends_on: [redis]
+    volumes:
+      - calls_data:/data/calls
+
+  ivrit-transcriber:
+    build:
+      context: .
+      dockerfile: services/ivrit-transcriber/Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      CALLS_GATEWAY_URL: http://calls-gateway:8080
+      CALLS_SECRET: ${CALLS_SECRET:-dev}
+      IVRIT_MODEL: ${IVRIT_MODEL:-ivrit-ai/whisper-large-v3-turbo-ct2}
+      TRANSCRIBER_FAKE: ${TRANSCRIBER_FAKE:-0}
+      BEAM_SIZE: ${BEAM_SIZE:-1}
+    depends_on: [redis, calls-gateway]
+    volumes:
+      - ivrit_models:/models
+
 volumes:
   pgdata:
   portal_data:
+  redis_data:
+  calls_data:
+  ivrit_models:

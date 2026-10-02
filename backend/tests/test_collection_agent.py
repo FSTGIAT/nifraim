@@ -18,7 +18,8 @@ def _prod(company, policy, expected=100.0, status="פעיל", product="גמל"):
 RESULT = {
     "commission_company_sources": ["מנורה", "הפניקס"],
     "customers": [
-        _cust("1", "only_production", [_prod("מנורה", "A1", 50), _prod("מנורה", "A1", 25)]),  # same policy twice
+        _cust("1", "only_production", [_prod("מנורה", "A1", 50, product="עדיף"),           # two coverages, one policy
+                                       _prod("מנורה", "A1", 25, product="נכות תאונתית")]),
         _cust("2", "only_production", [_prod("מנורה", "A2", 10, status="לא פעיל")]),        # inactive → skip
         _cust("3", "only_production", [_prod("הראל", "H1", 99)]),                           # no נפרעים from הראל → no data
         _cust("4", "matched", [_prod("הפניקס", "P1", 70)]),                                   # paid → skip
@@ -36,6 +37,16 @@ def test_one_line_per_customer_policy_and_expected_summed():
     g = unpaid_by_company(RESULT)["מנורה"]
     assert g["customers"] == 1 and len(g["items"]) == 1
     assert g["items"][0]["expected"] == 75 and g["expected"] == 75
+
+
+def test_same_coverage_reported_twice_counts_once():
+    """Live מנורה (2026-10-02): one policy in two snapshots, premiums ×1.0116 apart —
+    the case total was double the dashboard gap (₪56,281 vs ₪28,252)."""
+    res = {"commission_company_sources": ["מנורה"], "customers": [
+        _cust("1", "only_production", [_prod("מנורה", "A1", 1835.54, product="חיים"),
+                                       _prod("מנורה", "A1", 1814.56, product="חיים")])]}
+    g = unpaid_by_company(res)["מנורה"]
+    assert len(g["items"]) == 1 and g["expected"] == 1814.56 and g["items"][0]["expected"] == 1814.56
 
 
 def test_inactive_products_are_not_claimed():

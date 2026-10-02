@@ -80,6 +80,7 @@
                 aria-label="כותב…"
               >
                 <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span v-if="msg.status" class="ai-typing-status">{{ msg.status }}…</span>
               </span>
               <!-- Numeric-validator warnings: amounts in the AI's answer that
                    aren't backed by the source data we showed it. Yellow chips
@@ -510,6 +511,8 @@ onBeforeUnmount(() => {
   animation: aiTypingBlink 1.2s infinite ease-in-out;
 }
 .ai-typing .dot:nth-child(2) { animation-delay: 0.15s; }
+.ai-typing-status { margin-inline-start: 6px; font-size: 12px; color: var(--text-muted); animation: aiStatusIn .35s ease-out; }
+@keyframes aiStatusIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .ai-typing .dot:nth-child(3) { animation-delay: 0.3s; }
 @keyframes aiTypingBlink {
   0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }

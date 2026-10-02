@@ -647,7 +647,9 @@ async def company_summary(
     unpaid_ids = _current_unpaid_ids(row)
     if row and row.result_json:
         for cust in row.result_json.get("customers", []):
-            for p in cust.get("production_products", []) or []:
+            # paid_production_products: products another company DID pay for a
+            # customer who is unpaid elsewhere — still produced, still counted.
+            for p in (cust.get("production_products") or []) + (cust.get("paid_production_products") or []):
                 b = _bucket(p.get("company") or p.get("company_full"))
                 b["produced"] += 1
             for p in cust.get("commission_products", []) or []:
@@ -666,12 +668,15 @@ async def company_summary(
     # by the raw name counted one customer twice when their debts carry two
     # spellings ('מגדל' / 'מגדל חברה לביטוח בע"מ').
     debt_rows = (await db.execute(
-        select(Debt.company_name, Debt.customer_id_number, Debt.expected_amount)
+        select(Debt.company_name, Debt.customer_id_number, Debt.expected_amount, Debt.policy_number)
         .where(Debt.user_id == user.id, Debt.status == "open",
                Debt.customer_id_number.in_(unpaid_ids or [""]))
     )).all()
     unpaid_sets: dict[str, set] = {}
+    current = _current_unpaid_products(row)
     for d in debt_rows:
+        if not _debt_is_current(d, current):
+            continue
         b = _bucket(d.company_name)
         unpaid_sets.setdefault(_key(d.company_name), set()).add(d.customer_id_number)
         b["unpaid_products"] += 1
@@ -692,11 +697,42 @@ async def company_summary(
         for k in ("produced", "matched", "unpaid", "unpaid_products", "unpriced_products", "received", "expected", "gap"):
             totals[k] += b[k]
 
+    # A customer unpaid at two companies is ONE unpaid customer — the summed
+    # per-company counts read 42 against the KPI's 39 (QA 2026-10-01).
+    totals["unpaid"] = len(set().union(*unpaid_sets.values())) if unpaid_sets else 0
+
     companies.sort(key=lambda x: x["gap"], reverse=True)
     totals["received"] = round(totals["received"], 2)
     totals["expected"] = round(totals["expected"], 2)
     totals["gap"] = round(totals["gap"], 2)
     return {"companies": companies, "totals": totals}
+
+
+def _current_unpaid_products(row) -> set[tuple[str, str, str]]:
+    """(customer id, policy, company key) of every product unpaid in the
+    CURRENT comparison. Filtering open debts by customer alone still let an
+    old debt through when that customer is unpaid somewhere else this month
+    (QA 2026-10-01: a stale מגדל ₪149 in the summary, though מגדל delivered no
+    נפרעים). A debt counts only if THIS product is unpaid now."""
+    from app.utils.company_norm import normalize_company
+    out: set[tuple[str, str, str]] = set()
+    if not row or not row.result_json:
+        return out
+    for c in row.result_json.get("customers", []) or []:
+        if c.get("match_status") != "only_production":
+            continue
+        for p in c.get("production_products") or []:
+            co = p.get("company") or p.get("company_full") or ""
+            out.add((str(c.get("id_number")), str(p.get("policy_number") or ""),
+                     normalize_company(co) or co))
+    return out
+
+
+def _debt_is_current(d, current: set) -> bool:
+    from app.utils.company_norm import normalize_company
+    co = d.company_name or ""
+    return (str(d.customer_id_number), str(d.policy_number or ""),
+            normalize_company(co) or co) in current
 
 
 def _current_unpaid_ids(row) -> list[str]:
@@ -747,8 +783,11 @@ async def company_unpaid(
     )).scalars().all()
 
     by_cust: dict[str, dict] = {}
+    current = _current_unpaid_products(row)
     for d in debts:
         if (normalize_company(d.company_name) or d.company_name) != key:
+            continue
+        if not _debt_is_current(d, current):
             continue
         c = by_cust.setdefault(d.customer_id_number, {
             "id_number": d.customer_id_number,

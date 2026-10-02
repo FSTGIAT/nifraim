@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -20,7 +20,10 @@ async def lifespan(app: FastAPI):
     # run. Common trigger: uvicorn --reload mid-run, or a Railway redeploy.
     await _fail_orphaned_runs()
     start_scheduler()
+    from app.services.calls.events_consumer import start_calls_consumer, stop_calls_consumer
+    start_calls_consumer()   # no-op unless CALLS_ENABLED
     yield
+    await stop_calls_consumer()
     stop_scheduler()
 
 
@@ -79,6 +82,7 @@ app.include_router(company_contacts.router, prefix="/api/company-contacts", tags
 app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(portal.router, prefix="/api/portal", tags=["portal"])
+app.include_router(ai_agent.router, prefix="/api/ai", tags=["ai-agent"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(ai_documents.router, prefix="/api/ai/documents", tags=["ai-documents"])
 app.include_router(volume.router, prefix="/api/volume", tags=["volume"])
@@ -98,6 +102,7 @@ app.include_router(cycle.router, prefix="/api/cycle", tags=["cycle"])
 app.include_router(agreement_requests.router, prefix="/api/agreement-requests", tags=["agreement-requests"])
 app.include_router(collection_agent.router, prefix="/api/collection-agent", tags=["collection-agent"])
 app.include_router(office_agent.router, prefix="/api/office-agent", tags=["office-agent"])
+app.include_router(calls.router, prefix="/api/calls", tags=["calls"])
 # Public legal pages at the site root (no /api prefix). Registered before the SPA
 # catch-all below so GET /privacy returns the policy, not index.html.
 app.include_router(legal.router, tags=["legal"])

@@ -87,13 +87,17 @@
             <div v-for="(m, i) in store.thread" :key="'t' + i" class="na-qa" :class="'na-qa--' + m.role">
               <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="7" :show-cursor="i === store.thread.length - 1" />
               <span v-else>{{ m.text }}</span>
+              <button v-if="m.vizs && m.vizs.length" type="button" class="na-link" @click="emit('open-vizs', m.vizs)">
+                {{ m.vizs.length > 1 ? `הצגת ${m.vizs.length} גרפים` : 'הצגת הגרף' }}
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+              </button>
               <!-- what the agent prepared: editable, sent only on approve -->
               <Transition name="na-sheet">
                 <div v-if="m.proposal && m.proposal.status !== 'dropped'" class="na-sheet na-prop" :class="{ 'is-sent': m.proposal.status === 'sent' }">
                   <div class="na-prop-head">
                     <AgentCreateDrawing :kind="m.proposal.kind" :state="m.proposal.status === 'sent' ? 'sent' : 'open'" />
                     <div class="na-prop-titles">
-                      <strong>{{ m.proposal.kind === 'meeting' ? (isSelf(m.proposal) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל' }}</strong>
+                      <strong>{{ propTitle(m.proposal) }}</strong>
                       <span v-if="m.proposal.status === 'sent'" class="na-sent">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                         {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : 'נשלח' }}
@@ -102,8 +106,17 @@
                     </div>
                   </div>
                   <fieldset :disabled="m.proposal.status === 'sent'" class="na-prop-fields">
-                    <label class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
-                    <template v-if="m.proposal.kind === 'meeting'">
+                    <p v-if="m.proposal.kind === 'maslaka'" class="na-prop-sum">
+                      בקשת <b dir="ltr">{{ m.proposal.code }}</b> — {{ m.proposal.code_he }}
+                      ל{{ m.proposal.customer_name || 'ת.ז ' + m.proposal.customer_id_number }}. התשובה מגיעה תוך שעות.
+                    </p>
+                    <p v-else-if="m.proposal.kind === 'collection'" class="na-prop-sum">
+                      {{ m.proposal.case_status === 'sent' ? 'תזכורת' : 'פנייה' }} ל{{ m.proposal.company }} על {{ m.proposal.customers }} לקוחות
+                      · צפי <span class="ltr-number">₪{{ Number(m.proposal.expected || 0).toLocaleString('he-IL') }}</span>
+                    </p>
+                    <label v-else class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
+                    <template v-if="m.proposal.kind === 'maslaka' || m.proposal.kind === 'collection'"></template>
+                    <template v-else-if="m.proposal.kind === 'meeting'">
                       <label class="na-f"><span>נושא</span><input v-model="m.proposal.title" /></label>
                       <div class="na-f-row">
                         <label class="na-f"><span>תאריך</span><input :value="m.proposal.start.slice(0, 10)" type="date" dir="ltr" @input="setStart(m.proposal, $event.target.value, null)" /></label>
@@ -118,11 +131,11 @@
                     </template>
                   </fieldset>
                   <div v-if="m.proposal.status !== 'sent'" class="na-row">
-                    <button type="button" class="na-go" :disabled="!canSend || store.busy === 'act'" @click="store.approve(m)">
-                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : 'אישור ושליחה' }}
+                    <button type="button" class="na-go" :disabled="(m.proposal.kind !== 'maslaka' && !canSend) || store.busy === 'act'" @click="store.approve(m)">
+                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : 'אישור ושליחה' }}
                     </button>
                     <button type="button" class="na-link na-link--quiet" @click="m.proposal.status = 'dropped'">ביטול</button>
-                    <span v-if="!canSend" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                    <span v-if="!canSend && m.proposal.kind !== 'maslaka'" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
                   </div>
                   <p v-if="store.error && i === store.thread.length - 1" class="na-err">{{ store.error }}</p>
                 </div>
@@ -183,7 +196,8 @@ import AiStreamingText from '../ui/AiStreamingText.vue'
 import AgentCreateDrawing from './AgentCreateDrawing.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: Object, default: null } })
-const emit = defineEmits(['update:open', 'open-mail'])
+const emit = defineEmits(['update:open', 'open-mail', 'open-vizs'])
+const propTitle = (p) => p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
 const store = useOfficeAgentStore()
 
 // sequential streaming: greeting → line 0 → line 1 …
@@ -212,7 +226,7 @@ const orbState = computed(() => (justMade.value ? 'solving'
 const isSelf = (p) => !!store.brief?.mailbox?.mailbox_address && p.to_email?.toLowerCase() === store.brief.mailbox.mailbox_address.toLowerCase()
 const statusText = computed(() => {
   if (store.narrating && !store.narration) return 'עובר על המיילים והעמלות…'
-  if (store.busy === 'ask') return 'בודק…'
+  if (store.busy === 'ask') return store.askStatus ? store.askStatus + '…' : 'בודק…'
   if (writing.value) return 'כותב לך…'
   return 'עובד בשבילך'
 })
@@ -460,6 +474,8 @@ async function close() {
 .na-prop-titles { display: flex; flex-direction: column; gap: 2px; }
 .na-prop-titles strong { color: #10201F; font-size: 17px; font-weight: 900; letter-spacing: -0.02em; }
 .na-prop-sub { font-size: 13px; color: #4A5B5A; animation: naIn .4s ease 1.2s both; }
+.na-prop-sum { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-primary, #181818); }
+.na-prop-sum b { font-weight: 800; }
 .na-sent { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 800; color: #1E7D4A; animation: naIn .4s ease 1.3s both; }
 /* the fields appear once the drawing is made */
 .na-prop:not(.is-sent) .na-prop-fields > *, .na-prop:not(.is-sent) > .na-row { animation: naIn .4s ease both; animation-delay: calc(.9s + var(--i, 0) * 70ms); }

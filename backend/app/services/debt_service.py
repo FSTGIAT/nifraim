@@ -92,11 +92,20 @@ async def sync_debts(
                 if not prod_company:
                     continue
 
-                rate = _find_rate(rates, prod_company)
-                expected = _calc_expected_commission(prod, rate, category) if rate else 0
+                # The comparison already priced this product with the canonical
+                # selector (rate_select) — use THAT figure. Recomputing it here
+                # from a company-name rate lookup gave a second, different number
+                # (QA 2026-10-01: מנורה window ₪3,692 vs the KPI's ₪254; one
+                # customer ₪2,195 here vs ₪57 in the comparison). The old path
+                # stays only for comparisons saved before products were priced.
+                if "expected_commission" in prod:
+                    expected = float(prod.get("expected_commission") or 0)
+                else:
+                    rate = _find_rate(rates, prod_company)
+                    expected = _calc_expected_commission(prod, rate, category) if rate else 0
 
                 # Check if debt already exists
-                existing = await db.execute(
+                existing = (await db.execute(
                     select(Debt).where(
                         Debt.user_id == user_id,
                         Debt.customer_id_number == cid,
@@ -104,8 +113,12 @@ async def sync_debts(
                         Debt.company_name == prod_company,
                         Debt.status == "open",
                     )
-                )
-                if existing.scalar_one_or_none():
+                )).scalars().first()
+                if existing:
+                    # Keep the tracked amount current — it used to be frozen at
+                    # whatever the first comparison computed.
+                    if round(float(existing.expected_amount or 0), 2) != round(expected, 2):
+                        existing.expected_amount = round(expected, 2)
                     continue  # Already tracked
 
                 debt = Debt(

@@ -1,0 +1,9 @@
+# Service "calls-gateway": set its Config File Path to services/calls-gateway/railway.toml,
+# otherwise the ROOT railway.toml (the nifraim API image) is used.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "services/calls-gateway/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+restartPolicyType = "ALWAYS"

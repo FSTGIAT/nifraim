@@ -42,9 +42,25 @@
 
           <!-- Product rows -->
           <div class="products-scroll">
+            <!-- What is NOT paid comes first; paid lines fold into one row
+                 (QA 2026-10-01: one unpaid כלל policy sat under 43 paid
+                 rows). Repeat payments on one policy merge into one row. -->
+            <template v-for="sec in sections" :key="sec.key">
+            <button v-if="sections.length > 1" type="button" class="sec-head" :class="'sec-head--' + sec.key"
+                    :aria-expanded="sec.open" @click="sec.toggle && sec.toggle()">
+              <span class="sec-dot" aria-hidden="true"></span>
+              <span class="sec-title">{{ sec.title }}</span>
+              <span class="sec-count ltr-number">{{ sec.rows.length }}</span>
+              <span v-if="sec.sum >= 0.5" class="sec-sum ltr-number">{{ fmt(sec.sum) }}</span>
+              <svg v-if="sec.toggle" class="sec-chev" :class="{ 'sec-chev--open': sec.open }" width="14" height="14"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                   stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            <div class="sec-fold" :class="{ 'sec-fold--open': sec.open }">
+            <div class="sec-fold-inner">
             <div
-              v-for="(p, i) in sortedProducts"
-              :key="i"
+              v-for="(p, i) in sec.rows"
+              :key="sec.key + i"
               class="p-row"
               :class="productRowClass(p)"
             >
@@ -60,6 +76,7 @@
                   <span v-if="p.fund_type" class="p-tag-info">{{ p.fund_type }}</span>
                   <span v-if="p.track" class="p-tag-info">{{ p.track }}</span>
                   <span v-if="!p.paid && !p.source" class="p-tag-production">רק בפרודוקציה</span>
+                  <span v-if="p._payments > 1" class="p-tag-info ltr-number">{{ p._payments }} תשלומים</span>
                 </div>
               </div>
 
@@ -114,6 +131,10 @@
               </div>
             </div>
 
+            </div>
+            </div>
+            </template>
+
             <!-- Empty -->
             <div v-if="customer.products.length === 0" class="empty-msg">אין מוצרים</div>
           </div>
@@ -133,7 +154,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import DataModal from '../workspace/DataModal.vue'
 import api from '../../api/client.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
@@ -163,6 +184,52 @@ const totals = computed(() => {
     balance: products.reduce((s, p) => s + (p.balance || 0), 0),
     expectedCommission: expComm,
   }
+})
+
+const isUnpaidRow = p => !p.paid && !p.source
+
+// Repeat נפרעים lines for the same policy + product (a policy paid in parts,
+// or per coverage) become ONE row with the summed amounts — they read as
+// duplicates otherwise (QA 2026-10-01: מנורה 351255435 ×3).
+function mergeRows(rows) {
+  const out = []
+  const by = new Map()
+  for (const p of rows) {
+    const k = p.policy_number ? [p.company, p.policy_number, p.product].join('|') : null
+    if (!k || !by.has(k)) {
+      const row = { ...p, _members: [p], _payments: 1 }
+      if (k) by.set(k, row)
+      out.push(row)
+      continue
+    }
+    const m = by.get(k)
+    m._members.push(p)
+    m._payments += 1
+    for (const f of ['commission', 'balance', 'premium', 'management_fee_amount', 'expected_commission', 'commission_gap']) {
+      if (p[f] != null || m[f] != null) m[f] = (Number(m[f]) || 0) + (Number(p[f]) || 0)
+    }
+  }
+  return out
+}
+
+const paidOpen = ref(false)
+watch(() => props.customer, () => { paidOpen.value = false })
+
+const sections = computed(() => {
+  const all = sortedProducts.value
+  const unpaid = all.filter(isUnpaidRow)
+  const paid = mergeRows(all.filter(p => !isUnpaidRow(p)))
+  const sumOf = (rows, f) => rows.reduce((t, p) => t + (Number(p[f]) || 0), 0)
+  if (!unpaid.length || !paid.length) {
+    return [{ key: 'all', rows: unpaid.length ? unpaid : paid, open: true }]
+  }
+  const cos = [...new Set(paid.map(p => shortCompany(p.company)).filter(Boolean))]
+  return [
+    { key: 'unpaid', title: 'לא שולם', rows: unpaid, open: true,
+      sum: unpaid.reduce((t, p) => t + (expectedCommission(p) || 0), 0) },
+    { key: 'paid', title: 'שולם' + (cos.length ? ' · ' + cos.join(', ') : ''), rows: paid,
+      sum: sumOf(paid, 'commission'), open: paidOpen.value, toggle: () => { paidOpen.value = !paidOpen.value } },
+  ]
 })
 
 // Sort products: commission-file products first, production-only at bottom
@@ -317,8 +384,13 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-async function togglePaid(product) {
-  product.paid = !product.paid
+async function togglePaid(row) {
+  // A merged row stands for several lines of one policy — mark them together.
+  const members = row._members || [row]
+  const next = !row.paid
+  row.paid = next
+  for (const m of members) m.paid = next
+  const product = members[0]
   if (props.customer) {
     props.customer.paid_count = props.customer.products.filter(p => p.paid).length
     props.customer.unpaid_count = props.customer.products.filter(p => !p.paid).length
@@ -436,4 +508,28 @@ function fmtCell(val) {
   .p-amounts { grid-column: 1 / -1; justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { .p-cb, .btn-mail-footer { transition: none; } }
+/* ── sections: unpaid first, paid folded ── */
+.sec-head {
+  width: 100%; display: flex; align-items: center; gap: 8px; margin: 4px 0 6px; padding: 8px 4px;
+  background: none; border: none; font: inherit; text-align: right; color: var(--text); cursor: default;
+}
+.sec-head--paid { cursor: pointer; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 10px; }
+.sec-head--paid:hover .sec-title { color: var(--tab-comparison); }
+.sec-head:focus-visible { outline: 2px solid var(--tab-comparison); outline-offset: 2px; border-radius: 8px; }
+.sec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red, #C23934); flex: 0 0 auto; }
+.sec-head--paid .sec-dot { background: var(--tab-comparison); }
+.sec-title { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sec-count {
+  min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--bg);
+  font-size: 12px; font-weight: 700; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center;
+}
+.sec-sum { margin-inline-start: auto; font-size: 14px; font-weight: 800; }
+.sec-head--unpaid .sec-sum { color: var(--red, #C23934); }
+.sec-head--paid .sec-sum { color: var(--tab-comparison); }
+.sec-chev { color: var(--text-muted); transition: transform 0.25s ease; flex: 0 0 auto; }
+.sec-chev--open { transform: rotate(180deg); }
+.sec-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s cubic-bezier(0.2, 0, 0.2, 1); }
+.sec-fold--open { grid-template-rows: 1fr; }
+.sec-fold-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: inherit; }
+@media (prefers-reduced-motion: reduce) { .sec-fold, .sec-chev { transition: none; } }
 </style>

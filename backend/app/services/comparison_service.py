@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 
-from app.services.rate_select import rate_for_product
+from app.services.rate_select import rate_for_product, pure_risk_insurance
 from app.utils.company_norm import company_stem, known_company_stem
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,20 @@ def _classify_product_type(product_type: str | None) -> str | None:
     if not product_type:
         return None
     return _PRODUCT_TYPE_TO_CATEGORY.get(product_type)
+
+
+_SAVINGS_WORDS = ("גמל", "השתלמות", "חיסכון", "חסכון")
+# Pension statuses with no monthly deposit → no נפרעים to expect.
+_NO_DEPOSIT_STATUS = ("לא פעיל", "שמירת כיסוי", "מוקפא", "מוקפאת")
+
+
+def _is_savings(product_type: str | None) -> bool:
+    """A savings fund whose commission rides on its accumulation (gemel,
+    השתלמות, savings policies) — never pension, never pure-risk insurance."""
+    pt = product_type or ""
+    if not pt or "פנסיה" in pt or pure_risk_insurance(pt):
+        return False
+    return _classify_product_type(pt) == _CATEGORY_GEMEL or any(w in pt for w in _SAVINGS_WORDS)
 
 
 def _rate_for(user_rates, company, product, product_type, accumulation, premium):
@@ -315,8 +329,11 @@ def compute_comparison(production_records: list[dict], commission_records: list[
       the commission set being compared;
     - companies with no נפרעים coverage are reported separately as
       `uncovered_companies`, never as unpaid;
-    - פנסיה products are ALWAYS excluded (נפרעים is paid on the monthly
-      deposit, not on the accumulated balance).
+    - פנסיה products ARE compared for paid / not paid (since 2026-10-01 —
+      excluding them showed 16 paid pension customers as "רק בנפרעים" and never
+      flagged the unpaid ones). They carry no expected amount: נפרעים is paid on
+      the monthly deposit, which production doesn't have. An INACTIVE pension
+      fund (no deposits) goes to `no_value_customers`, not unpaid.
 
     Why the category filter is gone
     -------------------------------
@@ -362,9 +379,6 @@ def compute_comparison(production_records: list[dict], commission_records: list[
     filtered_production = []
     uncovered_counts: dict[str, int] = {}
     for r in production_records:
-        cat = _classify_product_type(r.get("product_type"))
-        if cat == _CATEGORY_PENSION:
-            continue  # always exclude pension
         company = r.get("receiving_company")
         # No resolvable company on the commission side (some parsers leave it
         # empty) → compare everything, as before. Filtering on an empty set
@@ -536,6 +550,79 @@ def compute_comparison(production_records: list[dict], commission_records: list[
             "product_matches": product_matches,
         })
 
+    # ── Savings funds with nothing in them are not "unpaid" ──
+    # A gemel / השתלמות / savings policy with ₪0 accumulation and no premium
+    # earns no commission, so a customer whose ONLY production products are such
+    # empty funds was listed as לא שולם (QA 2026-10-01: "funds with 0 accumulation
+    # appear as unpaid"). They move to their own bucket. Two guards keep this
+    # from hiding real policies:
+    #   • savings only — insurance carries no accumulation by design (Phoenix MU
+    #     has no premium either), so an empty insurance row is NOT evidence;
+    #   • only for a company whose production DOES report accumulation — some
+    #     sources are presence-only (Harel vault), where ₪0 means "not reported".
+    # Customers with ANY other product, or who were paid, are untouched.
+    accum_stems = {
+        company_stem(r.get("receiving_company") or "")
+        for r in filtered_production
+        if _is_savings(r.get("product_type")) and float(r.get("accumulation") or 0) > 0
+    }
+    accum_stems.discard("")
+
+    def _empty_fund(p):
+        # A pension fund with no deposits (inactive / cover-only) earns nothing.
+        if "פנסיה" in (p.get("product_type") or "") and any(
+                w in (p.get("status") or "") for w in _NO_DEPOSIT_STATUS):
+            return True
+        return (_is_savings(p.get("product_type"))
+                and not float(p.get("accumulation") or 0)
+                and not float(p.get("premium") or 0)
+                and company_stem(p.get("company_full") or "") in accum_stems)
+
+    # ── Unpaid is judged PER COMPANY ──
+    # A customer used to count as paid when ANY company paid them, so a מנורה
+    # customer stayed off "לא שולם" because מגדל paid them on another policy
+    # (QA 2026-10-01: 4 customers, ₪57 hidden). Now: a company that delivered
+    # נפרעים and paid NOTHING on this customer's products there makes the
+    # customer unpaid at that company. `production_products` then holds ONLY
+    # those unpaid products — every consumer reads it as "the unpaid products"
+    # — and the products other companies did pay move to
+    # `paid_production_products`. Empty / inactive funds are ignored here (they
+    # earn nothing), and product_matches is left whole for the detail view.
+    def _stem_of(p):
+        return company_stem(p.get("company_full") or p.get("company") or "")
+
+    for c in customers:
+        if c["match_status"] != "matched" or not covered_stems:
+            continue
+        prods = c.get("production_products") or []
+        paid_stems = {company_stem(p.get("company_full") or p.get("company") or "")
+                      for p in c.get("commission_products") or []}
+        unpaid_stems = {_stem_of(p) for p in prods if not _empty_fund(p)}
+        unpaid_stems = {st for st in unpaid_stems if st and st in covered_stems and st not in paid_stems}
+        if not unpaid_stems:
+            continue
+        c["paid_production_products"] = [p for p in prods if _stem_of(p) not in unpaid_stems]
+        c["production_products"] = [p for p in prods if _stem_of(p) in unpaid_stems]
+        # Same number type as every other customer's total (Decimal from the DB).
+        c["total_premium"] = sum((p.get("premium") or 0) for p in c["production_products"])
+        c["match_status"] = "only_production"
+        c["partially_paid"] = True
+        matched_ids.discard(c["id_number"])
+        only_prod_ids.add(c["id_number"])
+
+    no_value_customers = []
+    kept = []
+    for c in customers:
+        prods = c.get("production_products") or []
+        if c["match_status"] == "only_production" and prods and all(_empty_fund(p) for p in prods):
+            no_value_customers.append(c)
+        else:
+            kept.append(c)
+    customers = kept
+    for c in no_value_customers:
+        only_prod_ids.discard(c["id_number"])
+        all_ids.discard(c["id_number"])
+
     # Payments that disagree with the agreement — the alert the agent acts on.
     # Only FIRM rates contribute (see _commission_gap), so this is a claim the
     # agent can take to the insurer, not a modelling artefact.
@@ -568,6 +655,44 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         "total_commission": sum(c["total_commission"] for c in customers),
     }
 
+    # ── Why the customer count differs from the production tab ──
+    # One exact breakdown, computed here so the UI never re-derives it (QA
+    # 2026-10-01: "683 in production, 737 here — duplicates?"). Identities:
+    #   production = judged + empty_funds + not_judged + production_but_commission_only
+    #   total      = judged + commission_only (+ production_but_commission_only)
+    def _co_counts(ids, by_id, key):
+        n: dict[str, int] = {}
+        for i in ids:
+            cos = {_extract_short_company(r.get("product") if key == "prod" else (r.get("fund_type") or r.get("product")),
+                                          r.get("receiving_company")) for r in by_id.get(i, [])}
+            cos.discard(None); cos.discard("")
+            for co in cos:
+                n[co] = n.get(co, 0) + 1
+        return dict(sorted(n.items(), key=lambda kv: -kv[1]))
+
+    all_prod_by_id: dict = defaultdict(list)
+    for r in production_records:
+        if r.get("id_number"):
+            all_prod_by_id[_normalize_id(r["id_number"])].append(r)
+    all_prod_ids = set(all_prod_by_id)
+    nv_ids = {c["id_number"] for c in no_value_customers}
+    outside = all_prod_ids - set(prod_by_id)          # every record filtered out (company sent no נפרעים)
+    prod_but_comm_only = outside & set(comm_by_id)
+    not_judged = outside - set(comm_by_id)
+    comm_only = only_comm_ids - all_prod_ids
+    summary["population"] = {
+        "production": len(all_prod_ids),
+        "judged": len(matched_ids) + len(only_prod_ids),
+        "empty_funds": len(nv_ids),
+        "empty_funds_by_company": _co_counts(nv_ids, all_prod_by_id, "prod"),
+        "not_judged": len(not_judged),
+        "not_judged_by_company": _co_counts(not_judged, all_prod_by_id, "prod"),
+        "production_but_commission_only": len(prod_but_comm_only),
+        "commission_only": len(comm_only),
+        "commission_only_by_company": _co_counts(comm_only, comm_by_id, "comm"),
+        "total": len(all_ids),
+    }
+
     return {
         "summary": summary,
         "customers": customers,
@@ -576,6 +701,9 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         # about. Reported so they can be shown as "no נפרעים coverage" rather
         # than silently counted as unpaid.
         "uncovered_companies": uncovered_companies,
+        # Only-production customers whose every product is an EMPTY savings
+        # fund (₪0 accumulation, no premium) — nothing to earn on, so not unpaid.
+        "no_value_customers": no_value_customers,
         # Passive labels — nothing branches on these any more.
         "commission_category": commission_category,
         "commission_category_label": _CATEGORY_LABELS.get(commission_category, ""),

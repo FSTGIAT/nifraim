@@ -527,6 +527,24 @@ The back-office AI speaks first: a greeting, then one card per mail or insurer t
 - **Adding a capability:** add a page and a card, never a bigger prompt.
 - See `docs/ARCHITECTURE.md` §17.
 
+## Nifra AI v2 — one agent with tools (`services/agent/`)
+
+Both AI ask boxes stream from `POST /api/ai/agent`: answer cache → fast lane (regex router, no LLM, ~50ms) →
+Sonnet 5.5 tool loop (prompt-cached). 31 tools wrap the dashboard's OWN endpoint functions (one source per number),
+no tool takes a user id, actions only propose (the agent's click on `/office-agent/act` sends), and
+`users.ai_data_version` (bumped by an `after_flush` hook) keys every cache. Official fund data (גמל-נט/פנסיה-נט/
+ביטוח-נט) comes from data.gov.il into `fund_market_monthly`. Data dictionary: `scripts/build_data_dictionary.py`.
+Tests: `tests/test_nifra_agent.py`; latency: `scripts/agent_latency.py`. **See `docs/ARCHITECTURE.md` §17c.**
+
+## Calls (שיחות) — record → ivrit.ai → Claude summary
+
+A home-hub widget beside the cycle clock records a conversation (MediaRecorder). The API streams it to the private
+**calls-gateway** Railway service, whose folder listener queues it on **Redis Streams**. The **ivrit-transcriber**
+(faster-whisper + `ivrit-ai/whisper-large-v3-turbo-ct2`, CPU) transcribes it. The API then summarises it with Claude
+into `call_recordings`. The contract lives in `services/calls/contract.py` and is copied into both images. Local:
+`TRANSCRIBER_FAKE=1 docker compose up -d redis calls-gateway ivrit-transcriber`. New Railway services need their
+own Config File Path (`services/<svc>/railway.toml`). **See `docs/ARCHITECTURE.md` §18.**
+
 ## Local Worker & Self-Update (`local-worker` skill)
 
 Israeli insurer WAFs geo-block Railway's foreign IP, so the portal automation runs on the

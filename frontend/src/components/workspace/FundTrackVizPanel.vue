@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="ft-viz">
+    <Transition name="silk">
       <div
         v-if="open"
         class="ft-viz-overlay"
@@ -9,16 +9,9 @@
         :aria-label="viz?.title || 'פרטי קופה'"
         @click.self="close"
       >
-        <div class="ft-viz-card">
+        <div class="ft-viz-card silk-card">
           <header class="ft-viz-head">
             <div class="ft-viz-head-left">
-              <span class="ft-viz-badge" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="20" x2="12" y2="10"/>
-                  <line x1="18" y1="20" x2="18" y2="4"/>
-                  <line x1="6" y1="20" x2="6" y2="16"/>
-                </svg>
-              </span>
               <div class="ft-viz-titles">
                 <span class="ft-viz-title">{{ viz?.title || 'פרטי קופה' }}</span>
                 <span v-if="viz?.period_label" class="ft-viz-sub">תקופה · {{ viz.period_label }}</span>
@@ -210,7 +203,7 @@ onBeforeUnmount(() => {
 .ft-viz-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1010;
+  z-index: 1030;
   background: rgba(17, 12, 6, 0.55);
   backdrop-filter: blur(4px);
   display: flex;
@@ -332,19 +325,6 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.ft-viz-enter-active { transition: opacity 0.28s var(--transition); }
-.ft-viz-leave-active { transition: opacity 0.22s var(--transition); }
-.ft-viz-enter-active .ft-viz-card,
-.ft-viz-leave-active .ft-viz-card {
-  transition: transform 0.28s var(--transition), opacity 0.28s var(--transition);
-}
-.ft-viz-enter-from,
-.ft-viz-leave-to { opacity: 0; }
-.ft-viz-enter-from .ft-viz-card,
-.ft-viz-leave-to .ft-viz-card {
-  opacity: 0;
-  transform: scale(0.94) translateY(12px);
-}
 
 @media (max-width: 860px) {
   .ft-viz-overlay { padding: 12px; }
@@ -352,12 +332,6 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ft-viz-enter-active,
-  .ft-viz-leave-active,
-  .ft-viz-enter-active .ft-viz-card,
-  .ft-viz-leave-active .ft-viz-card { transition-duration: 0.1s; }
-  .ft-viz-enter-from .ft-viz-card,
-  .ft-viz-leave-to .ft-viz-card { transform: none; }
   .ft-viz-loader { animation: none; }
 }
 </style>

@@ -84,8 +84,17 @@ def unpaid_by_company(result: dict) -> dict[str, dict]:
                 continue
             if any(m in (p.get("status") or "") for m in INACTIVE_MARKERS):
                 continue
-            g = out.setdefault(k, {"name": company, "items": [], "ids": set(), "expected": 0.0, "seen": {}})
+            g = out.setdefault(k, {"name": company, "items": [], "ids": set(), "expected": 0.0, "seen": {}, "cov": {}})
             exp = float(p.get("expected_commission") or 0)
+            # The SAME coverage listed twice (same customer + policy + product) is one policy
+            # reported in two snapshots — live מנורה: 79 pairs, premiums ×1.0116 apart (monthly
+            # indexation). Count it once, last line wins (as debt_service does), so the case
+            # total equals the dashboard gap. DIFFERENT coverages on one policy still add up.
+            ck = (c.get("id_number"), p.get("policy_number") or "", p.get("product") or p.get("product_type") or "")
+            prev = g["cov"].get(ck)
+            g["cov"][ck] = exp
+            if prev is not None:
+                exp -= prev
             # one line per customer + policy (a policy's riders/coverages come as
             # separate products — the insurer needs the policy once)
             dk = (c.get("id_number"), p.get("policy_number") or p.get("product") or "")
@@ -102,10 +111,11 @@ def unpaid_by_company(result: dict) -> dict[str, dict]:
                 g["seen"][dk] = item
                 g["items"].append(item)
             g["ids"].add(c.get("id_number"))
-            g["expected"] += float(p.get("expected_commission") or 0)
+            g["expected"] += exp
     for g in out.values():
         g["customers"] = len(g.pop("ids"))
         g.pop("seen", None)
+        g.pop("cov", None)
         g["expected"] = round(g["expected"], 2)
     return out
 

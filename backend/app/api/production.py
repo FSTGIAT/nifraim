@@ -1089,6 +1089,48 @@ async def get_production_analytics(
     )
 
 
+async def _unpaid_from_comparison(db, user_id) -> dict | None:
+    """Unpaid clients (only_production) of the user's latest comparison, in the
+    alerts item shape. None when there is no comparison to read."""
+    from app.models.commission_comparison import CommissionComparison
+    row = (await db.execute(
+        select(CommissionComparison)
+        .where(CommissionComparison.user_id == user_id)
+        .order_by(CommissionComparison.computed_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if not row or not row.result_json:
+        return None
+    out: dict[str, dict] = {}
+    for c in row.result_json.get("customers", []) or []:
+        if c.get("match_status") != "only_production":
+            continue
+        prods = c.get("production_products") or []
+        key = _normalize_id(c.get("id_number"))
+        e = out.setdefault(key, {
+            "id_number": c.get("id_number"),
+            "name": _display_name(c.get("first_name"), c.get("last_name"), c.get("id_number")),
+            "companies": set(), "products": 0,
+            "premium": 0.0, "accumulation": 0.0, "items": [],
+        })
+        for p in prods:
+            stem = company_stem(p.get("company_full") or p.get("company") or "") or (p.get("company") or "")
+            e["companies"].add(stem)
+            e["products"] += 1
+            e["premium"] += float(p.get("premium") or 0)
+            e["accumulation"] += float(p.get("accumulation") or 0)
+            if len(e["items"]) < UNPAID_ITEMS_PER_CLIENT:
+                e["items"].append({
+                    "product": p.get("product") or "",
+                    "product_type": p.get("product_type") or "",
+                    "policy_number": p.get("policy_number") or "",
+                    "company": stem,
+                    "premium": round(float(p.get("premium") or 0), 2),
+                    "accumulation": round(float(p.get("accumulation") or 0), 2),
+                })
+    return out
+
+
 @router.get("/alerts")
 async def get_production_alerts(
     db: AsyncSession = Depends(get_db),
@@ -1194,6 +1236,16 @@ async def get_production_alerts(
                     "premium": round(float(r.total_premium or 0), 2),
                     "accumulation": round(float(r.accumulation or 0), 2),
                 })
+
+    # ONE definition of "unpaid": the persisted comparison's only_production
+    # customers — the same list השוואת נפרעים and its company summary show.
+    # The raw-record pass above disagreed (QA 2026-10-01: 58 here vs 39 there):
+    # it judged pension funds the comparison deliberately leaves out, and
+    # treated a ₪0 נפרעים line as "not paid". It stays only as the fallback for
+    # a user with no comparison yet.
+    from_cmp = await _unpaid_from_comparison(db, user.id)
+    if from_cmp is not None:
+        unpaid = from_cmp
 
     unpaid_list = [
         {**u, "companies": sorted(u["companies"]),
@@ -2205,7 +2257,7 @@ async def get_production_clients(
         .order_by(desc(order_col))
         .limit(50)
     )
-    return [
+    out = [
         {
             "id_number": r.id_number,
             "name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
@@ -2213,9 +2265,58 @@ async def get_production_clients(
             "premium": float(r.premium),
             "accumulation": float(r.accumulation),
             "products": r.products,
+            "source": "production",
         }
         for r in q.all()
     ]
+
+    # A customer who is only in the current נפרעים (no production row) used to
+    # return nothing at all — the search looked like it was broken (QA
+    # 2026-10-01: "search 56004914 and nothing happens"). Those come back too,
+    # marked source="nifraim".
+    if search and len(out) < 50:
+        comm_ids = await _current_commission_upload_ids(db, user.id)
+        if comm_ids:
+            seen = {_normalize_id(o["id_number"]) for o in out}
+            cq = await db.execute(
+                select(
+                    ClientRecord.id_number,
+                    func.min(ClientRecord.first_name).label("first_name"),
+                    func.min(ClientRecord.last_name).label("last_name"),
+                    func.min(ClientRecord.receiving_company).label("company"),
+                    func.count().label("products"),
+                )
+                .where(
+                    ClientRecord.upload_id.in_(comm_ids), ClientRecord.id_number.isnot(None),
+                    (ClientRecord.id_number.contains(search))
+                    | (ClientRecord.first_name.ilike(f"%{search}%"))
+                    | (ClientRecord.last_name.ilike(f"%{search}%")),
+                )
+                .group_by(ClientRecord.id_number)
+                .limit(50 - len(out))
+            )
+            for r in cq.all():
+                if _normalize_id(r.id_number) in seen:
+                    continue
+                out.append({
+                    "id_number": r.id_number,
+                    "name": f"{r.first_name or ''} {r.last_name or ''}".strip(),
+                    "company": r.company, "premium": 0.0, "accumulation": 0.0,
+                    "products": r.products, "source": "nifraim",
+                })
+    return out
+
+
+async def _current_commission_upload_ids(db, user_id) -> list:
+    """The נפרעים uploads the dashboard counts right now (latest per company)."""
+    ups = _select_unified_uploads(list((await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user_id,
+            FileUpload.is_production == False,
+            FileUpload.file_category == "commission",
+        ).order_by(FileUpload.uploaded_at.desc())
+    )).scalars().all()))
+    return [u.id for u in ups]
 
 
 @router.get("/clients/{id_number}")
@@ -2224,23 +2325,42 @@ async def get_client_detail(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get all products for a specific client across active production uploads."""
+    """All products for a client across active production uploads, plus what
+    the current נפרעים paid on them (`paid`). A client who is only in נפרעים
+    returns no products but their paid lines."""
     uids = await _get_production_upload_ids(db, user.id)
-    if not uids:
-        raise HTTPException(status_code=404, detail="אין קובץ פרודוקציה פעיל")
+    key = id_number.lstrip('0')
+    records = []
+    if uids:
+        records = (await db.execute(
+            select(ClientRecord).where(ClientRecord.upload_id.in_(uids), ClientRecord.id_number == key)
+        )).scalars().all()
 
-    result = await db.execute(
-        select(ClientRecord)
-        .where(
-            ClientRecord.upload_id.in_(uids),
-            ClientRecord.id_number == id_number.lstrip('0'),
-        )
-    )
-    records = result.scalars().all()
-    if not records:
+    paid = []
+    comm_ids = await _current_commission_upload_ids(db, user.id)
+    comm_recs = []
+    if comm_ids:
+        comm_recs = (await db.execute(
+            select(ClientRecord).where(ClientRecord.upload_id.in_(comm_ids), ClientRecord.id_number == key)
+        )).scalars().all()
+    for r in comm_recs:
+        amount = _get_commission({
+            "commission_paid": r.commission_paid,
+            "commission_before_fee": r.commission_before_fee,
+            "actual_amount": r.actual_amount,
+        })
+        paid.append({
+            "product": r.fund_type or r.product or r.product_type or "",
+            "company": r.receiving_company or "",
+            "commission": round(float(amount or 0), 2),
+            "policy_number": r.fund_policy_number or "",
+        })
+
+    if not records and not paid:
         raise HTTPException(status_code=404, detail="לקוח לא נמצא")
 
-    name = f"{records[0].first_name or ''} {records[0].last_name or ''}".strip()
+    src = records[0] if records else comm_recs[0]
+    name = f"{src.first_name or ''} {src.last_name or ''}".strip()
     products = []
     for r in records:
         products.append({
@@ -2258,6 +2378,9 @@ async def get_client_detail(
         "products": products,
         "total_premium": sum(p["premium"] for p in products),
         "total_accumulation": sum(p["accumulation"] for p in products),
+        "paid": paid,
+        "total_paid": round(sum(p["commission"] for p in paid), 2),
+        "in_production": bool(records),
     }
 
 

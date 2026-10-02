@@ -65,6 +65,14 @@
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
       <!-- סוכן המשרד — the back-office agent (mail + unpaid commission) -->
       <NifraAgentIcon size="big" @open="openCollector" />
+      <!-- no room on the left band (1360–1399px): the calls widget joins this column -->
+      <CallWidget v-if="!roomForCallWidget" size="big" pop-side="left" />
+    </div>
+    <!-- שיחות — record a conversation; ivrit.ai transcribes, Claude summarises.
+         Home only, in the empty band between the side rail and the cards,
+         above the insights orbit. -->
+    <div v-if="showEmotionClock && roomForCallWidget" class="ws-call-widget">
+      <CallWidget size="big" pop-side="right" />
     </div>
     <div
       v-else
@@ -73,8 +81,9 @@
     >
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <NifraAgentIcon size="small" @open="openCollector" />
+      <CallWidget size="small" pop-side="left" />
     </div>
-    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" @open-mail="collectorOpen = false; mailAgentOpen = true" />
+    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" @open-mail="collectorOpen = false; mailAgentOpen = true" @open-vizs="onLatestVizs" />
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
          replaced `AiInsightCard`, a full-width summary band that sat above
@@ -353,6 +362,7 @@ import PortalTab from '../components/workspace/PortalTab.vue'
 import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
 import MaslakaTab from '../components/workspace/MaslakaTab.vue'
+import CallWidget from '../components/calls/CallWidget.vue'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 import AiVizPanel from '../components/workspace/AiVizPanel.vue'
 import AiAssistantWidget from '../components/workspace/AiAssistantWidget.vue'
@@ -544,6 +554,8 @@ function openCollector(el) {
 }
 
 const showEmotionClock = computed(() => viewMode.value === 'home' && roomForEmotionClock.value)
+// The calls widget's left band (rail ends at ~100px, cards start at (vw-882)/2) is wide enough from 1400px.
+const roomForCallWidget = useMq('(min-width: 1400px) and (min-height: 700px)')
 
 async function maybeOpenSetup() {
   if (setup.isCompleted()) return
@@ -871,6 +883,15 @@ async function openFundDetail(trackId) {
    Above the waves (z:0), below modals (1010+), onboarding (5000+), and the
    dropzone overlay (9999). Hidden in print so it doesn't show up on the
    dashboard PDF the agent prints for customers. */
+/* Calls widget: centred in the band between the side rail (right edge ≈100px)
+   and the card grid (left edge = (100vw − 882px)/2), clear of the insights
+   orbit below it (bottom 24px + 280px). 118px ring + caption ≈ 154px tall. */
+.ws-call-widget {
+  position: fixed;
+  left: calc((100vw - 882px) / 4 - 9px);
+  bottom: 312px;
+  z-index: 50;
+}
 .ws-insights-launcher {
   position: fixed;
   bottom: 24px;

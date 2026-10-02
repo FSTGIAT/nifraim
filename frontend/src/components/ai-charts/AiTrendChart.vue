@@ -4,6 +4,12 @@
        with the value, so the strip reads as a texture at a glance; the
        numbers row gives the three facts that matter. -->
   <div class="aitr" :class="{ 'aitr--in': entered }">
+    <div class="aitr-trace" aria-live="polite">
+      <div>
+        <span class="aitr-trace-k">{{ hovered !== null ? 'נבחר' : 'אחרון' }} · <b>{{ traced?.label }}</b></span>
+        <strong class="aitr-trace-v ltr-number">{{ fmtFull(springVal, unit) }}</strong>
+      </div>
+    </div>
     <p class="aitr-stats">
       <span v-for="s in stats" :key="s.k">
         {{ s.k }} <strong class="ltr-number" :class="s.cls">{{ s.v }}</strong>
@@ -21,18 +27,22 @@
         <span v-for="t in axis.ticks" :key="'g' + t" class="aitr-gridline"
               :class="{ 'aitr-gridline--zero': t === 0 }" :style="{ bottom: pos(t) + '%' }" aria-hidden="true"></span>
 
+        <!-- hover trace: a dashed level line that springs to the traced value; pill on the right -->
+        <span v-if="traced && entered" class="aitr-traceline" :style="{ bottom: springPos + '%' }">
+          <b class="aitr-traceline-pill ltr-number">{{ fmtCompact(traced.value, unit) }}</b>
+        </span>
         <div class="aitr-cols">
           <div v-for="(p, i) in points" :key="p.label + i" class="aitr-col"
                tabindex="0" role="img" :aria-label="`${p.label}: ${fmtFull(p.value, unit)}`"
                @mouseenter="hovered = i" @focus="hovered = i" @blur="hovered = null">
             <span class="aitr-bar"
-                  :class="{ 'is-last': p.hi, 'is-neg': p.value < 0, 'is-dim': hovered !== null && hovered !== i }"
+                  :class="{ 'is-last': p.hi, 'is-neg': p.value < 0, 'is-dim': hovered !== null && hovered !== i, 'is-traced': tracedIdx === i }"
                   :style="{
                     bottom: (p.value < 0 ? pos(p.value) : pos(0)) + '%',
                     height: Math.max(Math.abs(pos(p.value) - pos(0)), 0.8) + '%',
-                    opacity: hovered === i || p.hi ? 1 : 0.35 + 0.65 * (Math.abs(p.value) / maxAbs),
+                    opacity: tracedIdx === i ? 1 : 0.2,
                     '--i': i,
-                    '--c': p.value < 0 ? 'var(--chart-loss)' : tone.main,
+                    '--c': 'var(--primary, #181818)',
                   }"></span>
             <Transition name="aitr-tip">
               <span v-if="hovered === i" class="aitr-tip"
@@ -59,6 +69,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fmtFull, fmtCompact, niceTicks, prefersReducedMotion, toneFor } from './format.js'
+import { useSpring } from '../../composables/useSpring.js'
 
 const props = defineProps({ viz: { type: Object, required: true } })
 
@@ -115,6 +126,15 @@ const stats = computed(() => {
 
 const hovered = ref(null)
 const entered = ref(false)
+// Hover trace: rests on the highlighted (latest) point; hovering moves it.
+const tracedIdx = computed(() => {
+  if (hovered.value !== null) return hovered.value
+  const i = points.value.findIndex((p) => p.hi)
+  return i >= 0 ? i : points.value.length - 1
+})
+const traced = computed(() => points.value[tracedIdx.value] || null)
+const springVal = useSpring(() => traced.value?.value ?? 0, { stiffness: 170, damping: 26 })
+const springPos = useSpring(() => (traced.value ? pos(traced.value.value) : 0))
 onMounted(() => {
   if (prefersReducedMotion()) { entered.value = true; return }
   requestAnimationFrame(() => requestAnimationFrame(() => { entered.value = true }))
@@ -155,14 +175,33 @@ onMounted(() => {
   position: absolute; left: 50%; width: min(100%, 24px); transform: translateX(-50%) scaleY(0);
   transform-origin: bottom;
   border-radius: 4px 4px 0 0;
-  background: linear-gradient(to top, color-mix(in srgb, var(--c) 78%, white), var(--c));
+  background: var(--c);
   transition:
-    transform 0.8s cubic-bezier(0.2, 0.7, 0.3, 1) calc(var(--i) * 28ms),
+    transform 0.9s var(--ease-silk, cubic-bezier(0.32, 0.72, 0, 1)) calc(var(--silk-content-delay, 280ms) + var(--i) * 28ms),
     opacity 0.2s ease;
 }
 .aitr-bar.is-neg { transform-origin: top; border-radius: 0 0 4px 4px; }
 .aitr--in .aitr-bar { transform: translateX(-50%) scaleY(1); }
-.aitr-bar.is-dim { opacity: 0.22 !important; }
+.aitr-bar { transition-property: transform, opacity; }
+.aitr-bar.is-traced { box-shadow: 0 0 0 1px rgba(24, 24, 24, 0.18); }
+
+.aitr-trace { direction: rtl; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.aitr-trace-k { display: block; font-size: 12px; color: var(--text-muted); }
+.aitr-trace-k b { color: var(--text-secondary); font-weight: 650; }
+.aitr-trace-v { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); font-variant-numeric: tabular-nums; }
+.aitr-trace-label { font-size: 12.5px; color: var(--text-secondary); }
+.aitr-traceline {
+  position: absolute; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none;
+  border-top: 1.5px dashed var(--text); opacity: 0.55;
+  animation: aitrTraceIn .5s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + 800ms) both;
+}
+/* RTL app: the value pill sits on the right edge of the line */
+.aitr-traceline-pill {
+  position: absolute; right: -2px; top: -10px;
+  padding: 1px 7px; border-radius: 5px;
+  background: var(--text); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px;
+}
+@keyframes aitrTraceIn { from { opacity: 0; } to { opacity: 0.55; } }
 
 .aitr-xaxis {
   grid-column: 2; display: flex; gap: 3px; margin-top: 8px;
@@ -190,5 +229,6 @@ onMounted(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .aitr-bar { transition: opacity 0.2s; transform: translateX(-50%); }
+  .aitr-traceline { animation: none; }
 }
 </style>

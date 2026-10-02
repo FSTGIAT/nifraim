@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '../api/client.js'
+import { streamAgent, stripMarkdown } from '../utils/agentStream.js'
 
 // The office agent ("סוכן המשרד") — services/office_agent.py. One brief that
 // speaks for the Mail Agent + the collection agent; every action goes through
@@ -77,20 +78,33 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     try { return (await api.get('/office-agent/contacts', { params: { q } })).data || [] } catch { return [] }
   }
 
+  // Nifra AI v2: streamed from /api/ai/agent (tools + fast lane). The answer is
+  // pushed once complete (AiStreamingText types it); meanwhile `askStatus`
+  // shows which tool runs ("בודק עמלות שלא שולמו…").
+  const askStatus = ref('')
   async function ask(question, mentions = []) {
     const q = (question || '').trim()
     if (!q) return
     const history = thread.value.slice(-8).map((m) => ({ role: m.role, text: m.text }))
     thread.value.push({ role: 'user', text: q })
     busy.value = 'ask'
+    askStatus.value = ''
+    let text = ''
+    let proposal = null
+    const vizs = []
     try {
-      const { data } = await api.post('/office-agent/ask', { question: q, history, mentions })
-      // proposal = an email / meeting invite the agent prepared; sent only on approve()
-      thread.value.push({ role: 'agent', text: data.answer, proposal: data.proposal ? { ...data.proposal, status: 'open' } : null })
+      await streamAgent({ question: q, history, mentions, surface: 'panel' }, (ev) => {
+        if (ev.status) askStatus.value = ev.status
+        if (ev.text) text += ev.text
+        if (ev.viz) vizs.push(ev.viz)
+        if (ev.proposal) proposal = { ...ev.proposal, status: 'open' }
+      })
+      thread.value.push({ role: 'agent', text: stripMarkdown(text).trim() || 'אין לי תשובה כרגע.', proposal, vizs })
     } catch {
       thread.value.push({ role: 'agent', text: 'לא הצלחתי לענות כרגע — נסו שוב בעוד רגע.' })
     } finally {
       busy.value = ''
+      askStatus.value = ''
     }
   }
 
@@ -108,6 +122,9 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
       const d = e?.response?.data?.detail
       error.value = d === 'bad_email' ? 'כתובת המייל לא תקינה'
         : d === 'bad_start' ? 'המועד לא תקין'
+        : d === 'bad_code' ? 'קוד בקשה לא תקין'
+        : e?.response?.status === 503 ? 'המסלקה כבויה בסביבה הזו'
+        : e?.response?.status === 403 ? 'השיוך למסלקה עוד לא אושר'
         : message(e)
       return false
     } finally {
@@ -115,5 +132,5 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     }
   }
 
-  return { searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, needsMail, load, narrate, act, ask }
+  return { askStatus, searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, needsMail, load, narrate, act, ask }
 })

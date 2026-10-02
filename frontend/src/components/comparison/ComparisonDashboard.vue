@@ -25,6 +25,16 @@
              the number here — QA 2026-10-01). -->
       </div>
     </div>
+    <!-- Empty savings funds (₪0 accumulation, no premium) are not unpaid —
+         nothing to earn on — so the comparison lists them apart (QA
+         2026-10-01). One quiet line, opens the same customer list. -->
+    <button v-if="props.noValueCustomers.length" type="button" class="kpi-novalue"
+            @click="openFilterModal('קופות ריקות או לא פעילות', props.noValueCustomers, $event.currentTarget)">
+      <span class="ltr-number">{{ props.noValueCustomers.length }}</span>
+      לקוחות עם קופות ריקות או לא פעילות — אין עליהן עמלה, לא נספרו כ"לא שולם"
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>
+    </button>
 
     </div>
 
@@ -153,10 +163,21 @@
     <DataModal :open="filterModal.open" :origin="fmOrigin" :title="filterModal.title"
                :badge="filterModal.customers.length" :period="periodLabel"
                accent="var(--tab-comparison)" @close="closeFilterModal">
+      <!-- "רק בנפרעים" explains itself before the list (QA 2026-10-01). -->
+      <CustomerBridge v-if="filterModal.kind === 'only' && props.population && props.population.commission_only"
+                      mode="only" :population="props.population" class="fm-explain" />
       <CompareCustomerList :customers="filterModal.customers" :rates="commissionRates"
                            :actions="filterModal.actions || null"
                            :category="props.categoryLabel"
                            @open="(c, el) => openDetailFromFilter(c, el)" />
+    </DataModal>
+
+    <!-- סה״כ לקוחות → why this number differs from the production tab. -->
+    <DataModal :open="bridgeOpen" :origin="bridgeOrigin" title="סה״כ לקוחות"
+               :badge="props.population?.total" :period="periodLabel"
+               accent="var(--tab-comparison)" @close="bridgeOpen = false">
+      <CustomerBridge v-if="props.population" :population="props.population"
+                      :paid="kpiMatched.length" :unpaid="kpiUnpaid.length" />
     </DataModal>
 
   </div>
@@ -165,6 +186,7 @@
 <script setup>
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import KpiGlyph from '../workspace/KpiGlyph.vue'
+import CustomerBridge from './CustomerBridge.vue'
 import { ref, computed, watch, onMounted, onUnmounted, toRef, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import api from '../../api/client.js'
@@ -182,6 +204,10 @@ import { useAiContextStore } from '../../stores/aiContext.js'
 
 const props = defineProps({
   customers: { type: Array, required: true },
+  // only-production customers whose every product is an empty savings fund
+  noValueCustomers: { type: Array, default: () => [] },
+  // summary.population — the exact production ↔ comparison customer bridge
+  population: { type: Object, default: null },
   categoryLabel: { type: String, default: '' },
   companySource: { type: String, default: '' },
   companySources: { type: Array, default: () => [] },
@@ -407,16 +433,21 @@ const totalUnpaidCharge = computed(() => unpaidChargeOf(effectiveUnpaidCustomers
 const kpiUnpaidCharge = computed(() => unpaidChargeOf(kpiUnpaid.value))
 
 // The six KPI cards (colour = category; ink = text-safe shade for the badge).
+const bridgeOpen = ref(false)
+const bridgeOrigin = ref(null)
+
 const kpiCards = computed(() => [
   { key: 'total', glyph: 'matched-customers', label: 'סה״כ לקוחות', value: kpiTotalCustomers.value,
-    color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)' },
+    color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)',
+    // Opens the bridge: production → checked → + only-in-נפרעים = this number.
+    open: props.population ? (el) => { bridgeOrigin.value = el; bridgeOpen.value = true } : null },
   { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
     color: '#E04B48', ink: '#C23934',
-    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value) }),
+    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: (list) => sendAllUnpaidMail(list || kpiUnpaid.value), excel: (list) => downloadUnpaidExcel(list || kpiUnpaid.value) }),
     actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
   { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
     color: '#4E9DD0', ink: '#35719A',
-    open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el, { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value) }),
+    open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el, { mail: (list) => sendOnlyCommissionMail(list || kpiOnlyComm.value), excel: (list) => downloadOnlyCommissionExcel(list || kpiOnlyComm.value) }, 'only'),
     actions: kpiOnlyComm.value.length ? { mail: () => sendOnlyCommissionMail(kpiOnlyComm.value), excel: () => downloadOnlyCommissionExcel(kpiOnlyComm.value), mailTitle: 'שלח מייל על לקוחות שרק בנפרעים' } : null },
   { key: 'charge', glyph: 'charge', label: 'חיוב לא משולם', value: formatAmount(kpiUnpaidCharge.value), ltr: true, title: 'סה"כ חיוב לא משולם',
     color: '#D6336C', ink: '#C42B60' },
@@ -822,9 +853,9 @@ const fmOrigin = ref(null)
 const detailOrigin = ref(null)
 const periodLabel = computed(() => (props.periodMonth ? `נפרעים ${String(props.periodMonth).slice(0, 7)}` : ''))
 
-function openFilterModal(title, customers, originEl = null, actions = null) {
+function openFilterModal(title, customers, originEl = null, actions = null, kind = null) {
   fmOrigin.value = originEl
-  filterModal.value = { open: true, title, customers, actions }
+  filterModal.value = { open: true, title, customers, actions, kind }
   productFilter.value = null
   productFilterOpen.value = false
 }
@@ -1361,6 +1392,13 @@ function formatCompact(val) {
    "סה"כ יתרה" dropped onto a second line on every screen. An auto-fill
    minmax() (the production tab's rule) only looks right at some widths — with
    six cards it re-wraps as the container narrows, so the count is explicit. */
+.kpi-novalue {
+  display: flex; align-items: center; gap: 6px; margin: 8px 6px 0; padding: 4px 4px;
+  border: none; background: none; font: inherit; font-size: 12.5px; color: var(--text-muted); cursor: pointer;
+}
+.kpi-novalue .ltr-number { font-weight: 700; color: var(--text); }
+.kpi-novalue:hover { color: var(--tab-comparison); }
+.kpi-novalue:focus-visible { outline: 2px solid var(--tab-comparison); outline-offset: 2px; border-radius: 6px; }
 .kpi-panel {
   margin: 12px 0 18px; padding: 10px;
   background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 18px;
@@ -2012,4 +2050,5 @@ function formatCompact(val) {
   .gap-alert { flex-wrap: wrap; }
   .ga-action { width: 100%; }
 }
+.fm-explain { margin-bottom: 14px; }
 </style>

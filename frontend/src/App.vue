@@ -152,6 +152,9 @@ const navTabs = [
   --tab-maslaka-wash: rgba(44, 95, 107, 0.10);
   --tab-automation: var(--chart-12);
   --tab-automation-wash: rgba(14, 140, 138, 0.10);
+  --tab-calls: var(--chart-11);
+  --tab-calls-wash: rgba(217, 106, 181, 0.12);
+  --tab-calls-ink: #A63A86;
   /* Text-safe inks for the pastel-yellow (chart-8) CTA surfaces */
   --chart-8-ink: #4A3900;
   --chart-8-deep: #8A6300;
@@ -173,6 +176,12 @@ const navTabs = [
   --radius-lg: 16px;
   --radius-xl: 24px;
   --transition: cubic-bezier(0.16, 1, 0.3, 1);
+  /* AI charts open "slow and silky" — iPhone sheet curve (composables/useSilkOpen.js) */
+  --ease-silk: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-silk: 650ms;
+  --dur-silk-close: 450ms;
+  --silk-content-delay: 280ms;
+  --silk-stagger: 40ms;
 }
 
 body {
@@ -353,6 +362,30 @@ a {
               transform 1.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .sr.sr--in { opacity: 1; transform: none; }
+
+/* ── Silk: how every AI chart opens (useSilkOpen.js). Overlay fades + blurs in;
+   the card rises from 94% with a soft blur, on the iOS sheet curve; close is
+   the same motion back at ~70% of the time. ─────────────────────────────── */
+.silk-enter-active { transition: opacity 400ms ease, backdrop-filter 400ms ease; }
+.silk-leave-active { transition: opacity var(--dur-silk-close) var(--ease-silk), backdrop-filter var(--dur-silk-close) ease; }
+.silk-enter-from, .silk-leave-to { opacity: 0; backdrop-filter: blur(0) !important; }
+.silk-enter-active .silk-card {
+  transition: transform var(--dur-silk) var(--ease-silk), opacity var(--dur-silk) var(--ease-silk), filter var(--dur-silk) var(--ease-silk);
+}
+.silk-leave-active .silk-card {
+  transition: transform var(--dur-silk-close) var(--ease-silk), opacity var(--dur-silk-close) var(--ease-silk), filter var(--dur-silk-close) var(--ease-silk);
+}
+.silk-enter-from .silk-card, .silk-leave-to .silk-card { transform: translateY(24px) scale(0.94); opacity: 0; filter: blur(8px); }
+/* switching charts inside the panel (carousel): a short silky cross-slide */
+.silk-swap-enter-active, .silk-swap-leave-active { transition: opacity 420ms var(--ease-silk), transform 520ms var(--ease-silk); }
+.silk-swap-leave-active { position: absolute; inset: 0; }
+.silk-swap-enter-from { opacity: 0; transform: translateX(-28px); }
+.silk-swap-leave-to { opacity: 0; transform: translateX(28px); }
+@media (prefers-reduced-motion: reduce) {
+  .silk-enter-active, .silk-leave-active, .silk-enter-active .silk-card, .silk-leave-active .silk-card,
+  .silk-swap-enter-active, .silk-swap-leave-active { transition-duration: 150ms !important; }
+  .silk-enter-from .silk-card, .silk-leave-to .silk-card, .silk-swap-enter-from, .silk-swap-leave-to { transform: none; filter: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .sr { opacity: 1; transform: none; transition: none; }
 }

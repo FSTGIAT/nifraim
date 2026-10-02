@@ -1,3 +1,9 @@
+> **2026-10-02 — Nifra AI v2:** the chat no longer uses `<<VIZ:…>>` markers from `stream_chat`. Charts come from the
+> `render_chart(result_id, type)` tool (`services/agent/tools_viz.py`) or the fast-lane router — the server builds the
+> payload from rows a tool already returned, so the model never re-types numbers. Every chart opens with the shared
+> **silk** transition and bar/trend charts carry the **hover trace**. See `docs/ARCHITECTURE.md` §17c. The rest of this
+> file describes the legacy `/api/ai/chat` path, which still exists.
+
 # AI Charts (viz) — how an answer becomes a graph
 
 > Scope: the in-app AI assistant's charts ("הראה לי גרפים של…"). Written 2026-09-22

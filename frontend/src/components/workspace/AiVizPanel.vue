@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <Transition name="ai-viz">
+    <Transition name="silk">
       <div
         v-if="open && activeViz"
         class="ai-viz-overlay"
@@ -9,14 +9,9 @@
         :aria-label="activeViz.title || 'תצוגה חזותית'"
         @click.self="close"
       >
-        <div class="ai-viz-card">
+        <div class="ai-viz-card silk-card">
           <header class="ai-viz-head">
             <div class="ai-viz-head-left">
-              <span class="ai-viz-badge" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-              </span>
               <div class="ai-viz-titles">
                 <span class="ai-viz-title">{{ activeViz.title || 'תצוגה חזותית' }}</span>
                 <span v-if="vizList.length > 1" class="ai-viz-sub ltr-number">
@@ -70,7 +65,9 @@
             <div v-if="error" class="ai-viz-error">{{ error }}</div>
             <!-- Registered types render natively (hover, table view, RTL);
                  anything else — fund-track — still plays in Remotion. -->
-            <AiChart v-if="native" :key="chartKey" :viz="activeViz" :show-table="showTable" />
+            <Transition name="silk-swap">
+              <AiChart v-if="native" :key="chartKey" :viz="activeViz" :show-table="showTable" />
+            </Transition>
             <div v-show="!native" ref="mountEl" class="ai-viz-mount" aria-hidden="true"></div>
           </div>
 
@@ -374,9 +371,9 @@ onBeforeUnmount(() => {
 .ai-viz-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1010; /* above chat sheet (1005) and its overlay (1004) */
+  z-index: 1030; /* above chat sheet (1005), drills (1010/1020) and the Nifra Agent panel */
   background: rgba(17, 12, 6, 0.55);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px) saturate(1.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -455,6 +452,7 @@ onBeforeUnmount(() => {
 
 .ai-viz-body {
   flex: 1;
+  position: relative;
   padding: 20px;
   display: flex;
   align-items: center;
@@ -565,32 +563,5 @@ onBeforeUnmount(() => {
 .ltr-number { direction: ltr; unicode-bidi: isolate; }
 
 /* Transitions */
-.ai-viz-enter-active { transition: opacity 0.28s var(--transition); }
-.ai-viz-leave-active { transition: opacity 0.22s var(--transition); }
-.ai-viz-enter-active .ai-viz-card,
-.ai-viz-leave-active .ai-viz-card {
-  transition: transform 0.28s var(--transition), opacity 0.28s var(--transition);
-}
-.ai-viz-enter-from,
-.ai-viz-leave-to { opacity: 0; }
-.ai-viz-enter-from .ai-viz-card,
-.ai-viz-leave-to .ai-viz-card {
-  opacity: 0;
-  transform: scale(0.94) translateY(12px);
-}
 
-@media (max-width: 860px) {
-  .ai-viz-overlay { padding: 12px; }
-  .ai-viz-body { padding: 14px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ai-viz-enter-active,
-  .ai-viz-leave-active,
-  .ai-viz-enter-active .ai-viz-card,
-  .ai-viz-leave-active .ai-viz-card { transition-duration: 0.1s; }
-  .ai-viz-enter-from .ai-viz-card,
-  .ai-viz-leave-to .ai-viz-card { transform: none; }
-  .ai-viz-loader { animation: none; }
-}
 </style>

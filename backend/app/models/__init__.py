@@ -42,5 +42,12 @@ from app.models.mail_agent_gap import MailAgentGap
 from app.models.cycle_notification import CycleNotification
 from app.models.agreement_request import AgreementRequest
 from app.models.collection_case import CollectionCase
+from app.models.ai_memory import AiMemory, AiIntentLog
+from app.models.fund_market import FundMarketMonthly
+from app.models.call_recording import CallRecording
+
+# every process that loads the models (API, local worker, scripts) bumps users.ai_data_version on AI-relevant writes
+from app.services.agent.versioning import register_listeners as _register_ai_version_listeners  # noqa: E402
+_register_ai_version_listeners()
 
 __all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "AgentPortalOffer", "PortalOfferClick", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "MaslakaAgentLink", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]

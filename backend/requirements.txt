@@ -40,3 +40,4 @@ lxml>=5.0
 pypdf==6.1.1
 reportlab==5.0.1
 pypdfium2==5.8.0
+redis==5.2.1

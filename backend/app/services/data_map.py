@@ -88,6 +88,16 @@ class MapContext:
                 r["products"] += 1
                 (r["paid"] if status == "matched" else r["unpaid"] if status == "only_production" else set()).add(c.get("id_number"))
                 self.names.setdefault(k, p.get("company") or p.get("company_full"))
+            # Unpaid at one company, paid at another: these are the paid ones.
+            for p in (c.get("paid_production_products") or []):
+                k = _key(p.get("company") or p.get("company_full"))
+                if not k:
+                    continue
+                r = out.setdefault(k, {"customers": set(), "paid": set(), "unpaid": set(), "products": 0, "received": 0.0})
+                r["customers"].add(c.get("id_number"))
+                r["products"] += 1
+                r["paid"].add(c.get("id_number"))
+                self.names.setdefault(k, p.get("company") or p.get("company_full"))
             for p in (c.get("commission_products") or []):
                 k = _key(p.get("company") or p.get("receiving_company"))
                 if k:

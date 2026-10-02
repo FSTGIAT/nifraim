@@ -1004,6 +1004,15 @@ def _parse_production(df: pd.DataFrame, track_lookup: dict | None = None,
         if r.get("receiving_company") and r["receiving_company"] not in ("nan", "None")
     )
     company_source = companies.most_common(1)[0][0] if companies else None
+    # A production file spanning SEVERAL insurers is the merged ("מאוחד") book — same rule
+    # as the merged נפרעים parser. Labelling it by its biggest insurer made a manual upload
+    # replace only that insurer's active file and leave the previous merged file active →
+    # every other company counted twice (test user 2026-10-02: מנורה 285 + 80 rows).
+    # Legal entities of one insurer (הפניקס חברה לביטוח + הפניקס אקסלנס) are ONE insurer.
+    from app.utils.company_norm import company_stem
+    insurers = {company_stem(c) or c for c in companies}
+    if len(insurers) > 1:
+        company_source = "מאוחד"
 
     return {
         "format": "production",

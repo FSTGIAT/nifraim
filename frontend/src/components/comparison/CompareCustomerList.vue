@@ -9,7 +9,7 @@
         <span class="ccl-lbl">לקוחות</span>
         <span class="ccl-val ltr-number">{{ shown.length.toLocaleString() }}</span>
       </div>
-      <div v-if="totReceived > 0" class="ccl-stat">
+      <div v-if="totReceived > 0 && !allUnpaid" class="ccl-stat">
         <span class="ccl-lbl">עמלה שהתקבלה</span>
         <span class="ccl-val ltr-number">{{ money(totReceived) }}</span>
       </div>
@@ -21,6 +21,19 @@
         <span class="ccl-lbl">פרמיה</span>
         <span class="ccl-val ltr-number">{{ money(totPremium) }}</span>
       </div>
+    </div>
+
+    <!-- Company cut (QA 2026-10-01: "can't filter by company"). Text tabs with
+         counts, per the style rules — not chips. -->
+    <div v-if="companies.length > 1" class="ccl-cos" role="tablist" aria-label="סינון לפי חברה">
+      <button type="button" role="tab" :aria-selected="!company" :class="{ on: !company }" @click="company = null">
+        הכל <span class="ltr-number">{{ customers.length }}</span>
+      </button>
+      <button v-for="co in companies" :key="co.name" type="button" role="tab"
+              :aria-selected="company === co.name" :class="{ on: company === co.name }"
+              @click="company = co.name">
+        {{ co.name }} <span class="ltr-number">{{ co.count }}</span>
+      </button>
     </div>
 
     <div class="ccl-tools">
@@ -40,11 +53,11 @@
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
       </div>
       <template v-if="actions">
-        <button class="ccl-act" type="button" @click="actions.mail()">
+        <button class="ccl-act" type="button" @click="actions.mail(shown)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
           שלח מייל
         </button>
-        <button class="ccl-act" type="button" @click="actions.excel()">
+        <button class="ccl-act" type="button" @click="actions.excel(shown)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
           Excel
         </button>
@@ -64,20 +77,34 @@
             <span class="ccl-name">{{ nameOf(c) }}</span>
             <span class="ccl-id ltr-number">{{ c.id_number }}</span>
           </span>
-          <span class="ccl-status">{{ statusText(c) }}</span>
+          <!-- WHAT this customer is about: the company and the product (QA
+               2026-10-01: the card said only "רק בפרודוקציה"). -->
+          <span class="ccl-what">
+            <span class="ccl-co">
+              <span v-for="co in companiesOf(c).slice(0, 2)" :key="co" class="ccl-co-item">
+                <CompanyLogo :company="co" :size="16" :frame="false" />{{ co }}
+              </span>
+              <span v-if="companiesOf(c).length > 2" class="ccl-more-co ltr-number">+{{ companiesOf(c).length - 2 }}</span>
+            </span>
+            <span class="ccl-prod">
+              {{ productLine(c) }}<template v-if="statusNote(c)"> · <b>{{ statusNote(c) }}</b></template>
+            </span>
+          </span>
           <span class="ccl-pill ltr-number" :title="`${productCount(c)} מוצרים`">{{ productCount(c) }}</span>
           <span class="ccl-fig">
             <template v-if="expectedOf(c) >= 0.5">
               <span class="ltr-number">{{ money(expectedOf(c)) }}</span>
               <small>צפוי ולא שולם</small>
             </template>
-            <template v-else-if="c.total_commission >= 0.5">
+            <!-- Never "התקבל" on an unpaid customer: that money came from OTHER
+                 companies and read as if this one paid (QA 2026-10-01). -->
+            <template v-else-if="c.match_status !== 'only_production' && c.total_commission >= 0.5">
               <span class="ltr-number">{{ money(c.total_commission) }}</span>
               <small>התקבל</small>
             </template>
             <template v-else-if="accumOf(c) >= 0.5">
               <span class="ltr-number">{{ money(accumOf(c)) }}</span>
-              <small>צבירה</small>
+              <small>{{ c.match_status === 'only_production' ? 'צבירה שלא שולמה' : 'צבירה' }}</small>
             </template>
             <template v-else-if="c.total_premium >= 0.5">
               <span class="ltr-number">{{ money(c.total_premium) }}</span>
@@ -101,6 +128,7 @@
 import { ref, computed, watch } from 'vue'
 import { money } from '../../utils/chartDefaults'
 import { expectedFor } from '../../utils/expectedCommission'
+import CompanyLogo from '../workspace/CompanyLogo.vue'
 
 const props = defineProps({
   customers: { type: Array, default: () => [] },
@@ -113,6 +141,7 @@ defineEmits(['open'])
 
 const query = ref('')
 const product = ref(null)
+const company = ref(null)
 const sortKey = ref('value')
 const limit = ref(100)
 const SORTS = [
@@ -120,17 +149,57 @@ const SORTS = [
   { key: 'products', label: 'מוצרים' },
   { key: 'name', label: 'שם' },
 ]
-watch(() => props.customers, () => { query.value = ''; product.value = null; limit.value = 100 })
-watch([query, product, sortKey], () => { limit.value = 100 })
+watch(() => props.customers, () => { query.value = ''; product.value = null; company.value = null; limit.value = 100 })
+watch([query, product, company, sortKey], () => { limit.value = 100 })
+// A product picked under another company may not exist here — clear it.
+watch(company, () => { if (product.value && !products.value.includes(product.value)) product.value = null })
 
 const nameOf = c => [c.first_name, c.last_name].filter(Boolean).join(' ') || c.id_number
-const STATUS = { matched: 'בשני הקבצים', only_commission: 'רק בנפרעים', only_production: 'רק בפרודוקציה' }
-function statusText(c) {
+// Only a status the list title doesn't already say: a customer in both files
+// with some policies unpaid.
+function statusNote(c) {
   if (c.match_status === 'matched' && c.unpaid_count > 0) {
     return `${c.unpaid_count} ${c.unpaid_count === 1 ? 'מוצר' : 'מוצרים'} לא שולמו`
   }
-  return STATUS[c.match_status] || ''
+  // Unpaid here, paid by another company — say who did pay.
+  if (c.match_status === 'only_production' && c.partially_paid) {
+    const paidBy = [...new Set((c.commission_products || []).map(p => p.company).filter(Boolean))]
+    if (paidBy.length) return `שולם רק ב${paidBy.join(', ')}`
+  }
+  // An inactive fund says so — it's why it earns nothing.
+  if (c.match_status === 'only_production') {
+    const st = [...new Set((c.production_products || []).map(p => p.status).filter(Boolean))]
+    if (st.length === 1 && st[0] !== 'פעיל') return st[0]
+  }
+  return ''
 }
+
+// The products this card is ABOUT: the unpaid ones for an unpaid customer, the
+// paid lines for a נפרעים-only one, everything for a matched one. Grouped on
+// the short brand `company` — `company_full` would split one insurer in two.
+function relevantOf(c) {
+  if (c.match_status === 'only_production') return c.production_products || []
+  if (c.match_status === 'only_commission') return c.commission_products || []
+  return [...(c.production_products || []), ...(c.commission_products || [])]
+}
+function companiesOf(c) {
+  return [...new Set(relevantOf(c).map(p => p.company).filter(Boolean))]
+}
+function productLine(c) {
+  const names = [...new Set(relevantOf(c)
+    .filter(p => !company.value || p.company === company.value)
+    .map(p => p.product || p.product_type).filter(Boolean))]
+  if (!names.length) return ''
+  return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]
+}
+const companies = computed(() => {
+  const n = {}
+  for (const c of props.customers) for (const co of companiesOf(c)) n[co] = (n[co] || 0) + 1
+  return Object.entries(n).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+})
+const byCompany = computed(() => company.value
+  ? props.customers.filter(c => companiesOf(c).includes(company.value))
+  : props.customers)
 const productCount = c => Math.max(c.production_count || 0, c.commission_count || 0)
 // Expected commission on the policies that were NOT paid — the same rule as
 // the customer window (utils/expectedCommission), including its fallback to
@@ -141,6 +210,10 @@ const unpaidOf = c => (c.match_status === 'only_production'
   : (c.product_matches?.unmatched_production || []))
 const expectedOf = c => unpaidOf(c)
   .reduce((s, p) => s + (Number(expectedFor(p, props.rates, props.category)) || 0), 0)
+// Sort weight: what is owed first; for an unpaid customer never the money
+// another company paid.
+const valueOf = c => expectedOf(c) * 1000
+  + (c.match_status === 'only_production' ? accumOf(c) / 100 : (c.total_commission || 0))
 const sumOf = (arr, k) => (arr || []).reduce((s, p) => s + (Number(p[k]) || 0), 0)
 const accumOf = c => sumOf(c.production_products, 'accumulation')
 
@@ -153,21 +226,24 @@ function namesOf(c) {
     ...(c.product_matches?.unmatched_commission || []).map(p => p.product),
   ].filter(Boolean)
 }
-const products = computed(() => [...new Set(props.customers.flatMap(namesOf))].sort())
+const products = computed(() => [...new Set(byCompany.value.flatMap(c => company.value
+  ? relevantOf(c).filter(p => p.company === company.value).map(p => p.product).filter(Boolean)
+  : namesOf(c)))].sort())
 
 const shown = computed(() => {
   const q = query.value.toLowerCase()
-  let list = props.customers
+  let list = byCompany.value
   if (product.value) list = list.filter(c => namesOf(c).includes(product.value))
   if (q) list = list.filter(c => nameOf(c).toLowerCase().includes(q) || String(c.id_number || '').includes(q))
   const by = {
-    value: (a, b) => (expectedOf(b) + (b.total_commission || 0)) - (expectedOf(a) + (a.total_commission || 0)),
+    value: (a, b) => valueOf(b) - valueOf(a),
     products: (a, b) => productCount(b) - productCount(a),
     name: (a, b) => nameOf(a).localeCompare(nameOf(b), 'he'),
   }[sortKey.value]
   return [...list].sort(by)
 })
 const visible = computed(() => shown.value.slice(0, limit.value))
+const allUnpaid = computed(() => props.customers.length > 0 && props.customers.every(c => c.match_status === 'only_production'))
 const totReceived = computed(() => shown.value.reduce((s, c) => s + (c.total_commission || 0), 0))
 const totExpected = computed(() => shown.value.reduce((s, c) => s + expectedOf(c), 0))
 const totPremium = computed(() => shown.value.reduce((s, c) => s + (c.total_premium || 0), 0))
@@ -218,7 +294,22 @@ const totPremium = computed(() => shown.value.reduce((s, c) => s + (c.total_prem
 .ccl-who { display: flex; flex-direction: column; min-width: 0; }
 .ccl-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ccl-id { font-size: 11.5px; color: var(--text-muted); }
-.ccl-status { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccl-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ccl-co { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.ccl-co-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ccl-more-co { font-size: 11px; color: var(--text-muted); }
+.ccl-prod { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccl-prod b { font-weight: 600; color: var(--text); }
+.ccl-cos { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
+.ccl-cos button {
+  border: none; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--text-muted);
+  padding: 8px 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.ccl-cos button span { font-size: 11.5px; font-weight: 500; opacity: 0.75; }
+.ccl-cos button:hover { color: var(--text); }
+.ccl-cos button.on { color: var(--acc); border-bottom-color: var(--acc); }
+.ccl-cos button:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .ccl-pill {
   justify-self: center; min-width: 28px; height: 24px; padding: 0 8px; border-radius: 12px; background: var(--bg);
   font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
@@ -235,7 +326,7 @@ const totPremium = computed(() => shown.value.reduce((s, c) => s + (c.total_prem
   .ccl-stat { flex: 1 1 45%; padding: 10px 12px; }
   .ccl-val { font-size: 17px; }
   .ccl-row { grid-template-columns: minmax(0, 1fr) 30px 100px 12px; gap: 8px; padding: 10px; }
-  .ccl-status { display: none; }
+  .ccl-what { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (prefers-reduced-motion: reduce) { .ccl-list li { animation: none; } .ccl-row { transition: none; } }
 .ccl-act {

@@ -114,7 +114,8 @@ Invariants:
 
 | I need to change / understand… | Go to |
 |---|---|
-| **AI chat charts (viz) — why a graph did/didn't open, latency** | `docs/AI_VIZ.md` → `ai_service.stream_chat`, `ai_viz_fallback.py`, `AiVizPanel.vue` |
+| **Nifra AI v2 — any AI answer (chat + Nifra Agent ask), its tools, cache, privacy, fund data** | §17c → `services/agent/` (`loop.py`, `registry.py`, `tools_*.py`), `api/ai_agent.py`, `services/fund_market/`, `utils/agentStream.js`, `tests/test_nifra_agent.py` |
+| **AI chat charts (viz) — why a graph did/didn't open, silk open, hover trace** | §17c + `docs/AI_VIZ.md` → `tools_viz.render_chart`, `ai_service.stream_chat`, `ai_viz_fallback.py`, `AiVizPanel.vue` |
 | **Parse a new insurer Excel format** | `services/parser_service.py` + `utils/hebrew_mappings.py` (see CLAUDE.md "How to Add a Parser") |
 | **Hebrew → DB column mapping / format signatures** | `utils/hebrew_mappings.py` |
 | **Which reporting month a file is *for*** | `parser_service.py::detect_period_month` |
@@ -1238,7 +1239,7 @@ The agent's back-office AI speaks first. **Nifra Agent WRITES, it does not show 
 flowchart RL
   MA[Mail Agent<br/>triage · summary · draft] --> OA[office_agent.brief<br/>greeting + cards by urgency]
   CA[collection_agent<br/>unpaid per insurer · draft · follow-up] --> OA
-  DM[data_map<br/>Markdown site, drill-down] --> ASK[office_agent.ask<br/>Haiku + open_page tool]
+  DM[data_map<br/>Markdown site, drill-down] --> ASK[POST /api/ai/agent<br/>services/agent — §17c]
   OA --> NR[office_agent.narrate<br/>greeting + ≤5 lines → card refs]
   NR --> UI[OfficeAgentPanel = Nifra Agent]
   ASK --> UI
@@ -1270,7 +1271,7 @@ flowchart RL
   - `retention.md`: arrears/cancellation **signals** (active, nothing paid this period) and dormant funds with a balance.
   - `crosssell.md` + the customer page's "תמונת תיק": rule-based overlaps, consolidation, dormant funds, missing cover — **in this agent's book only**.
   - `tasks.md`: open mails and insurer follow-ups.
-  - **Not in the data, so the agent says so:** market returns and market management fees (0 of 1149 נפרעים rows carry `management_fee`), policy end dates (renewals), birth dates (age-change alerts).
+  - **Market returns and fees now exist** (official גמל-נט/פנסיה-נט/ביטוח-נט, §17c). **Still not in the data, so the agent says so:** policy end dates (renewals), birth dates (age-change alerts).
 - **Action tools only on an explicit ask (`wants_action`):** `propose_email` / `propose_meeting` are offered only when the message, or the agent's previous one, contains an action verb (שלח/תכין/קבע/תזכיר/תענה…). Otherwise the model gets `open_page` only, so "אילו משימות פתוחות יש לי?" is answered and not turned into a drafted email.
 - **Mail Agent customer lookup** (`mail_agent/context.py`) also matches the sender's **name** against production first+last name, trying every split point and either order, but only when exactly ONE customer matches. `[להשלים]` stays only for data that truly isn't there.
 
@@ -1290,10 +1291,52 @@ index.md ─┬─ companies.md ──► companies/<key>.md   production · pai
 
 - **Rendering:** pages are rendered **on demand** from one loaded `MapContext`: the latest merged comparison, rates, contacts, collection cases and open mail. A book has hundreds of customers, so only the pages the AI opens are built.
 - **Safety:** read-only and user-scoped. Links are the exact paths `open_page` accepts.
-- **The ask loop:** `ask()` runs Haiku with the index in the prompt, for at most 5 `open_page` hops.
+- **The ask loop:** superseded by Nifra AI v2 (§17c) — both ask boxes stream from `POST /api/ai/agent`; `open_page` is one of its tools. (`office_agent.ask` / `POST /office-agent/ask` remain as the legacy path.)
   - **Invariant:** answers only from the pages it opened. When something isn't there, it says so and suggests what to check.
   - The reply blocks are re-sent as **plain dicts**, because re-sending the SDK objects trips its serializer.
 - **Extending it:** new capabilities (tasks, client-file gaps, renewals) plug in as NEW pages and cards, not as a bigger prompt. Add a page renderer and a link from `index.md`.
+
+### 17c. Nifra AI v2 — one agent, typed tools, fast answers (2026-10-02)
+
+Both the home chat (`AiChatWidget`/`AiConversationSheet` → `stores/chat.js`) and the Nifra Agent ask box (`stores/officeAgent.js`) stream from **`POST /api/ai/agent`** (`api/ai_agent.py` → `services/agent/loop.py`, client `utils/agentStream.js`). SSE events: `{status}` (which tool runs — shown as a chip), `{text}`, `{viz}`, `{proposal}`, `{done, lane, ms}`.
+
+```mermaid
+flowchart LR
+  Q[question] --> C{answer cache<br/>user · question · ai_data_version}
+  C -- hit --> OUT[SSE]
+  C -- miss --> R{router.py<br/>top intents, regex}
+  R -- match --> T1[ONE tool → Hebrew template + chart<br/>no LLM, ~50ms]
+  R -- no --> P[prefetch.py<br/>company / customer / fund → run those tools first]
+  P --> L[Sonnet 5 · effort low · thinking DISABLED<br/>tools+system prompt-cached 1h · usually 1 call]
+  L --> TOOLS[registry.py — 31 tools]
+  T1 --> OUT
+  L --> OUT
+```
+
+- **Code:** `services/agent/` — `registry.py` (decorator, sorted frozen list, dispatcher), `context.py` (`ToolContext`), `tools_data.py`, `tools_maslaka.py`, `tools_market.py`, `tools_actions.py`, `tools_memory.py`, `tools_viz.py`, `router.py`, `loop.py`, `prompt.py`, `cache.py`, `versioning.py`, `dictionary/*.md`.
+- **Tools by category:** overview · commissions (`get_unpaid`, `get_commission_trend`) · production (`get_portfolio`, `top_customers`, `get_production_changes`) · customer (`find_customer`, `get_customer`) · agreements (`get_rate`, `list_agreements`, `get_agreement_doc`) · מסלקה (`maslaka_status`, `customer_holdings`, `propose_maslaka_request`) · opportunities (`get_insights`) · market (`compare_hishtalmut/gemel/gemel_invest/child_savings/pension/savings_policy`, `get_customer_fund_fit`, `fund_opportunities`, `market_flows`) · mail/calendar (`list_mail`, `propose_email`, `propose_meeting`, `propose_collection_reminder`) · navigation (`open_page`, incl. `dict/<cat>.md`) · `render_chart` · `remember`.
+
+**Invariants — do not break:**
+1. **Privacy.** No tool schema has a user id (`registry.FORBIDDEN_ARGS` asserts it; `dispatch()` strips one the model invents). Every tool reads through `ToolContext(db, user)` = the session user. Cache keys start with the user id. Memory (`ai_memories`) is per user — nothing is learned across agents. Market data (`fund_market_monthly`) is the only global table, and it joins customer data only inside a user's `ToolContext`.
+2. **One source per number.** Data tools call the dashboard's own endpoint functions directly (`comparison.company_summary` / `company_unpaid`, `production.get_commission_trend` / `get_expected_commission_trend` / `get_production_breakdown` / `get_production_clients`) and the data map. Never new money SQL. `tests/test_nifra_agent.py` asserts the AI's unpaid / received / trend numbers EQUAL the dashboard's.
+3. **Nothing is sent without the agent's click.** `propose_*` only append to `ctx.proposals`; `POST /office-agent/act` executes (`email`, `meeting`, `collection` → `collection_agent.send_case/send_reminder`, `maslaka` → **9100 only** — exactly what the מסלקה tab sends (ID + name, no extra consent fields) — through the SAME gates: `require_maslaka_enabled` + `require_association_approved`, then `orchestration.create_inquiry`; 9101/9102 stay off until the tab supports them and one was accepted live). A *question* can't trigger an action: `ctx.allow_actions = wants_action(...)` and `dispatch()` refuses action tools otherwise — the tool LIST stays constant so the prompt cache holds.
+4. **Stale answers can't survive new data.** `users.ai_data_version` is part of every cache key. `versioning.register_listeners` (registered in `app/models/__init__.py`, so the API, the local worker and scripts all get it) COLLECTS user ids on `after_flush` for real ORM changes to AI-read tables (`session.is_modified` filters no-op sets — opening the Nifra Agent panel must not empty the cache) and bumps **after commit, in its own short transaction** (`bump_now`) — never inside the ingest's transaction, where an `UPDATE users` would hold the row lock for the whole ingest and could deadlock two ingests of one agent. Rolled-back work bumps nothing. Background recomputes that write with core `update()` (accumulation backfill) call `bump_now` explicitly at the end (`upload_ingest._after_*_bg`). TTL (10 min answers / 30 min metrics) is only a backstop.
+5. **Prompt-cache prefix is byte-stable.** `prompt.SYSTEM_STATIC` + the dictionary index carry `cache_control: 1h`; tools render before system, sorted. Date, name, memory and screen context go in the per-turn user block — never in the static prompt. Verify with `cache_read` in the `NIFRA-AGENT hop=` log lines.
+6. **Strict tools ≤ 20** (API limit) — only actions + `render_chart` are `strict`.
+10. **An explicit address means `propose_email`.** `propose_collection_reminder` refuses a case with no contact email (it would reach no one) — the model is told to email the address the agent gave instead.
+7. **Charts by reference.** Tools `ctx.keep(rows)` and return a `result_id`; the model calls `render_chart(result_id, type)` and the server builds the payload (`tools_viz.build_viz`, same contract as `components/ai-charts/registry.js`). The model never re-types numbers.
+9. **Only open funds are switch targets.** `tools_market.is_open`: sector/employer-only funds (`target_population` ≠ כלל האוכלוסיה, e.g. רום for local-authority employees) and closed veteran pension funds (קרנות כלליות) never rank as "best" — they're matched only when the customer is already in them.
+8. **Fund matching never crosses insurers.** `tools_market.match_fund` narrows to the same `company_stem` + category, then exact name or key-token Jaccard ≥ 0.75; else "לא זוהה מסלול". Fuzzy string matching mapped מור→מיטב and אלפא מור→הראל — don't go back to it.
+
+- **Fast lane (`router.py`):** conservative regex for the top questions (unpaid, unpaid per company, this month's commission, portfolio, top customers, who left, rate, מסלקה, what to do, overview, customer by ID). Never for an action verb or a "why". Hebrew final letters matter (`שילם` ≠ `שילמ`).
+- **Data dictionary:** `backend/scripts/build_data_dictionary.py [--fill-rates]` → `services/agent/dictionary/` (index in the cached prompt; category pages via `open_page("dict/…")`; columns <5% filled marked ⚠). Regenerate after a schema change; fill rates should be generated against PROD (percentages only).
+- **Official fund data (`services/fund_market`):** the old `gemelnet.cma.gov.il` views are gone (gov.il "not found" page). The same data is CKAN open data on data.gov.il — גמל-נט `a30dcbea-…`, פנסיה-נט `6d47d6b5-…`, ביטוח-נט `c6c62cc7-…` (2024→today; 2023 and 1999-2022 resources too). `sync()` upserts `fund_market_monthly` (never deletes; ~52k rows from 2023). Scheduler `sync_fund_market` runs daily on the 1st–15th. Units: yields/fees in PERCENT, assets/flows in ₪ MILLIONS. Answers always state the data month + "תשואות עבר…".
+- **Latency (local, 2026-10-02, after the latency fix):** cache <20ms · fast lane p50 40ms · agent lane: first word 1.8–3.9s, complete 4–6.5s (was 7–10.5s). Where the time went before: Sonnet 5.5 cannot disable thinking — `between_tools` still reasons ~5s after EVERY tool result and releases the answer in one burst at the end (measured: 665 output tokens, ~250 visible). Fixes, all three: (1) `MODEL = claude-sonnet-5` with `thinking: disabled`, effort low (streams the first word ~1–1.5s into a call; 5.5 kept as fallback); (2) answers ≤60 words unless asked (per-turn instruction — generation speed is now the limit); (3) `prefetch.py` runs the obvious tools (company → unpaid/rate/trend, customer name/ID → card, fund category → compare_*) BEFORE the model, so most questions take ONE model call. Prefetch is skipped for explanation questions ("מה ההבדל…"). `NIFRA-AGENT hop=… ttft=…` and `tools=…` log lines show the split. `backend/scripts/agent_latency.py` measures it.
+- **Surfaces:** `surface: "panel"` (Nifra Agent) asks for plain text and the store strips Markdown (`utils/agentStream.stripMarkdown`); the chat renders Markdown. The answer cache is keyed per surface.
+- **Data dictionary fill rates:** the shipped pages carry NO fill %; local test data would mislead. Generate `--fill-rates` against PROD (read-only, percentages) before relying on them; known-empty columns are flagged through `NOTES` regardless.
+- **Learning:** `remember` → `ai_memories` (≤60 per user, injected each turn); every question → `ai_intent_log` (lane, intent, ms) — also the DB-backed rate limit (60/hour/user). Agent-lane calls are logged to `ai_usage` (`feature="agent"`).
+- **Charts in the UI:** every AI chart opens with the shared **silk** transition (App.vue `--ease-silk` iOS sheet curve, `--dur-silk` 650ms; `.silk-*` classes; `composables/useSilkOpen.js`) and bars enter after `--silk-content-delay`, staggered from the right. `AiBarChart` / `AiTrendChart` carry the **hover trace** (ported from a React/recharts component to Vue — no React/Tailwind/shadcn added): a big spring-animated readout (`composables/useSpring.js`), a dashed line that springs to the traced value, other bars dimmed to 0.2; at rest it traces the leader / latest point.
+- **Not built yet:** Google Calendar / Outlook calendar providers (need OAuth apps + Google verification — meetings are still ICS invites by email), server-side conversation history, a Haiku intent classifier behind the regex router, cache warm-up of each agent's top intents.
 
 ### 17b. Collection agent (סוכן גבייה) — one of the office agent's workers
 
@@ -1301,3 +1344,78 @@ index.md ─┬─ companies.md ──► companies/<key>.md   production · pai
 - **Drafts:** one line per customer + policy.
 - **Flow:** DRAFT → the agent approves (send via `send_as_agent`) → replies polled every 15 minutes, with a one-line Haiku summary → a reminder is SUGGESTED after 7 days → resolved.
 - **Code:** `services/collection_agent.py`, `/api/collection-agent`, `collection_cases` (UNIQUE user + company + month), `tests/test_collection_agent.py`.
+
+## 18. Calls plane (שיחות) — browser recording → ivrit.ai transcript → Claude summary
+
+A fourth plane of three small Railway services plus Redis. The agent records a conversation from the
+**home-hub calls widget** (beside the cycle clock and the Nifra Agent orb). The audio is transcribed by a
+self-hosted **ivrit.ai** Hebrew Whisper model, and the API summarises the transcript with Claude.
+
+```mermaid
+flowchart LR
+  B[Browser MediaRecorder<br/>webm/opus 32kbps] -->|POST /api/calls| API[nifraim API]
+  API -->|POST /ingest/id<br/>private net + X-Calls-Secret| GW[calls-gateway<br/>volume /data/calls<br/>inbox→queued→done/failed]
+  GW -->|listener: Lua SET-NX + XADD| J[(Redis calls:jobs)]
+  J -->|XREADGROUP transcribers| T[ivrit-transcriber<br/>ffmpeg + faster-whisper<br/>ivrit-ai/whisper-large-v3-turbo-ct2]
+  T -->|GET /files/id| GW
+  T -->|PUT /transcripts/id + SET calls:tx:id| GW
+  T -->|XADD transcribing/transcribed/failed| E[(Redis calls:events)]
+  E -->|group api| API
+  E -->|group gateway: move file| GW
+  API -->|call_tool| C[Claude summary + insights]
+  API --> DB[(call_recordings)]
+```
+
+| Piece | Code |
+|---|---|
+| Wire contract (stream names, fields, timeouts). Copied VERBATIM into both service images. | `backend/app/services/calls/contract.py` |
+| API routes `/api/calls` (`status`, POST, list, get, delete) | `backend/app/api/calls.py` |
+| Events consumer (supervised asyncio task, started in `main.py` lifespan) | `backend/app/services/calls/events_consumer.py` |
+| Claude summary tool (`title, summary, key_points, action_items, customer_needs, products_mentioned, objections, sentiment, follow_up`) | `backend/app/services/calls/summarize.py` |
+| Model + migration | `models/call_recording.py`, `alembic/versions/calls_01.py` |
+| Gateway | `services/calls-gateway/` |
+| Transcriber | `services/ivrit-transcriber/` |
+| UI | `components/calls/*`, `stores/calls.js` |
+
+Status: `uploaded → queued → transcribing → summarizing → done | failed`.
+
+### Invariants
+1. **Audio is never public.** Only the API is exposed. The gateway and transcriber have no public domain, and
+   every protected gateway route checks `X-Calls-Secret`.
+2. **The API is the only writer of the DB and the only caller of Claude.** `user_id` is always read from the row,
+   never from an event.
+3. **The gateway is the only owner of files.** Railway volumes attach to ONE service, so the transcriber fetches
+   audio over HTTP, never from a shared disk.
+4. **Enqueue is exactly-once.** A Lua `SET calls:enq:<id> NX` + `XADD` runs as one atomic step. inotify plus a
+   60-second rescan means a missed filesystem event never strands a file.
+5. **A job is acked only after its result is durable** (Redis key + gateway `done/<id>.json`). A busy
+   transcriber re-`XCLAIM`s its job every 60s (heartbeat). An idle job is `XAUTOCLAIM`ed after 5 minutes.
+   More than 3 deliveries sends it to `calls:dead` and marks it `failed`.
+6. **Every call ends `done | failed`.** The API fails anything non-terminal after 3 hours. When Claude is down,
+   the result is `done` with the transcript and a Hebrew note.
+7. **The contract has one source.** Change `contract.py`, then redeploy all three services.
+
+### Run locally
+`TRANSCRIBER_FAKE=1 docker compose up -d redis calls-gateway ivrit-transcriber` (FAKE returns a canned Hebrew
+transcript in about 3s; drop it to load the real model, a one-time download of about 1.6GB into the `ivrit_models` volume).
+The host `.env` needs `CALLS_ENABLED=true REDIS_URL=redis://localhost:6379 CALLS_GATEWAY_URL=http://localhost:8090
+CALLS_SECRET=dev`. The gateway image binds `HOST=::` for Railway, which is IPv6-only, so compose overrides it to `0.0.0.0`.
+
+### Deploy (Railway) — LIVE since 2026-10-02
+Services in project `patient-cat`: `Redis`, `calls-gateway` (volume `/data/calls`, `PORT=8080`), `ivrit-transcriber`
+(volume `/models`, `BEAM_SIZE=1`), and `nifraim` with `CALLS_ENABLED=true`. `REDIS_URL=${{Redis.REDIS_URL}}`,
+`CALLS_GATEWAY_URL=http://calls-gateway.railway.internal:8080`, and one shared `CALLS_SECRET` across all three.
+
+**Deploying a calls service** (the proven way; the root `railway.toml` and its Config-File-Path trick did NOT work, Railway fell back to Railpack):
+1. Stage a folder that mirrors the repo paths it COPYs: `services/<svc>/*` + `backend/app/services/calls/contract.py`.
+2. Put `services/<svc>/Dockerfile` at the stage ROOT, plus a root `railway.toml` with `dockerfilePath = "Dockerfile"`.
+3. `RAILWAY_TOKEN=… railway up <stage> --path-as-root --service <svc> --detach`.
+
+Other gotchas:
+- With the project token, `railway volume add` crashes. Create volumes through GraphQL `volumeCreate`
+  (`Project-Access-Token` header).
+- Set variables with `--skip-deploys` so no restart re-runs alembic.
+- `nifraim` deploys as always: `cd /home/roygi/test && railway up --service nifraim`.
+
+**Speed:** measured real-time factor (RTF) 1.0 on 32 threads (25s of audio in 25s). Railway CPU is slower per call;
+`BEAM_SIZE` defaults to 1 (measured 2026-10-02: 2.0–2.3× faster than 5, RTF 0.35–0.38, identical text on the Hebrew sample; raise it only if noisy real calls lose accuracy). Tune `CPU_THREADS`, or move the transcriber to a GPU host. The queue contract does not change.

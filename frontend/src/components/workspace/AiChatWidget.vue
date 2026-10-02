@@ -47,6 +47,7 @@
               class="typing-indicator"
             >
               <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span v-if="msg.status" class="typing-status">{{ msg.status }}…</span>
             </span>
           </div>
         </div>
@@ -455,6 +456,8 @@ watch(
 }
 
 .typing-indicator .dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-status { margin-inline-start: 6px; font-size: 12px; color: var(--text-muted); animation: statusIn .35s ease-out; }
+@keyframes statusIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .typing-indicator .dot:nth-child(3) { animation-delay: 0.3s; }
 
 @keyframes typingBounce {

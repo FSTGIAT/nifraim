@@ -219,6 +219,15 @@ class Settings(BaseSettings):
     # without a Resend account. Never point this anywhere but Resend in prod.
     RESEND_API_BASE: str = "https://api.resend.com"
 
+    # Calls plane (שיחות): browser recording → calls-gateway (Railway volume) → Redis Streams →
+    # ivrit-transcriber (ivrit.ai Whisper) → this API summarises with Claude. False → the tab shows
+    # "not enabled" and no consumer starts. See docs/ARCHITECTURE.md §18.
+    CALLS_ENABLED: bool = False
+    REDIS_URL: str = ""
+    CALLS_GATEWAY_URL: str = ""                    # http://calls-gateway.railway.internal:<PORT> on Railway
+    CALLS_SECRET: str = ""                         # shared with calls-gateway + ivrit-transcriber
+    CALLS_MAX_BYTES: int = 60 * 1024 * 1024        # ~4h of 32kbps opus; the UI caps recording at 90 min
+
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 
 

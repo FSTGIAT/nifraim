@@ -40,6 +40,18 @@ async def scrape_fund_tracks_job():
         logger.error(f"fund_tracks scrape job failed: {e}")
 
 
+async def sync_fund_market_job():
+    """Official גמל-נט / פנסיה-נט / ביטוח-נט (data.gov.il) → fund_market_monthly.
+    Daily on the 1st–15th: the regulator publishes a month 1–2 months late, on no
+    fixed day. A run with nothing new upserts the same rows (idempotent) — cheap."""
+    try:
+        from app.services import fund_market
+        async with async_session() as db:
+            await fund_market.sync(db)
+    except Exception as e:
+        logger.error(f"fund_market sync job failed: {e}")
+
+
 async def run_maslaka_poll() -> None:
     """System-wide clearinghouse poll: walk the vault inbox, ingest each XML,
     expire stale inquiries. No-ops gracefully on empty inbox / local mock.
@@ -204,6 +216,14 @@ def start_scheduler():
         # If the process was briefly down at 06:30 (deploy/restart), still run
         # the job when it comes back within the grace window instead of waiting
         # a whole week; coalesce collapses multiple missed fires into one.
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        sync_fund_market_job,
+        CronTrigger(day="1-15", hour=7, minute=10, timezone="Asia/Jerusalem"),
+        id="sync_fund_market",
+        replace_existing=True,
         misfire_grace_time=6 * 60 * 60,
         coalesce=True,
     )

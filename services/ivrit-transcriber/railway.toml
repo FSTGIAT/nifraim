@@ -1,0 +1,8 @@
+# Service "ivrit-transcriber": set its Config File Path to services/ivrit-transcriber/railway.toml,
+# otherwise the ROOT railway.toml (the nifraim API image) is used. Mount a volume at /models.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "services/ivrit-transcriber/Dockerfile"
+
+[deploy]
+restartPolicyType = "ALWAYS"

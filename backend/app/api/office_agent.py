@@ -57,6 +57,17 @@ async def act(body: ActIn, db: AsyncSession = Depends(get_db), user: User = Depe
     from app.services import agent_actions
     from app.services.mail_intake import MailIntakeError
     from app.services.mail_intake.send import NoSendableMailbox
+    if body.kind == "maslaka":
+        return await _act_maslaka(db, user, body.data)
+    if body.kind == "collection":
+        from app.services import collection_agent
+        case_id = str(body.data.get("case_id") or "")
+        try:
+            case = (await collection_agent.send_reminder(db, user, case_id) if body.data.get("case_status") == "sent"
+                    else await collection_agent.send_case(db, user, case_id))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"ok": True, "status": case.status}
     try:
         return await agent_actions.send(db, user, body.kind, body.data)
     except agent_actions.ActionError as e:
@@ -74,3 +85,21 @@ async def map_page(path: str = "index.md", db: AsyncSession = Depends(get_db), u
     from app.services import data_map
     ctx = await data_map.load(db, user)
     return PlainTextResponse(data_map.render(ctx, path), media_type="text/markdown; charset=utf-8")
+
+
+async def _act_maslaka(db: AsyncSession, user: User, data: dict):
+    """The agent approved a מסלקה request Nifra Agent prepared. Same gates as the
+    מסלקה tab's /api/maslaka/inquiry: MASLAKA_ENABLED + an approved שיוך."""
+    from app.api.maslaka import _serialize_inquiry, require_association_approved, require_maslaka_enabled
+    from app.services.maslaka import orchestration
+    code = str(data.get("code") or "")
+    if code != "9100":   # the only request the מסלקה tab sends (see tools_maslaka.propose_maslaka_request)
+        from fastapi import HTTPException
+        raise HTTPException(400, "bad_code")
+    require_maslaka_enabled()
+    await require_association_approved(db=db, user=user)
+    inquiry = await orchestration.create_inquiry(
+        db, user_id=user.id, customer_id_number=str(data.get("customer_id_number") or ""),
+        customer_name=(data.get("customer_name") or None), action_code=code,
+    )
+    return _serialize_inquiry(inquiry)
