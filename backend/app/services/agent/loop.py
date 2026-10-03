@@ -129,12 +129,15 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
         except Exception as e:  # noqa: BLE001 — fall through to the agent lane
             logger.warning("fast lane %s failed: %r", r.intent, e)
             await db.rollback()
+            await db.refresh(user)      # the rollback expired it; the agent lane reads user.* next
             out = None
         if out:
-            events = [{"text": out["text"]}] + [{"viz": v} for v in out["vizs"]]
+            events = [{"text": out["text"]}] + [{"viz": v} for v in out["vizs"]] + \
+                     ([{"proposal": out["proposal"]}] if out.get("proposal") else [])
             for ev in events:
                 yield ev
-            cache.put(uid, version, akey, events, ttl=ANSWER_TTL)
+            if not out.get("proposal"):      # an instruction ("record") must never replay from cache
+                cache.put(uid, version, akey, events, ttl=ANSWER_TTL)
             ms = (time.monotonic() - t0) * 1000
             yield {"done": True, "lane": "fast", "intent": r.intent, "ms": int(ms)}
             await _log(db, uid, r.intent, "fast", ms, question)
@@ -286,6 +289,10 @@ async def _agent(ctx: ToolContext, question: str, history, mentions, usage: dict
 
 
 def proposal_line(p: dict, own_email: str = "") -> str:
+    if p.get("kind") == "record_call":
+        return "מקליט" + (f" את השיחה {p['about']}" if p.get("about") else "") + ". כשתסיימו — לחצו עצור או כתבו 'עצור', והסיכום יגיע לכאן."
+    if p.get("kind") == "stop_call":
+        return "עצרתי — ההקלטה נשלחה לתמלול וסיכום. אעדכן כאן כשהסיכום מוכן."
     if p.get("kind") == "maslaka":
         return f"הכנתי בקשת {p['code']} ({p['code_he']}) ל{p.get('customer_name') or 'ת.ז ' + p['customer_id_number']}. מחכה לאישור שלך."
     if p.get("kind") == "collection":

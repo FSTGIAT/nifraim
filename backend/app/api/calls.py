@@ -7,8 +7,10 @@ UI polls GET /api/calls/{id}. Every query is scoped to the caller's user_id.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 import httpx
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,6 +127,46 @@ async def list_calls(user: User = Depends(get_current_user), db: AsyncSession = 
 @router.get("/{call_id}")
 async def get_call(call_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return _out(await _own(db, user, call_id))
+
+
+class FollowupIn(BaseModel):
+    to_email: str
+    to_name: str | None = None
+    subject: str
+    body: str
+
+
+@router.post("/{call_id}/followup/send")
+async def send_followup(call_id: str, data: FollowupIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """The agent approved (maybe edited) the customer follow-up — send it from THEIR mailbox."""
+    from app.services import agent_actions
+    from app.services.mail_intake import MailIntakeError
+    from app.services.mail_intake.send import NoSendableMailbox
+    call = await _own(db, user, call_id)
+    try:
+        await agent_actions.send(db, user, "email", data.model_dump())
+    except agent_actions.ActionError as e:
+        raise HTTPException(400, str(e))
+    except NoSendableMailbox:
+        raise HTTPException(400, "not_connected")
+    except MailIntakeError as e:
+        raise HTTPException(502, str(e))
+    ins = dict(call.insights or {})
+    ins["followup"] = {**(ins.get("followup") or {}), "status": "sent", "to_email": data.to_email,
+                       "sent_at": datetime.utcnow().isoformat() + "Z"}
+    call.insights = ins
+    await db.commit()
+    return {"ok": True, "to_email": data.to_email}
+
+
+@router.post("/{call_id}/followup/dismiss")
+async def dismiss_followup(call_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    call = await _own(db, user, call_id)
+    ins = dict(call.insights or {})
+    ins["followup"] = {**(ins.get("followup") or {}), "status": "dismissed"}
+    call.insights = ins
+    await db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{call_id}")

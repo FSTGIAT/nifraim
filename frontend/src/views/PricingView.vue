@@ -1,14 +1,9 @@
 <template>
   <div class="pricing" ref="pricingRoot">
-    <!-- Nav lives in App.vue (shared SlideTabs across marketing routes) -->
+    <!-- Nav lives in App.vue (shared SiteNav across marketing routes) -->
 
     <!-- HERO -->
     <section class="chapter-hero" ref="heroSection">
-      <div class="hero-gradient">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-      </div>
       <div class="hero-inner">
         <div class="hero-content" ref="heroContent">
           <span class="hero-eyebrow" ref="heroEyebrow">
@@ -33,9 +28,13 @@
               שוחחו איתנו
             </a>
           </div>
+          <!-- plain <a>: /privacy is a backend page -->
+          <a href="/privacy" class="site-legal">מדיניות פרטיות</a>
         </div>
 
         <div class="hero-visual" ref="heroVisual">
+          <!-- the arch video behind the glass price card -->
+          <AuthMedia class="pv-media" video="portal" />
           <div class="price-card" ref="priceCard">
             <div class="pc-name">Nifraim</div>
             <div class="pc-price">
@@ -70,6 +69,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { gsap } from 'gsap'
+import AuthMedia from '../components/site/AuthMedia.vue'
 
 const contactEmail = 'nifraim@nifraim.com'
 
@@ -119,14 +119,10 @@ onMounted(() => {
       if (priceNumber.value) animateNumber(priceNumber.value, 220, 1.4)
     }, '-=0.3')
 
-  gsap.to('.orb-1', { y: -40, x: 20, duration: 8, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-  gsap.to('.orb-2', { y: 30, x: -15, duration: 10, repeat: -1, yoyo: true, ease: 'sine.inOut' })
-  gsap.to('.orb-3', { y: -20, x: 25, duration: 9, repeat: -1, yoyo: true, ease: 'sine.inOut' })
 })
 
 onBeforeUnmount(() => {
   gsap.killTweensOf([heroEyebrow.value, heroHeadline.value, heroSub.value, heroCtaWrap.value, priceCard.value])
-  gsap.killTweensOf(['.orb-1', '.orb-2', '.orb-3'])
 })
 </script>
 
@@ -145,10 +141,10 @@ onBeforeUnmount(() => {
   --land-text-secondary: #A0A0A0;
   --land-border: #666666;
 
-  --cream-bg: #F5F0EB;
-  --cream-text: #2D2522;
-  --cream-text-muted: rgba(45, 37, 34, 0.6);
-  --cream-text-dim: rgba(45, 37, 34, 0.35);
+  --cream-bg: #FFFFFF;
+  --cream-text: #2A2E35;
+  --cream-text-muted: rgba(42, 46, 53, 0.62);
+  --cream-text-dim: rgba(42, 46, 53, 0.36);
   --dark-section: #2D2522;
 
   --transition-fast: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -162,12 +158,12 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.pricing a {
+.pricing a:not(.hero-btn) { /* the CTA keeps its white label (this rule used to out-rank it) */
   color: inherit;
   text-decoration: none;
 }
 
-/* Navigation lives in App.vue (shared SlideTabs pill). */
+/* Navigation lives in App.vue (shared SiteNav). */
 
 /* ── HERO (cream) ── */
 .chapter-hero {
@@ -179,62 +175,23 @@ onBeforeUnmount(() => {
   background: var(--cream-bg);
 }
 
-.hero-gradient {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-
-.hero-gradient .orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(120px);
-  will-change: transform;
-}
-
-.hero-gradient .orb-1 {
-  width: 720px;
-  height: 720px;
-  background: rgba(47, 115, 196, 0.28);
-  top: -18%;
-  left: -10%;
-}
-
-.hero-gradient .orb-2 {
-  width: 520px;
-  height: 520px;
-  background: rgba(47, 115, 196, 0.22);
-  bottom: 2%;
-  right: -6%;
-}
-
-.hero-gradient .orb-3 {
-  width: 460px;
-  height: 460px;
-  background: rgba(14, 140, 138, 0.2);
-  top: 38%;
-  left: 42%;
-}
-
 .hero-inner {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
   align-items: center;
   width: 100%;
   min-height: 100dvh;
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 0 32px;
 }
 
 .hero-content {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 110px 24px 80px 0;
-  max-width: 560px;
+  padding: 110px clamp(24px, 6vw, 96px) 60px;
+  max-width: 640px;
+  justify-self: center;
 }
 
 .hero-eyebrow {
@@ -268,10 +225,10 @@ onBeforeUnmount(() => {
 }
 
 .hero-headline {
-  font-size: clamp(40px, 5.5vw, 72px);
+  font-size: clamp(44px, 5.4vw, 84px);
   font-weight: 900;
-  line-height: 1.08;
-  letter-spacing: -1px;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
   color: var(--cream-text);
 }
 
@@ -385,15 +342,22 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
-  padding: 110px 20px 80px;
+  height: calc(100dvh - 24px);
+  margin: 12px 0 12px 12px;
+  border-radius: 28px;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 90px 24px 40px;
 }
+.pv-media { position: absolute; inset: 0; z-index: 0; }
+.pricing a.site-legal { align-self: flex-start; font-size: 13px; color: var(--cream-text-muted); }
+.pricing a.site-legal:hover { color: var(--cream-text); text-decoration: underline; }
 
 .price-card {
   width: 100%;
   max-width: 420px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(24px);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(22px) saturate(1.3);
   border: 1px solid rgba(45, 37, 34, 0.08);
   border-radius: 28px;
   padding: 36px 32px 32px;
@@ -506,8 +470,10 @@ onBeforeUnmount(() => {
   }
 
   .hero-visual {
-    min-height: auto;
-    padding: 0 0 100px;
+    height: auto;
+    min-height: 560px;
+    margin: 0 12px 24px;
+    padding: 48px 20px;
   }
 }
 

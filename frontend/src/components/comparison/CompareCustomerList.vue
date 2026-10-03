@@ -98,16 +98,16 @@
             </template>
             <!-- Never "התקבל" on an unpaid customer: that money came from OTHER
                  companies and read as if this one paid (QA 2026-10-01). -->
-            <template v-else-if="c.match_status !== 'only_production' && c.total_commission >= 0.5">
-              <span class="ltr-number">{{ money(c.total_commission) }}</span>
+            <template v-else-if="(c.match_status !== 'only_production' || (paidView && c.partially_paid)) && receivedOf(c) >= 0.5">
+              <span class="ltr-number">{{ money(receivedOf(c)) }}</span>
               <small>התקבל</small>
             </template>
             <template v-else-if="accumOf(c) >= 0.5">
               <span class="ltr-number">{{ money(accumOf(c)) }}</span>
               <small>{{ c.match_status === 'only_production' ? 'צבירה שלא שולמה' : 'צבירה' }}</small>
             </template>
-            <template v-else-if="c.total_premium >= 0.5">
-              <span class="ltr-number">{{ money(c.total_premium) }}</span>
+            <template v-else-if="premiumOf(c) >= 0.5">
+              <span class="ltr-number">{{ money(premiumOf(c)) }}</span>
               <small>פרמיה</small>
             </template>
           </span>
@@ -129,6 +129,7 @@ import { ref, computed, watch } from 'vue'
 import { money } from '../../utils/chartDefaults'
 import { expectedFor } from '../../utils/expectedCommission'
 import CompanyLogo from '../workspace/CompanyLogo.vue'
+import { normalizeCompany } from '../../utils/companyNorm.js'
 
 const props = defineProps({
   customers: { type: Array, default: () => [] },
@@ -136,6 +137,11 @@ const props = defineProps({
   category: { type: String, default: '' },
   // { mail(), excel() } for lists that came from a KPI card.
   actions: { type: Object, default: null },
+  // Opened from one company's bar — start on that company's tab.
+  initialCompany: { type: String, default: null },
+  // A "נמצא בשניהם" list from one company's bar: it holds customers paid HERE
+  // but unpaid at another company — their cards show the paid side.
+  paidView: { type: Boolean, default: false },
 })
 defineEmits(['open'])
 
@@ -149,7 +155,10 @@ const SORTS = [
   { key: 'products', label: 'מוצרים' },
   { key: 'name', label: 'שם' },
 ]
-watch(() => props.customers, () => { query.value = ''; product.value = null; company.value = null; limit.value = 100 })
+watch(() => props.customers, () => {
+  query.value = ''; product.value = null; limit.value = 100
+  company.value = startCompany()
+})
 watch([query, product, company, sortKey], () => { limit.value = 100 })
 // A product picked under another company may not exist here — clear it.
 watch(company, () => { if (product.value && !products.value.includes(product.value)) product.value = null })
@@ -160,6 +169,11 @@ const nameOf = c => [c.first_name, c.last_name].filter(Boolean).join(' ') || c.i
 function statusNote(c) {
   if (c.match_status === 'matched' && c.unpaid_count > 0) {
     return `${c.unpaid_count} ${c.unpaid_count === 1 ? 'מוצר' : 'מוצרים'} לא שולמו`
+  }
+  // Paid here, unpaid at another company — say where it is unpaid.
+  if (props.paidView && c.partially_paid) {
+    const unpaidAt = [...new Set((c.production_products || []).map(p => p.company).filter(Boolean))]
+    if (unpaidAt.length) return `לא שולם ב${unpaidAt.join(', ')}`
   }
   // Unpaid here, paid by another company — say who did pay.
   if (c.match_status === 'only_production' && c.partially_paid) {
@@ -178,6 +192,9 @@ function statusNote(c) {
 // paid lines for a נפרעים-only one, everything for a matched one. Grouped on
 // the short brand `company` — `company_full` would split one insurer in two.
 function relevantOf(c) {
+  if (props.paidView && c.partially_paid) {
+    return [...(c.paid_production_products || []), ...(c.commission_products || [])]
+  }
   if (c.match_status === 'only_production') return c.production_products || []
   if (c.match_status === 'only_commission') return c.commission_products || []
   return [...(c.production_products || []), ...(c.commission_products || [])]
@@ -197,6 +214,16 @@ const companies = computed(() => {
   for (const c of props.customers) for (const co of companiesOf(c)) n[co] = (n[co] || 0) + 1
   return Object.entries(n).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
 })
+// The tab for `initialCompany`, but only when every customer in the list is
+// on it — a tab that hides part of the list would make the badge lie.
+function startCompany() {
+  const want = props.initialCompany && normalizeCompany(props.initialCompany)
+  if (!want) return null
+  const tab = companies.value.find(co => normalizeCompany(co.name) === want)
+  return tab && tab.count === props.customers.length ? tab.name : null
+}
+// First open: `startCompany` reads `companies`, so it runs only once that exists.
+company.value = startCompany()
 const byCompany = computed(() => company.value
   ? props.customers.filter(c => companiesOf(c).includes(company.value))
   : props.customers)
@@ -205,7 +232,10 @@ const productCount = c => Math.max(c.production_count || 0, c.commission_count |
 // the customer window (utils/expectedCommission), including its fallback to
 // the agreement shelf, so the list and the window never disagree. A customer
 // only in production keeps its unpaid policies in `production_products`.
-const unpaidOf = c => (c.match_status === 'only_production'
+// With a company tab selected, every figure is THAT company's only — a
+// customer unpaid at הראל and אלטשולר showed both under the הראל tab.
+const atCompany = list => (company.value ? list.filter(p => p.company === company.value) : list)
+const unpaidOf = c => (props.paidView && c.partially_paid) ? [] : atCompany(c.match_status === 'only_production'
   ? (c.production_products || [])
   : (c.product_matches?.unmatched_production || []))
 const expectedOf = c => unpaidOf(c)
@@ -215,7 +245,9 @@ const expectedOf = c => unpaidOf(c)
 const valueOf = c => expectedOf(c) * 1000
   + (c.match_status === 'only_production' ? accumOf(c) / 100 : (c.total_commission || 0))
 const sumOf = (arr, k) => (arr || []).reduce((s, p) => s + (Number(p[k]) || 0), 0)
-const accumOf = c => sumOf(c.production_products, 'accumulation')
+const accumOf = c => sumOf(atCompany(c.production_products || []), 'accumulation')
+const receivedOf = c => (company.value ? sumOf(atCompany(c.commission_products || []), 'commission') : (c.total_commission || 0))
+const premiumOf = c => (company.value ? sumOf(atCompany(relevantOf(c)), 'premium') : (c.total_premium || 0))
 
 function namesOf(c) {
   return [
@@ -244,9 +276,9 @@ const shown = computed(() => {
 })
 const visible = computed(() => shown.value.slice(0, limit.value))
 const allUnpaid = computed(() => props.customers.length > 0 && props.customers.every(c => c.match_status === 'only_production'))
-const totReceived = computed(() => shown.value.reduce((s, c) => s + (c.total_commission || 0), 0))
+const totReceived = computed(() => shown.value.reduce((s, c) => s + receivedOf(c), 0))
 const totExpected = computed(() => shown.value.reduce((s, c) => s + expectedOf(c), 0))
-const totPremium = computed(() => shown.value.reduce((s, c) => s + (c.total_premium || 0), 0))
+const totPremium = computed(() => shown.value.reduce((s, c) => s + premiumOf(c), 0))
 </script>
 
 <style scoped>

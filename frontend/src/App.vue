@@ -1,7 +1,7 @@
 <template>
   <div id="app-root">
     <div class="bg-mesh"></div>
-    <SlideTabs v-if="showNav" :tabs="navTabs" :initial-index="0" />
+    <SiteNav v-if="showNav" />
     <router-view v-slot="{ Component, route }">
       <transition name="page" mode="out-in">
         <component :is="Component" :key="route.path" />
@@ -15,14 +15,14 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import MailPreviewModal from './components/MailPreviewModal.vue'
-import SlideTabs from './components/landing/SlideTabs.vue'
+import SiteNav from './components/site/SiteNav.vue'
 
 const route = useRoute()
 
 // Public marketing surface — the nav rides above these. Hidden on the
 // authenticated app (workspace/dashboard/admin) and on customer portals.
+// The home page ('Landing') renders its own scroll-aware copy of SiteNav.
 const MARKETING_ROUTE_NAMES = new Set([
-  'Landing',
   'Pricing',
   'Signup',
   'Login',
@@ -31,15 +31,6 @@ const MARKETING_ROUTE_NAMES = new Set([
   'ResetPassword',
 ])
 const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
-
-// Tab list lifted out of LandingView so it's defined once at the shell layer.
-const navTabs = [
-  { label: 'בית', href: '#top', styleClass: 'tab-style--light' },
-  { label: 'יכולות', href: '#features', styleClass: 'tab-style--serif-italic' },
-  { label: 'פורטל', href: '#portal', styleClass: 'tab-style--small-caps' },
-  { label: 'תמחור', to: '/pricing', styleClass: 'tab-style--regular' },
-  { label: 'התחל עכשיו', to: '/signup', styleClass: 'tab-style--display' },
-]
 </script>
 
 <style>

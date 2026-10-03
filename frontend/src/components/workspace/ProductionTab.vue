@@ -271,9 +271,9 @@
             :comparisonResult="productionStore.comparisonResult"
             :comparing="productionStore.comparing"
             :currentFileId="productionStore.currentFile.id"
+            :currentFile="productionStore.currentFile"
             @compare="handleCompare"
             @reset="productionStore.resetComparison()"
-            @go-to-comparison="$emit('go-to-comparison')"
           />
         </div>
 
@@ -1038,6 +1038,22 @@ async function handleCompare(currentId, previousId) {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* Off the תובנות band, the bar is ONE card: segments, file and upload
+   together (it used to float as three separate pills over the backdrop). */
+.production-tab:not(.production-tab--band) .inner-tabs-bar {
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.production-tab:not(.production-tab--band) .inner-tabs {
+  padding: 0; border: none; box-shadow: none; background: none;
+}
+.production-tab:not(.production-tab--band) .file-pill {
+  background: var(--bg); border-color: transparent; box-shadow: none;
+}
+.production-tab:not(.production-tab--band) .upload-icon-btn { box-shadow: none; }
 
 /* segmented control: white card, the active section filled in the tab colour */
 .inner-tabs {

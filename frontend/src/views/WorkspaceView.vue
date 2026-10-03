@@ -83,7 +83,9 @@
       <NifraAgentIcon size="small" @open="openCollector" />
       <CallWidget size="small" pop-side="left" />
     </div>
-    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" @open-mail="collectorOpen = false; mailAgentOpen = true" @open-vizs="onLatestVizs" />
+    <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" :focus-card="agentFocusCard"
+                      @open-mail="collectorOpen = false; mailAgentOpen = true" @open-vizs="onLatestVizs"
+                      @open-call="(id) => { collectorOpen = false; callsStore.requestOpenCall(id) }" />
 
     <!-- The AI assistant — one widget on the right rail, on every tab. It
          replaced `AiInsightCard`, a full-width summary band that sat above
@@ -363,6 +365,8 @@ import AiLibraryTab from '../components/workspace/AiLibraryTab.vue'
 import PortalAutomationTab from '../components/workspace/PortalAutomationTab.vue'
 import MaslakaTab from '../components/workspace/MaslakaTab.vue'
 import CallWidget from '../components/calls/CallWidget.vue'
+import { useOfficeAgentStore } from '../stores/officeAgent.js'
+import { useCallsStore } from '../stores/calls.js'
 import AiChatWidget from '../components/workspace/AiChatWidget.vue'
 import AiVizPanel from '../components/workspace/AiVizPanel.vue'
 import AiAssistantWidget from '../components/workspace/AiAssistantWidget.vue'
@@ -550,8 +554,36 @@ const collectorOpen = ref(false)
 const collectorOrigin = ref(null)
 function openCollector(el) {
   collectorOrigin.value = el || null
+  agentFocusCard.value = null
   collectorOpen.value = true
 }
+
+// ── Nifra Agent opens by itself when a call's follow-up is ready ──
+// The office store raises popRequest (once per call, per user); we open the
+// panel on that card — but never on top of the calls studio: it waits until
+// the studio closes. The orb gets a short attention pulse.
+const officeStore = useOfficeAgentStore()
+const callsStore = useCallsStore()
+const agentFocusCard = ref(null)
+watch(
+  () => [officeStore.popRequest, callsStore.studioOpen, collectorOpen.value, setupState.modalOpen],
+  ([cardId, studio, open, setupUp]) => {
+    if (!cardId || studio || open || setupUp) return
+    officeStore.markPopped(cardId)
+    officeStore.clearPop()
+    collectorOrigin.value = document.querySelector('.nai .nai-ring') || null
+    agentFocusCard.value = cardId
+    setTimeout(() => { collectorOpen.value = true }, 650) // let the orb pulse first
+  },
+)
+// a summary can finish while the page is just sitting there — refresh the
+// brief quietly every 30s (only while the tab is visible)
+let agentTimer = null
+onMounted(() => {
+  officeStore.load()
+  agentTimer = setInterval(() => { if (document.visibilityState === 'visible' && !collectorOpen.value) officeStore.load() }, 30000)
+})
+onUnmounted(() => clearInterval(agentTimer))
 
 const showEmotionClock = computed(() => viewMode.value === 'home' && roomForEmotionClock.value)
 // The calls widget's left band (rail ends at ~100px, cards start at (vw-882)/2) is wide enough from 1400px.

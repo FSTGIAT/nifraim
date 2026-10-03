@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { streamAgent } from '../utils/agentStream.js'
+import { isCallProposal, runCallProposal } from '../utils/agentCalls.js'
 import { defineStore } from 'pinia'
 import { extractionOutcome } from '../utils/extractionReport'
 
@@ -303,7 +304,11 @@ export const useChatStore = defineStore('chat', () => {
             msg.vizs.push(data.viz)
             msg.viz = data.viz
           }
-          if (data.proposal) msg.proposal = { ...data.proposal, status: 'open' }
+          if (data.proposal && isCallProposal(data.proposal)) {
+            // "תקליט / עצור" — run it now (the agent's own request is the consent)
+            msg.call = { state: 'pending' }
+            runCallProposal(data.proposal, notifyCall).then((r) => { Object.assign(msg.call, r) })
+          } else if (data.proposal) msg.proposal = { ...data.proposal, status: 'open' }
           if (Array.isArray(data.warnings) && data.warnings.length) msg.warnings = data.warnings
           if (data.done) {
             msg.status = ''
@@ -320,6 +325,11 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  // A call the agent recorded came back summarised → the agent says so in the chat.
+  function notifyCall({ text, callId, ready }) {
+    messages.value.push({ role: 'assistant', content: text, call: ready ? { state: 'done', callId } : null })
   }
 
   function clearMessages() {
@@ -345,6 +355,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return {
+    notifyCall,
     messages,
     loading,
     error,

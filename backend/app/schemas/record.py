@@ -86,6 +86,10 @@ class CommissionRateOut(BaseModel):
     company_email: str | None = None
     effective_from: date | None = None
     effective_to: date | None = None
+    # הראל's unprinted עמלת ספר this row adds when its agreement line carries
+    # no book of its own (rate_select.HAREL_HIDDEN_BOOK) — 0 otherwise. Sent so
+    # the shelf shows the same final rate the comparison prices with.
+    hidden_book: float = 0.0
 
     model_config = {"from_attributes": True}
 

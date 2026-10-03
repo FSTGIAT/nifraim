@@ -97,4 +97,4 @@ def _load():
     if _loaded:
         return
     _loaded = True
-    from app.services.agent import tools_data, tools_maslaka, tools_market, tools_actions, tools_memory, tools_viz  # noqa: F401
+    from app.services.agent import tools_data, tools_maslaka, tools_market, tools_actions, tools_memory, tools_viz, tools_calls  # noqa: F401

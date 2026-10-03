@@ -157,6 +157,18 @@ async def test_privacy_and_parity():
         check(v3 <= v2 + 1, f"two panel opens bump at most once ({v2}→{v3})")
 
 
+def test_calls_routing():
+    print("calls (record / stop / summaries)")
+    from app.services.agent.prefetch import plan
+    check(router.route("תקליט את השיחה עם משה כהן").intent == "record_call", "«תקליט את השיחה…» → record (instant)")
+    check(router.route("עצור").intent == "stop_call", "«עצור» → stop (instant)")
+    check(router.route("מה היה בשיחה האחרונה?") is None, "call question → agent lane")
+    check(plan("מה סיכמתי עם הלקוח על דמי הניהול?") == [("get_call_summaries", {"which": "last", "n": 5})],
+          "«…הלקוח על דמי הניהול» is a call topic, not a customer name")
+    check(plan("מה יש ללקוח אברהם משה?")[0] == ("find_customer", {"query": "אברהם משה"}), "a name starting with מ is not cut")
+    check(plan("למה הלקוח משה כהן לא שולם ממגדל")[0] == ("find_customer", {"query": "משה כהן"}), "name ends at «לא» / «ממגדל»")
+
+
 def test_fund_matcher():
     print("fund matcher")
     from types import SimpleNamespace as N
@@ -184,6 +196,7 @@ def main():
     test_registry()
     test_router()
     test_fund_matcher()
+    test_calls_routing()
     asyncio.run(test_privacy_and_parity())
     print(f"\n{'ALL PASSED' if not FAILS else f'{len(FAILS)} FAILED'}")
     sys.exit(1 if FAILS else 0)

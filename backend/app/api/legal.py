@@ -26,42 +26,84 @@ _PRIVACY_HTML = """<!DOCTYPE html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>מדיניות פרטיות — Nifraim</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap">
   <style>
-    body { font-family: 'Heebo', system-ui, Arial, sans-serif; max-width: 760px;
-           margin: 0 auto; padding: 32px 20px 64px; color: #1A1A2E; line-height: 1.7; }
-    h1 { color: #F57C00; font-size: 26px; margin-bottom: 4px; }
-    h2 { font-size: 19px; margin-top: 30px; border-bottom: 2px solid #F57C00;
-         padding-bottom: 4px; display: inline-block; }
-    .updated { color: #706E6B; font-size: 13px; margin-bottom: 24px; }
+    /* the site's look (2026-10-03): white, graphite headings, cobalt accents, Heebo. No orange. */
+    :root { --graphite: #2A2E35; --ink: #181818; --blue: #2F73C4; --blue-ink: #245C9E;
+            --muted: #5B6470; --line: #E6E8EC; --wash: #EEF4FB; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: #FFFFFF; color: var(--graphite);
+           font-family: 'Heebo', system-ui, Arial, sans-serif; line-height: 1.75; font-size: 16px; }
+    .site-bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center;
+                justify-content: space-between; gap: 12px; padding: 12px clamp(16px, 4vw, 40px);
+                background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(16px);
+                border-bottom: 1px solid var(--line); }
+    .brand { font-weight: 900; font-size: 20px; letter-spacing: -0.03em; color: var(--graphite);
+             text-decoration: none; direction: ltr; }
+    .brand span { color: var(--blue); }
+    .tabs { display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: rgba(24, 24, 24, 0.05); }
+    .tabs a { direction: ltr; padding: 7px 15px; border-radius: 999px; font-size: 14px; font-weight: 600;
+              color: var(--ink); text-decoration: none; white-space: nowrap; transition: color .3s ease; }
+    .tabs a:hover { color: var(--tc); background: #FFFFFF; }
+    @media (max-width: 760px) { .tabs { display: none; } }
+    .back { font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none;
+            padding: 8px 16px; border: 1px solid rgba(24, 24, 24, 0.16); border-radius: 10px; }
+    .back:hover { background: rgba(24, 24, 24, 0.05); }
+    main { max-width: 820px; margin: 0 auto; padding: 56px 20px 80px; }
+    h1 { margin: 0 0 6px; font-weight: 900; font-size: clamp(34px, 5vw, 52px); line-height: 1.05;
+         letter-spacing: -0.035em; color: var(--graphite); }
+    h2 { margin: 34px 0 8px; font-weight: 800; font-size: 21px; letter-spacing: -0.01em; color: var(--graphite); }
+    .updated { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+    p, li { color: #3A4048; }
     ul { padding-inline-start: 22px; }
-    code { background: #F3F3F3; padding: 1px 5px; border-radius: 3px; direction: ltr;
-           display: inline-block; }
-    .en { direction: ltr; text-align: left; border-top: 1px solid #E5E5E5;
-          margin-top: 48px; padding-top: 24px; }
-    a { color: #F57C00; }
-    .part { margin-top: 44px; padding-top: 8px; border-top: 3px solid #F57C00; }
-    .part-label { display: inline-block; font-size: 12px; font-weight: 700;
-                  letter-spacing: .04em; color: #F57C00; margin: 12px 0 2px; }
+    li { margin-bottom: 6px; }
+    li::marker { color: var(--blue); }
+    strong { color: var(--graphite); }
+    code { background: #F3F4F6; padding: 1px 6px; border-radius: 6px; direction: ltr; display: inline-block;
+           font-size: 0.92em; }
+    a { color: var(--blue-ink); }
+    .toc { display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px; margin: 18px 0 8px; }
+    .toc a { text-decoration: none; font-weight: 700; color: var(--graphite); padding: 8px 14px;
+             border-radius: 999px; background: #F3F4F6; }
+    .toc a:hover { background: var(--wash); color: var(--blue-ink); }
+    .part { margin-top: 40px; padding: 8px 28px 24px; border: 1px solid var(--line); border-radius: 22px;
+            box-shadow: 0 10px 30px rgba(24, 24, 24, 0.05); scroll-margin-top: 80px; }
+    .part-label { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .04em;
+                  color: var(--blue-ink); background: var(--wash); padding: 4px 12px; border-radius: 999px;
+                  margin: 18px 0 6px; }
+    .part h1 { margin-top: 4px; }
     .part h2:first-of-type { margin-top: 18px; }
-    .lead { background: #FFF6EE; border-inline-start: 4px solid #F57C00;
-            border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 18px 0; }
-    .never { background: #FFF; border: 1px solid #F7C89A; border-radius: 10px;
+    .lead { background: var(--wash); border-inline-start: 4px solid var(--blue);
+            border-radius: 0 12px 12px 0; padding: 14px 18px; margin: 18px 0; color: var(--graphite); }
+    .never { background: #FFFFFF; border: 1px solid #D6E3F3; border-radius: 14px;
              padding: 18px 22px 6px; margin: 18px 0; }
     .never li { margin-bottom: 8px; }
-    .toc { font-size: 14px; color: #706E6B; margin-bottom: 8px; }
-    .toc a { text-decoration: none; }
+    .en { direction: ltr; text-align: left; border-top: 1px solid var(--line); margin-top: 48px; padding-top: 24px; }
+    @media (max-width: 600px) { .part { padding: 4px 18px 18px; } main { padding-top: 36px; } }
   </style>
 </head>
 <body>
+  <header class="site-bar">
+    <a class="brand" href="/">Nifraim<span>.com</span></a>
+    <nav class="tabs" aria-label="ניווט">
+      <a href="/#agent" style="--tc:#0A6664">Nifra Agent</a>
+      <a href="/#call" style="--tc:#A63A86">Nifra Calls</a>
+      <a href="/#report" style="--tc:#2E2A8C">Nifra Report</a>
+    </nav>
+    <a class="back" href="/">חזרה לאתר</a>
+  </header>
+  <main>
   <h1>מדיניות פרטיות — Nifraim</h1>
-  <p class="updated">עודכן לאחרונה: יולי 2026</p>
+  <p class="updated">עודכן לאחרונה: אוקטובר 2026</p>
 
   <p>
     מסמך זה מכסה שני מוצרים נפרדים תחת השם Nifraim, ומסביר לגבי כל אחד מהם איזה מידע
     נאסף, למה הוא משמש — ובעיקר, למה הוא <strong>לא</strong> משמש.
   </p>
   <p class="toc">
-    <a href="#platform">חלק א׳ — מערכת Nifraim (האתר)</a> &nbsp;·&nbsp;
+    <a href="#platform">חלק א׳ — מערכת Nifraim (האתר)</a>
     <a href="#app">חלק ב׳ — אפליקציית ה-SMS לאנדרואיד</a>
   </p>
 
@@ -119,14 +161,82 @@ _PRIVACY_HTML = """<!DOCTYPE html>
           ניתן לביטול מיידי על ידי הסוכן, וננעל לרבע שעה לאחר 5 ניסיונות כניסה כושלים.</li>
     </ul>
 
+    <h2>Nifra Agent — העוזר החכם</h2>
+    <p>Nifra Agent עונה על שאלות הסוכן על התיק שלו ומציע לו פעולות. כדי לענות, המערכת שולפת
+       מתוך הנתונים של הסוכן בלבד את מה שנדרש לאותה שאלה — למשל לקוחות, פוליסות, עמלות,
+       מיילים פתוחים וסיכומי שיחות — ושולחת אותו ל-Anthropic (Claude) לצורך ניסוח התשובה.</p>
+    <ul>
+      <li><strong>רק הנתונים של הסוכן.</strong> כל שליפה מוגבלת בקוד לחשבון הסוכן המחובר;
+          העוזר אינו יכול לגשת לנתונים של סוכן אחר.</li>
+      <li><strong>מציע — לא מבצע.</strong> שליחת מייל, תזכורת או בקשה לגורם חיצוני מתבצעות
+          רק אחרי שהסוכן לחץ לאשר אותן. חריג אחד: כשהסוכן מבקש מהעוזר להקליט שיחה, ההקלטה
+          מתחילה מיד (לאחר אישור ההסכמה המתואר בסעיף Nifra Calls).</li>
+      <li><strong>מה נשמר.</strong> נוסח השאלה (עד 500 תווים) לצורך שיפור הניתוב, "זיכרונות"
+          שהסוכן ביקש מהעוזר לזכור, ונתוני שימוש טכניים (כמות טוקנים). התשובות עצמן ושיחות
+          הצ'אט אינן נשמרות בשרת. כל אלה נמחקים עם מחיקת החשבון.</li>
+      <li><strong>נתונים ציבוריים.</strong> העוזר נעזר גם בנתוני קופות וקרנות פתוחים ממאגרי
+          המידע הממשלתיים (data.gov.il), שאינם כוללים מידע אישי.</li>
+    </ul>
+
+    <h2>Nifra Calls — הקלטה, תמלול וסיכום שיחות</h2>
+    <p class="lead">
+      הסוכן יכול להקליט שיחה עם לקוח ולקבל תמליל וסיכום. לפני ההקלטה הראשונה המערכת מחייבת
+      את הסוכן לאשר ש<strong>הלקוח יודע שהשיחה מוקלטת</strong>. האחריות ליידע את הצד השני
+      בשיחה ולקבל את הסכמתו, כנדרש בחוק, מוטלת על הסוכן.
+    </p>
+    <ul>
+      <li><strong>השמע לא יוצא מהשרתים שלנו.</strong> קובץ השמע עובר מהדפדפן לשרתים שלנו בלבד,
+          והתמלול נעשה בשרת שלנו באמצעות מודל קוד-פתוח לזיהוי דיבור בעברית. ההקלטה אינה
+          נשלחת לאף צד שלישי.</li>
+      <li><strong>סיכום.</strong> טקסט התמליל — לא השמע — נשלח ל-Anthropic (Claude) כדי לנסח
+          סיכום, משימות להמשך וטיוטת מכתב סיכום ללקוח. המכתב נשלח רק כשהסוכן לוחץ לשלוח.</li>
+      <li><strong>שמירה ומחיקה.</strong> קובץ השמע נמחק אוטומטית 7 ימים לאחר ההקלטה. התמליל
+          והסיכום נשמרים בחשבון הסוכן עד שהוא מוחק את השיחה, או עד מחיקת החשבון.</li>
+    </ul>
+
+    <h2>Mail Agent — קריאת מיילים וניסוח תשובות</h2>
+    <p>Mail Agent קורא מיילים שמגיעים לסוכן מגורמים שהוא בחר (למשל חברות ביטוח), מסכם אותם
+       ומנסח טיוטת תשובה. החיבור לתיבת הדואר נעשה על ידי הסוכן בלבד:</p>
+    <ul>
+      <li><strong>Microsoft (Outlook / Microsoft 365)</strong> — הרשאת קריאה בלבד (Mail.Read).
+          המערכת אינה יכולה לשלוח, למחוק או לשנות דבר בתיבה.</li>
+      <li><strong>Gmail</strong> — באמצעות "סיסמת אפליקציה" שהסוכן יוצר בחשבון Google שלו.
+          הסיסמה נשמרת אצלנו מוצפנת, משמשת לקריאה (בלי לסמן מיילים כנקראו) ולשליחה רק כשהסוכן
+          לוחץ לשלוח. הסוכן יכול לבטל אותה בכל עת בחשבון Google שלו.</li>
+      <li><strong>הפניה (forwarding)</strong> — הסוכן מפנה אלינו מיילים מסוימים; אין לנו גישה
+          לתיבה עצמה ואיננו שומרים פרטי גישה.</li>
+    </ul>
+    <ul>
+      <li><strong>רק השולחים שהסוכן בחר.</strong> המערכת שומרת ומעבדת רק מיילים משולחים שהסוכן
+          הוסיף לרשימה. בתיבות Microsoft השרת סורק את המיילים האחרונים כדי לסנן, ומיילים
+          משולחים אחרים נזרקים מיד ואינם נשמרים.</li>
+      <li><strong>סגנון כתיבה.</strong> רק אם הסוכן לוחץ "למד את הסגנון שלי", המערכת קוראת עד
+          12 תשובות ששלח בעבר לאותם שולחים, ושומרת פרופיל סגנון ועד 3 דוגמאות — מוצפנות.</li>
+      <li><strong>בינה מלאכותית.</strong> השולח, הנושא ותוכן המייל נשלחים ל-Anthropic (Claude)
+          כדי לסווג ולסכם אותו. לניסוח טיוטה נשלחים גם פרופיל הסגנון והנתונים הרלוונטיים
+          מהתיק של הסוכן (למשל המוצרים של הלקוח שהמייל עוסק בו).</li>
+      <li><strong>שום דבר לא נשלח מעצמו.</strong> תשובה נשלחת רק כשהסוכן לוחץ "שלח". בקשות
+          להסכמי עמלות נשלחות מתיבת הסוכן רק כשהוא יוזם אותן.</li>
+      <li><strong>צרופות.</strong> נשמרים רק שם, סוג וגודל. קובץ נקלט לתיק כשהסוכן לוחץ לקלוט אותו;
+          חריגים: קובצי הסכם (PDF) שחברת ביטוח שולחת בתשובה לבקשה שהסוכן שלח, וקובצי
+          פרודוקציה של חברות ששולחות פרודוקציה במייל, נקלטים אוטומטית לתיק של אותו סוכן.</li>
+      <li><strong>שמירה ומחיקה.</strong> נשמרים השולח, הנושא, הסיכום, הפרטים שזוהו (כגון מספר
+          פוליסה וסכומים) והטיוטות. גוף המייל נשמר מוצפן ונמחק אוטומטית לאחר 90 יום. ניתוק
+          תיבת הדואר מוחק את פרטי הגישה השמורים אצלנו — מומלץ גם לבטל את ההרשאה או את סיסמת
+          האפליקציה בחשבון Microsoft / Google. שאר הנתונים נמחקים עם מחיקת החשבון או לבקשה.</li>
+      <li><strong>צוות Nifraim</strong> אינו רואה את תוכן המיילים במסכי הניהול — רק אם תיבה
+          מחוברת וכמה מיילים התקבלו.</li>
+    </ul>
+
     <h2>ספקי צד שלישי</h2>
     <p>אנו נעזרים במספר מצומצם של ספקים. כל אחד פועל <strong>לפי הוראותינו בלבד</strong>,
        כמעבד מידע — ולא כגורם הרשאי לעשות במידע שימוש משלו:</p>
     <ul>
       <li><strong>Railway</strong> — אירוח השרתים ומסד הנתונים.</li>
       <li><strong>Resend</strong> — שליחת הודעות דוא"ל מהמערכת.</li>
-      <li><strong>Anthropic (Claude)</strong> — מפעיל את העוזר החכם. כששואלים אותו שאלה,
-          הנתונים הרלוונטיים לאותה שאלה נשלחים אליו כדי לייצר תשובה, בהתאם לתנאי ה-API
+      <li><strong>Anthropic (Claude)</strong> — מודל השפה שמפעיל את Nifra Agent, את סיכומי
+          השיחות (טקסט התמליל בלבד), את הסינון והניסוח של Mail Agent ואת הצ'אט בפורטל
+          הלקוחות. בכל פעם נשלחים אליו רק הנתונים הנדרשים לאותה משימה, בהתאם לתנאי ה-API
           שלו הקובעים כי אינם משמשים לאימון מודלים.</li>
       <li><strong>פורטלי חברות הביטוח</strong> — המערכת מתחברת אליהם בשם הסוכן ובאישורו,
           באמצעות פרטי ההתחברות שהוא מסר, אך ורק כדי להוריד את הדוחות שלו.</li>
@@ -136,10 +246,15 @@ _PRIVACY_HTML = """<!DOCTYPE html>
     <p>הסוכן יכול לייצר קישור אישי לפורטל עבור לקוח. הלקוח רואה בו את הרשומות שלו בלבד —
        הן מסוננות גם לפי הסוכן שיצר את הקישור וגם לפי תעודת הזהות של אותו לקוח.
        לקוח אינו יכול לראות לקוחות אחרים ואינו יכול לגשת למערכת הסוכן.</p>
+    <p>בפורטל יכול הלקוח לשאול שאלות על התיק שלו בצ'אט חכם (Anthropic Claude). לצ'אט נשלחים
+       רק נתוני התיק של אותו לקוח, בלי סכומים שהסוכן בחר להסתיר. הסוכן יכול לכבות את הצ'אט
+       בכל קישור, והשיחה אינה נשמרת בשרת.</p>
 
     <h2>שמירה ומחיקה</h2>
     <p>המידע נשמר כל עוד חשבון הסוכן פעיל, מפני שהמערכת זקוקה להיסטוריה כדי להשוות בין
-       חודשי דיווח. הסוכן יכול למחוק קבצים שהעלה בכל עת מתוך המערכת. למחיקת חשבון
+       חודשי דיווח. הסוכן יכול למחוק קבצים שהעלה ושיחות שהקליט בכל עת מתוך המערכת.
+       קובצי שמע של הקלטות נמחקים אוטומטית 7 ימים לאחר ההקלטה.
+       גוף המיילים ש-Mail Agent קרא נמחק אוטומטית לאחר 90 יום. למחיקת חשבון
        והנתונים שבו במלואם — פנו אלינו לכתובת שבתחתית העמוד.</p>
 
     <h2>הזכויות שלך</h2>
@@ -225,6 +340,7 @@ _PRIVACY_HTML = """<!DOCTYPE html>
       <li><strong>Contact:</strong> <a href="mailto:admin@nifraim.co.il">admin@nifraim.co.il</a></li>
     </ul>
   </div>
+  </main>
 </body>
 </html>"""
 

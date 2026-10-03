@@ -31,7 +31,6 @@
       </template>
       <template v-else-if="phase === 'uploading'">שולח <span class="ltr-number">{{ Math.round(store.uploadProgress * 100) }}%</span></template>
       <template v-else-if="phase === 'processing'">ממתין לסיכום</template>
-      <template v-else-if="unseen">סיכום מוכן</template>
       <template v-else><span dir="ltr">Nifra <b>Calls</b></span></template>
     </button>
 
@@ -52,7 +51,8 @@ const props = defineProps({
 })
 const store = useCallsStore()
 const ringEl = ref(null)
-const studioOpen = ref(false)
+// shared through the store: other overlays (Nifra Agent) wait while it's up
+const studioOpen = computed({ get: () => store.studioOpen, set: (v) => { store.studioOpen = v } })
 
 
 const inFlight = computed(() => store.calls.some((c) => !CALL_TERMINAL.has(c.status)) || (store.current && !CALL_TERMINAL.has(store.current.status)))
@@ -98,6 +98,8 @@ function openStudio() {
   studioOpen.value = true
   markAllSeen()
 }
+// the AI chat asked to show the studio (e.g. "פתיחת הסיכום" on the agent's call card)
+watch(() => store.studioRequest, (r) => { if (r) openStudio() })
 
 onMounted(async () => {
   await store.hydrate()

@@ -19,7 +19,7 @@ from app.schemas.record import (
     RateCoverageRow,
 )
 from app.api.deps import get_paid_user as get_current_user
-from app.services.rate_select import explain_expected_commission
+from app.services.rate_select import explain_expected_commission, harel_hidden_book
 from app.utils.company_norm import company_stem
 from app.utils.hebrew_mappings import DEFAULT_COMMISSION_RATES
 
@@ -42,6 +42,7 @@ def _out(r: CommissionRate) -> CommissionRateOut:
         company_email=r.company_email,
         effective_from=r.effective_from,
         effective_to=r.effective_to,
+        hidden_book=harel_hidden_book(r.company_name, r.product, None, [r]),
     )
 
 

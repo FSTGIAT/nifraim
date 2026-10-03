@@ -16,6 +16,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // the privacy policy is a backend page (api/legal.py), linked from the site's footers
+      '/privacy': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

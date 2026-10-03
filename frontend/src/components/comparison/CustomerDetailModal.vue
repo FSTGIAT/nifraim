@@ -13,6 +13,7 @@
             <span v-if="customer.client_email" class="ltr-number">{{ customer.client_email }}</span>
             <span v-if="customer.employer_name">{{ customer.employer_name }}</span>
             <span v-if="customer.commission_count > 0" class="cd-chip">{{ customer.commission_count }} מוצרים בנפרעים</span>
+            <span v-if="onlyCommCompanies.length" class="cd-chip cd-chip--only">רק בנפרעים · {{ onlyCommCompanies.join(', ') }}</span>
             <span v-if="customer.paid_count > 0" class="cd-chip cd-chip--ok">{{ customer.paid_count }} שולמו</span>
           </div>
 
@@ -76,6 +77,7 @@
                   <span v-if="p.fund_type" class="p-tag-info">{{ p.fund_type }}</span>
                   <span v-if="p.track" class="p-tag-info">{{ p.track }}</span>
                   <span v-if="!p.paid && !p.source" class="p-tag-production">רק בפרודוקציה</span>
+                  <span v-if="p.source === 'commission_only'" class="p-tag-commission">רק בנפרעים</span>
                   <span v-if="p._payments > 1" class="p-tag-info ltr-number">{{ p._payments }} תשלומים</span>
                 </div>
               </div>
@@ -179,11 +181,24 @@ const totals = computed(() => {
     .reduce((s, p) => s + (expectedCommission(p) || 0), 0)
   return {
     accumulation: products.reduce((s, p) => s + (p.accumulation || 0), 0),
-    premium: products.reduce((s, p) => s + (p.premium || 0), 0),
+    // Pension deposits are not an insurance premium — same figure as the
+    // "לקוחות לפי פרמיה" chart (falls back to the raw sum for other callers).
+    premium: props.customer.insurance_premium ?? products.reduce((s, p) => s + (p.premium || 0), 0),
     commission: products.reduce((s, p) => s + (p.commission || 0), 0),
     balance: products.reduce((s, p) => s + (p.balance || 0), 0),
     expectedCommission: expComm,
   }
+})
+
+// Companies where this customer has a נפרעים line with no production
+// behind it — so a customer with products at two companies says WHERE it is
+// only in נפרעים, not just that it is (QA 2026-10-02).
+const onlyCommCompanies = computed(() => {
+  if (!props.customer) return []
+  return [...new Set(props.customer.products
+    .filter(p => p.source === 'commission_only')
+    .map(p => shortCompany(p.company))
+    .filter(Boolean))]
 })
 
 const isUnpaidRow = p => !p.paid && !p.source
@@ -438,6 +453,7 @@ function fmtCell(val) {
 .cd-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12.5px; color: var(--text-muted); }
 .cd-chip { padding: 2px 10px; border-radius: 10px; background: var(--bg); color: var(--text); font-weight: 600; }
 .cd-chip--ok { background: var(--tab-comparison-wash, var(--bg)); color: var(--acc); }
+.cd-chip--only { background: color-mix(in srgb, var(--chart-2) 14%, transparent); color: var(--tab-portal-ink); }
 
 /* summary strip */
 .kpi-strip { display: flex; border: 1px solid var(--border-subtle); border-radius: 14px; overflow: hidden; }
@@ -471,6 +487,8 @@ function fmtCell(val) {
 .p-sub { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }
 .p-tag-info { color: var(--text-muted); }
 .p-tag-production { padding: 1px 8px; border-radius: 8px; background: var(--amber-light); color: var(--amber); font-weight: 600; }
+/* Sky = the only_commission status colour (STATUS_COLORS); ink shade for text contrast. */
+.p-tag-commission { padding: 1px 8px; border-radius: 8px; background: color-mix(in srgb, var(--chart-2) 14%, transparent); color: var(--tab-portal-ink); font-weight: 600; }
 
 .p-amounts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 18px; }
 .amt { display: flex; flex-direction: column; align-items: flex-start; min-width: 64px; }

@@ -38,13 +38,17 @@
                   <span class="na-line-dot" aria-hidden="true"></span>
                   <div class="na-line-body">
                     <AiStreamingText :text="l.text" :speed="7" :start="i <= step" :show-cursor="i === step" @complete="onLineDone(i)" />
+                    <span v-if="sentNote[i]" class="na-sent na-sent--line">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                      {{ sentNote[i] }}
+                    </span>
                     <!-- the action this line points at -->
                     <button v-if="lineDone[i] && l.ref === 'setup:mail'" type="button" class="na-link" @click="emit('open-mail')">
                       חיבור Mail Agent
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
                     </button>
                     <template v-if="lineDone[i] && cardOf(l)">
-                      <button v-if="primary(cardOf(l))" type="button" class="na-link" @click="toggle(i, cardOf(l))">
+                      <button v-if="primary(cardOf(l))" type="button" class="na-link" :data-line-pill="i" @click="onPrimary(i, cardOf(l), $event)">
                         {{ openLine === i ? 'סגירה' : primary(cardOf(l)).label }}
                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
                       </button>
@@ -52,7 +56,7 @@
                     </template>
                     <!-- inline: the draft to approve / the contact to add -->
                     <Transition name="na-sheet">
-                      <div v-if="openLine === i && cardOf(l)" class="na-sheet">
+                      <div v-if="openLine === i && cardOf(l)" :id="'na-sheet-' + i" class="na-sheet">
                         <template v-if="cardOf(l).actions.includes('set_email')">
                           <label class="na-sheet-label">המייל של איש הקשר ב{{ cardOf(l).title }}</label>
                           <div class="na-row">
@@ -87,6 +91,7 @@
             <div v-for="(m, i) in store.thread" :key="'t' + i" class="na-qa" :class="'na-qa--' + m.role">
               <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="7" :show-cursor="i === store.thread.length - 1" />
               <span v-else>{{ m.text }}</span>
+              <AgentCallCard v-if="m.call" :call="m.call" :notify="store.notifyCall" />
               <button v-if="m.vizs && m.vizs.length" type="button" class="na-link" @click="emit('open-vizs', m.vizs)">
                 {{ m.vizs.length > 1 ? `הצגת ${m.vizs.length} גרפים` : 'הצגת הגרף' }}
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
@@ -185,18 +190,29 @@
       </div>
     </Transition>
   </Teleport>
+  <!-- a call's follow-up email: opens as a letter out of its pill -->
+  <CallFollowupLetter v-if="letter" :key="letter.card.id" :card="letter.card" :origin="letter.origin"
+                      @close="letter = null" @sent="(name) => (sentNote[letter.i] = 'נשלח ל' + name)"
+                      @dismissed="() => {}" @open-call="(id) => { letter = null; emit('open-call', id) }"
+                      @open-mail="letter = null; emit('open-mail')" />
 </template>
 
 <script setup>
+import AgentCallCard from '../ai/AgentCallCard.vue'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 import AiStreamingText from '../ui/AiStreamingText.vue'
 import AgentCreateDrawing from './AgentCreateDrawing.vue'
+import CallFollowupLetter from './CallFollowupLetter.vue'
 
-const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: Object, default: null } })
-const emit = defineEmits(['update:open', 'open-mail', 'open-vizs'])
+const props = defineProps({
+  open: { type: Boolean, default: false },
+  originEl: { type: Object, default: null },
+  focusCard: { type: String, default: null }, // opened by itself on a call card → expand that line
+})
+const emit = defineEmits(['update:open', 'open-mail', 'open-vizs', 'open-call'])
 const propTitle = (p) => p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
 const store = useOfficeAgentStore()
 
@@ -234,8 +250,9 @@ const statusText = computed(() => {
 const cardOf = (l) => (l?.ref ? store.cards.find((c) => c.id === l.ref) : null)
 const canSend = computed(() => !!store.brief?.mailbox?.can_send)
 const isSend = (c) => c.actions.includes('send_reply') || c.actions.includes('send_case')
-const hasFinish = (c) => c.actions.includes('done') || c.actions.includes('resolve')
+const hasFinish = (c) => c.actions.includes('done') || c.actions.includes('resolve') || c.actions.includes('dismiss_followup')
 function primary(c) {
+  if (c.actions.includes('send_followup')) return { action: 'send_followup', label: 'לסיכום שהכנתי' }
   if (c.actions.includes('send_reply')) return { action: 'send_reply', label: 'לתשובה שהכנתי' }
   if (c.actions.includes('send_case')) return { action: 'send_case', label: 'לפנייה לחברה' }
   if (c.actions.includes('set_email')) return { action: 'set_email', label: 'הוספת מייל' }
@@ -248,23 +265,43 @@ function primary(c) {
 const openLine = ref(-1)
 const body = ref('')
 const email = ref('')
+const sentNote = reactive({})
+// a call card opens as a letter (CallFollowupLetter), not the inline sheet
+const letter = ref(null) // { card, origin, i }
+function openLetter(i, c, origin) { letter.value = { card: c, origin: origin || null, i } }
+function onPrimary(i, c, ev) {
+  if (c.kind === 'call') { openLetter(i, c, ev?.currentTarget); return }
+  toggle(i, c)
+}
 function toggle(i, c) {
   openLine.value = openLine.value === i ? -1 : i
   body.value = c.draft_body || ''
   email.value = c.to_email || ''
   store.error = ''
-}
-async function sendIt(c) {
-  if (c.kind === 'unpaid') {
-    if (body.value !== c.draft_body && !(await store.act(c, 'save_case_body', { body: body.value }))) return
-    if (await store.act(c, 'send_case')) openLine.value = -1
-  } else if (await store.act(c, 'send_reply', { body: body.value })) {
-    openLine.value = -1
-  }
+  store.errorCode = ''
 }
 async function saveEmail(c) { if (email.value && (await store.act(c, 'set_email', { email: email.value }))) openLine.value = -1 }
 async function runPrimary(c) { if (await store.act(c, primary(c).action)) openLine.value = -1 }
-async function finish(c) { if (await store.act(c, c.actions.includes('resolve') ? 'resolve' : 'done')) openLine.value = -1 }
+async function finish(c) {
+  const action = c.actions.includes('dismiss_followup') ? 'dismiss_followup' : c.actions.includes('resolve') ? 'resolve' : 'done'
+  if (await store.act(c, action)) openLine.value = -1
+}
+
+// opened by itself on a call card: once that line has been written, expand it
+const focusIndex = computed(() => (props.focusCard && store.narration ? store.narration.lines.findIndex((l) => l.ref === props.focusCard) : -1))
+let focusedFor = null
+watch(() => [focusIndex.value, focusIndex.value >= 0 && lineDone[focusIndex.value], props.open], ([i, done, open]) => {
+  if (!open || i < 0 || !done || focusedFor === props.focusCard) return
+  const c = cardOf(store.narration.lines[i])
+  if (!c) return
+  focusedFor = props.focusCard
+  // let the panel settle and the pill appear, then the envelope grows out of it
+  setTimeout(() => {
+    const pill = cardEl.value?.querySelector(`[data-line-pill="${i}"]`)
+    pill?.scrollIntoView({ block: 'nearest' })
+    openLetter(i, c, pill)
+  }, 700)
+})
 
 function setStart(p, date, time) {
   p.start = `${date || p.start.slice(0, 10)}T${time || p.start.slice(11, 16)}`
@@ -370,6 +407,9 @@ watch(() => props.open, async (v) => {
   step.value = -1
   for (const k of Object.keys(lineDone)) delete lineDone[k]
   openLine.value = -1
+  focusedFor = null
+  letter.value = null
+  for (const k of Object.keys(sentNote)) delete sentNote[k]
   runId.value++
   morph.remember(props.originEl)
   await nextTick()
@@ -454,6 +494,7 @@ async function close() {
   display: flex; flex-direction: column; gap: 8px; text-decoration: none;
 }
 .na-sheet-label { font-size: 12.5px; font-weight: 800; color: #4A5B5A; }
+.na-sheet .na-f input { height: 38px; }
 .na-sheet textarea {
   width: 100%; box-sizing: border-box; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(14, 140, 138, 0.18);
   font-family: inherit; font-size: 14px; line-height: 1.6; background: rgba(255, 255, 255, 0.9); outline: none; color: #10201F;
@@ -465,6 +506,11 @@ async function close() {
 .na-go:hover:not(:disabled) { background: #000; transform: translateY(-1px); }
 .na-go:disabled { opacity: 0.35; cursor: default; }
 .na-hint { font-size: 12.5px; color: #8A6300; }
+.na-hint--calm { margin: 0; color: #4A5B5A; }
+.na-link--plain { background: none; color: #0A6664; text-decoration: underline; text-underline-offset: 3px; font-weight: 700; }
+.na-link--plain:hover { background: rgba(14, 140, 138, 0.08); }
+.na-sent--line { display: inline-flex; margin-inline-start: 10px; animation: naIn 0.4s ease both; }
+.na-err .na-link { margin-inline-start: 8px; }
 .na-err { margin: 0; font-size: 13px; font-weight: 700; color: #C23934; }
 .na-sheet-enter-active, .na-sheet-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-4px); }

@@ -73,7 +73,7 @@ def _is_savings(product_type: str | None) -> bool:
     return _classify_product_type(pt) == _CATEGORY_GEMEL or any(w in pt for w in _SAVINGS_WORDS)
 
 
-def _rate_for(user_rates, company, product, product_type, accumulation, premium):
+def _rate_for(user_rates, company, product, product_type, accumulation, premium, sign_date=None):
     """(rate, expected_commission, is_estimate) for one product line, or blanks
     when the caller supplied no rates.
 
@@ -92,8 +92,9 @@ def _rate_for(user_rates, company, product, product_type, accumulation, premium)
     if not user_rates:
         return None, None, None
     try:
+        # sign_date picks the agreement's policy-year band (שנה 1-5 / 6-15 / 16+).
         rate, expected, route = rate_for_product(
-            user_rates, company, product, product_type, accumulation, premium
+            user_rates, company, product, product_type, accumulation, premium, sign_date
         )
         is_estimate = not (route or "").endswith((":product", ":residue"))
         return rate, expected, is_estimate
@@ -442,6 +443,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
             p_rate, p_expected, p_est = _rate_for(
                 user_rates, r.get("receiving_company"), product_name,
                 r.get("product_type"), r.get("accumulation"), r.get("total_premium"),
+                r.get("sign_date"),
             )
             prod_products.append({
                 "product": product_name,
@@ -472,7 +474,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
             c_rate, c_expected, c_est = _rate_for(
                 user_rates, r.get("receiving_company"), c_product,
                 r.get("product_type") or r.get("fund_type"),
-                _get_balance(r), r.get("total_premium"),
+                _get_balance(r), r.get("total_premium"), r.get("sign_date"),
             )
             comm_products.append({
                 "product": c_product,
@@ -752,7 +754,7 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
                 m_rate, m_expected, m_est = _rate_for(
                     user_rates, pr.get("receiving_company"), product_name,
                     pr.get("product_type"), pr.get("accumulation"),
-                    pr.get("total_premium"),
+                    pr.get("total_premium"), pr.get("sign_date"),
                 )
                 matched.append({
                     "policy_number": pn,
@@ -797,7 +799,8 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
              **dict(zip(("rate", "expected_commission", "expected_is_estimate"),
                         _rate_for(user_rates, r.get("receiving_company"),
                                   r.get("product"), r.get("product_type"),
-                                  r.get("accumulation"), r.get("total_premium")))),
+                                  r.get("accumulation"), r.get("total_premium"),
+                                  r.get("sign_date")))),
              "sign_date": str(r["sign_date"]) if r.get("sign_date") else None,
              "track": r.get("track"),
              "client_phone": r.get("client_phone"),
@@ -816,7 +819,8 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
                         _rate_for(user_rates, r.get("receiving_company"),
                                   r.get("fund_type") or r.get("product"),
                                   r.get("product_type") or r.get("fund_type"),
-                                  _get_balance(r), r.get("total_premium")))),
+                                  _get_balance(r), r.get("total_premium"),
+                                  r.get("sign_date")))),
              "fund_type": r.get("fund_type")}
             for r in unmatched_comm
         ],

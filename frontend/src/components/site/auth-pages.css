@@ -1,0 +1,166 @@
+/* The public auth pages (login, register, forgot / reset password) — one look, one file.
+   Form on the right (RTL start), the AuthMedia video panel on the left.
+   Imported by each view as <style scoped src="...">. */
+
+.auth-split {
+  --ink: #181818;
+  --graphite: #2A2E35;
+  --blue: #2F73C4;
+  --muted: #5B6470;
+  --line: rgba(24, 24, 24, 0.12);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  background: #FFFFFF;
+  color: var(--graphite);
+  font-family: 'Heebo', sans-serif;
+  direction: rtl;
+}
+
+/* ── media side (AuthMedia) — a rounded panel inset from the page edge ── */
+.auth-media {
+  position: sticky; top: 12px;
+  height: calc(100vh - 24px);
+  margin: 12px 0 12px 12px;
+  border-radius: 28px;
+}
+
+/* ── form side ── */
+.auth-form-panel {
+  display: flex; align-items: center; justify-content: center;
+  padding: 110px clamp(24px, 6vw, 96px) 48px;
+}
+.form-content {
+  width: min(420px, 100%);
+  display: flex; flex-direction: column;
+  animation: formRise 1s var(--ease) both;
+}
+@keyframes formRise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+
+.form-kicker { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: var(--blue); letter-spacing: 0.02em; }
+.form-heading {
+  margin: 0; font-weight: 900; font-size: clamp(40px, 4.4vw, 64px); line-height: 1;
+  letter-spacing: -0.04em; color: var(--graphite);
+}
+.form-subtitle { margin: 12px 0 30px; font-size: 16px; color: var(--muted); }
+
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field label { font-size: 13px; font-weight: 700; color: var(--graphite); }
+.control { position: relative; }
+.control-icon {
+  position: absolute; top: 50%; inset-inline-start: 15px; translate: 0 -50%;
+  width: 18px; height: 18px; color: #8A929C; pointer-events: none;
+}
+.control input,
+.field input,
+.field select,
+.field textarea {
+  width: 100%; height: 52px; padding: 0 16px; padding-inline-start: 44px;
+  border: 1px solid var(--line); border-radius: 12px; background: #F6F7F9;
+  font: 500 15px 'Heebo', sans-serif; color: var(--graphite); outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.field > input, .field > select, .field > textarea { padding-inline-start: 16px; }
+.field textarea { height: auto; min-height: 96px; padding-top: 12px; }
+.control input::placeholder, .field input::placeholder { color: #A3AAB3; }
+.control input:focus, .field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--blue); background: #FFFFFF; box-shadow: 0 0 0 4px rgba(47, 115, 196, 0.14);
+}
+.control input[dir='ltr'] { text-align: left; padding-left: 16px; padding-right: 44px; } /* LTR text, icon still on the right */
+.toggle-pw {
+  position: absolute; top: 50%; inset-inline-end: 10px; translate: 0 -50%;
+  width: 34px; height: 34px; border: none; border-radius: 8px; background: transparent;
+  display: grid; place-items: center; color: #8A929C; cursor: pointer;
+}
+.toggle-pw:hover { background: rgba(24, 24, 24, 0.05); color: var(--graphite); }
+.toggle-pw svg { width: 18px; height: 18px; }
+.control:has(.toggle-pw) input { padding-inline-end: 48px; }
+.control:has(.toggle-pw) input[dir='ltr'] { padding-left: 48px; }
+
+.auth-form-row { display: flex; justify-content: flex-start; margin-top: -4px; }
+.forgot, .auth-link { font-size: 14px; font-weight: 600; color: var(--blue); text-decoration: none; }
+.forgot:hover, .auth-link:hover { text-decoration: underline; }
+
+.auth-error {
+  margin: 0; padding: 11px 14px; border-radius: 10px;
+  background: #FDECEC; color: #B3261E; font-size: 14px; font-weight: 600;
+}
+.auth-success {
+  margin: 0; padding: 11px 14px; border-radius: 10px;
+  background: #EAF5EE; color: #1B6B3A; font-size: 14px; font-weight: 600;
+}
+
+.auth-submit {
+  height: 54px; margin-top: 6px; border: none; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--ink); color: #FFFFFF; font: 800 16px 'Heebo', sans-serif; cursor: pointer;
+  box-shadow: 0 10px 26px rgba(24, 24, 24, 0.2);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, opacity 0.2s ease;
+}
+.auth-submit:hover:not(:disabled) { transform: translateY(-1px); background: #000; box-shadow: 0 14px 32px rgba(24, 24, 24, 0.26); }
+.auth-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #FFFFFF;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.mobile-toggle { margin: 26px 0 0; text-align: center; font-size: 15px; color: var(--muted); }
+.mobile-toggle a { margin-inline-start: 4px; font-weight: 800; color: var(--blue); text-decoration: none; }
+.mobile-toggle a:hover { text-decoration: underline; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* ── phones / narrow: the video becomes a band on top ── */
+@media (max-width: 900px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-media { order: -1; position: relative; top: 0; height: 36vh; margin: 0; border-radius: 0 0 28px 28px; }
+  .auth-form-panel { padding: 32px 20px 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form-content { animation: none; }
+}
+
+/* ── names the forgot / reset / register templates use ── */
+.hint { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+.error {
+  margin: 0; padding: 11px 14px; border-radius: 10px;
+  background: #FDECEC; color: #B3261E; font-size: 14px; font-weight: 600;
+}
+.btn-submit {
+  height: 54px; margin-top: 6px; border: none; border-radius: 12px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--ink); color: #FFFFFF; font: 800 16px 'Heebo', sans-serif; cursor: pointer;
+  box-shadow: 0 10px 26px rgba(24, 24, 24, 0.2);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, opacity 0.2s ease;
+}
+.btn-submit:hover:not(:disabled) { transform: translateY(-1px); background: #000; }
+.btn-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #FFFFFF;
+  animation: spin 0.8s linear infinite;
+}
+.success-state { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; animation: formRise 0.8s var(--ease) both; }
+.success-icon {
+  width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center;
+  background: #EAF5EE;
+}
+.success-icon svg { width: 36px; height: 36px; stroke: #2E844A; }
+.success-title { margin: 6px 0 0; font-weight: 900; font-size: 32px; letter-spacing: -0.03em; color: var(--graphite); }
+.success-text { margin: 0; font-size: 16px; line-height: 1.6; color: var(--muted); }
+.back-link {
+  margin-top: 8px; display: inline-flex; align-items: center; justify-content: center;
+  height: 50px; padding: 0 26px; border-radius: 12px; background: var(--ink); color: #FFFFFF;
+  font: 800 15px 'Heebo', sans-serif; text-decoration: none;
+}
+.back-link:hover { background: #000; }
+
+/* the privacy-policy link at the foot of every auth page */
+.auth-legal { margin-top: 28px; align-self: center; font-size: 13px; color: var(--muted); text-decoration: none; }
+.auth-legal:hover { color: var(--graphite); text-decoration: underline; }

@@ -42,6 +42,7 @@
               v-html="renderMarkdown(msg.content)"
             />
             <div v-else class="message-content">{{ msg.content }}</div>
+            <AgentCallCard v-if="msg.call" :call="msg.call" :notify="chatStore.notifyCall" />
             <span
               v-if="msg.role === 'assistant' && chatStore.loading && i === chatStore.messages.length - 1 && !msg.content"
               class="typing-indicator"
@@ -135,6 +136,7 @@
 </template>
 
 <script setup>
+import AgentCallCard from '../ai/AgentCallCard.vue'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 import Avatar from '../Avatar.vue'
 import { useAuthStore } from '../../stores/auth.js'

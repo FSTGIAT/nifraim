@@ -1,13 +1,7 @@
 <template>
   <div class="signup">
-    <!-- Accent orbs (cobalt/teal) -->
-    <div class="hero-gradient" aria-hidden="true">
-      <div class="orb orb-1"></div>
-      <div class="orb orb-2"></div>
-      <div class="orb orb-3"></div>
-    </div>
 
-    <!-- Nav lives in App.vue (shared SlideTabs across marketing routes) -->
+    <!-- Nav lives in App.vue (shared SiteNav across marketing routes) -->
 
     <div class="signup-content">
       <!-- Progress -->
@@ -211,11 +205,17 @@
           </router-link>
         </div>
       </Transition>
+      <!-- plain <a>: /privacy is a backend page -->
+      <a href="/privacy" class="site-legal">מדיניות פרטיות</a>
     </div>
+
+    <!-- left: the lighthouse at dusk, opening out of a soft circle -->
+    <AuthMedia class="auth-media" video="dusk" />
   </div>
 </template>
 
 <script setup>
+import AuthMedia from '../components/site/AuthMedia.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../api/client.js'
@@ -299,12 +299,12 @@ async function processPayment() {
   --land-accent-ink: #245C9E;      /* deeper cobalt — small text on cream (≥4.5:1) */
   --land-accent-bright: #0E8C8A;   /* teal — gradient partner */
   --land-accent-glow: rgba(47, 115, 196, 0.1);
-  --cream-bg: #F5F0EB;
-  --cream-surface: #EDE8E1;
-  --cream-surface-3: #F9F6F2;
-  --cream-text: #2D2522;
-  --cream-text-muted: rgba(45, 37, 34, 0.6);
-  --cream-text-dim: rgba(45, 37, 34, 0.35);
+  --cream-bg: #FFFFFF;
+  --cream-surface: #F6F7F9;
+  --cream-surface-3: #FFFFFF;
+  --cream-text: #2A2E35;
+  --cream-text-muted: rgba(42, 46, 53, 0.62);
+  --cream-text-dim: rgba(42, 46, 53, 0.36);
   --dark-section: #2D2522;
   --transition-fast: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
@@ -314,63 +314,30 @@ async function processPayment() {
   font-family: 'Heebo', sans-serif;
   direction: rtl;
   position: relative;
-  overflow: hidden;
+  /* form on the right, the AuthMedia video panel on the left (sticky — so no overflow:hidden) */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: start;
+}
+.signup .auth-media {
+  position: sticky; top: 12px;
+  height: calc(100vh - 24px);
+  margin: 12px 0 12px 12px;
+  border-radius: 28px;
+}
+.site-legal { display: block; margin-top: 28px; text-align: center; font-size: 13px; color: var(--cream-text-muted); text-decoration: none; }
+.site-legal:hover { color: var(--cream-text); text-decoration: underline; }
+@media (max-width: 900px) {
+  .signup { grid-template-columns: 1fr; }
+  .signup .auth-media { order: -1; position: relative; top: 0; height: 32vh; margin: 0; border-radius: 0 0 28px 28px; }
+  .signup .signup-content { padding-top: 32px; }
 }
 
 .signup a { color: inherit; text-decoration: none; }
 
 /* ── Accent orbs (cobalt/teal) ── */
-.hero-gradient {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.hero-gradient .orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(120px);
-  animation: orbFloat 9s ease-in-out infinite;
-}
-
-.hero-gradient .orb-1 {
-  width: 720px;
-  height: 720px;
-  background: rgba(47, 115, 196, 0.28);
-  top: -18%;
-  left: -10%;
-}
-
-.hero-gradient .orb-2 {
-  width: 520px;
-  height: 520px;
-  background: rgba(47, 115, 196, 0.22);
-  bottom: 2%;
-  right: -6%;
-  animation-duration: 11s;
-}
-
-.hero-gradient .orb-3 {
-  width: 460px;
-  height: 460px;
-  background: rgba(14, 140, 138, 0.2);
-  top: 38%;
-  left: 42%;
-  animation-duration: 10s;
-  animation-delay: -2s;
-}
-
-@keyframes orbFloat {
-  0%, 100% { transform: translate(0, 0); }
-  50%      { transform: translate(30px, -24px); }
-}
-
-/* Navigation lives in App.vue (shared SlideTabs pill). */
-
-/* ── Content container ── */
 .signup-content {
-  max-width: 560px;
+  width: min(560px, 100%);
   margin: 0 auto;
   padding: 120px 24px 80px;
   position: relative;

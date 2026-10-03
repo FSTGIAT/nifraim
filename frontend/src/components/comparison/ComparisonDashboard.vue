@@ -168,6 +168,8 @@
                       mode="only" :population="props.population" class="fm-explain" />
       <CompareCustomerList :customers="filterModal.customers" :rates="commissionRates"
                            :actions="filterModal.actions || null"
+                           :initial-company="filterModal.company || null"
+                           :paid-view="!!filterModal.paidView"
                            :category="props.categoryLabel"
                            @open="(c, el) => openDetailFromFilter(c, el)" />
     </DataModal>
@@ -462,6 +464,19 @@ const kpiCards = computed(() => [
 const topNOptions = [15, 20, 50, 100]
 const topN = ref(15)
 
+// A pension fund line — by product type, or by name when the type is missing
+// (מבטחים החדשה / משלימה, מקפת are pension funds by name).
+const PENSION_NAME_RE = /פנסי|מבטחים החדשה|מבטחים משלימה|מקפת/
+function isPensionLine(p) {
+  return PENSION_NAME_RE.test(p.product_type || '') || PENSION_NAME_RE.test(p.product || '')
+}
+// Shared by the chart and the customer window so the two never disagree.
+function insurancePremiumOf(c) {
+  return [...(c.production_products || []), ...(c.paid_production_products || [])]
+    .filter(p => !isPensionLine(p))
+    .reduce((s, p) => s + (Number(p.premium) || 0), 0)
+}
+
 const topClientsData = computed(() => {
   const list = displayCustomers.value.map(c => {
     const name = customerName(c)
@@ -474,8 +489,12 @@ const topClientsData = computed(() => {
       value = matchAccum + commAccum
       productCount = (c.production_products || []).length + (c.commission_products || []).length
     } else {
-      // Insurance: total premium
-      value = c.total_premium || 0
+      // Insurance premium only. A pension fund's "premium" is its monthly
+      // deposit, not an insurance premium (QA 2026-10-02: מבטחים funds pushed
+      // customers to the top). Read every production line — paid ones too:
+      // `total_premium` was narrowed server-side to the unpaid lines of a
+      // partially-paid customer.
+      value = insurancePremiumOf(c)
       productCount = (c.production_products || []).length + (c.commission_products || []).length
     }
     return {
@@ -656,15 +675,16 @@ const companyStatusOptions = computed(() => ({
   grid: { borderColor: 'rgba(0,0,0,0.06)' },
 }))
 
-// Clicking a segment filters to that company AND opens that status list —
-// the same drill the donut does, one level more specific.
+// Clicking a segment opens EXACTLY the customers that segment counts — the
+// list always equals the bar's number, and holds only customers whose status
+// is AT this company (QA 2026-10-02: the Harel "לא שולם" drill listed
+// customers unpaid at מיטב). The list opens on this company's tab.
 function onCompanyStatusClick(row, statusKey) {
-  // Filter only for the list being opened: `onLegendClick` reads the filtered
-  // customers synchronously, then the page returns to the whole book — with
-  // the pill bar gone there would be no way to clear a page-wide filter.
-  const src = props.companySources.find(s => fuzzyCompanyMatch(s, row.company))
-  companyFilter.value = src || row.company
-  try { onLegendClick(statusKey) } finally { companyFilter.value = null }
+  const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
+  const list = row.customers?.[statusKey] || []
+  if (!list.length) return
+  openFilterModal(`${labels[statusKey]} · ${row.company}`, list, null, null, null, row.company)
+  filterModal.value.paidView = statusKey === 'matched'
 }
 
 // Product breakdown
@@ -853,9 +873,9 @@ const fmOrigin = ref(null)
 const detailOrigin = ref(null)
 const periodLabel = computed(() => (props.periodMonth ? `נפרעים ${String(props.periodMonth).slice(0, 7)}` : ''))
 
-function openFilterModal(title, customers, originEl = null, actions = null, kind = null) {
+function openFilterModal(title, customers, originEl = null, actions = null, kind = null, company = null) {
   fmOrigin.value = originEl
-  filterModal.value = { open: true, title, customers, actions, kind }
+  filterModal.value = { open: true, title, customers, actions, kind, company }
   productFilter.value = null
   productFilterOpen.value = false
 }
@@ -963,6 +983,9 @@ function openDetailFromFilter(c, el = null) {
     client_email: c.client_email || null,
     employer_name: c.employer_name || null,
     employer_id: c.employer_id || null,
+    // Insurance premium without pension deposits — the figure the
+    // "לקוחות לפי פרמיה" chart shows for this customer.
+    insurance_premium: insurancePremiumOf(c),
     products: allProducts,
   }
 }

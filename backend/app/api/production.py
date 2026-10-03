@@ -2602,7 +2602,10 @@ async def get_production_history(
             FileUpload.is_production == False,
         )
         .order_by(desc(FileUpload.uploaded_at))
-        .limit(10)
+        # Raw per-company downloads (.DAT, single-insurer exports) crowd the
+        # list; 10 hid older full monthly files behind them. The UI shows only
+        # files that cover the same insurers as the current one.
+        .limit(30)
     )
     uploads = result.scalars().all()
     out = []
@@ -2616,6 +2619,7 @@ async def get_production_history(
             record_count=u.record_count,
             uploaded_at=u.uploaded_at,
             companies=companies,
+            period_month=u.period_month,
         ))
     return out
 

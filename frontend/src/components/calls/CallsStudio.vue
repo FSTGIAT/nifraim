@@ -41,7 +41,7 @@
         </header>
 
         <main class="cs-stage">
-          <button ref="orbEl" type="button" class="cs-orb" :class="['cs-orb--' + phase, motionClass]" :aria-label="orbLabel"
+          <button ref="orbEl" type="button" class="cs-orb" @mouseenter="orbHover = true" @mouseleave="orbHover = false" :class="['cs-orb--' + phase, motionClass]" :aria-label="orbLabel"
                   :disabled="phase === 'uploading' || phase === 'requesting'" @click="onOrb">
             <CallsOrb :size="orbSize" :state="orbState" :level="store.micLevel" />
             <span v-if="motionClass === 'cs-orb--start'" class="cs-ripple" aria-hidden="true"></span>
@@ -61,6 +61,7 @@
               <p v-else-if="phase === 'uploading'" key="up" class="cs-status">שולח <span class="ltr-number">{{ Math.round(store.uploadProgress * 100) }}%</span></p>
               <p v-else-if="phase === 'requesting'" key="req" class="cs-status">מאשר מיקרופון…</p>
               <p v-else-if="store.notice" key="notice" class="cs-status cs-status--notice">{{ store.notice }}</p>
+              <p v-else-if="orbHover && phase === 'idle'" key="hint" class="cs-status cs-hint">לחצו כדי להתחיל להקליט</p>
             </Transition>
           </div>
 
@@ -164,6 +165,7 @@ const phase = computed(() => {
 const orbState = computed(() => (phase.value === 'recording' ? 'recording' : phase.value !== 'idle' ? 'processing' : 'idle'))
 const orbLabel = computed(() => (phase.value === 'recording' ? 'עצירה ושליחה' : 'התחלת הקלטה'))
 
+const orbHover = ref(false)
 const consentOpen = ref(false)
 const consentTick = ref(false)
 async function onOrb() {
@@ -264,6 +266,20 @@ async function openDetail(i, el) {
     if (!CALL_TERMINAL.has(full.status)) store.pollCall(c.id)
   } catch (_) { /* keep the list version */ }
 }
+// opened from elsewhere (Nifra Agent's "לסיכום המלא"): straight to that call
+async function openById(id) {
+  store.openCallId = null
+  if (!id) return
+  detailId.value = id
+  morph.remember(null)
+  detailOpen.value = true
+  try {
+    const full = await store.fetchCall(id)
+    if (!CALL_TERMINAL.has(full.status)) store.pollCall(id)
+  } catch (_) { /* keep the list version */ }
+}
+watch(() => [props.open, store.openCallId], ([o, id]) => { if (o && id) nextTick(() => openById(id)) }, { immediate: true })
+
 async function closeDetail() {
   if (!detailOpen.value) return
   await morph.shrink(detailEl.value)
@@ -420,7 +436,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 .cs-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; position: relative; }
 .cs-orb { position: relative; display: grid; place-items: center; padding: 0; border: none; background: none; border-radius: 50%; cursor: pointer; transition: transform 0.3s ease; }
-.cs-orb:hover:not(:disabled) { transform: scale(1.015); }
+.cs-orb:hover:not(:disabled), .cs-orb:focus-visible { --hov: 1; }
 .cs-orb:active:not(:disabled) { transform: scale(0.985); }
 .cs-orb:disabled { cursor: progress; }
 .cs-orb:focus-visible { outline: 2px solid #D96AB5; outline-offset: 12px; }
@@ -442,7 +458,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .cs-fade-enter-active, .cs-fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
 .cs-fade-enter-from, .cs-fade-leave-to { opacity: 0; transform: scale(0.8); }
 :deep(.cs-travel), .cs :deep(.cs-travel) { position: fixed; top: 0; left: 0; width: 14px; height: 14px; border-radius: 50%; background: #D96AB5; box-shadow: 0 0 16px rgba(217, 106, 181, 0.8); pointer-events: none; z-index: 5; }
-.cs-glyph { position: absolute; color: rgba(255, 255, 255, 0.92); display: grid; place-items: center; pointer-events: none; }
+/* the glyph sits in a small tinted disc so it reads on the light orb */
+.cs-glyph { position: absolute; width: 68px; height: 68px; border-radius: 50%; color: #fff; display: grid; place-items: center; pointer-events: none;
+  background: rgba(120, 28, 92, 0.30); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 6px 18px rgba(110, 30, 85, 0.25);
+  backdrop-filter: blur(2px); transition: transform 0.45s cubic-bezier(0.34, 1.45, 0.5, 1), background 0.3s ease; }
+.cs-orb:hover:not(:disabled) .cs-glyph, .cs-orb:focus-visible .cs-glyph { transform: scale(1.14); background: rgba(120, 28, 92, 0.48); }
+.cs-orb--recording .cs-glyph { background: rgba(120, 28, 92, 0.42); }
+.cs-hint { color: rgba(242, 240, 243, 0.7); }
 .cs-status {
   margin: 0; min-height: 22px; display: inline-flex; align-items: center; gap: 8px;
   font-size: 15px; font-weight: 600; color: var(--on-canvas-muted, var(--text-secondary)); font-variant-numeric: tabular-nums;

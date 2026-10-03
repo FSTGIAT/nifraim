@@ -218,6 +218,18 @@ export const useCallsStore = defineStore('calls', () => {
     }
   }
 
+  // the calls studio is a full-screen layer; other overlays wait for it
+  const studioOpen = ref(false)
+  // "open this call in the studio" (e.g. from Nifra Agent's לסיכום המלא)
+  const openCallId = ref(null)
+  function requestOpenCall(id) { openCallId.value = id; studioOpen.value = true }
+  async function refreshAgent() {
+    try {
+      const { useOfficeAgentStore } = await import('./officeAgent.js')
+      await useOfficeAgentStore().load()
+    } catch { /* the periodic refresh will catch it */ }
+  }
+
   // ── a short calm notice under the orb (e.g. no speech) ──
   const notice = ref('')
   let noticeTimer = null
@@ -240,6 +252,8 @@ export const useCallsStore = defineStore('calls', () => {
         failures = 0
         if (CALL_TERMINAL.has(data.status)) {
           stopPolling(id)
+          // a summary with a ready follow-up → let Nifra Agent know right away
+          if (data.status === 'done' && data.insights?.followup?.status === 'ready') refreshAgent()
           // the agent's own just-recorded call came back empty: say so calmly,
           // then remove it so empty calls never pile up in the history
           if (id === lastRecordedId && isNoSpeech(data)) {
@@ -294,10 +308,15 @@ export const useCallsStore = defineStore('calls', () => {
 
   function clearCurrent() { current.value = null }
 
+  // Another surface (the AI chat) asks to show a call in the studio: CallWidget opens it.
+  const studioRequest = ref(null)      // { id, at } — CallWidget watches it
+  function requestStudio(id = null) { studioRequest.value = { id, at: Date.now() } }
+
   return {
     enabled, calls, current, loadingList, error,
     recState, elapsed, uploadProgress, analyser, isRecording, micLevel,
     fetchStatus, fetchList, fetchCall, startRecording, cancelRecording, stopAndUpload,
-    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, clearCurrent, notice, showNotice,
+    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, clearCurrent, notice, studioOpen, openCallId, requestOpenCall, showNotice,
+    studioRequest, requestStudio,
   }
 })

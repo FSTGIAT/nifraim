@@ -8,7 +8,7 @@
     ref="btnEl"
     type="button"
     class="nai"
-    :class="'nai--' + size"
+    :class="['nai--' + size, { 'nai--attn': attn }]"
     :title="title"
     :aria-label="title"
     @click="$emit('open', btnEl)"
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 
@@ -33,6 +33,12 @@ const store = useOfficeAgentStore()
 const btnEl = ref(null)
 const state = computed(() => (store.busy ? 'composing' : 'connecting'))
 const title = computed(() => (store.todoCount ? `Nifra Agent · ${store.todoCount} דברים מחכים לך` : 'Nifra Agent'))
+// a call summary is ready → a short attention pulse (ring + badge bump)
+const attn = ref(false)
+watch(() => store.attention, () => {
+  attn.value = false
+  requestAnimationFrame(() => { attn.value = true; setTimeout(() => { attn.value = false }, 1600) })
+})
 // prefetch the written brief so opening the panel starts writing instantly
 onMounted(() => { if (!store.narration) store.narrate() })
 </script>
@@ -77,5 +83,15 @@ onMounted(() => { if (!store.narration) store.narrate() })
 .nai-cap b { color: #0E8C8A; font-weight: 900; }
 @keyframes naiBreathe { 50% { transform: scale(1.035); } }
 @keyframes naiSpin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .nai-ring, .nai-glow { animation: none; } }
+/* attention: the orb swells twice and the badge bumps */
+.nai--attn .nai-ring { animation: naiAttn 1.5s cubic-bezier(0.34, 1.4, 0.5, 1); }
+.nai--attn .nai-ring::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(14, 140, 138, 0.55);
+  animation: naiRing 1.5s ease-out; pointer-events: none;
+}
+.nai--attn .nai-badge { animation: naiBump 0.6s cubic-bezier(0.34, 1.8, 0.5, 1) 0.2s; }
+@keyframes naiAttn { 0%, 100% { transform: scale(1); } 20% { transform: scale(1.12); } 40% { transform: scale(0.98); } 60% { transform: scale(1.08); } }
+@keyframes naiRing { from { transform: scale(0.95); opacity: 1; } to { transform: scale(1.45); opacity: 0; } }
+@keyframes naiBump { 50% { transform: scale(1.45); } }
+@media (prefers-reduced-motion: reduce) { .nai-ring, .nai-glow, .nai--attn .nai-ring, .nai--attn .nai-ring::after, .nai--attn .nai-badge { animation: none; } }
 </style>

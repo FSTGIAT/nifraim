@@ -45,6 +45,7 @@ CATEGORY_LABEL = {
 }
 # lower = more urgent
 PRIORITY = {
+    ("call", "followup"): 0.5,
     ("unpaid", "read"): 0, ("mail", "customer_question"): 1, ("unpaid", "remind"): 2,
     ("mail", "commission_reply"): 3, ("unpaid", "approve"): 4, ("mail", "report_file"): 5,
     ("unpaid", "contact"): 6, ("mail", "other"): 7, ("mail", "info"): 8, ("unpaid", "wait"): 9,
@@ -112,6 +113,41 @@ def unpaid_card(c: dict) -> dict:
     }
 
 
+def call_card(call, customer: dict, followup: dict, now: datetime) -> dict:
+    """A recorded call whose summary is ready — Nifra Agent offers the customer-facing
+    follow-up it drafted. Sending is still the agent's click (POST /calls/{id}/followup/send)."""
+    at = call.created_at.replace(tzinfo=timezone.utc).astimezone(IL).strftime("%H:%M") if call.created_at else ""
+    who = (customer or {}).get("name") or ""
+    return {
+        "id": f"call:{call.id}", "kind": "call", "ref": str(call.id), "sub": "followup",
+        "priority": PRIORITY[("call", "followup")],
+        "title": f"סיכום הפגישה בשעה {at}" if at else "סיכום פגישה",
+        "text": (call.insights or {}).get("tldr") or call.title or "סיכום השיחה מוכן",
+        "meta": " · ".join(x for x in (who, call.title, _ago(call.done_at, now)) if x),
+        "at": at, "call_title": call.title,
+        "to_email": (customer or {}).get("email") or "", "to_name": who,
+        "customer_matched": bool((customer or {}).get("matched")),
+        "draft_subject": followup.get("subject"), "draft_body": followup.get("body"),
+        "actions": ["send_followup", "dismiss_followup"],
+    }
+
+
+async def _call_cards(db: AsyncSession, user: User, naive: datetime) -> list[dict]:
+    from app.models.call_recording import CallRecording
+    rows = (await db.execute(
+        select(CallRecording).where(
+            CallRecording.user_id == user.id, CallRecording.status == "done",
+            CallRecording.done_at >= naive - MAIL_WINDOW,
+        ).order_by(CallRecording.done_at.desc()).limit(10)
+    )).scalars().all()
+    out = []
+    for c in rows:
+        f = (c.insights or {}).get("followup") or {}
+        if f.get("status") == "ready" and f.get("body"):
+            out.append(call_card(c, (c.insights or {}).get("customer") or {}, f, naive))
+    return out
+
+
 async def brief(db: AsyncSession, user: User) -> dict:
     now = datetime.now(timezone.utc)
     naive = now.replace(tzinfo=None)
@@ -125,6 +161,7 @@ async def brief(db: AsyncSession, user: User) -> dict:
     )).scalars().all()
     cards = [mail_card(m, naive) for m in mails]
     cards += [unpaid_card(c) for c in coll["cases"] if c["status"] != "resolved"]
+    cards += await _call_cards(db, user, naive)
     cards.sort(key=lambda c: c["priority"])
     todo = [c for c in cards if c["actions"]]
     if todo:
@@ -386,6 +423,7 @@ ACTION_HE = {
     "send_reply": "לשלוח את התשובה שהכנתי", "make_draft": "להכין טיוטת תשובה", "import": "לטעון את הקובץ",
     "done": "לסמן כטופל", "send_case": "לאשר ולשלוח את הפנייה לחברה", "set_email": "להוסיף מייל של איש קשר",
     "remind": "לשלוח תזכורת", "resolve": "לסמן כטופל",
+    "send_followup": "לאשר ולשלוח ללקוח את סיכום השיחה שהכנתי (או להוסיף משהו)", "dismiss_followup": "לסמן כטופל",
 }
 _brief_cache: dict = {}   # user_id -> (signature, payload)
 SETUP_MAIL = "setup:mail"   # a narration line whose action is "connect the mailbox"
@@ -434,6 +472,15 @@ async def narrate(db: AsyncSession, user: User) -> dict:
             lines = parsed or lines
         except Exception as e:  # noqa: BLE001 — the deterministic lines still say it
             logger.warning("nifra agent narrate failed: %s", e)
+    # a finished call leads, in fixed words (the time and the customer are facts on the card —
+    # never left to the model to paraphrase or drop)
+    call_lines = []
+    for c in (c for c in cards if c["kind"] == "call"):
+        who = f" עם {c['to_name']}" if c.get("to_name") else ""
+        call_lines.append({"text": f"הסיכום מהפגישה בשעה {c['at']}{who} מוכן — הכנתי לך סיכום שיחה ללקוח. "
+                                   "לאשר שליחה, או שתרצה להוסיף משהו?", "ref": c["id"]})
+    if call_lines:
+        lines = (call_lines + [l for l in lines if not str(l.get("ref") or "").startswith("call:")])[:5]
     if not connected:
         # a new agent (or one who never connected mail) — the first thing is the
         # mailbox: without it the agent can't read, answer or send anything

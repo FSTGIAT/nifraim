@@ -33,6 +33,13 @@ def _company(q: str) -> str:
 
 def route(question: str) -> Route | None:
     q = " ".join((question or "").split())
+    if q and len(q) <= 60:
+        if re.search(r"^(?:תעצור|עצור|תפסיק|הפסק|סיים|תסיים)\b.*(?:הקלט|שיחה)|^(?:עצור|תעצור|stop)[!.\s]*$", q):
+            return Route("stop_call", "stop_call_recording", {})
+        m = re.search(r"(?:^|\s)(?:ת?קליט|הקלט|תתחיל להקליט|להקליט|record)\b(.*)", q)
+        if m and not re.search(r"מה|כמה|איך|למה|שיחות שהוקלטו|סיכום", q):
+            about = re.sub(r"^\s*(?:את\s+)?(?:ה)?שיחה\s*", "", m.group(1)).strip(" .?!")
+            return Route("record_call", "start_call_recording", {"about": about[:80]})
     if not q or len(q) > 90 or ACTION.search(q) or WHY.search(q):
         return None
     co = _company(q)
@@ -42,10 +49,13 @@ def route(question: str) -> Route | None:
     m = ID_RE.search(q)
     if m and re.search(r"לקוח|ת\.?ז|תז|מה יש", q):
         return Route("customer", "get_customer", {"id_number": m.group(1)})
+    if re.search(r"הכי הרבה (מוצרים|פוליסות|קופות)|(מוצרים|פוליסות) הכי הרבה|הכי הרבה מוצר", q):
+        return Route("top", "top_customers", {"metric": "products", "n": 10})
     if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q):
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "", "n": 10})
     m = re.search(r"(?:^|\s)(?:מה יש ל|מה עם |כרטיס של |תראה לי את )?(?:ה)?לקוח(?:ה)?\s+([א-ת'\"\- ]{3,30}?)\s*\??$", q)
-    if m and re.search(r"\b(?:הכי|שלי|שלך|כולם|בכלל|חדש|חדשים)\b", m.group(1)):
+    if m and (re.search(r"\b(?:הכי|שלי|שלך|כולם|בכלל|חדש|חדשים)\b", m.group(1))
+              or re.match(r"(?:על|עם|לגבי|בנוגע|של|את)\b", m.group(1))):
         m = None
     if m and not re.search(r"לא שול|חוב|עמל|מסלק", q):
         return Route("customer_name", "find_customer", {"query": m.group(1).strip()})
@@ -139,6 +149,9 @@ def render(route_: Route, data) -> tuple[str, str | None]:
         rows = data.get("customers") or []
         if not rows:
             return "אין לקוחות בפרודוקציה.", None
+        if data.get("metric") == "products":
+            return ("הכי הרבה מוצרים: " + ", ".join(f"{r['label']} ({r['value']} מוצרים, {r['companies']} חברות)" for r in rows[:3])
+                    + ". כיסויים של אותה פוליסה נספרים כמוצר אחד."), "bar"
         return ("הלקוחות הגדולים לפי " + ("פרמיה" if data.get("metric") == "premium" else "צבירה") + ": "
                 + ", ".join(f"{r['label']} ({_m(r['value'])})" for r in rows[:3]) + "."), "bar"
     if i == "changes":
@@ -185,6 +198,11 @@ async def answer(ctx, r: Route) -> dict | None:
     t = registry.get(r.tool)
     if not t:
         return None
+    if r.intent in ("record_call", "stop_call"):
+        await t.fn(ctx, **r.args)
+        from app.services.agent.loop import proposal_line
+        p = ctx.proposals[-1]
+        return {"text": proposal_line(p), "vizs": [], "status": t.status_he, "proposal": p}
     data = await t.fn(ctx, **r.args)
     text, chart = render(r, data)
     if not text:

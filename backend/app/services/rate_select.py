@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import functools
 import re
+from datetime import date as _date, datetime as _datetime
 from typing import Callable
 
 from app.utils.company_norm import company_residue, company_stem, normalize_company
@@ -242,15 +243,28 @@ def _token_overlap(a: str, b: str) -> bool:
     return any(t in b for t in _tokens(a))
 
 
-def _effective_rate(rows) -> float:
-    """The rate a set of same-product rows really means.
+_GEMATRIA = {"א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
+             "י": 10, "כ": 20, "ך": 20, "ל": 30, "מ": 40, "ם": 40, "נ": 50, "ן": 50}
+# A number, or a Hebrew-letter numeral marked by a geresh: "א'", "טו'", "טז׳".
+_BAND_NUM_RE = re.compile(r"\d+|[א-ת]{1,3}(?=['׳])")
 
-    total → book+reward → book → reward → single → first. Summing book+reward
-    is the Israeli agreement convention (עמלת ספר + שיעור תגמול), but ONLY when
-    both are literally present — see commission_rate_summing.md.
-    """
-    if not rows:
-        return 0.0
+
+def _scope_key(scope: str | None) -> tuple[str, ...]:
+    """A year band by its numbers — 'שנה 1-5' and 'משנה 1 ועד שנה 5 (כולל)'
+    are the same band, and must pair. Hebrew numerals count too: Migdal prints
+    "משנה א'-טו'" / "משנה טז' ואילך" (= 1-15 / 16+). No scope → () (applies to
+    every band)."""
+    out = []
+    for tok in _BAND_NUM_RE.findall(scope or ""):
+        if tok.isdigit():
+            out.append(tok)
+        elif all(ch in _GEMATRIA for ch in tok):
+            out.append(str(sum(_GEMATRIA[ch] for ch in tok)))
+    return tuple(out)
+
+
+def _effective_one(rows) -> float:
+    """Effective rate of rows that share ONE year band (see `_effective_rate`)."""
     totals = [r for r in rows if _kind(r) == "total"]
     if totals:
         return float(totals[0].rate)
@@ -269,6 +283,131 @@ def _effective_rate(rows) -> float:
     singles = [r for r in rows if _kind(r) == "single"] or list(rows)
     vals = sorted(float(r.rate) for r in singles if r.rate is not None)
     return vals[len(vals) // 2] if vals else 0.0
+
+
+def _band_contains(key: tuple[str, ...], year: int) -> bool:
+    """Does year band `key` (its digits) cover policy year `year`?
+    ('1','5') → 1..5 · ('16',) → 16 and up."""
+    if len(key) >= 2:
+        return int(key[0]) <= year <= int(key[1])
+    if len(key) == 1:
+        return year >= int(key[0])
+    return False
+
+
+def policy_year(sign_date, today: _date | None = None) -> int | None:
+    """1-based policy year of a policy signed on `sign_date` (None if unknown)."""
+    if not sign_date:
+        return None
+    if isinstance(sign_date, str):
+        try:
+            sign_date = _date.fromisoformat(sign_date[:10])
+        except ValueError:
+            return None
+    if isinstance(sign_date, _datetime):
+        sign_date = sign_date.date()
+    today = today or _date.today()
+    if sign_date > today:
+        return 1
+    return int((today - sign_date).days // 365.25) + 1
+
+
+def _effective_rate(rows, year: int | None = None) -> float:
+    """The rate a set of same-product rows really means.
+
+    total → book+reward → book → reward → single → first. Summing book+reward
+    is the Israeli agreement convention (עמלת ספר + שיעור תגמול), but ONLY when
+    both are literally present — see commission_rate_summing.md.
+
+    Book and reward are summed WITHIN a policy-year band. Phoenix prints both
+    per band (מוצרי ריסק: ספר 15/15/15, תגמול 8/8/4), and taking the first book
+    + the first reward in DB order could add band 1-5's book to band 16+'s
+    reward. Bands are paired on their numbers; a row with no band joins every
+    band. `year` (the policy year, from its sign date) picks its band; with no
+    date the median across bands is taken.
+    """
+    if not rows:
+        return 0.0
+    totals = [r for r in rows if _kind(r) == "total"]
+    if totals:
+        return float(totals[0].rate)
+    bands: dict[tuple[str, ...], list] = {}
+    for r in rows:
+        bands.setdefault(_scope_key(getattr(r, "rate_scope", None)), []).append(r)
+    if len(bands) <= 1:
+        return _effective_one(rows)
+    unbanded = bands.pop((), [])
+    # The policy's own band when its age is known — a 9-year-old ריסק policy is
+    # priced at band 6-15's ספר+תגמול, not at a neighbour's.
+    if year:
+        for key, band in bands.items():
+            if _band_contains(key, year):
+                return _effective_one(band + unbanded)
+    vals = sorted(_effective_one(b + unbanded) for b in bands.values())
+    return vals[len(vals) // 2]
+
+
+# הראל prints only the תוספת on its agreements — the עמלת ספר is not in the
+# document (QA 2026-10-02, from the agency: "הראל מסתירים את העמלות ספר"). The
+# agency's known book rates are added on top: life/risk 11%, health 14%.
+# A deliberate, user-sanctioned exception to "never invent a component"
+# (commission_rate_summing.md), and narrow on purpose:
+#   • only הראל, only pure-risk life / health records (never gemel / pension /
+#     מנהלים / חיסכון);
+#   • only on a product match, or Harel's same-kind lines (`:category`, an
+#     estimate) — never a company default / median;
+#   • only when the stored rate is below the hidden ספר — i.e. a bare תוספת.
+HAREL_HIDDEN_BOOK = {"health": 0.14, "life": 0.11}
+_HEALTH_RE = re.compile(r"בריאות|ניתוח|השתלות|תרופ|אמבולטור|סרטן|מחלות|שב\"?ן|סיעוד")
+# Agreement lines that are risk covers, by name — see select_rate tier 1.
+_RISK_COVER_RE = re.compile(r"אובדן כושר|אכ\"?ע|ריסק|סיעוד|בריאות|נכות|מוות|תאונ|משכנת|ניתוח|השתלות|תרופ|מחלות")
+_LIFE_RE = re.compile(r"חיים|ריסק|משכנת|אובדן|אכ\"?ע|מוות|תאונ|נכות")
+
+
+def _harel_category(company, product, product_type):
+    """The life / health pattern for a הראל insurance record, else None."""
+    if company_stem(company or "") != company_stem("הראל"):
+        return None
+    text = f"{product or ''} {product_type or ''}"
+    if savings_product_type(product_type) or _SAVINGS_WORDS.search(text):
+        return None
+    if _HEALTH_RE.search(text):
+        return _HEALTH_RE
+    if _LIFE_RE.search(text):
+        return _LIFE_RE
+    return None
+
+
+def harel_hidden_book(company: str | None, product: str | None,
+                      product_type: str | None, rows) -> float:
+    """The עמלת ספר הראל leaves out of its agreement, for this record — 0 when
+    the exception does not apply (see HAREL_HIDDEN_BOOK).
+
+    The stored kind is NOT trusted: live Harel rows carry the same 4.4% / 5%
+    תוספת as `reward` on one upload and as `book` ("– עמלת נפרעים") on another.
+    What identifies a bare תוספת is its size — below the hidden ספר itself. A
+    row already at or above it (or a printed total) is taken as the full rate.
+    """
+    if company_stem(company or "") != company_stem("הראל"):
+        return 0.0
+    if not rows or any(_kind(r) == "total" for r in rows):
+        return 0.0
+    text = f"{product or ''} {product_type or ''}"
+    if savings_product_type(product_type) or _SAVINGS_WORDS.search(text):
+        return 0.0
+    if _HEALTH_RE.search(text):
+        hidden = HAREL_HIDDEN_BOOK["health"]
+    elif _LIFE_RE.search(text):
+        hidden = HAREL_HIDDEN_BOOK["life"]
+    else:
+        return 0.0
+    # Rows above the insurance ceiling are one-time היקף (Harel's 60% lines
+    # share the product name) — not a נפרעים rate: never add a ספר to them,
+    # and they say nothing about whether a נפרעים line is a bare תוספת.
+    ongoing = [r for r in rows if float(r.rate or 0) <= INSURANCE_RATE_CEILING]
+    if not ongoing or any(float(r.rate or 0) >= hidden for r in ongoing):
+        return 0.0
+    return hidden
 
 
 def company_candidates(user_rates, company: str) -> tuple[list, str]:
@@ -330,7 +469,8 @@ _SAVINGS_WORDS = re.compile(r"גמל|השתלמות|פנסי|חיסכון|חסכ
 
 def select_rate(user_rates, company: str, product: str | None,
                 product_type: str | None, is_accum: bool,
-                ceiling: float | None = None) -> tuple[float, str]:
+                ceiling: float | None = None,
+                year: int | None = None) -> tuple[float, str]:
     """THE rate for one production record — one selector for every product.
 
     There is deliberately no gemel-vs-insurance branch here any more. The old
@@ -432,7 +572,7 @@ def select_rate(user_rates, company: str, product: str | None,
                 vals = [v for v in (_effective_rate(rs) for rs in by_prod.values()) if _ok(v)]
                 ambiguous = bool(vals) and max(vals) > 2 * min(vals)
             matches = [r for r in matches if (r.product or "").lower() == target]
-            rate = _effective_rate(matches)
+            rate = _effective_rate(matches, year)
             # One shared word is weak evidence. On that alone, a NON-savings
             # record may not take a savings-magnitude rate: 'הגנה משלימה -
             # שיניים' (a health rider) matched 'פנסיה מקיפה … ופנסיה משלימה'
@@ -440,8 +580,35 @@ def select_rate(user_rates, company: str, product: str | None,
             # records (גמל / השתלמות / פנסיה / חיסכון) are exempt — for them a
             # sub-1% rate is the normal magnitude.
             weak = best == 1 and not is_savings and not _ok_fallback(rate)
-            if _ok(rate) and not ambiguous and not weak:
-                return rate, f"{tier}:product"
+            # An accumulation-priced record (גמל / מנהלים / חיסכון) never takes a
+            # RISK-cover line as its product rate. 'מגדל - מנהלים' (ביטוח מנהלים)
+            # matched 'מגדל אובדן כושר עבודה מנהלים ועצמאים' on the word מנהלים;
+            # once year bands were read, its 16+ band (3%) passed the gemel
+            # ceiling as a FIRM rate. Falling through keeps it an estimate.
+            risk_line = is_accum and bool(_RISK_COVER_RE.search(best_row.product or ""))
+            if _ok(rate) and not ambiguous and not weak and not risk_line:
+                hidden = 0.0 if is_accum else harel_hidden_book(company, product, product_type, matches)
+                return rate + hidden, f"{tier}:product"
+
+    # 1b. הראל only: a life / health record that names no agreement line.
+    #     Harel's production lines are generic ('הראל - בריאות', type 'ביטוח
+    #     בריאות') while its agreement names each cover ('ניתוחים בחו"ל
+    #     (בריאות)'), so 270 of kikohib's Harel policies fell to the company
+    #     median — a health תוספת priced life policies, and the hidden ספר
+    #     (HAREL_HIDDEN_BOOK) was never added. Price from Harel's lines of the
+    #     SAME kind + the ספר. Not a firm rate (route ':category' → estimate).
+    if not is_accum:
+        cat = _harel_category(company, product, product_type)
+        if cat:
+            same = [r for r in candidates if r.product and cat.search(r.product)
+                    and not _SAVINGS_WORDS.search(r.product)
+                    and _ok_fallback(float(r.rate or 0))]
+            vals = sorted(float(r.rate) for r in same)
+            if vals:
+                rate = vals[len(vals) // 2]
+                hidden = harel_hidden_book(company, product, product_type,
+                                           [r for r in same if float(r.rate) == rate])
+                return rate + hidden, f"{tier}:category"
 
     # 2. Company-default rows (product IS NULL).
     defaults = [r for r in candidates if not r.product]
@@ -490,8 +657,8 @@ def select_rate(user_rates, company: str, product: str | None,
 
 
 def rate_for_product(user_rates, company: str, product: str | None,
-                     product_type: str | None, accumulation, premium
-                     ) -> tuple[float, float | None, str]:
+                     product_type: str | None, accumulation, premium,
+                     sign_date=None) -> tuple[float, float | None, str]:
     """(rate, expected_commission, route) for ONE product line.
 
     The per-product entry point, for surfaces that show a single policy rather
@@ -509,7 +676,8 @@ def rate_for_product(user_rates, company: str, product: str | None,
     accum_f = float(accumulation or 0)
     prem_f = float(premium or 0)
     is_accum = accumulation_based(product_type, accum_f)
-    rate, route = select_rate(user_rates, company, product, product_type, is_accum)
+    rate, route = select_rate(user_rates, company, product, product_type, is_accum,
+                              year=policy_year(sign_date))
     if rate <= 0:
         return 0.0, None, route
     if is_accum:
@@ -660,7 +828,7 @@ def explain_expected_commission(rows, user_rates) -> tuple[float, list[dict], li
         # that actually names the product. ':default' and ':median' are
         # estimates from the company's other rates — real numbers, but the
         # agent should be able to tell them apart from a firm one.
-        if route.endswith((":default", ":median")):
+        if route.endswith((":default", ":median", ":category")):
             bucket["approximate"] += 1
         if company_stem(company) not in documented_stems:
             bucket["seeded"] += 1

@@ -74,6 +74,7 @@
                 v-html="renderMarkdown(msg.content)"
               />
               <div v-else class="ai-msg-content">{{ msg.content }}</div>
+              <AgentCallCard v-if="msg.call" :call="msg.call" :notify="chatStore.notifyCall" />
               <span
                 v-if="msg.role === 'assistant' && chatStore.loading && i === chatStore.messages.length - 1 && !msg.content"
                 class="ai-typing"
@@ -163,6 +164,7 @@
 </template>
 
 <script setup>
+import AgentCallCard from '../ai/AgentCallCard.vue'
 import Avatar from '../Avatar.vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { seedFor } from '../../utils/avatarSeed.js'

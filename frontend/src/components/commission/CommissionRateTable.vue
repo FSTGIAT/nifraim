@@ -315,8 +315,17 @@
                 </div>
               </td>
             </tr>
-            <tr v-for="rate in group.items" :key="rate.id">
-              <template v-if="editingId === rate.id">
+            <tr v-for="rate in group.rows" :key="rate.id" :class="{ 'sum-row': rate._sum }">
+              <!-- The final נפרעים rate of one agreement line: עמלת ספר + שיעור
+                   תגמול (and הראל's unprinted ספר). Computed, so no actions —
+                   the component rows below it stay editable. -->
+              <template v-if="rate._sum">
+                <td class="product-cell" :title="rate.product || 'כל המוצרים'"><span class="product-line"><span v-if="rate.product">{{ rate.product }}</span><span v-else class="product-cell--default">כל המוצרים</span><span class="kind-pill kind-pill--total" title="השיעור הנפרע הסופי — סכום הרכיבים">סה"כ נפרע</span><span v-if="rate.rate_scope" class="scope-pill">{{ rate.rate_scope }}</span><span class="sum-parts"><template v-for="(pt, pi) in rate.parts" :key="pi"><template v-if="pi"> + </template>{{ pt.label }} <span class="ltr-number">{{ pt.pct }}</span></template></span></span></td>
+                <td class="num"><span class="rate-pill rate-pill--sum ltr-number">{{ (rate.rate * 100).toFixed(2) }}%</span></td>
+                <td class="muted-cell">{{ rate.payment_frequency || '' }}</td>
+                <td></td><td></td><td></td>
+              </template>
+              <template v-else-if="editingId === rate.id">
                 <td><div class="edit-stack"><input v-model="editForm.company_name" class="edit-input" placeholder="חברה" /><input v-model="editForm.product" class="edit-input" placeholder="כל המוצרים" /><select v-model="editForm.rate_kind" class="edit-input" title="סוג השיעור — עמלת ספר ושיעור תגמול מסתכמים יחד"><option value="single">שיעור יחיד</option><option value="book">עמלת ספר</option><option value="reward">שיעור תגמול</option><option value="total">סה"כ</option></select></div></td>
                 <td class="num"><input v-model.number="editForm.rate" type="number" step="0.01" class="edit-input num-input" dir="ltr" placeholder="%" /></td>
                 <td><select v-model="editForm.payment_frequency" class="edit-input"><option value="חודשי">חודשי</option><option value="רבעוני">רבעוני</option><option value="שנתי">שנתי</option></select></td>
@@ -523,6 +532,7 @@ function rateYearClass(rate) {
 }
 
 const KIND_LABELS = { book: 'עמלת ספר', reward: 'שיעור תגמול', total: 'סה"כ' }
+const KIND_ORDER = ['total', 'book', 'reward', 'single']
 function rateKindLabel(rate) { return KIND_LABELS[(rate.rate_kind || '').toLowerCase()] || null }
 
 // One agreement LINE can unfold into several DB rows — עמלת ספר and שיעור
@@ -531,26 +541,70 @@ function rateKindLabel(rate) { return KIND_LABELS[(rate.rate_kind || '').toLower
 // mirrors). A range built from the raw rows therefore reads like
 // "0.15% – 0.40%" while the agreement says one number, mixing a book rate, a
 // reward rate and their total. Collapse to effective rates first.
-function effectivePercents(items) {
-  const kindOf = r => (r.rate_kind || 'single').toLowerCase()
+const kindOf = r => (r.rate_kind || 'single').toLowerCase()
+// A year band by its numbers — 'שנה 1-5' and 'משנה 1 ועד שנה 5 (כולל)' are one
+// band and must pair (rate_select._scope_key).
+// Hebrew numerals count too — Migdal prints "משנה א'-טו'" / "משנה טז' ואילך".
+const GEMATRIA = { א: 1, ב: 2, ג: 3, ד: 4, ה: 5, ו: 6, ז: 7, ח: 8, ט: 9, י: 10, כ: 20, ך: 20, ל: 30, מ: 40, ם: 40, נ: 50, ן: 50 }
+const bandOf = r => (String(r.rate_scope || '').match(/\d+|[א-ת]{1,3}(?=['׳])/g) || [])
+  .map(t => (/^\d+$/.test(t) ? t : [...t].every(ch => GEMATRIA[ch]) ? String([...t].reduce((n, ch) => n + GEMATRIA[ch], 0)) : null))
+  .filter(Boolean).join('-')
+const lineKey = r => `${(r.company_name || '').trim()}|${(r.product || '').trim()}|${bandOf(r)}`
+const pct = x => `${+(x * 100).toFixed(2)}%`
+// One agreement line → its final rate, and the parts that made it.
+function lineRate(rows) {
+  const total = rows.find(r => kindOf(r) === 'total')
+  if (total) return { rate: +total.rate, parts: null }
+  const book = rows.find(r => kindOf(r) === 'book')
+  const reward = rows.find(r => kindOf(r) === 'reward')
+  if (book && reward) return { rate: +book.rate + +reward.rate, parts: [{ label: 'ספר', pct: pct(+book.rate) }, { label: 'תגמול', pct: pct(+reward.rate) }] }
+  // הראל prints only the תוספת; its ספר is added (rate_select.HAREL_HIDDEN_BOOK).
+  // The server decides per row (`hidden_book`) — the stored kind is unreliable.
+  const hidden = Math.max(0, ...rows.map(r => +r.hidden_book || 0))
+  const base = book || reward || (rows.length === 1 ? rows[0] : null)
+  if (base && hidden) return { rate: +base.rate + hidden, parts: [{ label: 'תוספת', pct: pct(+base.rate) }, { label: 'ספר הראל', pct: pct(hidden) }] }
+  if (book) return { rate: +book.rate, parts: null }
+  if (reward) return { rate: +reward.rate, parts: null }
+  return null
+}
+function linesOf(items) {
   const groups = new Map()
   for (const r of items) {
-    const key = `${(r.product || '').trim()}|${r.rate_scope || ''}`
+    const key = lineKey(r)
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(r)
   }
+  return groups
+}
+function effectivePercents(items) {
   const out = []
-  for (const rows of groups.values()) {
-    const total = rows.find(r => kindOf(r) === 'total')
-    if (total) { out.push(+total.rate); continue }
-    const book = rows.find(r => kindOf(r) === 'book')
-    const reward = rows.find(r => kindOf(r) === 'reward')
-    if (book && reward) { out.push(+book.rate + +reward.rate); continue }
-    if (book) { out.push(+book.rate); continue }
-    if (reward) { out.push(+reward.rate); continue }
-    for (const r of rows) out.push(+r.rate)
+  for (const rows of linesOf(items).values()) {
+    const line = lineRate(rows)
+    if (line) out.push(line.rate)
+    else for (const r of rows) out.push(+r.rate)
   }
   return out.map(x => +(x * 100).toFixed(2)).filter(x => x > 0)
+}
+// The rows the table draws: each summed line gets a "סה"כ נפרע" row above
+// its components (QA 2026-10-02: הפניקס showed only the עמלת ספר figure, with
+// the שיעור תגמול as an unrelated row — the agent has to see the sum).
+function displayRows(items) {
+  const lines = linesOf(items)
+  const done = new Set()
+  const out = []
+  for (const r of items) {
+    const key = lineKey(r)
+    if (!done.has(key)) {
+      done.add(key)
+      const line = lineRate(lines.get(key))
+      if (line && line.parts) {
+        out.push({ _sum: true, id: 'sum|' + key, product: r.product, rate_scope: r.rate_scope,
+          payment_frequency: r.payment_frequency, rate: line.rate, parts: line.parts })
+      }
+    }
+    out.push(r)
+  }
+  return out
 }
 function rangeLabel(items) {
   const pcts = effectivePercents(items)
@@ -563,7 +617,7 @@ function _companiesOf(items) {
   const byCompany = new Map()
   for (const r of items) { const k = r.company_name || '—'; if (!byCompany.has(k)) byCompany.set(k, []); byCompany.get(k).push(r) }
   return Array.from(byCompany.entries()).map(([company, list]) => {
-    return { company, items: list, range: rangeLabel(list) }
+    return { company, items: list, rows: displayRows(list), range: rangeLabel(list) }
   }).sort((a, b) => b.items.length - a.items.length || _normCompany(a.company).localeCompare(_normCompany(b.company), 'he'))
 }
 
@@ -573,7 +627,13 @@ const visibleCategories = computed(() => CATEGORIES.map(cat => {
     if (cmp !== 0) return cmp
     if (!a.product && b.product) return 1
     if (a.product && !b.product) return -1
-    return (a.product || '').localeCompare(b.product || '', 'he')
+    const byProduct = (a.product || '').localeCompare(b.product || '', 'he')
+    if (byProduct !== 0) return byProduct
+    // One line's components sit together under its sum row: band, then ספר
+    // before תגמול.
+    const byBand = bandOf(a).localeCompare(bandOf(b), 'en', { numeric: true })
+    if (byBand !== 0) return byBand
+    return KIND_ORDER.indexOf(kindOf(a)) - KIND_ORDER.indexOf(kindOf(b))
   })
   const companies = _companiesOf(items)
   return { ...cat, items, companies, range: rangeLabel(items) }
@@ -1137,6 +1197,10 @@ async function saveNew() { if (!newForm.company_name) return; await api.post('/c
 .kind-pill--book { color: var(--chart-9); background: color-mix(in srgb, var(--chart-9) 11%, transparent); border-color: color-mix(in srgb, var(--chart-9) 26%, transparent); }
 .kind-pill--reward { color: var(--chart-6); background: color-mix(in srgb, var(--chart-6) 11%, transparent); border-color: color-mix(in srgb, var(--chart-6) 26%, transparent); }
 .kind-pill--total { color: var(--chart-2); background: color-mix(in srgb, var(--chart-2) 13%, transparent); border-color: color-mix(in srgb, var(--chart-2) 30%, transparent); }
+.sum-row td { background: color-mix(in srgb, var(--tab-commission) 5%, transparent); }
+.sum-row .product-line { font-weight: 700; }
+.sum-parts { flex: none; font-size: 11px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.rate-pill.rate-pill--sum { background: var(--tab-commission); color: #fff; }
 .scope-pill { flex: none; font-size: 10px; font-weight: 650; padding: 1.5px 7px; border-radius: 999px; color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); white-space: nowrap; }
 
 .shelf-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }

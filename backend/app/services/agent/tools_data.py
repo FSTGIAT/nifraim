@@ -154,13 +154,15 @@ async def get_portfolio(ctx, company: str = "", metric: str = "accumulation"):
     return {"companies": rows, "result_id": rid}
 
 
-@tool("top_customers", "הלקוחות הגדולים בתיק לפי צבירה או פרמיה (מכל קבצי הפרודוקציה הפעילים).",
-      {"metric": {"type": "string", "enum": ["accumulation", "premium"]}, "n": {"type": "integer", "description": "כמה (ברירת מחדל 10)"}},
+@tool("top_customers", "הלקוחות הגדולים בתיק (מכל קבצי הפרודוקציה הפעילים): לפי צבירה, פרמיה, או products = מספר המוצרים (פוליסות/חשבונות שונים) ללקוח.",
+      {"metric": {"type": "string", "enum": ["accumulation", "premium", "products"]}, "n": {"type": "integer", "description": "כמה (ברירת מחדל 10)"}},
       category="production", status_he="מדרג את הלקוחות")
 async def top_customers(ctx, metric: str = "accumulation", n: int = 10):
+    n = max(1, min(int(n or 10), 30))
+    if metric == "products":
+        return await _top_by_products(ctx, n)
     from app.api import production
     rows = await _cached(ctx, ("clients", metric), lambda: production.get_production_clients(sort=metric, search=None, db=ctx.db, user=ctx.user))
-    n = max(1, min(int(n or 10), 30))
     key = "accumulation" if metric == "accumulation" else "premium"
     top = []
     for r in rows[:n]:
@@ -170,6 +172,33 @@ async def top_customers(ctx, metric: str = "accumulation", n: int = 10):
                     "companies": d.get("companies") or d.get("company")})
     rid = ctx.keep(top, label="לקוח", value="צבירה" if key == "accumulation" else "פרמיה", title="הלקוחות הגדולים")
     return {"metric": metric, "customers": top, "result_id": rid}
+
+
+async def _top_by_products(ctx, n: int) -> dict:
+    """Distinct products per customer = distinct policy/account numbers (one policy's
+    coverage lines — הראל lists up to 8 riders per policy — are ONE product)."""
+    from sqlalchemy import func
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+
+    async def compute():
+        ids = await _get_production_upload_ids(ctx.db, ctx.user.id)
+        if not ids:
+            return []
+        from sqlalchemy import literal_column
+        prod_key = func.coalesce(ClientRecord.fund_policy_number, ClientRecord.product)
+        idn = func.ltrim(ClientRecord.id_number, literal_column("'0'"))   # ONE expression: select == group by
+        n_products = func.count(func.distinct(prod_key))
+        q = (select(idn, func.min(ClientRecord.first_name), func.min(ClientRecord.last_name),
+                    n_products, func.count(func.distinct(ClientRecord.receiving_company)))
+             .where(ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(ids), ClientRecord.id_number.isnot(None))
+             .group_by(idn).order_by(n_products.desc()).limit(30))
+        return [{"label": " ".join(x for x in (fn, ln) if x) or idn, "value": int(cnt), "id_number": idn, "companies": int(cos)}
+                for idn, fn, ln, cnt, cos in (await ctx.db.execute(q)).all()]
+    rows = (await _cached(ctx, ("top_products",), compute))[:n]
+    rid = ctx.keep(rows, label="לקוח", value="מוצרים", unit="", title="לקוחות עם הכי הרבה מוצרים")
+    return {"metric": "products", "customers": rows, "result_id": rid,
+            "note": "מוצר = פוליסה/חשבון שונה; כיסויים של אותה פוליסה נספרים כמוצר אחד."}
 
 
 @tool("find_customer", "חיפוש לקוח לפי שם, חלק משם או ת.ז. כשנמצאו 1–2 לקוחות — מחזיר מיד את הכרטיס המלא שלהם (אין צורך ב-get_customer).",

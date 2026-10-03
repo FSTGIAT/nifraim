@@ -23,19 +23,29 @@ FUND_CATS = [  # (pattern, tool)
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי ניהול|להשוות|השווא|מומלץ")
 TRACKS = ["מניות", "כללי", "S&P", "אג\"ח", "אגח", "לבני 50", "עד 60", "ומעלה", "ומטה", "הלכה", "כספי", "שקלי"]
-NAME_RE = re.compile(r"(?:^|\s)(?:ל|ה|של )?לקוח(?:ה)?\s+([א-ת][א-ת'\"\- ]{2,30}?)(?=\s*(?:\?|$|,|\.| ב[א-ת]| מ[א-ת]| עם| יש| של))")
+# A name ends at punctuation, at "עם/יש/של", or at "ב/מ + an insurer" ("…משה בהפניקס").
+# NOT at any word starting with ב/מ — that cut "אברהם משה" to "אברהם" and "ברק" off names.
+_CO = "|".join(COMPANIES)
+NAME_RE = re.compile(r"(?:^|\s)(?:ל|ה|של )?לקוח(?:ה)?\s+([א-ת][א-ת'\"\- ]{2,30}?)"
+                     r"(?=\s*(?:\?|$|,|\.| עם\b| יש\b| של\b| לא\b| (?:ב|מ)(?:" + _CO + r")))")
 MAX_CHARS = 9000
+
+
+NOT_A_NAME = re.compile(r"^(?:על|עם|לגבי|בנוגע|של|את|שלי|הזה|הזאת|ש)\b")
+CALL_Q = re.compile(r"סיכמ|בשיחה|השיחה|שיחות|דיברנו|דיברתי|הקלט")
 
 
 def plan(question: str) -> list[tuple[str, dict]]:
     q = " ".join((question or "").split())
     calls: list[tuple[str, dict]] = []
+    if CALL_Q.search(q) and not re.search(r"(?:^|\s)(?:ת?קליט|עצור|תעצור)", q):
+        calls.append(("get_call_summaries", {"which": "last", "n": 5}))
     m = ID_RE.search(q)
     if m:
         calls.append(("get_customer", {"id_number": m.group(1)}))
     else:
         n = NAME_RE.search(q)
-        if n and not re.search(r"\b(?:הכי|שלי|כולם|בכלל|חדשים)\b", n.group(1)):
+        if n and not NOT_A_NAME.search(n.group(1)) and not re.search(r"\b(?:הכי|שלי|כולם|בכלל|חדשים)\b", n.group(1)):
             calls.append(("find_customer", {"query": n.group(1).strip()}))
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if FUND_Q.search(q) and not explain:

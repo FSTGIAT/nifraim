@@ -14,6 +14,7 @@ done|failed.
 from __future__ import annotations
 
 import asyncio
+import re
 import json
 import logging
 import os
@@ -92,9 +93,11 @@ async def _on_transcribed(r, call_id: str) -> None:
                 out, model = await summarize_call(call.segments, call.duration_s)
                 call.title = (out.get("title") or "")[:120] or None
                 call.summary = out.get("summary") or None
-                call.insights = {k: out.get(k) for k in (
+                insights = {k: out.get(k) for k in (
                     "tldr", "key_points", "action_items", "customer_needs", "products_mentioned",
                     "objections", "sentiment", "follow_up")}
+                insights.update(await _followup(db, call, out))
+                call.insights = insights
                 call.llm_model = model
             except LlmUnavailable:
                 logger.exception("calls: summary unavailable for %s", call_id)
@@ -103,6 +106,45 @@ async def _on_transcribed(r, call_id: str) -> None:
             await db.commit()
     # stored in Postgres now — the Redis copy can go (the gateway's done/<id>.json ages out)
     await r.delete(C.TRANSCRIPT_KEY.format(call_id=call_id))
+
+
+async def _match_customer(db, user, name: str, id_number: str) -> dict:
+    """Who the call was with, from what was SAID (name / ת.ז) matched against the
+    agent's production files. Never guessed: no match → matched=False, the agent types it."""
+    from app.models.user import User
+    from app.services.office_agent import contacts
+    u = await db.get(User, user)
+    want = {"name": name.strip(), "id_number": id_number.strip(), "email": "", "matched": False}
+    for q in ([id_number.lstrip("0")] if id_number.strip().isdigit() else []) + ([name.strip()] if name.strip() else []):
+        hits = [c for c in await contacts(db, u, q[:60], limit=5) if c["kind"] == "customer"]
+        if len(hits) == 1 or (hits and q.isdigit()):
+            h = hits[0]
+            return {"name": h["name"], "id_number": h["id_number"], "email": h["email"] or "", "matched": True}
+    return want
+
+
+async def _followup(db, call: CallRecording, out: dict) -> dict:
+    """The customer-facing summary Nifra Agent offers to send (only on the agent's click)."""
+    body = (out.get("followup_body") or "").strip()
+    if not body:
+        return {}
+    # the model signs off anyway sometimes — drop its closing so ours is the only one
+    lines = body.splitlines()
+    while lines and (not lines[-1].strip() or re.match(r"^\s*(בברכה|בברכת|תודה רבה|שלך|שלכם)\b.*$", lines[-1]) or len(lines[-1].split()) <= 2 and lines[-2:-1] and re.match(r"^\s*(בברכה|בברכת)", lines[-2])):
+        lines.pop()
+    body = "\n".join(lines).strip()
+    from app.models.user import User
+    u = await db.get(User, call.user_id)
+    sign = (u.full_name or "").strip() if u else ""
+    customer = await _match_customer(db, call.user_id, out.get("customer_name") or "", out.get("customer_id_number") or "")
+    return {
+        "customer": customer,
+        "followup": {
+            "status": "ready",
+            "subject": (out.get("followup_subject") or out.get("title") or "סיכום השיחה שלנו").strip()[:200],
+            "body": body + (f"\n\nבברכה,\n{sign}" if sign else ""),
+        },
+    }
 
 
 async def _set_status(call_id: str, status: str, error: str | None = None) -> None:

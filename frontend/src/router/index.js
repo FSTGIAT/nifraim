@@ -4,7 +4,7 @@ const routes = [
   {
     path: '/',
     name: 'Landing',
-    component: () => import('../views/LandingView.vue'),
+    component: () => import('../views/HomeView.vue'),
   },
   {
     path: '/pricing',
@@ -73,11 +73,16 @@ const routes = [
   },
 ]
 
+// The homepage redesign was reviewed at /demo/home before it went live — keep old links working.
+routes.push({ path: '/demo/home', redirect: '/' })
+
 const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (to.hash) return { el: to.hash, behavior: 'smooth' }
+    // the homepage always opens on its hero — a refresh must not restore the old scroll
+    if (to.name === 'Landing') return { top: 0 }
     if (savedPosition) return savedPosition
     return { top: 0 }
   },

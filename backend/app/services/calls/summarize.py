@@ -16,7 +16,10 @@ SYSTEM = """אתה עוזר של סוכן ביטוח ופנסיה בישראל. 
 - אם שדה לא עלה בשיחה — השאר רשימה ריקה או מחרוזת ריקה.
 - כתוב בעברית, בגוף שלישי ("הלקוח ביקש…", "הסוכן התחייב…").
 - קצר מאוד: הסוכן קורא את זה בחצי דקה. כל פריט ברשימה — עד 6 מילים, בלי משפטי פתיחה. עדיף פחות פריטים טובים.
-- הדובר לא מסומן בתמלול; הסק מי הסוכן ומי הלקוח מתוכן הדברים."""
+- הדובר לא מסומן בתמלול; הסק מי הסוכן ומי הלקוח מתוכן הדברים.
+- customer_name / customer_id_number: רק אם נאמרו בשיחה במפורש. אחרת ריק.
+- followup_subject / followup_body: מייל קצר שהסוכן ישלח ללקוח אחרי השיחה, בגוף ראשון של הסוכן ("שלום <שם>, תודה על השיחה"),
+  מה סיכמנו והצעדים הבאים עם המועדים שנאמרו. 4–8 שורות, חם ומקצועי, בלי חתימה (נוסיף אותה), בלי מידע שלא נאמר."""
 
 TOOL = {
     "name": "call_summary",
@@ -46,6 +49,10 @@ TOOL = {
             "objections": {"type": "array", "maxItems": 4, "items": {"type": "string"}},
             "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative", "mixed"]},
             "follow_up": {"type": "string", "description": "הצעד הבא לסוכן, עד 10 מילים"},
+            "customer_name": {"type": "string", "description": "שם הלקוח כפי שנאמר, או ריק"},
+            "customer_id_number": {"type": "string", "description": "ת.ז של הלקוח אם נאמרה, ספרות בלבד, או ריק"},
+            "followup_subject": {"type": "string", "description": "נושא המייל ללקוח"},
+            "followup_body": {"type": "string", "description": "גוף המייל ללקוח, בלי חתימה"},
         },
         "required": ["title", "tldr", "summary", "key_points", "action_items", "sentiment"],
     },
@@ -70,5 +77,5 @@ async def summarize_call(segments: list[dict], duration_s: float | None) -> tupl
     """Returns (tool_input, model_used). Raises LlmUnavailable."""
     mins = f"{(duration_s or 0) / 60:.0f}"
     user = f"משך השיחה: כ-{mins} דקות.\n\nתמלול:\n{_clip(_fmt(segments))}"
-    out, model, _usage = await call_tool(models=MODELS, system=SYSTEM, user=user, tool=TOOL, max_tokens=2000)
+    out, model, _usage = await call_tool(models=MODELS, system=SYSTEM, user=user, tool=TOOL, max_tokens=2600)
     return out, model
