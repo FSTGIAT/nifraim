@@ -951,8 +951,12 @@ function openDetailFromFilter(c, el = null) {
     paid: true,
     source: 'commission_only',
   }))
+  // A paired row's נפרעים line may spell the policy differently from production
+  // ('1025-44837481' vs '44837481', Phoenix 3- vs 4-part) — match on both
+  // spellings, or the paired line is re-added as "רק בנפרעים" and counted twice.
   const matchedAccounts = new Set([
     ...matched.map(p => p.policy_number),
+    ...(c.product_matches?.matched || []).map(p => p.commission_account),
     ...unmatchedComm.map(p => p.policy_number),
   ].filter(Boolean))
   const commProducts = (c.commission_products || [])

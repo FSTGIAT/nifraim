@@ -865,6 +865,9 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
                 )
                 matched.append({
                     "policy_number": pn,
+                    # The נפרעים side's own spelling ('1025-44837481' vs production
+                    # '44837481') — the UI de-duplicates נפרעים lines against it.
+                    "commission_account": cn,
                     "production_product": product_name,
                     "commission_product": cr.get("fund_type") or cr.get("product"),
                     "company": _extract_short_company(product_name, pr.get("receiving_company")),
