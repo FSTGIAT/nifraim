@@ -389,6 +389,7 @@ _ENTRY_MEMBER = "backend/local_worker.py"       # its path inside the bundle zip
 _REQUIRED_DEFS = frozenset({
     "main", "_heartbeat_loop", "_beat", "_maybe_self_update",
     "_claim_pending_batch", "_claim_pending_run", "_download_and_extract_bundle",
+    "_maybe_auto_update",
 })
 
 
@@ -615,6 +616,62 @@ async def _maybe_self_update(uid):
     os.execv(_sys.executable, [_sys.executable, str(_ENTRYPOINT)])
 
 
+# ── Automatic update on deploy ──
+# Agents have no "עדכן עובד" button (admin-only), and the button's flag is dropped
+# by a worker that STARTS after it was set (it reads as stale) — so an agent whose
+# PC was off during the request kept old code. Instead the worker compares the
+# version of the code it runs (backend/WORKER_VERSION, written into every bundle)
+# with the server's and updates itself whenever they differ.
+_VERSION_FILE = _ROOT / "backend" / "WORKER_VERSION"
+AUTO_UPDATE_CHECK_S = 300
+_last_version_check = 0.0
+
+
+def _local_version() -> str:
+    try:
+        return _VERSION_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""  # pre-versioning install → differs from the server → updates once
+
+
+def _server_version() -> str | None:
+    import json as _json
+    base = (_env.get("WORKER_LOG_BASE", "") or os.environ.get("WORKER_LOG_BASE", "")).rstrip("/")
+    token = _env.get("WORKER_LOG_TOKEN", "") or os.environ.get("WORKER_LOG_TOKEN", "")
+    if not (base and token):
+        return None
+    try:
+        with _ureq.urlopen(f"{base}/api/portal-automation/worker/version/{token}", timeout=20) as r:
+            return (_json.loads(r.read().decode("utf-8")).get("version") or "").strip() or None
+    except Exception as e:
+        log.info("version check failed (%s) — will retry", e)
+        return None
+
+
+async def _maybe_auto_update():
+    """Every AUTO_UPDATE_CHECK_S (and on the first beat): if the server deploys
+    different worker code, download it and re-exec — never mid-run."""
+    global _last_version_check
+    if _last_version_check and _time.monotonic() - _last_version_check < AUTO_UPDATE_CHECK_S:
+        return
+    _last_version_check = _time.monotonic()
+    server = await asyncio.to_thread(_server_version)
+    local = _local_version()
+    if not server or server == local:
+        return
+    if _BUSY:
+        _last_version_check = 0.0  # re-check on the next beat, after the run
+        return
+    log.info("new worker code deployed (%s → %s) — updating", local or "none", server)
+    _post_log(f"auto-update: {local or 'none'} → {server}")
+    ok = await asyncio.to_thread(_download_and_extract_bundle)
+    if not ok:
+        _post_log("עדכון אוטומטי לא בוצע — העובד ממשיך לפעול על הקוד הקיים")
+        return
+    _post_log("re-executing worker with updated code (auto)")
+    os.execv(_sys.executable, [_sys.executable, str(_ENTRYPOINT)])
+
+
 async def _heartbeat_loop(uid):
     global _OWNS
     while True:
@@ -631,6 +688,7 @@ async def _heartbeat_loop(uid):
                 # update flag, so letting a standby machine consume it would leave the
                 # machine that actually runs the jobs on stale code — silently.
                 await _maybe_self_update(uid)
+                await _maybe_auto_update()
             else:
                 await _stand_by(uid)                # blocks until the incumbent dies
                 _OWNS = True

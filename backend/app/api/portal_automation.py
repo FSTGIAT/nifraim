@@ -1472,10 +1472,61 @@ async def worker_log(token: str, request: Request, db: AsyncSession = Depends(ge
 
 # ── Self-contained worker code bundle (token-auth, no GitHub/git needed) ──
 # Zips the worker's Python (under a backend/ prefix so paths mirror the repo).
+def _worker_bundle_members() -> list:
+    """(path, arcname) of every file the worker bundle ships, sorted by arcname.
+    ONE list for both the zip and its version hash, so the version always
+    describes exactly the bytes a worker would download."""
+    from pathlib import Path as _P
+    backend = _P(__file__).resolve().parents[2]   # …/backend
+    out = []
+
+    def _add_tree(root):
+        if root.exists():
+            for p in root.rglob("*"):
+                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
+                    out.append((p, "backend/" + str(p.relative_to(backend)).replace("\\", "/")))
+
+    _add_tree(backend / "app")
+    for rel in ("local_worker.py", "requirements.txt"):
+        fp = backend / rel
+        if fp.exists():
+            out.append((fp, "backend/" + rel))
+    _add_tree(backend / "scripts" / "windows")
+    return sorted(out, key=lambda m: m[1])
+
+
+_WORKER_BUNDLE_VERSION: str | None = None
+
+
+def _worker_bundle_version() -> str:
+    """Content hash of the bundle. The deployed files never change inside one
+    process, so it is computed once. Workers compare it with their own
+    backend/WORKER_VERSION and self-update on a mismatch — agents have no
+    'עדכן עובד' button (admin-only), so a deploy must reach every worker alone."""
+    global _WORKER_BUNDLE_VERSION
+    if _WORKER_BUNDLE_VERSION is None:
+        import hashlib
+        h = hashlib.sha256()
+        for p, arc in _worker_bundle_members():
+            h.update(arc.encode("utf-8") + b"\0")
+            h.update(p.read_bytes())
+        _WORKER_BUNDLE_VERSION = h.hexdigest()[:16]
+    return _WORKER_BUNDLE_VERSION
+
+
+@router.get("/worker/version/{token}")
+async def worker_version(token: str, db: AsyncSession = Depends(get_db)):
+    user = (await db.execute(
+        select(User).where(User.phone_forward_token == _clean_token(token))
+    )).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"version": _worker_bundle_version()}
+
+
 @router.get("/worker/bundle/{token}")
 async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
     import io, zipfile
-    from pathlib import Path as _P
     from fastapi.responses import Response
 
     user = (await db.execute(
@@ -1484,21 +1535,12 @@ async def worker_bundle(token: str, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="not found")
 
-    backend = _P(__file__).resolve().parents[2]   # …/backend
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in (backend / "app").rglob("*"):
-            if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
-                z.write(p, "backend/" + str(p.relative_to(backend)).replace("\\", "/"))
-        for rel in ("local_worker.py", "requirements.txt"):
-            fp = backend / rel
-            if fp.exists():
-                z.write(fp, "backend/" + rel)
-        wdir = backend / "scripts" / "windows"
-        if wdir.exists():
-            for p in wdir.rglob("*"):
-                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
-                    z.write(p, "backend/" + str(p.relative_to(backend)).replace("\\", "/"))
+        for p, arc in _worker_bundle_members():
+            z.write(p, arc)
+        # The worker reads this to know which code it runs (see /worker/version).
+        z.writestr("backend/WORKER_VERSION", _worker_bundle_version() + "\n")
     buf.seek(0)
     return Response(buf.read(), media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="nifraim-worker.zip"'})
