@@ -264,6 +264,15 @@ def _extract_policy_core(policy: str | None) -> str | None:
     parts = s.split("-")
     if len(parts) == 4:
         return parts[2]
+    # Two-part נפרעים forms where production has the bare account:
+    #   Altshuler 'FUND-ACCOUNT'  '1025-44837481' / '512-39671489' → '44837481'
+    #   Yelin     'ACCOUNT-SUFFIX' '71856447-927'                  → '71856447'
+    # (live: every Altshuler line read "רק בנפרעים" and its production line
+    # unpaid). Only when one side is a short code and the other a real account.
+    if len(parts) == 2 and all(p.isdigit() for p in parts):
+        short, long_ = sorted(parts, key=len)
+        if len(short) <= 4 and len(long_) >= 6:
+            return long_
     return s
 
 
