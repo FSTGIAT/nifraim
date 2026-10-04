@@ -23,6 +23,7 @@
           <div class="product-name">{{ m.production_product || '—' }}</div>
           <div class="product-meta">
             <span class="meta-item">חשבון: <span class="ltr-val">{{ m.policy_number }}</span></span>
+            <span v-if="m.paid_via_id" class="meta-item">שולם דרך ת.ז <span class="ltr-val">{{ m.paid_via_id }}</span></span>
             <span v-if="m.track" class="meta-item">מסלול: {{ m.track }}</span>
             <span v-if="m.monthly_pct != null" class="meta-item">אחוז חודשי: <span class="ltr-val">{{ formatPct(m.monthly_pct) }}</span></span>
           </div>

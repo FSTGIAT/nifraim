@@ -435,6 +435,16 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         if r.get("id_number"):
             comm_by_id[_normalize_id(r["id_number"])].append(r)
 
+    # Same policy paid under ANOTHER ID (rule B, QA 2026-10-04): a family policy
+    # pays commission under its owner's ID while production lists each insured
+    # member under their own (Harel: 74 products, 54 customers read unpaid).
+    comm_by_policy = defaultdict(list)
+    for r in commission_records:
+        core = _policy_key(r.get("fund_policy_number"))
+        stem = company_stem(r.get("receiving_company") or "")
+        if core and stem and r.get("id_number"):
+            comm_by_policy[(stem, core)].append(r)
+
     all_ids = set(prod_by_id.keys()) | set(comm_by_id.keys())
     matched_ids = set(prod_by_id.keys()) & set(comm_by_id.keys())
     only_prod_ids = set(prod_by_id.keys()) - set(comm_by_id.keys())
@@ -530,6 +540,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
 
         # Product-level matching by account number
         product_matches = _match_products(prod_recs, comm_recs, user_rates)
+        paid_via = _move_paid_via_other_id(id_num, product_matches, comm_by_policy)
         paid_count = len(product_matches["matched"])
         unpaid_count = len(product_matches["unmatched_production"])
 
@@ -574,6 +585,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
             "production_products": prod_products,
             "commission_products": comm_products,
             "product_matches": product_matches,
+            "paid_via": paid_via,
         })
 
     # ── Savings funds with nothing in them are not "unpaid" ──
@@ -617,12 +629,36 @@ def compute_comparison(production_records: list[dict], commission_records: list[
     def _stem_of(p):
         return company_stem(p.get("company_full") or p.get("company") or "")
 
+    # A customer with no נפרעים of their own whose products are paid under the
+    # policy owner's ID is paid, not "רק בפרודוקציה". Partly covered → the
+    # same partially-paid split the company-level rule below produces.
+    for c in customers:
+        via = c.get("paid_via") or []
+        if c["match_status"] != "only_production" or not via:
+            continue
+        via_keys = {(company_stem(v.get("company_full") or ""), _policy_key(v.get("policy_number"))) for v in via}
+        prods = c.get("production_products") or []
+        is_via = lambda p: (_stem_of(p), _policy_key(p.get("policy_number"))) in via_keys
+        rest = [p for p in prods if not is_via(p)]
+        c["paid_production_products"] = [p for p in prods if is_via(p)]
+        c["production_products"] = rest
+        c["total_premium"] = sum((p.get("premium") or 0) for p in rest)
+        if any(not _empty_fund(p) for p in rest):
+            c["partially_paid"] = True
+        else:
+            c["match_status"] = "matched"
+            only_prod_ids.discard(c["id_number"])
+            matched_ids.add(c["id_number"])
+
     for c in customers:
         if c["match_status"] != "matched" or not covered_stems:
             continue
+        if c.get("paid_production_products") is not None and not c.get("commission_products"):
+            continue  # paid entirely via another ID — already split above
         prods = c.get("production_products") or []
         paid_stems = {company_stem(p.get("company_full") or p.get("company") or "")
                       for p in c.get("commission_products") or []}
+        paid_stems |= {company_stem(v.get("company_full") or "") for v in c.get("paid_via") or []}
         unpaid_stems = {_stem_of(p) for p in prods if not _empty_fund(p)}
         unpaid_stems = {st for st in unpaid_stems if st and st in covered_stems and st not in paid_stems}
         if not unpaid_stems:
@@ -734,6 +770,53 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         "commission_category": commission_category,
         "commission_category_label": _CATEGORY_LABELS.get(commission_category, ""),
     }
+
+
+def _policy_key(policy) -> str | None:
+    """Comparable account core of a policy number ('…-344165-0', '1025-4483…')."""
+    s = str(policy or "").strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    core = (_extract_policy_core(s) or "").lstrip("0")
+    return core or None
+
+
+def _move_paid_via_other_id(id_num, product_matches: dict, comm_by_policy) -> list[dict]:
+    """Rule B: an unpaid production product whose policy is paid in נפרעים under
+    a DIFFERENT ID of the same company (the policy owner) is paid. It moves to
+    `matched` with commission 0 — the money is counted once, on the owner's own
+    line — and carries `paid_via_id` + the owner's amount for display."""
+    via = []
+    still = []
+    for p in product_matches.get("unmatched_production") or []:
+        key = (company_stem(p.get("company_full") or ""), _policy_key(p.get("policy_number")))
+        owners = [r for r in comm_by_policy.get(key, []) if _normalize_id(r.get("id_number")) != id_num] if key[1] else []
+        if not owners:
+            still.append(p)
+            continue
+        owner_ids = sorted({_normalize_id(r.get("id_number")) for r in owners})
+        owner_amount = sum(float(_get_commission(r) or 0) for r in owners)
+        entry = {
+            "policy_number": p.get("policy_number"),
+            "production_product": p.get("product"),
+            "commission_product": owners[0].get("fund_type") or owners[0].get("product"),
+            "company": p.get("company"),
+            "company_full": p.get("company_full"),
+            "premium": p.get("premium"),
+            "accumulation": p.get("accumulation"),
+            "rate": p.get("rate"),
+            "expected_commission": None,   # the owner's line carries the expectation
+            "expected_is_estimate": True,
+            "commission_gap": None,
+            "commission": 0,
+            "paid_via_id": owner_ids[0],
+            "paid_via_ids": owner_ids,
+            "owner_commission": round(owner_amount, 2),
+        }
+        product_matches.setdefault("matched", []).append(entry)
+        via.append(entry)
+    product_matches["unmatched_production"] = still
+    return via
 
 
 def _policy_matches(prod_policy: str, comm_policy: str) -> bool:

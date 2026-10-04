@@ -909,6 +909,9 @@ function openDetailFromFilter(c, el = null) {
     expected_is_estimate: p.expected_is_estimate ?? null,
     commission_gap: p.commission_gap ?? null,
     rate_note: p.rate_note ?? null,
+    // Paid under the policy owner's ID (family policy) — commission counted on the owner.
+    paid_via_id: p.paid_via_id || null,
+    owner_commission: p.owner_commission ?? null,
     paid: true,
   }))
   const unmatched = (c.product_matches?.unmatched_production || []).map(p => ({

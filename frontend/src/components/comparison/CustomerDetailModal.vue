@@ -77,6 +77,7 @@
                   <span v-if="p.fund_type" class="p-tag-info">{{ p.fund_type }}</span>
                   <span v-if="p.track" class="p-tag-info">{{ p.track }}</span>
                   <span v-if="!p.paid && !p.source" class="p-tag-production">רק בפרודוקציה</span>
+                  <span v-if="p.paid_via_id" class="p-tag-via">שולם דרך ת.ז <span class="ltr-number">{{ p.paid_via_id }}</span></span>
                   <span v-if="p.source === 'commission_only'" class="p-tag-commission">רק בנפרעים</span>
                   <span v-if="p._payments > 1" class="p-tag-info ltr-number">{{ p._payments }} תשלומים</span>
                 </div>
@@ -87,6 +88,10 @@
                 <div class="amt" v-if="p.commission > 0">
                   <span class="amt-lbl">עמלה</span>
                   <span class="amt-val ltr-number amt-green">{{ fmtCell(p.commission) }}</span>
+                </div>
+                <div class="amt" v-if="p.paid_via_id && p.owner_commission >= 0.5">
+                  <span class="amt-lbl">עמלה אצל בעל הפוליסה</span>
+                  <span class="amt-val ltr-number amt-muted">{{ fmtCell(p.owner_commission) }}</span>
                 </div>
                 <div class="amt" v-if="p.balance > 0">
                   <span class="amt-lbl">צבירה נפרעים</span>
@@ -495,6 +500,8 @@ function fmtCell(val) {
 .p-sub { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }
 .p-tag-info { color: var(--text-muted); }
 .p-tag-production { padding: 1px 8px; border-radius: 8px; background: var(--amber-light); color: var(--amber); font-weight: 600; }
+/* Paid under the policy owner's ID — the comparison tab's green, as a paid state. */
+.p-tag-via { padding: 1px 8px; border-radius: 8px; background: color-mix(in srgb, var(--tab-comparison) 12%, transparent); color: var(--tab-comparison); font-weight: 600; }
 /* Sky = the only_commission status colour (STATUS_COLORS); ink shade for text contrast. */
 .p-tag-commission { padding: 1px 8px; border-radius: 8px; background: color-mix(in srgb, var(--chart-2) 14%, transparent); color: var(--tab-portal-ink); font-weight: 600; }
 
