@@ -264,6 +264,11 @@ def _extract_policy_core(policy: str | None) -> str | None:
     parts = s.split("-")
     if len(parts) == 4:
         return parts[2]
+    # Phoenix נפרעים writes 'FUND-TRACK-ACCOUNT' ('006-255-344165') where its
+    # production writes 'X-TRACK-ACCOUNT-N' ('1-255-344165-0'): same account,
+    # third segment in both (live: 130 paid Phoenix savings lines read unpaid).
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        return parts[2]
     # Two-part נפרעים forms where production has the bare account:
     #   Altshuler 'FUND-ACCOUNT'  '1025-44837481' / '512-39671489' → '44837481'
     #   Yelin     'ACCOUNT-SUFFIX' '71856447-927'                  → '71856447'

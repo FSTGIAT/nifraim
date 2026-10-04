@@ -19,3 +19,10 @@ def test_existing_formats_unchanged():
     assert _extract_policy_core("AB-123456") == "AB-123456"     # not all digits
     assert _extract_policy_core("12345-67890") == "12345-67890"  # no short code
     assert not _policy_matches("44837481", "1025-44837482")
+
+
+def test_phoenix_three_part_pairs_with_four_part_production():
+    assert _extract_policy_core("006-255-344165") == "344165"
+    assert _policy_matches("1-255-344165-0", "006-255-344165")
+    assert _policy_matches("006-204-092754", "006-204-092754")      # same 3-part still pairs
+    assert not _policy_matches("1-255-344165-0", "006-255-344166")
