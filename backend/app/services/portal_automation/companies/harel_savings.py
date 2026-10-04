@@ -233,6 +233,10 @@ class HarelSavingsPortal(_HarelReportPortal):
     # Downloaded on this same login (see download_reports) — mirror our
     # outcome onto its credential so its card is not stuck at "ממתין".
     folds = ('harel_commissions',)
+    # One login runs 2+ accounts × (נפרעים + גמל + מגוון) plus the vault leg —
+    # the agents-portal legs alone measured ~5.5 min live (2026-10-04), so the
+    # shared 720s cap (incl. up to 300s OTP wait) cut real runs (2026-09-14).
+    run_timeout_s = 1500
 
     async def download_reports(
         self,
@@ -261,6 +265,7 @@ class HarelSavingsPortal(_HarelReportPortal):
 
         # Accumulate rows per managing-company ACROSS all accounts → 2 files.
         company_rows: dict[str, list] = {}
+        nifraim_files: list[Path] = []  # raw גמל/מגוון exports, ingested as נפרעים
         period_label: str | None = None
         raw_idx = 0
 
@@ -333,11 +338,10 @@ class HarelSavingsPortal(_HarelReportPortal):
                     return None
 
             async def _drill0_savings(fr, tag: str):
-                """Click the latest-month מוצרי צבירה cell → agent-breakdown
-                modal 1. Returns the re-acquired frame or None."""
-                if not await self._vis_click_first(
-                    fr.locator('td[data_colid="Schum_Mutzarim_Finnasim"].cell_action')
-                ):
+                """Click the REQUESTED month's מוצרי צבירה cell → agent-breakdown
+                modal 1 (never the top row: that is the dated, still-open payment
+                run). Returns the re-acquired frame or None."""
+                if not await self._click_month_row(fr, "Schum_Mutzarim_Finnasim"):
                     await self._dump_frame(page, run_id, f"sv_3_no_drill0_{tag}", fr)
                     return None
                 await page.wait_for_timeout(2500)
@@ -362,6 +366,7 @@ class HarelSavingsPortal(_HarelReportPortal):
                     _worker_note(f"harel_savings: acct {acct or 'default'} drill0 FAILED (מוצרי צבירה cell)")
                 except Exception:
                     pass
+                self.partial_errors.append(f"מוצרי צבירה {acct or ''}: לא נמצא תא החודש המבוקש")
                 frame = await self._open_report(page, run_id)
                 continue
             frame = f0
@@ -429,10 +434,13 @@ class HarelSavingsPortal(_HarelReportPortal):
                         _worker_note(f"harel_savings: acct {acct or 'default'} agent {gi} — modal2 empty")
                     except Exception:
                         pass
+                    self.partial_errors.append(f"מוצרי צבירה {acct or ''}: לא נמצאו שורות גמל/מגוון")
                     continue
 
                 for comp_label, cinfo in comps:
                     company_source = f"הראל {comp_label}"
+                    if period_label is None and getattr(self, "_target_month", None):
+                        period_label = _period_label(self._target_month)
                     if period_label is None and cinfo.get("title"):
                         if re.search(r"\d{1,2}\s*[/\-.]\s*\d{2,4}", cinfo["title"]):
                             period_label = _period_label(cinfo["title"])
@@ -455,9 +463,30 @@ class HarelSavingsPortal(_HarelReportPortal):
                         # returned no rows on BOTH accounts on 2026-08-30, so the
                         # distinction matters. Mirror them to WORKER-LOG.
                         _worker_note(f"harel_savings: {company_source} acct {acct or 'default'} → NO POPUP")
+                        self.partial_errors.append(f"{company_source} {acct or ''}: הדוח לא נפתח")
                         continue
                     raw_path = await _export_from_popup(popup, comp_label, f"{ai}_{gi}")
                     if raw_path:
+                        # The same export IS the גמל/מגוון נפרעים file (format
+                        # harel_savings_nifraim — what the agent downloads by
+                        # hand as "הראל נפרעים גמל 9345.xlsx"). Ship it as
+                        # נפרעים too; the production reshape below is kept for
+                        # accumulation. One name per account/agent/company —
+                        # the upload replace-key is the filename.
+                        try:
+                            nif_name = f"הראל נפרעים {comp_label}"
+                            if acct:
+                                nif_name += f" - {acct}"
+                            if len(agent_cells) > 1:
+                                nif_name += f" סוכן {gi + 1}"
+                            if getattr(self, "_target_month", None):
+                                nif_name += f" ({_period_label(self._target_month)})"
+                            nif_path = download_dir / (nif_name + raw_path.suffix)
+                            nif_path.write_bytes(raw_path.read_bytes())
+                            nifraim_files.append(nif_path)
+                            _worker_note(f"harel_savings: {company_source} acct {acct or 'default'} → נפרעים {nif_path.name}")
+                        except Exception as e:
+                            self.partial_errors.append(f"נפרעים {company_source} {acct or ''}: {str(e)[:120]}")
                         try:
                             rows = _extract_production_rows(raw_path, company_source, run_id, SCREENSHOT_ROOT, account=acct or "")
                             company_rows.setdefault(company_source, []).extend(rows)
@@ -469,12 +498,14 @@ class HarelSavingsPortal(_HarelReportPortal):
                                 )
                         except Exception as e:
                             _logger.warning("harel_savings: reshape failed for %s: %s", company_source, e)
+                            self.partial_errors.append(f"פרודוקציה {company_source} {acct or ''}: {str(e)[:120]}")
                             _worker_note(
                                 f"harel_savings: {company_source} acct {acct or 'default'} → "
                                 f"RESHAPE FAILED {type(e).__name__}: {str(e)[:120]}"
                             )
                     else:
                         _worker_note(f"harel_savings: {company_source} acct {acct or 'default'} → NO EXPORT FILE")
+                        self.partial_errors.append(f"{company_source} {acct or ''}: לא ירד קובץ אקסל")
                     try:
                         await popup.close()
                     except Exception:
@@ -513,7 +544,11 @@ class HarelSavingsPortal(_HarelReportPortal):
                 _logger.warning("harel_savings: write failed for %s: %s", company_source, e)
                 self.partial_errors.append(f"פרודוקציה {company_source}: {str(e)[:120]}")
 
-        results = list(out_paths)
+        if getattr(self, "_target_is_fallback", False):
+            self.partial_errors.append(
+                f"מוצרי צבירה: החודש המבוקש לא נמצא — ירד {self._target_month}"
+            )
+        results = list(out_paths) + nifraim_files
         if not out_paths:
             _logger.warning("harel: no production files produced; continuing to נפרעים")
             self.partial_errors.append("פרודוקציה: לא הופקו קבצים")
@@ -527,9 +562,13 @@ class HarelSavingsPortal(_HarelReportPortal):
             from app.services.portal_automation.companies.harel_commissions import (
                 HarelCommissionsPortal,
             )
-            nif_files = await HarelCommissionsPortal().download_reports(
-                page, download_dir, username=username
-            )
+            comm = HarelCommissionsPortal()
+            try:
+                nif_files = await comm.download_reports(
+                    page, download_dir, username=username
+                )
+            finally:
+                self.partial_errors.extend(comm.partial_errors)
             results.extend(nif_files or [])
             _logger.info(
                 "harel: also downloaded נפרעים → %s",

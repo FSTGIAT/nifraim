@@ -115,6 +115,14 @@
                   <span class="amt-lbl">{{ isEstimate(p) ? 'אחוז משוער' : 'אחוז לפי ההסכם' }}</span>
                   <span class="amt-val ltr-number amt-muted">{{ isEstimate(p) ? '~' : '' }}{{ rateLabel(p) }}</span>
                 </div>
+                <!-- No pension rate in the agreement: say the figure is missing
+                     rather than show a gemel rate the agreement never gave (QA
+                     2026-10-03). No amount follows — nothing to compute it from. -->
+                <div class="amt" v-if="!rateLabel(p) && p.rate_note === 'no_pension_rate'"
+                     title="בהסכם אין אחוז נפרעים לקרן פנסיה">
+                  <span class="amt-lbl">אחוז לפי ההסכם</span>
+                  <span class="amt-val amt-missing">נתון חסר</span>
+                </div>
                 <div class="amt" v-if="expectedCommission(p) != null"
                      :title="isEstimate(p) ? 'אין בהסכם שיעור למוצר הזה — הערכה לפי שיעור כללי של החברה' : ''">
                   <span class="amt-lbl">{{ isEstimate(p) ? 'הערכה' : 'אמור לשלם' }}</span>
@@ -496,6 +504,7 @@ function fmtCell(val) {
 .amt-val { font-size: 14px; font-weight: 700; color: var(--text); }
 .amt-green { color: var(--acc); }
 .amt-muted { color: var(--text-muted); font-weight: 600; }
+.amt-missing { color: var(--amber); font-weight: 600; }
 .amt-expected { color: var(--text); }
 .amt-gap { color: var(--text); }
 .amt-date { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }

@@ -35,7 +35,7 @@ from app.services.portal_automation.runner import (
     _run_inner,
     _set_status,
     _mirror_to_folded,
-    RUN_HARD_TIMEOUT_S,
+    run_timeout_for,
     OtpTimeout,
     RunCancelled,
 )
@@ -303,6 +303,19 @@ async def fold_standalone_run_into_merged(db, user_id, ingested: list[tuple]) ->
                             len(merged), fresh_keys)
 
     return consumed
+
+
+def stale_month_notes(co_periods: list[tuple[str, date]], target: date | None) -> list[str]:
+    """One note naming every company whose נפרעים month is older than `target`
+    (the cycle's period, else the newest month any company delivered)."""
+    target = target or max((pm for _, pm in co_periods), default=None)
+    if not target:
+        return []
+    old = [f"{co} {pm:%m/%Y}" for co, pm in sorted(set(co_periods)) if pm < target]
+    if not old:
+        return []
+    return [f"נפרעים ישנים מהחודש הנדרש ({target:%m/%Y}): " + ", ".join(old)
+            + " — הלקוחות שלהן עלולים להופיע כלא שולמו"]
 
 
 async def _run_worker_only_portal(db, run, cred):
@@ -588,7 +601,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         try:
             ingested = await asyncio.wait_for(
                 _run_inner(db, run, make_active=False, defer_post_ingest=True),
-                timeout=RUN_HARD_TIMEOUT_S,
+                timeout=run_timeout_for(cred.portal_kind),
             )
             cred.last_run_status = "success"
             cred.last_error = None
@@ -619,9 +632,9 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             otp_failed.append(cred)
         except asyncio.TimeoutError:
             await _set_status(db, run, status="timeout",
-                              error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
+                              error=f"Run exceeded {run_timeout_for(cred.portal_kind)}s", finished=True)
             cred.last_run_status = "timeout"
-            cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
+            cred.last_error = f"Run exceeded {run_timeout_for(cred.portal_kind)}s"
             batch.failed += 1
         except Exception as e:
             logger.exception("Batch child run %s failed", run.id)
@@ -684,7 +697,7 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
             try:
                 ingested = await asyncio.wait_for(
                     _run_inner(db, run, make_active=False, defer_post_ingest=True),
-                    timeout=RUN_HARD_TIMEOUT_S,
+                    timeout=run_timeout_for(cred.portal_kind),
                 )
                 cred.last_run_status = "success"
                 cred.last_error = None
@@ -710,8 +723,8 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
                 cred.last_error = str(e)
             except asyncio.TimeoutError:
                 await _set_status(db, run, status="timeout",
-                                  error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
-                cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
+                                  error=f"Run exceeded {run_timeout_for(cred.portal_kind)}s", finished=True)
+                cred.last_error = f"Run exceeded {run_timeout_for(cred.portal_kind)}s"
             except Exception as e:
                 logger.exception("Batch retry run %s failed", run.id)
                 await _set_status(db, run, status="failed", error=str(e), finished=True)
@@ -770,6 +783,21 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         Counter(comm_periods).most_common(1)[0][0] if comm_periods
         else (getattr(batch, "cycle_period", None) or batch_period or _prev_month)
     )
+
+    # A company that served an OLDER month than the batch's target must be
+    # SAID, not silently folded under the newer headline (QA 2026-10-03: Mor's
+    # 06/2026 report sat inside "נפרעים מאוחד יולי"; customers Mor paid in July
+    # read as unpaid). Target = the cycle's period, else the newest month any
+    # company delivered. The merge itself is unchanged — rows keep their month.
+    stale_notes: list[str] = []
+    if comm_upload_ids:
+        _cs = await db.execute(
+            select(FileUpload.company_source, FileUpload.period_month)
+            .where(FileUpload.id.in_(comm_upload_ids))
+        )
+        stale_notes = stale_month_notes(
+            [(co or "?", pm) for co, pm in _cs.all() if pm],
+            getattr(batch, "cycle_period", None))
 
     # The batch is anchored on its production snapshot.
     batch_period = prod_period
@@ -938,6 +966,13 @@ async def _run_batch_inner(db, batch: PortalRunBatch) -> None:
         if batch.status == "success":
             batch.status = "partial"
         note = "חברות עם נתונים חסרים באיחוד: " + " ; ".join(partial_notes)
+        batch.error_message = (
+            f"{batch.error_message} | {note}" if batch.error_message else note
+        )[:2000]
+    if stale_notes:
+        if batch.status == "success":
+            batch.status = "partial"
+        note = " ; ".join(stale_notes)
         batch.error_message = (
             f"{batch.error_message} | {note}" if batch.error_message else note
         )[:2000]

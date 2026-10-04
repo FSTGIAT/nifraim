@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 
-from app.services.rate_select import rate_for_product, pure_risk_insurance
+from app.services.rate_select import rate_for_product, pure_risk_insurance, is_pension_record
 from app.utils.company_norm import company_stem, known_company_stem
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,14 @@ def _rate_for(user_rates, company, product, product_type, accumulation, premium,
     except Exception:  # never let rate lookup break the comparison itself
         logger.warning("rate lookup failed for %s / %s", company, product, exc_info=True)
         return None, None, None
+
+
+def _rate_note(product, product_type, rate):
+    """'no_pension_rate' when a pension line has no pension rate in the agreement
+    — the UI says "אין אחוז פנסיה בהסכם" instead of showing nothing."""
+    if (rate is None or not rate) and is_pension_record(product, product_type):
+        return "no_pension_rate"
+    return None
 
 
 # A payment is "off" only beyond BOTH thresholds — insurers round, and a
@@ -454,6 +462,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "rate": p_rate,
                 "expected_commission": p_expected,
                 "expected_is_estimate": p_est,
+                "rate_note": _rate_note(product_name, r.get("product_type"), p_rate),
                 "premium": r.get("total_premium"),
                 "policy_number": r.get("fund_policy_number"),
                 "status": r.get("product_status"),
@@ -488,6 +497,7 @@ def compute_comparison(production_records: list[dict], commission_records: list[
                 "expected_commission": c_expected,
                 "expected_is_estimate": c_est,
                 "commission_gap": _commission_gap(c_expected, _get_commission(r), c_est),
+                "rate_note": _rate_note(c_product, r.get("product_type") or r.get("fund_type"), c_rate),
                 "annual_pct": r.get("annual_commission_pct"),
                 "monthly_pct": r.get("monthly_commission_pct"),
                 # Same treatment as production products: `company` is the SHORT
@@ -773,6 +783,7 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
                     "expected_is_estimate": m_est,
                     "commission_gap": _commission_gap(
                         m_expected, _get_commission(cr), m_est),
+                    "rate_note": _rate_note(product_name, pr.get("product_type"), m_rate),
                     "commission": _get_commission(cr),
                     "balance": _get_balance(cr),
                     "monthly_pct": cr.get("monthly_commission_pct"),
@@ -785,7 +796,7 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
                 unmatched_comm.remove(cr)
                 break
 
-    return {
+    result = {
         "matched": matched,
         "unmatched_production": [
             {"product": r.get("product"), "product_type": r.get("product_type"),
@@ -825,3 +836,8 @@ def _match_products(prod_recs: list[dict], comm_recs: list[dict],
             for r in unmatched_comm
         ],
     }
+    for key in ("unmatched_production", "unmatched_commission"):
+        for d in result[key]:
+            d["rate_note"] = _rate_note(d.get("product"), d.get("product_type") or d.get("fund_type"),
+                                        d.get("rate"))
+    return result

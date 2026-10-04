@@ -84,10 +84,11 @@ class HarelCommissionsPortal(_HarelReportPortal):
         errors: list[str] = []
         for ai, acct in enumerate(accounts):
             try:
-                got = await self._download_nifraim_for_account(
+                got, agent_errors = await self._download_nifraim_for_account(
                     page, frame, acct, ai, download_dir, run_id
                 )
                 files.extend(got)
+                errors.extend(f"{acct or 'default'}: {e}" for e in agent_errors)
             except Exception as e:
                 errors.append(f"{acct or 'default'}: {e}")
                 _logger.warning(
@@ -100,6 +101,14 @@ class HarelCommissionsPortal(_HarelReportPortal):
             # Reset drill state for the next account (fresh report page).
             if ai < len(accounts) - 1:
                 frame = await self._open_report(page, run_id)
+
+        # Per-account failures must reach the run's message even when other
+        # accounts succeeded (the 2026-09-15 run said only "שגיאות: —").
+        self.partial_errors.extend(f"נפרעים חיים ובריאות {e}"[:200] for e in errors)
+        if getattr(self, "_target_is_fallback", False):
+            self.partial_errors.append(
+                f"נפרעים חיים ובריאות: החודש המבוקש לא נמצא — ירד {self._target_month}"
+            )
 
         if not files:
             raise RuntimeError(
@@ -120,14 +129,14 @@ class HarelCommissionsPortal(_HarelReportPortal):
 
     async def _drill0(self, page: "Page", frame, tag: str, run_id: str, acct: str):
         """Click the summary נפרעים cell → agent-breakdown modal (modal 1)."""
-        drill0_ok = False
-        for sel in (
-            'td[data_colid="Schum_Nifraim"].cell_action',
-            'td[data-title="נפרעים"].cell_action',
-        ):
-            if await self._vis_click_first(frame.locator(sel)):
+        # The REQUESTED month's row (QA doc), never the top row: the top row is
+        # the dated, still-open payment run (e.g. 10/09/2026), not a month.
+        drill0_ok = await self._click_month_row(frame, "Schum_Nifraim")
+        if not drill0_ok:
+            if await self._vis_click_first(
+                frame.locator('td[data-title="נפרעים"].cell_action')
+            ):
                 drill0_ok = True
-                break
         if not drill0_ok:
             await self._dump_frame(page, run_id, f"4_no_drill0_{tag}", frame)
             raise RuntimeError(
@@ -147,7 +156,7 @@ class HarelCommissionsPortal(_HarelReportPortal):
         ai: int,
         download_dir: Path,
         run_id: str,
-    ) -> list[Path]:
+    ) -> tuple[list[Path], list[str]]:
         """Export the נפרעים detail Excel for EVERY agent row in this account's
         breakdown modal. Modal 1 lists one row per agent (agencies have several);
         each row's month value drills to its own per-policy detail → its own
@@ -176,6 +185,7 @@ class HarelCommissionsPortal(_HarelReportPortal):
             pass
 
         saved: list[Path] = []
+        failed: list[str] = []
         for k in range(len(agents)):
             if k > 0:
                 # Fresh drill for the next agent — modal state after an export is
@@ -208,13 +218,14 @@ class HarelCommissionsPortal(_HarelReportPortal):
                     "Harel-commissions: acct %s agent %s export failed: %s",
                     tag, agent_no or k, e,
                 )
+                failed.append(f"סוכן {agent_no or k}: {str(e)[:120]}")
                 try:
                     _worker_note(
                         f"harel_commissions: acct {tag} agent {agent_no or k} FAILED: {e}"
                     )
                 except Exception:
                     pass
-        return saved
+        return saved, failed
 
     async def _export_agent_detail(
         self,
@@ -345,6 +356,11 @@ class HarelCommissionsPortal(_HarelReportPortal):
             # month (MM/YYYY) — _period_label falls back to "now" otherwise,
             # which could stamp a wrong month.
             month_suffix = ""
+            # The requested summary-grid month (e.g. 08/2026) is the file's
+            # period; the modal's column title is the PRODUCTION month (07/2026)
+            # and would be flagged stale against the cycle period.
+            if getattr(self, "_target_month", None):
+                month_title = self._target_month
             if month_title and re.search(r"\d{1,2}\s*[/\-.]\s*\d{2,4}", month_title):
                 from app.services.portal_automation.companies.harel_savings import (
                     _period_label,

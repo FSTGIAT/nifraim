@@ -44,6 +44,10 @@
             <span class="amount-label">{{ isEstimate(m) ? 'אחוז משוער' : 'אחוז לפי ההסכם' }}</span>
             <span class="amount-value ltr-val">{{ isEstimate(m) ? '~' : '' }}{{ (m.rate * 100).toFixed(2) }}%</span>
           </div>
+          <div v-else-if="m.rate_note === 'no_pension_rate'" class="amount-item rate-missing" title="בהסכם אין אחוז נפרעים לקרן פנסיה">
+            <span class="amount-label">אחוז לפי ההסכם</span>
+            <span class="amount-value">נתון חסר</span>
+          </div>
           <div v-if="expectedFromFile(m) != null" class="amount-item expected" :class="{ 'is-estimate': isEstimate(m) }"
                :title="isEstimate(m) ? 'אין בהסכם שיעור למוצר הזה — הערכה לפי שיעור כללי של החברה' : ''">
             <span class="amount-label">{{ isEstimate(m) ? 'הערכה' : 'אמור לשלם' }}</span>
@@ -150,7 +154,7 @@
             </div>
             <div v-else class="amount-item rate-missing">
               <span class="amount-label">אחוז נפרע</span>
-              <span class="amount-value">לא הוגדר</span>
+              <span class="amount-value">{{ p.rate_note === 'no_pension_rate' ? 'נתון חסר' : 'לא הוגדר' }}</span>
             </div>
             <div v-if="expectedCommission(p) != null" class="amount-item expected-commission">
               <span class="amount-label">עמלה צפויה</span>

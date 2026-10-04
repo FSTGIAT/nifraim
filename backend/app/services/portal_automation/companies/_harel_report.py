@@ -21,10 +21,60 @@ import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from datetime import date
+
+from app.services.portal_automation.base import reporting_months
 from app.services.portal_automation.companies.harel import HarelPortal
 
 if TYPE_CHECKING:
     from playwright.async_api import Page, Frame
+
+
+def _row_month(row_text: str) -> tuple[int, int] | None:
+    """(year, month) of a summary-grid row labelled `MM/YYYY` (e.g. `08/2026`).
+
+    The grid also has a DATED row on top (`10/09/2026` — the current, still-open
+    payment run) and a `חודשים קודמים` roll-up at the bottom; neither is a
+    month the agent asks for, so both return None."""
+    text = row_text or ""
+    if "חודשים" in text:
+        return None
+    for tok in text.split():
+        if "/" not in tok:
+            continue
+        if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", tok):
+            return None  # dated row
+        m = re.fullmatch(r"(\d{1,2})/(\d{4})", tok)
+        if m and 1 <= int(m.group(1)) <= 12:
+            return int(m.group(2)), int(m.group(1))
+        return None
+    return None
+
+
+def pick_month_row(cells: list[dict], today: date) -> tuple[dict | None, str | None, bool]:
+    """Choose the summary-grid cell of the REQUESTED month (QA doc: "ללחוץ על
+    המספר שמופיע בחודש המבוקש"), never the top row by position.
+
+    `cells` is `_visible_drill_cells` output. The requested month is the cycle's
+    reporting month (`reporting_months(today, 21)`, e.g. 08/2026 for a run on
+    21/9..20/10), then two older months as a late-publish self-heal. If none is
+    present, the newest MM/YYYY row is used and flagged as a fallback.
+
+    Returns (cell, "MM/YYYY", is_fallback); (None, None, False) when the grid
+    has no month row at all."""
+    by_month: dict[tuple[int, int], dict] = {}
+    for c in cells:
+        ym = _row_month(c.get("row") or "")
+        if ym and ym not in by_month:
+            by_month[ym] = c
+    if not by_month:
+        return None, None, False
+    wanted = reporting_months(today, 21, extra_back=2)
+    for i, ym in enumerate(wanted):
+        if ym in by_month:
+            return by_month[ym], f"{ym[1]:02d}/{ym[0]}", i > 0
+    ym = max(by_month)
+    return by_month[ym], f"{ym[1]:02d}/{ym[0]}", True
 
 
 # Same report for both נפרעים and צבירה. Path is relative — the agent portal lives
@@ -455,6 +505,34 @@ class _HarelReportPortal(HarelPortal):
                 "row": d.get("row") or "",
             })
         return out
+
+    async def _click_month_row(self, frame: "Frame", colid: str) -> bool:
+        """Click this column's cell in the REQUESTED month's row (see
+        `pick_month_row`). Records `self._target_month` ("MM/YYYY") and
+        `self._target_is_fallback` for file naming / partial notes. Returns
+        False when no month row is visible (caller decides the fallback)."""
+        from app.services.portal_automation.runner import _worker_note
+
+        cells = await self._visible_drill_cells(frame, colid)
+        cell, month, fallback = pick_month_row(cells, date.today())
+        try:
+            _worker_note(
+                f"harel: {colid} rows={[c.get('row', '')[:24] for c in cells]} "
+                f"→ {month or 'NONE'}{' (fallback)' if fallback else ''}"
+            )
+        except Exception:
+            pass
+        if cell is None:
+            return False
+        self._target_month = month
+        self._target_is_fallback = fallback
+        try:
+            await frame.locator(f'td[data_colid="{colid}"].cell_action').nth(
+                cell["nth"]
+            ).click(timeout=5000)
+        except Exception:
+            return False
+        return True
 
     async def _run_filter(self, page: "Page", frame: "Frame"):
         """Click "סנן מידע" and return the (re-acquired) frame after the report runs."""

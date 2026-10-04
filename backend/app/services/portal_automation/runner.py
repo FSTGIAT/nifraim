@@ -320,6 +320,14 @@ OTP_POLL_INTERVAL_S = 1.0
 # logins — never hangs longer.
 RUN_HARD_TIMEOUT_S = 720
 
+
+def run_timeout_for(portal_kind: str | None) -> int:
+    """Hard timeout for one run: the plugin's own `run_timeout_s` when it needs
+    longer (Harel: 2 accounts × נפרעים + גמל + מגוון + the vault leg, one OTP),
+    else RUN_HARD_TIMEOUT_S."""
+    plugin_cls = REGISTRY.get(portal_kind or "")
+    return max(RUN_HARD_TIMEOUT_S, getattr(plugin_cls, "run_timeout_s", 0) or 0)
+
 # A HEADED browser needs an interactive desktop. When the worker PC sleeps, locks,
 # or its session is disconnected mid-run, Chrome exits a second or two after the
 # page loads and Playwright reports "Target page, context or browser has been
@@ -1361,7 +1369,7 @@ async def run_automation(run_id: uuid.UUID) -> None:
 
         try:
             await asyncio.wait_for(_run_inner_with_relaunch(db, run),
-                                   timeout=RUN_HARD_TIMEOUT_S)
+                                   timeout=run_timeout_for(cred.portal_kind))
             cred.last_run_status = "success"
             cred.last_error = None
         except RunCancelled as e:
@@ -1375,9 +1383,9 @@ async def run_automation(run_id: uuid.UUID) -> None:
             cred.last_error = str(e)
         except asyncio.TimeoutError:
             await _set_status(db, run, status="timeout",
-                              error=f"Run exceeded {RUN_HARD_TIMEOUT_S}s", finished=True)
+                              error=f"Run exceeded {run_timeout_for(cred.portal_kind)}s", finished=True)
             cred.last_run_status = "timeout"
-            cred.last_error = f"Run exceeded {RUN_HARD_TIMEOUT_S}s"
+            cred.last_error = f"Run exceeded {run_timeout_for(cred.portal_kind)}s"
         except Exception as e:
             logger.exception(f"PortalRun {run_id} failed")
             await _set_status(db, run, status="failed", error=str(e),

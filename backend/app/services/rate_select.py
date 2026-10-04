@@ -364,6 +364,36 @@ _RISK_COVER_RE = re.compile(r"אובדן כושר|אכ\"?ע|ריסק|סיעוד|
 _LIFE_RE = re.compile(r"חיים|ריסק|משכנת|אובדן|אכ\"?ע|מוות|תאונ|נכות")
 
 
+# ── Pension (קרן פנסיה) — QA 2026-10-03 ──
+# A pension fund is priced ONLY from an agreement line that names a pension
+# fund. Agreements that print no pension rate had their pension funds priced
+# from the גמל/השתלמות line (Mor, Migdal), the insurance median (Phoenix ~10%,
+# Harel 4.4%) or a company default — the agent saw a rate the agreement never
+# gave. No pension line → no rate and no expected amount: "נתון חסר".
+_PENSION_TYPE_RE = re.compile(r"(?<!ל)פנסי(?:ה|ית)")
+# Names used when a line has no product type (נפרעים lines). "מבטחים" alone is
+# NOT pension — 'מנורה מבטחים - ביטוח חיים משכנתא' / 'מנורה מבטחים השתלמות'.
+_PENSION_NAME_RE = re.compile(
+    r"(?<!ל)פנסי(?:ה|ית)|מבטחים (?:יותר|החדשה|משלימה)|מנורה מבטחים משלימה|מקפת")
+# An agreement line that is a pension rate: names a pension fund, but not
+# "פנסיוני" (Menora's pension-arm gemel/השתלמות lines), not "לפנסיה" (Migdal's
+# 'מטריה לפנסיה' risk cover), not a one-time יעדים/היקף/מענק line.
+_PENSION_LINE_RE = re.compile(r"(?<!ל)פנסי(?:ה|ית)(?!וני)")
+_NOT_NIFRAIM_LINE_RE = re.compile(r"יעדים|היקף|מענק|clawback|החזר", re.IGNORECASE)
+
+
+def is_pension_record(product: str | None, product_type: str | None) -> bool:
+    """A קרן פנסיה line — by its product type when it has one, else by name."""
+    if product_type:
+        return bool(_PENSION_TYPE_RE.search(product_type))
+    return bool(_PENSION_NAME_RE.search(product or ""))
+
+
+def is_pension_rate_line(rate_row) -> bool:
+    text = getattr(rate_row, "product", None) or ""
+    return bool(_PENSION_LINE_RE.search(text)) and not _NOT_NIFRAIM_LINE_RE.search(text)
+
+
 def _harel_category(company, product, product_type):
     """The life / health pattern for a הראל insurance record, else None."""
     if company_stem(company or "") != company_stem("הראל"):
@@ -487,6 +517,11 @@ def select_rate(user_rates, company: str, product: str | None,
     candidates, tier = company_candidates(user_rates, company)
     if not candidates:
         return 0.0, "none"
+    pension = is_pension_record(product, product_type)
+    if pension:
+        candidates = [r for r in candidates if is_pension_rate_line(r)]
+        if not candidates:
+            return 0.0, f"{tier}:no_pension_line"
     if ceiling is None:
         ceiling = GEMEL_RATE_CEILING if is_accum else INSURANCE_RATE_CEILING
     text = f"{product or ''} {product_type or ''}".strip().lower()
@@ -501,7 +536,10 @@ def select_rate(user_rates, company: str, product: str | None,
     # The floor guards only the FALLBACK tiers. An explicit product match is
     # semantic evidence and is trusted at any magnitude — if an agreement
     # literally prints a 0.5% rate against 'ביטוח חיים', that is the rate.
-    floor = 0.0 if is_accum else GEMEL_RATE_CEILING
+    # Pension rates are deposit rates (~0.4%) and only pension lines are left
+    # as candidates here, so the insurance floor would drop the company's own
+    # pension line ('מבטחים יותר' vs Menora's 'פנסיה מקיפה …' 0.4%).
+    floor = 0.0 if (is_accum or pension) else GEMEL_RATE_CEILING
 
     def _ok(rate: float) -> bool:
         return 0 < rate <= ceiling

@@ -947,34 +947,8 @@ class MorPortal(BasePortalAutomation):
             except Exception:
                 return 0
 
-        today = _date.today()
-        loaded = 0
-        found_m, found_y = today.month, today.year
-        for back in range(0, 10):
-            m, y = today.month - back, today.year
-            while m <= 0:
-                m += 12
-                y -= 1
-            digits = f"{m:02d}{y}"  # MM YYYY — Kendo month-input auto-advances segments
-            try:
-                await date_input.click(timeout=6000)
-                await page.keyboard.press("Control+A")
-                await date_input.type(digits, delay=90)
-                await page.keyboard.press("Tab")
-                await page.wait_for_timeout(400)
-                await search_btn.click(timeout=6000)
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=6000)
-                except Exception:
-                    pass
-                await page.wait_for_timeout(1800)
-                cnt = await _result_count()
-                _mlog.info("Mor: month %02d/%d → %d results", m, y, cnt)
-                if cnt > 0:
-                    loaded, found_m, found_y = cnt, m, y
-                    break
-            except Exception as e:
-                _mlog.warning("Mor: month %02d/%d select/search failed: %s", m, y, e)
+        loaded, found_m, found_y = await pick_latest_month(
+            page, date_input, search_btn, _result_count, _date.today(), _mlog)
         _mlog.info("Mor: month selection done — %d results for %02d/%d", loaded, found_m, found_y)
         await ck("nav_1b_month_selected")
         if loaded == 0:
@@ -1026,3 +1000,64 @@ class MorPortal(BasePortalAutomation):
         if not got:
             raise RuntimeError(f"Mor: לא ירד קובץ — בדוק {run_id}_nav_1_commissions.txt / _nav_2_after_export.txt")
         return [got]
+
+
+async def pick_latest_month(page, date_input, search_btn, result_count, today, log):
+    """Walk back from `today`'s month to the newest month whose חישוב תגמול grid
+    has rows. Returns (rows, month, year); rows == 0 when none of 10 months loaded.
+
+    Module-level so it can be tested against a simulated grid
+    (tests/test_mor_month_walk.py).
+    """
+    async def _settled_count() -> int:
+        # One read right after חפש can still see the PREVIOUS month's grid
+        # ("NO DATA" from the month before), and an empty-looking month then
+        # sends the walk one month further back — QA 2026-10-03: kikohib got
+        # 06/2026 while Mor had July. Poll until the grid shows results, or
+        # reads empty three times in a row (~1s apart), within a deadline.
+        empty_reads = 0
+        for _ in range(12):                      # ≈ 12 × 1s
+            cnt = await result_count()
+            if cnt > 0:
+                return cnt
+            empty_reads += 1
+            if empty_reads >= 3:
+                return 0
+            await page.wait_for_timeout(1000)
+        return 0
+
+    async def _try_month(m: int, y: int) -> int:
+        digits = f"{m:02d}{y}"  # MM YYYY — Kendo month-input auto-advances segments
+        await date_input.click(timeout=6000)
+        await page.keyboard.press("Control+A")
+        await date_input.type(digits, delay=90)
+        await page.keyboard.press("Tab")
+        await page.wait_for_timeout(400)
+        await search_btn.click(timeout=6000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=6000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(1200)
+        return await _settled_count()
+
+    for back in range(0, 10):
+        m, y = today.month - back, today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        cnt = 0
+        # An exception used to skip the month silently and walk one further
+        # back — on its own enough to serve an older report. Retry it once.
+        for attempt in (1, 2):
+            try:
+                cnt = await _try_month(m, y)
+                break
+            except Exception as e:
+                log.warning("Mor: month %02d/%d select/search failed (attempt %d): %s",
+                            m, y, attempt, e)
+                await page.wait_for_timeout(1500)
+        log.info("Mor: month %02d/%d → %d results", m, y, cnt)
+        if cnt > 0:
+            return cnt, m, y
+    return 0, today.month, today.year

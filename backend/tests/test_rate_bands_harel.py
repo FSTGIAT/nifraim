@@ -151,3 +151,37 @@ def test_savings_never_firm_from_risk_cover_line():
     # 'השתל' (transplants) must not swallow 'השתלמות' (study fund).
     assert not _RISK_COVER_RE.search("מוצרי גמל והשתלמות")
     assert _RISK_COVER_RE.search("השתלות וטיפולים מיוחדים")
+
+
+# ── Pension: only a pension line prices a pension fund (QA 2026-10-03) ──
+from app.services.rate_select import is_pension_record, is_pension_rate_line  # noqa: E402
+
+PHX = (_rows("הפניקס פנסיה וגמל בע\"מ", "מוצרי גמל והשתלמות", [(0.0027, "single", None)])
+       + _rows("הפניקס חברה לביטוח בע\"מ", "מוצרי ריסק", [(0.15, "book", None), (0.08, "reward", None)]))
+MENORA = (_rows("מנורה מבטחים", "פנסיה מקיפה, פנסית חובה ופנסיה משלימה", [(0.004, "single", None)])
+          + _rows("מנורה מבטחים", "קרן השתלמות (פנסיוני שוטף)", [(0.0024, "single", None)]))
+
+
+def test_pension_detection():
+    assert is_pension_record("מבטחים החדשה", "קרן פנסיה חדשה מקיפה")
+    assert is_pension_record("מבטחים יותר", None)            # נפרעים line, no type
+    assert is_pension_record("מקפת אישית", None)
+    assert not is_pension_record("מנורה מבטחים - ביטוח חיים משכנתא", "ביטוח חיים משכנתא")
+    assert not is_pension_record("מנורה מבטחים השתלמות", "קרן השתלמות")
+    assert not is_pension_record("מגדל מטריה לפנסיה", None)
+    assert is_pension_rate_line(MENORA[0])
+    assert not is_pension_rate_line(MENORA[1])                # "פנסיוני" = gemel arm
+    assert not is_pension_rate_line(_rows("מגדל", "מגדל מטריה לפנסיה", [(0.06, "single", None)])[0])
+
+
+def test_pension_without_pension_line_has_no_rate():
+    rate, exp, route = rate_for_product(PHX, "הפניקס פנסיה וגמל בע\"מ", "הפניקס פנסיה מקיפה",
+                                        "קרן פנסיה חדשה מקיפה", 0, 500)
+    assert rate == 0 and exp is None and route.endswith(":no_pension_line")
+
+
+def test_pension_with_pension_line_uses_it():
+    rate, *_ = rate_for_product(MENORA, "מנורה מבטחים", "מבטחים החדשה", "קרן פנסיה חדשה מקיפה", 0, 0)
+    assert approx(rate, 0.004)
+    rate, *_ = rate_for_product(MENORA, "מנורה מבטחים", "מבטחים יותר", None, 0, 0)
+    assert approx(rate, 0.004)                                 # not dropped by the insurance floor

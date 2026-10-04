@@ -1107,6 +1107,10 @@ def _parse_unified_nifraim(df: pd.DataFrame) -> dict:
         if id_str.endswith(".0"):
             id_str = id_str[:-2]
         record["id_number"] = id_str
+        # The account number round-trips through Excel as a float ("113049345.0").
+        acct = record.get("lead_source")
+        if acct and acct.endswith(".0"):
+            record["lead_source"] = acct[:-2]
 
         # Mirror to the unified-display fields the comparison engine reads.
         record["balance"] = record.get("accumulation")

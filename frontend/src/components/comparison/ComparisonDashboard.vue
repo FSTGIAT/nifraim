@@ -908,6 +908,7 @@ function openDetailFromFilter(c, el = null) {
     expected_commission: p.expected_commission ?? null,
     expected_is_estimate: p.expected_is_estimate ?? null,
     commission_gap: p.commission_gap ?? null,
+    rate_note: p.rate_note ?? null,
     paid: true,
   }))
   const unmatched = (c.product_matches?.unmatched_production || []).map(p => ({
@@ -925,6 +926,7 @@ function openDetailFromFilter(c, el = null) {
     expected_commission: p.expected_commission ?? null,
     expected_is_estimate: p.expected_is_estimate ?? null,
     commission_gap: p.commission_gap ?? null,
+    rate_note: p.rate_note ?? null,
     paid: false,
   }))
   const unmatchedComm = (c.product_matches?.unmatched_commission || []).map(p => ({
@@ -942,6 +944,7 @@ function openDetailFromFilter(c, el = null) {
     expected_commission: p.expected_commission ?? null,
     expected_is_estimate: p.expected_is_estimate ?? null,
     commission_gap: p.commission_gap ?? null,
+    rate_note: p.rate_note ?? null,
     paid: true,
     source: 'commission_only',
   }))
@@ -966,6 +969,7 @@ function openDetailFromFilter(c, el = null) {
       expected_commission: p.expected_commission ?? null,
       expected_is_estimate: p.expected_is_estimate ?? null,
       commission_gap: p.commission_gap ?? null,
+      rate_note: p.rate_note ?? null,
       paid: true,
       source: 'commission_only',
     }))
