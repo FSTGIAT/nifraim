@@ -72,6 +72,7 @@
       <PortalActivityPanel
         v-if="store.credentials.length"
         class="dash__aside"
+        :portal-label="portalLabel"
         @view-results="emit('go-to-comparison')"
       />
     </div>
@@ -344,7 +345,9 @@ onUnmounted(() => {
   /* No top/side padding: workspace-main already sets the shared page margins,
      so the hero lines up with every other tab (was 26px lower, 20px inset). */
   padding: 0 0 48px;
-  overflow: hidden;
+  /* clip (not hidden): still trims the gears backdrop, but doesn't become a
+     scroll container — so the side column can stay sticky beside the list */
+  overflow: clip;
   background: transparent;
 }
 .auto-gears {
@@ -374,13 +377,15 @@ onUnmounted(() => {
 /* ─── Dashboard grid: main panels + activity sidebar ────── */
 .dash {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
+.dash > * { min-width: 0; }
 @media (min-width: 1024px) {
   .dash:not(.dash--empty) {
     grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 12px;
   }
 }
 

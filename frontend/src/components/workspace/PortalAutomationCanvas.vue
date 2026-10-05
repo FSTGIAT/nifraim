@@ -25,6 +25,7 @@
     <div v-else class="groups">
       <section
         v-for="g in groups"
+        :id="'company-' + panelId(g)"
         :key="g.key"
         class="company-panel"
         :class="{ 'is-open': isOpen(g) }"
@@ -64,7 +65,7 @@
           </span>
 
           <!-- Collapsed summary: when the cards are hidden, keep the freshness signal -->
-          <span v-if="!isOpen(g) && g.lastRunAt" class="panel-when">{{ relativeHebrew(g.lastRunAt) }}</span>
+          <span v-if="g.lastRunAt" class="panel-when ltr-number">{{ relativeHebrew(g.lastRunAt) }}</span>
 
           <span class="panel-chevron" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,6 +114,7 @@ const props = defineProps({
 })
 
 defineEmits(['run', 'edit', 'delete', 'add', 'view-error'])
+defineExpose({ panelId: (key) => 'panel-body-' + String(key).replace(/\s+/g, '-') })
 
 // Distinct on-palette color per company (nearest-to-brand, de-duplicated so
 // several red insurers don't collapse to the same red).
@@ -218,7 +220,7 @@ function isRunning(credId) {
 .auto-canvas {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-height: 420px;
 }
 
@@ -250,118 +252,69 @@ function isRunning(credId) {
 .btn-add:focus-visible { outline: 2px solid var(--chart-8-deep); outline-offset: 2px; }
 .btn-add--cta { height: 44px; padding: 12px 22px; font-size: 14px; border-radius: 11px; }
 
-/* ─── Company panels ─────────────────────────────────────── */
-.groups {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+/* ─── Company panels — calm cards ──────────────────────────
+   One white card per company: a neutral round logo chip, the name, a count
+   chip, the health dots and the last-run date; the chevron opens the cards
+   with a soft spring on the row height. */
+.groups { display: flex; flex-direction: column; gap: 12px; }
 .company-panel {
   background: var(--card-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg, 16px);
-  padding: 12px 16px;
-  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.04);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  border-radius: 18px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 2px rgba(24, 24, 24, 0.03), 0 6px 18px rgba(24, 24, 24, 0.04);
+  transition: box-shadow 0.2s ease;
 }
-.company-panel.is-open { padding-bottom: 16px; }
-/* Header doubles as the fold toggle — the whole row is one big touch target */
+.company-panel:hover { box-shadow: 0 1px 2px rgba(24, 24, 24, 0.04), 0 10px 26px rgba(24, 24, 24, 0.07); }
+.company-panel.is-open { padding-bottom: 12px; }
 .panel-head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 6px 8px;
-  margin: -4px -8px;
-  border-radius: 10px;
-  border-bottom: 1px dashed transparent;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s ease, border-color 0.2s ease;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 48px; padding: 4px 6px; border-radius: 12px;
+  cursor: pointer; user-select: none; transition: background 0.15s ease;
 }
-.panel-head:hover { background: var(--brand-tint, rgba(0, 0, 0, 0.03)); }
-.panel-head:focus-visible { outline: 2px solid var(--brand, var(--chart-12, #0E8C8A)); outline-offset: 2px; }
-.is-open .panel-head {
-  margin-bottom: 10px;
-  border-radius: 10px 10px 0 0;
-  border-bottom-color: var(--border-subtle);
-}
-/* Collapsed freshness summary */
-.panel-when {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-/* Fold chevron — rotates open, sits at the inline end */
+.panel-head:hover { background: var(--bg); }
+.panel-head:focus-visible { outline: 2px solid var(--tab-automation, #0E8C8A); outline-offset: 2px; }
+.panel-when { font-size: 12.5px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
 .panel-chevron {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s ease;
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  color: var(--text-muted); flex-shrink: 0;
+  transition: transform 0.45s cubic-bezier(0.34, 1.4, 0.5, 1), color 0.15s ease, background 0.15s ease;
 }
-.panel-head:hover .panel-chevron { color: var(--brand, var(--text)); }
+.panel-head:hover .panel-chevron { color: var(--text); background: var(--card-bg); }
 .is-open .panel-chevron { transform: rotate(180deg); }
-/* Animated fold — modern 0fr → 1fr grid-row trick (no fixed max-height) */
-.panel-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* fold: grid rows 0fr → 1fr on a soft spring */
+.panel-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.5s cubic-bezier(0.32, 0.72, 0, 1); }
 .is-open .panel-body { grid-template-rows: 1fr; }
 .panel-body-inner { overflow: hidden; min-height: 0; }
-.panel-body-inner > .cards-grid { margin-top: 14px; }
+.panel-body-inner > .cards-grid { margin-top: 12px; }
 .group-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  color: var(--brand);
-  background: var(--brand-tint);
+  width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0;
+  color: var(--brand); background: var(--card-bg); border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(24, 24, 24, 0.06);
 }
-.group-name {
-  font-size: 14.5px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.2px;
-}
+.group-name { font-size: 15.5px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
 .group-count {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--text-muted);
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  padding: 2px 9px;
-  line-height: 1.4;
+  font-size: 12px; font-weight: 700; color: var(--text-secondary); background: var(--bg);
+  border-radius: 999px; padding: 1px 9px; line-height: 1.6; font-variant-numeric: tabular-nums;
 }
-/* Per-company health — pushed to the inline-end of the header */
-.health {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-inline-start: auto;
-}
-.health-dots { display: inline-flex; gap: 3px; }
-.health-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0,0,0,0.10); }
+.health { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.health-dots { display: inline-flex; gap: 4px; }
+.health-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(0, 0, 0, 0.10); }
 .health-dot--success { background: var(--green); }
 .health-dot--failed  { background: var(--red); }
-.health-dot--running { background: var(--chart-12, #0E8C8A); }
-.health-dot--empty   { background: rgba(0,0,0,0.10); }
-.health-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.health-dot--running { background: var(--tab-automation, #0E8C8A); }
+.health-dot--empty   { background: rgba(0, 0, 0, 0.10); }
+.health-label { font-size: 12px; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 560px) {
+  .health-label { display: none; }
+  .panel-head { gap: 8px; }
+}
 
 /* ─── Cards grid — fills the panel row (auto-fit) ─────────── */
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  gap: 12px;
   position: relative;
 }
 .card-slot { transition: opacity 0.28s ease; }

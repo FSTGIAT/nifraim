@@ -251,14 +251,16 @@ const cardVars = computed(() => {
   gap: 12px;
 }
 .pcard__tile {
-  width: 46px;
-  height: 46px;
-  border-radius: 13px;
+  /* brand marks sit on one neutral round chip, never a tinted tile */
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--brand);
-  background: var(--brand-soft);
-  border: 1px solid var(--brand-soft);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(24, 24, 24, 0.06);
   flex-shrink: 0;
 }
 .pcard__id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

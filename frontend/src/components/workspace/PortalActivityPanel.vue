@@ -1,41 +1,26 @@
 <template>
+  <!-- The side column: the local computer, the last run, and the state of each
+       company at a glance — so the column beside the company list is never an
+       empty void. Sticky, so it stays with you while the list scrolls. -->
   <aside class="activity">
-    <!-- ── Worker status ─────────────────────────────────────── -->
-    <section class="acard">
-      <header class="acard__head">
-        <span class="acard__eyebrow">המחשב המקומי</span>
-      </header>
-      <div class="worker" :class="worker.online ? 'worker--on' : 'worker--off'">
-        <!-- The icon carries the state, not just a coloured dot: colour alone
-             is not an accessible signal (ux `color-not-only`), and a grey dot
-             beside grey text was the whole of the old card. -->
-        <span class="worker__glyph">
-          <WorkerPulseIsland v-if="worker.online" color="var(--green-deep, #1B5E20)" />
-          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor"
-               stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2" y="3" width="20" height="13" rx="2" />
-            <path d="M8 21h8M12 16v5" />
-            <template v-if="worker.online"><path d="m9 8 2 2 4-4" /></template>
-            <template v-else><path d="m9.5 7.5 5 5M14.5 7.5l-5 5" /></template>
-          </svg>
-        </span>
-        <div class="worker__body">
-          <span class="worker__state">{{ worker.online ? 'מחובר ופעיל' : 'מנותק' }}</span>
-          <span class="worker__meta">
-            <template v-if="worker.online">{{ worker.hostname || 'מחשב הסוכן' }}</template>
-            <template v-else-if="lastSeenText">נראה לאחרונה {{ lastSeenText }}</template>
-            <template v-else>המחשב לא דיווח עדיין</template>
-          </span>
-        </div>
-      </div>
+    <!-- ── Nifra Robot — the local computer ─────────────────────── -->
+    <section class="acard acard--robot" :class="worker.online ? 'is-on' : 'is-off'">
+      <RobotComputerArt :online="!!worker.online" :width="168" />
+      <strong class="robot-mark" dir="ltr">Nifra <b>Robot</b></strong>
+      <span class="robot-status">
+        <i class="robot-dot" aria-hidden="true"></i>
+        <template v-if="worker.online">מחובר · {{ worker.hostname || 'מחשב הסוכן' }}</template>
+        <template v-else-if="lastSeenText">לא מחובר · נראה לאחרונה {{ lastSeenText }}</template>
+        <template v-else>לא מחובר · המחשב לא דיווח עדיין</template>
+      </span>
       <p v-if="worker.online && worker.current_job" class="worker__job">{{ worker.current_job }}</p>
       <button
         v-if="worker.online"
-        class="worker__update"
+        class="quiet-btn"
         type="button"
         :disabled="updating || worker.update_pending"
-        @click="onUpdateWorker"
         title="מושך את הקוד העדכני ומפעיל מחדש את המחשב המקומי — בלי גיט ובלי לגעת במחשב"
+        @click="onUpdateWorker"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
@@ -47,37 +32,31 @@
 
     <!-- ── Last batch result ─────────────────────────────────── -->
     <section class="acard">
-      <header class="acard__head">
-        <span class="acard__eyebrow">ריצה אחרונה</span>
-      </header>
-
+      <h4 class="acard__eyebrow">ריצה אחרונה</h4>
       <div v-if="batch" class="batch">
-        <span class="batch__pill" :class="`batch__pill--${tone}`">
-          <span class="batch__pill-dot" aria-hidden="true"></span>{{ statusLabel }}
-        </span>
-        <div class="batch__counts">
-          <span class="batch__count batch__count--ok">
-            <span class="ltr-number">{{ batch.succeeded }}</span> הצליחו
-          </span>
-          <span class="batch__count batch__count--fail">
-            <span class="ltr-number">{{ batch.failed }}</span> נכשלו
-          </span>
+        <div class="batch__row">
+          <span class="batch__state"><i :class="`batch__dot batch__dot--${tone}`" aria-hidden="true"></i>{{ statusLabel }}</span>
+          <span class="batch__when">{{ rel(batch.finished_at || batch.started_at) }}</span>
         </div>
-        <span class="batch__when">{{ rel(batch.finished_at || batch.started_at) }}</span>
-        <button class="batch__cta" type="button" @click="$emit('view-results')">
+        <div class="batch__counts">
+          <span><b class="ltr-number">{{ batch.succeeded }}</b> הצליחו</span>
+          <span><b class="ltr-number">{{ batch.failed }}</b> נכשלו</span>
+        </div>
+        <button class="quiet-btn quiet-btn--wide" type="button" @click="$emit('view-results')">
           צפה בתוצאות
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
       </div>
-
       <div v-else class="batch-empty">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-        </svg>
+        <AutoStatArt name="clock" :size="40" />
         <span>טרם בוצעה הורדה אוטומטית</span>
       </div>
+    </section>
+
+    <!-- ── The portal wheel: every company on one gear ──────────── -->
+    <section v-if="companies.length" class="acard acard--wheel">
+      <h4 class="acard__eyebrow">הפורטלים</h4>
+      <PortalWheel :companies="companies" :last-run-at="batch ? (batch.finished_at || batch.started_at) : null" @select="goTo" />
     </section>
   </aside>
 </template>
@@ -86,8 +65,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { relativeHebrew } from '../../utils/relativeTime.js'
-import WorkerPulseIsland from './WorkerPulseIsland.vue'
+import AutoStatArt from './AutoStatArt.vue'
+import PortalWheel from './PortalWheel.vue'
+import RobotComputerArt from './RobotComputerArt.vue'
+import CompanyLogo from './CompanyLogo.vue'
+import { brandForLabel } from '../../utils/companyBrand.js'
 
+const props = defineProps({ portalLabel: { type: Function, default: (k) => k } })
 defineEmits(['view-results'])
 const store = usePortalAutomationStore()
 
@@ -146,6 +130,31 @@ const lastSeenText = computed(() => {
   return relativeHebrew(raw)
 })
 
+// Each company at a glance — the same grouping as the company list (by brand
+// label), its health dots and freshest run. A row scrolls to that company.
+const companies = computed(() => {
+  const map = new Map()
+  for (const c of store.credentials || []) {
+    const lbl = props.portalLabel(c.portal_kind)
+    const b = brandForLabel(lbl)
+    const key = b.label && b.label !== '?' ? b.label : lbl
+    if (!map.has(key)) map.set(key, { key, label: key, creds: [] })
+    map.get(key).creds.push(c)
+  }
+  return [...map.values()].map((g) => ({
+    ...g,
+    total: g.creds.length,
+    ok: g.creds.filter((c) => c.last_run_status === 'success').length,
+    dots: g.creds.map((c) => (c.last_run_status === 'success' ? 'ok' : ['failed', 'timeout'].includes(c.last_run_status) ? 'fail' : c.last_run_status ? 'live' : 'none')),
+    lastRunAt: g.creds.reduce((l, c) => (c.last_run_at && (!l || c.last_run_at > l) ? c.last_run_at : l), null),
+  }))
+})
+const okCompanies = computed(() => companies.value.filter((c) => c.ok === c.total).length)
+function goTo(c) {
+  const el = document.getElementById('company-panel-body-' + String(c.key).replace(/\s+/g, '-'))
+  el?.scrollIntoView({ behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+}
+
 let poll = null
 onMounted(() => {
   store.fetchWorkerStatus()
@@ -156,162 +165,62 @@ onUnmounted(() => { if (poll) clearInterval(poll) })
 
 <style scoped>
 .activity {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  position: sticky;
-  top: 80px;
-  align-self: flex-start;
+  --acc: var(--tab-automation, #0E8C8A);
+  display: flex; flex-direction: column; gap: 12px;
+  position: sticky; top: 80px; align-self: start;
+  max-height: calc(100vh - 100px); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .acard {
-  background: var(--card-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg, 16px);
-  padding: 16px;
-  box-shadow: 0 1px 2px rgba(26, 20, 16, 0.03), 0 4px 14px rgba(26, 20, 16, 0.04);
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 18px; padding: 16px;
+  box-shadow: 0 1px 2px rgba(24, 24, 24, 0.03), 0 6px 18px rgba(24, 24, 24, 0.04);
+  display: flex; flex-direction: column; gap: 12px;
 }
-.acard__head { margin-bottom: 12px; }
-.acard__eyebrow {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
+.acard__eyebrow { margin: 0; display: flex; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.acard__eyebrow span { font-weight: 500; }
 
-/* Worker */
-.worker { display: flex; align-items: center; gap: 12px; }
-/* `state` and `meta` are inline spans and Vue's default `condense` whitespace
-   handling removes the newline between them, so without this they render as
-   one run-on string ("מנותקהמחשב לא דיווח עדיין"). */
-.worker__body {
-  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+/* Nifra Robot — the computer illustration, the two-colour wordmark, the status */
+.acard--robot { align-items: center; text-align: center; gap: 8px; padding-top: 20px; }
+.robot-mark { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; color: var(--text); }
+.robot-mark b { color: var(--acc); font-weight: 900; }
+.robot-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.robot-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+.is-on .robot-dot { background: var(--green); box-shadow: 0 0 0 4px rgba(46, 132, 74, 0.15); }
+.acard--robot .quiet-btn { align-self: center; }
+.acard--wheel { align-items: stretch; }
+.worker--on .worker--on .worker--off .worker__job { margin: 0; font-size: 12.5px; color: var(--text-secondary); background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.worker__update-msg { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.quiet-btn {
+  align-self: flex-start; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-subtle); background: transparent;
+  color: var(--text); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-/* The icon tile replaces the bare dot. Both states share the geometry so the
-   card does not reflow when the worker connects; only colour and motion change
-   (ux `layout-shift-avoid`). The Remotion heartbeat lives inside this box and
-   is mounted only when online. */
-.worker__glyph {
-  position: relative; flex-shrink: 0;
-  width: 46px; height: 46px; border-radius: 14px;
-  display: grid; place-items: center;
-  background: var(--bg); color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-.worker__glyph svg { position: relative; z-index: 1; }
-.worker--on .worker__glyph {
-  background: color-mix(in srgb, var(--green, #2E844A) 12%, #fff);
-  border-color: color-mix(in srgb, var(--green, #2E844A) 28%, transparent);
-  color: var(--green-deep, #1B5E20);
-}
-.worker--off .worker__glyph {
-  background: var(--bg);
-  border-color: var(--border-subtle);
-  color: var(--text-muted);
-}
+.quiet-btn:hover:not(:disabled) { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
+.quiet-btn:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.quiet-btn:disabled { opacity: 0.55; cursor: default; }
+.quiet-btn--wide { align-self: stretch; }
 
-.worker__state { font-size: 14px; font-weight: 800; color: var(--text); }
-.worker--off .worker__state { color: var(--text-muted); }
-.worker__meta { font-size: 11.5px; color: var(--text-muted); }
-.worker__job {
-  margin: 10px 0 0;
-  font-size: 11.5px;
-  color: var(--text-secondary, var(--text-muted));
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 6px 9px;
-}
-.worker__update {
-  margin-top: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary, var(--text-muted));
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 6px 11px;
-  cursor: pointer;
-  transition: background .15s, border-color .15s, transform .15s;
-}
-.worker__update:hover:not(:disabled) {
-  background: var(--card-bg);
-  border-color: var(--text-muted);
-  transform: translateY(-1px);
-}
-.worker__update:disabled { opacity: .6; cursor: default; }
-.worker__update svg { flex: none; }
-.worker__update-msg {
-  margin: 8px 0 0;
-  font-size: 11.5px;
-  color: var(--text-secondary, var(--text-muted));
-}
-
-/* Batch */
+/* last run */
 .batch { display: flex; flex-direction: column; gap: 10px; }
-.batch__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 4px 11px 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  border: 1px solid transparent;
-}
-.batch__pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.batch__pill--ok      { background: rgba(46,132,74,0.12); color: var(--green-deep); border-color: rgba(46,132,74,0.24); }
-.batch__pill--partial { background: rgba(201, 162, 39,0.13); color: var(--amber); border-color: rgba(201, 162, 39,0.26); }
-.batch__pill--fail    { background: rgba(234,0,30,0.10); color: var(--red-deep); border-color: rgba(234,0,30,0.24); }
-.batch__pill--live    { background: var(--tab-automation-wash); color: var(--tab-automation); border-color: rgba(14, 140, 138, 0.3); }
+.batch__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.batch__state { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; color: var(--text); }
+.batch__dot { width: 8px; height: 8px; border-radius: 50%; }
+.batch__dot--ok { background: var(--green); }
+.batch__dot--partial { background: var(--amber); }
+.batch__dot--fail { background: var(--red); }
+.batch__dot--live { background: var(--acc); animation: wBlink 1.2s ease-in-out infinite; }
+@keyframes wBlink { 50% { opacity: 0.3; } }
+.batch__when { font-size: 12.5px; color: var(--text-muted); }
+.batch__counts { display: flex; gap: 16px; font-size: 13px; color: var(--text-secondary); }
+.batch__counts b { font-size: 18px; font-weight: 900; color: var(--text); margin-inline-end: 2px; }
+.batch-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
-.batch__counts { display: flex; gap: 14px; }
-.batch__count { font-size: 12.5px; font-weight: 600; color: var(--text-secondary, var(--text-muted)); }
-.batch__count--ok   { color: var(--green-deep); }
-.batch__count--fail { color: var(--red-deep); }
-.batch__when {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-}
-.batch__cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 2px;
-  height: 36px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
-}
-.batch__cta:hover { background: var(--card-bg); border-color: var(--text-muted); transform: translateY(-1px); }
 
-.batch-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 8px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12.5px;
+@media (max-width: 1023px) {
+  .activity { position: static; max-height: none; overflow: visible; }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  /* The heartbeat itself is handled inside WorkerPulseIsland, which skips
-     Remotion entirely and paints a single static ring. */
-  .batch__cta:hover { transform: none; }
+  .batch__dot--live { animation: none; }
 }
 </style>
