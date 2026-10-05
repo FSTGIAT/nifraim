@@ -4,7 +4,7 @@ gates as the מסלקה tab (MASLAKA_ENABLED + approved שיוך), never the mod
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -93,9 +93,40 @@ async def customer_holdings(ctx, id_number: str):
        "customer_name": {"type": "string"}},
       ["code", "id_number"], category="maslaka", status_he="מכין בקשה למסלקה", action=True)
 async def propose_maslaka_request(ctx, code: str, id_number: str, customer_name: str = ""):
+    """Prepares a 9100 ONLY for an agent the מסלקה can accept it from — the same gates the approve
+    route enforces (api/maslaka.require_maslaka_enabled + require_association_approved), checked
+    BEFORE the card is drawn: an unregistered agent used to approve and only then get a 403.
+    The agent's click is still what sends it (/office-agent/act re-checks every gate)."""
+    from app.config import settings
+    from app.models.maslaka_agent_link import APPROVED, SUBMITTED, MaslakaAgentLink
+    from app.models.pension_inquiry import PensionInquiry
+
+    if code != "9100":
+        return "רק בקשת 9100 (כל המוצרים של הלקוח) נתמכת כרגע. אמור זאת לסוכן."
     idn = "".join(ch for ch in str(id_number) if ch.isdigit()).lstrip("0")
-    if not idn:
-        return "ת.ז לא תקינה — בקש מהסוכן ת.ז."
+    if not 5 <= len(idn) <= 9:
+        return "ת.ז לא תקינה — בקש מהסוכן ת.ז מלאה של הלקוח. לא הוכנה בקשה."
+    if not settings.MASLAKA_ENABLED:
+        return ("לא הוכנה בקשה: החיבור למסלקה עוד לא פעיל בסביבה הזו (בצד של Nifraim, לא אצל הסוכן). "
+                "אמור לסוכן במשפט אחד שזה יופעל בקרוב.")
+    link = (await ctx.db.execute(select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == ctx.user.id))).scalars().first()
+    status = getattr(link, "status", "not_started")
+    if status != APPROVED:
+        why = {SUBMITTED: "טופס השיוך נשלח ומחכה לאישור המסלקה — אחרי האישור אפשר לשלוח בקשות.",
+               "rejected": "השיוך נדחה במסלקה — צריך לתקן ולהגיש שוב את טופס השיוך בלשונית המסלקה."}.get(
+            status, "הסוכן עוד לא השלים את השיוך לבית התוכנה במסלקה — טופס השיוך נמצא בלשונית המסלקה.")
+        return f"לא הוכנה בקשה — השיוך למסלקה לא מאושר. {why} אל תכין בקשה; הסבר לסוכן במשפט אחד מה חסר."
+    # one open 9100 per customer — a second one is noise at a regulator
+    open_req = (await ctx.db.execute(select(PensionInquiry).where(
+        PensionInquiry.user_id == ctx.user.id, PensionInquiry.customer_id_number == idn,
+        PensionInquiry.status.in_(("pending", "submitted", "acknowledged", "partial")),
+        PensionInquiry.created_at >= datetime.utcnow() - timedelta(days=3),
+    ).order_by(PensionInquiry.created_at.desc()).limit(1))).scalar_one_or_none()
+    if open_req:
+        from app.services.maslaka.orchestration import expected_answer_by
+        due, _ = expected_answer_by(open_req)
+        return ("לא הוכנה בקשה חדשה — כבר יש בקשת 9100 פתוחה ללקוח הזה"
+                + (f", התשובה צפויה עד {due.astimezone(IL).strftime('%d/%m %H:%M')}" if due else "") + ". אמור זאת לסוכן.")
     ctx.proposals.append({"kind": "maslaka", "code": code, "code_he": CODE_HE.get(code, code),
                           "customer_id_number": idn, "customer_name": (customer_name or "")[:120]})
-    return "הבקשה הוכנה והוצגה לסוכן לאישור. כתוב משפט אחד: מה הבקשה ומתי צפויה תשובה (9100: תוך שעות)."
+    return "הבקשה הוכנה והוצגה לסוכן לאישור (השיוך מאושר). כתוב משפט אחד: מה הבקשה ומתי צפויה תשובה (9100: תוך שעות)."
