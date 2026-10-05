@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="hm-overlay" @click.self="$emit('close')">
+      <div v-if="open" class="hm-overlay" @click.self="close()">
           <!-- connected: a moment you can't miss, then the window closes by itself -->
           <Transition name="hm-win">
             <div v-if="success" class="hm-win" role="status" aria-live="polite">
@@ -20,7 +20,7 @@
           </Transition>
 
 
-        <div class="hm-card hm-card--wide">
+        <div ref="cardEl" class="hm-card hm-card--wide">
           <!-- visual pane: the Mail Agent story as a loop instead of a paragraph -->
           <aside class="hm-visual" aria-hidden="true">
             <RemotionLoopIsland
@@ -34,7 +34,7 @@
             </RemotionLoopIsland>
           </aside>
           <div class="hm-body">
-          <button class="hm-close" aria-label="סגירה" @click="$emit('close')">
+          <button class="hm-close" aria-label="סגירה" @click="close()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
 
@@ -188,7 +188,7 @@
 
           <footer class="hm-foot">
             <button v-if="cfg" class="hm-disconnect" @click="disconnect">ניתוק</button>
-            <button class="hm-done" @click="$emit('close')">סיום</button>
+            <button class="hm-done" @click="close()">סיום</button>
           </footer>
           </div>
         </div>
@@ -201,6 +201,7 @@
 import { computed, ref, watch } from 'vue'
 import { useMailboxStore } from '../../stores/mailbox.js'
 import RemotionLoopIsland from './RemotionLoopIsland.vue'
+import { usePressMorph } from '../../composables/usePressMorph.js'
 import { CONNECTED_NO_MAIL_YET, errorCopy, lastReceivedLabel } from '../../utils/mailboxCopy.js'
 
 const props = defineProps({
@@ -210,6 +211,10 @@ const props = defineProps({
   purpose: { type: String, default: 'hachshara' },
 })
 const emit = defineEmits(['close'])
+// iPhone-style: grows out of the pressed button, folds back into it
+const cardEl = ref(null)
+const { closeWith } = usePressMorph(() => props.open, cardEl)
+function close() { closeWith(() => emit('close')) }
 
 const store = useMailboxStore()
 // Reduced-motion still for the visual pane (the wizard's Mail Agent picture).
@@ -332,7 +337,7 @@ function celebrate() {
   connectedAddress.value = store.config?.email_address || email.value
   success.value = true
   clearTimeout(winTimer)
-  winTimer = setTimeout(() => { success.value = false; emit('close') }, 2600)
+  winTimer = setTimeout(() => { success.value = false; close() }, 2600)
 }
 
 async function saveOther() {

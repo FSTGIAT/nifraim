@@ -88,8 +88,8 @@ export function useSetupPipeline() {
   const steps = computed(() => [
     {
       id: 'phone',
-      title: 'חברו את Nifraim Sms App',
-      body: 'קבלת OTP מחברות הביטוח.',
+      title: 'חברו את Nifraim App',
+      body: 'קודי אימות ושיחות מוקלטות — מהטלפון אלינו.',
       cta: 'חבר את הטלפון',
       hint: '',
       done: phoneDone.value,

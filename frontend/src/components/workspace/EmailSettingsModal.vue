@@ -2,18 +2,17 @@
   <Teleport to="body">
     <Transition name="email-modal">
       <div v-if="open" class="es-overlay" @click.self="close" @keydown.escape="close">
-        <div class="es-card" role="dialog" aria-labelledby="es-title">
-          <button class="es-close" @click="close" aria-label="סגור">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-
-          <!-- ── Account hero ── -->
+        <div ref="cardEl" class="es-card" role="dialog" aria-labelledby="es-title">
+          <!-- ── Account: the agent's own portrait (same seed as the sidebar) ── -->
           <header class="es-hero">
-            <div class="es-hero-glow" aria-hidden="true"></div>
             <div class="es-hero-row">
-              <div class="es-avatar" :style="{ background: avatarBg }">{{ avatarLetter }}</div>
+              <Avatar
+                class="es-avatar"
+                :name="auth.user?.full_name || ''"
+                :username="auth.user?.username || ''"
+                :avatar-seed="seedFor(auth.user)"
+                :size="56"
+              />
               <div class="es-hero-text" v-if="auth.user">
                 <h3 id="es-title" class="es-hero-name">{{ auth.user.full_name || auth.user.email }}</h3>
                 <span v-if="auth.user.full_name && auth.user.email" class="es-hero-email ltr-number">{{ auth.user.email }}</span>
@@ -22,6 +21,11 @@
                   <span v-if="subStore.status" class="es-status-pill" :class="subStatus.cls">{{ subStatus.label }}</span>
                 </div>
               </div>
+              <button class="es-close" @click="close" aria-label="סגור">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
           </header>
 
@@ -77,14 +81,14 @@
 
                 <div class="es-block">
                   <div class="es-block-head">
-                    <span class="es-block-label">העברת SMS אוטומטית</span>
+                    <span class="es-block-label es-brand" dir="ltr"><span>Nifraim</span> <b>App</b></span>
                   </div>
-                  <p class="es-help">כשפורטל ביטוח שולח קוד אימות לטלפון שלך — הטלפון מעביר אותו למערכת אוטומטית וההורדות ממשיכות בלי הקלדה.</p>
+                  <p class="es-help">קודי אימות ושיחות מוקלטות עוברים מהטלפון אלינו — לבד.</p>
                   <button class="es-action" @click="phoneForwardOpen = true">
                     <span class="es-action-ico">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
                     </span>
-                    <span class="es-action-txt">הגדרת העברת SMS</span>
+                    <span class="es-action-txt">הגדרת האפליקציה</span>
                     <svg class="es-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
                 </div>
@@ -96,7 +100,7 @@
                       <span class="es-worker-dot"></span>{{ workerOnline ? 'מחובר' : 'לא מחובר' }}
                     </span>
                   </div>
-                  <p class="es-help">ההורדות רצות ישירות מהמחשב שלך (כתובת IP ישראלית) כדי שכל החברות יעבדו. התקנה חד-פעמית.</p>
+                  <p class="es-help">ההורדות רצות מהמחשב שלכם בישראל. התקנה אחת.</p>
                   <button class="es-action" :disabled="workerDownloading" @click="downloadWorkerInstaller">
                     <span class="es-action-ico">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -115,7 +119,7 @@
                       <span class="es-worker-dot"></span>{{ mailboxOk ? 'מחובר' : 'דרוש טיפול' }}
                     </span>
                   </div>
-                  <p class="es-help">הכשרה לא מפרסמת פרודוקציה בפורטל — היא שולחת את הקובץ למייל. חבר את התיבה פעם אחת, ונטען אותו לבד בכל חודש.</p>
+                  <p class="es-help">הכשרה שולחת את הפרודוקציה למייל. חברו את התיבה פעם אחת.</p>
                   <button class="es-action" @click="hachsharaMailOpen = true">
                     <span class="es-action-ico">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
@@ -170,7 +174,7 @@
               <!-- דוא"ל -->
               <section v-else class="es-pane">
                 <h4 class="es-pane-title">ספק דוא"ל</h4>
-                <p class="es-help">איפה ייפתח טופס חיבור-מייל כשתשלחו הודעה ללקוח או לחברה. ההגדרה נשמרת על הדפדפן הזה בלבד.</p>
+                <p class="es-help">איפה ייפתח מייל ללקוח או לחברה.</p>
                 <div class="es-options">
                   <label
                     v-for="opt in options"
@@ -229,6 +233,9 @@ import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import { useMailboxStore } from '../../stores/mailbox.js'
 import { lastReceivedLabel } from '../../utils/mailboxCopy.js'
 import PhoneForwardModal from './PhoneForwardModal.vue'
+import Avatar from '../Avatar.vue'
+import { seedFor } from '../../utils/avatarSeed.js'
+import { usePressMorph } from '../../composables/usePressMorph.js'
 import HachsharaMailModal from './HachsharaMailModal.vue'
 import api from '../../api/client.js'
 import { CANVAS_GROUPS, DEFAULT_CANVAS, getCanvas, setCanvas, luminance } from '../../utils/appCanvas.js'
@@ -251,15 +258,16 @@ const hachsharaMailOpen = ref(false)
 // broken. A quiet month is fine; a revoked consent is not.
 const mailboxOk = computed(() => !!mailbox.config?.connected && !mailbox.config?.last_error)
 
-// ── Tabs ──
+// ── Tabs ── (settings is outside the workspace tabs → ink, one colour)
+const INK = { accent: '#181818', deep: '#181818', soft: '#F3F3F3', tint: '#FAFAF9' }
 const tabs = [
-  { id: 'subscription', label: 'מנוי', accent: '#1FA88C', deep: '#0E7A64', soft: '#E4F5F0', tint: '#F3FBF8',
+  { id: 'subscription', label: 'מנוי', ...INK,
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><line x1="2" y1="10" x2="22" y2="10"/></svg>' },
-  { id: 'automation', label: 'אוטומציה', accent: '#4E9DD0', deep: '#2C6E9E', soft: '#E7F2FA', tint: '#F5FAFD',
+  { id: 'automation', label: 'אוטומציה', ...INK,
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg>' },
-  { id: 'email', label: 'דוא"ל', accent: '#5B6EE1', deep: '#3A4BC0', soft: '#EAECFB', tint: '#F6F7FE',
+  { id: 'email', label: 'דוא"ל', ...INK,
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="m3 6 9 7 9-7"/></svg>' },
-  { id: 'appearance', label: 'מראה', accent: '#8E44AD', deep: '#6C2E87', soft: '#F3EDF7', tint: '#FAF6FC',
+  { id: 'appearance', label: 'מראה', ...INK,
     icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 10-10c0 2.2-1.8 3-3.5 3H16a2 2 0 0 0-1.4 3.4A2 2 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="12" cy="7" r="1.2" fill="currentColor"/><circle cx="16.5" cy="10.5" r="1.2" fill="currentColor"/></svg>' },
 ]
 const activeTab = ref('automation')
@@ -331,28 +339,13 @@ function onChange(value) {
   savedTimer = setTimeout(() => { justSaved.value = false }, 1400)
 }
 
+// iPhone-style: grows out of the pressed menu item, folds back into it
+const cardEl = ref(null)
+const { closeWith } = usePressMorph(() => props.open, cardEl)
 function close() {
-  emit('update:open', false)
+  closeWith(() => emit('update:open', false))
 }
 
-// ── User avatar ──
-const avatarLetter = computed(() => {
-  const name = auth.user?.full_name || auth.user?.email || ''
-  return name.trim().charAt(0).toUpperCase() || '?'
-})
-// Deterministic cool-palette tint based on the user's name. Stays consistent
-// across reloads, gives the modal a touch of personality without an upload.
-const avatarBg = computed(() => {
-  const seed = (auth.user?.full_name || auth.user?.email || '0').split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const palette = [
-    'linear-gradient(135deg, #8E6FD6, #5F429F)',
-    'linear-gradient(135deg, #4E9DD0, #2C6E9E)',
-    'linear-gradient(135deg, #1FA88C, #0E7A64)',
-    'linear-gradient(135deg, #5B6EE1, #3A4BC0)',
-  ]
-  return palette[seed % palette.length]
-})
 function roleLabel(role) {
   if (role === 'admin') return 'מנהל מערכת'
   if (role === 'agent') return 'סוכן ביטוח'
@@ -438,52 +431,33 @@ watch(() => props.open, (now) => {
   flex-direction: column;
 }
 .es-close {
-  position: absolute;
-  top: 14px; left: 14px;
-  z-index: 3;
-  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; align-self: flex-start;
+  margin-inline-start: auto;
+  display: grid; place-items: center;
   width: 32px; height: 32px;
-  border: none;
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-  border-radius: 50%;
+  border: none; border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary, #55524E);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.es-close:hover { background: rgba(255, 255, 255, 0.32); }
+.es-close:hover { background: rgba(24, 24, 24, 0.06); color: #181818; }
 
-/* ── Hero ── */
+/* ── Hero: the account on a calm light surface, ink type, the agent's portrait ── */
 .es-hero {
-  position: relative;
-  overflow: hidden;
-  padding: 22px 24px;
-  background: linear-gradient(120deg, #5F429F 0%, #4E6BD0 52%, #2C6E9E 100%);
+  padding: 18px 20px 18px 16px;
+  background: #F7F6F3; /* fixed warm light — the agent's page colour may be dark */
+  border-bottom: 1px solid rgba(24, 24, 24, 0.06);
 }
-.es-hero-glow {
-  position: absolute;
-  top: -60%; left: -10%;
-  width: 60%; height: 220%;
-  background: radial-gradient(circle, rgba(255,255,255,0.22), transparent 70%);
-  pointer-events: none;
-}
-.es-hero-row { position: relative; display: flex; align-items: center; gap: 15px; }
-.es-avatar {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 800; color: #fff;
-  flex-shrink: 0;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  border: 2px solid rgba(255, 255, 255, 0.6);
-}
-.es-hero-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.es-hero-name { margin: 0; font-size: 18px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; }
-.es-hero-email { font-size: 12.5px; color: rgba(255, 255, 255, 0.82); direction: ltr; text-align: right; overflow: hidden; text-overflow: ellipsis; }
-.es-hero-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.es-hero-row { display: flex; align-items: center; gap: 14px; }
+.es-avatar { flex-shrink: 0; box-shadow: 0 0 0 3px #fff, 0 6px 16px rgba(24, 24, 24, 0.12); }
+.es-hero-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.es-hero-name { margin: 0; font-size: 18px; font-weight: 800; color: #181818; overflow: hidden; text-overflow: ellipsis; }
+.es-hero-email { font-size: 12.5px; color: rgba(24, 24, 24, 0.55); direction: ltr; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.es-hero-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
 .es-hero-role {
-  font-size: 11px; font-weight: 700; color: #fff;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; font-weight: 700; color: #181818;
+  background: #fff; border-radius: 999px; padding: 3px 10px;
 }
 
 /* ── Shell: rail + content ── */
@@ -522,7 +496,7 @@ watch(() => props.open, (now) => {
   color: var(--deep);
 }
 .es-rail-ico { display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
-.es-rail-btn:not(.active) .es-rail-ico { color: rgba(24, 24, 24, 0.4); }
+.es-rail-btn:not(.active) .es-rail-ico { color: rgba(24, 24, 24, 0.42); }
 .es-rail-label { flex: 1; text-align: start; }
 
 .es-content {
@@ -580,7 +554,7 @@ watch(() => props.open, (now) => {
 .es-status-pill.trial   { background: rgba(78, 157, 208, 0.16); color: #2C6E9E; }
 .es-status-pill.warn    { background: rgba(214, 158, 46, 0.18); color: #9A6B12; }
 .es-status-pill.ended   { background: rgba(194, 57, 52, 0.14); color: #C23934; }
-.es-status-pill.neutral { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.es-status-pill.neutral { background: #fff; color: rgba(24, 24, 24, 0.6); }
 .es-panel .es-status-pill.neutral { background: rgba(24, 24, 24, 0.08); color: rgba(24, 24, 24, 0.55); }
 
 /* Automation blocks */
@@ -589,6 +563,9 @@ watch(() => props.open, (now) => {
 .es-block-head { display: flex; align-items: center; gap: 8px; }
 .es-block-label { font-size: 13px; font-weight: 800; color: #181818; }
 .es-block-head .es-worker-pill { margin-inline-start: auto; }
+/* "Nifraim App" wordmark — ink + the app's sky (= SETUP_ACCENTS.phone.deep) */
+.es-brand { font-family: 'Rubik', 'Heebo', sans-serif; font-size: 14px; unicode-bidi: isolate; }
+.es-brand b { color: #35719A; font-weight: 800; }
 
 .es-action {
   display: flex; align-items: center; gap: 11px; width: 100%;
@@ -671,13 +648,13 @@ watch(() => props.open, (now) => {
 @keyframes es-saved-fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
 .es-done {
   margin-inline-start: auto;
-  background: linear-gradient(135deg, #5B6EE1, #4E9DD0);
+  background: var(--primary, #181818);
   color: #fff; border: none; font-family: inherit; font-size: 14px; font-weight: 700;
-  padding: 9px 26px; border-radius: 999px; cursor: pointer;
-  box-shadow: 0 4px 14px rgba(91, 110, 225, 0.32);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  padding: 9px 26px; border-radius: 10px; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(24, 24, 24, 0.18);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
-.es-done:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(91, 110, 225, 0.4); }
+.es-done:hover { background: var(--primary-deep, #000); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(24, 24, 24, 0.24); }
 
 .email-modal-enter-active, .email-modal-leave-active { transition: opacity 0.2s ease; }
 .email-modal-enter-active .es-card, .email-modal-leave-active .es-card { transition: transform 0.24s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.24s ease; }

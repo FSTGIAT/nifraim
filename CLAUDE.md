@@ -511,7 +511,7 @@ The agent sees their own dates everywhere, all from `/api/cycle/status`: signup,
 
 ## Welcome wizard & admin dashboard
 
-- **Welcome (setup) wizard:** full-screen, one page per step, 7 steps: Sms App → ROBOT → Mail Agent →
+- **Welcome (setup) wizard:** full-screen, one page per step, 7 steps: Nifraim App → ROBOT → Mail Agent →
   מדף ההסכמים (in-wizard agreement requests) → שיוך למסלקה → portal → first cycle.
   - Steps done elsewhere use `leaveSetupFor` / `resumeSetupIfAway`.
   - Each step's picture and video lives in `assets/welcome/step-<id>.{webp,mp4}`.

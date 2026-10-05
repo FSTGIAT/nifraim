@@ -1,10 +1,10 @@
 <template>
   <!-- A setup-step title, with the product names "Nifraim ROBOT" and
-       "Nifraim Mail Agent" / "Nifraim Sms App" set as two-colour wordmarks (ink + the step's colour). -->
+       "Nifraim Mail Agent" / "Nifraim App" set as two-colour wordmarks (ink + the step's colour). -->
   <span class="st">
     <template v-for="(part, i) in parts" :key="i">
       <span v-if="part === ROBOT" class="st-brand" dir="ltr"><span class="st-b1">Nifraim</span> <span class="st-b2">ROBOT</span></span>
-      <span v-else-if="part === SMS" class="st-brand" dir="ltr"><span class="st-b1">Nifraim</span> <span class="st-b4">Sms App</span></span>
+      <span v-else-if="part === SMS" class="st-brand" dir="ltr"><span class="st-b1">Nifraim</span> <span class="st-b4">App</span></span>
       <span v-else-if="part === MAIL" class="st-brand" dir="ltr"><span class="st-b1">Nifraim</span> <span class="st-b3">Mail Agent</span></span>
       <template v-else-if="split && !hasBrand">
         <span class="st-ink">{{ firstWord(part) }}</span><span v-if="restOf(part)" class="st-rest" :style="{ color: accent }">{{ restOf(part) }}</span>
@@ -19,7 +19,7 @@ import { computed } from 'vue'
 
 const ROBOT = 'Nifraim ROBOT'
 const MAIL = 'Nifraim Mail Agent'
-const SMS = 'Nifraim Sms App'
+const SMS = 'Nifraim App' // the phone app: OTP codes + recorded calls
 const props = defineProps({
   title: { type: String, default: '' },
   // Page titles: two colours even without a brand — first word ink, the rest
@@ -27,7 +27,7 @@ const props = defineProps({
   split: { type: Boolean, default: false },
   accent: { type: String, default: '#181818' },
 })
-const parts = computed(() => props.title.split(/(Nifraim ROBOT|Nifraim Mail Agent|Nifraim Sms App)/).filter(Boolean))
+const parts = computed(() => props.title.split(/(Nifraim ROBOT|Nifraim Mail Agent|Nifraim App)/).filter(Boolean))
 const hasBrand = computed(() => parts.value.some((x) => x === ROBOT || x === MAIL || x === SMS))
 const firstWord = (t) => t.trim().split(/\s+/)[0]
 const restOf = (t) => t.trim().split(/\s+/).slice(1).join(' ')

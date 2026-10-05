@@ -1,9 +1,9 @@
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="pf-overlay" @click.self="$emit('close')">
-        <div class="pf-card">
-          <button class="pf-close" @click="$emit('close')" aria-label="סגור">
+      <div v-if="open" class="pf-overlay" @click.self="close()">
+        <div ref="cardEl" class="pf-card">
+          <button class="pf-close" @click="close()" aria-label="סגור">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -14,8 +14,8 @@
             <!-- ── CONTENT (right pane in RTL) ── -->
             <div class="pf-main">
               <header class="pf-header">
-                <span class="pf-kicker">Nifraim App · קודי אימות ושיחות</span>
-                <h2 class="pf-title">{{ active.title }}</h2>
+                <span class="pf-kicker" dir="ltr">Nifraim <b>App</b></span>
+                <h2 class="pf-title"><StepTitle :title="active.title" split :accent="A.deep" /></h2>
                 <p class="pf-sub">{{ SUBS[step] }}</p>
                 <div class="pf-progress" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
                   <button
@@ -23,7 +23,7 @@
                     :key="s.id"
                     class="pf-progress-seg"
                     :class="{ 'pf-progress-seg--filled': s.id <= step }"
-                    :style="s.id <= step ? { background: s.accent } : null"
+                    :style="s.id <= step ? { background: A.accent } : null"
                     :aria-label="`שלב ${s.id}: ${s.title}`"
                     @click="goStep(s.id)"
                   />
@@ -52,35 +52,12 @@
                     </div>
                     <div class="pf-qr-info">
                       <div class="pf-qr-name">Nifraim App <span v-if="apkVersion" class="pf-qr-ver ltr-number">גרסה {{ apkVersion }}</span></div>
-                      <div class="pf-qr-desc">פִתחו את המצלמה בטלפון, סרקו את הקוד, והורידו את האפליקציה.</div>
-                      <a class="pf-qr-link ltr-number" :href="APK_URL" target="_blank" rel="noopener">{{ APK_URL }}</a>
+                      <div class="pf-qr-desc">סרקו במצלמה של הטלפון והתקינו.</div>
+                      <a class="pf-qr-link" :href="APK_URL" target="_blank" rel="noopener">או הורידו מכאן</a>
                     </div>
                   </div>
 
-                  <p class="pf-upgrade-note">
-                    כבר מותקנת אצלכם גרסה מ-Google Play? הסירו אותה קודם — הגרסה מהאתר לא מתקינה מעליה.
-                    אחרי ההורדה פִתחו את הקובץ <span class="ltr-number">nifraim-app-{{ apkVersion || '…' }}.apk</span> (ולא קובץ ישן מההורדות).
-                  </p>
-                  <ol class="pf-steps">
-                    <li><strong>סרקו והורידו</strong> — פִתחו את המצלמה, סרקו את הקוד, והורידו את קובץ ההתקנה.</li>
-                    <li><strong>התקינו</strong> — הפעילו את הקובץ. אם Windows/אנדרואיד מזהיר על "מקור לא מוכר" — אשרו והמשיכו.</li>
-                    <li><strong>פתחו את האפליקציה</strong> — ואז המשיכו לשלב הבא כדי לחבר אותה.</li>
-                  </ol>
-
-                  <details class="pf-fallback">
-                    <summary>התקנה מ-Google Play (כשהאפליקציה תפורסם)</summary>
-                    <div class="pf-qr-card pf-qr-card--muted">
-                      <div class="pf-qr-frame"><img :src="qrSrc(playInstallUrl)" alt="QR ל-Google Play" width="130" height="130" /></div>
-                      <div class="pf-qr-info">
-                        <div class="pf-qr-name">Nifraim ב-Google Play</div>
-                        <div class="pf-qr-auto">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                          הכתובת המאובטחת מוגדרת אוטומטית בהתקנה
-                        </div>
-                        <div class="pf-qr-desc">זמין רק לאחר פרסום האפליקציה. אם מוצג "הפריט לא נמצא" — השתמשו בהתקנה הישירה למעלה.</div>
-                      </div>
-                    </div>
-                  </details>
+                  <p class="pf-upgrade-note">מותקנת גרסה מ-Google Play? הסירו אותה קודם.</p>
                 </div>
 
                 <!-- iPhone: no app to install -->
@@ -90,7 +67,7 @@
                   </div>
                   <div>
                     <div class="pf-ios-title">באייפון אין מה להתקין</div>
-                    <p class="pf-ios-desc">נשתמש באפליקציית <strong>Shortcuts</strong> המובנית של אפל — כבר מותקנת אצלכם. המשיכו לשלב הבא ונגדיר אותה יחד.</p>
+                    <p class="pf-ios-desc">משתמשים ב-<strong>Shortcuts</strong> שכבר באייפון. המשיכו.</p>
                   </div>
                 </div>
               </section>
@@ -103,7 +80,7 @@
                     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                   </div>
                   <div class="pf-create-title">ניצור לכם כתובת מאובטחת</div>
-                  <p class="pf-create-desc">כתובת אישית ומוצפנת שדרכה הטלפון שולח אלינו את קודי האימות. אף אחד אחר לא יכול להשתמש בה.</p>
+                  <p class="pf-create-desc">כתובת אישית ומוצפנת — רק הטלפון שלכם משתמש בה.</p>
                   <button class="pf-btn pf-btn--primary" :style="ctaStyle" :disabled="loading" @click="onRegenerate">
                     {{ loading ? 'רגע…' : 'צור כתובת מאובטחת' }}
                   </button>
@@ -130,20 +107,21 @@
                           {{ copied ? 'הועתק!' : 'העתק' }}
                         </button>
                       </div>
-                      <span class="pf-url-hint">סרקו עם הטלפון או העתיקו — נדביק אותה בשלב הבא.</span>
+                      <span class="pf-url-hint">סרקו או העתיקו לאפליקציה.</span>
                     </div>
                   </div>
 
                   <!-- Android wiring -->
                   <ol v-if="osTab === 'android'" class="pf-steps">
-                    <li><strong>הדביקו את הכתובת</strong> — פתחו את האפליקציה, הדביקו את הכתובת שהעתקתם, ושמרו.</li>
-                    <li><strong>אשרו הרשאות</strong> — אשרו הרשאת קריאת SMS וכבו אופטימיזציית סוללה (כפתורים באפליקציה).</li>
-                    <li><strong>זהו</strong> — כל SMS עם קוד מהפורטל יועבר אלינו אוטומטית, מיד.</li>
-                    <li><strong>שיחות (לא חובה)</strong> — הפעילו באפליקציה את <strong>שיחות עם לקוחות</strong> ואת ההקלטה האוטומטית בחייגן. שיחה עם לקוח עולה לבד ומקבלת סיכום.</li>
+                    <li>הדביקו את הכתובת באפליקציה ושמרו.</li>
+                    <li>אשרו הרשאת SMS וכבו חיסכון בסוללה.</li>
+                    <li><strong>שיחות:</strong> הפעילו "שיחות עם לקוחות" והקלטה בחייגן.</li>
                   </ol>
 
-                  <!-- iPhone Shortcuts wiring -->
-                  <ol v-else class="pf-steps pf-steps--tight">
+                  <!-- iPhone: two Shortcuts, folded so the first view stays short -->
+                  <details v-if="osTab !== 'android'" class="pf-fold">
+                    <summary>קודי אימות</summary>
+                    <ol class="pf-steps pf-steps--tight">
                     <li>פתחו את <strong>Shortcuts</strong> ← לשונית <strong>Automation</strong>.</li>
                     <li>הקישו <strong>+</strong> ← <strong>Create Personal Automation</strong> ← בחרו <strong>Message</strong>.</li>
                     <li>ב-<strong>Message contains</strong> כתבו את שם החברה (למשל <code>Migdal</code>).</li>
@@ -152,11 +130,11 @@
                     <li>פתחו את החצים: Method = <strong>POST</strong>, Request Body = <strong>JSON</strong>.</li>
                     <li>Add field ← Key = <code>message</code>, Value = <strong>Shortcut Input</strong> ← Done.</li>
                   </ol>
+                  </details>
 
                   <!-- iPhone: recorded calls (iOS 18.1+ saves them in Notes) — one tap via the Share sheet -->
-                  <div v-if="osTab !== 'android'" class="pf-ios-calls">
-                    <div class="pf-ios-calls-title">שיחות מוקלטות (iOS 18 ומעלה)</div>
-                    <p class="pf-ios-calls-desc">אייפון שומר הקלטת שיחה באפליקציית Notes. קיצור אחד מוסיף לתפריט השיתוף את <strong>שלח לנפרעים</strong>, ומשם השיחה מגיעה לסיכום.</p>
+                  <details v-if="osTab !== 'android'" class="pf-fold">
+                    <summary>שיחות מוקלטות <span class="pf-fold-note" dir="ltr">iOS 18+</span></summary>
                     <ol class="pf-steps pf-steps--tight">
                       <li>ב-<strong>Shortcuts</strong> הקישו <strong>+</strong> ← קראו לקיצור <strong>שלח לנפרעים</strong>.</li>
                       <li>בהגדרות הקיצור הפעילו <strong>Show in Share Sheet</strong> וסוג קלט <strong>Media / Files</strong>.</li>
@@ -166,7 +144,7 @@
                       <li>Add field ← <strong>Text</strong>: Key = <code>source</code>, Value = <code>phone_ios</code>.</li>
                       <li>אחרי שיחה: Notes ← ההקלטה ← שיתוף ← <strong>שלח לנפרעים</strong>.</li>
                     </ol>
-                  </div>
+                  </details>
 
                   <button class="pf-linkbtn pf-linkbtn--danger" @click="confirmRegenOpen = true">החלף מפתח אבטחה</button>
                 </div>
@@ -211,40 +189,31 @@
                   {{ step === 1 ? 'התקנתי — המשך' : 'המשך' }}
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
                 </button>
-                <button v-else class="pf-btn pf-btn--primary" :style="ctaStyle" @click="$emit('close')">
+                <button v-else class="pf-btn pf-btn--primary" :style="ctaStyle" @click="close()">
                   סיום
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
               </div>
             </div>
 
-            <!-- ── VISUAL (left pane in RTL) ── -->
-            <div class="pf-visual" :style="{ background: visualBg }">
-              <span v-for="n in 6" :key="n" class="pf-orb" :style="orbStyle(n)" />
-              <Transition :name="reducedMotion ? 'pf-fade' : 'pf-pop'" mode="out-in">
-                <div :key="step" class="pf-visual-inner">
-                  <!-- Step 1: download -->
-                  <svg v-if="step === 1" class="pf-glyph" viewBox="0 0 120 120" fill="none">
-                    <rect x="38" y="14" width="44" height="80" rx="9" :stroke="active.accent" stroke-width="3.5"/>
-                    <line x1="54" y1="24" x2="66" y2="24" :stroke="active.accent" stroke-width="3.5" stroke-linecap="round"/>
-                    <path d="M60 44v26" :stroke="active.accent" stroke-width="4" stroke-linecap="round"/>
-                    <path d="M50 60l10 10 10-10" :stroke="active.accent" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="60" cy="86" r="3" :fill="active.accent"/>
-                  </svg>
-                  <!-- Step 2: secure connect -->
-                  <svg v-else-if="step === 2" class="pf-glyph" viewBox="0 0 120 120" fill="none">
-                    <path d="M60 16l30 11v22c0 20-13 34-30 41-17-7-30-21-30-41V27l30-11z" :stroke="active.accent" stroke-width="3.5" stroke-linejoin="round"/>
-                    <rect x="48" y="54" width="24" height="18" rx="3.5" :stroke="active.accent" stroke-width="3.5"/>
-                    <path d="M53 54v-5a7 7 0 0114 0v5" :stroke="active.accent" stroke-width="3.5"/>
-                    <circle cx="60" cy="63" r="2.6" :fill="active.accent"/>
-                  </svg>
-                  <!-- Step 3: done -->
-                  <svg v-else class="pf-glyph" viewBox="0 0 120 120" fill="none">
-                    <circle cx="60" cy="60" r="34" :stroke="active.accent" stroke-width="3.5"/>
-                    <path d="M45 61l11 11 20-23" :stroke="active.accent" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="60" cy="60" r="46" :stroke="active.accent" stroke-width="1.5" stroke-dasharray="4 7" opacity="0.5"/>
-                  </svg>
-                  <span class="pf-visual-chip" :style="{ color: active.deep, borderColor: active.accent + '55' }">{{ active.title }}</span>
+            <!-- ── VISUAL (left pane in RTL): the welcome wizard's Nifraim App picture, entering ── -->
+            <div class="pf-visual" :style="{ background: A.soft }">
+              <div class="pf-visual-media" :class="{ 'pf-visual-media--in': mediaIn }">
+                <!-- one picture per step; the new one zooms in as the old one zooms out -->
+                <Transition :name="reducedMotion ? 'pf-fade' : 'pf-zoom'">
+                  <video
+                    v-if="step === 1 && !reducedMotion" key="v1" :src="phoneVideo" :poster="STEP_PICS[1]"
+                    class="pf-visual-img" autoplay muted loop playsinline preload="auto"
+                    aria-hidden="true" disablepictureinpicture
+                  ></video>
+                  <img v-else :key="'p' + step" :src="STEP_PICS[step]" alt="" class="pf-visual-img" />
+                </Transition>
+              </div>
+              <div class="pf-visual-scrim" :style="{ background: `linear-gradient(to top, ${A.soft} 0%, transparent 40%)` }"></div>
+              <Transition :name="reducedMotion ? 'pf-fade' : 'pf-num'" mode="out-in">
+                <div :key="step" class="pf-visual-num" aria-hidden="true">
+                  <span class="pf-visual-num-n ltr-number">0{{ step }}</span>
+                  <span class="pf-visual-num-of ltr-number">/03</span>
                 </div>
               </Transition>
             </div>
@@ -272,18 +241,30 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
+import { SETUP_ACCENTS } from '../../composables/useSetupPipeline.js'
+import StepTitle from './StepTitle.vue'
+import { usePressMorph } from '../../composables/usePressMorph.js'
+import phoneVideo from '../../assets/welcome/step-phone.mp4'
+import phoneStill from '../../assets/welcome/step-phone.webp'
+import connectStill from '../../assets/welcome/app-connect.webp'
+import doneStill from '../../assets/welcome/app-done.webp'
+
+const STEP_PICS = { 1: phoneStill, 2: connectStill, 3: doneStill }
 import api from '../../api/client.js'
 
 const APK_BASE = 'https://nifraim-production.up.railway.app/api/downloads/android'
 // the version rides in the link so each release is a NEW url — phones/browsers never hand back a cached older APK
 const apkVersion = ref('')
 const APK_URL = computed(() => APK_BASE + (apkVersion.value ? `?v=${apkVersion.value}` : ''))
-const PLAY_PACKAGE = 'com.nifraim.smsforwarder'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
 })
-defineEmits(['close'])
+const emit = defineEmits(['close'])
+// iPhone-style: grows out of the pressed button, folds back into it
+const cardEl = ref(null)
+const { closeWith } = usePressMorph(() => props.open, cardEl)
+function close() { closeWith(() => emit('close')) }
 
 const store = usePortalAutomationStore()
 const loading = ref(false)
@@ -298,58 +279,38 @@ const configured = computed(() => !!store.phoneForward?.token)
 // iPhone Share-sheet shortcut posts recorded calls here (api/portal_automation.py phone_forward_call)
 const callUrl = computed(() => (store.phoneForward?.url || '').replace(/\/+$/, '') + '/call')
 
-// ── Wizard steps (colored like the welcome wizard: install→connect→done) ──
+// ── Wizard steps: ONE colour throughout — the app's own sky (same as the welcome wizard's phone step) ──
+const A = SETUP_ACCENTS.phone
 const STEPS = [
-  { id: 1, title: 'התקנת האפליקציה', accent: '#4E9DD0', deep: '#35719A', soft: '#EAF3F9', tint: '#F8FBFD' },
-  { id: 2, title: 'חיבור מאובטח',    accent: '#8E44AD', deep: '#6C2E87', soft: '#F1E9F5', tint: '#FAF8FC' },
-  { id: 3, title: 'בדיקה וסיום',      accent: '#0E8C8A', deep: '#0A6664', soft: '#E2F1F1', tint: '#F5FAFA' },
+  { id: 1, title: 'התקנת האפליקציה' },
+  { id: 2, title: 'חיבור מאובטח' },
+  { id: 3, title: 'בדיקה וסיום' },
 ]
 const SUBS = {
-  1: 'התקנה חד-פעמית: האפליקציה מעבירה קודי אימות מהחברות, ומעלה שיחות מוקלטות עם לקוחות.',
-  2: 'מחברים את האפליקציה לכתובת מאובטחת — ומשם הכול אוטומטי.',
-  3: 'בודקים שהכול עובד — ומכאן ההורדות רצות לבד.',
+  1: 'קודי אימות ושיחות מוקלטות — מהטלפון אלינו, לבד.',
+  2: 'מחברים את האפליקציה לחשבון שלכם.',
+  3: 'בדיקה קצרה — וזהו.',
 }
 const step = ref(1)
-const active = computed(() => STEPS[step.value - 1])
+const active = computed(() => ({ ...STEPS[step.value - 1], ...A }))
+// the picture's entrance: it rises and settles a beat after the card opens
+const mediaIn = ref(false)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 function goStep(n) { step.value = Math.min(3, Math.max(1, n)) }
 function next() { goStep(step.value + 1) }
 function back() { goStep(step.value - 1) }
 
+// solid buttons take the DEEP sky: white on the light accent fails 4.5:1
 const ctaStyle = computed(() => ({
-  background: active.value.accent,
-  boxShadow: `0 4px 12px ${active.value.accent}55`,
+  background: A.deep,
+  boxShadow: `0 4px 12px ${A.deep}44`,
 }))
 const cardStyle = computed(() => ({
   background: active.value.tint,
   borderColor: active.value.accent + '33',
 }))
-const visualBg = computed(() => `linear-gradient(165deg, ${active.value.tint} 0%, ${active.value.soft} 100%)`)
-function orbStyle(n) {
-  const a = active.value.accent
-  const sizes = [120, 70, 90, 54, 100, 64]
-  const pos = [[8, 12], [72, 20], [20, 74], [80, 66], [46, 40], [60, 88]]
-  return {
-    width: `${sizes[n - 1]}px`,
-    height: `${sizes[n - 1]}px`,
-    left: `${pos[n - 1][0]}%`,
-    top: `${pos[n - 1][1]}%`,
-    background: a,
-    opacity: 0.08 + (n % 3) * 0.03,
-    animationDelay: `${n * 0.4}s`,
-  }
-}
 
-// Personalized Google Play link. The `referrer=token=<token>` rides through the
-// Play Store and the app reads it on first launch to auto-fill this agent's webhook
-// (no copy/paste). Only the agent who opens THIS link gets THIS token.
-const playInstallUrl = computed(() => {
-  const token = store.phoneForward?.token
-  if (!token) return ''
-  const referrer = encodeURIComponent(`token=${token}`)
-  return `https://play.google.com/store/apps/details?id=${PLAY_PACKAGE}&referrer=${referrer}`
-})
 const qrSrc = (data) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data)}`
 
@@ -358,6 +319,8 @@ watch(
   async (v) => {
     if (v) {
       step.value = 1
+      mediaIn.value = false
+      requestAnimationFrame(() => requestAnimationFrame(() => { mediaIn.value = true }))
       loading.value = true
       api.get('/downloads/android/version').then((r) => { apkVersion.value = r.data?.version || '' }).catch(() => {})
       try { await store.fetchPhoneForward() } finally { loading.value = false }
@@ -460,15 +423,17 @@ async function onTest() {
 .pf-header { margin-bottom: 16px; }
 .pf-kicker {
   display: inline-block;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #0A6664;
-  background: var(--tab-automation-wash);
+  font-family: 'Rubik', 'Heebo', sans-serif;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-primary, #181818);
+  background: #EAF3F9; /* = SETUP_ACCENTS.phone.soft */
   border-radius: 999px;
   padding: 4px 12px;
   margin-bottom: 10px;
+  unicode-bidi: isolate;
 }
+.pf-kicker b { color: #35719A; } /* = SETUP_ACCENTS.phone.deep */
 .pf-title { margin: 0 0 4px; font-size: 24px; font-weight: 800; color: var(--text, #181818); }
 .pf-sub { margin: 0; font-size: 14px; color: var(--text-tertiary, #706E6B); line-height: 1.5; }
 
@@ -530,7 +495,6 @@ async function onTest() {
   border-radius: var(--radius-lg, 16px);
   margin-bottom: 16px;
 }
-.pf-qr-card--muted { background: #FAFAF9 !important; border-color: #ECE9E4 !important; }
 .pf-qr-frame {
   flex-shrink: 0;
   padding: 8px;
@@ -542,13 +506,8 @@ async function onTest() {
 .pf-qr-info, .pf-url-right { min-width: 0; flex: 1; }
 .pf-qr-name { font-size: 16px; font-weight: 800; color: var(--text, #181818); margin-bottom: 4px; }
 .pf-qr-desc { font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.5; margin-bottom: 8px; }
-.pf-qr-link { font-size: 11.5px; color: #0A6664; word-break: break-all; text-decoration: none; }
+.pf-qr-link { font-size: 13px; font-weight: 700; color: #35719A; text-decoration: none; }
 .pf-qr-link:hover { text-decoration: underline; }
-.pf-qr-auto {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12px; font-weight: 700; color: #2E844A;
-  background: #EAF5EE; border-radius: 999px; padding: 3px 10px; margin-bottom: 6px;
-}
 
 .pf-label { display: block; font-size: 12.5px; font-weight: 700; color: var(--text-secondary, #3E3E3C); margin-bottom: 7px; }
 .pf-url-row { display: flex; gap: 8px; }
@@ -578,10 +537,19 @@ async function onTest() {
 .pf-steps--tight { gap: 7px; }
 .pf-qr-ver { margin-inline-start: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #35719A; background: #EAF3F9; }
 .pf-upgrade-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-tertiary, #706E6B); }
-.pf-ios-calls { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle, #E5E5E5); }
-.pf-ios-calls-title { font-size: 14px; font-weight: 700; color: var(--text-primary, #181818); margin-bottom: 4px; }
-.pf-ios-calls-desc { margin: 0 0 8px; font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.55; }
-.pf-ios-calls code.ltr-number { direction: ltr; unicode-bidi: embed; word-break: break-all; }
+/* iPhone instructions, folded */
+.pf-fold { margin-top: 10px; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 12px; padding: 0 14px; background: #fff; }
+.pf-fold + .pf-fold { margin-top: 8px; }
+.pf-fold summary {
+  list-style: none; cursor: pointer; padding: 12px 0; font-size: 14px; font-weight: 700; color: var(--text-primary, #181818);
+  display: flex; align-items: center; gap: 8px;
+}
+.pf-fold summary::-webkit-details-marker { display: none; }
+.pf-fold summary::after { content: ''; margin-inline-start: auto; width: 8px; height: 8px; border: solid #35719A; border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform 0.2s ease; }
+.pf-fold[open] summary::after { transform: rotate(-135deg); }
+.pf-fold[open] { padding-bottom: 10px; }
+.pf-fold-note { font-size: 11.5px; font-weight: 600; color: var(--text-tertiary, #706E6B); }
+.pf-fold code.ltr-number { direction: ltr; unicode-bidi: embed; word-break: break-all; }
 .pf-steps li {
   counter-increment: pf;
   position: relative;
@@ -682,55 +650,39 @@ async function onTest() {
 .pf-linkbtn:hover:not(:disabled) { color: var(--text, #181818); }
 .pf-linkbtn--danger { color: #C0392B; }
 
-/* Fallback details */
-.pf-fallback { margin-top: 4px; }
-.pf-fallback summary {
-  font-size: 12.5px; font-weight: 600; color: var(--text-tertiary, #706E6B);
-  cursor: pointer; padding: 6px 0; list-style: none;
-}
-.pf-fallback summary::-webkit-details-marker { display: none; }
-.pf-fallback summary::before { content: '＋ '; color: var(--tab-automation); }
-.pf-fallback[open] summary::before { content: '－ '; }
-
-/* ── Visual pane ── */
+/* ── Visual pane: the welcome wizard's phone picture ── */
 .pf-visual {
   position: relative;
   overflow: hidden;
-  display: grid;
-  place-items: center;
   border-right: 1px solid rgba(24, 24, 24, 0.06);
-  transition: background 0.4s ease;
 }
-.pf-orb {
-  position: absolute;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  filter: blur(2px);
-  animation: pfFloat 7s ease-in-out infinite;
+.pf-visual-media {
+  position: absolute; inset: 0;
+  opacity: 0; transform: scale(1.08) translateY(18px);
+  transition: opacity 0.9s ease, transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-@keyframes pfFloat {
-  0%, 100% { transform: translate(-50%, -50%); }
-  50% { transform: translate(-50%, calc(-50% - 14px)); }
+.pf-visual-media--in { opacity: 1; transform: none; }
+.pf-visual-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pf-visual-scrim { position: absolute; inset: 0; pointer-events: none; }
+.pf-visual-num {
+  position: absolute; top: 28px; right: 30px; z-index: 2;
+  display: flex; align-items: baseline; gap: 6px; direction: ltr; pointer-events: none;
 }
-.pf-visual-inner {
-  position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 20px;
+.pf-visual-num-n {
+  font-family: 'Heebo', sans-serif; font-size: clamp(80px, 9vw, 130px); font-weight: 900; line-height: 0.9;
+  color: rgba(255, 255, 255, 0.14); -webkit-text-stroke: 2px rgba(255, 255, 255, 0.92);
+  text-shadow: 0 6px 30px rgba(24, 24, 24, 0.12); letter-spacing: -0.04em;
 }
-.pf-glyph { width: 148px; height: 148px; }
-.pf-glyph { animation: pfBob 5s ease-in-out infinite; }
-@keyframes pfBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-.pf-visual-chip {
-  font-size: 13px; font-weight: 700;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1.5px solid; border-radius: 999px; padding: 5px 16px;
-  backdrop-filter: blur(4px);
-}
-
-.pf-pop-enter-active, .pf-pop-leave-active { transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.pf-pop-enter-from { opacity: 0; transform: scale(0.85) translateY(10px); }
-.pf-pop-leave-to { opacity: 0; transform: scale(0.9) translateY(-6px); }
+.pf-visual-num-of { font-size: 20px; font-weight: 800; color: rgba(255, 255, 255, 0.92); text-shadow: 0 2px 10px rgba(24, 24, 24, 0.18); }
+.pf-zoom-enter-active, .pf-zoom-leave-active { transition: opacity 0.7s ease, transform 1.1s cubic-bezier(0.16, 1, 0.3, 1); }
+.pf-zoom-enter-from { opacity: 0; transform: scale(1.14); }
+.pf-zoom-leave-to { opacity: 0; transform: scale(0.92); }
+.pf-num-enter-active, .pf-num-leave-active { transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+.pf-num-enter-from { opacity: 0; transform: translateY(22px); }
+.pf-num-leave-to { opacity: 0; transform: translateY(-14px); }
 .pf-fade-enter-active, .pf-fade-leave-active { transition: opacity 0.2s ease; }
 .pf-fade-enter-from, .pf-fade-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .pf-visual-media { transition: none; opacity: 1; transform: none; } }
 
 /* ── Confirm dialog ── */
 .pf-overlay--confirm { z-index: 1310; }
