@@ -5,6 +5,11 @@ from fastapi.responses import FileResponse
 
 router = APIRouter()
 
+# The version of app/assets/nifraim-sms.apk — bump with every APK you copy in (android/app/build.gradle
+# versionName). It names the downloaded file and versions the QR link, so a phone that downloaded an
+# older build never opens the stale "nifraim-sms.apk" again (user report 2026-10-05).
+APK_VERSION = "1.2"
+
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _APK_PATH = _DATA_DIR / "nifraim-sms.apk"
 # Baked-into-the-image copy. `data/` is .railwayignore'd (per-replica ephemeral)
@@ -19,12 +24,20 @@ async def download_android_apk():
     apk_path = _ASSET_APK_PATH if _ASSET_APK_PATH.is_file() else _APK_PATH
     if not apk_path.is_file():
         raise HTTPException(status_code=404, detail="APK not yet published — run CI first")
+    name = f"nifraim-app-{APK_VERSION}.apk"
     return FileResponse(
         apk_path,
         media_type="application/vnd.android.package-archive",
-        filename="nifraim-sms.apk",
-        headers={"Content-Disposition": 'attachment; filename="nifraim-sms.apk"'},
+        filename=name,
+        headers={"Content-Disposition": f'attachment; filename="{name}"',
+                 "Cache-Control": "no-store, max-age=0"},
     )
+
+
+@router.get("/android/version")
+async def android_apk_version():
+    apk_path = _ASSET_APK_PATH if _ASSET_APK_PATH.is_file() else _APK_PATH
+    return {"version": APK_VERSION, "bytes": apk_path.stat().st_size if apk_path.is_file() else None}
 
 
 @router.post("/android", status_code=200)

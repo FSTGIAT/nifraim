@@ -14,7 +14,7 @@
             <!-- ── CONTENT (right pane in RTL) ── -->
             <div class="pf-main">
               <header class="pf-header">
-                <span class="pf-kicker">העברת SMS אוטומטית</span>
+                <span class="pf-kicker">Nifraim App · קודי אימות ושיחות</span>
                 <h2 class="pf-title">{{ active.title }}</h2>
                 <p class="pf-sub">{{ SUBS[step] }}</p>
                 <div class="pf-progress" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
@@ -51,12 +51,16 @@
                       <img :src="qrSrc(APK_URL)" alt="QR להורדת האפליקציה" width="150" height="150" />
                     </div>
                     <div class="pf-qr-info">
-                      <div class="pf-qr-name">אפליקציית Nifraim</div>
+                      <div class="pf-qr-name">Nifraim App <span v-if="apkVersion" class="pf-qr-ver ltr-number">גרסה {{ apkVersion }}</span></div>
                       <div class="pf-qr-desc">פִתחו את המצלמה בטלפון, סרקו את הקוד, והורידו את האפליקציה.</div>
                       <a class="pf-qr-link ltr-number" :href="APK_URL" target="_blank" rel="noopener">{{ APK_URL }}</a>
                     </div>
                   </div>
 
+                  <p class="pf-upgrade-note">
+                    כבר מותקנת אצלכם גרסה מ-Google Play? הסירו אותה קודם — הגרסה מהאתר לא מתקינה מעליה.
+                    אחרי ההורדה פִתחו את הקובץ <span class="ltr-number">nifraim-app-{{ apkVersion || '…' }}.apk</span> (ולא קובץ ישן מההורדות).
+                  </p>
                   <ol class="pf-steps">
                     <li><strong>סרקו והורידו</strong> — פִתחו את המצלמה, סרקו את הקוד, והורידו את קובץ ההתקנה.</li>
                     <li><strong>התקינו</strong> — הפעילו את הקובץ. אם Windows/אנדרואיד מזהיר על "מקור לא מוכר" — אשרו והמשיכו.</li>
@@ -270,7 +274,10 @@ import { computed, ref, watch } from 'vue'
 import { usePortalAutomationStore } from '../../stores/portalAutomation.js'
 import api from '../../api/client.js'
 
-const APK_URL = 'https://nifraim-production.up.railway.app/api/downloads/android'
+const APK_BASE = 'https://nifraim-production.up.railway.app/api/downloads/android'
+// the version rides in the link so each release is a NEW url — phones/browsers never hand back a cached older APK
+const apkVersion = ref('')
+const APK_URL = computed(() => APK_BASE + (apkVersion.value ? `?v=${apkVersion.value}` : ''))
 const PLAY_PACKAGE = 'com.nifraim.smsforwarder'
 
 const props = defineProps({
@@ -298,7 +305,7 @@ const STEPS = [
   { id: 3, title: 'בדיקה וסיום',      accent: '#0E8C8A', deep: '#0A6664', soft: '#E2F1F1', tint: '#F5FAFA' },
 ]
 const SUBS = {
-  1: 'התקנה חד-פעמית של האפליקציה שמעבירה את קודי ה-SMS אלינו.',
+  1: 'התקנה חד-פעמית: האפליקציה מעבירה קודי אימות מהחברות, ומעלה שיחות מוקלטות עם לקוחות.',
   2: 'מחברים את האפליקציה לכתובת מאובטחת — ומשם הכול אוטומטי.',
   3: 'בודקים שהכול עובד — ומכאן ההורדות רצות לבד.',
 }
@@ -352,6 +359,7 @@ watch(
     if (v) {
       step.value = 1
       loading.value = true
+      api.get('/downloads/android/version').then((r) => { apkVersion.value = r.data?.version || '' }).catch(() => {})
       try { await store.fetchPhoneForward() } finally { loading.value = false }
       testResult.value = null
     }
@@ -568,6 +576,8 @@ async function onTest() {
   gap: 10px;
 }
 .pf-steps--tight { gap: 7px; }
+.pf-qr-ver { margin-inline-start: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #35719A; background: #EAF3F9; }
+.pf-upgrade-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--text-tertiary, #706E6B); }
 .pf-ios-calls { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle, #E5E5E5); }
 .pf-ios-calls-title { font-size: 14px; font-weight: 700; color: var(--text-primary, #181818); margin-bottom: 4px; }
 .pf-ios-calls-desc { margin: 0 0 8px; font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.55; }
