@@ -34,7 +34,7 @@ VISIBILITY_TIMEOUT_MS = 5 * 60 * 1000    # XAUTOCLAIM jobs idle longer than this
 HEARTBEAT_S = 60                          # a busy transcriber re-XCLAIMs its job this often, so a long
                                           # (90-min audio) transcription is never mistaken for a dead one
 
-AUDIO_EXTS = (".webm", ".ogg", ".m4a", ".mp4", ".wav", ".mp3")
+AUDIO_EXTS = (".webm", ".ogg", ".m4a", ".mp4", ".wav", ".mp3", ".amr", ".3gp")  # amr/3gp: phone dialers
 
 
 def is_valid_call_id(call_id: str) -> bool:

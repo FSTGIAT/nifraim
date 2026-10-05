@@ -39,6 +39,7 @@ class SmsReceiver : BroadcastReceiver() {
             var ok = false
             try {
                 ok = postWebhook(url, body)
+                if (ok) Prefs.setLastForward(ctx, System.currentTimeMillis())
             } catch (_: Exception) {
             }
             if (!ok) enqueueFallback(ctx, url, body)

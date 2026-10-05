@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Nifraim style (.claude/skills/nifraim-style): ink for actions, the setup step's
+     sky for this app's identity, warm-stone canvas. Orange is retired — never add it. -->
 <resources>
-    <color name="brand_orange">#F57C00</color>
-    <color name="background">#F4F6F9</color>
-    <color name="text_primary">#1A1A2E</color>
-    <color name="text_secondary">#6B7280</color>
-    <color name="divider">#E5E7EB</color>
-    <color name="status_ok">#16A34A</color>
-    <color name="status_warn">#D97706</color>
+    <color name="ink">#181818</color>
+    <color name="canvas">#EEEBE5</color>
+    <color name="card">#FFFFFF</color>
+    <color name="border">#E4E0D8</color>
+    <color name="divider">#EFECE6</color>
+    <color name="text_primary">#181818</color>
+    <color name="text_secondary">#62605B</color>
+    <color name="sky">#4E9DD0</color>
+    <color name="sky_deep">#35719A</color>
+    <color name="sky_soft">#EAF3F9</color>
+    <color name="ok">#2E844A</color>
+    <color name="ok_soft">#E9F4EC</color>
+    <color name="warn">#8A6300</color>
+    <color name="warn_soft">#FBF4DC</color>
     <color name="white">#FFFFFF</color>
-    <color name="warn_text">#92400E</color>
-    <color name="warn_bg">#FEF3C7</color>
-    <color name="warn_btn">#D97706</color>
+    <color name="switch_track_off">#D6D2CA</color>
 </resources>

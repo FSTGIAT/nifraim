@@ -67,6 +67,8 @@ def test_router():
     for q in ("תשלח מייל להפניקס על מה שלא שולם", "למה לא שילמו לי בהפניקס?", "תבקש מהמסלקה 9100 ללקוח 50417716",
               "כמה לא שולם ללקוח אברהם משה?"):
         check(router.route(q) is None, f"«{q}» → agent lane (action / why)")
+    check(router.route("אילו מוצרים יש ללקוחות המובילים שלי") is None,
+          "«אילו מוצרים יש ללקוחות המובילים» → agent lane (not the ranking alone)")
     r = router.route("מי לא שילם לי בהפניקס?")
     check(r.args.get("company") == "הפניקס", "company extracted")
 
@@ -102,6 +104,18 @@ async def test_privacy_and_parity():
         out = await registry.dispatch(ctx_b, "get_customer", {"id_number": probe})
         check(out.startswith("# לא נמצא") and "₪" not in out and "פוליסה" not in out,
               "B:get_customer(A's ID) → not found, no data (echoes only the asked ID)")
+
+        print("a question naming ONE customer never gets an all-book instant answer")
+        from app.services.agent.prefetch import named_customer
+        from app.models.record import ClientRecord as _CR
+        r0 = (await db.execute(select(_CR.first_name, _CR.last_name).where(_CR.user_id == a.id,
+              _CR.first_name.isnot(None), _CR.last_name.isnot(None)).limit(1))).first()
+        if r0:
+            nm = f"{r0[0].split()[0]} {r0[1].split()[0]}" if " " not in r0[0] and " " not in r0[1] else None
+            if nm:
+                ctx_n = ToolContext(db=db, user=a)
+                check(await named_customer(ctx_n, f"כמה לא שולם ל{nm}?") == nm, f"«כמה לא שולם ל{nm}?» detects the customer")
+                check(await named_customer(ctx_n, "כמה עמלות לא שולמו לי?") is None, "a general question names no customer")
 
         print("parity (AI numbers == dashboard numbers), user A")
         from app.api import comparison, production
@@ -163,7 +177,7 @@ def test_calls_routing():
     check(router.route("תקליט את השיחה עם משה כהן").intent == "record_call", "«תקליט את השיחה…» → record (instant)")
     check(router.route("עצור").intent == "stop_call", "«עצור» → stop (instant)")
     check(router.route("מה היה בשיחה האחרונה?") is None, "call question → agent lane")
-    check(plan("מה סיכמתי עם הלקוח על דמי הניהול?") == [("get_call_summaries", {"which": "last", "n": 5})],
+    check(plan("מה סיכמתי עם הלקוח על דמי הניהול?") == [("get_call_summaries", {"which": "last", "n": 3})],
           "«…הלקוח על דמי הניהול» is a call topic, not a customer name")
     check(plan("מה יש ללקוח אברהם משה?")[0] == ("find_customer", {"query": "אברהם משה"}), "a name starting with מ is not cut")
     check(plan("למה הלקוח משה כהן לא שולם ממגדל")[0] == ("find_customer", {"query": "משה כהן"}), "name ends at «לא» / «ממגדל»")

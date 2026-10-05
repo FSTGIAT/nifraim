@@ -1,207 +1,240 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Nifraim App — one screen: status, setup checklist, OTP card, calls card, advanced.
+     Style: .claude/skills/nifraim-style (ink actions, sky identity, stone canvas, Heebo). -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="@color/canvas"
     android:layoutDirection="rtl">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="24dp">
 
-        <!-- Header -->
+        <!-- Wordmark: Nifraim in ink + App in the step colour -->
         <TextView
+            android:id="@+id/wordmark"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Nifraim"
-            android:textSize="28sp"
-            android:textStyle="bold"
-            android:textColor="@color/brand_orange"
-            android:layout_marginBottom="4dp" />
+            android:textSize="30sp"
+            android:fontFamily="@font/heebo_black"
+            android:letterSpacing="-0.02"
+            android:textDirection="ltr"
+            android:textColor="@color/ink" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="העברת OTP אוטומטית לשרת"
+            style="@style/Muted"
+            android:layout_marginBottom="16dp"
             android:textSize="14sp"
-            android:textColor="@color/text_secondary"
-            android:layout_marginBottom="28dp" />
+            android:text="קודי אימות ושיחות עם לקוחות — מגיעים לבד" />
 
-        <!-- Status card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/card_bg"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_marginBottom="20dp">
+        <!-- Status -->
+        <LinearLayout style="@style/Card">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="סטטוס"
-                android:textSize="11sp"
-                android:textAllCaps="true"
-                android:letterSpacing="0.08"
-                android:textColor="@color/text_secondary"
-                android:layout_marginBottom="6dp" />
+            <LinearLayout style="@style/Row" android:minHeight="0dp">
 
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="@color/divider"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="14dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/status_dot" />
 
                 <TextView
+                    android:id="@+id/statusTitle"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="הועבר לאחרונה"
-                    android:textSize="13sp"
-                    android:textColor="@color/text_secondary" />
+                    android:textSize="18sp"
+                    android:fontFamily="@font/heebo_bold" />
+            </LinearLayout>
 
-                <TextView
-                    android:id="@+id/lastForwardText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="13sp"
-                    android:textColor="@color/text_primary"
-                    android:layoutDirection="ltr" />
+            <TextView
+                android:id="@+id/statusSub"
+                style="@style/Muted"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <!-- Setup checklist (hidden once everything is done) -->
+        <LinearLayout
+            android:id="@+id/setupCard"
+            style="@style/Card">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="כמה צעדים להפעלה"
+                android:textSize="17sp"
+                android:fontFamily="@font/heebo_bold" />
+
+            <LinearLayout android:id="@+id/stepAccount" style="@style/Row">
+                <ImageView android:id="@+id/stepAccountIcon" android:layout_width="22dp" android:layout_height="22dp" android:layout_marginEnd="12dp" android:importantForAccessibility="no" />
+                <TextView style="@style/RowLabel" android:text="חיבור לחשבון Nifraim" />
+                <Button android:id="@+id/stepAccountBtn" style="@style/BtnSmall" android:text="חבר" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/stepSms" style="@style/Row">
+                <ImageView android:id="@+id/stepSmsIcon" android:layout_width="22dp" android:layout_height="22dp" android:layout_marginEnd="12dp" android:importantForAccessibility="no" />
+                <TextView style="@style/RowLabel" android:text="הרשאה לקבלת SMS" />
+                <Button android:id="@+id/stepSmsBtn" style="@style/BtnSmall" android:text="אשר" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/stepBattery" style="@style/Row">
+                <ImageView android:id="@+id/stepBatteryIcon" android:layout_width="22dp" android:layout_height="22dp" android:layout_marginEnd="12dp" android:importantForAccessibility="no" />
+                <TextView style="@style/RowLabel" android:text="פעולה ברקע ללא הגבלת סוללה" />
+                <Button android:id="@+id/stepBatteryBtn" style="@style/BtnSmall" android:text="אפשר" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Battery warning -->
-        <LinearLayout
-            android:id="@+id/batteryWarning"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/warning_bg"
-            android:orientation="vertical"
-            android:padding="14dp"
-            android:layout_marginBottom="20dp"
-            android:visibility="gone">
+        <!-- OTP codes -->
+        <LinearLayout style="@style/Card">
+
+            <LinearLayout style="@style/Row" android:minHeight="0dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:layout_marginEnd="12dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_message" android:tint="@color/sky_deep" android:importantForAccessibility="no" />
+                </FrameLayout>
+                <TextView style="@style/CardTitle" android:text="קודי אימות מהחברות" />
+                <androidx.appcompat.widget.SwitchCompat android:id="@+id/enableSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="אופטימיזציית סוללה פעילה"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="@color/warn_text"
-                android:layout_marginBottom="4dp" />
+                style="@style/Muted"
+                android:layout_marginTop="8dp"
+                android:text="קוד שחברת ביטוח שולחת עובר לרובוט, והכניסה לפורטל ממשיכה בלי שתקלידו. הודעות אחרות נשארות בטלפון." />
+
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="12dp" android:background="@color/divider" />
+
+            <LinearLayout style="@style/Row">
+                <TextView style="@style/RowLabel" android:textColor="@color/text_secondary" android:textSize="14sp" android:text="קוד אחרון הועבר" />
+                <TextView android:id="@+id/lastForwardText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="14sp" android:textDirection="ltr" />
+            </LinearLayout>
+
+            <Button android:id="@+id/testBtn" style="@style/BtnGhost" android:text="שלח קוד בדיקה" />
+        </LinearLayout>
+
+        <!-- Calls -->
+        <LinearLayout style="@style/Card">
+
+            <LinearLayout style="@style/Row" android:minHeight="0dp">
+                <FrameLayout android:layout_width="36dp" android:layout_height="36dp" android:layout_marginEnd="12dp" android:background="@drawable/icon_tile">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_phone" android:tint="@color/sky_deep" android:importantForAccessibility="no" />
+                </FrameLayout>
+                <TextView style="@style/CardTitle" android:text="שיחות עם לקוחות" />
+                <androidx.appcompat.widget.SwitchCompat android:id="@+id/callsSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
 
             <TextView
+                style="@style/Muted"
+                android:layout_marginTop="8dp"
+                android:text="שיחה שהטלפון הקליט עם לקוח שלכם עולה לבד, ומקבלים סיכום ומשימות. שיחה עם מספר שאינו לקוח לא יוצאת מהטלפון בלי אישור שלכם." />
+
+            <LinearLayout
+                android:id="@+id/callsBody"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Android עשוי לחסום קבלת SMS ברקע. לחץ להשבתה."
-                android:textSize="12sp"
-                android:textColor="@color/warn_text" />
+                android:orientation="vertical"
+                android:visibility="gone">
 
-            <Button
-                android:id="@+id/batteryBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:layout_marginTop="10dp"
-                android:text="השבת אופטימיזציית סוללה"
-                android:textSize="12sp"
-                android:backgroundTint="@color/warn_btn"
-                android:textColor="@color/white"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp" />
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="12dp" android:background="@color/divider" />
+
+                <LinearLayout style="@style/Row">
+                    <TextView style="@style/RowLabel" android:text="העלאה רק ב-Wi-Fi" />
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/wifiSwitch" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/Row">
+                    <TextView style="@style/RowLabel" android:textColor="@color/text_secondary" android:textSize="14sp" android:text="שיחה אחרונה הועלתה" />
+                    <TextView android:id="@+id/lastCallText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="14sp" android:textDirection="ltr" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/Row">
+                    <TextView style="@style/RowLabel" android:textColor="@color/text_secondary" android:textSize="14sp" android:text="לקוחות מוכרים לפי טלפון" />
+                    <TextView android:id="@+id/clientsCountText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="14sp" android:textDirection="ltr" />
+                </LinearLayout>
+
+                <!-- Missing permission / recorder hint -->
+                <LinearLayout
+                    android:id="@+id/callsWarn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/warning_bg"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="12dp"
+                    android:visibility="gone">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="10dp" android:src="@drawable/ic_alert" android:tint="@color/warn" android:importantForAccessibility="no" />
+                    <TextView android:id="@+id/callsWarnText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textColor="@color/warn" />
+                    <Button android:id="@+id/callsWarnBtn" style="@style/BtnSmall" android:text="אשר" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/Muted"
+                    android:layout_marginTop="10dp"
+                    android:textSize="12sp"
+                    android:text="ההקלטה עצמה נעשית בחייגן של הטלפון. בסמסונג: טלפון ← הגדרות ← הקלטת שיחות ← הקלטה אוטומטית." />
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- Enable toggle -->
+        <!-- Advanced: the account link -->
+        <LinearLayout style="@style/Card">
+
+            <LinearLayout android:id="@+id/advancedHeader" style="@style/Row" android:minHeight="0dp" android:background="?attr/selectableItemBackground">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="12dp" android:src="@drawable/ic_link" android:tint="@color/text_secondary" android:importantForAccessibility="no" />
+                <TextView style="@style/RowLabel" android:text="קישור לחשבון" />
+                <ImageView android:id="@+id/advancedChevron" android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_chevron_down" android:tint="@color/text_secondary" android:importantForAccessibility="no" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/advancedBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/Muted"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="הקישור האישי מופיע באתר: הגדרות ← העברת SMS אוטומטית." />
+
+                <EditText
+                    android:id="@+id/urlEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/input_bg"
+                    android:hint="https://…/phone-forward/…"
+                    android:inputType="textUri"
+                    android:padding="14dp"
+                    android:textSize="13sp"
+                    android:textDirection="ltr"
+                    android:layoutDirection="ltr" />
+
+                <Button android:id="@+id/saveBtn" style="@style/BtnInk" android:text="שמור" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Privacy footer -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="24dp">
-
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+            <ImageView android:layout_width="16dp" android:layout_height="16dp" android:layout_marginEnd="6dp" android:src="@drawable/ic_shield" android:tint="@color/text_secondary" android:importantForAccessibility="no" />
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="הפעל העברת SMS"
-                android:textSize="16sp"
-                android:textColor="@color/text_primary" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/enableSwitch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                style="@style/Muted"
+                android:textSize="12sp"
+                android:text="רק קודי אימות ושיחות עם לקוחות יוצאים מהטלפון." />
         </LinearLayout>
-
-        <!-- URL section -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="כתובת Webhook"
-            android:textSize="11sp"
-            android:textAllCaps="true"
-            android:letterSpacing="0.08"
-            android:textColor="@color/text_secondary"
-            android:layout_marginBottom="8dp" />
-
-        <EditText
-            android:id="@+id/urlEdit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="https://nifraim-production.up.railway.app/api/portal-automation/phone-forward/..."
-            android:inputType="textUri"
-            android:textSize="12sp"
-            android:layoutDirection="ltr"
-            android:textDirection="ltr"
-            android:layout_marginBottom="14dp"
-            android:background="@drawable/input_bg"
-            android:padding="14dp" />
-
-        <Button
-            android:id="@+id/saveBtn"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:text="שמור"
-            android:backgroundTint="@color/brand_orange"
-            android:textColor="@color/white"
-            android:textSize="15sp"
-            android:layout_marginBottom="10dp" />
-
-        <Button
-            android:id="@+id/testBtn"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:text="שלח הודעת בדיקה"
-            style="@style/Widget.AppCompat.Button.Borderless"
-            android:textColor="@color/brand_orange"
-            android:textSize="14sp" />
-
-        <!-- Footer -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:text="האפליקציה פועלת ברקע ומעבירה כל SMS שמתקבל לשרת Nifraim שלך. לא נשמרים נתונים במכשיר."
-            android:textSize="12sp"
-            android:textColor="@color/text_secondary"
-            android:textAlignment="center"
-            android:lineSpacingMultiplier="1.4" />
 
     </LinearLayout>
 </ScrollView>

@@ -101,6 +101,24 @@ export const useCallsStore = defineStore('calls', () => {
     return res.data
   }
 
+  // a call task ticked on the SERVER (insights.action_items[i].done) — Nifra Agent reads it
+  async function setTaskDone(call, index, done) {
+    const items = [...(call.insights?.action_items || [])]
+    if (!items[index]) return false
+    const before = items[index]
+    items[index] = { ...before, done }
+    _upsert({ ...call, insights: { ...(call.insights || {}), action_items: items } })
+    try {
+      const res = await api.post(`/calls/${call.id}/tasks/${index}`, { done })
+      _upsert({ ...call, insights: { ...(call.insights || {}), action_items: res.data.action_items } })
+      return true
+    } catch (_) {
+      items[index] = before
+      _upsert({ ...call, insights: { ...(call.insights || {}), action_items: items } })
+      return false
+    }
+  }
+
   function _upsert(call) {
     if (!call?.id) return
     const idx = calls.value.findIndex((c) => c.id === call.id)
@@ -317,6 +335,6 @@ export const useCallsStore = defineStore('calls', () => {
     recState, elapsed, uploadProgress, analyser, isRecording, micLevel,
     fetchStatus, fetchList, fetchCall, startRecording, cancelRecording, stopAndUpload,
     pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, clearCurrent, notice, studioOpen, openCallId, requestOpenCall, showNotice,
-    studioRequest, requestStudio,
+    studioRequest, requestStudio, setTaskDone,
   }
 })

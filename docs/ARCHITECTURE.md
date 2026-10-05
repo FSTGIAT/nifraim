@@ -1373,7 +1373,10 @@ flowchart LR
 | API routes `/api/calls` (`status`, POST, list, get, delete) | `backend/app/api/calls.py` |
 | Events consumer (supervised asyncio task, started in `main.py` lifespan) | `backend/app/services/calls/events_consumer.py` |
 | Claude summary tool (`title, summary, key_points, action_items, customer_needs, products_mentioned, objections, sentiment, follow_up`) | `backend/app/services/calls/summarize.py` |
-| Model + migration | `models/call_recording.py`, `alembic/versions/calls_01.py` |
+| Model + migrations | `models/call_recording.py`, `alembic/versions/calls_01.py`, `calls_02.py` |
+| Shared ingest (widget + phone), phone keys | `backend/app/services/calls/ingest.py` |
+| Phone routes `/phone-forward/{token}/call`, `/client-phones` | `backend/app/api/portal_automation.py` |
+| Nifraim App (Android) calls pickup | `android/…/{CallSync,CallWorkers}.kt` |
 | Gateway | `services/calls-gateway/` |
 | Transcriber | `services/ivrit-transcriber/` |
 | UI | `components/calls/*`, `stores/calls.js` |
@@ -1395,6 +1398,135 @@ Status: `uploaded → queued → transcribing → summarizing → done | failed`
 6. **Every call ends `done | failed`.** The API fails anything non-terminal after 3 hours. When Claude is down,
    the result is `done` with the transcript and a Hebrew note.
 7. **The contract has one source.** Change `contract.py`, then redeploy all three services.
+8. **Every source goes through ONE ingest.** `services/calls/ingest.py::ingest_call` creates the row and streams
+   to the gateway, for the widget (`POST /api/calls`) and the phone (`POST /phone-forward/{token}/call`) alike.
+9. **A call with a non-customer never leaves the phone on its own.** The Android app uploads automatically only
+   when the number's hash is in the agent's customer list; anything else waits for an explicit tap in a
+   notification. That is the same rule as `OtpFilter` for SMS.
+
+### Speaker labels, categories and what Nifra Agent knows (2026-10-05)
+- **Speakers:** the transcriber runs pyannote (`ivrit-ai/pyannote-speaker-diarization-3.1`, ungated, so no HF token is needed)
+  in its own process. It assigns a speaker to each WORD and splits whisper segments where the speaker changes
+  (`services/ivrit-transcriber/speakers.py`). A diarization error never fails a call: the segments simply have no
+  speaker. **If only one voice is heard, the labels are dropped** (`events_consumer.one_voice_unlabelled`); otherwise
+  every line would be "agent".
+- **The summary gets the names we KNOW:** the agent comes from the account, the customer from the phone match
+  (`summarize._who`). A name spoken on the line is as likely to be the agent's as the customer's; one draft greeted the
+  customer by the agent's name. Due dates come from a 14-day **lookup calendar** in the prompt (`when_line`), because
+  the model mis-added weekdays. `_untag` strips the model's leaked field tags and literal `\n` before anything reaches
+  a customer email.
+- **Customer quotes are verified in code** against lines labelled as the customer. Unlabelled calls have none.
+- **Categories** come from ONE list, `services/calls/categories.py`, stored in the `category` column (`calls_03`). Topics,
+  companies mentioned and urgency go in `insights`. Old calls: `scripts/backfill_call_categories.py` (Haiku). It never
+  rewrites a summary or a follow-up.
+- **Tasks are server state:** `insights.action_items[i]` = `{text, owner, due, due_date, done, done_at}`, ticked via
+  `POST /api/calls/{id}/tasks/{i}`. This used to be localStorage, which the agent could not see.
+- **Nifra Agent:**
+  - tools `search_calls`, `customer_calls`, `get_call`, `open_promises`, `calls_stats`, and `mark_call_task_done`
+    (an action, kind `call_task`, approved via `/office-agent/act`)
+  - data map pages `calls.md`, `calls/<category>.md`, and a "שיחות" section on every customer page
+  - office-agent **promise** cards for agent tasks whose date has come (one action: סימנתי שבוצע)
+  - the fast lane never answers a question containing "שיח"
+
+### Semantic search over calls (pgvector, 2026-10-05)
+- **What gets indexed:** each finished call is cut into passages of ONE speaker turn (8–30 words), plus one summary
+  passage (`services/calls/embeddings.passages`). Long multi-speaker windows let the greeting dominate the vector,
+  which was measured to bury the topic.
+- **Where the model runs:** in the API process, ONNX on CPU (`onnxruntime` + `tokenizers`, no torch). Nothing leaves our
+  servers. It is indexed after the summary (`events_consumer`), best-effort: an embedding failure never fails a call.
+- **Storage:** table `call_chunks` (`calls_04`) with `vector(384)` and an HNSW cosine index. The migration is
+  **guarded**: if the server lacks the `vector` extension it is a no-op, so a restart can't crash-loop. Railway PG17
+  has pgvector 0.8.6. Local `postgres:16-alpine` needs it compiled into the container (`git clone pgvector && make
+  with_llvm=no install`), and that is lost if the container is recreated.
+- **The model is one setting:** `CALLS_EMBED_MODEL`, from `EMBED_MODELS`. The default is `multilingual-e5-small`
+  (~120 MB q8). Measured on 69 real call passages and 8 paraphrased Hebrew questions:
+
+  | model | top-3 | MRR | index time |
+  |---|---|---|---|
+  | e5-small | 7/8 | 0.74 | 0.8 s |
+  | EmbeddingGemma-300m | 6/8 | 0.78 | 22.8 s |
+  | bge-m3 | 6/8 | 0.71 | 14.5 s |
+  | e5-base | 6/8 | 0.63 | 3.4 s |
+
+  Dicta neodictabert-bilingual-embed returned NaN on CPU torch 2.5 and has no ONNX; revisit it later. To switch
+  models: add a migration for the vector size, set the env var, then run `scripts/reindex_calls.py`.
+- **`search_calls` is hybrid:** meaning first (pgvector, this user only, call filters applied), then exact words. It
+  returns the passages labelled לקוח/סוכן with timestamps. Without the model or pgvector it falls back to words only.
+  "מה הלקוח אמר/התלונן…" goes to `search_calls`, not `find_customer`, in both the prompt and the router.
+
+### Self-healing sweep (2026-10-05)
+`services/calls/sweep.py` runs inside the calls events consumer about every 2 minutes, plus once at start-up. It fills
+in whatever a finished call is missing, newest first and in small batches:
+1. **Summary** (2 per pass): the summary when Claude was down (`SUMMARY_UNAVAILABLE`).
+2. **Category** (8 per pass): category, topics and task due dates for calls from before categories existed. Uses
+   Haiku, and never rewrites a summary or a follow-up.
+3. **Search passages** (20 per pass): for any call without passages under the CURRENT `CALLS_EMBED_MODEL`, so new
+   calls, calls from before `calls_04`, and a model change all catch up by themselves.
+
+Calls younger than 2 minutes are left to the live pipeline. Each job gets at most 3 tries per call, recorded in
+`insights._sweep`. The sweep never raises. Both the live pipeline and the sweep use the same `summarize_into`,
+`index_safely` and `categorize`. The scripts `backfill_call_categories.py` and `reindex_calls.py` remain for doing it
+all at once. Tests: `tests/test_calls_sweep.py` (20, against the local DB with real pgvector and fake Claude).
+
+### Agent-world suites (live, real model): `tests/agent_world_calls.py` (25), `tests/agent_world_conversations.py` (20), `tests/agent_world_money.py` (26)
+Not pytest: each run costs model calls. They spy on `registry.dispatch` (which tools were used), check the answer,
+the proposals, and that the DB did not change behind the agent's back. The rate limit and answer cache are off
+during the run. Each run plants a prompt-injection call and another user's call, then removes them. Bugs these
+suites found (all fixed 2026-10-05):
+- raw `<invoke>` tool markup streamed to the screen (`loop.TagScrub`)
+- "סמן…" was not an action verb, so the agent claimed it had prepared something it hadn't
+- `_proposal_line` crashed on a `call_task` proposal
+- `customer_calls` didn't say WHO owes each task, so the customer's task was presented as the agent's promise
+  (now `open_agent` / `open_customer` / `done`)
+- the fast lane answered "על מה לא שולם עומר עמר" with the all-companies total, ignoring the name AND the thread.
+  `_unexplained_words` now sends any question with a non-unpaid word (a person's name) to the agent lane.
+  `_company` is word-bound and knows that a company word after a first name is a SURNAME (עומר מור, יניב הראל,
+  ברוך מור).
+- a false premise ("למה פחות?" when it rose) produced an apology for a correct answer
+- "תשלח לו מייל" after a company list assumed the company. It now asks: customer or company?
+
+Money suite (commissions + production) found and fixed:
+- **"ומכמה ציפיתי?"** reported a ₪69,926 gap (the real gap is ₪24,136). `expected_by_month` includes companies with no
+  report yet. `get_commission_trend` now carries a note with the comparable expected/received/gap.
+- **`get_unpaid(company)`** now returns the company's received, expected and unpaid %, plus a "no debt" note when
+  expected is ₪0. "כמה התקבל מהראל" and "% of expected" used to fail.
+- **The fast lane** answered "כמה קיבלתי במרץ" with June. A named month (`MONTH_RE`) now goes to the agent lane.
+  One-letter company typos (מנורא, פנקס) resolve via `_company_typo`. A company with ₪0 expected answers "no debt".
+- **Follow-ups:** "ועם הפניקס?" after an agreement question answered unpaid. `router.followup_question` rewrites a
+  short "ו…" follow-up as the previous question at the new company, for both prefetch and the prompt. In
+  `prefetch.py`, book questions (לקוחות/צבירה/פרמיה…) prefetch `get_portfolio`, not `get_unpaid`.
+- **Customer card:** a "לא שולם" section for companies that paid nothing. The agent had answered only a partial Mor
+  gap and missed Harel's ₪1,111.
+- **Name search** matches words in any order ("גורן גורן" → גיא גורן).
+- **New tool `calls_with_unpaid`:** no-payment AND partial gaps for customers you spoke with, from the same sources.
+- **OPEN, not fixed (core maths):** Harel "expected commission" is ₪3,071 in `get_portfolio` (production × rates) but
+  ₪7,793 in the comparison. These are two definitions that don't reconcile. See the `commission-calculation` skill.
+
+### Calls from the agent's phone (2026-10-05)
+Since Android 10, apps can't record calls. The phone's own dialer can (Samsung saves to `Recordings/Call/`), and the
+**Nifraim App** (`android/`, the former SMS forwarder) only **collects** those files:
+
+```
+dialer saves recording → MediaStore content-URI trigger → CallScanWorker
+  → CallSync.matchCall: call-log entry whose end ≈ file mtime (±3 min) → number + direction
+     (fallback: a number in the file name)
+  → number's sha256(phone_key) ∈ GET /phone-forward/{token}/client-phones ? CallUploadWorker (multipart, Wi-Fi-only option)
+                                                                  : CallApproval notification "להעלות?"
+  → POST /phone-forward/{token}/call → match_phone() → ingest_call(source=phone_android, phone_number, direction, id_number)
+```
+
+- **`phone_key`** = the national number without its 0 (`050-1234567`, `501234567` (Excel), `+972…` all → `501234567`).
+  The backend (`ingest.py`) and the app (`CallSync.kt`) must compute it identically. The hash list only keeps the plain
+  customer list off the phone. It is not a secret, because the number space is small.
+- `id_number` is set only when exactly one customer has that phone. A number shared by a family stays unmatched, and
+  `events_consumer` falls back to the names in the transcript.
+- Only recordings made after the agent turns the feature on are picked up (no history backfill). `source_ref = ms:<MediaStore id>`
+  makes retries return the existing call.
+- **iPhone (iOS 18.1+)** saves call recordings into Notes, where apps can't reach them. The agent uses a Share-sheet
+  Shortcut "שלח לנפרעים" that posts to the same `/call` with `source=phone_ios` (guide in `PhoneForwardModal.vue`). It sends
+  no number, so the customer comes from the transcript.
+- The dialer's `.amr`/`.3gp` files are accepted (`AUDIO_EXTS`).
+- Columns are in `calls_02`: `source, phone_number, direction, started_at, id_number, source_ref`.
 
 ### Run locally
 `TRANSCRIBER_FAKE=1 docker compose up -d redis calls-gateway ivrit-transcriber` (FAKE returns a canned Hebrew

@@ -20,7 +20,7 @@ import logging
 import os
 import socket
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import update
@@ -29,6 +29,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.call_recording import CALL_TERMINAL, CallRecording
 from app.services.calls import contract as C
+from app.services.calls.categories import CATEGORIES
 from app.services.calls.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
@@ -62,9 +63,65 @@ async def _load_transcript(r, call_id: str) -> dict | None:
     return None
 
 
-async def _on_transcribed(r, call_id: str) -> None:
+SUMMARY_UNAVAILABLE = "הסיכום לא זמין כרגע — התמלול נשמר"
+
+
+async def summarize_into(db, call: CallRecording) -> bool:
+    """Claude summary → title, summary, category, insights (tasks, roles, quotes, follow-up,
+    customer). Shared by the live pipeline and the sweep. False = Claude unavailable (the
+    call keeps its transcript and SUMMARY_UNAVAILABLE; the sweep retries it later)."""
+    from app.models.user import User
     from app.services.calls.summarize import summarize_call
     from app.services.mail_agent.llm import LlmUnavailable
+    try:
+        u = await db.get(User, call.user_id)
+        known = (await _match_customer(db, call.user_id, "", "", known_id=call.id_number)
+                 if getattr(call, "id_number", None) else None)
+        out, model = await summarize_call(
+            call.segments, call.duration_s,
+            agent_name=((u.full_name or "").strip() if u else "") or None,
+            customer_name=(known or {}).get("name") if (known or {}).get("matched") else None,
+            call_date=call_day(call),
+        )
+    except LlmUnavailable:
+        logger.exception("calls: summary unavailable for %s", call.id)
+        call.error = SUMMARY_UNAVAILABLE
+        return False
+    call.title = (out.get("title") or "")[:120] or None
+    call.summary = out.get("summary") or None
+    insights = {k: out.get(k) for k in (
+        "tldr", "key_points", "action_items", "customer_needs", "products_mentioned",
+        "objections", "sentiment", "follow_up", "customer_quotes",
+        "topics", "companies_mentioned", "urgency")}
+    insights["action_items"] = clean_tasks(insights.get("action_items"))
+    call.category = out.get("category") if out.get("category") in CATEGORIES else "other"
+    roles = _clean_roles(out.get("speaker_roles"), call.segments)
+    if roles:
+        insights["speaker_roles"] = roles
+        insights["talk_ratio"] = talk_ratio(call.segments, roles)
+    insights["customer_quotes"] = verified_quotes(insights.get("customer_quotes"), call.segments, roles)
+    insights.update(await _followup(db, call, out))
+    if "customer" not in insights and getattr(call, "id_number", None):
+        insights["customer"] = await _match_customer(db, call.user_id, "", "", known_id=call.id_number)
+    call.insights = insights
+    call.llm_model = model
+    if call.error == SUMMARY_UNAVAILABLE:
+        call.error = None
+    return True
+
+
+async def index_safely(db, call: CallRecording) -> int:
+    """Semantic-search passages for the call — never raises (the sweep retries what's missing)."""
+    try:
+        from app.services.calls.embeddings import index_call
+        return await index_call(db, call)
+    except Exception:  # noqa: BLE001
+        logger.exception("calls: indexing %s for semantic search failed", call.id)
+        await db.rollback()
+        return 0
+
+
+async def _on_transcribed(r, call_id: str) -> None:
 
     tx = await _load_transcript(r, call_id)
     async with async_session() as db:
@@ -76,7 +133,7 @@ async def _on_transcribed(r, call_id: str) -> None:
             call.status, call.error = "failed", "התמלול לא נמצא"
             await db.commit()
             return
-        call.segments = tx.get("segments") or []
+        call.segments = one_voice_unlabelled(tx.get("segments") or [])
         call.transcript_text = tx.get("text") or ""
         call.duration_s = tx.get("duration_s") or call.duration_s
         call.stt_model = (tx.get("model") or "")[:80]
@@ -89,31 +146,101 @@ async def _on_transcribed(r, call_id: str) -> None:
             call.error = NO_SPEECH_ERROR
             await db.commit()
         else:
-            try:
-                out, model = await summarize_call(call.segments, call.duration_s)
-                call.title = (out.get("title") or "")[:120] or None
-                call.summary = out.get("summary") or None
-                insights = {k: out.get(k) for k in (
-                    "tldr", "key_points", "action_items", "customer_needs", "products_mentioned",
-                    "objections", "sentiment", "follow_up")}
-                insights.update(await _followup(db, call, out))
-                call.insights = insights
-                call.llm_model = model
-            except LlmUnavailable:
-                logger.exception("calls: summary unavailable for %s", call_id)
-                call.error = "הסיכום לא זמין כרגע — התמלול נשמר"
+            await summarize_into(db, call)
             call.status, call.done_at = "done", datetime.utcnow()
             await db.commit()
+            await index_safely(db, call)
     # stored in Postgres now — the Redis copy can go (the gateway's done/<id>.json ages out)
     await r.delete(C.TRANSCRIPT_KEY.format(call_id=call_id))
 
 
-async def _match_customer(db, user, name: str, id_number: str) -> dict:
-    """Who the call was with, from what was SAID (name / ת.ז) matched against the
-    agent's production files. Never guessed: no match → matched=False, the agent types it."""
+def call_day(call):
+    """The call's own date in Israel (a phone call: when it started; else when it was uploaded)."""
+    from zoneinfo import ZoneInfo
+    at = call.started_at or call.created_at
+    if not at:
+        return None
+    return at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem")).date()
+
+
+def clean_tasks(items) -> list[dict]:
+    """Tasks as stored: {text, owner, due, due_date: YYYY-MM-DD|"", done: bool}. A due_date that
+    isn't a real date is dropped (never guessed) — open_promises relies on it."""
+    from datetime import date
+    out = []
+    for a in items if isinstance(items, list) else []:
+        if not isinstance(a, dict) or not (a.get("text") or "").strip():
+            continue
+        d = (a.get("due_date") or "").strip()
+        try:
+            d = date.fromisoformat(d).isoformat() if d else ""
+        except ValueError:
+            d = ""
+        out.append({"text": a["text"].strip(), "owner": a.get("owner") if a.get("owner") in ("agent", "customer") else "agent",
+                    "due": (a.get("due") or "").strip(), "due_date": d, "done": bool(a.get("done"))})
+    return out
+
+
+def one_voice_unlabelled(segments: list[dict]) -> list[dict]:
+    """A call always has two sides. If the diarizer heard only one voice (one mic, a quiet
+    line), its labels say nothing — drop them so the summary infers roles from the words
+    instead of calling everyone the agent."""
+    if len({s.get("speaker") for s in segments if s.get("speaker")}) >= 2:
+        return segments
+    return [{k: v for k, v in s.items() if k != "speaker"} for s in segments]
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"[^\w]+", " ", t or "").strip()
+
+
+def verified_quotes(quotes, segments: list[dict], roles: dict) -> list[str]:
+    """Keep a "customer quote" only if it really is in a line the customer said.
+    Unlabelled transcripts have no proof of who said what → no customer quotes.
+    The LLM proposes, the transcript decides."""
+    if not isinstance(quotes, list) or not roles:
+        return []
+    customer = {k for k, v in (roles or {}).items() if v == "customer"}
+    lines = [_norm(s.get("text", "")) for s in segments or []
+             if not customer or s.get("speaker") in customer]
+    if roles and not customer:
+        return []          # labelled, but nobody is the customer → no customer quotes
+    return [q for q in quotes if isinstance(q, str) and _norm(q) and any(_norm(q) in ln for ln in lines)][:3]
+
+
+def _clean_roles(roles, segments: list[dict]) -> dict:
+    """Keep only {S1|S2…: agent|customer} for speakers that actually appear in the transcript."""
+    present = {s.get("speaker") for s in segments or [] if s.get("speaker")}
+    if not present or not isinstance(roles, dict):
+        return {}
+    return {k: v for k, v in roles.items() if k in present and v in ("agent", "customer")}
+
+
+def talk_ratio(segments: list[dict], roles: dict) -> dict:
+    """Seconds each side spoke, from the labelled segments — computed, never asked of the LLM."""
+    secs = {"agent": 0.0, "customer": 0.0}
+    for s in segments or []:
+        role = roles.get(s.get("speaker"))
+        if role in secs:
+            secs[role] += max(0.0, float(s.get("end") or 0) - float(s.get("start") or 0))
+    total = secs["agent"] + secs["customer"]
+    return {"agent_s": round(secs["agent"], 1), "customer_s": round(secs["customer"], 1),
+            "agent_pct": round(100 * secs["agent"] / total) if total else None}
+
+
+async def _match_customer(db, user, name: str, id_number: str, known_id: str | None = None) -> dict:
+    """Who the call was with. A phone call arrives already matched by the caller's number
+    (known_id = the row's id_number) — that wins. Otherwise from what was SAID (name / ת.ז)
+    matched against the agent's production files. Never guessed: no match → matched=False."""
     from app.models.user import User
     from app.services.office_agent import contacts
     u = await db.get(User, user)
+    if known_id:
+        hits = [c for c in await contacts(db, u, known_id.lstrip("0"), limit=5)
+                if c["kind"] == "customer" and (c["id_number"] or "").lstrip("0") == known_id.lstrip("0")]
+        if hits:
+            h = hits[0]
+            return {"name": h["name"], "id_number": h["id_number"], "email": h["email"] or "", "matched": True}
     want = {"name": name.strip(), "id_number": id_number.strip(), "email": "", "matched": False}
     for q in ([id_number.lstrip("0")] if id_number.strip().isdigit() else []) + ([name.strip()] if name.strip() else []):
         hits = [c for c in await contacts(db, u, q[:60], limit=5) if c["kind"] == "customer"]
@@ -125,7 +252,8 @@ async def _match_customer(db, user, name: str, id_number: str) -> dict:
 
 async def _followup(db, call: CallRecording, out: dict) -> dict:
     """The customer-facing summary Nifra Agent offers to send (only on the agent's click)."""
-    body = (out.get("followup_body") or "").strip()
+    # the model occasionally leaks its own field tags ("</followup_body>") into the text
+    body = re.sub(r"</?\w+_\w+>", "", out.get("followup_body") or "").strip()
     if not body:
         return {}
     # the model signs off anyway sometimes — drop its closing so ours is the only one
@@ -136,7 +264,8 @@ async def _followup(db, call: CallRecording, out: dict) -> dict:
     from app.models.user import User
     u = await db.get(User, call.user_id)
     sign = (u.full_name or "").strip() if u else ""
-    customer = await _match_customer(db, call.user_id, out.get("customer_name") or "", out.get("customer_id_number") or "")
+    customer = await _match_customer(db, call.user_id, out.get("customer_name") or "", out.get("customer_id_number") or "",
+                                     known_id=getattr(call, "id_number", None))
     return {
         "customer": customer,
         "followup": {
@@ -201,6 +330,18 @@ async def _run() -> None:
         sweep += 1
         if sweep % 120 == 0:   # ~every 10 min when idle
             await _fail_stuck()
+        if sweep % 24 == 1:    # ~every 2 min: fill whatever a call is missing (calls/sweep.py)
+            await _sweep_safely()
+
+
+async def _sweep_safely() -> None:
+    try:
+        from app.services.calls.sweep import sweep
+        done = await sweep()
+        if any(done.values()):
+            logger.info("calls: sweep %s", done)
+    except Exception:  # noqa: BLE001 — the sweep must never stop the consumer
+        logger.exception("calls: sweep failed")
 
 
 async def _supervise() -> None:

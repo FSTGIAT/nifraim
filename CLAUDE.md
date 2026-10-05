@@ -544,6 +544,12 @@ A home-hub widget beside the cycle clock records a conversation (MediaRecorder).
 into `call_recordings`. The contract lives in `services/calls/contract.py` and is copied into both images. Local:
 `TRANSCRIBER_FAKE=1 docker compose up -d redis calls-gateway ivrit-transcriber`. New Railway services need their
 own Config File Path (`services/<svc>/railway.toml`). **See `docs/ARCHITECTURE.md` §18.**
+- **Phone calls:** the Android Nifraim App collects the dialer's own recordings. A customer's number uploads by itself;
+  any other number waits for the agent's tap. Both sources go through ONE ingest (`services/calls/ingest.py`).
+- **Speakers:** pyannote (ungated ivrit-ai copy, no token) labels סוכן/לקוח. One voice → no labels.
+- **Categories and tasks:** categories come from `services/calls/categories.py` only. Task done state is server-side.
+- **Nifra Agent call tools:** `search_calls`, `customer_calls`, `get_call`, `open_promises`, `calls_stats`,
+  `mark_call_task_done`, plus `calls.md` in the data map.
 
 ## Local Worker & Self-Update (`local-worker` skill)
 

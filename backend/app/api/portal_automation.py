@@ -23,7 +23,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1156,6 +1156,68 @@ async def phone_forward_templates(
         for t in result.scalars().all()
     ]
     return {"templates": templates}
+
+
+async def _phone_forward_user(db: AsyncSession, token: str) -> User | None:
+    return (await db.execute(
+        select(User).where(User.phone_forward_token == _clean_token(token)).limit(1)
+    )).scalar_one_or_none()
+
+
+@router.get("/phone-forward/{token}/client-phones")
+async def phone_forward_client_phones(token: str, db: AsyncSession = Depends(get_db)):
+    """Hashes of the agent's customer phone numbers, for the Nifraim app's call filter:
+    a dialer recording uploads on its own only when the other side is a customer.
+    sha256(national number, no 0) — keeps the plain list off the phone (not a secret: the
+    number space is small). Unknown token → empty list, like /templates."""
+    from app.services.calls.ingest import customer_phones, phone_hash
+
+    user = await _phone_forward_user(db, token)
+    if user is None:
+        return {"hashes": []}
+    return {"hashes": sorted(phone_hash(k) for k in await customer_phones(db, user))}
+
+
+@router.post("/phone-forward/{token}/call")
+async def phone_forward_call(
+    token: str,
+    audio: UploadFile = File(...),
+    phone: str | None = Form(None),
+    direction: str | None = Form(None),
+    started_at: int | None = Form(None),       # epoch millis from the call log
+    duration_s: float | None = Form(None),
+    source: str = Form("phone_android"),
+    source_ref: str | None = Form(None),       # the device's MediaStore id — dedupes retries
+    db: AsyncSession = Depends(get_db),
+):
+    """A call recorded by the agent's phone dialer, uploaded by the Nifraim app (Android,
+    automatically after the on-device customer filter) or an iOS Share Shortcut.
+    Token-authenticated like the SMS webhook. Same pipeline as the browser widget."""
+    from app.services.calls.ingest import (
+        already_uploaded, ingest_call, match_phone, phone_display, upload_chunks,
+    )
+
+    user = await _phone_forward_user(db, token)
+    if user is None:
+        raise HTTPException(404, "not found")
+    ref = (source_ref or "").strip()[:80] or None
+    if ref and (prev := await already_uploaded(db, user, ref)):
+        return {"id": str(prev.id), "status": prev.status, "duplicate": True}
+
+    number = phone_display(phone)
+    when = None
+    if started_at and started_at > 0:
+        when = datetime.utcfromtimestamp(started_at / 1000)
+    call = await ingest_call(
+        db, user, upload_chunks(audio), audio.content_type or "", duration_s,
+        source=source if source in ("phone_android", "phone_ios") else "phone_android",
+        phone_number=number,
+        direction=direction if direction in ("in", "out") else None,
+        started_at=when,
+        id_number=await match_phone(db, user, number),
+        source_ref=ref,
+    )
+    return {"id": str(call.id), "status": call.status, "matched": bool(call.id_number)}
 
 
 @router.post("/phone-forward/{token}")

@@ -13,6 +13,8 @@ import AiBarChart from './AiBarChart.vue'
 import AiTrendChart from './AiTrendChart.vue'
 import AiDonutChart from './AiDonutChart.vue'
 import AiKpiChart from './AiKpiChart.vue'
+import AiTableChart from './AiTableChart.vue'
+import AiMatrixChart from './AiMatrixChart.vue'
 import { fmtFull, fmtPct } from './format.js'
 
 function labelValueTable(viz) {
@@ -41,10 +43,12 @@ export const CHART_TYPES = {
   trend: { component: AiTrendChart, table: labelValueTable },
   donut: { component: AiDonutChart, table: shareTable },
   kpi: { component: AiKpiChart, table: null },
+  table: { component: AiTableChart, table: null },
+  matrix: { component: AiMatrixChart, table: null },
 }
 
 // Names a model reaches for when it improvises — mapped, not rejected.
-const ALIASES = { line: 'trend', column: 'trend', timeline: 'trend', pie: 'donut', ranking: 'bar', stat: 'kpi' }
+const ALIASES = { line: 'trend', column: 'trend', timeline: 'trend', pie: 'donut', ranking: 'bar', stat: 'kpi', grid: 'table', heatmap: 'matrix', holdings: 'matrix' }
 
 export function resolveType(viz) {
   const t = String(viz?.type || '').toLowerCase()

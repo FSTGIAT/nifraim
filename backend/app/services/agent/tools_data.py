@@ -108,7 +108,14 @@ async def get_unpaid(ctx, company: str = "", limit: int = 15):
     rows = [{"label": c.get("name") or c.get("id_number"), "value": _r(c.get("expected")), "id_number": c.get("id_number"),
              "products": [p.get("product") for p in c.get("products", [])][:4]} for c in custs[: max(1, min(limit, 50))]]
     rid = ctx.keep(rows, label="לקוח", value="צפי עמלה", title=f"לא שולם — {match}")
+    # the company's own received / expected / gap — "כמה התקבל מהראל", "כמה זה באחוזים מהצפי שם"
+    co = next((c for c in s.get("companies", []) if c["company"] == match), {})
+    exp_all, got = float(co.get("expected") or 0), float(co.get("received") or 0)
     return {"company": match, "customers_count": len(custs), "total_expected": _r(d.get("total_expected")),
+            "company_received": _r(got), "company_expected": _r(exp_all),
+            "unpaid_pct_of_expected": round(100 * (exp_all - got) / exp_all) if exp_all >= 1 else None,
+            "note": None if float(d.get("total_expected") or 0) >= 1 else
+                    f"ב{match} אין חוב פתוח: הלקוחות ברשימה הם בצפי ₪0 (לא צפויה עמלה).",
             "customers": rows, "result_id": rid}
 
 
@@ -128,9 +135,17 @@ async def get_commission_trend(ctx, company: str = ""):
     exp = {p.get("period_label"): _r(p.get("total_expected")) for p in (e.get("points") or [])}
     rid = ctx.keep(pts, label="חודש", value="עמלה שהתקבלה", title=f"עמלות לפי חודש{' — ' + company if company else ''}")
     last, prev = (pts[-1] if pts else None), (pts[-2] if len(pts) > 1 else None)
+    s = await company_summary(ctx)
     return {"months": pts, "expected_by_month": exp if not company else None,
             "last": last, "prev": prev,
-            "change": _r(last["value"] - prev["value"]) if last and prev else None, "result_id": rid}
+            "change": _r(last["value"] - prev["value"]) if last and prev else None,
+            # measured: the model put expected_by_month[last] against `last` and reported a ₪69,926 gap (real: ₪24,136)
+            "note": ("months = רק קבצי נפרעים עם חודש מזוהה (קובץ בלי חודש לא נספר כאן — לכן חברה יכולה להיראות ₪0). "
+                     "expected_by_month כולל גם חברות שעוד לא שלחו דוח — אין להשוות אותו לסכום שהתקבל. "
+                     "המספרים שכן ניתן להשוות (לכל חברה בתקופה האחרונה שלה): "
+                     f"צפי {_r((s.get('totals') or {}).get('expected'))}, התקבל {_r((s.get('totals') or {}).get('received'))}, "
+                     f"פער (לא שולם) {_r((s.get('totals') or {}).get('gap'))} — ופירוט לחברה: get_unpaid(company)."),
+            "result_id": rid}
 
 
 @tool("get_portfolio", "התיק בפרודוקציה לפי חברה ומוצר: פרמיה, צבירה, מספר לקוחות ומוצרים, וצפי עמלה.",
@@ -171,7 +186,76 @@ async def top_customers(ctx, metric: str = "accumulation", n: int = 10):
         top.append({"label": name, "value": _r(d.get(key) or d.get(f"total_{key}")), "id_number": d.get("id_number"),
                     "companies": d.get("companies") or d.get("company")})
     rid = ctx.keep(top, label="לקוח", value="צבירה" if key == "accumulation" else "פרמיה", title="הלקוחות הגדולים")
-    return {"metric": metric, "customers": top, "result_id": rid}
+    # what each top customer HOLDS — "אילו מוצרים יש ללקוחות המובילים" → render_chart(type=table)
+    holdings = await _holdings_of(ctx, [t["id_number"] for t in top if t.get("id_number")])
+    for t in top:
+        h = holdings.get(str(t.get("id_number") or "").lstrip("0"), {})
+        t["products"] = h.get("products", [])
+        t["companies_list"] = h.get("companies", [])
+    trid = ctx.keep([], label="לקוח", value="", title="הלקוחות המובילים והמוצרים שלהם", table={
+        "columns": ["לקוח", "פרמיה" if key == "premium" else "צבירה", "חברות", "מוצרים"],
+        "rows": [[t["label"], t["value"] or None, ", ".join(t["companies_list"]), ", ".join(t["products"])] for t in top]})
+    # the VISUAL: customers × product categories (filled = holds it, ring = a gap → cross-sell)
+    freq: dict[str, int] = {}
+    for t in top:
+        for cat in holdings.get(str(t.get("id_number") or "").lstrip("0"), {}).get("cats", {}):
+            freq[cat] = freq.get(cat, 0) + 1
+    cols = [c for c, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0])) if c != "אחר"][:7]
+    matrix = {"columns": cols, "rows": [{
+        "label": t["label"], "value": t["value"], "companies": t["companies_list"],
+        "cells": {c: holdings.get(str(t.get("id_number") or "").lstrip("0"), {}).get("cats", {}).get(c, 0) for c in cols},
+    } for t in top]}
+    mrid = ctx.keep([], label="לקוח", value="פרמיה" if key == "premium" else "צבירה", title="הלקוחות המובילים — מה יש לכל אחד",
+                    chart="matrix", table=None)
+    ctx.results[mrid]["matrix"] = matrix
+    return {"metric": metric, "customers": top, "result_id": rid, "products_table_result_id": trid,
+            "products_matrix_result_id": mrid}
+
+
+# product name → a category an agent thinks in (the matrix columns)
+_CATS = [("בריאות", ("בריאות", "ר.ת", "רפואי", "ניתוח", "השתלות")), ("סיעוד", ("סיעוד",)),
+         ("מחלות קשות", ("מחלות", "קשות")), ("תאונות", ("תאונ", "נכות", "שברים")),
+         ("השתלמות", ("השתלמות",)), ("פנסיה", ("פנסי",)), ("גמל להשקעה", ("להשקעה",)), ("גמל", ("גמל",)),
+         ("חיסכון", ("פוליס", "חיסכון", "חסכון")), ("סיכונים", ("סיכונ", "ריסק", "משכנתא")), ("חיים", ("חיים",))]
+
+
+def product_category(label: str | None) -> str:
+    t = label or ""
+    for cat, keys in _CATS:
+        if any(k in t for k in keys):
+            return cat
+    return "אחר"
+
+
+async def _holdings_of(ctx, ids: list) -> dict:
+    """id → {companies: [...], products: [...]} from the active production (distinct, short)."""
+    from sqlalchemy import func
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+    from app.utils.company_norm import company_stem
+    want = {str(i).lstrip("0") for i in ids if i}
+    if not want:
+        return {}
+    upl = await _get_production_upload_ids(ctx.db, ctx.user.id)
+    if not upl:
+        return {}
+    rows = (await ctx.db.execute(select(func.ltrim(ClientRecord.id_number, "0"), ClientRecord.receiving_company,
+                                        ClientRecord.product_type, ClientRecord.product)
+            .where(ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(upl),
+                   func.ltrim(ClientRecord.id_number, "0").in_(want)))).all()
+    out: dict[str, dict] = {}
+    for idn, co, pt, prod in rows:
+        h = out.setdefault(idn, {"companies": [], "products": []})
+        c = company_stem(co) or co
+        if c and c not in h["companies"]:
+            h["companies"].append(c)
+        label = (pt or prod or "").strip()
+        if label and label not in h["products"] and len(h["products"]) < 6:
+            h["products"].append(label)
+        cat = product_category(f"{pt or ''} {prod or ''}")
+        h.setdefault("cats", {})
+        h["cats"][cat] = h["cats"].get(cat, 0) + 1
+    return out
 
 
 async def _top_by_products(ctx, n: int) -> dict:
@@ -211,6 +295,14 @@ async def find_customer(ctx, query: str):
         return await get_customer(ctx, q)
     page = data_map.page_search(m, q)
     ids = list(dict.fromkeys(re.findall(r"customers/(\d+)\.md", page)))
+    # many with this name, but exactly ONE you spoke with in a call → that's who is meant
+    # ("מה הצעד הבא מול חיים?" — 6 people named חיים, one call with חיים אלימלך)
+    spoke = re.findall(r"customers/(\d+)\.md\)[^\n]*דיברת איתו", page)
+    if len(ids) > 2 and len(set(spoke)) == 1:
+        others = len(ids) - 1
+        card = await get_customer(ctx, spoke[0])
+        return (f"הכוונה כמעט בוודאות ללקוח שדיברת איתו בשיחה (יש עוד {others} בשם הזה) — ענה עליו, "
+                f"ואמור בחצי משפט שבחרת בו כי דיברתם:\n\n{card}")[:9000]
     if 1 <= len(ids) <= 2:
         cards = [await get_customer(ctx, i) for i in ids]
         head = "נמצאו 2 לקוחות בשם הזה — שני הכרטיסים:" if len(ids) == 2 else ""
@@ -226,6 +318,17 @@ async def get_customer(ctx, id_number: str):
     m = await ctx.map()
     await data_map.add_production_customers(ctx.db, m, [idn])
     page = data_map.render(m, f"customers/{idn}.md")[:5000]
+    c = next((x for x in m.customers if str(x.get("id_number")).lstrip("0") == idn), None) or m.extra.get(idn)
+    if c:
+        prods = c.get("production_products") or []
+        rows = [[p.get("company") or "", p.get("product") or p.get("product_type") or "", p.get("policy_number") or "",
+                 p.get("status") or "", _r(p.get("accumulation")) or None, _r(p.get("premium")) or None,
+                 _r(p.get("expected_commission")) or None] for p in prods[:40]]
+        if rows:
+            nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x) or idn
+            rid = ctx.keep([], label="מוצר", value="", title=f"המוצרים של {nm}",
+                           table={"columns": ["חברה", "מוצר", "פוליסה", "סטטוס", "צבירה", "פרמיה", "צפי עמלה"], "rows": rows})
+            page += f"\n\n(טבלת המוצרים: result_id={rid} — render_chart(type=table) כשמבקשים טבלה)"
     try:
         from app.services.agent.tools_maslaka import holdings_lines
         page += "\n" + "\n".join(await holdings_lines(ctx, idn))

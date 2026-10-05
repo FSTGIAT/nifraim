@@ -44,7 +44,7 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
 
 <style scoped>
 .aikpi { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 36px 0 16px; text-align: center; width: 100%; }
-.aikpi-value { font-size: 56px; font-weight: 700; color: var(--text); line-height: 1.05; }
+.aikpi-value { font-size: 56px; font-weight: 700; color: var(--viz-accent, var(--text)); line-height: 1.05; }
 .aikpi-sub { display: flex; gap: 12px; align-items: center; font-size: 13.5px; color: var(--text-secondary); }
 .aikpi-dir { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-weight: 600; font-size: 12.5px; }
 .aikpi-dir--up { background: var(--green-light, #EBF7EE); color: var(--green, #2E844A); }

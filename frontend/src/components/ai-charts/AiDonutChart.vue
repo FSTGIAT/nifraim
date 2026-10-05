@@ -1,38 +1,39 @@
 <template>
-  <!-- Part-to-whole. Slices take the validated categorical palette in FIXED
-       order (by the entity's position, largest first) — never recycled; past
-       7 the tail folds into "אחרות". The legend is the identity channel,
-       with value + share, and hover is synced both ways. -->
-  <div class="aido" :class="{ 'aido--in': entered }">
-    <div class="aido-figure" @mouseleave="hovered = null">
-      <svg :viewBox="`0 0 ${S} ${S}`" class="aido-svg" role="img" :aria-label="viz.title || 'התפלגות'">
-        <g>
-          <path v-for="(sl, i) in slices" :key="sl.label"
-                class="aido-slice"
-                :class="{ 'is-dim': hovered !== null && hovered !== i, 'is-hover': hovered === i }"
-                :d="sl.d"
-                :style="{ '--i': i, fill: sl.color, stroke: sl.color }"
-                tabindex="0"
-                @mouseenter="hovered = i" @focus="hovered = i" @blur="hovered = null" />
-        </g>
-      </svg>
-      <div class="aido-center" aria-hidden="true">
-        <span class="aido-center-k">{{ focus ? focus.label : 'סה״כ' }}</span>
-        <strong class="ltr-number">{{ fmtCompact(focus ? focus.value : total, unit) }}</strong>
-        <span class="aido-center-sub ltr-number">{{ focus ? fmtPct(focus.value, total) : `${slices.length} פלחים` }}</span>
+  <!-- Part-to-whole in the hover-trace language (same as AiBarChart): ONE colour —
+       the surface's accent (--viz-accent: ink in the chat, Nifra Agent teal in its
+       panel) — the traced slice full, the rest at 22%; a big spring-animated readout;
+       a quiet list with counts and shares. At rest it traces the largest slice. -->
+  <div class="hdo" :class="{ 'hdo--in': entered }">
+    <header class="hdo-head">
+      <div class="hdo-read">
+        <span class="hdo-k">[{{ hovered !== null ? 'נבחר' : 'המוביל' }}] · <b>{{ traced?.label }}</b></span>
+        <strong class="hdo-v ltr-number">{{ fmtFull(springVal, unit) }}</strong>
       </div>
-    </div>
+      <span class="hdo-share ltr-number">{{ traced ? fmtPct(traced.value, total) : '' }} מתוך {{ fmtFull(total, unit) }}</span>
+    </header>
 
-    <ul class="aido-legend" @mouseleave="hovered = null">
-      <li v-for="(sl, i) in slices" :key="sl.label"
-          :class="{ 'is-dim': hovered !== null && hovered !== i, 'is-hi': sl.hi }"
-          @mouseenter="hovered = i">
-        <span class="aido-swatch" :style="{ background: sl.color }"></span>
-        <span class="aido-name" :title="sl.label">{{ sl.label }}</span>
-        <span class="aido-val ltr-number">{{ fmtFull(sl.value, unit) }}</span>
-        <span class="aido-pct ltr-number">{{ fmtPct(sl.value, total) }}</span>
-      </li>
-    </ul>
+    <div class="hdo-body" @mouseleave="hovered = null">
+      <div class="hdo-figure">
+        <svg :viewBox="`0 0 ${S} ${S}`" class="hdo-svg" role="img" :aria-label="viz.title || 'התפלגות'">
+          <path v-for="(sl, i) in slices" :key="sl.label" class="hdo-slice"
+                :class="{ 'is-on': tracedIdx === i }" :d="sl.d" :style="{ '--i': i }"
+                tabindex="0" @mouseenter="hovered = i" @focus="hovered = i" @blur="hovered = null" />
+        </svg>
+        <div class="hdo-center" aria-hidden="true">
+          <strong class="ltr-number">{{ traced ? fmtPct(traced.value, total) : '' }}</strong>
+        </div>
+      </div>
+
+      <ul class="hdo-list">
+        <li v-for="(sl, i) in slices" :key="sl.label" :class="{ 'is-on': tracedIdx === i }" :style="{ '--i': i }"
+            @mouseenter="hovered = i">
+          <span class="hdo-name" :title="sl.label">{{ sl.label }}</span>
+          <span class="hdo-bar" aria-hidden="true"><i :style="{ width: (sl.value / maxVal) * 100 + '%' }"></i></span>
+          <span class="hdo-val ltr-number">{{ fmtFull(sl.value, unit) }}</span>
+          <span class="hdo-pct ltr-number">{{ fmtPct(sl.value, total) }}</span>
+        </li>
+      </ul>
+    </div>
 
     <p v-if="viz.insight" class="ai-chart-insight">{{ viz.insight }}</p>
   </div>
@@ -40,16 +41,16 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { CHART_PALETTE } from '../../utils/chartPalette.js'
-import { fmtFull, fmtCompact, fmtPct, prefersReducedMotion } from './format.js'
+import { fmtFull, fmtPct, prefersReducedMotion } from './format.js'
+import { useSpring } from '../../composables/useSpring.js'
 
 const props = defineProps({ viz: { type: Object, required: true } })
 
-const S = 240
-const R_OUT = 112
-const R_IN = 74
-const PAD = 0.035 // radians of surface between slices — the 2px gap at this size
-const MAX_SLICES = 7 // then fold — slots past 11 are unvalidated, and 7 is the soft cap
+const S = 200
+const R_OUT = 96
+const R_IN = 64
+const PAD = 0.04
+const MAX_SLICES = 7
 
 const unit = computed(() => props.viz.unit || '')
 const items = computed(() => {
@@ -59,42 +60,36 @@ const items = computed(() => {
     .sort((a, b) => b.value - a.value)
   if (clean.length <= MAX_SLICES) return clean
   const head = clean.slice(0, MAX_SLICES - 1)
-  const rest = clean.slice(MAX_SLICES - 1).reduce((s, d) => s + d.value, 0)
-  return [...head, { label: 'אחרות', value: rest, other: true }]
+  return [...head, { label: 'אחרות', value: clean.slice(MAX_SLICES - 1).reduce((s, d) => s + d.value, 0) }]
 })
 const total = computed(() => items.value.reduce((s, d) => s + d.value, 0))
+const maxVal = computed(() => Math.max(...items.value.map((d) => d.value), 1))
 
 function arc(a0, a1) {
-  // Annular sector, clockwise from 12 o'clock.
   const p = (r, a) => [S / 2 + r * Math.sin(a), S / 2 - r * Math.cos(a)]
   const large = a1 - a0 > Math.PI ? 1 : 0
-  const [x0, y0] = p(R_OUT, a0)
-  const [x1, y1] = p(R_OUT, a1)
-  const [x2, y2] = p(R_IN, a1)
-  const [x3, y3] = p(R_IN, a0)
+  const [x0, y0] = p(R_OUT, a0); const [x1, y1] = p(R_OUT, a1)
+  const [x2, y2] = p(R_IN, a1); const [x3, y3] = p(R_IN, a0)
   return `M${x0},${y0}A${R_OUT},${R_OUT} 0 ${large} 1 ${x1},${y1}L${x2},${y2}A${R_IN},${R_IN} 0 ${large} 0 ${x3},${y3}Z`
 }
-
 const slices = computed(() => {
   const n = items.value.length
   const pad = n > 1 ? PAD : 0
   let a = 0
-  return items.value.map((d, i) => {
+  return items.value.map((d) => {
     const sweep = (d.value / (total.value || 1)) * Math.PI * 2
     const a0 = a + pad / 2
     const a1 = Math.max(a0 + 0.004, a + sweep - pad / 2)
     a += sweep
-    return {
-      ...d,
-      d: arc(a0, Math.min(a1, a0 + Math.PI * 2 - 0.0001)),
-      color: d.other ? 'var(--chart-absent)' : CHART_PALETTE[i % 11],
-      hi: d.label === props.viz.highlight_label,
-    }
+    return { ...d, d: arc(a0, Math.min(a1, a0 + Math.PI * 2 - 0.0001)) }
   })
 })
 
 const hovered = ref(null)
-const focus = computed(() => (hovered.value === null ? null : slices.value[hovered.value]))
+const tracedIdx = computed(() => (hovered.value !== null ? hovered.value : 0))   // rest on the largest
+const traced = computed(() => slices.value[tracedIdx.value] || null)
+const springVal = useSpring(() => traced.value?.value ?? 0, { stiffness: 110, damping: 20 })
+
 const entered = ref(false)
 onMounted(() => {
   if (prefersReducedMotion()) { entered.value = true; return }
@@ -103,60 +98,52 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.aido {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
-  gap: 12px 32px;
-  align-items: center;
-}
-.aido-figure { position: relative; }
-.aido-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.hdo { width: 100%; --acc: var(--viz-accent, var(--primary, #181818)); }
+.hdo-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 0 14px; }
+.hdo-read { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hdo-k { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hdo-k b { color: var(--text-secondary); font-weight: 650; }
+.hdo-v { font-size: 34px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; color: var(--acc); font-variant-numeric: tabular-nums; }
+.hdo-share { font-size: 12px; color: var(--text-muted); }
 
-.aido-slice {
-  stroke-width: 3; stroke-linejoin: round; /* softens the four corners */
-  outline: none; cursor: default;
+.hdo-body { display: grid; grid-template-columns: minmax(130px, 190px) 1fr; gap: 18px 28px; align-items: center; }
+.hdo-figure { position: relative; }
+.hdo-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.hdo-slice {
+  fill: var(--acc); stroke: #fff; stroke-width: 2; stroke-linejoin: round; outline: none; cursor: default;
   transform-box: view-box; transform-origin: 50% 50%;
-  opacity: 0; transform: scale(0.86) rotate(-12deg);
+  opacity: 0; transform: scale(0.9) rotate(-14deg);
   transition:
-    opacity 0.5s ease calc(var(--i) * 70ms),
-    transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) calc(var(--i) * 70ms);
+    opacity 0.6s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms),
+    transform 0.9s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms);
 }
-.aido--in .aido-slice { opacity: 1; transform: none; }
-.aido--in .aido-slice.is-dim { opacity: 0.28; transition-delay: 0s; }
-.aido--in .aido-slice.is-hover { transform: scale(1.035); transition-delay: 0s; }
+.hdo--in .hdo-slice { opacity: 0.22; transform: none; }
+.hdo--in .hdo-slice.is-on { opacity: 1; transform: scale(1.03); transition-delay: 0s, 0s; }
+.hdo--in .hdo-slice:not(.is-on) { transition-delay: calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms), calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms); }
+.hdo-center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.hdo-center strong { font-size: 20px; font-weight: 800; color: var(--acc); }
 
-.aido-center {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  pointer-events: none; text-align: center; padding: 0 22%;
+.hdo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hdo-list li {
+  display: grid; grid-template-columns: minmax(70px, 1.2fr) 1fr auto 46px; gap: 10px; align-items: center;
+  padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); cursor: default;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 0.5s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + 200ms + var(--i) * 50ms),
+              transform 0.6s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + 200ms + var(--i) * 50ms),
+              background 0.2s, color 0.2s;
 }
-.aido-center-k { font-size: 12px; color: var(--text-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.aido-center strong { font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.2; }
-.aido-center-sub { font-size: 12px; color: var(--text-muted); }
+.hdo--in .hdo-list li { opacity: 1; transform: none; }
+.hdo-list li.is-on { color: var(--text); background: color-mix(in srgb, var(--acc) 6%, transparent); }
+.hdo-list li.is-on .hdo-name { font-weight: 700; }
+.hdo-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hdo-bar { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--acc) 10%, transparent); overflow: hidden; }
+.hdo-bar i { display: block; height: 100%; background: var(--acc); opacity: 0.25; border-radius: 2px; transition: opacity 0.2s; }
+.hdo-list li.is-on .hdo-bar i { opacity: 1; }
+.hdo-val { color: var(--text); font-variant-numeric: tabular-nums; }
+.hdo-pct { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: left; }
 
-.aido-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.aido-legend li {
-  display: grid; grid-template-columns: 12px 1fr auto 48px; gap: 10px; align-items: center;
-  padding: 7px 10px; border-radius: 8px;
-  font-size: 13.5px; color: var(--text-secondary);
-  transition: opacity 0.2s, background 0.2s;
-}
-.aido-legend li:hover { background: var(--glass-hover, #F7F7F7); }
-.aido-legend li.is-dim { opacity: 0.4; }
-.aido-legend li.is-hi .aido-name { color: var(--text); font-weight: 650; }
-.aido-swatch { width: 12px; height: 12px; border-radius: 3px; }
-.aido-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.aido-val { color: var(--text); font-variant-numeric: tabular-nums; }
-.aido-pct { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: left; }
-
-.aido .ai-chart-insight { grid-column: 1 / -1; }
-
-@media (max-width: 620px) {
-  .aido { grid-template-columns: 1fr; }
-  .aido-figure { max-width: 240px; margin: 0 auto; }
-}
+@media (max-width: 560px) { .hdo-body { grid-template-columns: 1fr; } .hdo-figure { max-width: 170px; margin: 0 auto; } }
 @media (prefers-reduced-motion: reduce) {
-  .aido-slice { transition: opacity 0.2s; transform: none; }
+  .hdo-slice, .hdo-list li { transition: opacity 0.2s; transform: none; }
 }
 </style>

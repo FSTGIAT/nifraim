@@ -41,3 +41,8 @@ pypdf==6.1.1
 reportlab==5.0.1
 pypdfium2==5.8.0
 redis==5.2.1
+
+# calls semantic search (services/calls/embeddings.py) — ONNX on CPU, no torch
+onnxruntime==1.23.2
+tokenizers==0.22.1
+huggingface_hub==0.36.0

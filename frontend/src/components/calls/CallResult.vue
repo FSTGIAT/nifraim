@@ -19,6 +19,14 @@
         </div>
       </div>
       <p class="cr-meta">
+        <span v-if="phoneCall" class="cr-src">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" />
+          </svg>
+          {{ phoneCall }}<span v-if="call.phone_number" class="ltr-number">{{ call.phone_number }}</span>
+        </span>
+        <span v-if="call.category_label" class="cr-cat">{{ call.category_label }}</span>
+        <span v-if="customer" class="cr-cust">{{ customer.name }}<span v-if="customer.id_number" class="ltr-number"> · {{ customer.id_number }}</span></span>
         <span v-if="call.duration_s >= 1" class="ltr-number">{{ mmss(call.duration_s) }}</span>
         <span v-if="dateLabel" class="ltr-number">{{ dateLabel }}</span>
         <span v-if="actions.length"><span class="ltr-number">{{ actions.length }}</span> משימות</span>
@@ -47,6 +55,14 @@
       </div>
       <div class="cr-tl-axis"><span class="ltr-number">00:00</span><span class="ltr-number">{{ mmss(totalDur) }}</span></div>
 
+      <div v-if="talk" class="cr-talk" :aria-label="`הסוכן דיבר ${talk.agent}%, הלקוח ${talk.customer}%`">
+        <div class="cr-talk-bar"><i :style="{ width: talk.agent + '%' }"></i></div>
+        <div class="cr-talk-legend">
+          <span><b class="cr-talk-dot cr-talk-dot--agent"></b>סוכן <span class="ltr-number">{{ talk.agent }}%</span></span>
+          <span><b class="cr-talk-dot"></b>לקוח <span class="ltr-number">{{ talk.customer }}%</span></span>
+        </div>
+      </div>
+
       <ol v-if="markedMoments.length" class="cr-moments">
         <li v-for="(m, i) in markedMoments" :key="i">
           <button type="button" :class="{ 'is-hover': hoverMoment === i }" @mouseenter="hoverMoment = i" @mouseleave="hoverMoment = null"
@@ -63,6 +79,11 @@
     <section v-if="call.summary" class="cr-summary cr-in" style="--i: 2">
       <h4 class="cr-k">סיכום</h4>
       <p>{{ call.summary }}</p>
+    </section>
+
+    <section v-if="quotes.length" class="cr-quotes cr-in" style="--i: 2">
+      <h4 class="cr-k">ציטוטים מהלקוח</h4>
+      <blockquote v-for="(t, i) in quotes" :key="i">{{ t }}</blockquote>
     </section>
 
     <!-- the action block -->
@@ -139,7 +160,7 @@
                 <div v-for="s in g.rows" :key="s.start" class="cr-seg" :data-at="s.start"
                      :class="{ 'is-target': target === s.start, 'is-match': isCurrentMatch(s) }">
                   <span class="cr-seg-at ltr-number">{{ mmss(s.start) }}</span>
-                  <p><template v-for="(part, j) in mark(s.text)" :key="j"><mark v-if="part.hit">{{ part.t }}</mark><template v-else>{{ part.t }}</template></template></p>
+                  <p><b v-if="s.speaker" class="cr-who" :class="{ 'cr-who--agent': roleOf(s) === 'agent' }">{{ whoLabel(s) }}</b><template v-for="(part, j) in mark(s.text)" :key="j"><mark v-if="part.hit">{{ part.t }}</mark><template v-else>{{ part.t }}</template></template></p>
                 </div>
               </section>
               <p v-if="!segments.length && call.transcript_text" class="cr-para">{{ call.transcript_text }}</p>
@@ -154,6 +175,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { getUserFlag, setUserFlag } from '../../utils/userFlags'
+import { useCallsStore } from '../../stores/calls'
 
 const props = defineProps({
   call: { type: Object, required: true },
@@ -163,7 +185,8 @@ defineEmits(['delete'])
 
 const ins = computed(() => props.call.insights || {})
 const list = (k, max) => (ins.value[k] || []).filter((x) => x && String(x).trim()).slice(0, max)
-const actions = computed(() => (ins.value.action_items || []).filter((a) => a && a.text).slice(0, 5))
+// `_i` = the task's index on the server (insights.action_items[_i]) — ticks are saved there
+const actions = computed(() => (ins.value.action_items || []).map((a, i) => ({ ...a, _i: i })).filter((a) => a && a.text).slice(0, 5))
 const keyPoints = computed(() => list('key_points', 4))
 const segments = computed(() => props.call.segments || [])
 const hasTranscript = computed(() => segments.value.length > 0 || !!props.call.transcript_text)
@@ -186,6 +209,21 @@ const nextStep = computed(() => {
   const a = actions.value.find((x) => x.owner !== 'customer')
   return a ? { text: a.text, due: a.due } : null
 })
+
+// ── speakers (diarization) + where the call came from ──
+const roles = computed(() => ins.value.speaker_roles || {})
+const roleOf = (s) => roles.value[s.speaker] || null
+const whoLabel = (s) => ({ agent: 'סוכן', customer: 'לקוח' })[roleOf(s)] || ('דובר ' + String(s.speaker || '').replace(/\D/g, ''))
+const talk = computed(() => {
+  const p = ins.value.talk_ratio?.agent_pct
+  return p == null ? null : { agent: p, customer: 100 - p }
+})
+const quotes = computed(() => list('customer_quotes', 3))
+const phoneCall = computed(() => {
+  if (!String(props.call.source || '').startsWith('phone')) return ''
+  return { in: 'שיחה נכנסת', out: 'שיחה יוצאת' }[props.call.direction] || 'שיחת טלפון'
+})
+const customer = computed(() => (ins.value.customer?.matched ? ins.value.customer : null))
 
 const SENT = {
   positive: { word: 'חיובית', color: '#2E844A' },
@@ -263,20 +301,28 @@ function dueLabel(due) {
   return m ? `${m[3]}.${m[2]}` : due
 }
 
-// ── tasks + next step — remembered per user, per call ──
-const checked = ref(new Set())
+// ── tasks: done lives on the server (so Nifra Agent knows what is still open);
+//    the next step is a per-user flag ──
+const calls = useCallsStore()
+const checked = computed(() => new Set(actions.value.map((a, pos) => (a.done ? pos : -1)).filter((p) => p >= 0)))
 const nextDone = ref(false)
 const flagKey = () => 'calls_tasks_' + props.call.id
 function load() {
-  try { checked.value = new Set(JSON.parse(getUserFlag(flagKey()) || '[]')) } catch (_) { checked.value = new Set() }
   nextDone.value = getUserFlag('calls_next_' + props.call.id) === '1'
+  // ticks made before they were saved on the server: move them there once
+  let old = []
+  try { old = JSON.parse(getUserFlag(flagKey()) || '[]') } catch (_) { old = [] }
+  if (old.length) {
+    setUserFlag(flagKey(), '[]')
+    for (const pos of old) {
+      const a = actions.value[pos]
+      if (a && !a.done) calls.setTaskDone(props.call, a._i, true)
+    }
+  }
 }
-function toggle(i) {
-  const next = new Set(checked.value)
-  if (next.has(i)) next.delete(i)
-  else next.add(i)
-  checked.value = next
-  setUserFlag(flagKey(), JSON.stringify([...next]))
+function toggle(pos) {
+  const a = actions.value[pos]
+  if (a) calls.setTaskDone(props.call, a._i, !a.done)
 }
 function toggleNext() {
   nextDone.value = !nextDone.value
@@ -435,6 +481,26 @@ watch(() => props.call.id, () => { q.value = ''; sheetOpen.value = false; load()
 .cr-moment-at { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cr-moment-text { font-size: 15px; line-height: 1.5; }
 
+/* category chip — the call's own accent, one colour */
+.cr-cat { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  color: var(--acc); background: #F7EAF3; }
+/* source + customer */
+.cr-src, .cr-cust { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-weight: 500; }
+.cr-cust { color: var(--text); font-weight: 600; }
+
+/* talk ratio */
+.cr-talk { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
+.cr-talk-bar { height: 6px; border-radius: 999px; background: #E4E1DC; overflow: hidden; }
+.cr-talk-bar i { display: block; height: 100%; background: var(--acc); border-radius: 999px; transition: width 0.6s ease; }
+.cr-talk-legend { display: flex; gap: 16px; font-size: 13px; color: var(--text-secondary); }
+.cr-talk-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.cr-talk-dot { width: 8px; height: 8px; border-radius: 50%; background: #CFCBC5; }
+.cr-talk-dot--agent { background: var(--acc); }
+
+/* customer quotes */
+.cr-quotes { display: flex; flex-direction: column; gap: 8px; }
+.cr-quotes blockquote { margin: 0; max-width: 68ch; padding: 4px 14px; border-inline-start: 3px solid #D9D5CF; font-size: 16px; line-height: 1.6; color: var(--text); }
+
 /* summary */
 .cr-summary { display: flex; flex-direction: column; gap: 8px; }
 .cr-summary p { margin: 0; max-width: 68ch; font-size: 16px; line-height: 1.7; white-space: pre-wrap; }
@@ -514,6 +580,8 @@ watch(() => props.call.id, () => { q.value = ''; sheetOpen.value = false; load()
 .cr-seg { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 8px; border-radius: 8px; transition: background 0.25s ease; }
 .cr-seg-at { padding-top: 3px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cr-seg p { margin: 0; font-size: 15.5px; line-height: 1.7; }
+.cr-who { margin-inline-end: 8px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.cr-who--agent { color: var(--acc); }
 .cr-seg mark { background: #F6E7F0; color: inherit; border-radius: 3px; padding: 0 2px; }
 .cr-seg.is-target { background: #FAF3F8; box-shadow: inset -3px 0 0 var(--acc); }
 .cr-seg.is-match { background: var(--bg); }

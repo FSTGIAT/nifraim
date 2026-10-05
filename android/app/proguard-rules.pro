@@ -1,5 +1,8 @@
 -keep class com.nifraim.smsforwarder.SmsReceiver { *; }
 -keep class com.nifraim.smsforwarder.SmsForwardWorker { *; }
 -keep class com.nifraim.smsforwarder.TemplateFetchWorker { *; }
+-keep class com.nifraim.smsforwarder.CallScanWorker { *; }
+-keep class com.nifraim.smsforwarder.CallUploadWorker { *; }
+-keep class com.nifraim.smsforwarder.CallApprovalReceiver { *; }
 -keep class com.android.installreferrer.** { *; }
 -keepattributes *Annotation*

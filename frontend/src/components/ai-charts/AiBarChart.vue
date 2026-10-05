@@ -91,7 +91,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.htb { width: 100%; --ink: var(--primary, #181818); }
+.htb { width: 100%; --ink: var(--viz-accent, var(--primary, #181818)); }
 
 .htb-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 0 18px; }
 .htb-read, .htb-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

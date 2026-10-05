@@ -28,7 +28,58 @@ class Route:
 
 
 def _company(q: str) -> str:
-    return next((c for c in COMPANIES if c in q), "")
+    """A company named as a WORD (with ב/ל/מ/ה/ו/ש prefixes) — "לעומר מור" is a customer, not מור."""
+    for c in COMPANIES:
+        if re.search(rf"(?:^|[\s,.?!\"'(])(?:[בלמהוש]{{0,2}}){re.escape(c)}(?=$|[\s,.?!\"')])", q) and not _surname(q, c):
+            return c
+    return _company_typo(q)
+
+
+def _lev1(a: str, b: str) -> bool:
+    """Edit distance ≤ 1 (one letter added, dropped or swapped)."""
+    if abs(len(a) - len(b)) > 1 or a == b:
+        return a == b
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    s, l = (a, b) if len(a) < len(b) else (b, a)
+    return any(l[:i] + l[i + 1:] == s for i in range(len(l)))
+
+
+def _company_typo(q: str) -> str:
+    """"מנורא", "פנקס", "הפנקס", "מיגדל" — one letter off a company of 4+ letters (no prefix-stripped
+    match on short words: "מור" is too close to too many names)."""
+    for w in re.findall(r"[א-ת]{4,}", q):
+        for cand in {w, re.sub(r"^[בלמהוש]{1,2}", "", w)}:
+            for c in COMPANIES:
+                bare = c.removeprefix("ה")
+                if len(bare) >= 4 and (_lev1(cand, c) or _lev1(cand, bare)) and not _surname(q, cand):
+                    return c
+    return ""
+
+
+def _surname(q: str, company: str) -> bool:
+    """The company word right after a first name ("עומר מור") is a person's surname."""
+    return bool(re.search(rf"[א-ת]{{2,}}\s+{re.escape(company)}(?=$|[\s,.?!])", q)) and not re.search(
+        rf"(?:^|\s)(?:ב|ל|של|מ|את|עם|לגבי|בחברת|חברת)\s*{re.escape(company)}", q)
+
+
+MONTH_RE = re.compile(r"(?:^|[\s,(])(?:[בלמ]?)(?:ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)(?=$|[\s,.?!)])"
+                      r"|\b\d{1,2}[/.-]\d{2,4}\b")
+
+# words an unpaid / company question is made of — anything else (a customer's name) → agent lane
+_UNPAID_WORDS = set("""מי מה כמה על של את עם לגבי יש לי לא שולם שולמו שילמו שילם קיבלתי חוב חובות חייב חייבים חייבת
+פער פערים עמלה עמלות עמלת נפרעים במנורה החברה חברה חברות לפי בכל כל הכי תראה תן ספר רשימה רשימת לקוחות לקוח
+ממנה ממנו מהם שלא עדיין אצל איפה איזה אילו אלו מהחברה ומה ואיפה הגדול הגדולים
+חודש החודש בחודש אחרון האחרון קודם הקודם שעבר מגמה קיבלתי נכנס הכנסתי הרווחתי סך הכל בסך""".split())
+
+
+def _unexplained_words(q: str, co: str) -> bool:
+    for w in re.findall(r"[א-ת]+", q):
+        base = re.sub(r"^[בלמהוש]{1,2}(?=[א-ת]{2,})", "", w)
+        if w in _UNPAID_WORDS or base in _UNPAID_WORDS or (co and co in w):
+            continue
+        return True
+    return False
 
 
 def route(question: str) -> Route | None:
@@ -42,7 +93,14 @@ def route(question: str) -> Route | None:
             return Route("record_call", "start_call_recording", {"about": about[:80]})
     if not q or len(q) > 90 or ACTION.search(q) or WHY.search(q):
         return None
+    if re.search(r"שיח|(?:^|\s)(?:אמר|אמרה|סיפר|סיפרה|דיבר|דיברה|התלונן|התלוננה)(?:\s|$)", q):
+        return None            # calls: the agent lane picks search_calls / calls_stats / open_promises
     co = _company(q)
+    # "אילו מוצרים יש ללקוחות המובילים" asks WHAT they hold, not who they are — a compound
+    # question; the instant ranking would answer only half of it. → agent lane (+prefetch).
+    if re.search(r"(?:אילו|איזה|אלו|מה)\s+(?:מוצר|פוליס|ביטוח|קופ|כיסו)|מה יש ל|יש ל(?:לקוחות|הם|הן)\b", q) \
+            and re.search(r"מובילים|הגדול|הכי גדול|top", q):
+        return None
     about_one_customer = bool(re.search(r"(?:^|\s)(?:ל|ה|של )?לקוח(?:ה)?\s+[א-ת]", q))
     if re.search(r"מסלק", q):
         return Route("maslaka_status", "maslaka_status", {})
@@ -62,6 +120,8 @@ def route(question: str) -> Route | None:
     if about_one_customer:
         return None            # a question about ONE named customer → the agent finds them first
     if re.search(r"לא שול|לא קיבלתי|לא שיל[םמ]|לא משלמ|חוב|פער|חייב", q):
+        if _unexplained_words(q, co):
+            return None        # "על מה לא שולם עומר עמר" — about a PERSON (and maybe a follow-up) → agent lane
         return Route("unpaid", "get_unpaid", {"company": co})
     if re.search(r"(שיעור|אחוז)\s*(ה)?עמלה|מה ההסכם|הסכם עם", q) and co:
         return Route("rate", "get_rate", {"company": co})
@@ -71,6 +131,9 @@ def route(question: str) -> Route | None:
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "accumulation", "n": 10})
     if (re.search(r"עמל|נכנס|הכנס|קיבלתי", q) and re.search(r"החודש|חודש שעבר|חודש קודם|מגמה|לפי חודש|קיבלתי", q)) \
             or re.search(r"כמה נכנס|כמה הרווחתי|כמה הכנסתי", q):
+        # "כמה קיבלתי במרץ?" was answered with the LAST month — a named month is the agent's job
+        if MONTH_RE.search(q) or (co == "" and re.search(r"(?:^|\s)(?:מ|מה|ב)[א-ת]{3,}(?=\s|\?|$)", q) and _unexplained_words(q, co)):
+            return None
         return Route("trend", "get_commission_trend", {"company": co})
     if re.search(r"צביר|פרמי", q) and re.search(r"לפי חברה|בתיק|כמה יש|סך", q):
         return Route("portfolio", "get_portfolio", {"company": co, "metric": "premium" if "פרמי" in q else "accumulation"})
@@ -115,6 +178,8 @@ def render(route_: Route, data) -> tuple[str, str | None]:
             n = data.get("customers_count", 0)
             if not n:
                 return f"ב{data['company']} אין כרגע לקוחות שלא שולמו.", None
+            if float(data.get("total_expected") or 0) < 1:
+                return f"ב{data['company']} אין חוב פתוח — {n} רשומות ללא עמלה צפויה (צפי ₪0).", None
             top = ", ".join(c["label"] for c in data["customers"][:3])
             return (f"ב{data['company']} {n} לקוחות לא שולמו, צפי {_m(data.get('total_expected'))}. הגדולים: {top}.\n"
                     f"אפשר לבקש ממני להכין תזכורת גבייה ל{data['company']}."), "bar"
@@ -214,3 +279,20 @@ async def answer(ctx, r: Route) -> dict | None:
         if len(positive) >= 2 or (chart == "trend" and len(kept["rows"]) >= 2):
             vizs.append(build_viz(kept, chart))
     return {"text": text, "vizs": vizs, "status": t.status_he}
+
+
+def followup_question(question: str, history: list[dict] | None) -> str | None:
+    """"ועם הפניקס?" / "ובהראל?" after "מה ההסכם שלי עם מגדל?" means the SAME question about the new
+    company — measured: the agent answered unpaid instead of the agreement. Returns the previous user
+    question with the company swapped, or None when this isn't such a follow-up."""
+    q = " ".join((question or "").split())
+    if not history or len(q.split()) > 4 or not re.match(r"^ו", q):
+        return None
+    new = _company(q)
+    prev = next((t.get("text") or "" for t in reversed(history) if t.get("role") == "user"), "")
+    old = _company(prev)
+    if not new or new == old or not prev:
+        return None
+    if not old:                # "כמה לקוחות יש לי?" → "ובהראל?" = the same question, at הראל
+        return prev.rstrip(" ?") + f" ב{new}?"
+    return re.sub(re.escape(old), new, prev, count=1)

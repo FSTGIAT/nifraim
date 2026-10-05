@@ -55,6 +55,8 @@ object TemplateSync {
 
 class TemplateFetchWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        // Daily: the customer-phone list for the calls filter rides along.
+        if (Prefs.isCallsEnabled(applicationContext)) CallSync.refreshClients(applicationContext)
         if (TemplateSync.refresh(applicationContext)) Result.success() else Result.retry()
     }
 }

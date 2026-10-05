@@ -21,15 +21,10 @@ from app.models.call_recording import CallRecording
 from app.models.user import User
 from app.services.calls import contract as C
 from app.services.calls.events_consumer import NO_SPEECH_ERROR
+from app.services.calls.categories import label as category_label
+from app.services.calls.ingest import ingest_call, upload_chunks
 
 router = APIRouter()
-
-_EXT = {
-    "audio/webm": ".webm", "video/webm": ".webm", "audio/ogg": ".ogg",
-    "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".m4a",
-    "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/mpeg": ".mp3",
-}
-
 
 def _out(c: CallRecording, full: bool = True) -> dict:
     d = {
@@ -38,16 +33,14 @@ def _out(c: CallRecording, full: bool = True) -> dict:
         "done_at": c.done_at.isoformat() + "Z" if c.done_at else None,
         "title": c.title, "summary": c.summary, "insights": c.insights,
         "no_speech": c.error == NO_SPEECH_ERROR,
+        "source": c.source or "widget", "phone_number": c.phone_number, "direction": c.direction,
+        "started_at": c.started_at.isoformat() + "Z" if c.started_at else None,
+        "id_number": c.id_number,
+        "category": c.category, "category_label": category_label(c.category) if c.category else None,
     }
     if full:
         d.update(transcript_text=c.transcript_text, segments=c.segments or [])
     return d
-
-
-def _gateway() -> str:
-    if not (settings.CALLS_ENABLED and settings.CALLS_GATEWAY_URL):
-        raise HTTPException(503, "שירות השיחות עדיין לא הופעל")
-    return settings.CALLS_GATEWAY_URL.rstrip("/")
 
 
 async def _own(db: AsyncSession, user: User, call_id: str) -> CallRecording:
@@ -74,45 +67,7 @@ async def upload_call(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    gateway = _gateway()
-    mime = (audio.content_type or "").split(";")[0].strip().lower()
-    ext = _EXT.get(mime)
-    if not ext:
-        raise HTTPException(415, "פורמט הקלטה לא נתמך")
-
-    call = CallRecording(user_id=user.id, status="uploaded", mime_type=mime,
-                         duration_s=duration_s if duration_s and duration_s > 0 else None)
-    db.add(call)
-    await db.commit()
-    await db.refresh(call)
-
-    size = 0
-
-    async def body():
-        nonlocal size
-        while chunk := await audio.read(1024 * 1024):
-            size += len(chunk)
-            if size > settings.CALLS_MAX_BYTES:
-                raise HTTPException(413, "ההקלטה ארוכה מדי")
-            yield chunk
-
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=10)) as http:
-            resp = await http.post(f"{gateway}/ingest/{call.id}", params={"ext": ext}, content=body(),
-                                   headers={C.SECRET_HEADER: settings.CALLS_SECRET,
-                                            "Content-Type": "application/octet-stream"})
-            resp.raise_for_status()
-    except HTTPException as e:
-        call.status, call.error = "failed", str(e.detail)
-        await db.commit()
-        raise
-    except Exception:
-        call.status, call.error = "failed", "שרת ההקלטות לא זמין — נסו שוב בעוד רגע"
-        await db.commit()
-        raise HTTPException(502, call.error)
-
-    call.status, call.audio_bytes = "queued", size
-    await db.commit()
+    call = await ingest_call(db, user, upload_chunks(audio), audio.content_type or "", duration_s)
     return _out(call)
 
 
@@ -167,6 +122,31 @@ async def dismiss_followup(call_id: str, user: User = Depends(get_current_user),
     call.insights = ins
     await db.commit()
     return {"ok": True}
+
+
+class TaskIn(BaseModel):
+    done: bool = True
+
+
+@router.post("/{call_id}/tasks/{index}")
+async def set_task_done(call_id: str, index: int, body: TaskIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_db)):
+    """Tick a call's task — on the server, so Nifra Agent knows what is still open."""
+    call = await _own(db, user, call_id)
+    call.insights = set_task(call.insights, index, body.done)
+    await db.commit()
+    return {"ok": True, "action_items": call.insights.get("action_items")}
+
+
+def set_task(insights: dict | None, index: int, done: bool) -> dict:
+    ins = dict(insights or {})
+    items = [dict(a) for a in ins.get("action_items") or []]
+    if not 0 <= index < len(items):
+        raise HTTPException(404, "אין משימה כזו")
+    items[index]["done"] = done
+    items[index]["done_at"] = datetime.utcnow().isoformat() + "Z" if done else None
+    ins["action_items"] = items
+    return ins
 
 
 @router.delete("/{call_id}")

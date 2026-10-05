@@ -40,6 +40,55 @@ MODEL_PARAMS = {
 MAX_HOPS = 4
 MAX_TOKENS = 4000
 HOLD = 120                                  # chars held per hop before streaming (drops pre-tool filler)
+
+
+class TagScrub:
+    """Drops tool-call markup a model sometimes writes as TEXT ("<invoke name=…><parameter…>…</invoke>")
+    — it reached the agent's screen raw (agent-world suite, 2026-10-05). Streaming-safe: a chunk that
+    ends inside a possible tag is held until the tag is decided."""
+    OPEN = ("<invoke", "<function_calls", "<invoke", "<function_calls")
+    STRAY = ("</invoke", "</function_calls", "<parameter", "</parameter", "</", "<parameter")
+    CLOSE = ("</invoke>", "</function_calls>", "</invoke>", "</function_calls>")
+
+    def __init__(self):
+        self.buf, self.skip = "", False
+
+    def feed(self, s: str) -> str:
+        self.buf += s
+        out = ""
+        while self.buf:
+            if self.skip:
+                ends = [(self.buf.find(c), c) for c in self.CLOSE if c in self.buf]
+                if not ends:
+                    self.buf = self.buf[-30:]
+                    return out
+                i, c = min(ends)
+                self.buf, self.skip = self.buf[i + len(c):], False
+                continue
+            i = self.buf.find("<")
+            if i < 0:
+                out, self.buf = out + self.buf, ""
+                break
+            out += self.buf[:i]
+            rest = self.buf[i:]
+            if rest.startswith(self.OPEN):
+                self.buf, self.skip = rest, True
+            elif rest.startswith(self.STRAY):
+                j = rest.find(">")
+                if j < 0:
+                    self.buf = rest
+                    return out
+                self.buf = rest[j + 1:]
+            elif len(rest) < 24 and any(t.startswith(rest) for t in self.OPEN + self.STRAY):
+                self.buf = rest            # maybe the start of a tag — wait for more
+                return out
+            else:
+                out, self.buf = out + "<", rest[1:]
+        return out
+
+    def flush(self) -> str:
+        out, self.buf = ("" if self.skip else self.buf), ""
+        return out
 RATE_PER_HOUR = 60                          # questions per agent per hour (DB-backed)
 ANSWER_TTL = 600
 HE_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
@@ -54,6 +103,15 @@ FOLLOW_UP = re.compile(r"^(?:ו|ומה|ומי|וכמה|ושל|ול|גם|ו?תפ�
 def standalone(question: str) -> bool:
     q = " ".join((question or "").split())
     return bool(q) and not FOLLOW_UP.search(q)
+
+
+TOOL_NAME = re.compile(r"`?\b(?:get|find|top|list|propose|render|compare|open|maslaka|customer|calls|start|stop|mark|"
+                       r"search|market|fund|remember|open)_[a-z_]+\b`?")
+
+
+def _clean(text: str) -> str:
+    """Strip internal tool names the model sometimes echoes ("…עם find_customer")."""
+    return TOOL_NAME.sub("", text) if "_" in text else text
 
 
 def _norm_q(q: str) -> str:
@@ -120,7 +178,21 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
             return
 
     # 2) fast lane
+    # A question that NAMES one of the agent's customers ("כמה לא שולם לעומר עמר") is about
+    # that person — never an instant all-book answer that happens to share a keyword.
+    from app.services.agent.prefetch import named_customer
+    try:
+        ctx.named_customer = await named_customer(ctx, question)
+        if not ctx.named_customer and history and not standalone(question):
+            # "ומה יש לו בכלל?" — the pronoun points at the customer named one turn earlier
+            prev = next((t.get("text") or t.get("content") or "" for t in reversed(history)
+                         if t.get("role") not in ("agent", "assistant")), "")
+            ctx.named_customer = await named_customer(ctx, prev)
+    except Exception:  # noqa: BLE001 — name detection must never break the answer
+        ctx.named_customer = None
     r = router.route(question) if (allow_fast and fresh) else None
+    if r and ctx.named_customer and r.intent not in ("customer_name", "customer", "record_call", "stop_call"):
+        r = None        # e.g. "unpaid" matched a keyword, but the question is about ONE named customer
     if r:
         try:
             t = registry.get(r.tool)
@@ -160,7 +232,8 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
         events.append(ev)
         yield ev
     if not ctx.vizs and not ctx.proposals:
-        auto = _auto_chart(ctx)
+        auto = _auto_chart(ctx, wants_table=bool(re.search(r"טבל", question)),
+                           wants_holdings=bool(re.search(r"(?:אילו|איזה|אלו)\s+מוצר|מה יש ל|מוצרים יש", question)))
         if auto:
             ctx.vizs.append(auto)
     for v in ctx.vizs:
@@ -199,9 +272,14 @@ async def _agent(ctx: ToolContext, question: str, history, mentions, usage: dict
         q += "\n(ענה בטקסט רגיל בלבד — בלי Markdown, בלי כוכביות ובלי כותרות; רשימה רק עם מקפים פשוטים.)"
     if view_context:
         q += "\nמה שהסוכן רואה עכשיו על המסך (הקשר בלבד, המספרים בכלים):\n" + view_context[:4000]
+    # a short company-switch follow-up ("ועם הפניקס?") = the previous question about the new company
+    from app.services.agent.router import followup_question
+    same_as = followup_question(question, history)
+    if same_as:
+        q += f"\n(שאלת המשך — הכוונה: «{same_as}»)"
     # prefetch the obvious tools so the model can answer in ONE call (prefetch.py)
     from app.services.agent.prefetch import run_prefetch
-    async for ev in run_prefetch(ctx, question):
+    async for ev in run_prefetch(ctx, same_as or question):
         yield ev
     if ctx.prefetched:
         q += ("\n\nנתונים שכבר נשלפו בשבילך מהכלים (מספרים אמיתיים — ענה מהם ישירות; קרא לכלי נוסף רק אם חסר משהו):\n"
@@ -213,6 +291,7 @@ async def _agent(ctx: ToolContext, question: str, history, mentions, usage: dict
     ctx.allow_actions = wants_action(question, history)
     tools = registry.anthropic_tools()
     model = MODEL
+    said = False                               # any answer text emitted yet (across steps)
     for hop in range(MAX_HOPS):
         kwargs = dict(
             model=model, max_tokens=MAX_TOKENS, system=prompt.system_blocks(), tools=tools, messages=messages,
@@ -224,27 +303,37 @@ async def _agent(ctx: ToolContext, question: str, history, mentions, usage: dict
                 # Hold the first words of each hop: a short "אבדוק…" before a tool call is
                 # filler (the status chip already says what's happening) — drop it. Real
                 # answers pass HOLD chars quickly and then stream normally.
-                held, flushed = "", False
+                held, flushed = ("\n\n" if said else ""), False   # a later step starts on its own line
+                scrub = TagScrub()
                 ttft = None
                 async for event in stream:
                     if ttft is None and event.type in ("text", "content_block_start", "thinking"):
                         ttft = time.monotonic() - th
                     if event.type == "content_block_start" and getattr(event.content_block, "type", "") == "tool_use":
-                        held = "" if not flushed else held
+                        held = ("\n\n" if said else "") if not flushed else held
                         t = registry.get(event.content_block.name)
                         yield {"status": t.status_he if t else "עובד"}
                     elif event.type == "text":
+                        piece = scrub.feed(event.text)
+                        if not piece:
+                            continue
+                        said = True
                         if flushed:
-                            yield {"text": event.text}
+                            yield {"text": _clean(piece)}
                         else:
-                            held += event.text
+                            held += piece
                             if len(held) > HOLD:
                                 flushed = True
-                                yield {"text": held}
+                                yield {"text": _clean(held)}
                                 held = ""
                 msg = await stream.get_final_message()
-                if held and msg.stop_reason != "tool_use":
-                    yield {"text": held}
+                tail = scrub.flush()
+                if flushed and tail.strip():
+                    yield {"text": _clean(tail)}
+                else:
+                    held += tail
+                if held.strip() and msg.stop_reason != "tool_use":
+                    yield {"text": _clean(held)}
         except anthropic.NotFoundError:
             if model == MODEL:
                 model = FALLBACK_MODEL
@@ -304,14 +393,24 @@ def proposal_line(p: dict, own_email: str = "") -> str:
 _MONTH = re.compile(r"^\d{4}-\d{2}$|^\d{2}/\d{2,4}$")
 
 
-def _auto_chart(ctx):
+def _auto_chart(ctx, wants_table: bool = False, wants_holdings: bool = False):
     """The model answered with a ranking/trend but skipped render_chart — draw the LAST
-    kept result when it's chartable (≥3 rows with values). Same payload as render_chart."""
-    from app.services.agent.tools_viz import build_viz
+    kept result when it's chartable (≥3 rows with values). Same payload as render_chart.
+    The agent asked for a TABLE ("טבלה") → the last kept table instead."""
+    from app.services.agent.tools_viz import build_table, build_viz
+    if wants_holdings and not wants_table:            # "what do they hold" → the visual matrix
+        for kept in reversed(list(ctx.results.values())):
+            if kept.get("matrix") and kept["matrix"].get("rows"):
+                return build_viz(kept, "matrix")
+    if wants_table or wants_holdings:
+        for kept in reversed(list(ctx.results.values())):
+            t = build_table(kept)
+            if t and t["rows"]:
+                return t
     for kept in reversed(list(ctx.results.values())):
         rows = [r for r in kept["rows"] if isinstance(r.get("value"), (int, float))]
-        if len(rows) < 3 or not any(r["value"] for r in rows):
+        if len(rows) < (2 if kept.get("chart") == "donut" else 3) or not any(r["value"] for r in rows):
             continue
         months = all(_MONTH.match(str(r.get("label", ""))) for r in rows)
-        return build_viz(kept, "trend" if months else "bar")
+        return build_viz(kept, kept.get("chart") or ("trend" if months else "bar"))
     return None

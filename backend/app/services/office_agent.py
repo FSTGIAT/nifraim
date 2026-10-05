@@ -45,7 +45,7 @@ CATEGORY_LABEL = {
 }
 # lower = more urgent
 PRIORITY = {
-    ("call", "followup"): 0.5,
+    ("promise", "overdue"): 0.4, ("call", "followup"): 0.5, ("promise", "today"): 0.6,
     ("unpaid", "read"): 0, ("mail", "customer_question"): 1, ("unpaid", "remind"): 2,
     ("mail", "commission_reply"): 3, ("unpaid", "approve"): 4, ("mail", "report_file"): 5,
     ("unpaid", "contact"): 6, ("mail", "other"): 7, ("mail", "info"): 8, ("unpaid", "wait"): 9,
@@ -121,7 +121,7 @@ def call_card(call, customer: dict, followup: dict, now: datetime) -> dict:
     return {
         "id": f"call:{call.id}", "kind": "call", "ref": str(call.id), "sub": "followup",
         "priority": PRIORITY[("call", "followup")],
-        "title": f"סיכום הפגישה בשעה {at}" if at else "סיכום פגישה",
+        "title": f"סיכום השיחה בשעה {at}" if at else "סיכום שיחה",
         "text": (call.insights or {}).get("tldr") or call.title or "סיכום השיחה מוכן",
         "meta": " · ".join(x for x in (who, call.title, _ago(call.done_at, now)) if x),
         "at": at, "call_title": call.title,
@@ -148,6 +148,34 @@ async def _call_cards(db: AsyncSession, user: User, naive: datetime) -> list[dic
     return out
 
 
+async def _promise_cards(db: AsyncSession, user: User) -> list[dict]:
+    """A promise the AGENT made on a call whose date has come ("אשלח השוואה עד יום חמישי")
+    and isn't ticked — one card each, with ONE action: mark it done."""
+    from app.models.call_recording import CallRecording
+    from app.services.agent.tools_calls import promises
+    rows = (await db.execute(
+        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done",
+                                    CallRecording.created_at >= datetime.utcnow() - timedelta(days=60))
+        .order_by(CallRecording.created_at.desc()).limit(200)
+    )).scalars().all()
+    out = []
+    for p in promises(rows, "agent"):
+        if not p["due_date"] or p["due_date"] > datetime.now(IL).date().isoformat():
+            continue
+        late = p["overdue_days"]
+        out.append({
+            "id": f"promise:{p['call_id']}:{p['task_index']}", "kind": "promise", "ref": p["call_id"],
+            "sub": "overdue" if late else "today", "priority": PRIORITY[("promise", "overdue" if late else "today")],
+            "task_index": p["task_index"], "to_name": p["customer"] or "",
+            "title": p["text"],                                   # the promise itself leads
+            "text": " · ".join(x for x in (f"ל{p['customer']}" if p["customer"] else "", p["call_title"]) if x) or "מהשיחה",
+            "meta": " · ".join(x for x in (f"עבר המועד לפני {late} ימים" if late > 1 else "עבר המועד אתמול" if late == 1 else "המועד היום",
+                                           f"שיחה מ-{p['call_when'][:5]}" if p["call_when"] else "") if x),
+            "actions": ["task_done"],
+        })
+    return out[:5]
+
+
 async def brief(db: AsyncSession, user: User) -> dict:
     now = datetime.now(timezone.utc)
     naive = now.replace(tzinfo=None)
@@ -162,6 +190,7 @@ async def brief(db: AsyncSession, user: User) -> dict:
     cards = [mail_card(m, naive) for m in mails]
     cards += [unpaid_card(c) for c in coll["cases"] if c["status"] != "resolved"]
     cards += await _call_cards(db, user, naive)
+    cards += await _promise_cards(db, user)
     cards.sort(key=lambda c: c["priority"])
     todo = [c for c in cards if c["actions"]]
     if todo:
@@ -217,7 +246,17 @@ ASK_MODEL = "claude-sonnet-5"
 
 
 def _proposal_line(p: dict, own_email: str = "") -> str:
+    """One sentence about what was prepared. Every proposal kind — not only mail/meeting."""
     from app.services.agent_actions import when_he
+    kind = p.get("kind")
+    if kind == "call_task":
+        return f"הכנתי סימון כבוצע: «{p.get('text', '')}»" + (f" ({p['customer']})" if p.get("customer") else "") + ". מחכה לאישור שלך."
+    if kind == "collection":
+        return f"הכנתי פנייה ל{p.get('company', 'חברה')} על עמלות שלא שולמו. מחכה לאישור שלך."
+    if kind == "maslaka":
+        return f"הכנתי בקשה למסלקה עבור {p.get('customer_name') or p.get('customer_id_number', '')}. מחכה לאישור שלך."
+    if not p.get("to_email"):
+        return "הכנתי — מחכה לאישור שלך."
     if p["kind"] == "meeting" and own_email and p["to_email"].lower() == own_email.lower():
         return f"שמתי לך ביומן «{p['title']}» — {when_he(p['start'], p['duration_min'])}. מחכה לאישור שלך."
     who = p.get("to_name") or p["to_email"]
@@ -241,8 +280,8 @@ async def ask(db: AsyncSession, user: User, question: str, history: list[dict] |
 # Only an explicit ask to ACT unlocks the action tools. "אילו משימות פתוחות יש לי?"
 # kept turning into a drafted email because the tasks page shows a ready draft.
 ACTION_RE = re.compile(
-    r"(?:^|[\s,.@])(?:ו|ש)?(?:ת?שלח|ת?כין|הכן|ת?קבע|קבע|ת?זמן|ת?זכיר|תענה|ענה|ת?כתוב|כתוב|ת?זיז|תשנה|שנה|ת?אשר|להכין|לשלוח|לקבוע|ת?בקש|לבקש|תגיש|להגיש)"
-    r"|\b(?:send|email|mail|schedule|remind|draft|reply|book)\b",
+    r"(?:^|[\s,.@])(?:ו|ש)?(?:ת?שלח|ת?כין|הכן|ת?קבע|קבע|ת?זמן|ת?זכיר|תענה|ענה|ת?כתוב|כתוב|ת?זיז|תשנה|שנה|ת?אשר|להכין|לשלוח|לקבוע|ת?בקש|לבקש|תגיש|להגיש|ת?סמן|לסמן)"
+    r"|\b(?:send|email|mail|schedule|remind|draft|reply|book|mark)\b",
     re.IGNORECASE,
 )
 
@@ -424,6 +463,7 @@ ACTION_HE = {
     "done": "לסמן כטופל", "send_case": "לאשר ולשלוח את הפנייה לחברה", "set_email": "להוסיף מייל של איש קשר",
     "remind": "לשלוח תזכורת", "resolve": "לסמן כטופל",
     "send_followup": "לאשר ולשלוח ללקוח את סיכום השיחה שהכנתי (או להוסיף משהו)", "dismiss_followup": "לסמן כטופל",
+    "task_done": "לסמן שביצעת",
 }
 _brief_cache: dict = {}   # user_id -> (signature, payload)
 SETUP_MAIL = "setup:mail"   # a narration line whose action is "connect the mailbox"
@@ -477,10 +517,14 @@ async def narrate(db: AsyncSession, user: User) -> dict:
     call_lines = []
     for c in (c for c in cards if c["kind"] == "call"):
         who = f" עם {c['to_name']}" if c.get("to_name") else ""
-        call_lines.append({"text": f"הסיכום מהפגישה בשעה {c['at']}{who} מוכן — הכנתי לך סיכום שיחה ללקוח. "
+        call_lines.append({"text": f"הסיכום מהשיחה בשעה {c['at']}{who} מוכן — הכנתי לך סיכום שיחה ללקוח. "
                                    "לאשר שליחה, או שתרצה להוסיף משהו?", "ref": c["id"]})
-    if call_lines:
-        lines = (call_lines + [l for l in lines if not str(l.get("ref") or "").startswith("call:")])[:5]
+    # a promise whose date has come, also in fixed words — the customer and the task are facts
+    promise_lines = [{"text": f"הבטחת{' ל' + c['to_name'] if c.get('to_name') else ''}: {c['title']} — {c['meta'].split(' · ')[0]}.", "ref": c["id"]}
+                     for c in cards if c["kind"] == "promise"]
+    if call_lines or promise_lines:
+        fixed = (promise_lines[:2] + call_lines)[:5] if promise_lines else call_lines
+        lines = (fixed + [l for l in lines if not str(l.get("ref") or "").startswith(("call:", "promise:"))])[:5]
     if not connected:
         # a new agent (or one who never connected mail) — the first thing is the
         # mailbox: without it the agent can't read, answer or send anything

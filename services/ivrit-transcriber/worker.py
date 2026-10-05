@@ -15,6 +15,11 @@ SQS semantics on Redis Streams:
   * an idle job (crashed worker) is XAUTOCLAIMed after VISIBILITY_TIMEOUT_MS;
   * a job delivered more than MAX_DELIVERIES times goes to calls:dead and is failed.
 
+Speaker labels: after transcribing (word timestamps on) a pyannote pipeline finds who spoke
+when, and each segment gets "speaker": "S1"|"S2" (speakers.py). Diarization is an add-on:
+any failure logs and returns the unlabelled segments — it never fails a call. The default
+checkpoint is ivrit.ai's ungated mirror of pyannote 3.1 (no HF token). DIARIZE=0 turns it off.
+
 TRANSCRIBER_FAKE=1 skips the model and returns a canned Hebrew transcript (UI dev).
 """
 from __future__ import annotations
@@ -33,6 +38,7 @@ import httpx
 import redis.asyncio as aioredis
 
 import calls_contract as C
+from speakers import label_segments
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s ivrit %(message)s")
 log = logging.getLogger("ivrit")
@@ -46,6 +52,11 @@ CPU_THREADS = int(os.environ.get("CPU_THREADS", str(os.cpu_count() or 4)))
 COMPUTE_TYPE = os.environ.get("COMPUTE_TYPE", "int8")
 BEAM_SIZE = int(os.environ.get("BEAM_SIZE", "1"))   # greedy: ~2.2x faster than 5, identical text on our Hebrew sample (2026-10-02)
 FAKE = os.environ.get("TRANSCRIBER_FAKE", "0") == "1"
+DIARIZE = os.environ.get("DIARIZE", "1") == "1"
+DIARIZE_MODEL = os.environ.get("DIARIZE_MODEL", "ivrit-ai/pyannote-speaker-diarization-3.1")
+HF_TOKEN = os.environ.get("HF_TOKEN") or None
+# torch oversubscribes badly on many cores: a 34s call took 61s on 32 threads, 9s on 8 (2026-10-05)
+DIARIZE_THREADS = int(os.environ.get("DIARIZE_THREADS", str(min(8, CPU_THREADS))))
 CONSUMER = f"{socket.gethostname()}-{os.getpid()}"
 HEADERS = {C.SECRET_HEADER: SECRET}
 
@@ -69,6 +80,64 @@ def load_model():
     _model = WhisperModel(MODEL_ID, device="cpu", compute_type=COMPUTE_TYPE,
                           cpu_threads=CPU_THREADS, download_root=MODEL_DIR)
     log.info("model %s loaded in %.1fs (threads=%d, %s)", MODEL_ID, time.time() - t, CPU_THREADS, COMPUTE_TYPE)
+    if DIARIZE:
+        try:
+            load_diarizer()
+        except Exception:
+            log.exception("diarizer failed to load — transcripts will be unlabelled")
+
+
+# pyannote runs in its OWN process. torch's and CTranslate2's OpenMP runtimes in one process
+# spin against each other: whisper went 10x slower once torch was loaded, and diarization 6x
+# (measured 2026-10-05). A spawned child keeps them apart; a crashed child is respawned.
+_pool = None
+_child_pipeline = None
+
+
+def _child_init(model: str, token: str | None, threads: int) -> None:
+    global _child_pipeline
+    import torch
+    from pyannote.audio import Pipeline
+    torch.set_num_threads(threads)
+    _child_pipeline = Pipeline.from_pretrained(model, use_auth_token=token)
+
+
+def _child_diarize(wav: str) -> list[tuple[float, float, str]]:
+    if wav == "":
+        return []   # warm-up ping: the initializer already loaded the pipeline
+    import torchaudio
+    waveform, sr = torchaudio.load(wav)
+    ann = _child_pipeline({"waveform": waveform, "sample_rate": sr}, min_speakers=1, max_speakers=3)
+    return [(round(seg.start, 2), round(seg.end, 2), spk) for seg, _, spk in ann.itertracks(yield_label=True)]
+
+
+def load_diarizer():
+    global _pool
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    t = time.time()
+    _pool = ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn"), initializer=_child_init,
+                                initargs=(DIARIZE_MODEL, HF_TOKEN, DIARIZE_THREADS))
+    _pool.submit(_child_diarize, "").result(timeout=900)
+    log.info("diarizer %s loaded in %.1fs (own process, %d threads)", DIARIZE_MODEL, time.time() - t, DIARIZE_THREADS)
+
+
+def diarize(wav: Path) -> list[tuple[float, float, str]]:
+    """Speaker turns [(start, end, raw_label)]; [] when off/unavailable."""
+    global _pool
+    if _pool is None:
+        return []
+    from concurrent.futures.process import BrokenProcessPool
+    try:
+        return _pool.submit(_child_diarize, str(wav)).result(timeout=1800)
+    except BrokenProcessPool:
+        log.warning("diarizer process died — respawning")
+        _pool = None
+        try:
+            load_diarizer()
+        except Exception:
+            log.exception("diarizer respawn failed")
+        raise
 
 
 def probe_duration(path: Path) -> float | None:
@@ -100,10 +169,24 @@ def transcribe(wav: Path) -> dict:
             {"start": 4.2, "end": 9.8, "text": "בשמחה. ראיתי שדמי הניהול בקרן ההשתלמות עלו, אפשר לבדוק את זה?"},
             {"start": 9.8, "end": 15.0, "text": "בטח, אבדוק מול החברה ואחזור אלייך עד יום חמישי עם הצעה."},
         ]
-        return {"segments": segs, "language": "he", "duration_s": 15.0}
-    segments, info = _model.transcribe(str(wav), language="he", beam_size=BEAM_SIZE, vad_filter=True)
-    segs = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segments]
-    return {"segments": segs, "language": info.language, "duration_s": round(info.duration, 1)}
+        for i, sg in enumerate(segs):
+            sg["speaker"] = f"S{i % 2 + 1}"
+        return {"segments": segs, "language": "he", "duration_s": 15.0, "diarize_s": 0.0}
+    segments, info = _model.transcribe(str(wav), language="he", beam_size=BEAM_SIZE, vad_filter=True,
+                                       word_timestamps=True)
+    raw = [{"start": s.start, "end": s.end, "text": s.text.strip(),
+            "words": [{"start": w.start, "end": w.end, "word": w.word} for w in (s.words or [])]}
+           for s in segments]
+    plain = [{"start": round(s["start"], 2), "end": round(s["end"], 2), "text": s["text"]} for s in raw]
+    out = {"segments": plain, "language": info.language, "duration_s": round(info.duration, 1)}
+    if _pool is not None and plain:
+        t = time.time()
+        try:
+            out["segments"] = label_segments(raw, diarize(wav))
+        except Exception:
+            log.exception("diarization failed — keeping unlabelled segments")
+        out["diarize_s"] = round(time.time() - t, 1)
+    return out
 
 
 # ── job handling ─────────────────────────────────────────────────────────────
@@ -161,8 +244,8 @@ async def handle(r, http: httpx.AsyncClient, msg_id: str, fields: dict) -> None:
                         headers={**HEADERS, "Content-Type": "application/json"})).raise_for_status()
         await emit(r, call_id, C.EV_TRANSCRIBED, duration_s=duration, model=result["model"])
         await r.xack(C.JOBS_STREAM, C.TRANSCRIBER_GROUP, msg_id)
-        log.info("%s transcribed: %ss audio in %.1fs (rtf %s, %d segments)",
-                 call_id, duration, elapsed, result["rtf"], len(result["segments"]))
+        log.info("%s transcribed: %ss audio in %.1fs (rtf %s, %d segments, diarize %ss)",
+                 call_id, duration, elapsed, result["rtf"], len(result["segments"]), result.get("diarize_s"))
     except PermanentError as e:
         log.error("%s failed permanently: %s", call_id, e)
         await emit(r, call_id, C.EV_FAILED, error="לא הצלחנו לפענח את ההקלטה")

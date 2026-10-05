@@ -83,6 +83,83 @@
                   </div>
                 </li>
               </ol>
+
+              <!-- everything that waits, by AREA: a tile per area (count + one line); one opens at a time -->
+              <section v-if="briefDone && store.cards.length" class="na-inbox" aria-label="כל מה שמחכה לך">
+                <h3 class="na-inbox-title">כל מה שמחכה לך <span class="ltr-number">{{ store.cards.length }}</span></h3>
+                <div class="na-areas">
+                  <button v-for="(a, ai) in areas" :key="a.key" type="button" class="na-area" :class="{ 'is-on': openArea === a.key }" :style="{ '--i': ai }"
+                          :aria-expanded="openArea === a.key" @click="toggleArea(a.key)">
+                    <span class="na-area-icon" aria-hidden="true">
+                      <svg v-if="a.key === 'calls'" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>
+                      <svg v-else-if="a.key === 'unpaid'" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.1 10.4A6 6 0 1 1 10.3 18"/><path d="M7 6h1v4"/></svg>
+                      <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                    </span>
+                    <span class="na-area-text">
+                      <span class="na-area-name">{{ a.label }} <b class="ltr-number">{{ a.n }}</b></span>
+                      <span class="na-area-sub">{{ a.sub }}</span>
+                    </span>
+                    <svg class="na-area-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                </div>
+
+                <div class="na-fold" :class="{ 'is-open': !!openArea }">
+                  <div class="na-fold-inner">
+                  <div v-if="listArea" :key="listArea" class="na-area-list">
+                    <template v-for="g in groups" :key="g.key">
+                      <h4 class="na-group" :style="{ '--i': g.offset }">{{ g.label }} <span class="ltr-number">{{ g.cards.length }}</span></h4>
+                      <ul class="na-items">
+                        <li v-for="(c, ci) in g.cards.slice(0, g.shown)" :key="c.id" class="na-item" :class="{ 'is-open': openCard === c.id }" :style="{ '--i': g.offset + ci }">
+                          <div class="na-item-main">
+                            <div class="na-item-text">
+                              <strong class="na-item-title">{{ c.title }}</strong>
+                              <span class="na-item-sub">{{ c.text }}</span>
+                              <span v-if="c.meta" class="na-item-kind">{{ c.meta }}</span>
+                            </div>
+                            <div class="na-item-acts">
+                              <span v-if="sentNote['c:' + c.id]" class="na-sent">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                {{ sentNote['c:' + c.id] }}
+                              </span>
+                              <button v-if="primary(c)" type="button" class="na-link" :disabled="!!store.busy && c.kind === 'promise'" @click="rowPrimary(c, $event)">
+                                {{ openCard === c.id ? 'סגירה' : primary(c).label }}
+                              </button>
+                              <button v-if="hasFinish(c)" type="button" class="na-link na-link--quiet" :disabled="!!store.busy" @click="finish(c)">טופל</button>
+                            </div>
+                          </div>
+                          <Transition name="na-sheet">
+                            <div v-if="openCard === c.id" class="na-sheet">
+                              <template v-if="c.actions.includes('set_email')">
+                                <label class="na-sheet-label">המייל של איש הקשר ב{{ c.title }}</label>
+                                <div class="na-row">
+                                  <input v-model.trim="email" type="email" dir="ltr" placeholder="name@insurer.co.il" @keydown.enter="saveEmail(c)" />
+                                  <button type="button" class="na-go" :disabled="!email || !!store.busy" @click="saveEmail(c)">שמירה</button>
+                                </div>
+                              </template>
+                              <template v-else-if="c.draft_body && isSend(c)">
+                                <label class="na-sheet-label">{{ c.kind === 'unpaid' ? `הפנייה לחברה · ${c.policies} פוליסות` : 'התשובה שהכנתי' }}</label>
+                                <textarea v-model="body" rows="7"></textarea>
+                                <div class="na-row">
+                                  <button type="button" class="na-go" :disabled="!canSend || !!store.busy" @click="sendIt(c)">{{ store.busy ? 'שולח…' : 'אישור ושליחה' }}</button>
+                                  <span v-if="!canSend" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                                </div>
+                              </template>
+                              <div v-else class="na-row">
+                                <button type="button" class="na-go" :disabled="!!store.busy" @click="runPrimary(c)">{{ primary(c).label }}</button>
+                              </div>
+                              <p v-if="store.error" class="na-err">{{ store.error }}</p>
+                            </div>
+                          </Transition>
+                        </li>
+                      </ul>
+                      <button v-if="g.cards.length > g.shown" type="button" class="na-more" @click="more[g.key] = (more[g.key] || 0) + 5">
+                        עוד <span class="ltr-number">{{ g.cards.length - g.shown }}</span>
+                      </button>
+                    </template>
+                  </div>
+                  </div>
+                </div>
+              </section>
               </div>
             </template>
             <p v-else class="na-thinking" aria-label="כותב"><i></i><i></i><i></i></p>
@@ -92,10 +169,7 @@
               <AiStreamingText v-if="m.role === 'agent'" :text="m.text" :speed="7" :show-cursor="i === store.thread.length - 1" />
               <span v-else>{{ m.text }}</span>
               <AgentCallCard v-if="m.call" :call="m.call" :notify="store.notifyCall" />
-              <button v-if="m.vizs && m.vizs.length" type="button" class="na-link" @click="emit('open-vizs', m.vizs)">
-                {{ m.vizs.length > 1 ? `הצגת ${m.vizs.length} גרפים` : 'הצגת הגרף' }}
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
-              </button>
+              <InlineVizs v-if="m.vizs && m.vizs.length" :vizs="m.vizs" class="na-vizs" @open-legacy="(v) => emit('open-vizs', v)" />
               <!-- what the agent prepared: editable, sent only on approve -->
               <Transition name="na-sheet">
                 <div v-if="m.proposal && m.proposal.status !== 'dropped'" class="na-sheet na-prop" :class="{ 'is-sent': m.proposal.status === 'sent' }">
@@ -105,7 +179,7 @@
                       <strong>{{ propTitle(m.proposal) }}</strong>
                       <span v-if="m.proposal.status === 'sent'" class="na-sent">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                        {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : 'נשלח' }}
+                        {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : m.proposal.kind === 'call_task' ? 'סומן כבוצע' : 'נשלח' }}
                       </span>
                       <span v-else class="na-prop-sub">הכנתי — עברו, שנו מה שצריך ואשרו</span>
                     </div>
@@ -115,12 +189,15 @@
                       בקשת <b dir="ltr">{{ m.proposal.code }}</b> — {{ m.proposal.code_he }}
                       ל{{ m.proposal.customer_name || 'ת.ז ' + m.proposal.customer_id_number }}. התשובה מגיעה תוך שעות.
                     </p>
+                    <p v-else-if="m.proposal.kind === 'call_task'" class="na-prop-sum">
+                      לסמן כבוצע: <b>{{ m.proposal.text }}</b>{{ m.proposal.customer ? ' · ' + m.proposal.customer : '' }}
+                    </p>
                     <p v-else-if="m.proposal.kind === 'collection'" class="na-prop-sum">
                       {{ m.proposal.case_status === 'sent' ? 'תזכורת' : 'פנייה' }} ל{{ m.proposal.company }} על {{ m.proposal.customers }} לקוחות
                       · צפי <span class="ltr-number">₪{{ Number(m.proposal.expected || 0).toLocaleString('he-IL') }}</span>
                     </p>
-                    <label v-else class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
-                    <template v-if="m.proposal.kind === 'maslaka' || m.proposal.kind === 'collection'"></template>
+                    <label v-else-if="m.proposal.kind !== 'call_task'" class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
+                    <template v-if="m.proposal.kind === 'maslaka' || m.proposal.kind === 'collection' || m.proposal.kind === 'call_task'"></template>
                     <template v-else-if="m.proposal.kind === 'meeting'">
                       <label class="na-f"><span>נושא</span><input v-model="m.proposal.title" /></label>
                       <div class="na-f-row">
@@ -136,11 +213,11 @@
                     </template>
                   </fieldset>
                   <div v-if="m.proposal.status !== 'sent'" class="na-row">
-                    <button type="button" class="na-go" :disabled="(m.proposal.kind !== 'maslaka' && !canSend) || store.busy === 'act'" @click="store.approve(m)">
-                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : 'אישור ושליחה' }}
+                    <button type="button" class="na-go" :disabled="(!['maslaka', 'call_task'].includes(m.proposal.kind) && !canSend) || store.busy === 'act'" @click="store.approve(m)">
+                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : m.proposal.kind === 'call_task' ? 'אישור — בוצע' : 'אישור ושליחה' }}
                     </button>
                     <button type="button" class="na-link na-link--quiet" @click="m.proposal.status = 'dropped'">ביטול</button>
-                    <span v-if="!canSend && m.proposal.kind !== 'maslaka'" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                    <span v-if="!canSend && !['maslaka', 'call_task'].includes(m.proposal.kind)" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
                   </div>
                   <p v-if="store.error && i === store.thread.length - 1" class="na-err">{{ store.error }}</p>
                 </div>
@@ -199,6 +276,7 @@
 
 <script setup>
 import AgentCallCard from '../ai/AgentCallCard.vue'
+import InlineVizs from '../ai/InlineVizs.vue'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useOfficeAgentStore } from '../../stores/officeAgent.js'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
@@ -213,7 +291,7 @@ const props = defineProps({
   focusCard: { type: String, default: null }, // opened by itself on a call card → expand that line
 })
 const emit = defineEmits(['update:open', 'open-mail', 'open-vizs', 'open-call'])
-const propTitle = (p) => p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
+const propTitle = (p) => p.kind === 'call_task' ? 'משימה משיחה' : p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
 const store = useOfficeAgentStore()
 
 // sequential streaming: greeting → line 0 → line 1 …
@@ -252,6 +330,7 @@ const canSend = computed(() => !!store.brief?.mailbox?.can_send)
 const isSend = (c) => c.actions.includes('send_reply') || c.actions.includes('send_case')
 const hasFinish = (c) => c.actions.includes('done') || c.actions.includes('resolve') || c.actions.includes('dismiss_followup')
 function primary(c) {
+  if (c.actions.includes('task_done')) return { action: 'task_done', label: 'סימנתי שבוצע' }
   if (c.actions.includes('send_followup')) return { action: 'send_followup', label: 'לסיכום שהכנתי' }
   if (c.actions.includes('send_reply')) return { action: 'send_reply', label: 'לתשובה שהכנתי' }
   if (c.actions.includes('send_case')) return { action: 'send_case', label: 'לפנייה לחברה' }
@@ -271,6 +350,8 @@ const letter = ref(null) // { card, origin, i }
 function openLetter(i, c, origin) { letter.value = { card: c, origin: origin || null, i } }
 function onPrimary(i, c, ev) {
   if (c.kind === 'call') { openLetter(i, c, ev?.currentTarget); return }
+  // a call promise has one action and nothing to edit — tick it right here
+  if (c.kind === 'promise') { store.act(c, 'task_done').then((ok) => { if (ok) sentNote[i] = 'סומן כבוצע' }); return }
   toggle(i, c)
 }
 function toggle(i, c) {
@@ -280,11 +361,101 @@ function toggle(i, c) {
   store.error = ''
   store.errorCode = ''
 }
-async function saveEmail(c) { if (email.value && (await store.act(c, 'set_email', { email: email.value }))) openLine.value = -1 }
-async function runPrimary(c) { if (await store.act(c, primary(c).action)) openLine.value = -1 }
+function closeSheets() { openLine.value = -1; openCard.value = null }
+async function saveEmail(c) { if (email.value && (await store.act(c, 'set_email', { email: email.value }))) closeSheets() }
+async function runPrimary(c) { if (await store.act(c, primary(c).action)) closeSheets() }
+// approve the (edited) draft: a mail reply sends the text as edited; a company case saves the edit first
+async function sendIt(c) {
+  const action = primary(c).action
+  if (action === 'send_case' && body.value !== (c.draft_body || '') && !(await store.act(c, 'save_case_body', { body: body.value }))) return
+  if (await store.act(c, action, { body: body.value, subject: c.draft_subject })) closeSheets()
+}
 async function finish(c) {
   const action = c.actions.includes('dismiss_followup') ? 'dismiss_followup' : c.actions.includes('resolve') ? 'resolve' : 'done'
-  if (await store.act(c, action)) openLine.value = -1
+  if (await store.act(c, action)) closeSheets()
+}
+
+// ── everything that waits, by area ──
+const AREA = { call: 'calls', promise: 'calls', mail: 'mail', unpaid: 'unpaid' }
+const openArea = ref(null)
+const openCard = ref(null)
+const more = reactive({})
+const briefDone = computed(() => !!store.narration && step.value >= store.narration.lines.length)
+const ils = (n) => '₪' + Math.round(n || 0).toLocaleString('he-IL')
+const areas = computed(() => {
+  const by = { unpaid: [], calls: [], mail: [] }
+  for (const c of store.cards) if (AREA[c.kind]) by[AREA[c.kind]].push(c)
+  const late = by.calls.filter((c) => c.kind === 'promise' && c.sub === 'overdue').length
+  const toSend = by.calls.filter((c) => c.kind === 'call').length
+  const out = []
+  if (by.unpaid.length) {
+    const exp = store.brief?.unpaid?.expected
+    out.push({ key: 'unpaid', label: 'עמלות', n: by.unpaid.length,
+      sub: `${by.unpaid.length} חברות לגבייה` + (exp >= 1 ? ` · ${ils(exp)} צפי` : '') })
+  }
+  if (by.calls.length) {
+    out.push({ key: 'calls', label: 'שיחות', n: by.calls.length,
+      sub: [late && `${late} הבטחות באיחור`, toSend && `${toSend} סיכומים לשליחה`].filter(Boolean).join(' · ') || 'הבטחות להיום' })
+  }
+  if (by.mail.length) out.push({ key: 'mail', label: 'מיילים', n: by.mail.length, sub: `${by.mail.length} מחכים לטיפול` })
+  return out
+})
+// inside an open area: small named groups, 3 shown, "עוד" adds 5
+const groups = computed(() => {
+  const area = listArea.value
+  const mine = store.cards.filter((c) => AREA[c.kind] === area)
+  const defs = area === 'calls'
+    ? [['late', 'הבטחות שעבר מועדן', (c) => c.kind === 'promise' && c.sub === 'overdue'],
+       ['today', 'הבטחות להיום', (c) => c.kind === 'promise' && c.sub !== 'overdue'],
+       ['send', 'סיכומים מוכנים לשליחה ללקוח', (c) => c.kind === 'call']]
+    : area === 'unpaid' ? [['unpaid', 'חברות שלא שילמו', () => true]]
+    : [['mail', 'מיילים שמחכים לך', () => true]]
+  let offset = 0
+  return defs.map(([key, label, f]) => ({ key, label, cards: mine.filter(f), shown: 3 + (more[key] || 0) }))
+    .filter((g) => g.cards.length)
+    .map((g) => { const o = { ...g, offset }; offset += Math.min(g.cards.length, g.shown) + 1; return o })
+})
+// the list stays mounted while it folds shut, then empties
+const listArea = ref(null)
+let foldTimer = 0
+watch(openArea, (k) => {
+  clearTimeout(foldTimer)
+  if (k) listArea.value = k
+  else foldTimer = setTimeout(() => { listArea.value = null }, 650)
+})
+function toggleArea(k) {
+  openArea.value = openArea.value === k ? null : k
+  openCard.value = null
+  // glide the feed so the tiles rise to the top WHILE the list unfolds under them — the fold
+  // grows over 0.6s, so the scroll target is re-read each frame (it isn't reachable at once)
+  if (openArea.value) nextTick(() => glideTo(() => feedEl.value?.querySelector('.na-inbox')?.offsetTop - 12))
+}
+function glideTo(target, ms = 750) {
+  const feed = feedEl.value
+  if (!feed) return
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setTimeout(() => { feed.scrollTop = target() || 0 }, 650); return }
+  const from = feed.scrollTop
+  const t0 = performance.now()
+  const ease = (x) => 1 - Math.pow(1 - x, 3)
+  const tick = (now) => {
+    const k = Math.min(1, (now - t0) / ms)
+    const to = Math.min(target() || 0, feed.scrollHeight - feed.clientHeight)
+    feed.scrollTop = from + (to - from) * ease(k)
+    if (k < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+watch(areas, (a) => { if (openArea.value && !a.some((x) => x.key === openArea.value)) openArea.value = null })
+function rowPrimary(c, ev) {
+  if (c.kind === 'call') { openLetter('c:' + c.id, c, ev?.currentTarget); return }
+  if (c.kind === 'promise') { store.act(c, 'task_done').then((ok) => { if (ok) sentNote['c:' + c.id] = 'סומן כבוצע' }); return }
+  if (openCard.value === c.id) { openCard.value = null; return }
+  openLine.value = -1
+  openCard.value = c.id
+  body.value = c.draft_body || ''
+  email.value = c.to_email || ''
+  store.error = ''
+  store.errorCode = ''
 }
 
 // opened by itself on a call card: once that line has been written, expand it
@@ -469,7 +640,8 @@ async function close() {
 .na-status i { width: 7px; height: 7px; border-radius: 50%; background: #1DB39E; box-shadow: 0 0 0 4px rgba(29, 179, 158, 0.18); animation: naPulse 2s ease-in-out infinite; }
 @keyframes naPulse { 50% { box-shadow: 0 0 0 7px rgba(29, 179, 158, 0.04); } }
 
-.na-feed { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding: 8px clamp(20px, 7vw, 72px) 18px; }
+.na-feed { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding: 8px clamp(20px, 7vw, 72px) 18px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 28px); mask-image: linear-gradient(to bottom, transparent 0, #000 28px); }
 .na-greeting { margin: 12px 0 16px; font-size: clamp(26px, 3.2vw, 34px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.2; }
 .na-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .na-line { display: flex; gap: 12px; align-items: flex-start; animation: naIn 0.35s ease both; transition: opacity 0.3s ease; }
@@ -509,17 +681,62 @@ async function close() {
 .na-hint--calm { margin: 0; color: #4A5B5A; }
 .na-link--plain { background: none; color: #0A6664; text-decoration: underline; text-underline-offset: 3px; font-weight: 700; }
 .na-link--plain:hover { background: rgba(14, 140, 138, 0.08); }
+/* the full list */
+.na-inbox { margin-top: 28px; padding-top: 18px; border-top: 1px solid rgba(14, 140, 138, 0.14); animation: naIn 0.4s ease both; }
+.na-inbox-title { margin: 0 0 10px; font-size: 15px; font-weight: 800; color: #10201F; display: flex; align-items: baseline; gap: 8px; }
+.na-inbox-title span { font-size: 13px; font-weight: 700; color: #0A6664; }
+.na-areas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.na-area { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: none; border-radius: 14px; cursor: pointer;
+  font-family: inherit; text-align: start; color: #10201F; background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(16, 32, 31, 0.06); transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease; }
+.na-area:hover { background: rgba(255, 255, 255, 0.92); transform: translateY(-1px); }
+.na-area.is-on { background: #fff; box-shadow: inset 0 0 0 1.5px #0E8C8A; }
+.na-area-icon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #0A6664; background: rgba(14, 140, 138, 0.1); }
+.na-area-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.na-area-name { font-size: 15px; font-weight: 800; }
+.na-area-name b { font-weight: 800; color: #0A6664; margin-inline-start: 4px; }
+.na-area-sub { font-size: 12.5px; color: #4A5B5A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.na-area-chev { flex-shrink: 0; color: #6B7A79; transition: transform 0.25s ease; }
+.na-area.is-on .na-area-chev { transform: rotate(180deg); }
+.na-area-list { padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+/* silky: tiles rise in one after another; an area's list unfolds (grid rows 0fr → 1fr) and its
+   rows follow in a cascade; folding back is the same curve, reversed */
+.na-area { animation: naRise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 90ms + 80ms); }
+.na-fold { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease; }
+.na-fold.is-open { grid-template-rows: 1fr; opacity: 1; }
+.na-fold-inner { min-height: 0; overflow: hidden; }
+.na-fold.is-open .na-item, .na-fold.is-open .na-group, .na-fold.is-open .na-more {
+  animation: naRise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--i, 0) * 55ms + 120ms); }
+@keyframes naRise { from { opacity: 0; transform: translateY(14px) scale(0.985); } }
+.na-area-chev { transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) !important; }
+.na-group { margin: 6px 0 0; font-size: 13px; font-weight: 800; color: #4A5B5A; display: flex; gap: 6px; }
+.na-group span { color: #6B7A79; font-weight: 700; }
+.na-more { align-self: flex-start; border: none; background: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 800;
+  color: #0A6664; padding: 2px 4px; text-decoration: underline; text-underline-offset: 3px; }
+.na-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.na-item { border-radius: 14px; background: rgba(255, 255, 255, 0.72); box-shadow: inset 0 0 0 1px rgba(16, 32, 31, 0.06); padding: 12px 14px; }
+.na-item.is-open { background: rgba(255, 255, 255, 0.9); }
+.na-item-main { display: flex; align-items: center; gap: 12px; }
+.na-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.na-item-kind { font-size: 12px; font-weight: 600; color: #6B7A79; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.na-item-title { font-size: 15px; font-weight: 800; color: #10201F; line-height: 1.35; }
+.na-item-sub { font-size: 13.5px; color: #3E4F4E; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.na-item-acts { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.na-item-acts .na-link { margin: 0; }
+@media (max-width: 560px) { .na-item-main { flex-direction: column; align-items: stretch; } .na-item-acts { justify-content: flex-start; } }
 .na-sent--line { display: inline-flex; margin-inline-start: 10px; animation: naIn 0.4s ease both; }
 .na-err .na-link { margin-inline-start: 8px; }
 .na-err { margin: 0; font-size: 13px; font-weight: 700; color: #C23934; }
-.na-sheet-enter-active, .na-sheet-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-4px); }
+.na-sheet-enter-active { transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+.na-sheet-leave-active { transition: opacity 0.25s ease, transform 0.3s ease; }
+.na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-8px); }
 
 .na-prop { margin-top: 12px; }
 .na-prop-head { display: flex; align-items: center; gap: 14px; padding-bottom: 4px; }
 .na-prop-titles { display: flex; flex-direction: column; gap: 2px; }
 .na-prop-titles strong { color: #10201F; font-size: 17px; font-weight: 900; letter-spacing: -0.02em; }
 .na-prop-sub { font-size: 13px; color: #4A5B5A; animation: naIn .4s ease 1.2s both; }
+.na-vizs { --viz-accent: var(--tab-automation, #0E8C8A); }   /* Nifra Agent's own colour */
 .na-prop-sum { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-primary, #181818); }
 .na-prop-sum b { font-weight: 800; }
 .na-sent { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 800; color: #1E7D4A; animation: naIn .4s ease 1.3s both; }
@@ -596,6 +813,7 @@ async function close() {
   .na-line-body { font-size: 15.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .na-aurora i, .na-halo, .na-status i, .na-line, .na-link, .na-orb-wrap::before { animation: none; }
+  .na-aurora i, .na-halo, .na-status i, .na-line, .na-link, .na-orb-wrap::before, .na-area, .na-fold .na-item, .na-fold .na-group, .na-fold .na-more { animation: none !important; }
+  .na-fold, .na-area-chev { transition: none !important; }
 }
 </style>

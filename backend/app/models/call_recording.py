@@ -42,3 +42,11 @@ class CallRecording(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     transcribed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # where the audio came from: widget (browser) | phone_android | phone_ios
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="widget", server_default="widget")
+    phone_number: Mapped[str | None] = mapped_column(String(30), nullable=True)   # normalised 0XXXXXXXXX
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)       # in | out
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    id_number: Mapped[str | None] = mapped_column(String(20), nullable=True)      # customer matched by phone
+    source_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)     # device file id — dedupes re-uploads
+    category: Mapped[str | None] = mapped_column(String(24), nullable=True)       # services/calls/categories.py

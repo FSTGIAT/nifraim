@@ -135,6 +135,7 @@
                     <li><strong>הדביקו את הכתובת</strong> — פתחו את האפליקציה, הדביקו את הכתובת שהעתקתם, ושמרו.</li>
                     <li><strong>אשרו הרשאות</strong> — אשרו הרשאת קריאת SMS וכבו אופטימיזציית סוללה (כפתורים באפליקציה).</li>
                     <li><strong>זהו</strong> — כל SMS עם קוד מהפורטל יועבר אלינו אוטומטית, מיד.</li>
+                    <li><strong>שיחות (לא חובה)</strong> — הפעילו באפליקציה את <strong>שיחות עם לקוחות</strong> ואת ההקלטה האוטומטית בחייגן. שיחה עם לקוח עולה לבד ומקבלת סיכום.</li>
                   </ol>
 
                   <!-- iPhone Shortcuts wiring -->
@@ -147,6 +148,21 @@
                     <li>פתחו את החצים: Method = <strong>POST</strong>, Request Body = <strong>JSON</strong>.</li>
                     <li>Add field ← Key = <code>message</code>, Value = <strong>Shortcut Input</strong> ← Done.</li>
                   </ol>
+
+                  <!-- iPhone: recorded calls (iOS 18.1+ saves them in Notes) — one tap via the Share sheet -->
+                  <div v-if="osTab !== 'android'" class="pf-ios-calls">
+                    <div class="pf-ios-calls-title">שיחות מוקלטות (iOS 18 ומעלה)</div>
+                    <p class="pf-ios-calls-desc">אייפון שומר הקלטת שיחה באפליקציית Notes. קיצור אחד מוסיף לתפריט השיתוף את <strong>שלח לנפרעים</strong>, ומשם השיחה מגיעה לסיכום.</p>
+                    <ol class="pf-steps pf-steps--tight">
+                      <li>ב-<strong>Shortcuts</strong> הקישו <strong>+</strong> ← קראו לקיצור <strong>שלח לנפרעים</strong>.</li>
+                      <li>בהגדרות הקיצור הפעילו <strong>Show in Share Sheet</strong> וסוג קלט <strong>Media / Files</strong>.</li>
+                      <li>הוסיפו פעולה <strong>Get Contents of URL</strong> והדביקו: <code class="ltr-number">{{ callUrl }}</code></li>
+                      <li>Method = <strong>POST</strong>, Request Body = <strong>Form</strong>.</li>
+                      <li>Add field ← <strong>File</strong>: Key = <code>audio</code>, Value = <strong>Shortcut Input</strong>.</li>
+                      <li>Add field ← <strong>Text</strong>: Key = <code>source</code>, Value = <code>phone_ios</code>.</li>
+                      <li>אחרי שיחה: Notes ← ההקלטה ← שיתוף ← <strong>שלח לנפרעים</strong>.</li>
+                    </ol>
+                  </div>
 
                   <button class="pf-linkbtn pf-linkbtn--danger" @click="confirmRegenOpen = true">החלף מפתח אבטחה</button>
                 </div>
@@ -272,6 +288,8 @@ const testing = ref(false)
 const testResult = ref(null)
 const confirmRegenOpen = ref(false)
 const configured = computed(() => !!store.phoneForward?.token)
+// iPhone Share-sheet shortcut posts recorded calls here (api/portal_automation.py phone_forward_call)
+const callUrl = computed(() => (store.phoneForward?.url || '').replace(/\/+$/, '') + '/call')
 
 // ── Wizard steps (colored like the welcome wizard: install→connect→done) ──
 const STEPS = [
@@ -550,6 +568,10 @@ async function onTest() {
   gap: 10px;
 }
 .pf-steps--tight { gap: 7px; }
+.pf-ios-calls { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle, #E5E5E5); }
+.pf-ios-calls-title { font-size: 14px; font-weight: 700; color: var(--text-primary, #181818); margin-bottom: 4px; }
+.pf-ios-calls-desc { margin: 0 0 8px; font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.55; }
+.pf-ios-calls code.ltr-number { direction: ltr; unicode-bidi: embed; word-break: break-all; }
 .pf-steps li {
   counter-increment: pf;
   position: relative;

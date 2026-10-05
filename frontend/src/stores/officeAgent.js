@@ -100,6 +100,7 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
         to_email: payload.to_email, to_name: payload.to_name || '', subject: payload.subject, body: payload.body,
       })
       else if (action === 'dismiss_followup') await api.post(`/calls/${ref_}/followup/dismiss`)
+      else if (action === 'task_done') await api.post(`/calls/${ref_}/tasks/${card.task_index}`, { done: true })
       await load()
       return true
     } catch (e) {

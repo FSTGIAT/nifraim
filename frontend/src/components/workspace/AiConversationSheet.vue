@@ -75,6 +75,7 @@
               />
               <div v-else class="ai-msg-content">{{ msg.content }}</div>
               <AgentCallCard v-if="msg.call" :call="msg.call" :notify="chatStore.notifyCall" />
+              <InlineVizs v-if="msg.role === 'assistant' && msg.vizs && msg.vizs.length" :vizs="msg.vizs" @open-legacy="(v) => emit('latest-vizs', v)" />
               <span
                 v-if="msg.role === 'assistant' && chatStore.loading && i === chatStore.messages.length - 1 && !msg.content"
                 class="ai-typing"
@@ -165,6 +166,7 @@
 
 <script setup>
 import AgentCallCard from '../ai/AgentCallCard.vue'
+import InlineVizs from '../ai/InlineVizs.vue'
 import Avatar from '../Avatar.vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { seedFor } from '../../utils/avatarSeed.js'
@@ -289,10 +291,7 @@ const latestVizs = computed(() => {
   }
   return null
 })
-watch(latestVizs, (v) => {
-  emit('latest-vizs', v)
-  emit('latest-viz', v ? v[v.length - 1] : null)
-}, { deep: false })
+// charts render inline (InlineVizs); only legacy types reach the panel, via @open-legacy
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEscape)

@@ -59,6 +59,8 @@ async def act(body: ActIn, db: AsyncSession = Depends(get_db), user: User = Depe
     from app.services.mail_intake.send import NoSendableMailbox
     if body.kind == "maslaka":
         return await _act_maslaka(db, user, body.data)
+    if body.kind == "call_task":
+        return await _act_call_task(db, user, body.data)
     if body.kind == "collection":
         from app.services import collection_agent
         case_id = str(body.data.get("case_id") or "")
@@ -85,6 +87,20 @@ async def map_page(path: str = "index.md", db: AsyncSession = Depends(get_db), u
     from app.services import data_map
     ctx = await data_map.load(db, user)
     return PlainTextResponse(data_map.render(ctx, path), media_type="text/markdown; charset=utf-8")
+
+
+async def _act_call_task(db: AsyncSession, user: User, data: dict):
+    """The agent approved "mark this call task done" (tools_calls.mark_call_task_done)."""
+    from fastapi import HTTPException
+    from app.api.calls import _own, set_task
+    try:
+        idx = int(data.get("task_index"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "bad_task")
+    call = await _own(db, user, str(data.get("call_id") or ""))
+    call.insights = set_task(call.insights, idx, True)
+    await db.commit()
+    return {"ok": True}
 
 
 async def _act_maslaka(db: AsyncSession, user: User, data: dict):

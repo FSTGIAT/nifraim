@@ -42,7 +42,7 @@
                     height: Math.max(Math.abs(pos(p.value) - pos(0)), 0.8) + '%',
                     opacity: tracedIdx === i ? 1 : 0.2,
                     '--i': i,
-                    '--c': 'var(--primary, #181818)',
+                    '--c': 'var(--viz-accent, var(--primary, #181818))',
                   }"></span>
             <Transition name="aitr-tip">
               <span v-if="hovered === i" class="aitr-tip"
@@ -188,18 +188,18 @@ onMounted(() => {
 .aitr-trace { direction: rtl; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
 .aitr-trace-k { display: block; font-size: 12px; color: var(--text-muted); }
 .aitr-trace-k b { color: var(--text-secondary); font-weight: 650; }
-.aitr-trace-v { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); font-variant-numeric: tabular-nums; }
+.aitr-trace-v { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--viz-accent, var(--text)); font-variant-numeric: tabular-nums; }
 .aitr-trace-label { font-size: 12.5px; color: var(--text-secondary); }
 .aitr-traceline {
   position: absolute; left: 0; right: 0; height: 0; z-index: 2; pointer-events: none;
-  border-top: 1.5px dashed var(--text); opacity: 0.55;
+  border-top: 1.5px dashed var(--viz-accent, var(--text)); opacity: 0.55;
   animation: aitrTraceIn .5s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + 800ms) both;
 }
 /* RTL app: the value pill sits on the right edge of the line */
 .aitr-traceline-pill {
   position: absolute; right: -2px; top: -10px;
   padding: 1px 7px; border-radius: 5px;
-  background: var(--text); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px;
+  background: var(--viz-accent, var(--text)); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px;
 }
 @keyframes aitrTraceIn { from { opacity: 0; } to { opacity: 0.55; } }
 

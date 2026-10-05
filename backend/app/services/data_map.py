@@ -68,6 +68,7 @@ class MapContext:
     mails: list = field(default_factory=list)           # open MailItem
     names: dict = field(default_factory=dict)           # key -> display name
     extra: dict = field(default_factory=dict)           # id -> customer from production only (@-mentioned, not in the comparison)
+    calls: list = field(default_factory=list)           # done CallRecording, newest first
 
     # derived
     @property
@@ -141,6 +142,11 @@ async def load(db: AsyncSession, user: User) -> MapContext:
         select(MailItem).where(MailItem.user_id == user.id, MailItem.status.in_(OPEN_STATUSES))
         .order_by(MailItem.received_at.desc()).limit(40)
     )).scalars().all()
+    from app.models.call_recording import CallRecording
+    ctx.calls = (await db.execute(
+        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done")
+        .order_by(CallRecording.created_at.desc()).limit(300)
+    )).scalars().all()
     return ctx
 
 
@@ -163,6 +169,7 @@ def page_index(ctx: MapContext) -> str:
         "- [פערים והזדמנויות](crosssell.md) — כפל כיסויים, איחוד קופות, כיסוי חסר",
         "- [מה פתוח לי היום](tasks.md) — מיילים ומעקב מול חברות",
         "- [לקוחות מובילים](top.md) — הלקוחות הגדולים לפי צבירה, פרמיה ועמלה",
+        f"- [שיחות](calls.md) — {len(ctx.calls)} שיחות מוקלטות · לפי נושא · מה הובטח ועוד פתוח",
         f"- [הסכמי עמלות](agreements.md) — {sum(len(v) for v in ctx.rates.values())} שיעורים ב-{len(ctx.rates)} חברות",
         "- לקוח לפי ת.ז: `customers/<ת.ז>.md` · חיפוש לפי שם: `search/<שם>.md`",
         "",
@@ -279,13 +286,95 @@ def page_customer(ctx: MapContext, idn: str) -> str:
                      f" · פוליסה {p.get('policy_number') or '—'} · סטטוס {p.get('status') or '—'}"
                      + (f" · צבירה {_money(p.get('accumulation'))}" if p.get("accumulation") else "")
                      + (f" · צפי עמלה {_money(p.get('expected_commission'))}" if p.get("expected_commission") else ""))
+    lines += _unpaid_section(c)
     from app.services import agent_insights
     lines += agent_insights.nifraim_section(ctx, c)
     lines += agent_insights.portfolio_section(c)
+    lines += calls_section(ctx, idn)
     mails = [m for m in ctx.mails if m.linked_customer_id_number == idn]
     if mails:
         lines += ["", "## מיילים על הלקוח"] + [f"- {m.from_name or m.from_address}: {m.summary or m.subject}" for m in mails]
     return "\n".join(lines)
+
+
+# ── calls (שיחות) ──
+
+def _call_line(c, with_customer: bool = True) -> str:
+    from app.services.agent.tools_calls import _row
+    r = _row(c)
+    who = ""
+    if with_customer and r["customer"]:
+        who = f" · [{r['customer']}](customers/{r['id_number']}.md)" if r["id_number"] else f" · {r['customer']}"
+    bits = [r["when"][:10], r["category"] or "", r["direction"] and f"שיחה {r['direction']}" or ""]
+    return (f"- {' · '.join(b for b in bits if b)}{who} — **{r['title'] or 'שיחה'}**: {r['tldr'] or ''}"
+            + (f" · {r['open_tasks']} משימות פתוחות" if r["open_tasks"] else "") + f" `call:{r['call_id']}`")
+
+
+def page_calls(ctx: MapContext) -> str:
+    from collections import Counter
+    from app.services.agent.tools_calls import promises
+    from app.services.calls.categories import CATEGORIES, label
+    if not ctx.calls:
+        return "# שיחות\nעוד אין שיחות מוקלטות."
+    by = Counter(c.category or "other" for c in ctx.calls)
+    prom = promises(ctx.calls, "agent")
+    late = [p for p in prom if p["overdue_days"] > 0]
+    lines = [f"# שיחות ({len(ctx.calls)})", "", "## לפי נושא"]
+    lines += [f"- [{label(k)}](calls/{k}.md) — {n}" for k, n in by.most_common() if k in CATEGORIES]
+    lines += ["", f"## מה הבטחת ועוד פתוח ({len(prom)}, {len(late)} עבר המועד)"]
+    lines += [f"- {'⚠ עבר המועד ב-' + str(p['overdue_days']) + ' ימים · ' if p['overdue_days'] else ''}"
+              f"{p['customer'] or 'לקוח'}: {p['text']}" + (f" (עד {p['due']})" if p.get("due") else "")
+              + f" `call:{p['call_id']} task:{p['task_index']}`" for p in prom[:15]] or ["- אין"]
+    lines += ["", "## אחרונות"] + [_call_line(c) for c in ctx.calls[:10]]
+    lines += ["", "חיפוש בתוך התמלולים: search_calls · שיחה מלאה: get_call"]
+    return "\n".join(lines)
+
+
+def page_calls_category(ctx: MapContext, key: str) -> str:
+    from app.services.calls.categories import CATEGORIES, label
+    if key not in CATEGORIES:
+        return f"# לא נמצא\nאין נושא `{key}`. ראו [שיחות](../calls.md)."
+    rows = [c for c in ctx.calls if (c.category or "other") == key]
+    lines = [f"# שיחות — {label(key)} ({len(rows)})", "[כל השיחות](../calls.md)", ""]
+    return "\n".join(lines + ([_call_line(c).replace("(customers/", "(../customers/") for c in rows[:40]] or ["אין שיחות בנושא הזה."]))
+
+
+def calls_section(ctx: MapContext, idn: str) -> list[str]:
+    """The customer's calls on their page: what was said and what is still open."""
+    mine = [c for c in ctx.calls if (c.id_number or ((c.insights or {}).get("customer") or {}).get("id_number") or "").lstrip("0") == idn.lstrip("0")]
+    if not mine:
+        return []
+    out = ["", f"## שיחות ({len(mine)})"]
+    for c in mine[:8]:
+        out.append(_call_line(c, with_customer=False))
+        ins = c.insights or {}
+        for q in (ins.get("customer_quotes") or [])[:2]:
+            out.append(f"  - הלקוח: «{q}»")
+        for a in ins.get("action_items") or []:
+            if not a.get("done"):
+                out.append(f"  - פתוח ({'סוכן' if a.get('owner') == 'agent' else 'לקוח'}): {a.get('text')}" + (f" — עד {a['due']}" if a.get("due") else ""))
+    return out
+
+
+def _unpaid_section(c: dict) -> list[str]:
+    """Said outright: products with an expected commission at a company that paid NOTHING for this
+    customer. The card listed "צפי עמלה ₪1,111" (הראל) and a separate Mor payment gap; asked
+    "was his commission paid?" the agent answered only the Mor ₪142 — same numbers as get_unpaid,
+    now in words."""
+    paid = {_key(p.get("company") or p.get("receiving_company")) for p in (c.get("commission_products") or [])}
+    paid |= {_key(p.get("company") or p.get("company_full")) for p in (c.get("paid_production_products") or [])}
+    by: dict[str, float] = {}
+    names: dict[str, str] = {}
+    for p in c.get("production_products") or []:
+        k = _key(p.get("company") or p.get("company_full"))
+        exp = float(p.get("expected_commission") or 0)
+        if k and exp >= 0.5 and k not in paid:
+            by[k] = by.get(k, 0.0) + exp
+            names.setdefault(k, p.get("company") or p.get("company_full"))
+    if not by:
+        return []
+    return ["", "## לא שולם (אין שום תשלום מהחברה על הלקוח הזה)"] + [
+        f"- {names[k]}: צפי {_money(v)} — לא התקבלה עמלה" for k, v in sorted(by.items(), key=lambda x: -x[1])]
 
 
 def page_top(ctx: MapContext) -> str:
@@ -356,11 +445,25 @@ def page_search(ctx: MapContext, text: str) -> str:
     t = (text or "").strip()
     lines = [f"# חיפוש: {t}", ""]
     hits = []
+    # a customer you spoke with lately is the likely one ("מה הצעד הבא מול חיים?" — 6 people named חיים)
+    spoke: dict = {}
+    for cr in ctx.calls:
+        idn = (cr.id_number or ((cr.insights or {}).get("customer") or {}).get("id_number") or "").lstrip("0")
+        if idn and idn not in spoke and cr.created_at:
+            spoke[idn] = cr.created_at.strftime("%d/%m")
+    found = []
     for c in [*ctx.customers, *ctx.extra.values()]:
         nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x)
         rev = " ".join(x for x in (c.get("last_name"), c.get("first_name")) if x)
-        if t and (t in nm or t in rev or t == str(c.get("id_number"))):
-            hits.append(f"- לקוח: [{nm}](customers/{c.get('id_number')}.md) · {STATUS_HE.get(c.get('match_status'), '')}")
+        toks = t.split()
+        # word match, any order: "גורן גורן" finds "גיא גורן" (the same person, stored differently per file)
+        if t and (t in nm or t in rev or t == str(c.get("id_number"))
+                  or (len(toks) >= 2 and all(x in nm.split() for x in toks))
+                  or (len(toks) >= 2 and len(set(toks)) == 1 and toks[0] in nm.split())):
+            when = spoke.get(str(c.get("id_number")).lstrip("0"))
+            found.append((0 if when else 1, f"- לקוח: [{nm}](customers/{c.get('id_number')}.md) · {STATUS_HE.get(c.get('match_status'), '')}"
+                                            + (f" · **דיברת איתו בשיחה ב-{when}**" if when else "")))
+    hits += [h for _, h in sorted(found, key=lambda x: x[0])]
     for m in ctx.mails:
         if t and (t in (m.from_name or "") or t in (m.summary or "") or t in (m.subject or "")):
             draft = " · יש טיוטה" if m.draft_body else ""
@@ -396,6 +499,11 @@ def render(ctx: MapContext, path: str) -> str:
         return page_mail(ctx)
     if path == "agreements.md":
         return page_agreements(ctx)
+    if path == "calls.md":
+        return page_calls(ctx)
+    m = re.fullmatch(r"calls/(\w+)\.md", path)
+    if m:
+        return page_calls_category(ctx, m.group(1))
     m = re.fullmatch(r"companies/(.+)\.md", path)
     if m:
         return page_company(ctx, m.group(1))

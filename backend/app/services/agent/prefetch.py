@@ -38,8 +38,15 @@ CALL_Q = re.compile(r"סיכמ|בשיחה|השיחה|שיחות|דיברנו|ד�
 def plan(question: str) -> list[tuple[str, dict]]:
     q = " ".join((question or "").split())
     calls: list[tuple[str, dict]] = []
+    if re.search(r"מובילים|הגדולים|הכי גדול", q) and re.search(r"מוצר|פוליס|מה יש|ביטוח|קופ", q):
+        calls.append(("top_customers", {"metric": "premium" if "פרמי" in q else "pref", "n": 8}))
     if CALL_Q.search(q) and not re.search(r"(?:^|\s)(?:ת?קליט|עצור|תעצור)", q):
-        calls.append(("get_call_summaries", {"which": "last", "n": 5}))
+        # pick the calls tool that FITS (calls plane, tools_calls.py) — or none:
+        if re.search(r"כמה שיחות|על מה (?:מדבר|דיבר)|נושא|סטטיסט|תמונת מצב של השיחות", q):
+            calls.append(("calls_stats", {"days": 7 if "שבוע" in q else 30}))
+        elif re.search(r"השיחה האחרונה|בשיחה האחרונה|מה סיכמ|סכם לי את השיחה", q):
+            calls.append(("get_call_summaries", {"which": "last", "n": 3}))
+        # "מה X אמר" / ציטוט / by meaning → no prefetch: the model uses search_calls / customer_calls
     m = ID_RE.search(q)
     if m:
         calls.append(("get_customer", {"id_number": m.group(1)}))
@@ -55,7 +62,12 @@ def plan(question: str) -> list[tuple[str, dict]]:
                 calls.append((tool_name, {"track": track} if track else {}))
                 break
     co = next((c for c in COMPANIES if c in q), "")
-    if co and not any(t.startswith("compare_") for t, _ in calls):
+    # "כמה לקוחות יש לי בהראל?" / "כמה צבירה בהפניקס" is the BOOK at that company, not its debt
+    # (measured: answered "155 לקוחות לא שולמו" and "I don't have the total")
+    book_q = re.search(r"לקוחות|צביר|פרמי|מוצר|פוליסות|תיק", q) and not re.search(r"לא שול|חוב|חייב|פער|גבי|לא שיל|עמל", q)
+    if co and book_q and not any(t.startswith("compare_") for t, _ in calls):
+        calls.append(("get_portfolio", {"company": co, "metric": "premium" if "פרמי" in q else "accumulation"}))
+    elif co and not any(t.startswith("compare_") for t, _ in calls):
         calls.append(("get_unpaid", {"company": co}))
         if re.search(r"הסכם|שיעור|אחוז|עמלה|למה|מתעכב|לא שיל", q):
             calls.append(("get_rate", {"company": co}))
@@ -64,10 +76,47 @@ def plan(question: str) -> list[tuple[str, dict]]:
     return calls[:3]
 
 
+_PREFIX = "ולבשמה"   # Hebrew one-letter prefixes: לעומר, שעומר, ועומר, מעומר, בעומר, העומר
+
+
+def _norm(w: str) -> str:
+    return re.sub(r"[^\u0590-\u05FFa-zA-Z0-9]", "", w or "")
+
+
+async def named_customer(ctx, question: str) -> str | None:
+    """The full name of one of THIS agent's customers mentioned in the question, or None.
+    Matched on two consecutive words (first+last, either order), a one-letter prefix allowed
+    on the first word — "כמה לא שולם לעומר עמר" → "עומר עמר". Single words are never
+    matched: חיים / מור / שמחה are both names and words."""
+    words = [_norm(w) for w in (question or "").split()]
+    words = [w for w in words if w]
+    if len(words) < 2:
+        return None
+    m = await ctx.map()
+    names = set()
+    for c in [*m.customers, *m.extra.values()]:
+        fn, ln = _norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")
+        if fn and ln:
+            names.add(f"{fn} {ln}")
+            names.add(f"{ln} {fn}")
+    for i in range(len(words) - 1):
+        a, b = words[i], words[i + 1]
+        for first in {a, a[1:] if len(a) > 2 and a[0] in _PREFIX else a}:
+            if f"{first} {b}" in names:
+                return f"{first} {b}"
+    return None
+
+
 async def run_prefetch(ctx, question: str):
     """Yields status events; returns (via ctx.prefetched) the text block for the prompt."""
     blocks = []
-    for name, args in plan(question):
+    steps = plan(question)
+    if ctx.named_customer and not any(n in ("find_customer", "get_customer") for n, _ in steps):
+        steps = [("find_customer", {"query": ctx.named_customer})] + steps
+    for name, args in steps[:3]:
+        if args.get("metric") == "pref":          # the agent's remembered ranking (e.g. by premium)
+            from app.services.agent.router import _preferred_metric
+            args = {**args, "metric": await _preferred_metric(ctx)}
         t = registry.get(name)
         if not t:
             continue

@@ -15,6 +15,7 @@ class ToolContext:
     db: AsyncSession
     user: User
     data_version: int = 0
+    named_customer: str | None = None                   # a customer's full name found in the question
     prefetched: str = ""                               # tool output fetched before the model (prefetch.py)
     allow_actions: bool = True                         # False = a question: action tools refuse
     _map: Any = None                                   # data_map.MapContext, loaded once per turn
@@ -36,8 +37,11 @@ class ToolContext:
             self._map = hit
         return self._map
 
-    def keep(self, rows: list[dict], *, label: str, value: str, unit: str = "₪", title: str = "") -> str:
-        """Store chartable rows; returns a result_id the model passes to render_chart."""
+    def keep(self, rows: list[dict], *, label: str, value: str, unit: str = "₪", title: str = "",
+             chart: str | None = None, table: dict | None = None) -> str:
+        """Store chartable rows; returns a result_id the model passes to render_chart.
+        `chart` = the natural type (donut for a distribution) — the automatic chart uses it."""
         rid = "r" + uuid.uuid4().hex[:6]
-        self.results[rid] = {"rows": rows, "label": label, "value": value, "unit": unit, "title": title}
+        self.results[rid] = {"rows": rows, "label": label, "value": value, "unit": unit, "title": title, "chart": chart,
+                             "table": table}   # {"columns": [...], "rows": [[...]]} — render_chart(type=table)
         return rid
