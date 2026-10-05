@@ -402,8 +402,14 @@ def _auto_chart(ctx, wants_table: bool = False, wants_holdings: bool = False):
         for kept in reversed(list(ctx.results.values())):
             if kept.get("matrix") and kept["matrix"].get("rows"):
                 return build_viz(kept, "matrix")
-    if wants_table or wants_holdings:
+        # one customer's holdings → the drawn circle (get_customer keeps it), never a table by default
         for kept in reversed(list(ctx.results.values())):
+            if kept.get("chart") == "donut" and len(kept.get("rows") or []) >= 2:
+                return build_viz(kept, "donut")
+    if wants_table or wants_holdings:
+        # a real table (columns) first — the donut summary is also "tabulable" but isn't what was asked
+        ordered = sorted(reversed(list(ctx.results.values())), key=lambda k: 0 if k.get("table") else 1)
+        for kept in ordered:
             t = build_table(kept)
             if t and t["rows"]:
                 return t

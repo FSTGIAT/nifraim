@@ -324,10 +324,37 @@ async def get_customer(ctx, id_number: str):
         rows = [[p.get("company") or "", p.get("product") or p.get("product_type") or "", p.get("policy_number") or "",
                  p.get("status") or "", _r(p.get("accumulation")) or None, _r(p.get("premium")) or None,
                  _r(p.get("expected_commission")) or None] for p in prods[:40]]
+        # products known ONLY from the insurers' נפרעים files (no production row) belong in the table too —
+        # prod 2026-10-05: the text listed 6 products (כלל, הראל×2, מור×2, מנורה) and the table showed only כלל
+        seen = {(data_map._key(r[0]), str(r[2]).replace("-", "").lstrip("0")) for r in rows}
+        for p in (c.get("commission_products") or [])[:40]:
+            co = p.get("company") or p.get("company_full") or p.get("receiving_company") or ""
+            pol = str(p.get("account") or p.get("policy_number") or p.get("fund_policy_number") or "")
+            if (data_map._key(co), pol.replace("-", "").lstrip("0")) in seen or not co:
+                continue
+            seen.add((data_map._key(co), pol.replace("-", "").lstrip("0")))
+            rows.append([co, p.get("product") or p.get("product_type") or "", pol, "מהנפרעים",
+                         _r(p.get("accumulation")) or None, _r(p.get("premium")) or None,
+                         _r(p.get("expected_commission")) or None])
         if rows:
             nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x) or idn
             rid = ctx.keep([], label="מוצר", value="", title=f"המוצרים של {nm}",
                            table={"columns": ["חברה", "מוצר", "פוליסה", "סטטוס", "צבירה", "פרמיה", "צפי עמלה"], "rows": rows})
+            # the same holdings as a DONUT — "אילו מוצרים יש לו" draws a circle, the table only on "טבלה"
+            # (user, 2026-10-05). By company; one company → by product. Accumulation, else product count.
+            by_co = len({data_map._key(r[0]) for r in rows}) >= 2
+            groups: dict = {}
+            for r in rows:
+                k = r[0] if by_co else (r[1] or "אחר")
+                g = groups.setdefault(k, [0.0, 0])
+                g[0] += float(r[4] or 0)
+                g[1] += 1
+            use_acc = sum(1 for g in groups.values() if g[0] > 0) >= 2
+            donut = [{"label": k, "value": _r(g[0]) if use_acc else g[1]} for k, g in groups.items() if (g[0] if use_acc else g[1])]
+            if len(donut) >= 2:
+                ctx.keep(sorted(donut, key=lambda x: -x["value"]), label="חברה" if by_co else "מוצר",
+                         value="צבירה" if use_acc else "מוצרים", unit="₪" if use_acc else "",
+                         title=f"המוצרים של {nm} — " + ("לפי חברה" if by_co else "לפי סוג מוצר"), chart="donut")
             page += f"\n\n(טבלת המוצרים: result_id={rid} — render_chart(type=table) כשמבקשים טבלה)"
     try:
         from app.services.agent.tools_maslaka import holdings_lines

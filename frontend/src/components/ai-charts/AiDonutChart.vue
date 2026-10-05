@@ -109,10 +109,19 @@ onMounted(() => {
 .hdo-body { display: grid; grid-template-columns: minmax(130px, 190px) 1fr; gap: 18px 28px; align-items: center; }
 .hdo-figure { position: relative; }
 .hdo-svg { width: 100%; height: auto; display: block; overflow: visible; }
+/* the circle DRAWS itself: a clockwise sweep from 12 o'clock reveals the ring (user, 2026-10-05) */
+@property --hdo-sweep { syntax: '<angle>'; inherits: false; initial-value: 360deg; }
+.hdo-svg {
+  -webkit-mask: conic-gradient(#000 var(--hdo-sweep), transparent var(--hdo-sweep));
+          mask: conic-gradient(#000 var(--hdo-sweep), transparent var(--hdo-sweep));
+  --hdo-sweep: 0deg;
+}
+.hdo--in .hdo-svg { animation: hdoDraw 1.1s cubic-bezier(0.22, 1, 0.36, 1) var(--silk-content-delay, 280ms) both; }
+@keyframes hdoDraw { from { --hdo-sweep: 0deg; } to { --hdo-sweep: 360deg; } }
 .hdo-slice {
   fill: var(--acc); stroke: #fff; stroke-width: 2; stroke-linejoin: round; outline: none; cursor: default;
   transform-box: view-box; transform-origin: 50% 50%;
-  opacity: 0; transform: scale(0.9) rotate(-14deg);
+  opacity: 0; transform: scale(0.96);
   transition:
     opacity 0.6s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms),
     transform 0.9s var(--ease-silk, ease) calc(var(--silk-content-delay, 280ms) + var(--i) * 70ms);
@@ -145,5 +154,6 @@ onMounted(() => {
 @media (max-width: 560px) { .hdo-body { grid-template-columns: 1fr; } .hdo-figure { max-width: 170px; margin: 0 auto; } }
 @media (prefers-reduced-motion: reduce) {
   .hdo-slice, .hdo-list li { transition: opacity 0.2s; transform: none; }
+  .hdo-svg, .hdo--in .hdo-svg { --hdo-sweep: 360deg; animation: none; }
 }
 </style>
