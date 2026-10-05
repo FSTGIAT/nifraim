@@ -109,7 +109,8 @@ def route(question: str) -> Route | None:
         return Route("customer", "get_customer", {"id_number": m.group(1)})
     if re.search(r"הכי הרבה (מוצרים|פוליסות|קופות)|(מוצרים|פוליסות) הכי הרבה|הכי הרבה מוצר", q):
         return Route("top", "top_customers", {"metric": "products", "n": 10})
-    if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q):
+    if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q) and not re.search(
+            r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית", q):
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "", "n": 10})
     m = re.search(r"(?:^|\s)(?:מה יש ל|מה עם |כרטיס של |תראה לי את )?(?:ה)?לקוח(?:ה)?\s+([א-ת'\"\- ]{3,30}?)\s*\??$", q)
     if m and (re.search(r"\b(?:הכי|שלי|שלך|כולם|בכלל|חדש|חדשים)\b", m.group(1))
@@ -128,6 +129,9 @@ def route(question: str) -> Route | None:
     if re.search(r"עזב|עזבו|בוטל|ביטלו|יצאו|לקוחות חדשים|נכנסו", q):
         return Route("changes", "get_production_changes", {})
     if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q):
+        # "אקסלנס גמל הוא לא המוצר הגדול ביותר" is a CORRECTION about a product, not "top customers"
+        if re.search(r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית", q):
+            return None
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "accumulation", "n": 10})
     if (re.search(r"עמל|נכנס|הכנס|קיבלתי", q) and re.search(r"החודש|חודש שעבר|חודש קודם|מגמה|לפי חודש|קיבלתי", q)) \
             or re.search(r"כמה נכנס|כמה הרווחתי|כמה הכנסתי", q):

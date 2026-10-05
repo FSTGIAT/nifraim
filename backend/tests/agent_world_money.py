@@ -90,6 +90,13 @@ CASES = [
      lambda r: has(r, r"3[,.]?07|3,070")),
     ("calls × unpaid (one tool)", ["למי מהלקוחות שדיברתי איתם בשיחות יש עמלות שלא שולמו?"],
      lambda r: has(r, r"שרית", r"חיים") and "calls_with_unpaid" in r["tools"] and not re.search(r"כלי", a(r))),
+    ("commission by PRODUCT (prod report)", ["על איזה מוצר יש לי עמלה הכי גבוהה?"],
+     lambda r: "commission_by_product" in r["tools"] and has(r, r"\d")),
+    ("'כן' delivers what was offered (prod report)", ["על איזה מוצר יש לי עמלה הכי גבוהה?", "רוצה גרף?", "כן"],
+     lambda r: not re.search(r"המסך .{0,30}(לא|אין)", a(r)) and len(a(r)) > 20),
+    ("a correction is not 'top customers' (prod report)",
+     ["על איזה מוצר יש לי עמלה הכי גבוהה?", "אקסלנס גמל הוא לא המוצר הגדול ביותר"],
+     lambda r: "top_customers" not in r["tools"] and not re.search(r"הלקוחות הגדולים", a(r))),
     ("most problematic company", ["איזו חברה הכי בעייתית אצלי בתשלומים?"],
      lambda r: has(r, r"הפניקס")),
 ]

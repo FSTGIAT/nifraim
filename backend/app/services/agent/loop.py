@@ -97,7 +97,9 @@ HE_DAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שב
 # A follow-up leans on the previous turn ("ושל מגדל?", "תפרט", "אותו לקוח"). Anything else is
 # self-contained: the chat always sends history, but "כמה לא שולם לי?" means the same thing
 # with or without it — so it still gets the answer cache and the fast lane.
-FOLLOW_UP = re.compile(r"^(?:ו|ומה|ומי|וכמה|ושל|ול|גם|ו?תפרט|ו?תרחיב|עוד|ואם)\b|\b(?:אותו|אותה|אותם|לו|לה|להם|איתו|איתה|איתם|שלו|שלה|שלהם|זה|הזה|הזאת|הנ\"ל|למעלה|קודם|שאמרת|הקודם)\b")
+FOLLOW_UP = re.compile(r"^(?:ו|ומה|ומי|וכמה|ושל|ול|גם|ו?תפרט|ו?תרחיב|עוד|ואם|כן|לא|בטח|יאללה|אוקיי|תראה|נכון|טעית)\b"
+                       r"|\b(?:אותו|אותה|אותם|לו|לה|להם|איתו|איתה|איתם|שלו|שלה|שלהם|זה|הזה|הזאת|הנ\"ל|למעלה|קודם|שאמרת|הקודם"
+                       r"|הוא|היא|הם|הן|לא נכון|מה שם)\b")
 
 
 def standalone(question: str) -> bool:
@@ -105,7 +107,7 @@ def standalone(question: str) -> bool:
     return bool(q) and not FOLLOW_UP.search(q)
 
 
-TOOL_NAME = re.compile(r"`?\b(?:get|find|top|list|propose|render|compare|open|maslaka|customer|calls|start|stop|mark|"
+TOOL_NAME = re.compile(r"`?\b(?:get|find|top|list|propose|render|compare|open|maslaka|customer|calls|start|stop|mark|commission|pending|"
                        r"search|market|fund|remember|open)_[a-z_]+\b`?")
 
 
@@ -233,7 +235,8 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
         yield ev
     if not ctx.vizs and not ctx.proposals:
         auto = _auto_chart(ctx, wants_table=bool(re.search(r"טבל", question)),
-                           wants_holdings=bool(re.search(r"(?:אילו|איזה|אלו)\s+מוצר|מה יש ל|מוצרים יש", question)))
+                           wants_holdings=bool(re.search(r"(?:אילו|איזה|אלו)\s+מוצר|מה יש ל|מוצרים יש", question))
+                           and not re.search(r"עמל", question))   # "על איזה מוצר העמלה…" ranks → a graph, not a table
         if auto:
             ctx.vizs.append(auto)
     for v in ctx.vizs:

@@ -54,12 +54,19 @@ async def breakdown(ctx) -> dict:
     return await _cached(ctx, ("breakdown",), lambda: production.get_production_breakdown(db=ctx.db, user=ctx.user))
 
 
+_BRAND_PARENT = {"אקסלנס": "הפניקס"}
+
+
 def _match_company(name: str, wanted: str) -> bool:
     from app.utils.company_norm import normalize_company
     if not wanted:
         return True
     a = normalize_company(name) or name or ""
     b = normalize_company(wanted) or wanted
+    # brands the agent says that the files carry under their parent's name
+    # ("אקסלנס גמל" is הפניקס אקסלנס פנסיה וגמל → normalised to הפניקס). Agent-side only:
+    # company_norm stays as it is for the comparison/merge.
+    b = _BRAND_PARENT.get(b, b)
     return b in a or a in b
 
 
@@ -150,7 +157,7 @@ async def get_commission_trend(ctx, company: str = ""):
 
 @tool("get_portfolio", "התיק בפרודוקציה לפי חברה ומוצר: פרמיה, צבירה, מספר לקוחות ומוצרים, וצפי עמלה.",
       {"company": {"type": "string", "description": "חברה אחת או ריק לכולן"},
-       "metric": {"type": "string", "enum": ["accumulation", "premium", "clients"], "description": "לפי מה לדרג (ברירת מחדל צבירה)"}},
+       "metric": {"type": "string", "enum": ["accumulation", "premium", "clients", "commission"], "description": "לפי מה לדרג (ברירת מחדל צבירה)"}},
       category="production", status_he="סוקר את התיק")
 async def get_portfolio(ctx, company: str = "", metric: str = "accumulation"):
     b = await breakdown(ctx)
@@ -158,15 +165,45 @@ async def get_portfolio(ctx, company: str = "", metric: str = "accumulation"):
     rows = sorted(({"label": c["company"], "value": _r(c.get(metric)), "premium": _r(c.get("premium")),
                     "accumulation": _r(c.get("accumulation")), "clients": c.get("clients"), "products": c.get("count"),
                     "expected_commission": _r(c.get("commission")),
-                    "by_product": [{"product": p["product"], "premium": _r(p.get("premium")), "accumulation": _r(p.get("accumulation")),
-                                    "clients": p.get("clients")} for kind in ("insurance", "financial")
-                                   for p in (c.get("products") or {}).get(kind, [])][:8]}
+                    "by_product": sorted(({"product": p["product"], "premium": _r(p.get("premium")), "accumulation": _r(p.get("accumulation")),
+                                           "clients": p.get("clients"), "expected_commission": _r(p.get("commission"))}
+                                          for kind in ("insurance", "financial")
+                                          for p in (c.get("products") or {}).get(kind, [])),
+                                         key=lambda x: -(x["expected_commission"] or 0))[:8]}
                    for c in comps), key=lambda r: -r["value"])
     unit = "" if metric == "clients" else "₪"
     rid = ctx.keep([{"label": r["label"], "value": r["value"]} for r in rows], label="חברה",
-                   value={"accumulation": "צבירה", "premium": "פרמיה", "clients": "לקוחות"}[metric], unit=unit,
-                   title="התיק לפי חברה")
+                   value={"accumulation": "צבירה", "premium": "פרמיה", "clients": "לקוחות", "commission": "צפי עמלה"}[metric],
+                   unit=unit, title="התיק לפי חברה" + (" — צפי עמלה" if metric == "commission" else ""))
     return {"companies": rows, "result_id": rid}
+
+
+@tool("commission_by_product",
+      "על איזה מוצר העמלה הכי גבוהה: מדרג מוצרים (חברה + מוצר) לפי צפי עמלה (פרודוקציה × הסכם), עם צבירה, פרמיה ומספר לקוחות. "
+      "'איזה מוצר מכניס לי הכי הרבה', 'פירוק עמלות לפי מוצר'. company = לצמצם לחברה אחת.",
+      {"company": {"type": "string", "description": "חברה אחת או ריק לכל החברות"}, "n": {"type": "integer"}},
+      category="commissions", status_he="מדרג מוצרים לפי עמלה")
+async def commission_by_product(ctx, company: str = "", n: int = 10):
+    b = await breakdown(ctx)
+    rows = []
+    for c in b.get("companies") or []:
+        if not _match_company(c["company"], company):
+            continue
+        for kind in ("insurance", "financial"):
+            for p in (c.get("products") or {}).get(kind, []):
+                if float(p.get("commission") or 0) >= 1:
+                    rows.append({"label": f"{p['product']} · {c['company']}", "value": _r(p.get("commission")),
+                                 "company": c["company"], "product": p["product"], "clients": p.get("clients"),
+                                 "accumulation": _r(p.get("accumulation")) or None, "premium": _r(p.get("premium")) or None})
+    rows.sort(key=lambda r: -r["value"])
+    if not rows:
+        return {"products": [], "note": "אין צפי עמלה לפי מוצר — חסר הסכם עמלות או קובץ פרודוקציה."}
+    top = rows[: max(1, min(int(n or 10), 25))]
+    rid = ctx.keep([{"label": r["label"], "value": r["value"]} for r in top], label="מוצר", value="צפי עמלה",
+                   title="צפי עמלה לפי מוצר" + (f" — {company}" if company else ""), chart="bar")
+    total = sum(r["value"] for r in rows)
+    return {"products": top, "total_expected": _r(total), "top_share_pct": round(100 * top[0]["value"] / total) if total else None,
+            "note": "צפי = פרודוקציה × שיעור ההסכם (לא מה שהתקבל בפועל).", "result_id": rid}
 
 
 @tool("top_customers", "הלקוחות הגדולים בתיק (מכל קבצי הפרודוקציה הפעילים): לפי צבירה, פרמיה, או products = מספר המוצרים (פוליסות/חשבונות שונים) ללקוח.",
