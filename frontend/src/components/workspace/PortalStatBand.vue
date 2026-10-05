@@ -20,9 +20,12 @@
         <button v-for="f in MERGED_FILES" :key="f.path" class="file-btn" type="button"
                 :disabled="busyFile === f.path" :title="f.hint" @click="download(f)"
                 @mouseenter="hoverFile = f.path" @mouseleave="hoverFile = null">
-          <span v-if="busyFile === f.path" class="file-spin" aria-hidden="true"></span>
-          <AutoStatArt v-else name="doc" :size="22" :hover="hoverFile === f.path" />
-          <span>{{ f.label }}</span>
+          <span class="file-fill" aria-hidden="true"></span>
+          <span class="file-ico">
+            <span v-if="busyFile === f.path" class="file-spin" aria-hidden="true"></span>
+            <AutoStatArt v-else name="doc" :size="20" :hover="hoverFile === f.path" />
+          </span>
+          <span class="file-lbl">{{ f.label }}</span>
         </button>
       </div>
       <p v-if="fileError" class="files-err">{{ fileError }}</p>
@@ -146,16 +149,39 @@ const tiles = computed(() => [
 .files-lead { font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
 .files-btns { display: flex; gap: 8px; }
 .file-btn {
-  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px;
-  background: transparent; border: 1px solid var(--border-subtle); color: var(--text);
-  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  --fill: color-mix(in srgb, var(--acc) 85%, #000);   /* ≥4.5:1 under white text */
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 6px; border-radius: 999px;
+  background: #fff; border: 1px solid color-mix(in srgb, var(--acc) 28%, var(--border-subtle)); color: var(--text);
+  font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  transition: color 0.35s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.35s ease, box-shadow 0.35s ease, transform 0.15s ease;
 }
-.file-btn :deep(svg) { color: var(--text-secondary); }
-.file-btn:hover:not(:disabled) { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 6%, transparent); }
-.file-btn:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.file-btn:disabled { opacity: 0.6; cursor: progress; }
-.file-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--acc); border-top-color: transparent; animation: fileSpin 0.7s linear infinite; }
+/* the colour that slides in from the start side (RTL: from the right) */
+.file-fill {
+  position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--fill);
+  transform: scaleX(0); transform-origin: right center;
+  transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.file-ico {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; flex: none;
+  background: color-mix(in srgb, var(--acc) 10%, #fff); color: var(--acc);
+  transition: background 0.35s ease, color 0.35s ease;
+}
+.file-btn :deep(svg) { color: currentColor; }
+.file-ico :deep(.asa) { color: inherit; }                 /* the doc follows the pill, not its own grey */
+.file-btn:hover:not(:disabled) .file-ico :deep(.acc), .file-btn:focus-visible .file-ico :deep(.acc) { stroke: currentColor; }
+.file-btn:hover:not(:disabled), .file-btn:focus-visible, .file-btn:disabled {
+  color: #fff; border-color: var(--fill); box-shadow: 0 6px 18px color-mix(in srgb, var(--acc) 30%, transparent);
+}
+.file-btn:hover:not(:disabled) .file-fill, .file-btn:focus-visible .file-fill, .file-btn:disabled .file-fill { transform: scaleX(1); }
+.file-btn:hover:not(:disabled) .file-ico, .file-btn:focus-visible .file-ico, .file-btn:disabled .file-ico {
+  background: rgba(255, 255, 255, 0.18); color: #fff;
+}
+.file-btn:active:not(:disabled) { transform: scale(0.97); }
+.file-btn:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+.file-btn:disabled { cursor: progress; }
+.file-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: fileSpin 0.7s linear infinite; }
 @keyframes fileSpin { to { transform: rotate(360deg); } }
 .files-err { margin: 0; max-width: 240px; font-size: 11.5px; font-weight: 600; line-height: 1.5; color: var(--red); }
 
@@ -170,5 +196,6 @@ const tiles = computed(() => [
 }
 @media (prefers-reduced-motion: reduce) {
   .file-spin { animation-duration: 2s; }
+  .file-fill { transition: none; }
 }
 </style>
