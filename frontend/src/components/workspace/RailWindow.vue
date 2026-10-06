@@ -4,9 +4,9 @@
        card on the app background, a round ✕. Opens OVER wherever the agent is;
        the page's own dialogs (z 1010+) open on top of it. -->
   <Teleport to="body">
-    <Transition name="rw">
+    <Transition name="rw" :css="!revealFrom" @enter="onEnter" @leave="onLeave">
       <div v-if="open" class="rw-overlay" @click.self="emit('close')">
-        <div class="rw-card" :style="{ '--rw-accent': accent, '--rw-width': width }" dir="rtl"
+        <div class="rw-card" :class="{ 'rw-card--round': round }" :style="{ '--rw-accent': accent, '--rw-width': width }" dir="rtl"
              role="dialog" aria-modal="true" :aria-label="label">
           <button class="rw-x" type="button" aria-label="סגור" @click="emit('close')">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
@@ -27,6 +27,11 @@ const props = defineProps({
   label: { type: String, default: '' },
   accent: { type: String, default: 'var(--text)' },
   width: { type: String, default: '1040px' },
+  // a selector for the element it opens out of: the window is revealed as a CIRCLE
+  // growing from that element (and shrinks back into it on close). Empty = plain fade.
+  revealFrom: { type: String, default: '' },
+  // the window itself is a circle (אנשי קשר: a hero with two round apps fits in one)
+  round: { type: Boolean, default: false },
 })
 const emit = defineEmits(['close'])
 
@@ -45,6 +50,34 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   document.body.classList.remove('mam-open')
 })
+// ── circle reveal out of the opener (iOS-like): the whole layer is clipped to a
+// circle centred on the icon, growing until it covers the screen ──
+const OPEN_MS = 820
+const CLOSE_MS = 560
+const EASE = 'cubic-bezier(0.65, 0, 0.35, 1)' // even grow — a launch curve front-loads it and reads as instant
+function circleFrom() {
+  const el = props.revealFrom && document.querySelector(props.revealFrom)
+  const r = el?.getBoundingClientRect()
+  const x = r ? r.left + r.width / 2 : innerWidth / 2
+  const y = r ? r.top + r.height / 2 : innerHeight / 2
+  const start = r ? Math.max(r.width, r.height) / 2 : 0
+  const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+  return { from: `circle(${start}px at ${x}px ${y}px)`, to: `circle(${end}px at ${x}px ${y}px)` }
+}
+const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+function onEnter(el, done) {
+  if (!props.revealFrom) return done()
+  if (reduced()) return done()
+  const c = circleFrom()
+  el.animate([{ clipPath: c.from }, { clipPath: c.to }], { duration: OPEN_MS, easing: EASE }).finished.then(done, done)
+}
+function onLeave(el, done) {
+  if (!props.revealFrom || reduced()) return done()
+  const c = circleFrom()
+  el.animate([{ clipPath: c.to }, { clipPath: c.from, offset: 0.92 }, { clipPath: c.from, opacity: 0 }],
+    { duration: CLOSE_MS, easing: EASE, fill: 'forwards' }).finished.then(done, done)
+}
+
 // Same as the Mail Agent: hide the floating messenger pill while open.
 watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
 </script>
@@ -61,6 +94,12 @@ watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
   background: var(--bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;
 }
 .rw-scroll { flex: 1; overflow-y: auto; padding: 18px; }
+.rw-card--round {
+  width: min(660px, 92vmin); height: min(660px, 92vmin); max-height: none; border-radius: 50%;
+  background: var(--card-bg); justify-content: center;
+}
+.rw-card--round .rw-scroll { flex: none; overflow: visible; padding: 0 12%; }
+.rw-card--round .rw-x { top: 7%; inset-inline-end: 50%; transform: translateX(50%); }
 .rw-x {
   position: absolute; top: 14px; inset-inline-end: 14px; z-index: 5;
   display: inline-flex; padding: 7px; border-radius: 50%; cursor: pointer;
@@ -77,7 +116,7 @@ watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
 
 @media (max-width: 640px) {
   .rw-overlay { padding: 0; }
-  .rw-card { max-height: 100vh; height: 100vh; border-radius: 0; }
+  .rw-card, .rw-card--round { width: 100%; max-height: 100vh; height: 100vh; border-radius: 0; }
   .rw-scroll { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {

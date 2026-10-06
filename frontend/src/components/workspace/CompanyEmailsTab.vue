@@ -238,31 +238,27 @@ async function deleteContact(id) {
 <style scoped>
 .ct { display: flex; flex-direction: column; gap: 16px; }
 
-/* ── Hero: copy on the right, the photograph dissolving in from the left ── */
+/* ── Hero: centred, it fills the round window (RailWindow round) ── */
 .ct-hero {
-  position: relative; overflow: hidden; display: flex; align-items: center; min-height: 210px;
-  padding: 24px 26px; background: var(--card-bg);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  position: relative; display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 0; background: none;
 }
 .ct-hero::before {
-  content: ''; position: absolute; inset-inline-end: -6%; top: -60%; width: 44%; height: 220%;
-  background: radial-gradient(circle, var(--tab-emails-wash), transparent 70%); pointer-events: none;
+  content: ''; position: absolute; left: 50%; top: 18%; width: 120%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--tab-emails-wash), transparent 62%); pointer-events: none;
 }
-.ct-hero-art {
-  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
-  width: min(300px, 38%); aspect-ratio: 420 / 300; pointer-events: none; z-index: 0;
-}
-.ct-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 6px; max-width: 56%; min-width: 0; }
+.ct-hero-art { position: relative; order: -1; width: min(250px, 70%); aspect-ratio: 420 / 300; margin-bottom: -6px; pointer-events: none; }
+.ct-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 .ct-kicker {
-  align-self: flex-start; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  align-self: center; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
   background: var(--tab-emails-wash); color: var(--tab-emails-ink);
 }
 .ct-hero-title {
-  align-self: flex-start; margin: 4px 0 0; font-family: 'Heebo', sans-serif;
+  align-self: center; margin: 4px 0 0; font-family: 'Heebo', sans-serif;
   font-size: clamp(30px, 3.6vw, 44px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
-.ct-stats { display: flex; align-items: flex-end; gap: 28px; margin-top: 10px; flex-wrap: wrap; }
+.ct-stats { display: flex; align-items: flex-end; justify-content: center; gap: 36px; margin-top: 10px; flex-wrap: wrap; }
 .ct-stat { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; margin: -4px -8px; border-radius: var(--radius-sm); }
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
@@ -299,7 +295,7 @@ async function deleteContact(id) {
 .ct-stat-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
 .ct-stat--hot .ct-stat-n { color: var(--tab-emails-ink); }
 .ct-stat-l { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
-.ct-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.ct-meta { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
 .ct-add {
   display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: none; border-radius: 10px; cursor: pointer;
   background: var(--tab-emails-ink); color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 700;
@@ -361,8 +357,7 @@ async function deleteContact(id) {
 @media (max-width: 720px) {
   .ct-hero { min-height: 0; }
   .ct-hero-copy { max-width: 100%; }
-  .ct-hero-art { display: none; }
-  .ct-hero::before { display: none; }
+  .ct-hero-art { width: min(220px, 70%); }
   .ct-list--two { grid-template-columns: 1fr; }
   .ct-tools { opacity: 1; }
 }

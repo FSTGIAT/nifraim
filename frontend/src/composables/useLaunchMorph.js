@@ -87,8 +87,6 @@ function frame(r, radius, opacity, vw, vh) {
 // Pages/windows that live in the side rail, not the card grid: they launch
 // from, and fold back into, their rail icon.
 const RAIL_KEY = { 'company-emails': 'contacts', recruits: 'recruits', mail: 'mail' }
-// windows that open out of — and fold back into — a CIRCLE (אנשי קשר: its apps are round)
-const ROUND = new Set(['company-emails'])
 
 function measureRail(tabId) {
   const key = RAIL_KEY[tabId]
@@ -96,8 +94,7 @@ function measureRail(tabId) {
   if (!el) return null
   const r = el.getBoundingClientRect()
   if (!r.width || !r.height) return null
-  const radius = ROUND.has(tabId) ? Math.min(r.width, r.height) / 2 : 8
-  return { rect: { left: r.left, top: r.top, width: r.width, height: r.height }, radius }
+  return { rect: { left: r.left, top: r.top, width: r.width, height: r.height }, radius: 8 }
 }
 
 export function measureCard(tabId) {

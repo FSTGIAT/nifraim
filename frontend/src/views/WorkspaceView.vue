@@ -23,7 +23,8 @@
     <MailAgentModal :open="mailAgentOpen" @close="closeMailAgent" />
 
     <!-- Rail windows — same shell as the Mail Agent, opened from the side rail. -->
-    <RailWindow :open="contactsOpen" label="אנשי קשר" accent="var(--tab-emails)" @close="closeContacts">
+    <RailWindow :open="contactsOpen" label="אנשי קשר" accent="var(--tab-emails)" round
+                reveal-from='.rail-item[data-rail-key="contacts"] .rail-ico' @close="closeContacts">
       <CompanyEmailsTab />
     </RailWindow>
     <RailWindow :open="recruitsOpen" label="ניהול תיק אישי" accent="var(--tab-recruits)" width="1180px" @close="closeRecruits">
@@ -493,15 +494,12 @@ function onPillSelect(payload) {
 
 // אנשי קשר is a window, not a tab: it launches out of its rail icon (or just
 // appears, when opened from elsewhere without a rectangle) and folds back.
-function openContacts(rect) {
-  if (contactsOpen.value) return
-  // out of a circle (the window's apps are round) — and back into one on close (useLaunchMorph ROUND)
-  const radius = rect ? Math.min(rect.width, rect.height) / 2 : 8
-  morph.launch({ rect, radius, accent: 'var(--tab-emails)', tabId: 'company-emails', from: 'modal', commit: () => { contactsOpen.value = true } })
+function openContacts() {
+  // a circle reveal out of the rail icon (RailWindow reveal-from) — no launch surface
+  contactsOpen.value = true
 }
 function closeContacts() {
-  if (!contactsOpen.value) return
-  morph.dismiss({ tabId: 'company-emails', commit: () => { contactsOpen.value = false } })
+  contactsOpen.value = false
 }
 
 function openRecruits(rect) {
