@@ -10,8 +10,8 @@
         <span class="ct-kicker">ספר כתובות</span>
         <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
         <div class="ct-stats">
-          <button ref="appIconEl" type="button" class="ct-app" aria-label="לקוחות חדשים — פתיחת אנשי הקשר" @click="openApp">
-            <span class="ct-app-ico">
+          <button type="button" class="ct-app" aria-label="לקוחות חדשים — פתיחת אנשי הקשר" @click="openApp">
+            <span ref="appIconEl" class="ct-app-ico">
               <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
                 <rect x="13" y="10" width="34" height="42" rx="5" fill="#fff" opacity="0.96" />
                 <circle cx="30" cy="25" r="6.5" fill="var(--tab-emails-ink)" />
@@ -24,8 +24,8 @@
             </span>
             <span class="ct-stat-l">לקוחות חדשים</span>
           </button>
-          <button ref="coIconEl" type="button" class="ct-app" aria-label="חברות — פתיחת אנשי הקשר של החברות" @click="coOpen = true">
-            <span class="ct-app-ico ct-app-ico--co">
+          <button type="button" class="ct-app" aria-label="חברות — פתיחת אנשי הקשר של החברות" @click="coOpen = true">
+            <span ref="coIconEl" class="ct-app-ico ct-app-ico--co">
               <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
                 <path d="M14 46 V22 l16 -9 16 9 v24 z" fill="#fff" opacity="0.96" />
                 <rect x="20" y="27" width="5" height="5" rx="1" fill="var(--tab-emails-ink)" />

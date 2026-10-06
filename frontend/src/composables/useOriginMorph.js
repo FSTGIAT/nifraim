@@ -31,7 +31,11 @@ export function useOriginMorph() {
     const r = el.getBoundingClientRect()
     origin = {
       left: r.left, top: r.top, width: r.width, height: r.height,
-      radius: parseFloat(getComputedStyle(el).borderTopLeftRadius) || 14,
+      // a round origin (border-radius: 50%) grows out of — and folds back into — a circle
+      radius: (() => {
+        const br = getComputedStyle(el).borderTopLeftRadius
+        return br.endsWith('%') ? (parseFloat(br) / 100) * Math.min(r.width, r.height) : (parseFloat(br) || 14)
+      })(),
     }
   }
 

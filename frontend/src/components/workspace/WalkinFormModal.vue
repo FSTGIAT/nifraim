@@ -3,7 +3,7 @@
        the phone tells the Nifraim App to take calls with them — including the
        recordings of the last 3 hours. Same shape as ContactFormModal (form on
        the right, picture on the left); the picture arrives zoomed in and
-       settles out, then its Kling loop plays. -->
+       settles out, then its Kling clip zooms in and out ONCE and rests. -->
   <Teleport to="body">
     <Transition name="wfm">
       <div v-if="show" class="wfm-overlay" @click.self="$emit('close')">
@@ -57,7 +57,7 @@
 
           <aside class="wfm-pane wfm-pane--art" aria-hidden="true">
             <div class="wfm-zoom" :class="{ 'wfm-zoom--still': reduced }">
-              <video v-if="!reduced" class="wfm-media" :src="loop" :poster="poster" muted loop playsinline autoplay preload="auto"></video>
+              <video v-if="!reduced" class="wfm-media" :src="loop" :poster="poster" muted playsinline autoplay preload="auto"></video>
               <img v-else class="wfm-media" :src="poster" alt="" />
             </div>
             <div class="wfm-veil"></div>
@@ -134,7 +134,7 @@ async function submit() {
 }
 .wfm-pane--form { padding: 28px; overflow-y: auto; min-width: 0; min-height: 0; }
 .wfm-pane--art { position: relative; overflow: hidden; background: #EDE6DC; }
-/* the picture arrives zoomed in and settles out — then the loop plays on its own */
+/* the picture arrives zoomed in and settles out — then the clip zooms in and out once and rests */
 .wfm-zoom { position: absolute; inset: 0; transform-origin: 46% 60%; animation: wfmSettle 1.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .wfm-zoom--still { animation: none; }
 @keyframes wfmSettle {
