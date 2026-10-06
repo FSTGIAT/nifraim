@@ -7,14 +7,44 @@
     <Transition name="cas-fade">
       <div v-if="open" class="cas-overlay" @click.self="close">
         <div ref="cardEl" class="cas-phone" role="dialog" aria-modal="true" :aria-label="title" dir="rtl">
-          <Transition :name="detail ? 'cas-push' : 'cas-pop'">
+          <Transition :name="view === 'list' ? 'cas-pop' : 'cas-push'">
+            <!-- ── new / edit contact, iPhone style ── -->
+            <section v-if="form" key="form" class="cas-view cas-form">
+              <header class="cas-bar">
+                <button type="button" class="cas-link" @click="cancelForm">ביטול</button>
+                <strong class="cas-bar-title">{{ form.id ? 'עריכת לקוח' : 'לקוח חדש' }}</strong>
+                <button type="button" class="cas-link cas-link--done" :disabled="!formValid || saving" @click="saveForm">
+                  {{ saving ? 'שומר…' : 'סיום' }}
+                </button>
+              </header>
+              <div class="cas-scroll">
+                <div class="cas-hero">
+                  <span class="cas-av cas-av--big cas-av--clip">
+                    <video v-if="!reducedMotion" :src="clip" :poster="clipPoster" muted playsinline autoplay></video>
+                    <img v-else :src="clipPoster" alt="" />
+                  </span>
+                  <span class="cas-tag">שיחות איתו יגיעו ל-Nifra Calls, גם מ-3 השעות האחרונות</span>
+                </div>
+                <div class="cas-group">
+                  <input ref="firstEl" v-model.trim="form.first_name" placeholder="שם פרטי" autocomplete="off" />
+                  <input v-model.trim="form.last_name" placeholder="שם משפחה" autocomplete="off" />
+                </div>
+                <div class="cas-group">
+                  <label><span>נייד</span><input v-model.trim="form.phone" type="tel" inputmode="tel" dir="ltr" placeholder="050-0000000" /></label>
+                  <label><span>ת.ז</span><input v-model.trim="form.id_number" inputmode="numeric" dir="ltr" maxlength="10" placeholder="123456789" /></label>
+                  <label><span>מייל</span><input v-model.trim="form.email" type="email" dir="ltr" placeholder="name@example.com" /></label>
+                </div>
+                <p v-if="formError" class="cas-err" role="alert">{{ formError }}</p>
+              </div>
+            </section>
+
             <!-- ── the list ── -->
-            <section v-if="!detail" key="list" class="cas-view">
+            <section v-else-if="!detail" key="list" class="cas-view">
               <header class="cas-bar">
                 <button type="button" class="cas-ico" aria-label="סגור" @click="close">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                 </button>
-                <button type="button" class="cas-ico cas-ico--acc" :aria-label="isCo ? 'הוספת חברה' : 'לקוח חדש'" @click="$emit('add')">
+                <button type="button" class="cas-ico cas-ico--acc" :aria-label="isCo ? 'הוספת חברה' : 'לקוח חדש'" @click="isCo ? $emit('add') : openForm()">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
               </header>
@@ -67,13 +97,13 @@
             </section>
 
             <!-- ── one contact ── -->
-            <section v-else key="detail" class="cas-view cas-detail">
+            <section v-else :key="'detail-' + detail.id" class="cas-view cas-detail">
               <header class="cas-bar">
                 <button type="button" class="cas-back" @click="detail = null">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                   {{ isCo ? 'חברות' : 'לקוחות' }}
                 </button>
-                <button type="button" class="cas-link" @click="$emit('edit', detail)">עריכה</button>
+                <button type="button" class="cas-link" @click="isCo ? $emit('edit', detail) : openForm(detail)">עריכה</button>
               </header>
               <div class="cas-scroll">
                 <div class="cas-hero">
@@ -118,6 +148,9 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import CompanyLogo from './CompanyLogo.vue'
+import api from '../../api/client.js'
+import clip from '../../assets/emails/walkin.mp4'
+import clipPoster from '../../assets/emails/walkin.webp'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -127,8 +160,10 @@ const props = defineProps({
   kind: { type: String, default: 'walkins' },
   title: { type: String, default: 'לקוחות חדשים' },
   missing: { type: Array, default: () => [] }, // companies with no address (kind="companies")
+  startNew: { type: Boolean, default: false }, // opened by "לקוח חדש": straight to the new-contact screen
 })
-const emit = defineEmits(['close', 'add', 'edit', 'delete', 'seed'])
+const emit = defineEmits(['close', 'add', 'edit', 'delete', 'seed', 'saved'])
+const reducedMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 const isCo = computed(() => props.kind === 'companies')
 const missingShown = computed(() => { const s = q.value.trim(); return s ? props.missing.filter((m) => m.includes(s)) : props.missing })
 
@@ -136,6 +171,47 @@ const cardEl = ref(null)
 const scrollEl = ref(null)
 const q = ref('')
 const detail = ref(null)
+// ── new / edit contact (walk-ins) ──
+const form = ref(null)
+const firstEl = ref(null)
+const saving = ref(false)
+const formError = ref('')
+const view = computed(() => (form.value ? 'form' : detail.value ? 'detail' : 'list'))
+const digits = (x) => String(x || '').replace(/\D/g, '')
+const formValid = computed(() => {
+  const f = form.value
+  if (!f) return false
+  const id = digits(f.id_number).replace(/^0+/, '')
+  return !!f.first_name && id.length >= 5 && id.length <= 9 && digits(f.phone).length >= 9 &&
+    (!f.email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email))
+})
+async function openForm(w = null) {
+  formError.value = ''
+  form.value = { id: w?.id || null, first_name: w?.first_name || '', last_name: w?.last_name || '',
+    id_number: w?.id_number || '', phone: w?.phone || '', email: w?.email || '' }
+  await nextTick()
+  setTimeout(() => firstEl.value?.focus(), 380)
+}
+function cancelForm() {
+  form.value = null
+  if (props.startNew && !detail.value && !props.walkins.length) close()
+}
+async function saveForm() {
+  if (!formValid.value || saving.value) return
+  saving.value = true
+  formError.value = ''
+  try {
+    const { id, ...body } = form.value
+    const res = id ? await api.put(`/walkin-customers/${id}`, body) : await api.post('/walkin-customers', body)
+    emit('saved', res.data)
+    form.value = null
+    detail.value = res.data // land on the contact card, like iOS after "סיום"
+  } catch (e) {
+    formError.value = e?.response?.data?.detail || 'השמירה נכשלה. נסו שוב.'
+  } finally {
+    saving.value = false
+  }
+}
 const scrolled = ref(false)
 const secEls = {}
 const morph = useOriginMorph()
@@ -169,7 +245,9 @@ watch(() => props.open, async (o) => {
   if (!o) return
   q.value = ''
   detail.value = null
+  form.value = null
   scrolled.value = false
+  if (props.startNew && !isCo.value) openForm()
   morph.remember(props.origin)
   await nextTick()
   morph.grow(cardEl.value)
@@ -233,6 +311,19 @@ function remove() {
 .cas-row-id strong { font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cas-row-id small { align-self: flex-start; font-size: 13px; color: #8E8E93; }
 .cas-chev { flex: none; color: #C7C7CC; }
+.cas-bar-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.cas-link--done { font-weight: 700; }
+.cas-link:disabled { color: #C7C7CC; cursor: default; }
+.cas-av--clip { overflow: hidden; background: #EDE6DC; }
+.cas-av--clip video, .cas-av--clip img { width: 100%; height: 100%; object-fit: cover; object-position: center 60%; display: block; }
+.cas-form .cas-tag { max-width: 280px; text-align: center; line-height: 1.5; padding: 4px 12px; }
+.cas-group { margin: 0 0 14px; background: #fff; border-radius: 12px; overflow: hidden; }
+.cas-group > input, .cas-group > label { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 0 14px; }
+.cas-group > * + * { border-top: 0.5px solid #E5E5EA !important; }
+.cas-group input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: 16px; color: var(--text); }
+.cas-group input[dir='ltr'] { text-align: right; }
+.cas-group label span { flex: none; width: 46px; font-size: 14px; color: var(--tab-emails-ink); }
+.cas-err { margin: 0 4px; font-size: 13px; color: var(--red, #D93025); }
 .cas-plus { flex: none; color: var(--tab-emails-ink); }
 .cas-quick.cas-quick--one { grid-template-columns: 1fr; }
 .cas-seed { width: 100%; margin-bottom: 14px; padding: 12px; border: none; border-radius: 12px; cursor: pointer;

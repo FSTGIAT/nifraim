@@ -42,7 +42,7 @@
           </button>
         </div>
         <div class="ct-meta">
-          <button class="ct-add" type="button" @click="openWalkin()">
+          <button class="ct-add" type="button" @click="openWalkin($event)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             לקוח חדש
           </button>
@@ -54,9 +54,8 @@
                       :missing="missingCompanies.map((m) => m.label)" @close="coOpen = false"
                       @add="(m) => openAddForm(typeof m === 'string' ? m : '')" @edit="(r) => startEdit(r.raw)"
                       @delete="deleteContact" @seed="seedContacts" />
-    <ContactsAppSheet :open="appOpen" :origin="appIconEl" :walkins="walkins" @close="appOpen = false"
-                      @add="openWalkin()" @edit="openWalkin" @delete="deleteWalkin" />
-    <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" @close="walkinOpen = false" @saved="onWalkinSaved" />
+    <ContactsAppSheet :open="appOpen" :origin="appOrigin" :walkins="walkins" :start-new="appStartNew"
+                      @close="appOpen = false" @saved="fetchWalkins" @delete="deleteWalkin" />
 
     <ContactFormModal
       :show="formOpen"
@@ -76,7 +75,6 @@ import api from '../../api/client.js'
 import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
 import ContactFormModal from './ContactFormModal.vue'
 import CompanyLogo from './CompanyLogo.vue'
-import WalkinFormModal from './WalkinFormModal.vue'
 import ContactsAppSheet from './ContactsAppSheet.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
@@ -154,28 +152,25 @@ onMounted(() => { fetchContacts(); fetchWalkins() })
 // ── לקוחות חדשים (walk-in customers) ──
 const phoneFmt = (p) => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3)}` : d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : p }
 const walkins = ref([])
-const walkinOpen = ref(false)
 const appOpen = ref(false)
 const appIconEl = ref(null)
-function openApp() { appOpen.value = true }
+const appOrigin = ref(null)
+const appStartNew = ref(false)
+function openApp() { appStartNew.value = false; appOrigin.value = appIconEl.value; appOpen.value = true }
 // the insurers as the second app: rows shaped like the walk-in rows
 const coOpen = ref(false)
 const coIconEl = ref(null)
 const companyRows = computed(() => contacts.value.map((c) => ({
   id: c.id, name: c.company_name, email: c.email, contact_name: c.contact_name, notes: c.notes, raw: c,
 })))
-const editingWalkin = ref(null)
 async function fetchWalkins() {
   try { walkins.value = (await api.get('/walkin-customers')).data || [] } catch { walkins.value = [] }
 }
-function openWalkin(w = null) {
-  editingWalkin.value = w
-  walkinOpen.value = true
-}
-async function onWalkinSaved() {
-  walkinOpen.value = false
-  editingWalkin.value = null
-  await fetchWalkins()
+// "לקוח חדש": the Contacts app grows out of the button, straight onto the new-contact screen
+function openWalkin(ev) {
+  appStartNew.value = true
+  appOrigin.value = ev?.currentTarget || appIconEl.value
+  appOpen.value = true
 }
 async function deleteWalkin(id) {
   await api.delete(`/walkin-customers/${id}`)
