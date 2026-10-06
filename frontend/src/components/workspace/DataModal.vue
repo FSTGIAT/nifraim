@@ -16,6 +16,8 @@
             <span v-if="badge !== null && badge !== ''" class="dm-badge ltr-number">{{ badge }}</span>
             <span v-if="period" class="dm-period ltr-number">{{ period }}</span>
             <span v-if="subtitle" class="dm-sub ltr-number">{{ subtitle }}</span>
+            <!-- optional header action beside the title (e.g. "+ לקוח חדש") -->
+            <slot name="head-action" />
             <button class="dm-close" @click="requestClose" aria-label="סגור">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>

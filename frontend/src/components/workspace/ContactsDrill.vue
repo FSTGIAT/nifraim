@@ -2,9 +2,14 @@
   <!-- The walk-in customers / the insurers' addresses, in the app's own drill
        shell (DataModal): it grows out of what was pressed and folds back into
        it, like every drill in the other tabs. Inside, the nifraim-style drill
-       order: search → cards that fold open in place → the action pinned at the
-       bottom. Adding / editing a walk-in opens WalkinFormModal out of the pressed button. -->
+       order: the add action beside the title, search, cards that fold open in place. Adding / editing a walk-in opens WalkinFormModal out of the pressed button. -->
   <DataModal :open="open" :origin="origin" :title="title" :badge="rows.length" accent="var(--tab-emails)" size="sm" @close="emit('close')">
+    <template #head-action>
+      <button type="button" class="cd-head-btn" @click="emit('add', '', $event.currentTarget)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ isCo ? 'הוספת חברה' : 'לקוח חדש' }}
+      </button>
+    </template>
     <div class="cd">
       <!-- ── the list ── -->
       <template v-if="true">
@@ -63,9 +68,7 @@
           </div>
         </template>
 
-        <div class="cd-foot cd-foot--pinned">
-          <button type="button" class="cd-btn" @click="emit('add', '', $event.currentTarget)">{{ isCo ? 'הוספת חברה' : 'לקוח חדש' }}</button>
-        </div>
+
       </template>
     </div>
   </DataModal>
@@ -151,9 +154,10 @@ watch(() => props.open, (o) => {
 .cd-chip svg { color: var(--tab-emails); }
 .cd-chip:hover { border-style: solid; border-color: var(--tab-emails); color: var(--tab-emails-ink); background: var(--tab-emails-wash); }
 
-.cd-foot { display: flex; gap: 8px; padding-top: 6px; }
-/* the action pinned at the bottom of the drill */
-.cd-foot--pinned { position: sticky; bottom: -1px; margin-top: 4px; padding: 10px 0 2px; background: linear-gradient(to top, var(--card-bg) 70%, transparent); }
+.cd-head-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 9px; cursor: pointer;
+  background: var(--tab-emails-ink); color: #fff; font-family: inherit; font-size: 13px; font-weight: 700;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--tab-emails) 24%, transparent); transition: transform 0.15s, filter 0.15s; }
+.cd-head-btn:hover { transform: translateY(-1px); filter: brightness(0.93); }
 .cd-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 22px; border: none; border-radius: 10px;
   cursor: pointer; background: var(--tab-emails-ink); color: #fff; font-family: inherit; font-size: 14px; font-weight: 700;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-emails) 26%, transparent); transition: transform 0.15s, filter 0.15s; }

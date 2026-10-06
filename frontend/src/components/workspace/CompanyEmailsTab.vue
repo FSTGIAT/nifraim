@@ -41,12 +41,6 @@
             <span class="ct-stat-l">חברות</span>
           </button>
         </div>
-        <div class="ct-meta">
-          <button class="ct-add" type="button" @click="openWalkin(null, $event.currentTarget)">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-            לקוח חדש
-          </button>
-        </div>
       </div>
     </header>
 
