@@ -24,13 +24,18 @@
             </span>
             <span class="ct-stat-l">לקוחות חדשים</span>
           </button>
-          <div v-if="contacts.length" class="ct-stat">
-            <span class="ct-stat-n ltr-number">{{ contacts.length }}</span>
-            <span class="ct-stat-l">חברות</span>
-          </div>
-          <button v-if="contacts.length && missingCompanies.length" type="button" class="ct-stat ct-stat--btn ct-stat--hot" @click="scrollToMissing">
-            <span class="ct-stat-n ltr-number">{{ missingCompanies.length }}</span>
-            <span class="ct-stat-l">חסרות כתובת</span>
+          <button ref="coIconEl" type="button" class="ct-app" aria-label="חברות — פתיחת אנשי הקשר של החברות" @click="coOpen = true">
+            <span class="ct-app-ico ct-app-ico--co">
+              <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
+                <path d="M14 46 V22 l16 -9 16 9 v24 z" fill="#fff" opacity="0.96" />
+                <rect x="20" y="27" width="5" height="5" rx="1" fill="var(--tab-emails-ink)" />
+                <rect x="27.5" y="27" width="5" height="5" rx="1" fill="var(--tab-emails-ink)" />
+                <rect x="35" y="27" width="5" height="5" rx="1" fill="var(--tab-emails-ink)" />
+                <rect x="26" y="36" width="8" height="10" rx="1.5" fill="var(--tab-emails-ink)" />
+              </svg>
+              <span v-if="contacts.length && missingCompanies.length" class="ct-app-badge ltr-number">{{ missingCompanies.length }}</span>
+            </span>
+            <span class="ct-stat-l">חברות<template v-if="contacts.length"> · <span class="ltr-number">{{ contacts.length }}</span></template></span>
           </button>
         </div>
         <div class="ct-meta">
@@ -38,7 +43,7 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             לקוח חדש
           </button>
-          <button v-if="contacts.length" class="ct-add ct-add--ghost" type="button" @click="openAddForm()">
+          <button class="ct-add ct-add--ghost" type="button" @click="openAddForm()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             חברה
           </button>
@@ -47,57 +52,10 @@
       <TabHeroLoop scene="contacts" class="ct-hero-art" />
     </header>
 
-    <div v-if="loading" class="ct-loading"><span class="ct-spin" aria-hidden="true"></span></div>
-
-    <!-- Empty: one action — load the insurers' default contacts. -->
-    <div v-else-if="contacts.length === 0" class="ct-empty">
-      <BigAddButton label="טעינת אנשי הקשר של החברות" color="var(--tab-emails)" :size="140"
-                    @click="!seeding && seedContacts()">
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 6-10 7L2 6" />
-        </svg>
-      </BigAddButton>
-      <p class="ct-empty-text">{{ seeding ? 'טוען…' : 'טעינת אנשי הקשר של כל החברות בלחיצה אחת' }}</p>
-    </div>
-
-    <template v-else>
-      <section class="ct-card">
-      <div class="ct-sec-head">
-        <h3 class="ct-sec-title">חברות <span class="ct-sec-n ltr-number">{{ contacts.length }}</span></h3>
-        <span class="ct-sec-note">לכאן נשלחים בירורי העמלות</span>
-      </div>
-      <ul class="ct-list ct-list--two">
-        <li v-for="contact in contacts" :key="contact.id" class="ct-row">
-          <CompanyLogo :company="contact.company_name" :size="32" />
-          <div class="ct-id">
-            <span class="ct-name">{{ contact.company_name }}<span v-if="contact.contact_name" class="ct-person"> · {{ contact.contact_name }}</span></span>
-            <a class="ct-mail ltr-number" :href="'mailto:' + contact.email" :title="contact.email">{{ contact.email }}</a>
-          </div>
-          <div class="ct-tools">
-            <button class="ct-icon" title="עריכה" aria-label="עריכה" @click="startEdit(contact)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-            </button>
-            <button class="ct-icon ct-icon--del" title="מחיקה" aria-label="מחיקה" @click="deleteContact(contact.id)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            </button>
-          </div>
-        </li>
-      </ul>
-      </section>
-
-      <section v-if="missingCompanies.length" ref="missingEl" class="ct-card ct-missing">
-        <h3 class="ct-missing-title">חסרה כתובת <span class="ct-missing-n ltr-number">{{ missingCompanies.length }}</span></h3>
-        <div class="ct-chips">
-          <button v-for="co in missingCompanies" :key="co.label" class="ct-chip" type="button"
-                  :title="'הוספת כתובת ל' + co.label" @click="openAddForm(co.label)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            {{ co.label }}
-          </button>
-        </div>
-      </section>
-    </template>
-
+    <ContactsAppSheet :open="coOpen" :origin="coIconEl" kind="companies" title="חברות" :walkins="companyRows"
+                      :missing="missingCompanies.map((m) => m.label)" @close="coOpen = false"
+                      @add="(m) => openAddForm(typeof m === 'string' ? m : '')" @edit="(r) => startEdit(r.raw)"
+                      @delete="deleteContact" @seed="seedContacts" />
     <ContactsAppSheet :open="appOpen" :origin="appIconEl" :walkins="walkins" @close="appOpen = false"
                       @add="openWalkin()" @edit="openWalkin" @delete="deleteWalkin" />
     <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" @close="walkinOpen = false" @saved="onWalkinSaved" />
@@ -123,7 +81,6 @@ import CompanyLogo from './CompanyLogo.vue'
 import WalkinFormModal from './WalkinFormModal.vue'
 import ContactsAppSheet from './ContactsAppSheet.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
-import BigAddButton from './BigAddButton.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
 const contacts = ref([])
@@ -203,6 +160,12 @@ const walkinOpen = ref(false)
 const appOpen = ref(false)
 const appIconEl = ref(null)
 function openApp() { appOpen.value = true }
+// the insurers as the second app: rows shaped like the walk-in rows
+const coOpen = ref(false)
+const coIconEl = ref(null)
+const companyRows = computed(() => contacts.value.map((c) => ({
+  id: c.id, name: c.company_name, email: c.email, contact_name: c.contact_name, notes: c.notes, raw: c,
+})))
 const editingWalkin = ref(null)
 async function fetchWalkins() {
   try { walkins.value = (await api.get('/walkin-customers')).data || [] } catch { walkins.value = [] }
@@ -221,10 +184,6 @@ async function deleteWalkin(id) {
   await fetchWalkins()
 }
 
-const missingEl = ref(null)
-function scrollToMissing() {
-  missingEl.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
 
 async function fetchContacts() {
   loading.value = true
@@ -303,7 +262,7 @@ async function deleteContact(id) {
   font-size: clamp(30px, 3.6vw, 44px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
-.ct-stats { display: flex; align-items: flex-end; gap: 22px; margin-top: 10px; flex-wrap: wrap; }
+.ct-stats { display: flex; align-items: flex-end; gap: 28px; margin-top: 10px; flex-wrap: wrap; }
 .ct-stat { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; margin: -4px -8px; border-radius: var(--radius-sm); }
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
@@ -311,15 +270,30 @@ async function deleteContact(id) {
 /* the walk-in customers as an iPhone app icon — opens the Contacts app (ContactsAppSheet) */
 .ct-app { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0; margin: -2px 0 0;
   border: none; background: none; cursor: pointer; font-family: inherit; }
-.ct-app-ico { position: relative; width: 52px; height: 52px; border-radius: 13px; display: block;
+.ct-app-ico { position: relative; width: 56px; height: 56px; border-radius: 50%; display: block;
   background: linear-gradient(160deg, var(--tab-emails), var(--tab-emails-ink));
   box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-emails) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
   transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1); }
+.ct-app-ico svg { position: relative; z-index: 1; padding: 3px; }
+/* the ring waves of the hero's ringing phone, around each app */
+.ct-app-ico::before, .ct-app-ico::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  border: 2px solid color-mix(in srgb, var(--tab-emails) 45%, transparent);
+  animation: ctRing 3.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.ct-app-ico::after { animation-delay: 0.5s; }
+.ct-app:nth-child(2) .ct-app-ico::before, .ct-app:nth-child(2) .ct-app-ico::after { animation-delay: 1.6s, 2.1s; }
+@keyframes ctRing { 0% { transform: scale(1); opacity: 0.8; } 60%, 100% { transform: scale(1.55); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ct-app-ico::before, .ct-app-ico::after { animation: none; opacity: 0; } }
 .ct-app:hover .ct-app-ico { transform: translateY(-2px) scale(1.04); }
 .ct-app:active .ct-app-ico { transform: scale(0.94); }
 .ct-app:focus-visible { outline: none; }
 .ct-app:focus-visible .ct-app-ico { outline: 2px solid var(--text); outline-offset: 3px; }
-.ct-app-badge { position: absolute; top: -6px; inset-inline-end: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+/* the companies app: white icon, magenta building — the walk-ins app is the filled one */
+.ct-app-ico--co { background: #fff; box-shadow: 0 6px 16px rgba(24, 24, 24, 0.08), inset 0 0 0 1px var(--border-subtle); }
+.ct-app-ico--co svg path { fill: var(--tab-emails); opacity: 1; }
+.ct-app-ico--co svg rect { fill: #fff; }
+.ct-app-badge { position: absolute; z-index: 2; top: -4px; inset-inline-end: -4px; min-width: 20px; height: 20px; padding: 0 5px;
   border-radius: 99px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: #fff;
   background: var(--red, #D93025); box-shadow: 0 0 0 2px var(--card-bg); }
 .ct-stat-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }

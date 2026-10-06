@@ -6,7 +6,7 @@
   <Teleport to="body">
     <Transition name="cas-fade">
       <div v-if="open" class="cas-overlay" @click.self="close">
-        <div ref="cardEl" class="cas-phone" role="dialog" aria-modal="true" aria-label="לקוחות חדשים" dir="rtl">
+        <div ref="cardEl" class="cas-phone" role="dialog" aria-modal="true" :aria-label="title" dir="rtl">
           <Transition :name="detail ? 'cas-push' : 'cas-pop'">
             <!-- ── the list ── -->
             <section v-if="!detail" key="list" class="cas-view">
@@ -14,35 +14,51 @@
                 <button type="button" class="cas-ico" aria-label="סגור" @click="close">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                 </button>
-                <button type="button" class="cas-ico cas-ico--acc" aria-label="לקוח חדש" @click="$emit('add')">
+                <button type="button" class="cas-ico cas-ico--acc" :aria-label="isCo ? 'הוספת חברה' : 'לקוח חדש'" @click="$emit('add')">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
               </header>
               <div ref="scrollEl" class="cas-scroll" @scroll.passive="onScroll">
-                <h2 class="cas-title" :class="{ 'cas-title--small': scrolled }">לקוחות חדשים</h2>
+                <h2 class="cas-title" :class="{ 'cas-title--small': scrolled }">{{ title }}</h2>
                 <label class="cas-search">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-                  <input v-model="q" placeholder="חיפוש" aria-label="חיפוש לקוח" />
+                  <input v-model="q" placeholder="חיפוש" aria-label="חיפוש" />
                 </label>
                 <p v-if="!items.length" class="cas-empty">
-                  {{ q ? 'לא נמצא לקוח' : 'עוד אין לקוחות חדשים. הוסיפו לקוח, והשיחות איתו יגיעו לסיכום.' }}
+                  {{ q ? 'לא נמצא' : isCo ? 'עוד אין כתובות לחברות.' : 'עוד אין לקוחות חדשים. הוסיפו לקוח, והשיחות איתו יגיעו לסיכום.' }}
                 </p>
+                <button v-if="isCo && !walkins.length && !q" type="button" class="cas-seed" @click="$emit('seed')">טעינת אנשי הקשר של החברות</button>
                 <div v-for="(g, gi) in groups" :key="g.letter" :ref="(el) => (secEls[g.letter] = el)" class="cas-sec">
                   <h3 class="cas-letter">{{ g.letter }}</h3>
                   <ul class="cas-rows">
                     <li v-for="(w, i) in g.items" :key="w.id" class="cas-row" :style="{ '--d': Math.min(gi * 2 + i, 14) * 35 + 'ms' }">
                       <button type="button" class="cas-row-btn" @click="detail = w">
-                        <span class="cas-av">{{ initials(w) }}</span>
+                        <CompanyLogo v-if="isCo" :company="w.name" :size="40" />
+                        <span v-else class="cas-av">{{ initials(w) }}</span>
                         <span class="cas-row-id">
                           <strong>{{ w.name }}</strong>
-                          <small class="ltr-number">{{ phoneFmt(w.phone) }}</small>
+                          <small class="ltr-number">{{ isCo ? w.email : phoneFmt(w.phone) }}</small>
                         </span>
                         <svg class="cas-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
                       </button>
                     </li>
                   </ul>
                 </div>
-                <p v-if="items.length" class="cas-count"><span class="ltr-number">{{ items.length }}</span> לקוחות · שיחות איתם נאספות מהטלפון</p>
+                <!-- companies still without an address: one tap adds it -->
+                <div v-if="isCo && missingShown.length" class="cas-sec">
+                  <h3 class="cas-letter">חסרה כתובת</h3>
+                  <ul class="cas-rows">
+                    <li v-for="m in missingShown" :key="m" class="cas-row" style="--d: 0ms">
+                      <button type="button" class="cas-row-btn" @click="$emit('add', m)">
+                        <CompanyLogo :company="m" :size="40" />
+                        <span class="cas-row-id"><strong>{{ m }}</strong><small>הוספת כתובת</small></span>
+                        <svg class="cas-plus" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+                <p v-if="items.length" class="cas-count"><span class="ltr-number">{{ items.length }}</span>
+                  {{ isCo ? 'חברות · לכאן נשלחים בירורי העמלות' : 'לקוחות · שיחות איתם נאספות מהטלפון' }}</p>
               </div>
               <!-- letter index, iOS-style on the side -->
               <nav v-if="groups.length > 1" class="cas-index" aria-label="אינדקס אותיות">
@@ -55,18 +71,19 @@
               <header class="cas-bar">
                 <button type="button" class="cas-back" @click="detail = null">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-                  לקוחות
+                  {{ isCo ? 'חברות' : 'לקוחות' }}
                 </button>
                 <button type="button" class="cas-link" @click="$emit('edit', detail)">עריכה</button>
               </header>
               <div class="cas-scroll">
                 <div class="cas-hero">
-                  <span class="cas-av cas-av--big">{{ initials(detail) }}</span>
+                  <CompanyLogo v-if="isCo" :company="detail.name" :size="96" />
+                  <span v-else class="cas-av cas-av--big">{{ initials(detail) }}</span>
                   <h2>{{ detail.name }}</h2>
-                  <span class="cas-tag">לקוח חדש</span>
+                  <span class="cas-tag">{{ isCo ? 'כתובת לבירורי עמלות' : 'לקוח חדש' }}</span>
                 </div>
-                <div class="cas-quick">
-                  <a class="cas-q" :href="'tel:' + detail.phone">
+                <div class="cas-quick" :class="{ 'cas-quick--one': isCo }">
+                  <a v-if="!isCo" class="cas-q" :href="'tel:' + detail.phone">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" /></svg>
                     חיוג
                   </a>
@@ -75,14 +92,19 @@
                     מייל
                   </a>
                 </div>
-                <dl class="cas-fields">
+                <dl v-if="isCo" class="cas-fields">
+                  <div><dt>מייל</dt><dd class="ltr-number">{{ detail.email }}</dd></div>
+                  <div v-if="detail.contact_name"><dt>איש קשר</dt><dd>{{ detail.contact_name }}</dd></div>
+                  <div v-if="detail.notes"><dt>הערות</dt><dd>{{ detail.notes }}</dd></div>
+                </dl>
+                <dl v-else class="cas-fields">
                   <div><dt>נייד</dt><dd class="ltr-number">{{ phoneFmt(detail.phone) }}</dd></div>
                   <div v-if="detail.email"><dt>מייל</dt><dd class="ltr-number">{{ detail.email }}</dd></div>
                   <div><dt>ת.ז</dt><dd class="ltr-number">{{ detail.id_number }}</dd></div>
                   <div v-if="detail.created_at"><dt>נוסף</dt><dd class="ltr-number">{{ dateFmt(detail.created_at) }}</dd></div>
                 </dl>
-                <p class="cas-note">שיחות עם המספר הזה עולות לבד מהטלפון ל-Nifra Calls.</p>
-                <button type="button" class="cas-del" @click="remove">מחיקת לקוח</button>
+                <p v-if="!isCo" class="cas-note">שיחות עם המספר הזה עולות לבד מהטלפון ל-Nifra Calls.</p>
+                <button type="button" class="cas-del" @click="remove">{{ isCo ? 'מחיקת כתובת' : 'מחיקת לקוח' }}</button>
               </div>
             </section>
           </Transition>
@@ -95,13 +117,20 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
+import CompanyLogo from './CompanyLogo.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   origin: { type: Object, default: null },
+  // the rows: walk-in customers, or (kind="companies") insurer contacts mapped to { id, name, email, … }
   walkins: { type: Array, default: () => [] },
+  kind: { type: String, default: 'walkins' },
+  title: { type: String, default: 'לקוחות חדשים' },
+  missing: { type: Array, default: () => [] }, // companies with no address (kind="companies")
 })
-const emit = defineEmits(['close', 'add', 'edit', 'delete'])
+const emit = defineEmits(['close', 'add', 'edit', 'delete', 'seed'])
+const isCo = computed(() => props.kind === 'companies')
+const missingShown = computed(() => { const s = q.value.trim(); return s ? props.missing.filter((m) => m.includes(s)) : props.missing })
 
 const cardEl = ref(null)
 const scrollEl = ref(null)
@@ -118,7 +147,7 @@ const dateFmt = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTim
 const items = computed(() => {
   const s = q.value.trim()
   const list = [...props.walkins].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'))
-  return s ? list.filter((w) => `${w.name} ${w.phone} ${w.email} ${w.id_number}`.includes(s)) : list
+  return s ? list.filter((w) => `${w.name} ${w.phone || ''} ${w.email || ''} ${w.id_number || ''} ${w.contact_name || ''}`.includes(s)) : list
 })
 const groups = computed(() => {
   const out = []
@@ -204,6 +233,10 @@ function remove() {
 .cas-row-id strong { font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cas-row-id small { align-self: flex-start; font-size: 13px; color: #8E8E93; }
 .cas-chev { flex: none; color: #C7C7CC; }
+.cas-plus { flex: none; color: var(--tab-emails-ink); }
+.cas-quick.cas-quick--one { grid-template-columns: 1fr; }
+.cas-seed { width: 100%; margin-bottom: 14px; padding: 12px; border: none; border-radius: 12px; cursor: pointer;
+  background: var(--tab-emails-ink); color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; }
 .cas-count { margin: 14px 0 0; text-align: center; font-size: 13px; color: #8E8E93; }
 
 .cas-index { position: absolute; inset-inline-end: 3px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; }
