@@ -52,7 +52,7 @@
 
     <ContactsDrill :open="coOpen" :origin="coIconEl" kind="companies" title="חברות" :rows="companyRows"
                    :missing="missingCompanies.map((m) => m.label)" @close="coOpen = false"
-                   @add="(m) => openAddForm(typeof m === 'string' ? m : '')" @edit="(r) => startEdit(r.raw)"
+                   @add="(m, el) => openAddForm(typeof m === 'string' ? m : '', el)" @edit="(r, el) => startEdit(r.raw, el)"
                    @delete="deleteContact" @seed="seedContacts" />
     <ContactsDrill :open="appOpen" :origin="appIconEl" :rows="walkins" @close="appOpen = false"
                    @add="(_, el) => openWalkin(null, el)" @edit="(r, el) => openWalkin(r, el)" @delete="deleteWalkin" />
@@ -65,6 +65,7 @@
       :preset-company="presetCompany"
       :companies="KNOWN_COMPANIES"
       :taken="contacts.map(c => c.company_name)"
+      :origin="contactOrigin"
       @close="closeForm"
       @saved="onSaved"
     />
@@ -207,13 +208,16 @@ async function seedContacts() {
   }
 }
 
-function openAddForm(company = '') {
+const contactOrigin = ref(null)
+function openAddForm(company = '', el = null) {
+  contactOrigin.value = el
   editingContact.value = null
   presetCompany.value = typeof company === 'string' ? company : ''
   formOpen.value = true
 }
 
-function startEdit(contact) {
+function startEdit(contact, el = null) {
+  contactOrigin.value = el
   presetCompany.value = ''
   editingContact.value = contact
   formOpen.value = true

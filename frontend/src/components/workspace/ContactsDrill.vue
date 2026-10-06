@@ -56,7 +56,7 @@
         <template v-if="isCo && missingShown.length">
           <h5 class="cd-sec">חסרה כתובת <span class="cd-sec-n ltr-number">{{ missingShown.length }}</span></h5>
           <div class="cd-chips">
-            <button v-for="m in missingShown" :key="m" type="button" class="cd-chip" @click="emit('add', m)">
+            <button v-for="m in missingShown" :key="m" type="button" class="cd-chip" @click="emit('add', m, $event.currentTarget)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {{ m }}
             </button>

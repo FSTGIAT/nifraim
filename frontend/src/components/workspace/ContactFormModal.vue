@@ -1,8 +1,8 @@
 <template>
   <Teleport to="body">
-    <Transition name="cfm">
-      <div v-if="show" class="cfm-overlay" @click.self="$emit('close')">
-        <div class="cfm-card">
+    <Transition name="cfm" @enter="onEnter">
+      <div v-if="show" class="cfm-overlay" @click.self="close">
+        <div ref="cardEl" class="cfm-card">
           <!-- Form first in the DOM so it lands on the RIGHT under
                `direction: rtl`, with the photograph on the left — the same
                shape as the customer-portal modal. -->
@@ -18,7 +18,7 @@
                       : 'הכתובת שאליה יישלחו בירורי עמלות אל החברה.') }}
                 </p>
               </div>
-              <button class="cfm-x" @click="$emit('close')" aria-label="סגור">
+              <button class="cfm-x" @click="close" aria-label="סגור">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
                 </svg>
@@ -84,7 +84,7 @@
               <p v-if="error" class="cfm-err">{{ error }}</p>
 
               <div class="cfm-actions">
-                <button type="button" class="cfm-btn cfm-btn--ghost" @click="$emit('close')">ביטול</button>
+                <button type="button" class="cfm-btn cfm-btn--ghost" @click="close">ביטול</button>
                 <button type="submit" class="cfm-btn cfm-btn--primary" :disabled="!isValid || saving">
                   <span v-if="saving" class="cfm-spin" aria-hidden="true"></span>
                   {{ saving ? 'שומר…' : (editing ? 'שמור שינויים' : 'הוסף איש קשר') }}
@@ -110,6 +110,7 @@ import { ref, reactive, computed, watch, nextTick } from 'vue'
 import api from '../../api/client.js'
 import CompanyLogo from './CompanyLogo.vue'
 import CompanyPicker from './CompanyPicker.vue'
+import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import artwork from '../../assets/emails/add-contact.webp'
 
 const props = defineProps({
@@ -118,8 +119,20 @@ const props = defineProps({
   presetCompany: { type: String, default: '' },
   companies: { type: Array, default: () => [] },
   taken: { type: Array, default: () => [] },
+  origin: { type: null, default: null }, // the pressed element it grows out of
 })
 const emit = defineEmits(['close', 'saved'])
+// iPhone-style open/close: grows out of the pressed element, folds back into it (nifraim-style §2c)
+const cardEl = ref(null)
+const morph = useOriginMorph()
+function onEnter(el) {
+  morph.remember(props.origin)
+  morph.grow(el.querySelector('.cfm-card'))
+}
+async function close() {
+  if (morph.hasOrigin() && cardEl.value) await morph.shrink(cardEl.value)
+  emit('close')
+}
 
 const form = reactive({ company_name: '', email: '', contact_name: '', notes: '' })
 const saving = ref(false)
@@ -190,6 +203,7 @@ async function submit() {
     const body = { ...form }
     if (props.editing) await api.put(`/company-contacts/${props.editing.id}`, body)
     else await api.post('/company-contacts', body)
+    if (morph.hasOrigin() && cardEl.value) await morph.shrink(cardEl.value)
     emit('saved')
   } catch (e) {
     error.value = e?.response?.data?.detail || 'השמירה נכשלה. נסו שוב.'
@@ -201,7 +215,7 @@ async function submit() {
 
 <style scoped>
 .cfm-overlay {
-  position: fixed; inset: 0; z-index: 1010;
+  position: fixed; inset: 0; z-index: 1030; /* above the companies drill (DataModal 1010) */
   background: rgba(0, 0, 0, 0.45);
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }
