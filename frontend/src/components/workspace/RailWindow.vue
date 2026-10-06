@@ -98,8 +98,9 @@ watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
   width: min(660px, 92vmin); height: min(660px, 92vmin); max-height: none; border-radius: 50%;
   background: var(--card-bg); justify-content: center;
 }
-.rw-card--round .rw-scroll { flex: 1; overflow: visible; padding: 0 12%; display: flex; align-items: center; justify-content: center; }
-.rw-card--round .rw-x { top: 7%; inset-inline-end: 50%; transform: translateX(50%); }
+/* content reaches the circle: picture just under the ✕, the action near the bottom curve */
+.rw-card--round .rw-scroll { flex: 1; min-height: 0; overflow: visible; padding: 12% 14% 9%; display: flex; flex-direction: column; }
+.rw-card--round .rw-x { top: 5.5%; inset-inline-end: 50%; transform: translateX(50%); }
 .rw-x {
   position: absolute; top: 14px; inset-inline-end: 14px; z-index: 5;
   display: inline-flex; padding: 7px; border-radius: 50%; cursor: pointer;
