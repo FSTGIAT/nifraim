@@ -7,7 +7,11 @@
          actions, and the contacts' own loop (TabHeroLoop 'contacts'). -->
     <header class="ct-hero">
       <div class="ct-hero-copy">
-        <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
+        <!-- the title on the right, the picture beside it on the left (RTL: first in the DOM = right) -->
+        <div class="ct-top">
+          <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
+          <TabHeroLoop scene="contacts" class="ct-hero-art" />
+        </div>
         <div class="ct-stats">
           <button type="button" class="ct-app" aria-label="לקוחות חדשים — פתיחת אנשי הקשר" @click="openApp">
             <span ref="appIconEl" class="ct-app-ico">
@@ -44,7 +48,6 @@
           </button>
         </div>
       </div>
-      <TabHeroLoop scene="contacts" class="ct-hero-art" />
     </header>
 
     <ContactsAppSheet :open="coOpen" :origin="coIconEl" kind="companies" title="חברות" :walkins="companyRows"
@@ -243,15 +246,16 @@ async function deleteContact(id) {
   content: ''; position: absolute; left: 50%; top: 50%; width: 130%; aspect-ratio: 1; transform: translate(-50%, -50%);
   background: radial-gradient(circle, color-mix(in srgb, var(--tab-emails-wash) 70%, transparent), transparent 60%); pointer-events: none;
 }
-.ct-hero-art { position: relative; order: -1; flex: none; width: min(330px, 50vmin); height: calc(min(330px, 50vmin) * 0.714) !important; pointer-events: none; }
-.ct-hero-copy { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 18px; min-width: 0; padding-top: 4px; }
+.ct-top { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ct-hero-art { position: relative; flex: none; width: min(230px, 36vmin); height: calc(min(230px, 36vmin) * 0.714) !important; pointer-events: none; }
+.ct-hero-copy { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; min-width: 0; }
 .ct-kicker {
   align-self: center; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
   background: var(--tab-emails-wash); color: var(--tab-emails-ink);
 }
 .ct-hero-title {
   align-self: center; margin: 0; font-family: 'Heebo', sans-serif;
-  font-size: clamp(40px, 7.4vmin, 64px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
+  font-size: clamp(36px, 6.6vmin, 58px); font-weight: 900; white-space: nowrap; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
 .ct-stats { display: flex; align-items: flex-start; justify-content: center; gap: 56px; margin: 0; flex-wrap: wrap; }
@@ -353,7 +357,7 @@ async function deleteContact(id) {
 @media (max-width: 720px) {
   .ct-hero { min-height: 0; }
   .ct-hero-copy { max-width: 100%; }
-  .ct-hero-art { width: min(300px, 74vw); height: calc(min(300px, 74vw) * 0.714) !important; }
+  .ct-hero-art { width: min(170px, 44vw); height: calc(min(170px, 44vw) * 0.714) !important; }
   /* full-screen on phones (not a circle): keep the stack together, centred */
   .ct { justify-content: center; }
   .ct-hero, .ct-hero-copy { flex: none; justify-content: center; }
