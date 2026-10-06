@@ -46,9 +46,13 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     const card = (brief.value?.cards || []).find((c) => c.kind === 'call' && !popped.has(c.id))
     if (card) popRequest.value = card.id
   }
+  // The envelope pops ONCE per batch: every call card waiting right now counts as
+  // shown — the letter's "הבא" walks through the rest (6 phone calls must not
+  // mean 6 envelopes jumping one after another).
   function markPopped(cardId) {
     const s = poppedSet()
     s.add(cardId)
+    for (const c of brief.value?.cards || []) if (c.kind === 'call') s.add(c.id)
     setUserFlag('agent_call_popped', JSON.stringify([...s].slice(-200)))
     attention.value++
   }

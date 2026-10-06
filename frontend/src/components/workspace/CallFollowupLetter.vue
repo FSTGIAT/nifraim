@@ -71,6 +71,10 @@
                   {{ store.busy === card.id + ':send_followup' ? 'שולח…' : 'אישור ושליחה' }}
                 </button>
                 <button type="button" class="cfl-quiet" :disabled="!!store.busy" @click="dismiss">טופל</button>
+                <button v-if="nextCount" type="button" class="cfl-quiet cfl-next" :disabled="!!store.busy" @click="$emit('next')">
+                  הבא <span class="cfl-next-n ltr-number">{{ nextCount }}</span>
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+                </button>
                 <span class="cfl-gap"></span>
                 <button type="button" class="cfl-plain" @click="$emit('open-call', card.ref)">לסיכום המלא</button>
               </footer>
@@ -91,8 +95,10 @@ import MailEnvelopeIntro from './MailEnvelopeIntro.vue'
 const props = defineProps({
   card: { type: Object, required: true },
   origin: { type: Object, default: null }, // the pressed pill
+  nextCount: { type: Number, default: 0 }, // more follow-ups waiting → "הבא"
+  skipIntro: { type: Boolean, default: false }, // reached with "הבא": the envelope already opened once
 })
-const emit = defineEmits(['close', 'sent', 'dismissed', 'open-call', 'open-mail'])
+const emit = defineEmits(['close', 'sent', 'dismissed', 'open-call', 'open-mail', 'next'])
 const store = useOfficeAgentStore()
 const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
@@ -129,12 +135,12 @@ function pickContact(c) {
 // ── open: grow from the pill, the envelope opens, then the letter alone ──
 const stageEl = ref(null)
 const morph = useOriginMorph()
-const introDone = ref(reduced)
+const introDone = ref(reduced || props.skipIntro)
 const closing = ref(false)
 onMounted(async () => {
   store.error = ''
   store.errorCode = ''
-  if (reduced) return
+  if (reduced || props.skipIntro) return
   morph.remember(props.origin)
   await nextTick()
   morph.grow(stageEl.value)
@@ -161,10 +167,16 @@ function finish() {
 
 async function send() {
   const ok = await store.act(props.card, 'send_followup', { to_email: fu.toEmail, to_name: fu.toName, subject: fu.subject, body: fu.body })
-  if (ok) { outcome = { kind: 'sent', value: fu.toName || fu.toEmail }; close() }
+  if (ok) advanceOr({ kind: 'sent', value: fu.toName || fu.toEmail })
 }
 async function dismiss() {
-  if (await store.act(props.card, 'dismiss_followup')) { outcome = { kind: 'dismissed', value: null }; close() }
+  if (await store.act(props.card, 'dismiss_followup')) advanceOr({ kind: 'dismissed', value: null })
+}
+// handled one → straight to the next waiting letter; the last one folds the envelope closed
+function advanceOr(o) {
+  if (props.nextCount) { emit(o.kind, o.value); emit('next'); return }
+  outcome = o
+  close()
 }
 
 // Escape closes the letter (not the agent behind it)
@@ -205,6 +217,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 .cfl-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .cfl-titles h4 { margin: 0; font-size: 17px; font-weight: 800; color: var(--text); }
 .cfl-sub { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfl-next { display: inline-flex; align-items: center; gap: 6px; }
+.cfl-next-n { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  font-size: 12px; font-weight: 800; color: var(--ml-ink); background: var(--ml-wash); }
 .cfl-x { display: inline-flex; padding: 8px; background: none; border: none; border-radius: 10px; color: var(--text-muted); cursor: pointer; }
 .cfl-x:hover { background: var(--bg); color: var(--text); }
 

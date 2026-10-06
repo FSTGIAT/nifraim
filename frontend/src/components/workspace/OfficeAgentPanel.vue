@@ -269,6 +269,7 @@
   </Teleport>
   <!-- a call's follow-up email: opens as a letter out of its pill -->
   <CallFollowupLetter v-if="letter" :key="letter.card.id" :card="letter.card" :origin="letter.origin"
+                      :next-count="letterQueue.length" :skip-intro="!!letter.chained" @next="nextLetter"
                       @close="letter = null" @sent="(name) => (sentNote[letter.i] = 'נשלח ל' + name)"
                       @dismissed="() => {}" @open-call="(id) => { letter = null; emit('open-call', id) }"
                       @open-mail="letter = null; emit('open-mail')" />
@@ -348,6 +349,16 @@ const sentNote = reactive({})
 // a call card opens as a letter (CallFollowupLetter), not the inline sheet
 const letter = ref(null) // { card, origin, i }
 function openLetter(i, c, origin) { letter.value = { card: c, origin: origin || null, i } }
+// the other call follow-ups still waiting — "הבא" in the letter walks them without
+// replaying the envelope
+const letterQueue = computed(() => (letter.value
+  ? store.cards.filter((c) => c.kind === 'call' && c.id !== letter.value.card.id && !sentNote['c:' + c.id])
+  : []))
+function nextLetter() {
+  const c = letterQueue.value[0]
+  if (!c) return
+  letter.value = { card: c, origin: letter.value?.origin || null, i: 'c:' + c.id, chained: true }
+}
 function onPrimary(i, c, ev) {
   if (c.kind === 'call') { openLetter(i, c, ev?.currentTarget); return }
   // a call promise has one action and nothing to edit — tick it right here
