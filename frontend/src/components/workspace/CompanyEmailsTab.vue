@@ -42,7 +42,7 @@
           </button>
         </div>
         <div class="ct-meta">
-          <button class="ct-add" type="button" @click="openWalkin($event)">
+          <button class="ct-add" type="button" @click="openWalkin(null, $event.currentTarget)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             לקוח חדש
           </button>
@@ -50,12 +50,14 @@
       </div>
     </header>
 
-    <ContactsAppSheet :open="coOpen" :origin="coIconEl" kind="companies" title="חברות" :walkins="companyRows"
-                      :missing="missingCompanies.map((m) => m.label)" @close="coOpen = false"
-                      @add="(m) => openAddForm(typeof m === 'string' ? m : '')" @edit="(r) => startEdit(r.raw)"
-                      @delete="deleteContact" @seed="seedContacts" />
-    <ContactsAppSheet :open="appOpen" :origin="appOrigin" :walkins="walkins" :start-new="appStartNew"
-                      @close="appOpen = false" @saved="fetchWalkins" @delete="deleteWalkin" />
+    <ContactsDrill :open="coOpen" :origin="coIconEl" kind="companies" title="חברות" :rows="companyRows"
+                   :missing="missingCompanies.map((m) => m.label)" @close="coOpen = false"
+                   @add="(m) => openAddForm(typeof m === 'string' ? m : '')" @edit="(r) => startEdit(r.raw)"
+                   @delete="deleteContact" @seed="seedContacts" />
+    <ContactsDrill :open="appOpen" :origin="appIconEl" :rows="walkins" @close="appOpen = false"
+                   @add="(_, el) => openWalkin(null, el)" @edit="(r, el) => openWalkin(r, el)" @delete="deleteWalkin" />
+    <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" :origin="walkinOrigin"
+                     @close="walkinOpen = false" @saved="onWalkinSaved" />
 
     <ContactFormModal
       :show="formOpen"
@@ -75,7 +77,8 @@ import api from '../../api/client.js'
 import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
 import ContactFormModal from './ContactFormModal.vue'
 import CompanyLogo from './CompanyLogo.vue'
-import ContactsAppSheet from './ContactsAppSheet.vue'
+import ContactsDrill from './ContactsDrill.vue'
+import WalkinFormModal from './WalkinFormModal.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
@@ -154,9 +157,11 @@ const phoneFmt = (p) => { const d = String(p || '').replace(/\D/g, ''); return d
 const walkins = ref([])
 const appOpen = ref(false)
 const appIconEl = ref(null)
-const appOrigin = ref(null)
-const appStartNew = ref(false)
-function openApp() { appStartNew.value = false; appOrigin.value = appIconEl.value; appOpen.value = true }
+function openApp() { appOpen.value = true }
+// the add/edit window (the Kling picture + form) grows out of the button that opened it
+const walkinOpen = ref(false)
+const editingWalkin = ref(null)
+const walkinOrigin = ref(null)
 // the insurers as the second app: rows shaped like the walk-in rows
 const coOpen = ref(false)
 const coIconEl = ref(null)
@@ -166,11 +171,15 @@ const companyRows = computed(() => contacts.value.map((c) => ({
 async function fetchWalkins() {
   try { walkins.value = (await api.get('/walkin-customers')).data || [] } catch { walkins.value = [] }
 }
-// "לקוח חדש": the Contacts app grows out of the button, straight onto the new-contact screen
-function openWalkin(ev) {
-  appStartNew.value = true
-  appOrigin.value = ev?.currentTarget || appIconEl.value
-  appOpen.value = true
+function openWalkin(w, el) {
+  editingWalkin.value = w || null
+  walkinOrigin.value = el || null
+  walkinOpen.value = true
+}
+async function onWalkinSaved() {
+  walkinOpen.value = false
+  editingWalkin.value = null
+  await fetchWalkins()
 }
 async function deleteWalkin(id) {
   await api.delete(`/walkin-customers/${id}`)
@@ -258,7 +267,7 @@ async function deleteContact(id) {
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
 .ct-stat--btn:focus-visible { outline: 2px solid var(--tab-emails); outline-offset: 2px; }
-/* the walk-in customers as an iPhone app icon — opens the Contacts app (ContactsAppSheet) */
+/* the walk-in customers as a round app icon — opens their drill (ContactsDrill) */
 .ct-app { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 110px; padding: 0; margin: 0;
   border: none; background: none; cursor: pointer; font-family: inherit; }
 .ct-app-ico { position: relative; width: 82px; height: 82px; border-radius: 50%; display: block;
