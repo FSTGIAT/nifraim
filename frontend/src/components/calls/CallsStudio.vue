@@ -114,7 +114,8 @@
           <div class="cs-detail-body">
             <Transition name="cs-swap" mode="out-in">
               <CallWaiting v-if="detailCall.status !== 'done'" :key="detailCall.id + '-w'" :call="detailCall" />
-              <CallResult v-else :key="detailCall.id + '-r'" :call="detailCall" @delete="onDelete(detailCall.id)" />
+              <CallResult v-else :key="detailCall.id + '-r'" :call="detailCall" @delete="onDelete(detailCall.id)"
+                          @personal="(block) => onPersonal(detailCall.id, block)" />
             </Transition>
           </div>
         </article>
@@ -285,6 +286,12 @@ async function closeDetail() {
   await morph.shrink(detailEl.value)
   detailOpen.value = false
   detailId.value = null
+}
+async function onPersonal(id, block) {
+  detailOpen.value = false
+  detailId.value = null
+  await store.markPersonal(id, block)
+  store.showNotice(block ? 'השיחה הוסתרה, והמספר לא יעלה שוב' : 'השיחה הוסתרה')
 }
 async function onDelete(id) {
   if (!window.confirm('למחוק את השיחה, התמליל והסיכום?')) return

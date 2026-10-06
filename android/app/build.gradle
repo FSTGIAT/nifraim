@@ -25,8 +25,8 @@ android {
         // API 36 enforces edge-to-edge with no opt-out — see MainActivity.onCreate,
         // which applies the system-bar insets so content isn't drawn under them.
         targetSdk 36
-        versionCode 5
-        versionName "1.4"
+        versionCode 6
+        versionName "1.5"
     }
 
     signingConfigs {

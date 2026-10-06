@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers, blocked_phones
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -80,6 +80,7 @@ app.include_router(recruits.router, prefix="/api/recruits", tags=["recruits"])
 app.include_router(paying_companies.router, prefix="/api/paying-companies", tags=["paying-companies"])
 app.include_router(company_contacts.router, prefix="/api/company-contacts", tags=["company-contacts"])
 app.include_router(walkin_customers.router, prefix="/api/walkin-customers", tags=["walkin-customers"])
+app.include_router(blocked_phones.router, prefix="/api/blocked-phones", tags=["blocked-phones"])
 app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(portal.router, prefix="/api/portal", tags=["portal"])

@@ -15,8 +15,17 @@
             </svg>
             תמליל<span v-if="segments.length" class="cr-act-n ltr-number">{{ segments.length }}</span>
           </button>
+          <button type="button" class="cr-act cr-act--quiet" :aria-expanded="personalOpen" @click="personalOpen = !personalOpen">אישית</button>
           <button type="button" class="cr-act cr-act--quiet" @click="$emit('delete')">מחיקה</button>
         </div>
+      </div>
+      <!-- a personal call (family, friends): hide it — and maybe never upload this number again -->
+      <div v-if="personalOpen" class="cr-personal" role="group" aria-label="שיחה אישית">
+        <span>שיחה אישית?</span>
+        <button type="button" class="cr-act" @click="$emit('personal', false)">הסתרת השיחה</button>
+        <button v-if="call.phone_number" type="button" class="cr-act" @click="$emit('personal', true)">
+          הסתרה ולא להעלות את <span class="ltr-number">{{ call.phone_number }}</span> שוב
+        </button>
       </div>
       <p class="cr-meta">
         <span v-if="phoneCall" class="cr-src">
@@ -181,7 +190,8 @@ const props = defineProps({
   call: { type: Object, required: true },
   reveal: { type: Boolean, default: true },
 })
-defineEmits(['delete'])
+defineEmits(['delete', 'personal'])
+const personalOpen = ref(false)
 
 const ins = computed(() => props.call.insights || {})
 const list = (k, max) => (ins.value[k] || []).filter((x) => x && String(x).trim()).slice(0, max)
@@ -429,6 +439,8 @@ watch(() => props.call.id, () => { q.value = ''; sheetOpen.value = false; load()
 .cr-hero-top { display: flex; align-items: flex-start; gap: 16px; }
 .cr-title { flex: 1; margin: 0; font-size: clamp(26px, 2.6vw, 34px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
 .cr-actions { display: flex; gap: 8px; flex: none; padding-top: 4px; }
+.cr-personal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--bg); font-size: 13.5px; color: var(--text-secondary); }
 .cr-act {
   display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 10px;
   border: 1px solid var(--border-subtle); background: var(--card-bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;

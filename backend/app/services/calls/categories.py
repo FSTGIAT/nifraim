@@ -14,6 +14,8 @@ CATEGORIES: dict[str, str] = {
     "retention": "ביטול / שימור",
     "service": "שירות / בירור",
     "other": "אחר",
+    # not work at all (family, friends, errands) — hidden everywhere, audio deleted (services/calls/privacy.py)
+    "personal": "אישית",
 }
 
 URGENCY = {"high": "דחוף", "normal": "רגיל", "low": "לא דחוף"}

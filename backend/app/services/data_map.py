@@ -144,7 +144,8 @@ async def load(db: AsyncSession, user: User) -> MapContext:
     )).scalars().all()
     from app.models.call_recording import CallRecording
     ctx.calls = (await db.execute(
-        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done")
+        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done",
+                                    __import__("app.services.calls.privacy", fromlist=["visible"]).visible())
         .order_by(CallRecording.created_at.desc()).limit(300)
     )).scalars().all()
     return ctx

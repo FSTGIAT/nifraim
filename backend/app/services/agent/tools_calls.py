@@ -12,6 +12,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.models.call_recording import CALL_TERMINAL, CallRecording
+from app.services.calls.privacy import visible
 from app.services.agent.registry import tool
 
 
@@ -46,7 +47,7 @@ async def stop_call_recording(ctx):
       {"which": {"type": "string", "description": "last, או מילה לחיפוש"}, "n": {"type": "integer"}},
       category="calls", status_he="קורא את סיכומי השיחות")
 async def get_call_summaries(ctx, which: str = "last", n: int = 3):
-    rows = (await ctx.db.execute(select(CallRecording).where(CallRecording.user_id == ctx.user.id)
+    rows = (await ctx.db.execute(select(CallRecording).where(CallRecording.user_id == ctx.user.id, visible())
                                  .order_by(CallRecording.created_at.desc()).limit(100))).scalars().all()
     if not rows:
         return {"calls": [], "note": "עוד לא הוקלטו שיחות. אפשר לבקש ממני 'תקליט את השיחה'."}
@@ -85,7 +86,7 @@ def _today() -> date:
 
 async def _calls(ctx, limit: int = 500) -> list[CallRecording]:
     return (await ctx.db.execute(
-        select(CallRecording).where(CallRecording.user_id == ctx.user.id, CallRecording.status == "done")
+        select(CallRecording).where(CallRecording.user_id == ctx.user.id, CallRecording.status == "done", visible())
         .order_by(CallRecording.created_at.desc()).limit(limit)
     )).scalars().all()
 
@@ -251,7 +252,7 @@ async def get_call(ctx, call_id: str, with_transcript: bool = False):
     except ValueError:
         return "מזהה שיחה לא תקין — קח call_id מ-search_calls."
     c = (await ctx.db.execute(select(CallRecording).where(
-        CallRecording.id == cid, CallRecording.user_id == ctx.user.id))).scalar_one_or_none()
+        CallRecording.id == cid, CallRecording.user_id == ctx.user.id, visible()))).scalar_one_or_none()
     if not c:
         return "לא נמצאה שיחה כזו."
     ins = c.insights or {}
@@ -354,7 +355,7 @@ async def mark_call_task_done(ctx, call_id: str, task_index: int):
     except ValueError:
         return "מזהה שיחה לא תקין."
     c = (await ctx.db.execute(select(CallRecording).where(
-        CallRecording.id == cid, CallRecording.user_id == ctx.user.id))).scalar_one_or_none()
+        CallRecording.id == cid, CallRecording.user_id == ctx.user.id, visible()))).scalar_one_or_none()
     items = ((c.insights or {}).get("action_items") or []) if c else []
     if not c or not 0 <= task_index < len(items):
         return "לא נמצאה משימה כזו — קח call_id ו-task_index מ-open_promises."

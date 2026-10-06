@@ -1177,15 +1177,19 @@ async def phone_forward_client_phones(token: str, db: AsyncSession = Depends(get
 
     user = await _phone_forward_user(db, token)
     if user is None:
-        return {"hashes": [], "version": ""}
-    hashes = sorted(phone_hash(k) for k in await customer_phones(db, user))
+        return {"hashes": [], "block": [], "version": ""}
+    from app.services.calls.privacy import blocked_keys
+    blocked = await blocked_keys(db, user.id)
+    hashes = sorted(phone_hash(k) for k in await customer_phones(db, user) if k not in blocked)
+    block = sorted(phone_hash(k) for k in blocked)
     # 1.4+ asks every scan whether the list changed (cheap) — a walk-in added on the site
     # reaches the phone within one scan, and its last 3 hours of recordings are re-checked
     n, last = (await db.execute(_select(func.count(), func.max(WalkinCustomer.created_at))
                                 .where(WalkinCustomer.user_id == user.id))).one()
     import hashlib
-    version = hashlib.sha256((",".join(hashes)).encode()).hexdigest()[:16]
-    return {"hashes": hashes, "version": version, "walkins": n,
+    version = hashlib.sha256((",".join(hashes) + "|" + ",".join(block)).encode()).hexdigest()[:16]
+    # block = numbers that never leave the phone (1.5+ drops them on the device, no question asked)
+    return {"hashes": hashes, "block": block, "version": version, "walkins": n,
             "walkin_last": last.isoformat() + "Z" if last else None}
 
 
@@ -1234,6 +1238,11 @@ async def phone_forward_call(
         return {"id": str(prev.id), "status": prev.status, "duplicate": True}
 
     number = phone_display(phone)
+    from app.services.calls.privacy import is_blocked
+    if await is_blocked(db, user.id, phone):
+        # on the agent's never-upload list: nothing is stored (an app older than 1.5 still sends it)
+        await audio.close()
+        return {"ignored": True, "reason": "blocked"}
     when = None
     if started_at and started_at > 0:
         when = datetime.utcfromtimestamp(started_at / 1000)

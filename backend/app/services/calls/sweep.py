@@ -68,7 +68,8 @@ async def categorize(db, call: CallRecording) -> bool:
 
 async def _candidates(db, where, limit: int, job: str) -> list[CallRecording]:
     rows = (await db.execute(
-        select(CallRecording).where(CallRecording.status == "done", CallRecording.done_at < datetime.utcnow() - SETTLE, *where)
+        select(CallRecording).where(CallRecording.status == "done", CallRecording.done_at < datetime.utcnow() - SETTLE,
+                                    CallRecording.category.is_distinct_from("personal"), *where)
         .order_by(CallRecording.created_at.desc()).limit(limit * 4)
     )).scalars().all()
     return [c for c in rows if _tries(c, job) < MAX_TRIES][:limit]

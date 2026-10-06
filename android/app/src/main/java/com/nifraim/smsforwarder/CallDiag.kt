@@ -14,7 +14,7 @@ import java.net.URL
  */
 object CallDiag {
     fun save(ctx: Context, found: List<CallSync.Recording>, fresh: Int, matched: Int, clients: Int,
-             asked: Int, pendingInApp: Int, writing: Int) {
+             asked: Int, pendingInApp: Int, writing: Int, blocked: Int = 0) {
         val newest = found.maxOfOrNull { it.modifiedMs } ?: 0L
         val o = JSONObject()
             .put("at", System.currentTimeMillis())
@@ -34,6 +34,7 @@ object CallDiag {
             .put("known_customer_phones", Prefs.getClientHashes(ctx).size)
             .put("last_upload_result", Prefs.getLastUploadResult(ctx))
             .put("added_to_app_list", pendingInApp)
+            .put("never_upload", blocked)
         Prefs.setDiag(ctx, o)
         send(ctx)
     }

@@ -60,6 +60,12 @@ object CallSync {
     fun hash(key: String): String =
         MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
 
+    /** On the agent's never-upload list (family, friends): dropped on the device, never asked about. */
+    fun isBlocked(ctx: Context, number: String?): Boolean {
+        val key = phoneKey(number) ?: return false
+        return Prefs.getBlockHashes(ctx).contains(hash(key))
+    }
+
     fun isClient(ctx: Context, number: String?): Boolean {
         val key = phoneKey(number) ?: return false
         return Prefs.getClientHashes(ctx).contains(hash(key))
@@ -80,6 +86,10 @@ object CallSync {
             val fresh = (0 until arr.length()).map { arr.getString(it) }.toSet()
             val before = Prefs.getClientHashes(ctx)
             Prefs.setClientHashes(ctx, fresh)
+            val blockArr = o.optJSONArray("block")
+            val block = if (blockArr == null) emptySet() else (0 until blockArr.length()).map { blockArr.getString(it) }.toSet()
+            Prefs.setBlockHashes(ctx, block)
+            if (block.isNotEmpty()) Skipped.dropBlocked(ctx, block)
             Prefs.setClientsVersion(ctx, o.optString("version"))
             // a customer added on the site (walk-in): their recordings from the last 3 hours
             // that were left out now upload

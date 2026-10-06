@@ -1529,6 +1529,13 @@ dialer saves recording → MediaStore content-URI trigger → CallScanWorker
   the customer list on every scan (≥10 min apart, so within one 15-min periodic scan or on opening the app). When
   hashes are **added**, `Skipped.recheck` uploads the recordings from the last 3 hours that it had left out for that
   number (unanswered "להעלות?" or in-app pending). An answered **"לא" is never revisited.**
+- **Personal calls + never-upload numbers (1.5, 2026-10-06).** `services/calls/privacy.py`. A call is personal when the
+  summary picks category `personal` (family, friends, errands, even with a customer), when the agent marks it (call card
+  → אישית), or when its number is on `blocked_phones` (the third app "לא להעלות" in אנשי קשר). Personal = hidden from every
+  reader (`visible()` — add it to any new call query), no tasks / follow-up / quotes, no passages, audio deleted from the
+  gateway at once; `restore` brings it back. Never-upload: `/client-phones` sends `block` hashes → app 1.5 drops those
+  recordings on the device without asking; `/phone-forward/{token}/call` refuses them too (older apps); adding a number
+  hides its stored calls.
 - **Diagnostics (1.3):** each scan POSTs counts only to `/phone-forward/{token}/calls-diag` → `railway logs | grep CALLS-DIAG`.
 - **iPhone (iOS 18.1+)** saves call recordings into Notes, where apps can't reach them. The agent uses a Share-sheet
   Shortcut "שלח לנפרעים" that posts to the same `/call` with `source=phone_ios` (guide in `PhoneForwardModal.vue`). It sends

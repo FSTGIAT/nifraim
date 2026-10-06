@@ -231,7 +231,7 @@ async def search(db, user_id, query: str, k: int = 12, since=None, until=None, c
     try:
         rows = (await db.execute(text(
             "SELECT ch.call_id, ch.kind, ch.start_s, ch.role, ch.text, 1 - (ch.embedding <=> CAST(:q AS vector)) AS score "
-            "FROM call_chunks ch JOIN call_recordings cr ON cr.id = ch.call_id "
+            "FROM call_chunks ch JOIN call_recordings cr ON cr.id = ch.call_id AND cr.category IS DISTINCT FROM 'personal' "
             f"WHERE {' AND '.join(where)} ORDER BY ch.embedding <=> CAST(:q AS vector) LIMIT :k"), args)).mappings().all()
     except Exception:  # noqa: BLE001 — no pgvector / no table yet
         logger.exception("calls: semantic search failed")

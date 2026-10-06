@@ -148,8 +148,14 @@ async def _on_transcribed(r, call_id: str) -> None:
         else:
             await summarize_into(db, call)
             call.status, call.done_at = "done", datetime.utcnow()
-            await db.commit()
-            await index_safely(db, call)
+            from app.services.calls.privacy import PERSONAL, hide_call, is_blocked
+            if call.category == PERSONAL or await is_blocked(db, call.user_id, call.phone_number):
+                # a personal call: hidden, no tasks / follow-up, audio deleted now — never indexed
+                await hide_call(db, call, reason="summary" if call.category == PERSONAL else "blocked")
+                await db.commit()
+            else:
+                await db.commit()
+                await index_safely(db, call)
     # stored in Postgres now — the Redis copy can go (the gateway's done/<id>.json ages out)
     await r.delete(C.TRANSCRIPT_KEY.format(call_id=call_id))
 

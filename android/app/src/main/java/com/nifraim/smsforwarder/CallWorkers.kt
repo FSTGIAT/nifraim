@@ -99,7 +99,7 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             }
             var stillWriting = false
             val found = CallSync.findRecordings(ctx)
-            var fresh = 0; var matched = 0; var clients = 0; var asked = 0; var pendingInApp = 0; var writing = 0
+            var fresh = 0; var matched = 0; var clients = 0; var asked = 0; var pendingInApp = 0; var writing = 0; var blocked = 0
             for (rec in found) {
                 if (Prefs.isHandled(ctx, rec.mediaId)) continue
                 // MediaStore can announce a file before the dialer finished writing it.
@@ -111,7 +111,9 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 fresh++
                 val info = CallSync.matchCall(ctx, rec)
                 info.startedAtMs?.let { Prefs.markCallUsed(ctx, it); matched++ }
-                if (CallSync.isClient(ctx, info.number)) {
+                if (CallSync.isBlocked(ctx, info.number)) {
+                    blocked++                                  // never leaves the phone, never asked about
+                } else if (CallSync.isClient(ctx, info.number)) {
                     clients++
                     CallJobs.upload(ctx, rec, info)
                 } else if (CallApproval.ask(ctx, rec, info)) {
@@ -126,7 +128,7 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 }
                 Prefs.markHandled(ctx, rec.mediaId)
             }
-            CallDiag.save(ctx, found, fresh, matched, clients, asked, pendingInApp, writing)
+            CallDiag.save(ctx, found, fresh, matched, clients, asked, pendingInApp, writing, blocked)
             if (stillWriting) CallJobs.scanLater(ctx)
             Result.success()
         } finally {
@@ -326,6 +328,22 @@ object Skipped {
         val arr = Prefs.getSkipped(ctx)
         val keep = org.json.JSONArray()
         for (i in 0 until arr.length()) arr.getJSONObject(i).let { if (it.optLong("id") != mediaId) keep.put(it) }
+        Prefs.setSkipped(ctx, keep)
+    }
+
+    /** A number just put on the never-upload list: its waiting recordings are forgotten, their questions withdrawn. */
+    fun dropBlocked(ctx: Context, block: Set<String>) {
+        val arr = Prefs.getSkipped(ctx)
+        val keep = org.json.JSONArray()
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.optString("hash") in block) {
+                val id = o.getLong("id")
+                nm.cancel((id % Int.MAX_VALUE).toInt())
+                CallApproval.dropFromApp(ctx, id)
+            } else keep.put(o)
+        }
         Prefs.setSkipped(ctx, keep)
     }
 

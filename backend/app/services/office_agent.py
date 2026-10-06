@@ -136,7 +136,7 @@ async def _call_cards(db: AsyncSession, user: User, naive: datetime) -> list[dic
     from app.models.call_recording import CallRecording
     rows = (await db.execute(
         select(CallRecording).where(
-            CallRecording.user_id == user.id, CallRecording.status == "done",
+            CallRecording.user_id == user.id, CallRecording.status == "done", _calls_visible(),
             CallRecording.done_at >= naive - MAIL_WINDOW,
         ).order_by(CallRecording.done_at.desc()).limit(10)
     )).scalars().all()
@@ -154,7 +154,7 @@ async def _promise_cards(db: AsyncSession, user: User) -> list[dict]:
     from app.models.call_recording import CallRecording
     from app.services.agent.tools_calls import promises
     rows = (await db.execute(
-        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done",
+        select(CallRecording).where(CallRecording.user_id == user.id, CallRecording.status == "done", _calls_visible(),
                                     CallRecording.created_at >= datetime.utcnow() - timedelta(days=60))
         .order_by(CallRecording.created_at.desc()).limit(200)
     )).scalars().all()
@@ -397,6 +397,11 @@ async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] 
 
 
 # ─────────────────────────── @ contacts (the ask box mention search) ───────
+
+def _calls_visible():
+    from app.services.calls.privacy import visible
+    return visible()
+
 
 async def contacts(db: AsyncSession, user: User, q: str = "", limit: int = 12) -> list[dict]:
     """Who the agent can @-mention: customers from the active production files

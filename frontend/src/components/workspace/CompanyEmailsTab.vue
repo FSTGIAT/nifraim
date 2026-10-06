@@ -40,6 +40,17 @@
             </span>
             <span class="ct-stat-l">חברות</span>
           </button>
+          <button type="button" class="ct-app" aria-label="לא להעלות — מספרים ושיחות אישיות" @click="privOpen = true">
+            <span ref="privIconEl" class="ct-app-ico ct-app-ico--co">
+              <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
+                <g transform="translate(15 15) scale(1.25)" fill="none" stroke="var(--tab-emails)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.7 13.3a16 16 0 0 0 3.4 2.6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1M5.2 13.8A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9" />
+                  <path d="M22 2 2 22" />
+                </g>
+              </svg>
+            </span>
+            <span class="ct-stat-l">לא להעלות</span>
+          </button>
         </div>
       </div>
     </header>
@@ -50,6 +61,7 @@
                    @delete="deleteContact" @seed="seedContacts" />
     <ContactsDrill :open="appOpen" :origin="appIconEl" :rows="walkins" @close="appOpen = false"
                    @add="(_, el) => openWalkin(null, el)" @edit="(r, el) => openWalkin(r, el)" @delete="deleteWalkin" />
+    <PrivacyDrill :open="privOpen" :origin="privIconEl" @close="privOpen = false" />
     <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" :origin="walkinOrigin"
                      @close="walkinOpen = false" @saved="onWalkinSaved" />
 
@@ -74,6 +86,7 @@ import ContactFormModal from './ContactFormModal.vue'
 import CompanyLogo from './CompanyLogo.vue'
 import ContactsDrill from './ContactsDrill.vue'
 import WalkinFormModal from './WalkinFormModal.vue'
+import PrivacyDrill from './PrivacyDrill.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
@@ -153,6 +166,9 @@ const walkins = ref([])
 const appOpen = ref(false)
 const appIconEl = ref(null)
 function openApp() { appOpen.value = true }
+// לא להעלות: never-upload numbers + the personal calls that were hidden
+const privOpen = ref(false)
+const privIconEl = ref(null)
 // the add/edit window (the Kling picture + form) grows out of the button that opened it
 const walkinOpen = ref(false)
 const editingWalkin = ref(null)
@@ -260,7 +276,7 @@ async function deleteContact(id) {
   font-size: clamp(36px, 6.6vmin, 58px); font-weight: 900; white-space: nowrap; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
-.ct-stats { display: flex; align-items: flex-start; justify-content: center; gap: 56px; margin: 0; flex-wrap: wrap; }
+.ct-stats { display: flex; align-items: flex-start; justify-content: center; gap: 40px; margin: 0; flex-wrap: wrap; }
 .ct-stat { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; margin: -4px -8px; border-radius: var(--radius-sm); }
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
@@ -289,7 +305,7 @@ async function deleteContact(id) {
 .ct-app:focus-visible .ct-app-ico { outline: 2px solid var(--text); outline-offset: 3px; }
 /* the companies app: white icon, magenta building — the walk-ins app is the filled one */
 .ct-app-ico--co { background: #fff; box-shadow: 0 6px 16px rgba(24, 24, 24, 0.08), inset 0 0 0 1px var(--border-subtle); }
-.ct-app-ico--co svg path { fill: var(--tab-emails); opacity: 1; }
+.ct-app-ico--co svg > path { fill: var(--tab-emails); opacity: 1; }
 .ct-app-ico--co svg rect { fill: #fff; }
 .ct-app-badge { position: absolute; z-index: 2; top: -4px; inset-inline-end: -4px; min-width: 20px; height: 20px; padding: 0 5px;
   border-radius: 99px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: #fff;

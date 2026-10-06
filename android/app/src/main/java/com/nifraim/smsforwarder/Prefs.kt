@@ -154,4 +154,9 @@ object Prefs {
 
     fun getClientsVersion(ctx: Context): String = sp(ctx).getString(KEY_CLIENTS_VERSION, "") ?: ""
     fun setClientsVersion(ctx: Context, v: String) = sp(ctx).edit { putString(KEY_CLIENTS_VERSION, v) }
+
+    // ── never-upload numbers (hashes) — their recordings never leave the phone ──
+    private const val KEY_BLOCK_HASHES = "calls_block_hashes"
+    fun getBlockHashes(ctx: Context): Set<String> = sp(ctx).getStringSet(KEY_BLOCK_HASHES, emptySet()) ?: emptySet()
+    fun setBlockHashes(ctx: Context, h: Set<String>) = sp(ctx).edit { putStringSet(KEY_BLOCK_HASHES, h) }
 }

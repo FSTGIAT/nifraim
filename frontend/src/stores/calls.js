@@ -317,6 +317,14 @@ export const useCallsStore = defineStore('calls', () => {
     return data
   }
 
+  /** A personal call: hidden (audio deleted), and maybe its number on the never-upload list. */
+  async function markPersonal(id, blockNumber = false) {
+    await api.post(`/blocked-phones/calls/${id}/personal`, { block_number: !!blockNumber })
+    stopPolling(id)
+    calls.value = calls.value.filter((c) => c.id !== id)
+    if (current.value?.id === id) current.value = null
+  }
+
   async function deleteCall(id) {
     await api.delete(`/calls/${id}`)
     stopPolling(id)
@@ -334,7 +342,7 @@ export const useCallsStore = defineStore('calls', () => {
     enabled, calls, current, loadingList, error,
     recState, elapsed, uploadProgress, analyser, isRecording, micLevel,
     fetchStatus, fetchList, fetchCall, startRecording, cancelRecording, stopAndUpload,
-    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, clearCurrent, notice, studioOpen, openCallId, requestOpenCall, showNotice,
+    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, markPersonal, clearCurrent, notice, studioOpen, openCallId, requestOpenCall, showNotice,
     studioRequest, requestStudio, setTaskDone,
   }
 })

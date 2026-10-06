@@ -73,8 +73,9 @@ async def upload_call(
 
 @router.get("")
 async def list_calls(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.calls.privacy import visible
     rows = (await db.execute(
-        select(CallRecording).where(CallRecording.user_id == user.id)
+        select(CallRecording).where(CallRecording.user_id == user.id, visible())
         .order_by(CallRecording.created_at.desc()).limit(200))).scalars().all()
     return [_out(c, full=False) for c in rows]
 

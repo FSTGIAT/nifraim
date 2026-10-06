@@ -54,7 +54,7 @@ TOOL = {
                     "required": ["text", "owner"],
                 },
             },
-            "category": {"type": "string", "enum": list(CATEGORIES), "description": "הנושא העיקרי: " + ", ".join(f"{k}={v}" for k, v in CATEGORIES.items())},
+            "category": {"type": "string", "enum": list(CATEGORIES), "description": "הנושא העיקרי. personal = שיחה פרטית שאין בה שום עניין עבודה (משפחה, חברים, סידורים) — גם אם הצד השני לקוח: " + ", ".join(f"{k}={v}" for k, v in CATEGORIES.items())},
             "topics": {"type": "array", "maxItems": 4, "items": {"type": "string"}, "description": "תגיות קצרות (2–3 מילים)"},
             "companies_mentioned": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
             "urgency": {"type": "string", "enum": list(URGENCY), "description": "high אם יש מועד קרוב/בעיה דחופה"},
