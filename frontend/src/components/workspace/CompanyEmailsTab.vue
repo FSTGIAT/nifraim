@@ -266,7 +266,9 @@ async function deleteContact(id) {
 }
 .ct-top { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .ct-hero-art { position: relative; flex: none; width: min(230px, 36vmin); height: calc(min(230px, 36vmin) * 0.714) !important; pointer-events: none; }
-.ct-hero-copy { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; min-width: 0; }
+.ct-hero-copy { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 34px; min-width: 0; }
+/* the title row sits at the top of the circle; the apps centre in the space below it */
+.ct-hero-copy > .ct-stats { margin-block: auto; }
 .ct-kicker {
   align-self: center; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
   background: var(--tab-emails-wash); color: var(--tab-emails-ink);
