@@ -546,6 +546,8 @@ into `call_recordings`. The contract lives in `services/calls/contract.py` and i
 own Config File Path (`services/<svc>/railway.toml`). **See `docs/ARCHITECTURE.md` §18.**
 - **Phone calls:** the Android Nifraim App collects the dialer's own recordings. A customer's number uploads by itself;
   any other number waits for the agent's tap. Both sources go through ONE ingest (`services/calls/ingest.py`).
+- **Walk-in customers (לקוח חדש):** added in אנשי קשר → `walkin_customers`; their phone joins the app's customer list
+  (`customer_phones()`), and the app re-uploads that number's left-out recordings from the last 3 hours (never a "לא").
 - **Speakers:** pyannote (ungated ivrit-ai copy, no token) labels סוכן/לקוח. One voice → no labels.
 - **Categories and tasks:** categories come from `services/calls/categories.py` only. Task done state is server-side.
 - **Nifra Agent call tools:** `search_calls`, `customer_calls`, `get_call`, `open_promises`, `calls_stats`,

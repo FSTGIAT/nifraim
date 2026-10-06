@@ -142,4 +142,16 @@ object Prefs {
 
     fun getLastUploadResult(ctx: Context): String = sp(ctx).getString(KEY_LAST_UPLOAD, "") ?: ""
     fun setLastUploadResult(ctx: Context, v: String) = sp(ctx).edit { putString(KEY_LAST_UPLOAD, v) }
+
+    // ── recordings left out (not a customer) — re-checked when a new customer is added ──
+    private const val KEY_SKIPPED = "calls_skipped"           // JSON array, pruned to the last 24h
+    private const val KEY_CLIENTS_VERSION = "calls_clients_version"
+
+    fun getSkipped(ctx: Context): org.json.JSONArray =
+        try { org.json.JSONArray(sp(ctx).getString(KEY_SKIPPED, "[]") ?: "[]") } catch (_: Exception) { org.json.JSONArray() }
+
+    fun setSkipped(ctx: Context, arr: org.json.JSONArray) = sp(ctx).edit { putString(KEY_SKIPPED, arr.toString()) }
+
+    fun getClientsVersion(ctx: Context): String = sp(ctx).getString(KEY_CLIENTS_VERSION, "") ?: ""
+    fun setClientsVersion(ctx: Context, v: String) = sp(ctx).edit { putString(KEY_CLIENTS_VERSION, v) }
 }

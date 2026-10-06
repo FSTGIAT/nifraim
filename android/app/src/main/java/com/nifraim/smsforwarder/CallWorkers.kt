@@ -92,7 +92,9 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
         val ctx = applicationContext
         try {
             if (!Prefs.isCallsEnabled(ctx)) return@withContext Result.success()
-            if (System.currentTimeMillis() - Prefs.getClientsFetched(ctx) > TimeUnit.HOURS.toMillis(24)) {
+            // every scan: a walk-in customer added on the site must reach the phone within one scan
+            // (the periodic scan runs every 15 min), so their last 3 hours are still recoverable
+            if (System.currentTimeMillis() - Prefs.getClientsFetched(ctx) > TimeUnit.MINUTES.toMillis(10)) {
                 CallSync.refreshClients(ctx)
             }
             var stillWriting = false
@@ -113,8 +115,10 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                     clients++
                     CallJobs.upload(ctx, rec, info)
                 } else if (CallApproval.ask(ctx, rec, info)) {
+                    Skipped.remember(ctx, rec, info)
                     asked++
                 } else {
+                    Skipped.remember(ctx, rec, info)
                     // the notification could not be shown (notifications off) — never drop it silently:
                     // it waits in the app's "ממתינות לאישור" list
                     CallApproval.keepInApp(ctx, rec, info)
@@ -248,8 +252,16 @@ object CallApproval {
         Prefs.setPending(ctx, arr)
     }
 
+    fun dropFromApp(ctx: Context, mediaId: Long) {
+        val arr = Prefs.getPending(ctx)
+        val keep = org.json.JSONArray()
+        for (i in 0 until arr.length()) arr.getJSONObject(i).let { if (it.optLong("id") != mediaId) keep.put(it) }
+        Prefs.setPending(ctx, keep)
+    }
+
     /** The agent tapped העלה / לא in the app's list. */
     fun resolveInApp(ctx: Context, mediaId: Long, upload: Boolean) {
+        Skipped.forget(ctx, mediaId)
         val arr = Prefs.getPending(ctx)
         val keep = org.json.JSONArray()
         for (i in 0 until arr.length()) {
@@ -267,6 +279,8 @@ object CallApproval {
 class CallApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         ctx.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("notif_id", 0))
+        // the agent answered: a "לא" is respected even if the number later becomes a customer
+        Skipped.forget(ctx, intent.getLongExtra(CallUploadWorker.KEY_MEDIA_ID, -1))
         if (intent.action != CallApproval.ACTION_UPLOAD) return
         val rec = CallSync.Recording(
             mediaId = intent.getLongExtra(CallUploadWorker.KEY_MEDIA_ID, -1),
@@ -279,5 +293,59 @@ class CallApprovalReceiver : BroadcastReceiver() {
             intent.getStringExtra(CallUploadWorker.KEY_DIRECTION),
             intent.getLongExtra(CallUploadWorker.KEY_STARTED_AT, 0).takeIf { it > 0 },
         ))
+    }
+}
+
+
+/**
+ * Recordings left out because the number was not a customer, and not yet answered (העלה / לא).
+ * When the customer list grows (the agent added a walk-in customer on the site), the ones from
+ * the last 3 hours whose number is now a customer upload — their notification and in-app row go.
+ * An answered "לא" is never revisited.
+ */
+object Skipped {
+    private const val KEEP_MS = 24 * 60 * 60 * 1000L
+
+    fun remember(ctx: Context, rec: CallSync.Recording, info: CallSync.CallInfo) {
+        val key = CallSync.phoneKey(info.number) ?: return
+        val now = System.currentTimeMillis()
+        val keep = org.json.JSONArray()
+        val arr = Prefs.getSkipped(ctx)
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (now - o.optLong("start") < KEEP_MS && o.optLong("id") != rec.mediaId) keep.put(o)
+        }
+        keep.put(org.json.JSONObject().put("id", rec.mediaId).put("mime", rec.mime).put("dur", rec.durationMs)
+            .put("phone", info.number ?: "").put("hash", CallSync.hash(key)).put("dir", info.direction ?: "")
+            .put("start", info.startedAtMs ?: rec.modifiedMs))
+        Prefs.setSkipped(ctx, keep)
+    }
+
+    fun forget(ctx: Context, mediaId: Long) {
+        if (mediaId < 0) return
+        val arr = Prefs.getSkipped(ctx)
+        val keep = org.json.JSONArray()
+        for (i in 0 until arr.length()) arr.getJSONObject(i).let { if (it.optLong("id") != mediaId) keep.put(it) }
+        Prefs.setSkipped(ctx, keep)
+    }
+
+    fun recheck(ctx: Context, newHashes: Set<String>) {
+        val since = System.currentTimeMillis() - Prefs.LOOKBACK_MS
+        val arr = Prefs.getSkipped(ctx)
+        val keep = org.json.JSONArray()
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.optString("hash") in newHashes && o.optLong("start") >= since) {
+                val id = o.getLong("id")
+                CallJobs.upload(ctx,
+                    CallSync.Recording(id, "", o.optString("mime", "audio/mp4"), 0, o.optLong("dur"), false),
+                    CallSync.CallInfo(o.optString("phone").ifBlank { null }, o.optString("dir").ifBlank { null },
+                                      o.optLong("start").takeIf { it > 0 }))
+                nm.cancel((id % Int.MAX_VALUE).toInt())
+                CallApproval.dropFromApp(ctx, id)
+            } else keep.put(o)
+        }
+        Prefs.setSkipped(ctx, keep)
     }
 }

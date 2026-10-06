@@ -75,8 +75,16 @@ object CallSync {
             if (conn.responseCode !in 200..299) { conn.disconnect(); return false }
             val text = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
-            val arr = JSONObject(text).optJSONArray("hashes") ?: return false
-            Prefs.setClientHashes(ctx, (0 until arr.length()).map { arr.getString(it) }.toSet())
+            val o = JSONObject(text)
+            val arr = o.optJSONArray("hashes") ?: return false
+            val fresh = (0 until arr.length()).map { arr.getString(it) }.toSet()
+            val before = Prefs.getClientHashes(ctx)
+            Prefs.setClientHashes(ctx, fresh)
+            Prefs.setClientsVersion(ctx, o.optString("version"))
+            // a customer added on the site (walk-in): their recordings from the last 3 hours
+            // that were left out now upload
+            val added = fresh - before
+            if (before.isNotEmpty() && added.isNotEmpty()) Skipped.recheck(ctx, added)
             true
         } catch (_: Exception) {
             false

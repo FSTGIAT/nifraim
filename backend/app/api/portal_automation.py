@@ -1172,10 +1172,21 @@ async def phone_forward_client_phones(token: str, db: AsyncSession = Depends(get
     number space is small). Unknown token → empty list, like /templates."""
     from app.services.calls.ingest import customer_phones, phone_hash
 
+    from sqlalchemy import func, select as _select
+    from app.models.walkin_customer import WalkinCustomer
+
     user = await _phone_forward_user(db, token)
     if user is None:
-        return {"hashes": []}
-    return {"hashes": sorted(phone_hash(k) for k in await customer_phones(db, user))}
+        return {"hashes": [], "version": ""}
+    hashes = sorted(phone_hash(k) for k in await customer_phones(db, user))
+    # 1.4+ asks every scan whether the list changed (cheap) — a walk-in added on the site
+    # reaches the phone within one scan, and its last 3 hours of recordings are re-checked
+    n, last = (await db.execute(_select(func.count(), func.max(WalkinCustomer.created_at))
+                                .where(WalkinCustomer.user_id == user.id))).one()
+    import hashlib
+    version = hashlib.sha256((",".join(hashes)).encode()).hexdigest()[:16]
+    return {"hashes": hashes, "version": version, "walkins": n,
+            "walkin_last": last.isoformat() + "Z" if last else None}
 
 
 @router.post("/phone-forward/{token}/calls-diag")

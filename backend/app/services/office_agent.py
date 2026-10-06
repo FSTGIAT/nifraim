@@ -423,6 +423,15 @@ async def contacts(db: AsyncSession, user: User, q: str = "", limit: int = 12) -
         if not q or ql in (m.from_name or "").lower() or ql in addr:
             out.append({"kind": "mail", "name": m.from_name or m.from_address, "sub": "", "email": m.from_address, "id_number": None})
 
+    # walk-in customers (added by hand, not in any production file yet)
+    from app.models.walkin_customer import WalkinCustomer
+    walk_ids = set()
+    for w in (await db.execute(select(WalkinCustomer).where(WalkinCustomer.user_id == user.id))).scalars():
+        name = " ".join(x for x in (w.first_name, w.last_name) if x)
+        if not q or ql in name.lower() or ql in (w.email or "").lower() or w.id_number.startswith(q.lstrip("0") or "\0"):
+            out.append({"kind": "customer", "name": name, "sub": w.phone, "email": w.email or "", "id_number": w.id_number})
+            walk_ids.add(w.id_number)
+
     ids = await _get_production_upload_ids(db, user.id)
     if ids:
         full = func.concat(func.coalesce(ClientRecord.first_name, ""), " ", func.coalesce(ClientRecord.last_name, ""))
@@ -442,6 +451,8 @@ async def contacts(db: AsyncSession, user: User, q: str = "", limit: int = 12) -
                 conds.append(func.ltrim(ClientRecord.id_number, "0").like(f"{digits}%"))
             stmt = stmt.where(or_(*conds))
         for idn, fn, ln, em, ph in (await db.execute(stmt)).all():
+            if str(idn).lstrip("0") in walk_ids:
+                continue
             name = " ".join(x for x in (fn, ln) if x).strip() or str(idn)
             out.append({"kind": "customer", "name": name, "sub": ph or "", "email": em or "", "id_number": str(idn)})
     return out[: limit + 6]

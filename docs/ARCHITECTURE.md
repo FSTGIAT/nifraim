@@ -1520,8 +1520,16 @@ dialer saves recording → MediaStore content-URI trigger → CallScanWorker
   customer list off the phone. It is not a secret, because the number space is small.
 - `id_number` is set only when exactly one customer has that phone. A number shared by a family stays unmatched, and
   `events_consumer` falls back to the names in the transcript.
-- Only recordings made after the agent turns the feature on are picked up (no history backfill). `source_ref = ms:<MediaStore id>`
-  makes retries return the existing call.
+- Recordings from **3 hours before** the feature was turned on are picked up too (1.3), nothing older.
+  `source_ref = ms:<MediaStore id>` makes retries return the existing call.
+- **Walk-in customers (לקוח חדש, 1.4, 2026-10-06).** A new customer who isn't in any production file yet is added in
+  אנשי קשר (`WalkinFormModal.vue` → `/api/walkin-customers`, table `walkin_customers`: ת.ז, name, phone, email).
+  `customer_phones()` merges them, so `/client-phones` and `match_phone` include them, and `office_agent.contacts()`
+  lists them as customers, so a call resolves to their name and email for the follow-up letter. The app refreshes
+  the customer list on every scan (≥10 min apart, so within one 15-min periodic scan or on opening the app). When
+  hashes are **added**, `Skipped.recheck` uploads the recordings from the last 3 hours that it had left out for that
+  number (unanswered "להעלות?" or in-app pending). An answered **"לא" is never revisited.**
+- **Diagnostics (1.3):** each scan POSTs counts only to `/phone-forward/{token}/calls-diag` → `railway logs | grep CALLS-DIAG`.
 - **iPhone (iOS 18.1+)** saves call recordings into Notes, where apps can't reach them. The agent uses a Share-sheet
   Shortcut "שלח לנפרעים" that posts to the same `/call` with `source=phone_ios` (guide in `PhoneForwardModal.vue`). It sends
   no number, so the customer comes from the transcript.

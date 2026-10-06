@@ -68,19 +68,22 @@ def phone_hash(key: str) -> str:
 
 
 async def customer_phones(db: AsyncSession, user: User) -> dict[str, list[str]]:
-    """phone_key → distinct customer id_numbers, from this month's production book."""
+    """phone_key → distinct customer id_numbers, from this month's production book + walk-ins."""
     from app.api.production import _get_production_upload_ids
     from app.models.record import ClientRecord
 
+    from app.models.walkin_customer import WalkinCustomer
+
     ids = await _get_production_upload_ids(db, user.id)
-    if not ids:
-        return {}
-    rows = (await db.execute(
+    rows = list((await db.execute(
         select(ClientRecord.client_phone, ClientRecord.id_number)
         .where(ClientRecord.user_id == user.id, ClientRecord.upload_id.in_(ids),
                ClientRecord.client_phone.is_not(None), ClientRecord.id_number.is_not(None))
         .group_by(ClientRecord.client_phone, ClientRecord.id_number)
-    )).all()
+    )).all()) if ids else []
+    # walk-in customers the agent added by hand count as customers too
+    rows += (await db.execute(select(WalkinCustomer.phone, WalkinCustomer.id_number)
+                              .where(WalkinCustomer.user_id == user.id))).all()
     out: dict[str, list[str]] = {}
     for phone, idn in rows:
         key = phone_key(phone)

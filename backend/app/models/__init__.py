@@ -51,3 +51,4 @@ from app.services.agent.versioning import register_listeners as _register_ai_ver
 _register_ai_version_listeners()
 
 __all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "AgentPortalOffer", "PortalOfferClick", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "MaslakaAgentLink", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]
+from app.models.walkin_customer import WalkinCustomer
