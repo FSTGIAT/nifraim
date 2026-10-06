@@ -728,11 +728,94 @@ export function ProdHistoryLoop() {
   )
 }
 
+/* ═══════════════════ CONTACTS / אנשי קשר — magenta ═══════════════════
+ * A card file riffles through its cards (2 passes per loop); the phone rings
+ * and a NEW contact card flies out of it into the file — the walk-in customer
+ * whose calls now reach Nifra Calls. Every motion: whole cycles per 240 frames. */
+export function ContactsBookLoop() {
+  const frame = useCurrentFrame()
+  const ACC = '#E84A7F', INK = '#C42B60', SOFT = '#F3A9C4', PALE = '#FADCE7', CREAM = '#FFF7FA'
+
+  // riffle: card i lifts in turn, 2 passes per loop (120f each)
+  const lift = (i: number) => {
+    const p = loopPhase(frame - i * 14 + 240, 120) // +240 keeps the phase positive
+    return interpolate(p, [0, 0.12, 0.3, 1], [0, 1, 0, 0], { extrapolateRight: 'clamp', easing: Easing.inOut(Easing.quad) })
+  }
+  // the phone rings (two rings, then quiet) once per loop
+  const ringP = loopPhase(frame, 240)
+  const ring = (k: number) => {
+    const p = interpolate(ringP, [0.02 + k * 0.08, 0.3 + k * 0.08], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    return { r: 22 + p * 30, op: (1 - p) * 0.8 * (p > 0 ? 1 : 0) }
+  }
+  const shake = ringP < 0.32 ? Math.sin(frame * 1.6) * 3 * (1 - ringP / 0.32) : 0
+  // the new card flies phone → file (0.34..0.62), sits, then fades out before the seam
+  const fly = interpolate(ringP, [0.34, 0.62], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.3, 0, 0.2, 1) })
+  const cardOp = interpolate(ringP, [0.33, 0.37, 0.86, 0.96], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const fx = interpolate(fly, [0, 1], [96, 258])
+  const fy = interpolate(fly, [0, 0.5, 1], [150, 70, 118])
+  const frot = interpolate(fly, [0, 1], [-18, 0])
+  const fscale = interpolate(fly, [0, 1], [0.55, 1])
+  const plus = interpolate(ringP, [0.62, 0.68, 0.8, 0.86], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+
+  const cards = [0, 1, 2, 3, 4]
+  return (
+    <AbsoluteFill>
+      <svg viewBox="0 0 420 300" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        {/* phone + ring waves */}
+        {[0, 1].map((k) => {
+          const w = ring(k)
+          return <circle key={k} cx={96} cy={150} r={w.r} fill="none" stroke={SOFT} strokeWidth={3} opacity={w.op} />
+        })}
+        <g transform={`translate(${96 + shake} 150)`}>
+          <rect x={-22} y={-38} width={44} height={76} rx={10} fill={INK} />
+          <rect x={-17} y={-30} width={34} height={56} rx={6} fill={PALE} />
+          <circle cx={0} cy={-10} r={7} fill={ACC} />
+          <path d="M-11 10 a11 9 0 0 1 22 0 z" fill={ACC} />
+        </g>
+        {/* the card file: base + cards on a rail */}
+        <g transform="translate(278 206)">
+          {cards.map((i) => {
+            const l = lift(i)
+            const x = -52 + i * 22
+            return (
+              <g key={i} transform={`translate(${x} ${-l * 26}) rotate(${-10 + i * 5 - l * 6})`}>
+                <rect x={-22} y={-62} width={44} height={60} rx={6} fill={i % 2 ? CREAM : '#FFFFFF'} stroke={SOFT} strokeWidth={2} />
+                <rect x={-14} y={-50} width={20} height={4} rx={2} fill={PALE} />
+                <rect x={-14} y={-42} width={28} height={4} rx={2} fill={PALE} />
+                <rect x={10} y={-66} width={10} height={8} rx={2} fill={i === 2 ? ACC : SOFT} />
+              </g>
+            )
+          })}
+          <rect x={-86} y={-8} width={172} height={30} rx={10} fill={INK} />
+          <rect x={-86} y={-8} width={172} height={8} rx={4} fill={ACC} />
+          <circle cx={-70} cy={7} r={4} fill={PALE} />
+          <circle cx={70} cy={7} r={4} fill={PALE} />
+        </g>
+        {/* the new contact flying in */}
+        <g transform={`translate(${fx} ${fy}) rotate(${frot}) scale(${fscale})`} opacity={cardOp}>
+          <rect x={-30} y={-22} width={60} height={44} rx={8} fill="#FFFFFF" stroke={ACC} strokeWidth={2.5} />
+          <circle cx={-14} cy={-4} r={8} fill={ACC} />
+          <path d="M-25 15 a11 9 0 0 1 22 0 z" fill={ACC} />
+          <rect x={2} y={-8} width={20} height={4} rx={2} fill={SOFT} />
+          <rect x={2} y={2} width={14} height={4} rx={2} fill={PALE} />
+        </g>
+        {/* + badge as it lands */}
+        <g transform={`translate(${258 + 30} ${118 - 26}) scale(${0.6 + plus * 0.4})`} opacity={plus}>
+          <circle r={11} fill={INK} />
+          <path d="M-5 0 h10 M0 -5 v10" stroke="#FFFFFF" strokeWidth={2.6} strokeLinecap="round" />
+        </g>
+        <Spark cx={330} cy={62} r={7} fill={SOFT} k={0.6 + 0.4 * Math.abs(Math.sin((frame / 240) * Math.PI * 4))} />
+      </svg>
+    </AbsoluteFill>
+  )
+}
+
 /* ── registry consumed by TabHeroLoop.vue ─────────────────────── */
 export const TAB_HERO_SCENES = {
   'ai-library': AiKnowledgeLoop,
   portal: PortalShareLoop,
   'company-emails': MailFlowLoop,
+  contacts: ContactsBookLoop,
   recruits: PortfolioLoop,
   'commission-shelf': ShelfLoop,
   maslaka: ClearingHouseLoop,

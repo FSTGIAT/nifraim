@@ -3,18 +3,27 @@
        header strip with the one action, contacts filling the width in two
        columns, and the insurers still missing an address as "+" chips. -->
   <div class="ct">
-    <!-- Hero: the photograph is the section's own background, dissolving into
-         the card under the copy (nifraim-style §2 "realistic and integrated"). -->
+    <!-- Hero — the tabs' shape: kicker, two-colour title, the counters, the
+         actions, and the contacts' own loop (TabHeroLoop 'contacts'). -->
     <header class="ct-hero">
-      <img class="ct-hero-photo" :src="heroPhoto" alt="" aria-hidden="true" />
       <div class="ct-hero-copy">
         <span class="ct-kicker">ספר כתובות</span>
         <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
         <div class="ct-stats">
-          <div class="ct-stat">
-            <span class="ct-stat-n ltr-number">{{ walkins.length }}</span>
+          <button ref="appIconEl" type="button" class="ct-app" aria-label="לקוחות חדשים — פתיחת אנשי הקשר" @click="openApp">
+            <span class="ct-app-ico">
+              <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
+                <rect x="13" y="10" width="34" height="42" rx="5" fill="#fff" opacity="0.96" />
+                <circle cx="30" cy="25" r="6.5" fill="var(--tab-emails-ink)" />
+                <path d="M19.5 42 a10.5 8.5 0 0 1 21 0 z" fill="var(--tab-emails-ink)" />
+                <rect x="47" y="15" width="4" height="7" rx="1.5" fill="#fff" opacity="0.85" />
+                <rect x="47" y="25" width="4" height="7" rx="1.5" fill="#fff" opacity="0.6" />
+                <rect x="47" y="35" width="4" height="7" rx="1.5" fill="#fff" opacity="0.4" />
+              </svg>
+              <span v-if="walkins.length" class="ct-app-badge ltr-number">{{ walkins.length }}</span>
+            </span>
             <span class="ct-stat-l">לקוחות חדשים</span>
-          </div>
+          </button>
           <div v-if="contacts.length" class="ct-stat">
             <span class="ct-stat-n ltr-number">{{ contacts.length }}</span>
             <span class="ct-stat-l">חברות</span>
@@ -35,36 +44,8 @@
           </button>
         </div>
       </div>
+      <TabHeroLoop scene="contacts" class="ct-hero-art" />
     </header>
-
-    <!-- לקוחות חדשים (walk-in): calls with their phone reach Nifra Calls -->
-    <section class="ct-card ct-walkins">
-      <div class="ct-sec-head">
-        <h3 class="ct-sec-title">לקוחות חדשים <span v-if="walkins.length" class="ct-sec-n ltr-number">{{ walkins.length }}</span></h3>
-        <span class="ct-sec-note">שיחות איתם נאספות מהטלפון</span>
-      </div>
-      <ul v-if="walkins.length" class="ct-list">
-        <li v-for="w in walkins" :key="w.id" class="ct-row">
-          <span class="ct-initial" aria-hidden="true">{{ (w.first_name || '?').charAt(0) }}</span>
-          <div class="ct-id">
-            <span class="ct-name">{{ w.name }}</span>
-            <span class="ct-sub"><span class="ltr-number">{{ w.id_number }}</span> · <span class="ltr-number">{{ phoneFmt(w.phone) }}</span><template v-if="w.email"> · <span class="ltr-number">{{ w.email }}</span></template></span>
-          </div>
-          <div class="ct-tools">
-            <button class="ct-icon" title="עריכה" aria-label="עריכה" @click="openWalkin(w)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-            </button>
-            <button class="ct-icon ct-icon--del" title="מחיקה" aria-label="מחיקה" @click="deleteWalkin(w.id)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            </button>
-          </div>
-        </li>
-      </ul>
-      <button v-else type="button" class="ct-walkin-empty" @click="openWalkin()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        לקוח שעוד לא בפרודוקציה? הוסיפו אותו, והשיחות איתו יגיעו לסיכום
-      </button>
-    </section>
 
     <div v-if="loading" class="ct-loading"><span class="ct-spin" aria-hidden="true"></span></div>
 
@@ -117,6 +98,8 @@
       </section>
     </template>
 
+    <ContactsAppSheet :open="appOpen" :origin="appIconEl" :walkins="walkins" @close="appOpen = false"
+                      @add="openWalkin()" @edit="openWalkin" @delete="deleteWalkin" />
     <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" @close="walkinOpen = false" @saved="onWalkinSaved" />
 
     <ContactFormModal
@@ -138,7 +121,8 @@ import { brandForLabel, COMPANY_BRAND } from '../../utils/companyBrand.js'
 import ContactFormModal from './ContactFormModal.vue'
 import CompanyLogo from './CompanyLogo.vue'
 import WalkinFormModal from './WalkinFormModal.vue'
-import heroPhoto from '../../assets/emails/contacts-hero.webp'
+import ContactsAppSheet from './ContactsAppSheet.vue'
+import TabHeroLoop from './TabHeroLoop.vue'
 import BigAddButton from './BigAddButton.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
@@ -216,6 +200,9 @@ onMounted(() => { fetchContacts(); fetchWalkins() })
 const phoneFmt = (p) => { const d = String(p || '').replace(/\D/g, ''); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3)}` : d.length === 9 ? `${d.slice(0, 2)}-${d.slice(2)}` : p }
 const walkins = ref([])
 const walkinOpen = ref(false)
+const appOpen = ref(false)
+const appIconEl = ref(null)
+function openApp() { appOpen.value = true }
 const editingWalkin = ref(null)
 async function fetchWalkins() {
   try { walkins.value = (await api.get('/walkin-customers')).data || [] } catch { walkins.value = [] }
@@ -298,14 +285,13 @@ async function deleteContact(id) {
   padding: 24px 26px; background: var(--card-bg);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
 }
-.ct-hero-photo {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; object-position: left center; pointer-events: none;
+.ct-hero::before {
+  content: ''; position: absolute; inset-inline-end: -6%; top: -60%; width: 44%; height: 220%;
+  background: radial-gradient(circle, var(--tab-emails-wash), transparent 70%); pointer-events: none;
 }
-/* the photograph's empty wall carries the copy; a soft card-coloured wash keeps it readable */
-.ct-hero::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(to left, var(--card-bg) 18%, color-mix(in srgb, var(--card-bg) 55%, transparent) 46%, transparent 72%);
+.ct-hero-art {
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
+  width: min(300px, 38%); aspect-ratio: 420 / 300; pointer-events: none; z-index: 0;
 }
 .ct-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 6px; max-width: 56%; min-width: 0; }
 .ct-kicker {
@@ -317,11 +303,25 @@ async function deleteContact(id) {
   font-size: clamp(30px, 3.6vw, 44px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
-.ct-stats { display: flex; gap: 22px; margin-top: 10px; flex-wrap: wrap; }
+.ct-stats { display: flex; align-items: flex-end; gap: 22px; margin-top: 10px; flex-wrap: wrap; }
 .ct-stat { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; margin: -4px -8px; border-radius: var(--radius-sm); }
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
 .ct-stat--btn:focus-visible { outline: 2px solid var(--tab-emails); outline-offset: 2px; }
+/* the walk-in customers as an iPhone app icon — opens the Contacts app (ContactsAppSheet) */
+.ct-app { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0; margin: -2px 0 0;
+  border: none; background: none; cursor: pointer; font-family: inherit; }
+.ct-app-ico { position: relative; width: 52px; height: 52px; border-radius: 13px; display: block;
+  background: linear-gradient(160deg, var(--tab-emails), var(--tab-emails-ink));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-emails) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1); }
+.ct-app:hover .ct-app-ico { transform: translateY(-2px) scale(1.04); }
+.ct-app:active .ct-app-ico { transform: scale(0.94); }
+.ct-app:focus-visible { outline: none; }
+.ct-app:focus-visible .ct-app-ico { outline: 2px solid var(--text); outline-offset: 3px; }
+.ct-app-badge { position: absolute; top: -6px; inset-inline-end: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 99px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: #fff;
+  background: var(--red, #D93025); box-shadow: 0 0 0 2px var(--card-bg); }
 .ct-stat-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
 .ct-stat--hot .ct-stat-n { color: var(--tab-emails-ink); }
 .ct-stat-l { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
@@ -348,8 +348,6 @@ async function deleteContact(id) {
   display: flex; align-items: center; gap: 12px; min-width: 0; padding: 11px 2px;
   border-bottom: 1px solid var(--border-subtle);
 }
-.ct-initial { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center;
-  font-size: 14px; font-weight: 800; color: var(--tab-emails-ink); background: var(--tab-emails-wash); }
 .ct-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ct-name { font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ct-person { font-weight: 500; color: var(--text-muted); }
@@ -365,13 +363,6 @@ async function deleteContact(id) {
 .ct-icon:hover { background: var(--bg); color: var(--text); }
 .ct-icon--del:hover { background: var(--red-light); color: var(--red); }
 .ct-icon:focus-visible { outline: 2px solid var(--tab-emails); outline-offset: 1px; }
-.ct-walkin-empty {
-  width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 14px 16px; cursor: pointer;
-  border: 1px dashed color-mix(in srgb, var(--tab-emails) 40%, white); border-radius: 12px; background: none;
-  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--text-secondary); text-align: start;
-}
-.ct-walkin-empty svg { flex: none; color: var(--tab-emails-ink); }
-.ct-walkin-empty:hover { border-style: solid; border-color: var(--tab-emails); color: var(--tab-emails-ink); background: var(--tab-emails-wash); }
 
 /* Insurers with no address: a labelled row of "+" chips. */
 .ct-missing { display: flex; flex-direction: column; gap: 10px; }
@@ -396,7 +387,8 @@ async function deleteContact(id) {
 @media (max-width: 720px) {
   .ct-hero { min-height: 0; }
   .ct-hero-copy { max-width: 100%; }
-  .ct-hero-photo { opacity: 0.35; }
+  .ct-hero-art { display: none; }
+  .ct-hero::before { display: none; }
   .ct-list--two { grid-template-columns: 1fr; }
   .ct-tools { opacity: 1; }
 }
