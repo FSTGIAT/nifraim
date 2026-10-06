@@ -7,8 +7,9 @@
          actions, and the contacts' own loop (TabHeroLoop 'contacts'). -->
     <header class="ct-hero">
       <div class="ct-hero-copy">
-        <!-- the loop stretched across the top of the circle (the window itself is labelled אנשי קשר) -->
+        <!-- the title on the right, the picture beside it on the left (RTL: first in the DOM = right) -->
         <div class="ct-top">
+          <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
           <TabHeroLoop scene="contacts" class="ct-hero-art" />
         </div>
         <div class="ct-stats">
@@ -264,7 +265,7 @@ async function deleteContact(id) {
   background: radial-gradient(circle, color-mix(in srgb, var(--tab-emails-wash) 70%, transparent), transparent 60%); pointer-events: none;
 }
 .ct-top { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.ct-hero-art { position: relative; flex: none; width: min(440px, 64vmin); height: calc(min(440px, 64vmin) * 0.714) !important; pointer-events: none; }
+.ct-hero-art { position: relative; flex: none; width: min(230px, 36vmin); height: calc(min(230px, 36vmin) * 0.714) !important; pointer-events: none; }
 .ct-hero-copy { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 34px; min-width: 0; }
 /* the title row sits at the top of the circle; the apps centre in the space below it */
 .ct-hero-copy > .ct-stats { margin-block: auto; }
@@ -376,7 +377,7 @@ async function deleteContact(id) {
 @media (max-width: 720px) {
   .ct-hero { min-height: 0; }
   .ct-hero-copy { max-width: 100%; }
-  .ct-hero-art { width: min(340px, 86vw); height: calc(min(340px, 86vw) * 0.714) !important; }
+  .ct-hero-art { width: min(170px, 44vw); height: calc(min(170px, 44vw) * 0.714) !important; }
   /* full-screen on phones (not a circle): keep the stack together, centred */
   .ct { justify-content: center; }
   .ct-hero, .ct-hero-copy { flex: none; justify-content: center; }

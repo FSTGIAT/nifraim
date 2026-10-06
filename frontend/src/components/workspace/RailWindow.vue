@@ -99,7 +99,7 @@ watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
   background: var(--card-bg); justify-content: center;
 }
 /* content reaches the circle: picture just under the ✕, the action near the bottom curve */
-.rw-card--round .rw-scroll { flex: 1; min-height: 0; overflow: visible; padding: 10% 12% 9%; display: flex; flex-direction: column; }
+.rw-card--round .rw-scroll { flex: 1; min-height: 0; overflow: visible; padding: 15% 14% 9%; display: flex; flex-direction: column; }
 .rw-card--round .rw-x { top: 5.5%; inset-inline-end: 50%; transform: translateX(50%); }
 .rw-x {
   position: absolute; top: 14px; inset-inline-end: 14px; z-index: 5;
