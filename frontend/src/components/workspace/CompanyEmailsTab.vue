@@ -7,7 +7,6 @@
          actions, and the contacts' own loop (TabHeroLoop 'contacts'). -->
     <header class="ct-hero">
       <div class="ct-hero-copy">
-        <span class="ct-kicker">ספר כתובות</span>
         <h2 class="ct-hero-title">אנשי <span class="ct-hero-title-acc">קשר</span></h2>
         <div class="ct-stats">
           <button type="button" class="ct-app" aria-label="לקוחות חדשים — פתיחת אנשי הקשר" @click="openApp">
@@ -35,17 +34,13 @@
               </svg>
               <span v-if="contacts.length && missingCompanies.length" class="ct-app-badge ltr-number">{{ missingCompanies.length }}</span>
             </span>
-            <span class="ct-stat-l">חברות<template v-if="contacts.length"> · <span class="ltr-number">{{ contacts.length }}</span></template></span>
+            <span class="ct-stat-l">חברות</span>
           </button>
         </div>
         <div class="ct-meta">
           <button class="ct-add" type="button" @click="openWalkin()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
             לקוח חדש
-          </button>
-          <button class="ct-add ct-add--ghost" type="button" @click="openAddForm()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            חברה
           </button>
         </div>
       </div>
@@ -244,29 +239,29 @@ async function deleteContact(id) {
   padding: 0; background: none;
 }
 .ct-hero::before {
-  content: ''; position: absolute; left: 50%; top: 18%; width: 120%; aspect-ratio: 1; transform: translate(-50%, -50%);
-  background: radial-gradient(circle, var(--tab-emails-wash), transparent 62%); pointer-events: none;
+  content: ''; position: absolute; left: 50%; top: 50%; width: 130%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--tab-emails-wash) 70%, transparent), transparent 60%); pointer-events: none;
 }
-.ct-hero-art { position: relative; order: -1; width: min(250px, 70%); aspect-ratio: 420 / 300; margin-bottom: -6px; pointer-events: none; }
-.ct-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.ct-hero-art { position: relative; order: -1; flex: none; width: 260px; max-width: 70vw; aspect-ratio: 420 / 300; margin-bottom: 2px; pointer-events: none; }
+.ct-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 22px; min-width: 0; }
 .ct-kicker {
   align-self: center; padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
   background: var(--tab-emails-wash); color: var(--tab-emails-ink);
 }
 .ct-hero-title {
-  align-self: center; margin: 4px 0 0; font-family: 'Heebo', sans-serif;
+  align-self: center; margin: 0; font-family: 'Heebo', sans-serif;
   font-size: clamp(30px, 3.6vw, 44px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; color: var(--text);
 }
 .ct-hero-title-acc { color: var(--tab-emails-ink); }
-.ct-stats { display: flex; align-items: flex-end; justify-content: center; gap: 36px; margin-top: 10px; flex-wrap: wrap; }
+.ct-stats { display: flex; align-items: flex-start; justify-content: center; gap: 44px; margin: 0; flex-wrap: wrap; }
 .ct-stat { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 8px; margin: -4px -8px; border-radius: var(--radius-sm); }
 .ct-stat--btn { font-family: inherit; text-align: start; background: none; border: none; cursor: pointer; }
 .ct-stat--btn:hover { background: var(--tab-emails-wash); }
 .ct-stat--btn:focus-visible { outline: 2px solid var(--tab-emails); outline-offset: 2px; }
 /* the walk-in customers as an iPhone app icon — opens the Contacts app (ContactsAppSheet) */
-.ct-app { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0; margin: -2px 0 0;
+.ct-app { display: flex; flex-direction: column; align-items: center; gap: 9px; width: 96px; padding: 0; margin: 0;
   border: none; background: none; cursor: pointer; font-family: inherit; }
-.ct-app-ico { position: relative; width: 56px; height: 56px; border-radius: 50%; display: block;
+.ct-app-ico { position: relative; width: 68px; height: 68px; border-radius: 50%; display: block;
   background: linear-gradient(160deg, var(--tab-emails), var(--tab-emails-ink));
   box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-emails) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
   transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -294,8 +289,8 @@ async function deleteContact(id) {
   background: var(--red, #D93025); box-shadow: 0 0 0 2px var(--card-bg); }
 .ct-stat-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
 .ct-stat--hot .ct-stat-n { color: var(--tab-emails-ink); }
-.ct-stat-l { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
-.ct-meta { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.ct-stat-l { font-size: 13px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.ct-meta { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 0; }
 .ct-add {
   display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: none; border-radius: 10px; cursor: pointer;
   background: var(--tab-emails-ink); color: #fff; font-family: inherit; font-size: 13.5px; font-weight: 700;
@@ -357,7 +352,7 @@ async function deleteContact(id) {
 @media (max-width: 720px) {
   .ct-hero { min-height: 0; }
   .ct-hero-copy { max-width: 100%; }
-  .ct-hero-art { width: min(220px, 70%); }
+  .ct-hero-art { width: 220px; }
   .ct-list--two { grid-template-columns: 1fr; }
   .ct-tools { opacity: 1; }
 }

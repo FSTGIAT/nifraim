@@ -98,7 +98,7 @@ watch(() => props.open, (v) => document.body.classList.toggle('mam-open', v))
   width: min(660px, 92vmin); height: min(660px, 92vmin); max-height: none; border-radius: 50%;
   background: var(--card-bg); justify-content: center;
 }
-.rw-card--round .rw-scroll { flex: none; overflow: visible; padding: 0 12%; }
+.rw-card--round .rw-scroll { flex: 1; overflow: visible; padding: 0 12%; display: flex; align-items: center; justify-content: center; }
 .rw-card--round .rw-x { top: 7%; inset-inline-end: 50%; transform: translateX(50%); }
 .rw-x {
   position: absolute; top: 14px; inset-inline-end: 14px; z-index: 5;
