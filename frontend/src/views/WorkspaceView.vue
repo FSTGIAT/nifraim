@@ -495,7 +495,9 @@ function onPillSelect(payload) {
 // appears, when opened from elsewhere without a rectangle) and folds back.
 function openContacts(rect) {
   if (contactsOpen.value) return
-  morph.launch({ rect, radius: 8, accent: 'var(--tab-emails)', tabId: 'company-emails', from: 'modal', commit: () => { contactsOpen.value = true } })
+  // out of a circle (the window's apps are round) — and back into one on close (useLaunchMorph ROUND)
+  const radius = rect ? Math.min(rect.width, rect.height) / 2 : 8
+  morph.launch({ rect, radius, accent: 'var(--tab-emails)', tabId: 'company-emails', from: 'modal', commit: () => { contactsOpen.value = true } })
 }
 function closeContacts() {
   if (!contactsOpen.value) return

@@ -68,7 +68,9 @@ function frame(r, radius, opacity, vw, vh) {
     transform: `translate(${r.left}px, ${r.top}px) scale(${sx}, ${sy})`,
     // Counter-scaled, so the corner looks the same size throughout. Slightly
     // elliptical while sx ≠ sy, which nobody can see on a 14px corner.
-    borderRadius: `${sx > 0 ? radius / sx : radius}px`,
+    // Counter-scaled on each axis, so a round origin (radius = half its size)
+    // stays a true circle while it travels instead of a squashed ellipse.
+    borderRadius: sx > 0 && sy > 0 ? `${radius / sx}px / ${radius / sy}px` : `${radius}px`,
     opacity,
   }
 }
@@ -85,6 +87,8 @@ function frame(r, radius, opacity, vw, vh) {
 // Pages/windows that live in the side rail, not the card grid: they launch
 // from, and fold back into, their rail icon.
 const RAIL_KEY = { 'company-emails': 'contacts', recruits: 'recruits', mail: 'mail' }
+// windows that open out of — and fold back into — a CIRCLE (אנשי קשר: its apps are round)
+const ROUND = new Set(['company-emails'])
 
 function measureRail(tabId) {
   const key = RAIL_KEY[tabId]
@@ -92,7 +96,8 @@ function measureRail(tabId) {
   if (!el) return null
   const r = el.getBoundingClientRect()
   if (!r.width || !r.height) return null
-  return { rect: { left: r.left, top: r.top, width: r.width, height: r.height }, radius: 8 }
+  const radius = ROUND.has(tabId) ? Math.min(r.width, r.height) / 2 : 8
+  return { rect: { left: r.left, top: r.top, width: r.width, height: r.height }, radius }
 }
 
 export function measureCard(tabId) {
