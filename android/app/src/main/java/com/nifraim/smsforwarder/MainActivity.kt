@@ -124,7 +124,9 @@ class MainActivity : AppCompatActivity() {
         checkAndRequestPermissions()
         refreshTemplates()
         schedulePeriodicTemplateRefresh()
+        Prefs.applyLookbackOnce(this)
         CallJobs.schedule(this)
+        if (Prefs.isCallsEnabled(this) && CallSync.hasAudioPermission(this)) CallJobs.scanNow(this)
         updateStatus()
 
         // If the agent installed via their personalized Play link, the webhook URL
@@ -257,7 +259,58 @@ class MainActivity : AppCompatActivity() {
         callsWarn.visibility = if (calls && missing != null) View.VISIBLE else View.GONE
         callsWarnText.text = missing ?: ""
         findViewById<View>(R.id.callsWarnBtn).visibility = if (connected) View.VISIBLE else View.GONE
+        renderPending()
+        renderDiag()
     }
+
+    /** Calls that wait for the agent's "העלה / לא" (the phone could not show the notification). */
+    private fun renderPending() {
+        val list = findViewById<LinearLayout>(R.id.pendingList)
+        list.removeAllViews()
+        val arr = Prefs.getPending(this)
+        list.visibility = if (arr.length() > 0 && Prefs.isCallsEnabled(this)) View.VISIBLE else View.GONE
+        if (arr.length() == 0) return
+        list.addView(TextView(this).apply {
+            text = "ממתינות לאישור (${arr.length()}) — מספרים שאינם ברשימת הלקוחות"
+            textSize = 14f; setTextColor(color(R.color.text_primary)); setPadding(0, dp(10), 0, dp(4))
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(this@MainActivity, R.font.heebo_bold)
+        })
+        val fmt = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, dp(4), 0, dp(4)) }
+            row.addView(TextView(this).apply {
+                text = (CallSync.display(o.optString("phone")) ?: "מספר לא מזוהה") + " · " + fmt.format(Date(o.optLong("start")))
+                textSize = 14f; setTextColor(color(R.color.text_primary)); textDirection = View.TEXT_DIRECTION_LTR
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val id = o.getLong("id")
+            for ((label, up) in listOf("העלה" to true, "לא" to false)) {
+                row.addView(Button(this, null, 0, if (up) R.style.BtnSmall else R.style.BtnGhost).apply {
+                    text = label; textSize = 13f; isAllCaps = false; minWidth = 0; minimumWidth = 0
+                    setPadding(dp(14), 0, dp(14), 0)
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginStart = dp(6) }
+                    setOnClickListener { CallApproval.resolveInApp(this@MainActivity, id, up); updateStatus() }
+                })
+            }
+            list.addView(row)
+        }
+    }
+
+    /** The last scan in one line — what support asks for first. */
+    private fun renderDiag() {
+        val d = Prefs.getDiag(this)
+        val t = findViewById<TextView>(R.id.callsDiagText)
+        if (!d.has("at") || !Prefs.isCallsEnabled(this)) { t.text = ""; return }
+        val at = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(d.optLong("at")))
+        t.text = "בדיקה אחרונה $at · הקלטות בחלון ${d.optInt("recordings_in_window")} · לקוחות ${d.optInt("customers")}" +
+            " · ממתינות ${d.optInt("waiting_in_app") + d.optInt("asked_by_notification")}" +
+            (if (!d.optBoolean("perm_notifications")) " · התראות כבויות" else "") +
+            (d.optString("last_upload_result").takeIf { it.isNotBlank() }?.let { " · העלאה אחרונה $it" } ?: "")
+    }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun step(iconId: Int, btnId: Int, done: Boolean) {
         findViewById<ImageView>(iconId).apply {

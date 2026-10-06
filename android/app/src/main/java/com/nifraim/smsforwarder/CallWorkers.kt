@@ -96,19 +96,33 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 CallSync.refreshClients(ctx)
             }
             var stillWriting = false
-            for (rec in CallSync.findRecordings(ctx)) {
+            val found = CallSync.findRecordings(ctx)
+            var fresh = 0; var matched = 0; var clients = 0; var asked = 0; var pendingInApp = 0; var writing = 0
+            for (rec in found) {
                 if (Prefs.isHandled(ctx, rec.mediaId)) continue
                 // MediaStore can announce a file before the dialer finished writing it.
                 if (rec.pending || System.currentTimeMillis() - rec.modifiedMs < 20_000) {
                     stillWriting = true
+                    writing++
                     continue
                 }
+                fresh++
                 val info = CallSync.matchCall(ctx, rec)
-                info.startedAtMs?.let { Prefs.markCallUsed(ctx, it) }
-                if (CallSync.isClient(ctx, info.number)) CallJobs.upload(ctx, rec, info)
-                else CallApproval.ask(ctx, rec, info)
+                info.startedAtMs?.let { Prefs.markCallUsed(ctx, it); matched++ }
+                if (CallSync.isClient(ctx, info.number)) {
+                    clients++
+                    CallJobs.upload(ctx, rec, info)
+                } else if (CallApproval.ask(ctx, rec, info)) {
+                    asked++
+                } else {
+                    // the notification could not be shown (notifications off) — never drop it silently:
+                    // it waits in the app's "ממתינות לאישור" list
+                    CallApproval.keepInApp(ctx, rec, info)
+                    pendingInApp++
+                }
                 Prefs.markHandled(ctx, rec.mediaId)
             }
+            CallDiag.save(ctx, found, fresh, matched, clients, asked, pendingInApp, writing)
             if (stillWriting) CallJobs.scanLater(ctx)
             Result.success()
         } finally {
@@ -167,6 +181,8 @@ class CallUploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
             }
             val code = conn.responseCode
             conn.disconnect()
+            Prefs.setLastUploadResult(ctx, "$code")
+            CallDiag.send(ctx)
             when {
                 code in 200..299 -> {
                     Prefs.setLastCallUpload(ctx, System.currentTimeMillis())
@@ -176,8 +192,10 @@ class CallUploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
                 else -> Result.retry()
             }
         } catch (_: SecurityException) {
+            Prefs.setLastUploadResult(ctx, "no-permission")
             Result.failure()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Prefs.setLastUploadResult(ctx, "error:" + (e.javaClass.simpleName))
             if (runAttemptCount < 6) Result.retry() else Result.failure()
         }
     }
@@ -189,7 +207,9 @@ object CallApproval {
     const val ACTION_UPLOAD = "com.nifraim.CALL_UPLOAD"
     const val ACTION_SKIP = "com.nifraim.CALL_SKIP"
 
-    fun ask(ctx: Context, rec: CallSync.Recording, info: CallSync.CallInfo) {
+    /** Shows "להעלות?" — returns false when the phone won't show it (notifications off). */
+    fun ask(ctx: Context, rec: CallSync.Recording, info: CallSync.CallInfo): Boolean {
+        if (!androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false
         Notifications.ensureChannels(ctx)
         val id = (rec.mediaId % Int.MAX_VALUE).toInt()
         fun action(act: String) = PendingIntent.getBroadcast(
@@ -213,10 +233,34 @@ object CallApproval {
             .addAction(0, "העלה", action(ACTION_UPLOAD))
             .addAction(0, "לא", action(ACTION_SKIP))
             .build()
-        try {
+        return try {
             ctx.getSystemService(NotificationManager::class.java).notify(id, n)
+            true
         } catch (_: SecurityException) {
+            false
         }
+    }
+
+    fun keepInApp(ctx: Context, rec: CallSync.Recording, info: CallSync.CallInfo) {
+        val arr = Prefs.getPending(ctx)
+        arr.put(org.json.JSONObject().put("id", rec.mediaId).put("mime", rec.mime).put("dur", rec.durationMs)
+            .put("phone", info.number ?: "").put("dir", info.direction ?: "").put("start", info.startedAtMs ?: rec.modifiedMs))
+        Prefs.setPending(ctx, arr)
+    }
+
+    /** The agent tapped העלה / לא in the app's list. */
+    fun resolveInApp(ctx: Context, mediaId: Long, upload: Boolean) {
+        val arr = Prefs.getPending(ctx)
+        val keep = org.json.JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.getLong("id") != mediaId) { keep.put(o); continue }
+            if (upload) CallJobs.upload(ctx,
+                CallSync.Recording(mediaId, "", o.optString("mime", "audio/mp4"), 0, o.optLong("dur"), false),
+                CallSync.CallInfo(o.optString("phone").ifBlank { null }, o.optString("dir").ifBlank { null },
+                                  o.optLong("start").takeIf { it > 0 }))
+        }
+        Prefs.setPending(ctx, keep)
     }
 }
 

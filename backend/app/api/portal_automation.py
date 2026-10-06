@@ -1178,6 +1178,24 @@ async def phone_forward_client_phones(token: str, db: AsyncSession = Depends(get
     return {"hashes": sorted(phone_hash(k) for k in await customer_phones(db, user))}
 
 
+@router.post("/phone-forward/{token}/calls-diag")
+async def phone_forward_calls_diag(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """The Nifraim App's last call scan — COUNTS ONLY (no numbers, no names): permissions, recordings
+    found, call-log matches, customers, waiting for approval, last upload result. Logged as
+    `CALLS-DIAG <email> {...}` so support sees where calls stop on an agent's phone."""
+    import json as _json
+    user = await _phone_forward_user(db, token)
+    if user is None:
+        return {"ok": True}
+    try:
+        data = _json.loads((await request.body())[:4000] or b"{}")
+    except Exception:  # noqa: BLE001
+        data = {}
+    keep = {k: data[k] for k in list(data)[:24] if isinstance(data.get(k), (int, float, bool, str)) and len(str(data[k])) < 60}
+    logger.warning("CALLS-DIAG %s %s", user.email, _json.dumps(keep, ensure_ascii=False, sort_keys=True))
+    return {"ok": True}
+
+
 @router.post("/phone-forward/{token}/call")
 async def phone_forward_call(
     token: str,

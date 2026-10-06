@@ -133,7 +133,7 @@
             <TextView
                 style="@style/Muted"
                 android:layout_marginTop="8dp"
-                android:text="שיחה שהטלפון הקליט עם לקוח שלכם עולה לבד, ומקבלים סיכום ומשימות. שיחה עם מספר שאינו לקוח לא יוצאת מהטלפון בלי אישור שלכם." />
+                android:text="שיחה שהטלפון הקליט עם לקוח שלכם עולה לבד, ומקבלים סיכום ומשימות — גם מ-3 השעות שלפני ההפעלה. שיחה עם מספר שאינו לקוח לא יוצאת מהטלפון בלי אישור שלכם." />
 
             <LinearLayout
                 android:id="@+id/callsBody"
@@ -158,6 +158,21 @@
                     <TextView style="@style/RowLabel" android:textColor="@color/text_secondary" android:textSize="14sp" android:text="לקוחות מוכרים לפי טלפון" />
                     <TextView android:id="@+id/clientsCountText" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="14sp" android:textDirection="ltr" />
                 </LinearLayout>
+
+                <!-- calls waiting for "העלה / לא" when the phone could not show a notification -->
+                <LinearLayout
+                    android:id="@+id/pendingList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/callsDiagText"
+                    style="@style/Muted"
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="8dp"
+                    android:textSize="12sp" />
 
                 <!-- Missing permission / recorder hint -->
                 <LinearLayout

@@ -66,8 +66,27 @@ object Prefs {
     /** Only recordings made after this moment are ever considered — no history backfill. */
     fun callsEnabledAt(ctx: Context) = sp(ctx).getLong(KEY_CALLS_ENABLED_AT, 0L)
 
+    /** Recordings from this long BEFORE the switch was turned on are collected too — the calls the
+     *  agent had this morning, before installing. The customer filter still decides what uploads. */
+    const val LOOKBACK_MS = 3 * 60 * 60 * 1000L
+    private const val KEY_LOOKBACK_APPLIED = "calls_lookback_applied"
+
     fun setCallsEnabled(ctx: Context, on: Boolean) =
-        sp(ctx).edit { putLong(KEY_CALLS_ENABLED_AT, if (on) System.currentTimeMillis() else 0L) }
+        sp(ctx).edit {
+            putLong(KEY_CALLS_ENABLED_AT, if (on) System.currentTimeMillis() - LOOKBACK_MS else 0L)
+            putBoolean(KEY_LOOKBACK_APPLIED, true)
+        }
+
+    /** Agents who switched calls on in 1.2 (no look-back): widen their window once, 3h before. */
+    fun applyLookbackOnce(ctx: Context) {
+        val p = sp(ctx)
+        if (p.getBoolean(KEY_LOOKBACK_APPLIED, false)) return
+        val at = p.getLong(KEY_CALLS_ENABLED_AT, 0L)
+        p.edit {
+            if (at > 0L) putLong(KEY_CALLS_ENABLED_AT, at - LOOKBACK_MS)
+            putBoolean(KEY_LOOKBACK_APPLIED, true)
+        }
+    }
 
     fun isWifiOnly(ctx: Context) = sp(ctx).getBoolean(KEY_CALLS_WIFI_ONLY, false)
     fun setWifiOnly(ctx: Context, on: Boolean) = sp(ctx).edit { putBoolean(KEY_CALLS_WIFI_ONLY, on) }
@@ -105,4 +124,22 @@ object Prefs {
         ids.add(startMs.toString())
         sp(ctx).edit { putString(KEY_USED_CALLS, ids.takeLast(300).joinToString(",")) }
     }
+
+    // ── calls: approvals the notification could not show + the last scan's numbers ──
+    private const val KEY_PENDING = "calls_pending"        // JSON array of recordings waiting for "העלה / לא"
+    private const val KEY_DIAG = "calls_diag"              // last scan's counts (shown in the app, sent to the server)
+    private const val KEY_LAST_UPLOAD = "calls_last_upload_result"
+
+    fun getPending(ctx: Context): org.json.JSONArray =
+        try { org.json.JSONArray(sp(ctx).getString(KEY_PENDING, "[]") ?: "[]") } catch (_: Exception) { org.json.JSONArray() }
+
+    fun setPending(ctx: Context, arr: org.json.JSONArray) = sp(ctx).edit { putString(KEY_PENDING, arr.toString()) }
+
+    fun getDiag(ctx: Context): org.json.JSONObject =
+        try { org.json.JSONObject(sp(ctx).getString(KEY_DIAG, "{}") ?: "{}") } catch (_: Exception) { org.json.JSONObject() }
+
+    fun setDiag(ctx: Context, o: org.json.JSONObject) = sp(ctx).edit { putString(KEY_DIAG, o.toString()) }
+
+    fun getLastUploadResult(ctx: Context): String = sp(ctx).getString(KEY_LAST_UPLOAD, "") ?: ""
+    fun setLastUploadResult(ctx: Context, v: String) = sp(ctx).edit { putString(KEY_LAST_UPLOAD, v) }
 }
