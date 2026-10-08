@@ -8,8 +8,8 @@
     <!-- The whole header is the toggle: the agent can fold the list away and
          keep only the count (QA 2026-09-30). Remembered per viewer. -->
     <button class="pact-head" type="button" :aria-expanded="open" @click="toggle">
-      <h3>{{ items.length ? 'דורש טיפול' : 'הכל תקין החודש' }}</h3>
-      <span v-if="items.length" class="pact-count ltr-number">{{ items.length }}</span>
+      <h3 :class="{ 'pact-flicker': items.length }">{{ items.length ? 'דורש טיפול' : 'הכל תקין החודש' }}</h3>
+      <span v-if="items.length" class="pact-count pact-flicker ltr-number">{{ items.length }}</span>
       <span v-if="period" class="pact-period ltr-number">נפרעים {{ period }}</span>
       <svg class="pact-chev" :class="{ 'pact-chev--open': open }" width="16" height="16"
            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -162,9 +162,19 @@ onMounted(async () => {
 
 <style scoped>
 .pact {
+  position: relative; isolation: isolate;
   background: var(--card-bg); border: 1px solid var(--border-subtle);
   border-radius: 14px; padding: 12px 18px; box-shadow: var(--shadow-sm);
 }
+/* Hovering the header fills the card slowly, right (RTL start) to left, with the tab's light blue */
+.pact::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background: var(--tab-production-wash);
+  transform: scaleX(0); transform-origin: right center;
+  transition: transform 1.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.pact:has(.pact-head:hover)::before { transform: scaleX(1); }
 .pact-head {
   width: 100%; display: flex; align-items: center; gap: 10px;
   background: none; border: none; padding: 0; font: inherit; color: inherit;
@@ -180,6 +190,15 @@ onMounted(async () => {
 .pact-fold-inner { overflow: hidden; min-height: 0; }
 .pact-fold--open .pact-fold-inner { padding-top: 12px; }
 .pact-head h3 { font-size: 16px; font-weight: 700; color: var(--text); }
+/* "דורש טיפול" + its count flicker briefly once a minute (first ~1.2s of each 60s cycle) */
+.pact-flicker { animation: pactFlicker 60s ease-in-out infinite; }
+@keyframes pactFlicker {
+  0%, 2%, 100% { opacity: 1; }
+  0.25% { opacity: 0.25; }
+  0.5% { opacity: 1; }
+  0.75% { opacity: 0.35; }
+  1% { opacity: 1; }
+}
 .pact-count {
   min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px;
   background: var(--red); color: #fff; font-size: 12px; font-weight: 700;
@@ -223,7 +242,7 @@ onMounted(async () => {
   .pact-sub { white-space: normal; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pact-list li { animation: none; }
-  .pact-row, .pact-fold, .pact-chev { transition: none; }
+  .pact-list li, .pact-flicker { animation: none; }
+  .pact-row, .pact-fold, .pact-chev, .pact::before { transition: none; }
 }
 </style>
