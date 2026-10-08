@@ -65,8 +65,15 @@
             </span>
           </div>
           <div class="pr-rates" :title="formula(p)">
-            שיעור בהסכם <span class="ltr-number">{{ rateText(p.rate_firm ?? p.rate) }}</span>
-            · שיעור בפועל <span class="ltr-number" :class="gapTone(fPaid(p), fExp(p))">{{ rateText(p.paid_rate_firm ?? p.paid_rate) }}</span>
+            <!-- the two rates are the card's point: always highlighted, they come alive on hover -->
+            <span class="pr-rate pr-rate--deal">
+              <span class="pr-rate-lbl">שיעור בהסכם</span>
+              <span class="pr-rate-val ltr-number">{{ rateText(p.rate_firm ?? p.rate) }}</span>
+            </span>
+            <span class="pr-rate pr-rate--paid" :class="gapTone(fPaid(p), fExp(p)) && 'pr-rate--' + gapTone(fPaid(p), fExp(p))">
+              <span class="pr-rate-lbl">שיעור בפועל</span>
+              <span class="pr-rate-val ltr-number">{{ rateText(p.paid_rate_firm ?? p.paid_rate) }}</span>
+            </span>
             <!-- The rows of this product the comparison left out, and their
                  money — said, so the card's figures never look incomplete. -->
             <span v-if="p.estimated" class="pr-partial">
@@ -225,7 +232,52 @@ watch(() => props.products, play)
 .pr-fig small { font-size: 11px; font-weight: 500; color: var(--text-muted); }
 .pr-fig--lead { color: var(--tab-production); font-size: 16px; }
 .pr-gap { color: var(--text-muted); }
-.pr-rates { font-size: 12px; color: var(--text-muted); padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.pr-rates {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-muted); padding-top: 10px; border-top: 1px solid var(--border-subtle);
+}
+/* Rate chips — highlighted at rest; on card hover they lift, the value grows a touch
+   and a soft shine sweeps across once (the paid chip a beat after the agreed one). */
+.pr-rate {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 4px 10px; border-radius: 8px;
+  background: var(--bg); color: var(--text-secondary);
+  transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.35s ease, background 0.35s ease;
+}
+.pr-rate-lbl { font-size: 11.5px; font-weight: 600; }
+.pr-rate-val {
+  display: inline-block; font-size: 13px; font-weight: 800; color: var(--text);
+  transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);
+}
+.pr-rate--deal { background: var(--tab-production-wash); color: var(--tab-production); }
+.pr-rate--deal .pr-rate-val { color: var(--tab-production); }
+.pr-rate--is-down { background: var(--red-light); }
+.pr-rate--is-down .pr-rate-val { color: var(--chart-loss); }
+.pr-rate--is-up .pr-rate-val { color: var(--chart-gain); }
+.pr-rate::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%);
+  transform: translateX(110%);
+}
+.pr-card--btn:hover .pr-rate { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(24, 24, 24, 0.08); }
+.pr-card--btn:hover .pr-rate-val { transform: scale(1.08); }
+.pr-card--btn:hover .pr-rate::after { animation: prShine 0.9s cubic-bezier(0.2, 0, 0.2, 1) both; }
+.pr-card--btn:hover .pr-rate--paid,
+.pr-card--btn:hover .pr-rate--paid .pr-rate-val { transition-delay: 0.08s; }
+.pr-card--btn:hover .pr-rate--paid::after { animation-delay: 0.12s; }
+/* הפרש — on card hover only the gap figure flickers (a real gap past the alert thresholds) */
+.pr-gap { display: inline-block; }
+.pr-card--btn:hover .pr-gap.is-down,
+.pr-card--btn:hover .pr-gap.is-up { animation: prFlicker 1.1s ease-in-out both; }
+@keyframes prFlicker {
+  0%, 100% { opacity: 1; }
+  15% { opacity: 0.25; }
+  30% { opacity: 1; }
+  45% { opacity: 0.35; }
+  60% { opacity: 1; }
+}
+@keyframes prShine { from { transform: translateX(110%); } to { transform: translateX(-110%); } }
 .pr-partial {
   margin-inline-start: 6px; font-size: 11px; padding: 1px 7px; border-radius: 8px;
   background: var(--bg); color: var(--text-muted);
@@ -273,6 +325,10 @@ watch(() => props.products, play)
 }
 @media (prefers-reduced-motion: reduce) {
   .pr-card { animation: none; }
+  .pr-rate, .pr-rate-val { transition: none; }
+  .pr-card--btn:hover .pr-rate-val { transform: none; }
+  .pr-card--btn:hover .pr-rate::after,
+  .pr-card--btn:hover .pr-gap { animation: none; }
   .pr-fold, .pr-fold-head svg { transition: none; }
 }
 </style>
