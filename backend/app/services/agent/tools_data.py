@@ -422,6 +422,61 @@ async def get_rate(ctx, company: str, product: str = ""):
         "note": "rate_pct באחוזים (השיעור נשמר כשבר)."}
 
 
+async def rate_audit(ctx) -> dict:
+    from app.api import production
+    return await _cached(ctx, ("rate_audit",), lambda: production.get_rate_audit(db=ctx.db, user=ctx.user))
+
+
+@tool("get_agreement_audit",
+      "עמלות בפועל מול ההסכם — אותו חישוב כמו הכרטיס 'עמלות בפועל מול ההסכמים' במסך הפרודוקציה: על השורות שהחברה שילמה, "
+      "כמה הייתה אמורה לשלם לפי שיעור ההסכם וכמה שילמה (פער בשיעור). בלי company: פער לכל חברה. עם company: פער לכל מוצר "
+      "ולמוצר עם הפער הגדול — הלקוחות ששולם עליהם פחות. זו שאלה אחרת מ-get_unpaid (לקוחות שלא שולמו בכלל).",
+      {"company": {"type": "string", "description": "שם חברה או ריק לכל החברות"}},
+      category="commissions", status_he="משווה עמלות להסכם")
+async def get_agreement_audit(ctx, company: str = ""):
+    d = await rate_audit(ctx)
+    cos = [c for c in d.get("companies", []) if c.get("comparable")]
+    if not company:
+        rows = sorted(({"label": c["company"], "value": _r(c.get("gap")), "paid_checked": _r(c.get("paid_firm")),
+                        "agreement_expected": _r(c.get("expected_firm")), "paid_total": _r(c.get("paid")),
+                        "gap_pct": c.get("gap_pct")} for c in cos), key=lambda r: r["value"])
+        rid = ctx.keep(rows, label="חברה", value="פער מול ההסכם", title="עמלות בפועל מול ההסכמים")
+        return {"period": d.get("period"), "by_company": rows, "result_id": rid,
+                "not_checkable": [c["company"] for c in d.get("companies", []) if not c.get("comparable")],
+                "note": "פער שלילי = החברה שילמה פחות מההסכם על שורות שכן שולמו. נבדקות רק שורות שיש להן שיעור מפורש בהסכם."}
+    co = next((c for c in d.get("companies", []) if _match_company(c["company"], company)), None)
+    if not co:
+        return {"company": company, "found": False, "note": "לחברה אין דוח נפרעים בתקופה — אין מה להשוות."}
+    if not co.get("comparable"):
+        return {"company": co["company"], "comparable": False, "paid_total": _r(co.get("paid")),
+                "note": "אין בהסכם שיעור מפורש למוצרים ששולמו — אי אפשר לבדוק (נתון חסר)."}
+    prods = [p for p in co.get("products", []) if float(p.get("expected_firm") or 0) > 0]
+    prods.sort(key=lambda p: float(p.get("paid_firm") or 0) - float(p.get("expected_firm") or 0))
+    rows = [{"label": p["product"], "value": _r(float(p.get("paid_firm") or 0) - float(p.get("expected_firm") or 0)),
+             "agreement_expected": _r(p.get("expected_firm")), "paid": _r(p.get("paid_firm")),
+             "agreement_rate_pct": round(float(p.get("rate_firm") or 0) * 100, 3),
+             "paid_rate_pct": round(float(p.get("paid_rate_firm") or 0) * 100, 3)} for p in prods]
+    rid = ctx.keep(rows, label="מוצר", value="פער מול ההסכם", title=f"{co['company']} — בפועל מול ההסכם")
+    worst = None
+    if prods and float(prods[0].get("paid_firm") or 0) < float(prods[0].get("expected_firm") or 0):
+        from app.api import production
+        p0 = prods[0]
+        dd = await _cached(ctx, ("rate_audit_customers", co["company"], p0["product"], p0.get("category")),
+                           lambda: production.get_rate_audit_customers(
+                               company=co["company"], product=p0["product"], category=p0.get("category"),
+                               db=ctx.db, user=ctx.user))
+        worst = {"product": p0["product"], "summary": dd.get("summary"),
+                 "customers": [{"name": c.get("name") or c.get("id_number"), "id_number": c["id_number"],
+                                "status": c["status"], "gap": c.get("gap"), "paid": c["paid"],
+                                "agreement_expected": c["expected_firm"]}
+                               for c in dd.get("customers", [])[:10]]}
+    return {"company": co["company"], "period": d.get("period"),
+            "agreement_expected": _r(co.get("expected_firm")), "paid_checked": _r(co.get("paid_firm")),
+            "gap": _r(co.get("gap")), "gap_pct": co.get("gap_pct"), "paid_total": _r(co.get("paid")),
+            "by_product": rows, "result_id": rid, "worst_product_customers": worst,
+            "note": "paid_total כולל גם מוצרים בלי שיעור בהסכם; הפער מחושב רק על המוצרים שנבדקו מול ההסכם."}
+
+
 @tool("list_agreements", "אילו הסכמי עמלות יש לסוכן, לכל חברה כמה שיעורים, ואילו חברות בתיק בלי הסכם.",
       category="agreements", status_he="סוקר את ההסכמים")
 async def list_agreements(ctx):

@@ -53,11 +53,17 @@
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
       </div>
       <template v-if="actions">
-        <button class="ccl-act" type="button" @click="actions.mail(shown)">
+        <!-- A mail goes to ONE insurer (QA 2026-10-08: "איך אני שולח מייל
+             לחברה על כל אלו שלא שולמו?"). Across several companies the
+             button asks for a company tab first instead of sending everyone
+             to the first insurer's address. -->
+        <button class="ccl-act" type="button" :disabled="!mailCompany && companies.length > 1"
+                :title="!mailCompany && companies.length > 1 ? 'בחרו חברה למעלה — המייל נשלח לחברה אחת' : ''"
+                @click="actions.mail(shown, mailCompany)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
-          שלח מייל
+          {{ mailCompany ? 'מייל ל' + mailCompany : (companies.length > 1 ? 'בחרו חברה למייל' : 'שלח מייל') }}
         </button>
-        <button class="ccl-act" type="button" @click="actions.excel(shown)">
+        <button class="ccl-act" type="button" @click="actions.excel(shown, mailCompany)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
           Excel
         </button>
@@ -228,6 +234,9 @@ function startCompany() {
 }
 // First open: `startCompany` reads `companies`, so it runs only once that exists.
 company.value = startCompany()
+// The insurer a mail goes to: the company tab in view, or the only company.
+const mailCompany = computed(() => company.value
+  || (companies.value.length === 1 ? companies.value[0].name : null))
 const byCompany = computed(() => company.value
   ? props.customers.filter(c => companiesOf(c).includes(company.value))
   : props.customers)
@@ -372,4 +381,5 @@ const totPremium = computed(() => shown.value.reduce((s, c) => s + premiumOf(c),
 }
 .ccl-act:hover { border-color: var(--acc); color: var(--acc); }
 .ccl-act:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ccl-act:disabled { opacity: 0.55; cursor: not-allowed; border-color: var(--border-subtle); color: var(--text-muted); }
 </style>

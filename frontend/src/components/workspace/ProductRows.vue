@@ -36,7 +36,13 @@
     <section v-if="checked.length" class="pr-sec">
       <h5 class="pr-sec-title">נבדקו מול ההסכם <span class="ltr-number">{{ checked.length }}</span></h5>
       <ul class="pr-list">
-        <li v-for="(p, i) in checked" :key="p.product" class="pr-card" :style="{ '--d': i * 40 + 'ms' }">
+        <!-- Each card opens its customers (QA 2026-10-08: "שאוכל ללחוץ על כל
+             סעיף ... ויפתח לי הלקוחות"). -->
+        <li v-for="(p, i) in checked" :key="(p.category || '') + p.product" class="pr-card pr-card--btn"
+            :style="{ '--d': i * 40 + 'ms' }" role="button" tabindex="0"
+            :aria-label="'לקוחות — ' + p.product"
+            @click="emit('pick', p, $event.currentTarget)"
+            @keydown.enter.prevent="emit('pick', p, $event.currentTarget)">
           <!-- Three figures in fixed columns, the same order as the summary,
                so they line up card to card. No bar: a track with a tick had to
                be decoded; three labelled numbers do not. -->
@@ -90,7 +96,10 @@
             ולכן אין כאן טענה על חוב. להוספה: לשונית מדף ההסכמים.
           </p>
           <ul class="pr-quiet">
-            <li v-for="p in unchecked" :key="p.product">
+            <li v-for="p in unchecked" :key="(p.category || '') + p.product" class="pr-quiet-btn"
+                role="button" tabindex="0" :aria-label="'לקוחות — ' + p.product"
+                @click="emit('pick', p, $event.currentTarget)"
+                @keydown.enter.prevent="emit('pick', p, $event.currentTarget)">
               <span class="pr-name">{{ p.product }}<small v-if="p.category">{{ p.category }}</small></span>
               <span class="pr-quiet-rate">
                 שיעור בפועל <span class="ltr-number">{{ rateText(p.paid_rate) }}</span>
@@ -114,6 +123,7 @@ const GAP_MIN_PCT = 10
 const GAP_MIN_SHEKEL = 100
 
 const props = defineProps({ products: { type: Array, default: () => [] } })
+const emit = defineEmits(['pick'])
 const shown = ref(false)
 const openUnchecked = ref(false)
 
@@ -193,6 +203,11 @@ watch(() => props.products, play)
 .pr-sec-title { font-size: 13px; font-weight: 700; color: var(--text); display: flex; gap: 6px; align-items: baseline; }
 .pr-sec-title .ltr-number { color: var(--text-muted); font-weight: 500; }
 
+.pr-card--btn { cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease; }
+.pr-card--btn:hover { border-color: var(--tab-production); transform: translateY(-1px); }
+.pr-card--btn:focus-visible, .pr-quiet-btn:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+.pr-quiet-btn { cursor: pointer; border-radius: 8px; }
+.pr-quiet-btn:hover { background: var(--bg); }
 .pr-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .pr-card {
   border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px 14px;

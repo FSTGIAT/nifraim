@@ -445,7 +445,7 @@ const kpiCards = computed(() => [
     open: props.population ? (el) => { bridgeOrigin.value = el; bridgeOpen.value = true } : null },
   { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
     color: '#E04B48', ink: '#C23934',
-    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: (list) => sendAllUnpaidMail(list || kpiUnpaid.value), excel: (list) => downloadUnpaidExcel(list || kpiUnpaid.value) }),
+    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: (list, co) => sendAllUnpaidMail(list || kpiUnpaid.value, co), excel: (list, co) => downloadUnpaidExcel(list || kpiUnpaid.value, co)}),
     actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
   { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
     color: '#4E9DD0', ink: '#35719A',
@@ -1072,14 +1072,27 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-async function sendAllUnpaidMail(list) {
-  const customers = Array.isArray(list) ? list : effectiveUnpaidCustomers.value
+// The products a customer is unpaid ON — per product (QA 2026-10-08), the
+// same accessor as CompareCustomerList's `unpaidOf`. `production_products` of
+// a MATCHED customer also holds the policies that were paid; listing them in
+// a "not paid" mail asked the insurer for money it already sent. With a
+// company, only that insurer's products — the mail goes to ONE insurer.
+function unpaidProductsOf(c, company = null) {
+  const all = c.match_status === 'only_production'
+    ? (c.production_products || [])
+    : (c.product_matches?.unmatched_production || c.production_products || [])
+  return company ? all.filter(p => p.company === company) : all
+}
+
+async function sendAllUnpaidMail(list, company = null) {
+  const customers = (Array.isArray(list) ? list : effectiveUnpaidCustomers.value)
+    .filter(c => unpaidProductsOf(c, company).length || !company)
   if (!customers.length) return
 
   // Build customer lines with product details and premium
   const lines = customers.map(c => {
     const name = customerName(c)
-    const products = c.production_products || c.product_matches?.unmatched_production || []
+    const products = unpaidProductsOf(c, company)
     const productLines = products.map(p => {
       const date = p.sign_date ? formatDate(p.sign_date) : ''
       const premiumStr = p.premium > 0 ? ` פרמיה: ₪${Math.round(p.premium)}` : ''
@@ -1092,7 +1105,7 @@ async function sendAllUnpaidMail(list) {
   // Find company email from first customer's products
   let companyEmail = ''
   for (const c of customers) {
-    const products = c.production_products || c.product_matches?.unmatched_production || []
+    const products = unpaidProductsOf(c, company)
     for (const p of products) {
       const rate = findRateObj(p)
       if (rate?.company_email) {
@@ -1104,7 +1117,7 @@ async function sendAllUnpaidMail(list) {
   }
 
   const userName = authStore.user?.full_name || ''
-  const subject = `בקשת תשלום עמלות נפרעים - ${customers.length} לקוחות`
+  const subject = `בקשת תשלום עמלות נפרעים${company ? ' — ' + company : ''} - ${customers.length} לקוחות`
   const body = `שלום רב,
 
 עבור הלקוחות הבאים לא התקבלו עמלות נפרעים:
@@ -1118,18 +1131,19 @@ ${lines}
 בברכה,
 ${userName}`
 
-  downloadUnpaidExcel(customers)
+  downloadUnpaidExcel(customers, company)
   await openMailCompose({ to: companyEmail, subject, body })
 }
 
-function downloadUnpaidExcel(list) {
-  const customers = Array.isArray(list) ? list : effectiveUnpaidCustomers.value
+function downloadUnpaidExcel(list, company = null) {
+  const customers = (Array.isArray(list) ? list : effectiveUnpaidCustomers.value)
+    .filter(c => unpaidProductsOf(c, company).length || !company)
   if (!customers.length) return
 
   const rows = []
   for (const c of customers) {
     const name = customerName(c)
-    const products = c.production_products || c.product_matches?.unmatched_production || []
+    const products = unpaidProductsOf(c, company)
     if (products.length === 0) {
       rows.push({
         'שם לקוח': name,
@@ -1159,7 +1173,7 @@ function downloadUnpaidExcel(list) {
   const ws = XLSX.utils.json_to_sheet(rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'לא שולם')
-  XLSX.writeFile(wb, `לא_שולם_${new Date().toLocaleDateString('he-IL')}.xlsx`)
+  XLSX.writeFile(wb, `לא_שולם_${company ? company + '_' : ''}${new Date().toLocaleDateString('he-IL')}.xlsx`)
 }
 
 // ─── Only-commission mail & Excel ───

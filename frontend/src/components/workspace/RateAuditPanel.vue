@@ -42,8 +42,20 @@
     <DataModal :open="!!openCompany" :origin="drillOrigin"
                :title="openCompany ? openCompany.company + ' — לפי מוצר' : ''"
                :subtitle="openCompany ? `${openCompany.products.length} מוצרים` : ''"
-               @close="openCompany = null">
-      <ProductRows v-if="openCompany" :products="openCompany.products" />
+               @close="openCompany = null; openProduct = null">
+      <ProductRows v-if="openCompany" :products="openCompany.products"
+                   @pick="(p, el) => { productOrigin = el; openProduct = p }" />
+    </DataModal>
+
+    <!-- A product card's customers — a drill opened from a drill. -->
+    <DataModal :open="!!(openCompany && openProduct)" :origin="productOrigin" :layer="1020"
+               :title="openProduct ? openProduct.product : ''"
+               :subtitle="openCompany ? openCompany.company : ''"
+               :period="period ? 'נפרעים ' + period : ''" accent="var(--tab-production)"
+               @close="openProduct = null">
+      <ProductCustomers v-if="openCompany && openProduct" :company="openCompany.company"
+                        :product="openProduct.product" :category="openProduct.category || null"
+                        :period="period || ''" />
     </DataModal>
 
     <!-- Who cannot be checked, and what would make them checkable. -->
@@ -166,6 +178,7 @@ import { cachedGet } from '../../utils/cachedGet'
 import DataModal from './DataModal.vue'
 import AuditRows from './AuditRows.vue'
 import ProductRows from './ProductRows.vue'
+import ProductCustomers from './ProductCustomers.vue'
 import { money, signedMoney, pct } from '../../utils/chartDefaults'
 
 // A gap is worth naming only past BOTH thresholds — insurers round, and a
@@ -180,6 +193,8 @@ const loading = ref(true)
 const mounted = ref(false)
 const period = ref(null)
 const openCompany = ref(null)
+const openProduct = ref(null)
+const productOrigin = ref(null)
 const tableOpen = ref(false)
 const explainOpen = ref(false)
 const allAlerts = ref(false)

@@ -30,9 +30,15 @@
            book) above an actual chart whose grey bar was 2026-07 ₪41,428
            (נפרעים month, firm rates only): two months, two measures, nothing
            on screen matched (QA 2026-09-30). -->
-      <div v-if="hasData && headline.expected > 0" class="trend-current">
+      <!-- Expected-view only. In the actual view this showed "צפוי לפי
+           ההסכמים ₪44,695" beside "התקבל בפועל ₪71,277" — but the expected side
+           covers only the companies with a firm agreement rate (46% of what was
+           received), so the pair read as a ₪26K surplus that does not exist
+           (QA 2026-10-08: "נתון שגוי"). The per-company gap lives in "עמלות
+           בפועל מול ההסכמים", where both sides are the same rows. -->
+      <div v-if="hasData && mode === 'expected' && headline.expected > 0" class="trend-current">
         <span class="trend-current-label">
-          {{ mode === 'actual' ? 'צפוי לפי ההסכמים' : 'צפוי' }} {{ headline.label }}
+          צפוי {{ headline.label }}
         </span>
         <span class="trend-current-value ltr-number">{{ formatCurrency(headline.expected) }}</span>
       </div>
@@ -695,7 +701,14 @@ const series = computed(() => {
 const compareByLabel = computed(
   () => new Map(comparePoints.value.map(p => [p.period_label, p])),
 )
-const hasExpectedBar = computed(() => comparePoints.value.some(p => p.expected > 0))
+// The grey "צפוי לפי ההסכמים" bar is RETIRED (QA 2026-10-08, the user: "remove
+// the grey bar too"). It covered only companies with a firm agreement rate
+// (46% of what was received), so beside the full actual stack it read as a
+// ₪26K surplus that does not exist. The real per-company gap — same rows on
+// both sides — is "עמלות בפועל מול ההסכמים", with a customer drill per
+// product. Everything the bar fed (series, legend, colour, title, the "איך זה
+// מחושב" note, the tooltip's צפוי/פער line) keys off this flag.
+const hasExpectedBar = computed(() => false)
 
 // Where the benchmark series sits, or -1. `w.config.series[i].group` comes back
 // undefined inside ApexCharts' callbacks — measured: every data label rendered
@@ -896,7 +909,7 @@ const chartOptions = computed(() => ({
       // would read as a surplus.
       const pt = compareByLabel.value.get(label)
       let pair = ''
-      if (mode.value === 'actual' && pt && pt.expected > 0) {
+      if (hasExpectedBar.value && mode.value === 'actual' && pt && pt.expected > 0) {
         // Kept SHORT on purpose: a 20-row tooltip is taller than the chart, so
         // ApexCharts can only park it over the middle of the bars. Summary as
         // three figures on one line; per-company gaps only for the biggest

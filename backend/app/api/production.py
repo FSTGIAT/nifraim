@@ -1420,6 +1420,48 @@ async def get_production_alerts(
 
 
 
+def _audit_price_row(r, basis, rate_for) -> dict:
+    """One נפרעים row priced against the agreement — THE arithmetic of
+    `/rate-audit`, shared with its customer drill so the two never disagree.
+
+    `rate_for(company, product, product_type, is_accum)` → (rate, route).
+    """
+    accum = float(r.accumulation or 0)
+    premium = float(r.total_premium or 0)
+    row_paid = ex_vat_commission({
+        "commission_paid": r.commission_paid,
+        "commission_before_fee": r.commission_before_fee,
+        "actual_amount": r.actual_amount,
+    }, basis)
+    product_type = r.fund_type or r.product_type
+    # The CANONICAL basis decision, not a hand-rolled one. It excludes
+    # קרן פנסיה, whose commission is on the monthly deposit rather than
+    # the balance — pricing 21 Phoenix pension rows off their
+    # accumulation invented ₪5,515 of "expected" against ₪230 actually
+    # paid, and that single mistake drove Phoenix's headline gap.
+    is_accum = accumulation_based(product_type, accum)
+    rate, route = rate_for(r.receiving_company, r.product, product_type, is_accum)
+    row_exp = accum * rate / 12.0 if is_accum else premium * rate
+    _, prod = classify_product({
+        "product_type": r.product_type, "fund_type": r.fund_type,
+        "product": r.product, "total_premium": premium,
+        "accumulation": accum,
+    })
+    # Group on the REAL product, not only its category. The category
+    # label merged different agreement products under one line and one
+    # rate: Phoenix "פיננסים וזמן פרישה" held חיסכון פרט (₪50M, priced
+    # at 0.32%) and מסלול לזמן פרישה (0.24%) and displayed 0.32% for
+    # both (QA 2026-09-30). The category stays as `category`.
+    label = prod or "ללא שם מוצר"
+    real = (r.product or "").strip()
+    name = real if real and real != label and any(ch.isalpha() for ch in real) else label
+    return {
+        "accum": accum, "premium": premium, "paid": row_paid,
+        "is_accum": is_accum, "rate": rate, "route": route, "expected": row_exp,
+        "is_estimate": not _is_firm_route(route), "label": label, "name": name,
+    }
+
+
 @router.get("/rate-audit")
 async def get_rate_audit(
     db: AsyncSession = Depends(get_db),
@@ -1531,31 +1573,16 @@ async def get_rate_audit(
         per_product: dict[str, dict] = {}
 
         for r in recs:
-            accum = float(r.accumulation or 0)
-            premium = float(r.total_premium or 0)
-            row_paid = ex_vat_commission({
-                "commission_paid": r.commission_paid,
-                "commission_before_fee": r.commission_before_fee,
-                "actual_amount": r.actual_amount,
-            }, basis)
+            pr = _audit_price_row(r, basis, _rate_for)
+            accum, premium, row_paid = pr["accum"], pr["premium"], pr["paid"]
+            is_accum, rate, route = pr["is_accum"], pr["rate"], pr["route"]
+            row_exp, is_estimate = pr["expected"], pr["is_estimate"]
+            label, name = pr["label"], pr["name"]
             paid += row_paid
-
-            product_type = r.fund_type or r.product_type
-            # The CANONICAL basis decision, not a hand-rolled one. It excludes
-            # קרן פנסיה, whose commission is on the monthly deposit rather than
-            # the balance — pricing 21 Phoenix pension rows off their
-            # accumulation invented ₪5,515 of "expected" against ₪230 actually
-            # paid, and that single mistake drove Phoenix's headline gap.
-            is_accum = accumulation_based(product_type, accum)
-            rate, route = _rate_for(
-                r.receiving_company, r.product, product_type, is_accum
-            )
             if is_accum:
                 accum_base += accum
-                row_exp = accum * rate / 12.0
             else:
                 prem_base += premium
-                row_exp = premium * rate
             if rate <= 0:
                 no_rate_rows += 1
                 # `select_rate` returns 0 for two structurally different
@@ -1567,7 +1594,6 @@ async def get_rate_audit(
                 #                             there, the rate isn't usable
                 if route == "none":
                     no_company_rows += 1
-            is_estimate = not _is_firm_route(route)
             expected += row_exp
             if rate > 0 and is_estimate:
                 estimated_rows += 1
@@ -1583,19 +1609,6 @@ async def get_rate_audit(
                 else:
                     prem_firm += premium
 
-            _, prod = classify_product({
-                "product_type": r.product_type, "fund_type": r.fund_type,
-                "product": r.product, "total_premium": premium,
-                "accumulation": accum,
-            })
-            # Group on the REAL product, not only its category. The category
-            # label merged different agreement products under one line and one
-            # rate: Phoenix "פיננסים וזמן פרישה" held חיסכון פרט (₪50M, priced
-            # at 0.32%) and מסלול לזמן פרישה (0.24%) and displayed 0.32% for
-            # both (QA 2026-09-30). The category stays as `category`.
-            label = prod or "ללא שם מוצר"
-            real = (r.product or "").strip()
-            name = real if real and real != label and any(ch.isalpha() for ch in real) else label
             pp = per_product.setdefault(
                 (label, name),
                 {"product": name, "category": label if name != label else None,
@@ -1828,6 +1841,178 @@ def _commission_reason(co: dict) -> str | None:
     if all(r == "none" or r.endswith(":no_sane_rate") for r in routes):
         return "אין בהסכם שיעור שמתאים למוצרים האלה"
     return "הקובץ אינו כולל פרמיה או צבירה לחישוב"
+
+
+# Per-customer status inside one product of the agreement audit. A customer's
+# monthly commission is tens of shekels, so the company-level ₪100 / 10% bar
+# would hide every one of them; these mirror the comparison engine's per-line
+# thresholds instead (₪1 and 2%).
+_CUST_GAP_MIN_SHEKEL = 1.0
+_CUST_GAP_MIN_FRACTION = 0.02
+
+
+@router.get("/rate-audit/customers")
+async def get_rate_audit_customers(
+    company: str,
+    product: str,
+    category: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The customers behind ONE product line of "עמלות בפועל מול ההסכמים".
+
+    QA 2026-10-08: "שאוכל ללחוץ על כל סעיף ולהבין עבור איזה לקוחות אני מקבל
+    פחות מהצפוי". Same uploads, same rows, same `_audit_price_row` as
+    `/rate-audit`, so the customers here always sum to that product's card.
+
+    Per customer: `status` is
+      • unpaid      — the agreement prices it, the insurer sent ₪0
+      • underpaid   — paid below the agreement (past ₪1 and 2%)
+      • overpaid    — paid above it
+      • ok          — within the thresholds
+      • estimate    — priced only by a fallback rate: no claim either way
+      • missing     — the agreement has no rate for it (נתון חסר)
+    """
+    result = await db.execute(
+        select(FileUpload).where(
+            FileUpload.user_id == user.id,
+            FileUpload.is_production == False,
+            FileUpload.file_category == "commission",
+        ).order_by(FileUpload.uploaded_at.desc())
+    )
+    picked = _select_unified_uploads(list(result.scalars().all()))
+    empty = {"company": company, "product": product, "customers": [], "summary": {}}
+    if not picked:
+        return empty
+    rows = (await db.execute(
+        select(
+            ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name,
+            ClientRecord.fund_policy_number,
+            ClientRecord.receiving_company, ClientRecord.product,
+            ClientRecord.product_type, ClientRecord.fund_type,
+            ClientRecord.accumulation, ClientRecord.total_premium,
+            ClientRecord.commission_paid, ClientRecord.commission_before_fee,
+            ClientRecord.actual_amount,
+        ).where(ClientRecord.upload_id.in_([u.id for u in picked]))
+    )).all()
+    recs = [r for r in rows
+            if (company_stem(r.receiving_company) or (r.receiving_company or "")) == company]
+    if not recs:
+        return empty
+
+    user_rates = list((await db.execute(
+        select(CommissionRate).where(CommissionRate.user_id == user.id)
+    )).scalars().all())
+    cache: dict[tuple, tuple] = {}
+
+    def _rate_for(co, prod, ptype, is_accum):
+        key = (co, prod, ptype, is_accum)
+        if key not in cache:
+            cache[key] = select_rate(user_rates, co, prod, ptype, is_accum)
+        return cache[key]
+
+    basis = detect_vat_basis([
+        {"commission_paid": r.commission_paid,
+         "commission_before_fee": r.commission_before_fee,
+         "actual_amount": r.actual_amount} for r in recs
+    ])
+    priced = [(r, _audit_price_row(r, basis, _rate_for)) for r in recs]
+
+    # Which card a row lands on — the same merge `/rate-audit` applies: a
+    # category whose real products all share one (rate, route) is ONE card
+    # named by the category; otherwise each real product is its own card.
+    part_rate: dict[tuple, tuple] = {}
+    for _, pr in priced:
+        k = (pr["label"], pr["name"])
+        if k not in part_rate or (part_rate[k][0] is None and pr["rate"] > 0):
+            part_rate[k] = (round(pr["rate"], 6), pr["route"]) if pr["rate"] > 0 else (None, None)
+    parts_by_label: dict[str, set] = defaultdict(set)
+    for (label, name), rr in part_rate.items():
+        parts_by_label[label].add((name, rr))
+    merged = {label for label, parts in parts_by_label.items()
+              if len({n for n, _ in parts}) > 1 and len({rr for _, rr in parts}) == 1}
+
+    # A card is (category, product): הראל has a "מנהלים" under חיים AND one
+    # under קרן פנסיה. A card without a category is named by its label —
+    # either a merged category or a product whose name IS its label.
+    def _on_card(pr) -> bool:
+        if category:
+            return pr["label"] == category and pr["name"] == product
+        return pr["label"] == product and (pr["label"] in merged or pr["name"] == product)
+
+    by_cust: dict[str, dict] = {}
+    for r, pr in priced:
+        if not _on_card(pr):
+            continue
+        cid = (r.id_number or "").strip().lstrip("0") or "—"
+        c = by_cust.setdefault(cid, {
+            "id_number": cid,
+            "name": " ".join(x for x in (r.first_name, r.last_name) if x).strip() or None,
+            "policies": [], "records": 0,
+            "base": 0.0, "basis": "accumulation" if pr["is_accum"] else "premium",
+            "paid": 0.0, "expected": 0.0, "paid_firm": 0.0, "expected_firm": 0.0,
+            "rate": None, "firm_rows": 0, "estimated_rows": 0, "missing_rows": 0,
+        })
+        pol = (r.fund_policy_number or "").strip()
+        if pol and pol not in c["policies"]:
+            c["policies"].append(pol)
+        c["records"] += 1
+        c["base"] += pr["accum"] if pr["is_accum"] else pr["premium"]
+        c["paid"] += pr["paid"]
+        c["expected"] += pr["expected"]
+        if pr["rate"] <= 0:
+            c["missing_rows"] += 1
+        elif pr["is_estimate"]:
+            c["estimated_rows"] += 1
+            c["rate"] = c["rate"] or round(pr["rate"], 6)
+        else:
+            c["firm_rows"] += 1
+            c["paid_firm"] += pr["paid"]
+            c["expected_firm"] += pr["expected"]
+            c["rate"] = round(pr["rate"], 6)
+
+    out = []
+    counts: dict[str, int] = defaultdict(int)
+    for c in by_cust.values():
+        if c["firm_rows"]:
+            gap = c["paid_firm"] - c["expected_firm"]
+            big = (abs(gap) >= _CUST_GAP_MIN_SHEKEL and c["expected_firm"] > 0
+                   and abs(gap) / c["expected_firm"] >= _CUST_GAP_MIN_FRACTION)
+            if c["paid_firm"] <= 0 < c["expected_firm"]:
+                status = "unpaid"
+            elif big:
+                status = "underpaid" if gap < 0 else "overpaid"
+            else:
+                status = "ok"
+            c["gap"] = round(gap, 2)
+        else:
+            status = "estimate" if c["estimated_rows"] else "missing"
+            c["gap"] = None
+        c["status"] = status
+        counts[status] += 1
+        is_acc = c["basis"] == "accumulation"
+        c["paid_rate"] = round(c["paid"] * (12.0 if is_acc else 1.0) / c["base"], 6) \
+            if c["base"] > 0 and c["paid"] > 0 else None
+        for k in ("base", "paid", "expected", "paid_firm", "expected_firm"):
+            c[k] = round(c[k], 2)
+        out.append(c)
+
+    order = {"unpaid": 0, "underpaid": 1, "missing": 2, "estimate": 3, "overpaid": 4, "ok": 5}
+    out.sort(key=lambda c: (order[c["status"]], c["gap"] if c["gap"] is not None else 0, -c["paid"]))
+    return {
+        "company": company,
+        "product": product,
+        "period": max((u.period_month for u in picked if u.period_month), default=None),
+        "customers": out,
+        "summary": {
+            "customers": len(out),
+            "by_status": dict(counts),
+            "paid_firm": round(sum(c["paid_firm"] for c in out), 2),
+            "expected_firm": round(sum(c["expected_firm"] for c in out), 2),
+            "shortfall": round(sum(-c["gap"] for c in out
+                                   if c["gap"] is not None and c["gap"] < 0), 2),
+        },
+    }
 
 
 @router.get("/breakdown")

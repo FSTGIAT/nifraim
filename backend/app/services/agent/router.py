@@ -159,6 +159,10 @@ def route(question: str) -> Route | None:
         return Route("customer_name", "find_customer", {"query": m.group(1).strip()})
     if about_one_customer:
         return None            # a question about ONE named customer → the agent finds them first
+    # "paid vs the agreement" is the rate audit, not the unpaid list — they
+    # answered ₪49 (unpaid customers) to a −₪10,137 rate gap (QA 2026-10-08).
+    if re.search(r"הסכמ|לפי ההסכם", q) and re.search(r"בפועל|ששולמ|שולם|מול|פער|לשלם יותר|משלמ", q):
+        return Route("agreement_audit", "get_agreement_audit", {"company": co})
     if re.search(r"לא שול|לא קיבלתי|לא שיל[םמ]|לא משלמ|חוב|פער|חייב", q):
         if _unexplained_words(q, co):
             return None        # "על מה לא שולם עומר עמר" — about a PERSON (and maybe a follow-up) → agent lane
@@ -268,6 +272,26 @@ def render(route_: Route, data) -> tuple[str, str | None]:
             return data.get("note") or "אין שינויים להצגה.", None
         parts = [f"{r['company']}: {r['new']} חדשים, {r['left']} יצאו" for r in rows]
         return "מול הקובץ הקודם — " + " · ".join(parts) + ".", "bar" if sum(r["left"] for r in rows) else None
+    if i == "agreement_audit":
+        if data.get("company"):
+            if data.get("found") is False or data.get("comparable") is False:
+                return data.get("note"), None
+            s = (f"ב{data['company']}, על המוצרים שנבדקו מול ההסכם: מגיע {_m(data.get('agreement_expected'))}, "
+                 f"התקבל {_m(data.get('paid_checked'))} — "
+                 + (f"חסר {_m(-float(data.get('gap') or 0))}." if float(data.get('gap') or 0) < 0
+                    else f"עודף {_m(data.get('gap'))}."))
+            w = data.get("worst_product_customers")
+            if w and w.get("summary"):
+                sm = w["summary"]
+                s += (f" עיקר הפער ב{w['product']}: {sm.get('customers')} לקוחות, חסר {_m(sm.get('shortfall'))}"
+                      f" (לחיצה על המוצר בכרטיס 'עמלות בפועל מול ההסכמים' פותחת אותם).")
+            return s, "bar"
+        rows = data.get("by_company") or []
+        if not rows:
+            return "אין חברה שאפשר לבדוק מול ההסכם — חסרים שיעורים מפורשים בהסכמים.", None
+        lead = rows[0]
+        return (f"הפער הגדול מול ההסכם: {lead['label']} — חסר {_m(-lead['value'])} "
+                f"(מגיע {_m(lead['agreement_expected'])}, התקבל {_m(lead['paid_checked'])})."), "bar"
     if i == "rate":
         if not data.get("found"):
             return data.get("note"), None
