@@ -64,15 +64,24 @@
             </span>
             <span v-if="c.gap !== null && Math.abs(c.gap) >= 0.5" class="pc-fig">
               <small>הפרש</small>
-              <span class="ltr-number" :class="{ 'is-down': c.status === 'underpaid' || c.status === 'unpaid' }">{{ signedMoney(c.gap) }}</span>
+              <span class="ltr-number pc-gap" :class="{ 'is-down': c.status === 'underpaid' || c.status === 'unpaid' }">{{ signedMoney(c.gap) }}</span>
             </span>
           </div>
+          <!-- Same tags as the product cards: highlighted at rest, alive on hover -->
           <div class="pc-meta">
-            <span v-if="c.base >= 0.5">
-              {{ c.basis === 'accumulation' ? 'צבירה' : 'פרמיה' }} <span class="ltr-number">{{ money(c.base) }}</span>
+            <span v-if="c.base >= 0.5" class="pc-tag">
+              <span class="pc-tag-lbl">{{ c.basis === 'accumulation' ? 'צבירה' : 'פרמיה' }}</span>
+              <span class="pc-tag-val ltr-number">{{ money(c.base) }}</span>
             </span>
-            <span v-if="c.rate && c.status !== 'estimate'">שיעור בהסכם <span class="ltr-number">{{ rateText(c.rate) }}</span></span>
-            <span v-if="c.paid_rate">שיעור בפועל <span class="ltr-number">{{ rateText(c.paid_rate) }}</span></span>
+            <span v-if="c.rate && c.status !== 'estimate'" class="pc-tag pc-tag--deal">
+              <span class="pc-tag-lbl">שיעור בהסכם</span>
+              <span class="pc-tag-val ltr-number">{{ rateText(c.rate) }}</span>
+            </span>
+            <span v-if="c.paid_rate" class="pc-tag pc-tag--paid"
+                  :class="{ 'pc-tag--down': c.status === 'underpaid' || c.status === 'unpaid', 'pc-tag--up': c.status === 'overpaid' }">
+              <span class="pc-tag-lbl">שיעור בפועל</span>
+              <span class="pc-tag-val ltr-number">{{ rateText(c.paid_rate) }}</span>
+            </span>
             <span v-if="c.policies.length" class="pc-pol">
               פוליסה <span class="ltr-number">{{ c.policies.slice(0, 3).join(', ') }}</span><template v-if="c.policies.length > 3"> +{{ c.policies.length - 3 }}</template>
             </span>
@@ -263,7 +272,47 @@ function downloadExcel() {
 .pc-fig { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 15px; font-weight: 700; color: var(--text); }
 .pc-fig small { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .pc-fig--lead { color: var(--tab-production); }
-.pc-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-muted); }
+.pc-meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);
+  padding-top: 10px; border-top: 1px solid var(--border-subtle);
+}
+.pc-card { transition: border-color 0.15s ease, transform 0.15s ease; }
+.pc-card:hover { border-color: var(--tab-production); transform: translateY(-1px); }
+/* Tags — highlighted at rest; on card hover they lift, the value grows a touch
+   and a soft shine sweeps across once (the paid rate a beat after the agreed one). */
+.pc-tag {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 8px;
+  background: var(--bg); color: var(--text-secondary);
+  transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.35s ease;
+}
+.pc-tag-lbl { font-size: 11.5px; font-weight: 600; }
+.pc-tag-val { display: inline-block; font-size: 13px; font-weight: 800; color: var(--text); transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1); }
+.pc-tag--deal { background: var(--tab-production-wash); color: var(--tab-production); }
+.pc-tag--deal .pc-tag-val { color: var(--tab-production); }
+.pc-tag--down { background: var(--red-light); }
+.pc-tag--down .pc-tag-val { color: var(--chart-loss); }
+.pc-tag--up .pc-tag-val { color: var(--chart-gain); }
+.pc-tag::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.75) 50%, transparent 70%);
+  transform: translateX(110%);
+}
+.pc-card:hover .pc-tag { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(24, 24, 24, 0.08); }
+.pc-card:hover .pc-tag-val { transform: scale(1.08); }
+.pc-card:hover .pc-tag::after { animation: pcShine 0.9s cubic-bezier(0.2, 0, 0.2, 1) both; }
+.pc-card:hover .pc-tag--deal::after { animation-delay: 0.08s; }
+.pc-card:hover .pc-tag--paid::after { animation-delay: 0.16s; }
+/* הפרש flickers on card hover when it is short — same as the product cards */
+.pc-gap { display: inline-block; }
+.pc-card:hover .pc-gap.is-down { animation: pcFlicker 1.1s ease-in-out both; }
+@keyframes pcFlicker { 0%, 100% { opacity: 1; } 15% { opacity: 0.25; } 30% { opacity: 1; } 45% { opacity: 0.35; } 60% { opacity: 1; } }
+@keyframes pcShine { from { transform: translateX(110%); } to { transform: translateX(-110%); } }
+@media (prefers-reduced-motion: reduce) {
+  .pc-card, .pc-tag, .pc-tag-val { transition: none; }
+  .pc-card:hover .pc-tag-val { transform: none; }
+  .pc-card:hover .pc-tag::after, .pc-card:hover .pc-gap { animation: none; }
+}
 
 .pc-more { align-self: center; background: none; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 6px 14px; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--text); }
 
