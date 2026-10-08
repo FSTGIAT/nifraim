@@ -1,17 +1,6 @@
 <template>
   <div class="recruit-form glass-card">
     <div class="form-header">
-      <div class="header-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-          <path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-        <h3>רשימת מגויסים</h3>
-        <span class="count-badge" v-if="rows.length">{{ rows.length }}</span>
-        <span class="page-info" v-if="totalPages > 1">עמוד {{ currentPage }} מתוך {{ totalPages }}</span>
-      </div>
       <div class="form-actions-top">
         <div class="search-wrap">
           <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -21,7 +10,7 @@
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="חפש לפי שם או ת.ז..."
+            placeholder="שם או ת.ז"
             class="search-input"
           />
           <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''" title="נקה">
@@ -134,6 +123,7 @@
       <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
+      <span class="page-info"><span class="ltr-number">{{ rows.length }}</span> מגויסים</span>
     </div>
 
     <Transition name="fade">
@@ -157,7 +147,7 @@ const saving = ref(false)
 const error = ref('')
 const successMsg = ref('')
 const currentPage = ref(1)
-const pageSize = 50
+const pageSize = 20
 const searchQuery = ref('')
 
 const hasUnsaved = computed(() => rows.value.some(r => r._isNew && r.id_number && r.first_name && r.last_name))
@@ -592,5 +582,42 @@ tr:hover .btn-remove { opacity: 1; }
   background: var(--green-light);
   border-radius: 8px;
   border: 1px solid var(--green-light);
+}
+
+/* ── App style (2026-10-08): one white card, turquoise actions, quiet table ── */
+.recruit-form {
+  padding: 14px 16px; background: var(--card-bg); border: 1px solid var(--border-subtle);
+  border-radius: 14px; box-shadow: var(--shadow-sm);
+}
+.form-header { margin-bottom: 10px; }
+.form-actions-top { width: 100%; }
+.search-wrap { flex: 1; width: auto; }
+.search-input { height: 38px; padding: 0 34px; border-color: var(--border-subtle); border-radius: 10px; font-size: 13.5px; }
+.search-input:focus { border-color: var(--tab-recruits); }
+.btn-add {
+  height: 38px; padding: 0 14px; border: 1px solid var(--border-subtle); border-radius: 10px;
+  background: var(--card-bg); font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.btn-add:hover { background: var(--tab-recruits-wash); border-color: var(--tab-recruits); color: var(--tab-recruits-ink); }
+.btn-save {
+  height: 38px; padding: 0 18px; border: none; border-radius: 10px; cursor: pointer;
+  background: var(--tab-recruits-ink); font-size: 13.5px; font-weight: 700;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-recruits-ink) 30%, transparent);
+}
+.btn-save:hover:not(:disabled) { box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-recruits-ink) 30%, transparent); }
+.btn-save:disabled { opacity: 0.35; box-shadow: none; }
+thead th { font-size: 12px; text-transform: none; letter-spacing: 0; padding: 8px; }
+tbody tr:hover { background: var(--tab-recruits-wash); }
+.new-row { background: var(--tab-recruits-wash); }
+.cell-input:focus { border-color: var(--tab-recruits); background: var(--card-bg); box-shadow: none; }
+.btn-add-first { color: var(--tab-recruits-ink); border: 1px solid var(--tab-recruits); cursor: pointer; }
+.btn-add-first:hover { background: var(--tab-recruits-wash); border-color: var(--tab-recruits); }
+.pagination { margin-top: 10px; padding-top: 10px; }
+.page-btn.active { background: var(--tab-recruits-ink); border-color: var(--tab-recruits-ink); color: #fff; }
+.page-info { margin-inline-start: 10px; font-size: 12px; }
+@media (max-width: 640px) {
+  .table-wrapper table { min-width: 620px; }
+  .form-actions-top { flex-wrap: wrap; }
+  .search-wrap { flex-basis: 100%; }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="recruits-tab">
+  <div ref="tabRoot" class="recruits-tab">
     <!-- Hero — the Mail Agent's shape (kicker, wordmark with the accent word,
          counters, looping scene), in the portfolio's turquoise. -->
     <header class="rc-hero">
@@ -145,83 +145,37 @@
       </div>
     </div>
 
-    <!-- Inner tabs -->
-    <div class="inner-tabs" v-if="hasRecruits || hasAnyRecruits || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
-      <div class="inner-tab-dropdown" :class="{ active: innerTab === 'list' }">
-        <button class="inner-tab" :class="{ active: innerTab === 'list' }" @click="innerTab = 'list'">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-            <path d="M16 3.13a4 4 0 010 7.75"/>
-          </svg>
-          {{ recruitsStore.activeCategory === 'insurance' ? 'רשימת מגויסים ביטוח' : 'רשימת מגויסים פיננסים' }}
-          <span class="tab-count" v-if="recruitsStore.recruits.length">{{ recruitsStore.recruits.length }}</span>
-          <svg class="tab-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    <!-- The three views: one gliding pill (the app's view switch) -->
+    <template v-if="hasRecruits || hasAnyRecruits || recruitsStore.comparisonResult || recruitsStore.commissionComparisonResult">
+      <div class="rc-switch" role="tablist" aria-label="תצוגה" :style="{ '--rc-i': VIEWS.findIndex(v => v.id === innerTab) }">
+        <span class="rc-glider" aria-hidden="true"></span>
+        <button v-for="v in VIEWS" :key="v.id" type="button" role="tab" class="rc-switch-btn"
+                :class="{ active: innerTab === v.id }" :aria-selected="innerTab === v.id" @click="innerTab = v.id">
+          <span class="rc-switch-title">{{ v.label }}</span>
+          <span class="rc-switch-sub">{{ v.sub }}</span>
         </button>
-        <div class="tab-dropdown-menu">
-          <button :class="{ selected: recruitsStore.activeCategory === 'financial' }" @click="switchCategory('financial')">רשימת מגויסים פיננסים</button>
-          <button :class="{ selected: recruitsStore.activeCategory === 'insurance' }" @click="switchCategory('insurance')">רשימת מגויסים ביטוח</button>
-        </div>
       </div>
-      <button
-        class="inner-tab"
-        :class="{ active: innerTab === 'comparison', 'has-result': !!recruitsStore.comparisonResult }"
-        @click="innerTab = 'comparison'"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        השוואה מול פרודוקציה
-        <span class="tab-dot" v-if="recruitsStore.comparisonResult"></span>
-      </button>
-      <button
-        class="inner-tab"
-        :class="{ active: innerTab === 'commission', 'has-result': !!recruitsStore.commissionComparisonResult }"
-        @click="innerTab = 'commission'"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-        </svg>
-        השוואה מול נפרעים
-        <span class="tab-dot" v-if="recruitsStore.commissionComparisonResult"></span>
-      </button>
-      <!-- Small upload icon when recruits exist -->
-      <button
-        v-if="hasRecruits && !recruitsStore.uploading && innerTab === 'list'"
-        class="upload-icon-btn"
-        @click="openFilePicker"
-        title="העלה קובץ נוסף"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-      </button>
-      <input
-        v-if="hasRecruits"
-        ref="fileInputRef2"
-        type="file"
-        accept=".xlsx,.xls"
-        @change="onFileSelected"
-        style="display: none"
-      />
-      <!-- Close / clear the uploaded recruit file (current category) -->
-      <button
-        v-if="hasRecruits && !recruitsStore.uploading && innerTab === 'list'"
-        class="clear-file-btn"
-        @click="showClearConfirm = true"
-        title="מחק את קובץ המגויסים הנוכחי"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-          <line x1="10" y1="11" x2="10" y2="17"/>
-          <line x1="14" y1="11" x2="14" y2="17"/>
-        </svg>
-      </button>
-    </div>
+
+      <!-- Which list, and the file actions — only on the list view -->
+      <div v-if="innerTab === 'list'" class="rc-toolbar">
+        <div class="rc-cats" role="tablist" aria-label="רשימה">
+          <button v-for="c in CATS" :key="c.id" type="button" role="tab"
+                  :class="{ on: recruitsStore.activeCategory === c.id }" :aria-selected="recruitsStore.activeCategory === c.id"
+                  @click="switchCategory(c.id)">
+            {{ c.label }}<span v-if="recruitsStore.activeCategory === c.id && recruitsStore.recruits.length" class="ltr-number">{{ recruitsStore.recruits.length }}</span>
+          </button>
+        </div>
+        <button v-if="hasRecruits && !recruitsStore.uploading" class="rc-icon-btn" type="button" @click="openFilePicker"
+                title="העלאת קובץ" aria-label="העלאת קובץ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <button v-if="hasRecruits && !recruitsStore.uploading" ref="clearBtnRef" class="rc-icon-btn rc-icon-btn--danger" type="button"
+                @click="openClearConfirm($event)" title="מחיקת הקובץ" aria-label="מחיקת הקובץ">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        </button>
+        <input v-if="hasRecruits" ref="fileInputRef2" type="file" accept=".xlsx,.xls" @change="onFileSelected" style="display: none" />
+      </div>
+    </template>
 
     <!-- Tab: List -->
     <div v-if="innerTab === 'list'">
@@ -294,42 +248,30 @@
         </div>
       </template>
 
-      <!-- Production file info -->
-      <div v-if="productionStore.currentFile" class="prod-file-info">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      <!-- Before the check: one card — what is checked against, and the button -->
+      <div v-if="recruitsStore.recruits.length > 0 && !recruitsStore.comparisonResult" class="rc-run">
+        <svg class="rc-run-ico" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path pathLength="1" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path pathLength="1" d="M14 2v6h6"/><path pathLength="1" d="M9 15l2 2 4-4"/>
         </svg>
-        <span>{{ productionStore.currentFile.filename }}</span>
-        <span class="prod-file-count ltr-number">({{ productionStore.currentFile.record_count?.toLocaleString() }} רשומות)</span>
-      </div>
-
-      <!-- Compare button -->
-      <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.comparisonResult">
-        <button
-          class="btn-compare"
-          :disabled="!productionStore.currentFile || recruitsStore.comparing"
-          @click="runProductionComparison"
-        >
-          <template v-if="recruitsStore.comparing">
-            <div class="btn-spinner"></div>
-            <span>בודק...</span>
-          </template>
-          <template v-else>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            <span>בדוק מול פרודוקציה</span>
-          </template>
+        <div class="rc-run-copy">
+          <h4>מי מהמגויסים נקלט בפרודוקציה?</h4>
+          <p v-if="productionStore.currentFile">
+            <span class="rc-run-file">{{ productionStore.currentFile.filename }}</span>
+            · <span class="ltr-number">{{ productionStore.currentFile.record_count?.toLocaleString() }}</span> רשומות
+          </p>
+          <p v-else>צריך קודם קובץ פרודוקציה.</p>
+        </div>
+        <button class="rc-run-btn" type="button" :disabled="!productionStore.currentFile || recruitsStore.comparing" @click="runProductionComparison">
+          <span v-if="recruitsStore.comparing" class="btn-spinner"></span>
+          {{ recruitsStore.comparing ? 'בודק…' : 'בדיקה' }}
         </button>
-        <p class="compare-hint" v-if="!productionStore.currentFile">
-          יש להעלות קובץ פרודוקציה לפני ביצוע בדיקה
-        </p>
       </div>
 
       <Transition name="results">
         <RecruitComparisonResults
           v-if="recruitsStore.comparisonResult"
           :result="recruitsStore.comparisonResult"
+          mode="production"
         />
       </Transition>
 
@@ -351,37 +293,23 @@
         <div class="float-circle fc-4"></div>
       </template>
 
-      <!-- Compare section -->
-      <div class="compare-section" v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult">
-        <button
-          class="btn-compare"
-          :disabled="recruitsStore.comparingCommission || commUploading"
-          @click="runCommissionComparison(null)"
-        >
-          <template v-if="recruitsStore.comparingCommission">
-            <div class="btn-spinner"></div>
-            <span>בודק...</span>
-          </template>
-          <template v-else>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-            </svg>
-            <span>בדוק מול נפרעים</span>
-          </template>
+      <div v-if="recruitsStore.recruits.length > 0 && !recruitsStore.commissionComparisonResult" class="rc-run">
+        <svg class="rc-run-ico" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle pathLength="1" cx="12" cy="12" r="9"/><path pathLength="1" d="M15 9.5a2.5 2.5 0 00-2.5-1.5h-1a2 2 0 000 4h1a2 2 0 010 4h-1A2.5 2.5 0 019 14.5"/><path pathLength="1" d="M12 6.5v11"/>
+        </svg>
+        <div class="rc-run-copy">
+          <h4>על מי מהמגויסים שולמה עמלה?</h4>
+          <p>בודקים מול קובצי הנפרעים שכבר במערכת.</p>
+        </div>
+        <button class="rc-run-btn" type="button" :disabled="recruitsStore.comparingCommission || commUploading" @click="runCommissionComparison(null)">
+          <span v-if="recruitsStore.comparingCommission" class="btn-spinner"></span>
+          {{ recruitsStore.comparingCommission ? 'בודק…' : 'בדיקה' }}
         </button>
-        <input
-          ref="commFileInput"
-          type="file"
-          accept=".xlsx,.xls"
-          multiple
-          @change="onCommFileSelect"
-          style="display: none"
-        />
+        <input ref="commFileInput" type="file" accept=".xlsx,.xls" multiple @change="onCommFileSelect" style="display: none" />
       </div>
 
       <!-- Company filter tags + upload more -->
       <div v-if="recruitsStore.commissionComparisonResult?.commission_files?.length" class="commission-files-info">
-        <span>סנן לפי חברה:</span>
         <button
           class="commission-file-tag"
           :class="{ active: !recruitsStore.commissionFilterCompany }"
@@ -413,6 +341,7 @@
         <RecruitComparisonResults
           v-if="recruitsStore.commissionComparisonResult"
           :result="recruitsStore.commissionComparisonResult"
+          mode="commission"
         />
       </Transition>
 
@@ -430,9 +359,9 @@
 
     <!-- Clear-file confirmation -->
     <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="showClearConfirm" class="clear-overlay" @click.self="showClearConfirm = false">
-          <div class="clear-modal">
+      <Transition name="modal" @enter="onClearEnter">
+        <div v-if="showClearConfirm" class="clear-overlay" @click.self="closeClearConfirm">
+          <div ref="clearCardRef" class="clear-modal">
             <div class="clear-modal-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
@@ -443,7 +372,7 @@
             <h4>למחוק את קובץ המגויסים?</h4>
             <p>כל {{ recruitsStore.recruits.length }} המגויסים ברשימת «{{ activeCatLabel }}» יימחקו. אפשר להעלות קובץ חדש לאחר מכן. הקטגוריה השנייה לא תיפגע.</p>
             <div class="clear-modal-actions">
-              <button class="clear-cancel" @click="showClearConfirm = false" :disabled="clearing">ביטול</button>
+              <button class="clear-cancel" @click="closeClearConfirm" :disabled="clearing">ביטול</button>
               <button class="clear-confirm" @click="confirmClearFile" :disabled="clearing">
                 <span v-if="clearing" class="btn-spinner"></span>
                 <span>{{ clearing ? 'מוחק...' : 'מחק קובץ' }}</span>
@@ -464,8 +393,13 @@ import RecruitForm from './RecruitForm.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import RecruitComparisonResults from './RecruitComparisonResults.vue'
 import api from '../../api/client.js'
+import { useOriginMorph } from '../../composables/useOriginMorph'
+import { useScrollReveal } from '../../composables/useScrollReveal'
 
 const productionStore = useProductionStore()
+// Sections rise in as the agent scrolls to them — same as the Production tab
+const tabRoot = ref(null)
+useScrollReveal(tabRoot, '.rc-run, .rr-kpis, .rr-chart, .rr-list, .recruit-form')
 const recruitsStore = useRecruitsStore()
 
 const fileInputRef = ref(null)
@@ -481,8 +415,26 @@ const innerTab = ref('list')
 const showClearConfirm = ref(false)
 const clearing = ref(false)
 const activeCatLabel = computed(() =>
-  recruitsStore.activeCategory === 'insurance' ? 'מגויסים ביטוח' : 'מגויסים פיננסים'
+  recruitsStore.activeCategory === 'insurance' ? 'ביטוח' : 'פיננסים'
 )
+const VIEWS = [
+  { id: 'list', label: 'המגויסים', sub: 'הרשימה שלכם' },
+  { id: 'comparison', label: 'מול פרודוקציה', sub: 'מי נקלט' },
+  { id: 'commission', label: 'מול נפרעים', sub: 'על מי שולם' },
+]
+const CATS = [
+  { id: 'financial', label: 'פיננסים' },
+  { id: 'insurance', label: 'ביטוח' },
+]
+// The delete confirm grows out of the trash button and folds back into it
+const clearMorph = useOriginMorph()
+const clearCardRef = ref(null)
+function openClearConfirm(ev) { clearMorph.remember(ev.currentTarget); showClearConfirm.value = true }
+function onClearEnter(el) { clearMorph.grow(el.querySelector('.clear-modal')) }
+async function closeClearConfirm() {
+  if (clearMorph.hasOrigin() && clearCardRef.value) await clearMorph.shrink(clearCardRef.value)
+  showClearConfirm.value = false
+}
 const commDragging = ref(false)
 const commUploading = ref(false)
 const commUploadedFiles = ref([])
@@ -715,7 +667,7 @@ watch(() => innerTab.value, (tab) => {
   animation: slideUp 0.4s var(--transition);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .hint-banner {
@@ -1270,77 +1222,25 @@ watch(() => innerTab.value, (tab) => {
   font-style: italic;
 }
 
-/* ── Inner Tabs ── */
-.inner-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 2px solid var(--border-subtle);
-  padding-bottom: 0;
-}
 
-.inner-tab {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-  white-space: nowrap;
-}
 
-.inner-tab:hover { color: var(--text-secondary); }
 
-.inner-tab.active {
-  color: var(--tab-recruits-ink);
-  border-bottom-color: var(--tab-recruits);
-}
 
-.inner-tab svg { opacity: 0.5; }
-.inner-tab.active svg { opacity: 1; color: var(--tab-recruits-ink); }
 
-.tab-chevron { opacity: 0.4; margin-right: -4px; }
 
-.inner-tab-dropdown {
-  position: relative;
-}
-.inner-tab-dropdown .tab-dropdown-menu {
-  position: absolute;
-  top: 100%;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-4px);
-  transition: all 0.2s ease;
-  right: 0;
-  background: white;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-  z-index: 50;
-  min-width: 200px;
-  padding: 4px;
-  margin-top: 4px;
-}
-.inner-tab-dropdown:hover .tab-dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-.tab-dropdown-menu button {
-  display: block; width: 100%; text-align: right;
-  padding: 8px 14px; font-size: 13px; font-weight: 600;
-  font-family: inherit; border: none; background: transparent;
-  color: var(--text-secondary); cursor: pointer; border-radius: 8px;
-}
-.tab-dropdown-menu button:hover { background: var(--bg-alt, #F3F3F3); }
-.tab-dropdown-menu button.selected { color: var(--tab-recruits-ink); background: var(--tab-recruits-wash); }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .empty-category {
   text-align: center; padding: 48px 24px;
@@ -1357,77 +1257,18 @@ watch(() => innerTab.value, (tab) => {
 }
 .btn-upload-compact:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(24, 24, 24, 0.2); }
 
-.prod-file-info {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px; margin: 12px 0;
-  background: var(--bg-alt, #F3F3F3); border-radius: 10px;
-  font-size: 12px; font-weight: 600; color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-}
-.prod-file-count { color: var(--text-muted); font-weight: 500; }
 
-.tab-count {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 10px;
-  background: var(--tab-recruits-wash);
-  color: var(--tab-recruits-ink);
-}
 
-.tab-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent-emerald);
-  box-shadow: 0 0 6px var(--green-light);
-}
 
-/* ── Small upload icon button ── */
-.upload-icon-btn {
-  margin-inline-start: auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--tab-recruits-wash);
-  color: var(--tab-recruits-ink);
-  border: 1.5px solid rgba(61, 182, 176, 0.22);
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-  flex-shrink: 0;
-}
-.upload-icon-btn:hover {
-  background: var(--tab-recruits);
-  color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(61, 182, 176, 0.22);
-}
 
-/* ── Clear (close) file button + confirm modal ── */
-.clear-file-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--red-light);
-  color: var(--red);
-  border: 1.5px solid rgba(194, 57, 52, 0.15);
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-  flex-shrink: 0;
-  margin-inline-start: 8px;
-}
-.clear-file-btn:hover {
-  background: var(--red);
-  color: #fff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(194, 57, 52, 0.22);
-}
+
+
+
+
+
+
+
+
 
 .clear-overlay {
   position: fixed;
@@ -1507,44 +1348,16 @@ watch(() => innerTab.value, (tab) => {
 .modal-enter-active .clear-modal, .modal-leave-active .clear-modal { transition: transform 0.2s ease; }
 .modal-enter-from .clear-modal, .modal-leave-to .clear-modal { transform: scale(0.94); }
 
-/* ── Compare ── */
-.compare-section {
-  text-align: center;
-  padding: 24px 0;
-}
 
-.btn-compare {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 36px;
-  background: linear-gradient(135deg, var(--tab-recruits, #3DB6B0), var(--tab-recruits-ink, #1E7D78));
-  color: white;
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 700;
-  font-family: inherit;
-  transition: all 0.3s var(--transition);
-  position: relative;
-  overflow: hidden;
-}
 
-.btn-compare::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.1) 50%, transparent 60%);
-  background-size: 200% 100%;
-  animation: shimmer 3s ease-in-out infinite;
-}
 
-.btn-compare:hover:not(:disabled) {
-  box-shadow: 0 8px 32px rgba(61, 182, 176, 0.22);
-  transform: translateY(-2px);
-}
 
-.btn-compare:disabled { opacity: 0.3; cursor: not-allowed; }
-.btn-compare:disabled::before { display: none; }
+
+
+
+
+
+
 
 .btn-spinner {
   width: 16px;
@@ -1555,7 +1368,7 @@ watch(() => innerTab.value, (tab) => {
   animation: spin 0.8s linear infinite;
 }
 
-.compare-hint { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+
 .compare-hint-info { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
 
 .commission-files-info {
@@ -1661,4 +1474,123 @@ watch(() => innerTab.value, (tab) => {
   border-radius: 8px;
   border: 1px solid var(--red-light);
 }
+
+/* ── View switch: the app's gliding pill, in the portfolio's turquoise ── */
+.rc-switch {
+  position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  padding: 5px; border-radius: 16px; background: var(--card-bg);
+  border: 1px solid var(--border-subtle); box-shadow: var(--shadow-sm);
+  /* Always reachable while scrolling, and clear of the window's ✕ in the corner */
+  position: sticky; top: 0; z-index: 5; margin-inline-end: 44px;
+}
+.rc-glider {
+  position: absolute; top: 5px; bottom: 5px; inset-inline-start: 5px; z-index: 0; pointer-events: none;
+  width: calc((100% - 22px) / 3); border-radius: 11px;
+  background: var(--tab-recruits-ink);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-recruits-ink) 30%, transparent);
+  transform: translateX(calc(var(--rc-i, 0) * (-100% - 6px)));
+  transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rc-switch-btn {
+  position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 12px; border: none; border-radius: 11px; background: transparent;
+  font: inherit; color: var(--text-muted); cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.rc-switch-btn:hover:not(.active) { background: var(--tab-recruits-wash); color: var(--tab-recruits-ink); }
+.rc-switch-btn.active { color: #fff; transition: color 0.4s ease 0.2s; }
+.rc-switch-btn:focus-visible { outline: 2px solid var(--tab-recruits-ink); outline-offset: 2px; }
+.rc-switch-title { font-size: 15px; font-weight: 700; }
+.rc-switch-sub { font-size: 12px; opacity: 0.85; }
+
+/* ── List toolbar: which list + file actions ── */
+.rc-toolbar { display: flex; align-items: center; gap: 8px; }
+.rc-cats { display: flex; gap: 18px; margin-inline-end: auto; }
+.rc-cats button {
+  position: relative; display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 2px 8px; border: none; background: none; font: inherit;
+  font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+}
+.rc-cats button .ltr-number { font-weight: 500; }
+.rc-cats button.on { color: var(--tab-recruits-ink); }
+.rc-cats button::after {
+  content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 2px; border-radius: 2px;
+  background: var(--tab-recruits-ink); transform: scaleX(0); transition: transform 0.3s ease;
+}
+.rc-cats button.on::after { transform: scaleX(1); }
+.rc-icon-btn {
+  display: inline-grid; place-items: center; width: 36px; height: 36px;
+  border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--card-bg);
+  color: var(--text-secondary); cursor: pointer; transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.rc-icon-btn:hover { border-color: var(--tab-recruits); color: var(--tab-recruits-ink); }
+.rc-icon-btn--danger:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
+
+/* ── Before a check: one card ── */
+.rc-run {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; gap: 16px;
+  padding: 20px 22px; background: var(--card-bg);
+  border: 1px solid var(--border-subtle); border-radius: 14px; box-shadow: var(--shadow-sm);
+}
+.rc-run-ico { flex-shrink: 0; color: var(--tab-recruits-ink); }
+.rc-run-ico > * { stroke-dasharray: 1; stroke-dashoffset: 1; animation: rcDraw 1.2s cubic-bezier(0.65, 0, 0.35, 1) 0.2s forwards; }
+.rc-run-ico > *:nth-child(2) { animation-delay: 0.45s; }
+.rc-run-ico > *:nth-child(3) { animation-delay: 0.7s; }
+@keyframes rcDraw { to { stroke-dashoffset: 0; } }
+.rc-run-copy { flex: 1; min-width: 0; }
+.rc-run-copy h4 { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: var(--text); }
+.rc-run-copy p { margin: 0; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-run-file { color: var(--text-secondary); font-weight: 600; }
+.rc-run-btn {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 26px; border: none; border-radius: 10px;
+  background: var(--tab-recruits-ink); color: #fff; font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-recruits-ink) 30%, transparent);
+  transition: transform 0.15s ease;
+}
+.rc-run-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.rc-run-btn:disabled { opacity: 0.5; cursor: default; }
+
+@media (max-width: 640px) {
+  .rc-switch-sub { display: none; }
+  .rc-run { flex-wrap: wrap; }
+  .rc-run-btn { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-glider, .rc-switch-btn { transition: none; }
+  .rc-run-ico > * { animation: none; stroke-dashoffset: 0; }
+}
+
+/* נפרעים: which company's file — text tabs, like every filter in the app */
+.commission-files-info {
+  display: flex !important; flex-wrap: wrap; align-items: center; gap: 4px 18px !important;
+  padding: 0 !important; background: none !important; border: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important; border-radius: 0 !important;
+}
+.commission-file-tag {
+  position: relative; padding: 6px 2px 9px !important; border: none !important; border-radius: 0 !important;
+  background: none !important; box-shadow: none !important;
+  font: inherit; font-size: 13.5px !important; font-weight: 600 !important; color: var(--text-muted) !important; cursor: pointer;
+}
+.commission-file-tag.active { color: var(--tab-recruits-ink) !important; }
+.commission-file-tag::after {
+  content: ''; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; border-radius: 2px;
+  background: var(--tab-recruits-ink); transform: scaleX(0); transition: transform 0.3s ease;
+}
+.commission-file-tag.active::after { transform: scaleX(1); }
+.comm-add-file-btn { margin-inline-start: auto; }
+
+/* The list's header bar: which list + file actions, joined to the list card below */
+.rc-toolbar {
+  padding: 8px 12px 0 8px; background: var(--card-bg);
+  border: 1px solid var(--border-subtle); border-bottom: none;
+  border-radius: 14px 14px 0 0; box-shadow: var(--shadow-sm);
+  position: relative; z-index: 1;
+}
+.rc-cats { align-self: stretch; align-items: flex-end; }
+.rc-cats button { padding: 10px 4px 12px; font-size: 14.5px; }
+.rc-toolbar .rc-icon-btn { width: 34px; height: 34px; margin-bottom: 6px; border-color: transparent; background: var(--bg); }
+.rc-toolbar + div { margin-top: -12px; }
+.rc-toolbar + div :deep(.recruit-form) { border-radius: 0 0 14px 14px; border-top: 1px solid var(--border-subtle); }
 </style>

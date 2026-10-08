@@ -1,787 +1,301 @@
 <template>
-  <div class="comparison-results glass-card">
-    <div class="results-header">
-      <div class="header-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        <h3>תוצאות בדיקה</h3>
-      </div>
-      <button class="btn-close" @click="isCommission ? recruitsStore.resetCommissionComparison() : recruitsStore.resetComparison()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
+  <div class="rr">
+    <!-- Head: what this is, and the one way to start over -->
+    <div class="rr-head">
+      <h3>תוצאות הבדיקה <small>מול {{ sourceLabel }}</small></h3>
+      <button class="rr-ghost" type="button" @click="isCommission ? recruitsStore.resetCommissionComparison() : recruitsStore.resetComparison()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+        בדיקה חדשה
       </button>
     </div>
 
-    <!-- Chart + KPI row -->
-    <div class="dashboard-row">
-      <div class="chart-box">
-        <apexchart
-          v-if="chartReady"
-          type="donut"
-          :options="chartOptions"
-          :series="chartSeries"
-          height="240"
-        />
-      </div>
-      <div class="kpi-row">
-        <div class="kpi found-kpi" @click="showFoundModal = true">
-          <span class="kpi-num ltr-number">{{ result.found }}</span>
-          <span class="kpi-lbl">נמצאו</span>
-          <span class="kpi-pct ltr-number">{{ foundPct }}%</span>
-        </div>
-        <div class="kpi missing-kpi" @click="showMissingModal = true">
-          <span class="kpi-num ltr-number">{{ result.not_found }}</span>
-          <span class="kpi-lbl">לא נמצאו</span>
-          <span class="kpi-pct ltr-number">{{ missingPct }}%</span>
-        </div>
-        <div class="kpi total-kpi" @click="activeFilter = 'all'">
-          <span class="kpi-num ltr-number">{{ result.total }}</span>
-          <span class="kpi-lbl">סה"כ</span>
-        </div>
-      </div>
+    <!-- KPIs: one white panel. Each card opens the drill behind it. -->
+    <div class="rr-kpis">
+      <button class="rr-kpi rr-kpi--lead" type="button" @click="openList('found', $event)">
+        <svg class="rr-ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path pathLength="1" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle pathLength="1" cx="9" cy="7" r="4"/><path pathLength="1" d="M16 11l2 2 4-4"/>
+        </svg>
+        <span class="rr-kpi-val ltr-number">{{ result.found }}</span>
+        <span class="rr-kpi-lbl">נמצאו · <span class="ltr-number">{{ foundPct }}%</span></span>
+      </button>
+      <button class="rr-kpi" type="button" @click="openList('missing', $event)">
+        <svg class="rr-ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path pathLength="1" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle pathLength="1" cx="9" cy="7" r="4"/><path pathLength="1" d="M17 8l5 5M22 8l-5 5"/>
+        </svg>
+        <span class="rr-kpi-val ltr-number">{{ result.not_found }}</span>
+        <span class="rr-kpi-lbl">לא נמצאו · <span class="ltr-number">{{ missingPct }}%</span></span>
+      </button>
+      <button v-if="result.total_premium_found >= 0.5" class="rr-kpi" type="button" @click="openList('found', $event)">
+        <svg class="rr-ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path pathLength="1" d="M20 7H5a2 2 0 010-4h13v4"/><path pathLength="1" d="M3 5v14a2 2 0 002 2h15V7"/><path pathLength="1" d="M17 14h.01"/>
+        </svg>
+        <span class="rr-kpi-val ltr-number">{{ money(result.total_premium_found) }}</span>
+        <span class="rr-kpi-lbl">פרמיה שנמצאה<template v-if="result.active_product_rate"> · <span class="ltr-number">{{ Math.round(result.active_product_rate) }}%</span> פעילים</template></span>
+      </button>
+      <!-- The recruit file's transfer amounts of the recruits NOT found — money that
+           was meant to move, not premium (it was labelled "פרמיה חסרה (הערכה)"). -->
+      <button v-if="result.estimated_missing_premium >= 0.5" class="rr-kpi" type="button" @click="openList('missing', $event)">
+        <svg class="rr-ico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path pathLength="1" d="M17 3l4 4-4 4"/><path pathLength="1" d="M21 7H9"/><path pathLength="1" d="M7 21l-4-4 4-4"/><path pathLength="1" d="M3 17h12"/>
+        </svg>
+        <span class="rr-kpi-val ltr-number">{{ money(result.estimated_missing_premium) }}</span>
+        <span class="rr-kpi-lbl">העברות שלא נמצאו</span>
+      </button>
     </div>
 
-    <!-- ── Insights Section ── -->
-    <div class="insights-section">
-      <!-- Enhanced KPI Row (5 cards) -->
-      <div class="insights-kpi-row">
-        <div class="ins-kpi ins-kpi-green">
-          <span class="ins-kpi-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-          </span>
-          <span class="ins-kpi-val ltr-number">₪{{ fmtNum(result.total_premium_found || 0) }}</span>
-          <span class="ins-kpi-lbl">פרמיה שנמצאה</span>
-        </div>
-        <div class="ins-kpi ins-kpi-orange">
-          <span class="ins-kpi-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </span>
-          <span class="ins-kpi-val ltr-number">₪{{ fmtNum(result.estimated_missing_premium || 0) }}</span>
-          <span class="ins-kpi-lbl">פרמיה חסרה (הערכה)</span>
-        </div>
-        <div class="ins-kpi ins-kpi-cyan">
-          <span class="ins-kpi-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </span>
-          <span class="ins-kpi-val ltr-number">{{ fmtNum(result.active_product_rate || 0) }}%</span>
-          <span class="ins-kpi-lbl">מוצרים פעילים</span>
-        </div>
-        <div class="ins-kpi ins-kpi-violet">
-          <span class="ins-kpi-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
-          </span>
-          <span class="ins-kpi-val ltr-number">{{ avgProductsPerClient }}</span>
-          <span class="ins-kpi-lbl">מוצרים ממוצע ללקוח</span>
-        </div>
-        <div class="ins-kpi ins-kpi-primary">
-          <span class="ins-kpi-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </span>
-          <span class="ins-kpi-val ltr-number">{{ foundPct }}%</span>
-          <span class="ins-kpi-lbl">שיעור המרה</span>
-        </div>
+    <!-- Charts: found in the tab colour, not found in grey. Bars open the drill. -->
+    <div v-if="hasCompanyData || hasStatusData" class="rr-charts">
+      <div v-if="hasCompanyData" class="rr-chart rr-chart--click">
+        <h4>לפי חברה</h4>
+        <apexchart v-if="chartReady" type="bar" :options="companyChartOptions" :series="companyChartSeries"
+                   :height="Math.max(160, (result.company_breakdown || []).length * 38)" />
       </div>
-
-      <!-- Row 1: Company bar + Status donut -->
-      <div class="insights-charts-row" v-if="hasCompanyData || hasStatusData">
-        <div class="ins-chart-box ins-chart-clickable" v-if="hasCompanyData">
-          <div class="ins-chart-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-            פילוח לפי חברה
-            <span class="chart-click-hint">לחץ לפירוט</span>
-          </div>
-          <apexchart
-            v-if="chartReady"
-            type="bar"
-            :options="companyChartOptions"
-            :series="companyChartSeries"
-            :height="Math.max(160, (result.company_breakdown || []).length * 38)"
-          />
-        </div>
-        <div class="ins-chart-box" v-if="hasStatusData">
-          <div class="ins-chart-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            סטטוס מוצרים שנמצאו
-          </div>
-          <apexchart
-            v-if="chartReady"
-            type="donut"
-            :options="statusChartOptions"
-            :series="statusChartSeries"
-            height="240"
-          />
-        </div>
-      </div>
-
-      <!-- Row 2: Product horizontal bar (full width) -->
-      <div class="ins-chart-box ins-chart-clickable ins-chart-full" v-if="hasProductData">
-        <div class="ins-chart-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
-          פילוח לפי מוצר
-          <span class="chart-click-hint">לחץ לפירוט</span>
-        </div>
-        <apexchart
-          v-if="chartReady"
-          type="bar"
-          :options="productChartOptions"
-          :series="productChartSeries"
-          :height="Math.max(180, productBreakdown.length * 36)"
-        />
-      </div>
-
-      <!-- Top Missing Clients -->
-      <div class="ins-missing-table" v-if="topMissing.length > 0">
-        <div class="ins-chart-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          לקוחות חסרים מובילים
-        </div>
-        <table class="mini-tbl">
-          <thead>
-            <tr>
-              <th>שם</th>
-              <th>ת.ז</th>
-              <th>חברה</th>
-              <th>מוצר</th>
-              <th>סכום</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="m in topMissing" :key="m.recruit_id" @click="openDetail(m)">
-              <td class="td-name">{{ m.first_name }} {{ m.last_name }}</td>
-              <td class="td-id"><span class="ltr-number">{{ m.id_number }}</span></td>
-              <td>{{ m.company || '—' }}</td>
-              <td>{{ m.product || '—' }}</td>
-              <td>
-                <span class="ltr-number" style="font-weight:700;color:var(--primary)">
-                  <template v-if="m.amount > 0">₪{{ fmtNum(m.amount) }}</template>
-                  <template v-else>—</template>
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Actionable Summary Card -->
-      <div class="ins-summary-card" v-if="summaryBullets.length > 0">
-        <div class="ins-chart-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          המלצות לפעולה
-          <span class="action-btns">
-            <button class="action-icon-btn" title="שלח מייל על חסרים" @click.stop="sendMissingMail">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            </button>
-            <button class="action-icon-btn" title="הורד Excel חסרים" @click.stop="downloadMissingExcel">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
-          </span>
-        </div>
-        <ul class="summary-bullets">
-          <li v-for="(b, i) in summaryBullets" :key="i" v-html="b"></li>
-        </ul>
+      <div v-if="hasStatusData" class="rr-chart">
+        <h4>סטטוס מוצרים</h4>
+        <apexchart v-if="chartReady" type="donut" :options="statusChartOptions" :series="statusChartSeries" height="240" />
       </div>
     </div>
-
-    <!-- Segmented filter -->
-    <div class="seg-filter">
-      <button :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">הכל <b>{{ result.total }}</b></button>
-      <button :class="{ active: activeFilter === 'found' }" @click="activeFilter = 'found'">נמצאו <b>{{ result.found }}</b></button>
-      <button :class="{ active: activeFilter === 'not_found' }" @click="activeFilter = 'not_found'">לא נמצאו <b>{{ result.not_found }}</b></button>
+    <div v-if="hasProductData" class="rr-chart rr-chart--click">
+      <h4>לפי מוצר</h4>
+      <apexchart v-if="chartReady" type="bar" :options="productChartOptions" :series="productChartSeries"
+                 :height="Math.max(180, productBreakdown.length * 36)" />
     </div>
 
-    <!-- Company & Product filters -->
-    <div class="slice-filters">
-      <div class="slice-filter">
-        <label>חברה</label>
-        <select v-model="companyFilter">
-          <option value="">הכל ({{ uniqueCompanies.length }})</option>
+    <!-- Every recruit -->
+    <div class="rr-list">
+      <div class="rr-tabs" role="tablist" aria-label="סינון">
+        <button v-for="t in FILTERS" :key="t.id" type="button" role="tab"
+                :aria-selected="activeFilter === t.id" :class="{ on: activeFilter === t.id }" @click="activeFilter = t.id">
+          {{ t.label }} <span class="ltr-number">{{ t.count() }}</span>
+        </button>
+      </div>
+      <div class="rr-controls">
+        <label class="rr-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input v-model="nameSearch" type="search" placeholder="שם או ת.ז" />
+        </label>
+        <select v-model="companyFilter" class="rr-select" aria-label="חברה">
+          <option value="">כל החברות</option>
           <option v-for="c in uniqueCompanies" :key="c" :value="c">{{ c }}</option>
         </select>
-      </div>
-      <div class="slice-filter">
-        <label>מוצר</label>
-        <select v-model="productFilter">
-          <option value="">הכל ({{ uniqueProducts.length }})</option>
+        <select v-model="productFilter" class="rr-select" aria-label="מוצר">
+          <option value="">כל המוצרים</option>
           <option v-for="p in uniqueProducts" :key="p" :value="p">{{ p }}</option>
         </select>
       </div>
-      <div class="slice-filter slice-search">
-        <label>חיפוש</label>
-        <div class="search-input-wrap">
-          <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            type="text"
-            v-model="nameSearch"
-            placeholder="שם או ת.ז..."
-            class="slice-search-input"
-          />
-          <button v-if="nameSearch" class="search-clear" @click="nameSearch = ''" title="נקה">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
-      <button v-if="companyFilter || productFilter || nameSearch" class="slice-clear" @click="companyFilter = ''; productFilter = ''; nameSearch = ''">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        נקה סינון
-      </button>
-      <span class="slice-count" v-if="companyFilter || productFilter || nameSearch">{{ filteredResults.length }} תוצאות</span>
-    </div>
 
-    <!-- Results table -->
-    <div class="tbl-wrap">
-      <table class="tbl">
+      <table class="rr-tbl">
         <thead>
           <tr>
-            <th class="th-status"></th>
-            <th>שם</th>
-            <th>ת.ז</th>
+            <th>לקוח</th>
             <th>חברה</th>
             <th>מוצר</th>
-            <th>מוצרים ב{{ sourceLabel }}</th>
-            <th>פרמיה</th>
-            <th>סטטוס לקוח</th>
+            <th class="rr-num">ב{{ sourceLabel }}</th>
+            <th class="rr-num">פרמיה</th>
+            <th>מה קרה</th>
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="item in paginatedResults"
-            :key="item.recruit_id"
-            class="tbl-row"
-            :class="{ 'row-found': item.found_in_production, 'row-missing': !item.found_in_production }"
-            @click="openDetail(item)"
-          >
-            <td class="td-status">
-              <span v-if="item.found_in_production" class="dot dot-found"></span>
-              <span v-else class="dot dot-missing"></span>
+          <tr v-for="item in paginatedResults" :key="item.recruit_id" class="rr-row" @click="openDetail(item, $event.currentTarget)">
+            <td>
+              <span class="rr-who"><strong>{{ fullName(item) }}</strong><small class="ltr-number">{{ item.id_number }}</small></span>
             </td>
-            <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-            <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
-            <td class="td-company">{{ item.company || '—' }}</td>
-            <td class="td-product">{{ item.product || '—' }}</td>
-            <td class="td-prod-count">
-              <span class="ltr-number">
-                <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
-                <span v-else class="prod-badge prod-badge-zero">0</span>
-              </span>
+            <td>{{ item.company }}</td>
+            <td>{{ item.product }}</td>
+            <td class="rr-num">
+              <span v-if="item.found_in_production" class="rr-pill"><span class="ltr-number">{{ item.production_products.length }}</span> מוצרים</span>
+              <span v-else class="rr-pill rr-pill--miss">לא נמצא</span>
             </td>
-            <td class="td-premium">
-              <span class="ltr-number">
-                <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
-                <template v-else>—</template>
-              </span>
-            </td>
-            <td class="td-customer-status" @click.stop>
+            <td class="rr-num"><span v-if="item.production_premium >= 0.5" class="ltr-number">{{ money(item.production_premium) }}</span></td>
+            <td @click.stop>
               <div v-if="!item.found_in_production" class="status-select-wrap">
-                <select
-                  class="status-select"
-                  :class="customerStatusClass(customerStatuses[item.recruit_id])"
-                  :value="customerStatuses[item.recruit_id] || ''"
-                  @change="onStatusChange(item.recruit_id, $event)"
-                >
-                  <option value="">בחר סטטוס...</option>
+                <select class="status-select" :class="customerStatusClass(customerStatuses[item.recruit_id])"
+                        :value="customerStatuses[item.recruit_id] || ''" @change="onStatusChange(item.recruit_id, $event)">
+                  <option value="">בחרו…</option>
                   <option value="עבר סוכן">עבר סוכן</option>
                   <option value="משך את הכסף">משך את הכסף</option>
-                  <option v-if="customerStatuses[item.recruit_id] && customerStatuses[item.recruit_id] !== 'עבר סוכן' && customerStatuses[item.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
-                  <option value="__custom__">אחר (הקלד)...</option>
+                  <option v-if="isCustom(customerStatuses[item.recruit_id])" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
+                  <option value="__custom__">אחר…</option>
                 </select>
-                <input
-                  v-if="customInputId === item.recruit_id"
-                  class="status-custom-input"
-                  v-model="customInputVal"
-                  placeholder="הקלד סטטוס..."
-                  @keydown.enter="confirmCustomStatus(item.recruit_id)"
-                  @blur="confirmCustomStatus(item.recruit_id)"
-                  ref="customInputRef"
-                />
+                <input v-if="customInputId === item.recruit_id" v-model="customInputVal" class="status-custom-input" placeholder="מה קרה?"
+                       @keydown.enter="confirmCustomStatus(item.recruit_id)" @blur="confirmCustomStatus(item.recruit_id)" />
               </div>
-              <span v-else class="status-found-label">ב{{ sourceLabel }}</span>
             </td>
           </tr>
         </tbody>
       </table>
+      <p v-if="!filteredResults.length" class="rr-none">אין מגויסים שמתאימים לסינון.</p>
+
+      <div v-if="totalPages > 1" class="rr-pages">
+        <button class="rr-pg" :disabled="currentPage === 1" @click="currentPage--" aria-label="הקודם">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <template v-for="p in visiblePages" :key="p">
+          <span v-if="p === '...'" class="rr-pg-dots">…</span>
+          <button v-else class="rr-pg" :class="{ on: p === currentPage }" @click="currentPage = p">{{ p }}</button>
+        </template>
+        <button class="rr-pg" :disabled="currentPage === totalPages" @click="currentPage++" aria-label="הבא">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
     </div>
 
-    <!-- Pagination -->
-    <div class="pagination" v-if="totalPages > 1">
-      <button class="pg" :disabled="currentPage === 1" @click="currentPage--">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-      <template v-for="p in visiblePages" :key="p">
-        <span v-if="p === '...'" class="pg-dots">...</span>
-        <button v-else class="pg" :class="{ active: p === currentPage }" @click="currentPage = p">{{ p }}</button>
-      </template>
-      <button class="pg" :disabled="currentPage === totalPages" @click="currentPage++">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <span class="pg-info">{{ currentPage }} / {{ totalPages }}</span>
-    </div>
-
-    <!-- Detail Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="detailItem" class="modal-overlay" @click.self="closeDetail">
-          <div class="modal-card">
-            <div class="modal-head">
-              <button class="modal-x" @click="closeDetail">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-              <div class="modal-id-row">
-                <div>
-                  <div class="modal-name">{{ detailItem.first_name }} {{ detailItem.last_name }}</div>
-                  <div class="modal-id-num ltr-number">ת.ז {{ detailItem.id_number }}</div>
-                </div>
-                <span class="modal-status-chip" :class="detailItem.found_in_production ? 'chip-found' : 'chip-missing'">
-                  {{ detailItem.found_in_production ? `נמצא ב${sourceLabel}` : 'לא נמצא' }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Recruit file data -->
-            <div class="modal-section">
-              <div class="section-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                נתוני קובץ גיוס
-              </div>
-              <div class="info-grid">
-                <div class="info-cell" v-if="detailItem.company">
-                  <span class="info-lbl">חברה</span>
-                  <span class="info-val">{{ detailItem.company }}</span>
-                </div>
-                <div class="info-cell" v-if="detailItem.product">
-                  <span class="info-lbl">מוצר</span>
-                  <span class="info-val">{{ detailItem.product }}</span>
-                </div>
-                <div class="info-cell" v-if="detailItem.amount > 0">
-                  <span class="info-lbl">סכום</span>
-                  <span class="info-val ltr-number">₪{{ fmtNum(detailItem.amount) }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Production data -->
-            <div class="modal-section" v-if="detailItem.found_in_production && detailItem.production_products.length">
-              <div class="section-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                מוצרים ב{{ sourceLabel }}
-                <span class="section-count">{{ detailItem.production_products.length }}</span>
-              </div>
-              <div class="prod-table-wrap">
-                <table class="prod-table">
-                  <thead>
-                    <tr>
-                      <th>מוצר</th>
-                      <th>חברה</th>
-                      <th>סטטוס</th>
-                      <th>פרמיה</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(p, i) in detailItem.production_products" :key="i">
-                      <td class="pt-product">{{ p.product || p.product_type || '—' }}</td>
-                      <td class="pt-company">{{ shortCompany(p.company) || '—' }}</td>
-                      <td>
-                        <span class="status-tag" :class="statusClass(p.status)">{{ statusLabel(p.status) }}</span>
-                      </td>
-                      <td class="pt-premium">
-                        <span class="ltr-number">
-                          <template v-if="p.premium > 0">₪{{ fmtNum(p.premium) }}</template>
-                          <template v-else>—</template>
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Total premium -->
-              <div class="modal-total" v-if="detailItem.production_premium > 0">
-                <span>סה"כ פרמיה חודשית</span>
-                <strong class="ltr-number">₪{{ fmtNum(detailItem.production_premium) }}</strong>
-              </div>
-            </div>
-
-            <!-- Not found message -->
-            <div class="modal-section modal-empty" v-if="!detailItem.found_in_production">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <p>לקוח זה לא נמצא בקובץ ה{{ sourceLabel }}</p>
-              <span>יש לוודא שהלקוח קיים במערכת או שת.ז תקין</span>
-
-              <div class="modal-status-edit" @click.stop>
-                <label class="modal-status-label">סטטוס לקוח:</label>
-                <select
-                  class="status-select"
-                  :class="customerStatusClass(customerStatuses[detailItem.recruit_id])"
-                  :value="customerStatuses[detailItem.recruit_id] || ''"
-                  @change="onStatusChange(detailItem.recruit_id, $event)"
-                >
-                  <option value="">בחר סטטוס...</option>
-                  <option value="עבר סוכן">עבר סוכן</option>
-                  <option value="משך את הכסף">משך את הכסף</option>
-                  <option v-if="customerStatuses[detailItem.recruit_id] && customerStatuses[detailItem.recruit_id] !== 'עבר סוכן' && customerStatuses[detailItem.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[detailItem.recruit_id]">{{ customerStatuses[detailItem.recruit_id] }}</option>
-                  <option value="__custom__">אחר (הקלד)...</option>
-                </select>
-                <input
-                  v-if="customInputId === detailItem.recruit_id"
-                  class="status-custom-input"
-                  v-model="customInputVal"
-                  placeholder="הקלד סטטוס..."
-                  @keydown.enter="confirmCustomStatus(detailItem.recruit_id)"
-                  @blur="confirmCustomStatus(detailItem.recruit_id)"
-                />
-              </div>
-            </div>
+    <!-- ── Drill: a list of recruits (found / not found / one company / one product) ── -->
+    <DataModal :open="list.open" :title="listTitle" :badge="listItems.length" :origin="list.origin"
+               accent="var(--tab-recruits-ink)" @close="list.open = false">
+      <div class="rd">
+        <div class="rd-strip">
+          <div v-if="list.kind !== 'missing'" class="rd-cell rd-cell--lead">
+            <span class="rd-lbl">נמצאו</span><span class="rd-val ltr-number">{{ listFound.length }}</span>
+          </div>
+          <div v-if="list.kind !== 'found'" class="rd-cell" :class="{ 'rd-cell--lead': list.kind === 'missing' }">
+            <span class="rd-lbl">לא נמצאו</span><span class="rd-val ltr-number">{{ listMissing.length }}</span>
+          </div>
+          <div v-if="listPremium >= 0.5" class="rd-cell">
+            <span class="rd-lbl">פרמיה שנמצאה</span><span class="rd-val ltr-number">{{ money(listPremium) }}</span>
+          </div>
+          <div v-if="listTransfers >= 0.5" class="rd-cell">
+            <span class="rd-lbl">העברות שלא נמצאו</span><span class="rd-val ltr-number">{{ money(listTransfers) }}</span>
           </div>
         </div>
-      </Transition>
-    </Teleport>
 
-    <!-- Missing Customers Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="showMissingModal" class="modal-overlay" @click.self="showMissingModal = false">
-          <div class="modal-card missing-modal-card">
-            <div class="modal-head">
-              <button class="modal-x" @click="showMissingModal = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-              <div class="modal-id-row">
-                <div>
-                  <div class="modal-name">{{ isCommission ? 'לקוחות שלא נמצאו בנפרעים' : 'לקוחות שלא נמצאו בפרודוקציה' }}</div>
-                  <div class="modal-id-num">{{ notFoundList.length }} לקוחות</div>
-                </div>
-                <span class="modal-status-chip chip-missing">לא נמצאו</span>
-              </div>
-            </div>
-
-            <!-- Search + Filters -->
-            <div class="mm-search-wrap">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input class="mm-search" v-model="missingSearch" placeholder="חיפוש לפי שם או ת.ז..." />
-            </div>
-            <div class="mm-filters">
-              <select v-model="missingCompanyFilter" class="mm-filter-select">
-                <option value="">כל החברות</option>
-                <option v-for="co in missingCompanies" :key="co" :value="co">{{ co }}</option>
-              </select>
-              <select v-model="missingProductFilter" class="mm-filter-select">
-                <option value="">כל המוצרים</option>
-                <option v-for="p in missingProducts" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span class="mm-filter-count"><span class="ltr-number">{{ filteredMissingList.length }}</span> מתוך <span class="ltr-number">{{ notFoundList.length }}</span></span>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="mm-actions">
-              <button class="mm-action-btn" @click="downloadMissingExcel(); showMissingModal = false">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                הורד Excel
-              </button>
-              <button class="mm-action-btn" @click="sendMissingMail(); showMissingModal = false">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                שלח מייל (כל המסומנים)
-              </button>
-              <button
-                class="mm-action-btn mm-action-primary"
-                :disabled="missingSelected.size === 0"
-                @click="sendSelectedMissingMails(); showMissingModal = false"
-                :title="missingSelected.size === 0 ? 'יש לסמן לקוחות' : `שלח ${missingSelected.size} לקוחות לחברות הרלוונטיות`"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                שלח מסומנים ({{ missingSelected.size }})
-              </button>
-            </div>
-
-            <!-- Table -->
-            <div class="mm-table-wrap">
-              <table class="mm-table">
-                <thead>
-                  <tr>
-                    <th class="th-check">
-                      <input
-                        type="checkbox"
-                        class="mm-checkbox"
-                        :checked="filteredMissingList.length > 0 && filteredMissingList.every(r => missingSelected.has(r.recruit_id))"
-                        @change="toggleMissingSelectAll(filteredMissingList)"
-                        title="סמן/בטל הכל"
-                      />
-                    </th>
-                    <th>שם</th>
-                    <th>ת.ז</th>
-                    <th>חברה</th>
-                    <th>מוצר</th>
-                    <th>סכום</th>
-                    <th>סטטוס</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in filteredMissingList"
-                    :key="item.recruit_id"
-                    class="mm-row"
-                    :class="{ 'mm-row-selected': missingSelected.has(item.recruit_id) }"
-                    @click="detailReturnTo = 'missing'; showMissingModal = false; openDetail(item)"
-                  >
-                    <td class="td-check" @click.stop>
-                      <input
-                        type="checkbox"
-                        class="mm-checkbox"
-                        :checked="missingSelected.has(item.recruit_id)"
-                        @change="toggleMissingSelect(item.recruit_id)"
-                      />
-                    </td>
-                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
-                    <td>{{ item.company || '—' }}</td>
-                    <td>{{ item.product || '—' }}</td>
-                    <td>
-                      <span class="ltr-number" style="font-weight:700;color:var(--primary)">
-                        <template v-if="item.amount > 0">₪{{ fmtNum(item.amount) }}</template>
-                        <template v-else>—</template>
-                      </span>
-                    </td>
-                    <td @click.stop>
-                      <select
-                        class="status-select status-select-sm"
-                        :class="customerStatusClass(customerStatuses[item.recruit_id])"
-                        :value="customerStatuses[item.recruit_id] || ''"
-                        @change="onStatusChange(item.recruit_id, $event)"
-                      >
-                        <option value="">—</option>
-                        <option value="עבר סוכן">עבר סוכן</option>
-                        <option value="משך את הכסף">משך את הכסף</option>
-                        <option v-if="customerStatuses[item.recruit_id] && customerStatuses[item.recruit_id] !== 'עבר סוכן' && customerStatuses[item.recruit_id] !== 'משך את הכסף'" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
-                        <option value="__custom__">אחר...</option>
-                      </select>
-                      <input
-                        v-if="customInputId === item.recruit_id"
-                        class="status-custom-input status-custom-input-sm"
-                        v-model="customInputVal"
-                        placeholder="הקלד..."
-                        @keydown.enter="confirmCustomStatus(item.recruit_id)"
-                        @blur="confirmCustomStatus(item.recruit_id)"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div class="rd-controls">
+          <label class="rr-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input v-model="list.search" type="search" placeholder="שם או ת.ז" />
+          </label>
+          <select v-if="list.kind !== 'company' && listCompanies.length > 1" v-model="list.company" class="rr-select" aria-label="חברה">
+            <option value="">כל החברות</option>
+            <option v-for="c in listCompanies" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <select v-if="list.kind !== 'product' && listProducts.length > 1" v-model="list.product" class="rr-select" aria-label="מוצר">
+            <option value="">כל המוצרים</option>
+            <option v-for="p in listProducts" :key="p" :value="p">{{ p }}</option>
+          </select>
+          <button v-if="list.kind === 'missing' && listFiltered.length" class="rd-link" type="button" @click="toggleMissingSelectAll(listFiltered)">
+            {{ listFiltered.every(r => missingSelected.has(r.recruit_id)) ? 'ניקוי סימון' : 'סימון הכל' }}
+          </button>
         </div>
-      </Transition>
-    </Teleport>
 
-    <!-- Found Customers Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="showFoundModal" class="modal-overlay" @click.self="showFoundModal = false">
-          <div class="modal-card missing-modal-card">
-            <div class="modal-head">
-              <button class="modal-x" @click="showFoundModal = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-              <div class="modal-id-row">
-                <div>
-                  <div class="modal-name">לקוחות שנמצאו ב{{ sourceLabel }}</div>
-                  <div class="modal-id-num">{{ foundList.length }} לקוחות</div>
-                </div>
-                <span class="modal-status-chip chip-found">נמצאו</span>
-              </div>
-            </div>
+        <RecruitCards :items="listShown" :selectable="list.kind === 'missing'" :selected="missingSelected"
+                      @pick="openDetail" @toggle="toggleMissingSelect">
+          <template #status="{ item }">
+            <select class="status-select status-select-sm" :class="customerStatusClass(customerStatuses[item.recruit_id])"
+                    :value="customerStatuses[item.recruit_id] || ''" @change="onStatusChange(item.recruit_id, $event)" aria-label="מה קרה">
+              <option value="">מה קרה?</option>
+              <option value="עבר סוכן">עבר סוכן</option>
+              <option value="משך את הכסף">משך את הכסף</option>
+              <option v-if="isCustom(customerStatuses[item.recruit_id])" :value="customerStatuses[item.recruit_id]">{{ customerStatuses[item.recruit_id] }}</option>
+              <option value="__custom__">אחר…</option>
+            </select>
+            <input v-if="customInputId === item.recruit_id" v-model="customInputVal" class="status-custom-input status-custom-input-sm"
+                   placeholder="מה קרה?" @keydown.enter="confirmCustomStatus(item.recruit_id)" @blur="confirmCustomStatus(item.recruit_id)" />
+          </template>
+        </RecruitCards>
+        <p v-if="!listFiltered.length" class="rr-none">אין מגויסים שמתאימים לסינון.</p>
+        <button v-if="listFiltered.length > listShown.length" class="rd-more" type="button" @click="list.limit += 100">
+          הצג עוד <span class="ltr-number">{{ listFiltered.length - listShown.length }}</span>
+        </button>
 
-            <!-- Search + Filters -->
-            <div class="mm-search-wrap">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input class="mm-search" v-model="foundSearch" placeholder="חיפוש לפי שם או ת.ז..." />
-            </div>
-            <div class="mm-filters">
-              <select v-model="foundCompanyFilter" class="mm-filter-select">
-                <option value="">כל החברות</option>
-                <option v-for="co in foundCompanies" :key="co" :value="co">{{ co }}</option>
-              </select>
-              <select v-model="foundProductFilter" class="mm-filter-select">
-                <option value="">כל המוצרים</option>
-                <option v-for="p in foundProducts" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span class="mm-filter-count"><span class="ltr-number">{{ filteredFoundList.length }}</span> מתוך <span class="ltr-number">{{ foundList.length }}</span></span>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="mm-actions">
-              <button class="mm-action-btn" @click="downloadFoundExcel()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                הורד Excel
-              </button>
-            </div>
-
-            <!-- Table -->
-            <div class="mm-table-wrap">
-              <table class="mm-table">
-                <thead>
-                  <tr>
-                    <th>שם</th>
-                    <th>ת.ז</th>
-                    <th>חברה</th>
-                    <th>מוצרים</th>
-                    <th>פרמיה</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in filteredFoundList"
-                    :key="item.recruit_id"
-                    class="mm-row"
-                    @click="detailReturnTo = 'found'; showFoundModal = false; openDetail(item)"
-                  >
-                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
-                    <td>{{ item.company || '—' }}</td>
-                    <td><span class="ltr-number">{{ item.production_products.length }}</span></td>
-                    <td>
-                      <span class="ltr-number" style="font-weight:700;color:var(--accent-emerald)">
-                        <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
-                        <template v-else>—</template>
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <!-- The drill's actions, pinned at the bottom -->
+        <div v-if="list.kind !== 'product' && (list.kind !== 'company' || listMissing.length)" class="rd-actions">
+          <template v-if="list.kind === 'missing'">
+            <button class="rd-btn rd-btn--primary" type="button" :disabled="!missingSelected.size" @click="sendSelectedMissingMails">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+              מייל לחברות על <span class="ltr-number">{{ missingSelected.size }}</span> מסומנים
+            </button>
+            <button class="rd-btn" type="button" @click="downloadMissingExcel">Excel</button>
+          </template>
+          <button v-else-if="list.kind === 'company'" class="rd-btn rd-btn--primary" type="button" @click="sendMissingMail(list.value, listMissing)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+            מייל ל{{ list.value }} על <span class="ltr-number">{{ listMissing.length }}</span> שלא נמצאו
+          </button>
+          <button v-else class="rd-btn" type="button" @click="downloadFoundExcel">Excel</button>
         </div>
-      </Transition>
-    </Teleport>
+      </div>
+    </DataModal>
 
-    <!-- Chart Drill-Down Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="drillModal.show" class="modal-overlay" @click.self="drillModal.show = false">
-          <div class="modal-card missing-modal-card">
-            <div class="modal-head">
-              <button class="modal-x" @click="drillModal.show = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-              <div class="modal-id-row">
-                <div>
-                  <div class="modal-name">{{ drillModal.title }}</div>
-                  <div class="modal-id-num">{{ drillModalCustomers.length }} לקוחות</div>
-                </div>
-                <span class="modal-status-chip" :class="drillModal.type === 'company' ? 'chip-company' : 'chip-product'">
-                  {{ drillModal.value }}
-                </span>
-              </div>
-            </div>
-
-            <!-- Summary strip -->
-            <div class="drill-summary">
-              <div class="drill-stat">
-                <span class="drill-stat-val ltr-number">{{ drillModalFound }}</span>
-                <span class="drill-stat-lbl">נמצאו</span>
-              </div>
-              <div class="drill-stat">
-                <span class="drill-stat-val drill-stat-missing ltr-number">{{ drillModalMissing }}</span>
-                <span class="drill-stat-lbl">לא נמצאו</span>
-              </div>
-              <div class="drill-stat">
-                <span class="drill-stat-val drill-stat-premium ltr-number">₪{{ fmtNum(drillModalPremium) }}</span>
-                <span class="drill-stat-lbl">פרמיה</span>
-              </div>
-            </div>
-
-            <!-- Search -->
-            <div class="mm-search-wrap" style="margin: 0 20px 12px 20px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input class="mm-search" v-model="drillModal.search" placeholder="חיפוש לפי שם או ת.ז..." />
-            </div>
-
-            <!-- Table -->
-            <div class="mm-table-wrap" style="margin: 0 20px 16px 20px">
-              <table class="mm-table">
-                <thead>
-                  <tr>
-                    <th style="width:28px"></th>
-                    <th>שם</th>
-                    <th>ת.ז</th>
-                    <th>חברה</th>
-                    <th>מוצר</th>
-                    <th>מוצרים</th>
-                    <th>פרמיה</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in drillModalFiltered"
-                    :key="item.recruit_id"
-                    class="mm-row"
-                    @click="drillModal.show = false; openDetail(item)"
-                  >
-                    <td>
-                      <span v-if="item.found_in_production" class="dot dot-found"></span>
-                      <span v-else class="dot dot-missing"></span>
-                    </td>
-                    <td class="td-name">{{ item.first_name }} {{ item.last_name }}</td>
-                    <td class="td-id"><span class="ltr-number">{{ item.id_number }}</span></td>
-                    <td>{{ item.company || '—' }}</td>
-                    <td>{{ item.product || '—' }}</td>
-                    <td>
-                      <span class="ltr-number">
-                        <span v-if="item.found_in_production" class="prod-badge">{{ item.production_products.length }}</span>
-                        <span v-else class="prod-badge prod-badge-zero">0</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="ltr-number" style="font-weight:700;color:var(--primary)">
-                        <template v-if="item.production_premium > 0">₪{{ fmtNum(item.production_premium) }}</template>
-                        <template v-else>—</template>
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+    <!-- ── Drill: one recruit ── -->
+    <DataModal :open="!!detailItem" :title="detailItem ? fullName(detailItem) : ''"
+               :subtitle="detailItem ? 'ת.ז ' + detailItem.id_number : ''"
+               :origin="detailOrigin" size="sm" :layer="list.open ? 1020 : null"
+               accent="var(--tab-recruits-ink)" @close="closeDetail">
+      <div v-if="detailItem" class="rd">
+        <div v-if="detailItem.company || detailItem.product || detailItem.amount >= 0.5" class="rd-strip">
+          <div v-if="detailItem.company" class="rd-cell"><span class="rd-lbl">חברה</span><span class="rd-val rd-val--sm">{{ detailItem.company }}</span></div>
+          <div v-if="detailItem.product" class="rd-cell"><span class="rd-lbl">מוצר</span><span class="rd-val rd-val--sm">{{ detailItem.product }}</span></div>
+          <div v-if="detailItem.amount >= 0.5" class="rd-cell"><span class="rd-lbl">העברה</span><span class="rd-val rd-val--sm ltr-number">{{ money(detailItem.amount) }}</span></div>
         </div>
-      </Transition>
-    </Teleport>
 
+        <template v-if="detailItem.found_in_production">
+          <h5 class="rd-sec">ב{{ sourceLabel }} <span class="ltr-number">{{ detailItem.production_products.length }}</span></h5>
+          <ul class="rd-prods">
+            <li v-for="(p, i) in detailItem.production_products" :key="i">
+              <span class="rd-prod-name">{{ p.product || p.product_type }}<small v-if="p.company">{{ shortCompany(p.company) }}</small></span>
+              <span v-if="statusLabel(p.status)" class="rd-st" :class="statusClass(p.status)">{{ statusLabel(p.status) }}</span>
+              <span class="rd-prod-amt"><span v-if="p.premium >= 0.5" class="ltr-number">{{ money(p.premium) }}</span></span>
+            </li>
+          </ul>
+          <p v-if="detailItem.production_premium >= 0.5" class="rd-total">
+            פרמיה חודשית <strong class="ltr-number">{{ money(detailItem.production_premium) }}</strong>
+          </p>
+        </template>
+
+        <div v-else class="rd-missing">
+          <p>לא נמצא ב{{ sourceLabel }}.</p>
+          <label class="rd-status">
+            <span>מה קרה?</span>
+            <select class="status-select" :class="customerStatusClass(customerStatuses[detailItem.recruit_id])"
+                    :value="customerStatuses[detailItem.recruit_id] || ''" @change="onStatusChange(detailItem.recruit_id, $event)">
+              <option value="">בחרו…</option>
+              <option value="עבר סוכן">עבר סוכן</option>
+              <option value="משך את הכסף">משך את הכסף</option>
+              <option v-if="isCustom(customerStatuses[detailItem.recruit_id])" :value="customerStatuses[detailItem.recruit_id]">{{ customerStatuses[detailItem.recruit_id] }}</option>
+              <option value="__custom__">אחר…</option>
+            </select>
+          </label>
+          <input v-if="customInputId === detailItem.recruit_id" v-model="customInputVal" class="status-custom-input" placeholder="מה קרה?"
+                 @keydown.enter="confirmCustomStatus(detailItem.recruit_id)" @blur="confirmCustomStatus(detailItem.recruit_id)" />
+        </div>
+      </div>
+    </DataModal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as XLSX from 'xlsx'
 import { useRecruitsStore } from '../../stores/recruits.js'
 import { openMailCompose } from '../../utils/mailHelper.js'
 import api from '../../api/client.js'
+import DataModal from './DataModal.vue'
+import RecruitCards from './RecruitCards.vue'
+import { CHART_PALETTE } from '../../utils/chartPalette.js'
+
+// One colour: found in the tab's turquoise, not found in neutral grey.
+const C_FOUND = CHART_PALETTE[6]
+const C_MISS = '#C9C7C5'
 
 const props = defineProps({
   result: { type: Object, required: true },
+  // Which check this view shows. Both views are mounted from the same store, so
+  // the store's "last run" mode would relabel (and reset) the wrong one.
+  mode: { type: String, default: 'production' },  // 'production' | 'commission'
 })
 
 const recruitsStore = useRecruitsStore()
-const isCommission = computed(() => recruitsStore.comparisonMode === 'commission')
+const isCommission = computed(() => props.mode === 'commission')
 const sourceLabel = computed(() => isCommission.value ? 'נפרעים' : 'פרודוקציה')
 const activeFilter = ref('all')
 const currentPage = ref(1)
-const pageSize = 50
+const pageSize = 20
 const chartReady = ref(false)
 const detailItem = ref(null)
-const detailReturnTo = ref(null) // 'missing' | 'found' | null
+const detailOrigin = ref(null)
 const customerStatuses = ref({})
 const customInputId = ref(null)
 const customInputVal = ref('')
 const customInputRef = ref(null)
-const showMissingModal = ref(false)
-const missingSearch = ref('')
-const missingCompanyFilter = ref('')
-const missingProductFilter = ref('')
 const missingSelected = ref(new Set())
 
 function toggleMissingSelect(id) {
@@ -801,14 +315,19 @@ function toggleMissingSelectAll(filtered) {
   }
   missingSelected.value = s
 }
-const showFoundModal = ref(false)
-const foundSearch = ref('')
-const foundCompanyFilter = ref('')
-const foundProductFilter = ref('')
 const companyFilter = ref('')
 const productFilter = ref('')
 const nameSearch = ref('')
-const drillModal = ref({ show: false, type: '', value: '', title: '', search: '' })
+// The list drill: found / missing / one company / one product. A row opens the
+// recruit ABOVE it (layer 1020) — the list stays where it was.
+const list = reactive({ open: false, kind: 'found', value: '', origin: null, search: '', company: '', product: '', limit: 100 })
+
+// Chart clicks: the pressed bar, captured at pointerdown in a PLAIN variable —
+// a reactive ref re-renders the chart between down and up and eats the click.
+let lastPointerEl = null
+function capturePointer(e) { lastPointerEl = e.target instanceof Element ? e.target : null }
+onMounted(() => document.addEventListener('pointerdown', capturePointer, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', capturePointer, true))
 
 // Initialize customer statuses from saved data
 function initStatuses() {
@@ -834,58 +353,7 @@ const missingPct = computed(() => props.result.total > 0 ? Math.round((props.res
 const notFoundList = computed(() => props.result.results.filter(r => !r.found_in_production))
 const foundList = computed(() => props.result.results.filter(r => r.found_in_production))
 
-// Unique companies/products for filter dropdowns
-const missingCompanies = computed(() => [...new Set(notFoundList.value.map(r => r.company).filter(Boolean))].sort())
-const missingProducts = computed(() => [...new Set(notFoundList.value.map(r => r.product).filter(Boolean))].sort())
-const foundCompanies = computed(() => [...new Set(foundList.value.map(r => r.company).filter(Boolean))].sort())
-const foundProducts = computed(() => {
-  const prods = new Set()
-  for (const r of foundList.value) {
-    for (const p of r.production_products || []) {
-      const name = p.product || p.product_type
-      if (name) prods.add(name)
-    }
-  }
-  return [...prods].sort()
-})
 
-const filteredMissingList = computed(() => {
-  let list = notFoundList.value
-  if (missingCompanyFilter.value) {
-    list = list.filter(r => r.company === missingCompanyFilter.value)
-  }
-  if (missingProductFilter.value) {
-    list = list.filter(r => r.product === missingProductFilter.value)
-  }
-  const q = missingSearch.value.trim().toLowerCase()
-  if (q) {
-    list = list.filter(r => {
-      const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
-      return name.includes(q) || (r.id_number || '').includes(q)
-    })
-  }
-  return list
-})
-
-const filteredFoundList = computed(() => {
-  let list = foundList.value
-  if (foundCompanyFilter.value) {
-    list = list.filter(r => r.company === foundCompanyFilter.value)
-  }
-  if (foundProductFilter.value) {
-    list = list.filter(r =>
-      (r.production_products || []).some(p => (p.product || p.product_type) === foundProductFilter.value)
-    )
-  }
-  const q = foundSearch.value.trim().toLowerCase()
-  if (q) {
-    list = list.filter(r => {
-      const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
-      return name.includes(q) || (r.id_number || '').includes(q)
-    })
-  }
-  return list
-})
 
 // ── Insights computeds ──
 const avgProductsPerClient = computed(() => {
@@ -899,7 +367,7 @@ const avgProductsPerClient = computed(() => {
 const hasCompanyData = computed(() => (props.result.company_breakdown || []).length > 0)
 const hasStatusData = computed(() => {
   const sb = props.result.status_breakdown || {}
-  return Object.keys(sb).length > 0
+  return Object.keys(sb).length > 1  // one slice at 100% says nothing
 })
 const hasProductData = computed(() => uniqueProducts.value.length > 1)
 
@@ -916,59 +384,44 @@ const productBreakdown = computed(() => {
   return Object.values(map).sort((a, b) => b.total - a.total)
 })
 
-// Drill-down modal computeds
-const drillModalCustomers = computed(() => {
-  if (!drillModal.value.show) return []
-  const { type, value } = drillModal.value
-  return props.result.results.filter(r => {
-    if (type === 'company') return (r.company || 'לא ידוע') === value
-    if (type === 'product') return (r.product || 'לא ידוע') === value
-    return false
-  })
-})
 
-const drillModalFiltered = computed(() => {
-  const q = (drillModal.value.search || '').trim().toLowerCase()
-  const list = drillModalCustomers.value
-  if (!q) return list
-  return list.filter(r => {
-    const name = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase()
-    return name.includes(q) || (r.id_number || '').includes(q)
-  })
-})
 
-const drillModalFound = computed(() => drillModalCustomers.value.filter(r => r.found_in_production).length)
-const drillModalMissing = computed(() => drillModalCustomers.value.filter(r => !r.found_in_production).length)
-const drillModalPremium = computed(() => drillModalCustomers.value.reduce((s, r) => s + (r.production_premium || 0), 0))
-
-const topMissing = computed(() => {
-  return props.result.results
-    .filter(r => !r.found_in_production)
-    .sort((a, b) => (b.amount || 0) - (a.amount || 0))
-    .slice(0, 5)
+const LIST_TITLES = { found: () => `נמצאו ב${sourceLabel.value}`, missing: () => `לא נמצאו ב${sourceLabel.value}` }
+const listTitle = computed(() => (LIST_TITLES[list.kind] ? LIST_TITLES[list.kind]() : list.value))
+const listItems = computed(() => {
+  const rs = props.result.results
+  if (list.kind === 'found') return rs.filter(r => r.found_in_production)
+  if (list.kind === 'missing') return rs.filter(r => !r.found_in_production).sort((a, b) => (b.amount || 0) - (a.amount || 0))
+  if (list.kind === 'company') return rs.filter(r => (r.company || 'לא ידוע') === list.value)
+  if (list.kind === 'product') return rs.filter(r => (r.product || 'לא ידוע') === list.value)
+  return []
 })
-
-const summaryBullets = computed(() => {
-  const bullets = []
-  const notFound = props.result.results.filter(r => !r.found_in_production)
-  if (notFound.length > 0) {
-    const totalMissing = notFound.reduce((s, r) => s + (r.amount || 0), 0)
-    bullets.push(`<strong>${notFound.length}</strong> לקוחות עם פרמיה של <strong class="ltr-number">₪${fmtNum(totalMissing)}</strong> לא נמצאו — מומלץ לפנות לחברות`)
-  }
-  const sb = props.result.status_breakdown || {}
-  const cancelled = sb['מבוטל'] || 0
-  if (cancelled > 0) {
-    bullets.push(`<strong>${cancelled}</strong> מוצרים מבוטלים — יש לבדוק מול הלקוחות`)
-  }
-  const breakdown = props.result.company_breakdown || []
-  if (breakdown.length > 0) {
-    const worst = breakdown.reduce((max, c) => c.not_found > max.not_found ? c : max, breakdown[0])
-    if (worst.not_found > 0) {
-      bullets.push(`חברת <strong>${worst.company}</strong> עם הכי הרבה חסרים (${worst.not_found})`)
-    }
-  }
-  return bullets
+const listCompanies = computed(() => [...new Set(listItems.value.map(r => r.company).filter(Boolean))].sort())
+const listProducts = computed(() => [...new Set(listItems.value.map(r => r.product).filter(Boolean))].sort())
+const listFiltered = computed(() => {
+  let rs = listItems.value
+  if (list.company) rs = rs.filter(r => r.company === list.company)
+  if (list.product) rs = rs.filter(r => r.product === list.product)
+  const q = list.search.trim().toLowerCase()
+  if (q) rs = rs.filter(r => fullName(r).toLowerCase().includes(q) || String(r.id_number || '').includes(q))
+  return rs
 })
+const listShown = computed(() => listFiltered.value.slice(0, list.limit))
+const listFound = computed(() => listFiltered.value.filter(r => r.found_in_production))
+const listMissing = computed(() => listFiltered.value.filter(r => !r.found_in_production))
+const listPremium = computed(() => listFound.value.reduce((s, r) => s + (r.production_premium || 0), 0))
+const listTransfers = computed(() => listMissing.value.reduce((s, r) => s + (r.amount || 0), 0))
+
+function openList(kind, ev, value = '') {
+  const origin = ev instanceof Element ? ev : (ev?.currentTarget || null)
+  Object.assign(list, { kind, value, origin, search: '', company: '', product: '', limit: 100, open: true })
+}
+
+const FILTERS = [
+  { id: 'all', label: 'הכל', count: () => props.result.total },
+  { id: 'found', label: 'נמצאו', count: () => props.result.found },
+  { id: 'not_found', label: 'לא נמצאו', count: () => props.result.not_found },
+]
 
 // Company bar chart
 const companyChartSeries = computed(() => {
@@ -986,12 +439,12 @@ const companyChartOptions = computed(() => ({
       dataPointSelection: (_e, _chart, config) => {
         const bd = props.result.company_breakdown || []
         const company = bd[config.dataPointIndex]
-        if (company) openDrillModal('company', company.company)
+        if (company) openList('company', lastPointerEl, company.company)
       },
     },
   },
   plotOptions: { bar: { horizontal: true, barHeight: '60%', borderRadius: 4 } },
-  colors: ['#2E844A', '#8A6300'],
+  colors: [C_FOUND, C_MISS],
   xaxis: {
     categories: (props.result.company_breakdown || []).map(c => c.company),
     labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
@@ -1017,8 +470,9 @@ const statusChartSeries = computed(() => {
 const statusChartOptions = computed(() => {
   const sb = props.result.status_breakdown || {}
   const labels = Object.keys(sb)
-  const colorMap = { 'פעיל': '#2E844A', 'מוקפא': '#7F56D9', 'מבוטל': '#C23934', 'אחר': '#706E6B' }
-  const colors = labels.map(l => colorMap[l] || '#706E6B')
+  // Active in the tab colour; cancelled is a real state (red); the rest stay grey.
+  const colorMap = { 'פעיל': C_FOUND, 'מוקפא': '#8FA3AD', 'מבוטל': '#C23934' }
+  const colors = labels.map(l => colorMap[l] || C_MISS)
   return {
     chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
     labels,
@@ -1048,12 +502,12 @@ const productChartOptions = computed(() => ({
     events: {
       dataPointSelection: (_e, _chart, config) => {
         const prod = productBreakdown.value[config.dataPointIndex]
-        if (prod) openDrillModal('product', prod.product)
+        if (prod) openList('product', lastPointerEl, prod.product)
       },
     },
   },
   plotOptions: { bar: { horizontal: true, barHeight: '55%', borderRadius: 4 } },
-  colors: ['#2E844A', '#8A6300'],
+  colors: [C_FOUND, C_MISS],
   xaxis: {
     categories: productBreakdown.value.map(p => p.product),
     labels: { style: { fontFamily: 'Heebo, sans-serif', fontSize: '11px' } },
@@ -1121,29 +575,18 @@ const visiblePages = computed(() => {
   return pages
 })
 
-watch([activeFilter, companyFilter, productFilter], () => { currentPage.value = 1 })
+watch([activeFilter, companyFilter, productFilter, nameSearch], () => { currentPage.value = 1 })
 
-function openDetail(item) { detailItem.value = item }
-
-function closeDetail() {
-  detailItem.value = null
-  if (detailReturnTo.value === 'missing') showMissingModal.value = true
-  else if (detailReturnTo.value === 'found') showFoundModal.value = true
-  detailReturnTo.value = null
+function openDetail(item, el) {
+  detailOrigin.value = el || null
+  detailItem.value = item
 }
 
-function openDrillModal(type, value) {
-  drillModal.value = {
-    show: true,
-    type,
-    value,
-    title: type === 'company' ? `לקוחות — ${value}` : `לקוחות — ${value}`,
-    search: '',
-  }
-}
+function closeDetail() { detailItem.value = null }
+
 
 function downloadFoundExcel() {
-  const found = filteredFoundList.value
+  const found = listFiltered.value.filter(r => r.found_in_production)
   if (!found.length) return
 
   const rows = []
@@ -1254,27 +697,8 @@ async function sendSelectedMissingMails() {
   }
 }
 
-async function sendMissingMail() {
-  // Use filtered list (respects company/product/search filters)
-  const missing = filteredMissingList.value
-  if (!missing.length) return
-
-  // If company filter is set, send for that company; otherwise group by company and pick top
-  let companyName, clients
-  if (missingCompanyFilter.value) {
-    companyName = missingCompanyFilter.value
-    clients = missing
-  } else {
-    const byCompany = {}
-    for (const m of missing) {
-      const co = m.company || 'לא ידוע'
-      if (!byCompany[co]) byCompany[co] = []
-      byCompany[co].push(m)
-    }
-    const topCompany = Object.entries(byCompany).reduce((max, cur) => cur[1].length > max[1].length ? cur : max)
-    companyName = topCompany[0]
-    clients = topCompany[1]
-  }
+async function sendMissingMail(companyName, clients) {
+  if (!clients?.length) return
 
   // Look up company email from contacts
   let companyEmail = ''
@@ -1353,6 +777,10 @@ function customerStatusClass(status) {
   return 'cs-custom'
 }
 
+const fullName = (r) => `${r.first_name || ''} ${r.last_name || ''}`.trim()
+const money = (v) => '₪' + Math.round(Number(v) || 0).toLocaleString('he-IL')
+const isCustom = (s) => !!s && s !== 'עבר סוכן' && s !== 'משך את הכסף'
+
 function fmtNum(val) {
   if (val == null || val === 0) return '0'
   return Number(val).toLocaleString('he-IL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -1365,7 +793,7 @@ function shortCompany(name) {
 }
 
 function statusLabel(s) {
-  if (!s) return '—'
+  if (!s) return ''
   if (s === 'פעיל' || s.includes('active') || s.includes('פעיל')) return 'פעיל'
   if (s === 'מוקפא' || s.includes('frozen')) return 'מוקפא'
   if (s.includes('מבוטל') || s.includes('cancel')) return 'מבוטל'
@@ -1380,1138 +808,205 @@ function statusClass(s) {
   return ''
 }
 
-const chartSeries = computed(() => [props.result.found, props.result.not_found])
-
-const chartOptions = computed(() => ({
-  chart: { type: 'donut', fontFamily: 'Heebo, sans-serif' },
-  labels: ['נמצאו בפרודוקציה', 'לא נמצאו'],
-  colors: ['#2E844A', '#8A6300'],
-  legend: { show: false },
-  dataLabels: {
-    enabled: true,
-    formatter: (val) => val.toFixed(0) + '%',
-    style: { fontFamily: 'Heebo, sans-serif', fontWeight: 700, fontSize: '13px' },
-    dropShadow: { enabled: false },
-  },
-  plotOptions: {
-    pie: {
-      donut: {
-        size: '65%',
-        labels: {
-          show: true,
-          total: {
-            show: true,
-            label: 'סה"כ',
-            fontFamily: 'Heebo, sans-serif',
-            fontSize: '13px',
-            fontWeight: 700,
-            color: 'var(--text-muted)',
-            formatter: () => props.result.total,
-          },
-          value: {
-            fontFamily: 'Heebo, sans-serif',
-            fontSize: '22px',
-            fontWeight: 800,
-          },
-        },
-      },
-    },
-  },
-  stroke: { width: 2, colors: ['var(--card-bg)'] },
-  tooltip: {
-    style: { fontFamily: 'Heebo, sans-serif' },
-    y: { formatter: (val) => val + ' לקוחות' },
-  },
-}))
 </script>
 
 <style scoped>
-.comparison-results {
-  padding: 24px;
-  animation: slideUp 0.5s var(--transition);
-}
-
-.results-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--primary);
-}
-
-.header-title h3 {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.3px;
-}
-
-.btn-close {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: var(--text-muted);
-  transition: all 0.25s var(--transition);
-}
-.btn-close:hover { background: var(--bg-surface); color: var(--text); }
-
-/* ── Dashboard row ── */
-.dashboard-row {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.chart-box { flex: 0 0 220px; }
-
-.kpi-row {
-  flex: 1;
-  display: flex;
-  gap: 10px;
-}
-
-.kpi {
-  flex: 1;
-  text-align: center;
-  padding: 16px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-}
-.kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-
-.kpi-num {
-  display: block;
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -1px;
-  line-height: 1.1;
-}
-
-.kpi-lbl {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.kpi-pct {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  margin-top: 2px;
-}
-
-.found-kpi { background: var(--green-light); border-color: var(--green-light); }
-.found-kpi .kpi-num { color: var(--accent-emerald); }
-.found-kpi .kpi-pct { color: var(--accent-emerald); }
-
-.missing-kpi { background: rgba(201, 162, 39,0.06); border-color: rgba(201, 162, 39,0.1); }
-.missing-kpi .kpi-num { color: #8A6300; }
-.missing-kpi .kpi-pct { color: #8A6300; }
-
-.total-kpi { background: var(--border-subtle); }
-.total-kpi .kpi-num { color: var(--text); }
-
-/* ── Insights Section ── */
-.insights-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 20px;
-  padding-top: 4px;
-}
-
-.insights-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-}
-
-.ins-kpi {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 14px 8px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  transition: all 0.25s var(--transition);
-}
-.ins-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-
-.ins-kpi-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-
-.ins-kpi-val {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-}
-
-.ins-kpi-lbl {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.ins-kpi-green { background: var(--green-light); border-color: var(--green-light); }
-.ins-kpi-green .ins-kpi-icon { background: rgba(46,132,74,0.12); color: var(--accent-emerald); }
-.ins-kpi-green .ins-kpi-val { color: var(--accent-emerald); }
-
-.ins-kpi-orange { background: rgba(201, 162, 39,0.06); border-color: rgba(201, 162, 39,0.1); }
-.ins-kpi-orange .ins-kpi-icon { background: rgba(201, 162, 39,0.12); color: #8A6300; }
-.ins-kpi-orange .ins-kpi-val { color: #8A6300; }
-
-.ins-kpi-cyan { background: rgba(227,6,106,0.06); border-color: rgba(227,6,106,0.1); }
-.ins-kpi-cyan .ins-kpi-icon { background: rgba(227,6,106,0.12); color: #E3066A; }
-.ins-kpi-cyan .ins-kpi-val { color: #E3066A; }
-
-.ins-kpi-violet { background: rgba(127,86,217,0.06); border-color: rgba(127,86,217,0.1); }
-.ins-kpi-violet .ins-kpi-icon { background: rgba(127,86,217,0.12); color: var(--accent-violet); }
-.ins-kpi-violet .ins-kpi-val { color: var(--accent-violet); }
-
-.ins-kpi-primary { background: var(--primary-glow); border-color: rgba(127,86,217,0.1); }
-.ins-kpi-primary .ins-kpi-icon { background: rgba(127,86,217,0.12); color: var(--primary); }
-.ins-kpi-primary .ins-kpi-val { color: var(--primary); }
-
-.insights-charts-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.ins-chart-full {
-  width: 100%;
-}
-
-.ins-chart-clickable {
-  cursor: pointer;
-  transition: all 0.25s var(--transition);
-}
-.ins-chart-clickable:hover {
-  border-color: var(--primary);
-  box-shadow: 0 4px 20px rgba(127, 86, 217, 0.08);
-}
-
-.chart-click-hint {
-  margin-inline-start: auto;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--primary);
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.ins-chart-clickable:hover .chart-click-hint {
-  opacity: 1;
-}
-
-.ins-chart-box {
-  padding: 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--card-bg);
-  overflow: hidden;
-}
-
-.ins-chart-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
-}
-
-.ins-missing-table {
-  padding: 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--card-bg);
-}
-
-.mini-tbl {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-.mini-tbl thead th {
-  padding: 8px 10px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-align: right;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.mini-tbl tbody tr {
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.mini-tbl tbody tr:hover { background: var(--border-subtle); }
-.mini-tbl tbody td {
-  padding: 8px 10px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text);
-}
-
-.ins-summary-card {
-  padding: 16px;
-  border: 1px solid rgba(201, 162, 39,0.15);
-  border-radius: 12px;
-  background: rgba(201, 162, 39,0.03);
-}
-
-.summary-bullets {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.summary-bullets li {
-  font-size: 13px;
-  color: var(--text-secondary);
-  padding-right: 16px;
-  position: relative;
-  line-height: 1.6;
-}
-.summary-bullets li::before {
-  content: '•';
-  position: absolute;
-  right: 0;
-  color: #8A6300;
-  font-weight: 700;
-}
-
-@media (max-width: 700px) {
-  .insights-kpi-row { grid-template-columns: repeat(2, 1fr); }
-  .insights-kpi-row .ins-kpi:last-child { grid-column: span 2; }
-  .insights-charts-row { grid-template-columns: 1fr; }
-}
-
-/* ── Segmented filter ── */
-.seg-filter {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 16px;
-}
-
-.seg-filter button {
-  padding: 8px 18px;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s var(--transition);
-  border-left: 1px solid var(--border);
-  white-space: nowrap;
-}
-.seg-filter button:first-child { border-left: none; }
-.seg-filter button b { font-weight: 800; margin-right: 3px; }
-.seg-filter button:hover { background: var(--border-subtle); }
-.seg-filter button.active {
-  background: var(--primary);
-  color: #fff;
-}
-
-/* ── Slice Filters (Company & Product) ── */
-.slice-filters {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
-}
-
-.slice-filter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.slice-filter label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.slice-filter select {
-  padding: 6px 28px 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-primary);
-  font-family: 'Heebo', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: left 8px center;
-  transition: all 0.2s;
-  min-width: 120px;
-}
-
-.slice-filter select:hover {
-  border-color: var(--primary);
-}
-
-.slice-filter select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
-  outline: none;
-}
-
-.slice-search {
-  flex: 1;
-  min-width: 200px;
-  max-width: 320px;
-}
-.search-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search-ico {
-  position: absolute;
-  right: 10px;
-  color: var(--text-secondary, #706e6b);
-  pointer-events: none;
-}
-.slice-search-input {
-  width: 100%;
-  padding: 6px 32px 6px 32px;
-  border: 1px solid var(--border-light, #dddbda);
-  border-radius: 8px;
-  background: var(--bg-card, #fff);
-  color: var(--text-primary, #080707);
-  font-family: 'Heebo', sans-serif;
-  font-size: 12px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.slice-search-input:focus {
-  border-color: var(--primary);
-}
-.search-clear {
-  position: absolute;
-  left: 8px;
-  background: none;
-  border: none;
-  color: var(--text-secondary, #706e6b);
-  cursor: pointer;
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.search-clear:hover {
-  color: var(--primary);
-}
-
-.slice-clear {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  border: 1px solid rgba(194, 57, 52, 0.3);
-  border-radius: 8px;
-  background: rgba(194, 57, 52, 0.06);
-  color: #C23934;
-  font-family: 'Heebo', sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.slice-clear:hover {
-  background: rgba(194, 57, 52, 0.12);
-}
-
-.slice-count {
-  font-size: 12px;
-  color: var(--primary);
-  font-weight: 700;
-}
-
-/* ── Table ── */
-.tbl-wrap { overflow-x: auto; }
-
-.tbl {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.tbl thead th {
-  padding: 10px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-align: right;
-  letter-spacing: 0.3px;
-  border-bottom: 1px solid var(--border-subtle);
-  white-space: nowrap;
-}
-.th-status { width: 28px; }
-
-.tbl-row {
-  cursor: pointer;
-  transition: all 0.15s var(--transition);
-}
-.tbl-row:hover { background: var(--border-subtle); }
-.tbl-row td {
-  padding: 10px 10px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text);
-}
-
-.row-found { border-right: 3px solid var(--accent-emerald); }
-.row-missing { border-right: 3px solid #8A6300; }
-
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-.dot-found { background: var(--accent-emerald); box-shadow: 0 0 6px var(--green-light); }
-.dot-missing { background: #8A6300; box-shadow: 0 0 6px rgba(201, 162, 39,0.2); }
-
-.td-name { font-weight: 600; white-space: nowrap; }
-.td-id { font-size: 12px; color: var(--text-muted); font-family: monospace; }
-.td-company, .td-product { font-size: 12px; color: var(--text-secondary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.prod-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  background: var(--green-light);
-  color: var(--accent-emerald);
-}
-.prod-badge-zero { background: rgba(201, 162, 39,0.08); color: #8A6300; }
-
-.td-premium { font-weight: 700; font-size: 12px; color: var(--primary); white-space: nowrap; }
-
-/* ── Pagination ── */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.pg {
-  min-width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.pg:hover:not(:disabled) { background: var(--border-subtle); }
-.pg.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-.pg:disabled { opacity: 0.3; cursor: not-allowed; }
-.pg-dots { color: var(--text-muted); font-size: 12px; padding: 0 4px; }
-.pg-info { font-size: 11px; color: var(--text-muted); margin-right: 8px; }
-
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1010;
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.modal-card {
-  width: 100%;
-  max-width: 580px;
-  max-height: 85vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
-}
-
-.modal-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 20px;
-  background: #F3F3F3;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  position: relative;
-}
-
-.modal-x {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-.modal-x:hover { background: var(--border-subtle); color: var(--text); }
-
-.modal-id-row {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-name { font-size: 16px; font-weight: 700; color: var(--text); }
-.modal-id-num { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-
-.modal-status-chip {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 12px;
-  border-radius: 20px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.chip-found { background: var(--green-light); color: var(--accent-emerald); }
-.chip-missing { background: rgba(201, 162, 39,0.08); color: #8A6300; }
-.chip-company { background: rgba(127,86,217,0.08); color: #7F56D9; }
-.chip-product { background: rgba(127,86,217,0.08); color: #7F56D9; }
-
-/* Modal sections */
-.modal-section {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-bottom: 12px;
-}
-
-.section-count {
-  background: var(--primary-glow);
-  color: var(--primary);
-  padding: 1px 7px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-/* Info grid (recruit data) */
-.info-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.info-cell {
-  flex: 1;
-  min-width: 100px;
-  padding: 10px 14px;
-  background: var(--border-subtle);
-  border-radius: 8px;
-}
-
-.info-lbl {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.info-val {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-/* Product table in modal */
-.prod-table-wrap {
-  overflow-x: auto;
-}
-
-.prod-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.prod-table thead th {
-  padding: 8px 10px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-align: right;
-  border-bottom: 1px solid var(--border-subtle);
-  letter-spacing: 0.3px;
-}
-
-.prod-table tbody tr {
-  transition: background 0.12s;
-}
-.prod-table tbody tr:hover { background: var(--border-subtle); }
-
-.prod-table tbody td {
-  padding: 9px 10px;
-  font-size: 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text);
-}
-
-.pt-product { font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pt-company { color: var(--text-secondary); font-size: 11px; }
-.pt-premium { font-weight: 700; color: var(--primary); white-space: nowrap; }
-
-.status-tag {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-.st-active { background: var(--green-light); color: var(--accent-emerald); }
-.st-frozen { background: rgba(127,86,217,0.06); color: var(--primary); }
-.st-cancelled { background: var(--red-light, rgba(194,57,52,0.06)); color: var(--red, #C23934); }
-
-.modal-total {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.modal-total strong { font-size: 16px; font-weight: 800; color: var(--primary); }
-
-.modal-empty {
-  text-align: center;
-  padding: 32px 20px;
-  color: var(--text-muted);
-}
-.modal-empty svg { margin-bottom: 12px; opacity: 0.4; }
-.modal-empty p { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
-.modal-empty span { font-size: 12px; }
-
-/* Modal transition */
-.modal-enter-active { animation: modalIn 0.2s ease-out; }
-.modal-leave-active { animation: modalIn 0.15s ease reverse; }
-@keyframes modalIn {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.ltr-number { direction: ltr; unicode-bidi: embed; display: inline-block; }
-
-/* ── Action buttons ── */
-.action-btns {
-  margin-inline-start: auto;
-  display: flex;
-  gap: 4px;
-}
-
-.action-icon-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  border: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.2s var(--transition);
-}
-.action-icon-btn:hover {
-  background: var(--primary-glow);
-  color: var(--primary);
-  border-color: rgba(127,86,217,0.2);
-}
-
-@media (max-width: 700px) {
-  .dashboard-row { flex-direction: column; }
-  .chart-box { flex: none; width: 100%; }
-  .kpi-row { width: 100%; }
-  .seg-filter { width: 100%; display: flex; }
-  .seg-filter button { flex: 1; }
-}
-
-/* ── Customer Status Column ── */
-.td-customer-status {
-  min-width: 140px;
-}
-
-.status-select-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
+.rr { display: flex; flex-direction: column; gap: 12px; }
+
+/* Head */
+.rr-head { display: flex; align-items: center; gap: 10px; }
+.rr-head h3 { margin: 0; font-size: 17px; font-weight: 800; color: var(--text); display: flex; align-items: baseline; gap: 8px; }
+.rr-head h3 small { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.rr-ghost {
+  margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border: 1px solid var(--border-subtle); border-radius: 10px;
+  background: var(--card-bg); font: inherit; font-size: 13px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.rr-ghost:hover { border-color: var(--tab-recruits); color: var(--tab-recruits-ink); transform: translateY(-1px); }
+
+/* KPI panel — one white panel, cards inside */
+.rr-kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;
+  padding: 10px; background: var(--card-bg); border: 1px solid var(--border-subtle);
+  border-radius: 14px; box-shadow: var(--shadow-sm);
+}
+.rr-kpi {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 12px 14px; min-height: 68px; border: 1px solid transparent; border-radius: 12px;
+  background: var(--bg); font: inherit; text-align: right; cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.rr-kpi:hover { background: var(--tab-recruits-wash); border-color: var(--tab-recruits); transform: translateY(-1px); }
+.rr-kpi:focus-visible { outline: 2px solid var(--tab-recruits-ink); outline-offset: 2px; }
+.rr-kpi-val { font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -0.4px; }
+.rr-kpi--lead .rr-kpi-val { color: var(--tab-recruits-ink); }
+.rr-kpi-lbl { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+
+/* Motion line icons: the strokes draw in once, and draw again on hover */
+.rr-ico { color: var(--tab-recruits-ink); margin-bottom: 2px; }
+.rr-ico > * { stroke-dasharray: 1; stroke-dashoffset: 1; animation: rrDraw 1.1s cubic-bezier(0.65, 0, 0.35, 1) 0.15s forwards; }
+.rr-ico > *:nth-child(2) { animation-delay: 0.35s; }
+.rr-ico > *:nth-child(3) { animation-delay: 0.55s; }
+.rr-ico > *:nth-child(4) { animation-delay: 0.7s; }
+.rr-kpi:hover .rr-ico > * { animation-name: rrDraw2; animation-delay: 0s; }
+.rr-kpi:hover .rr-ico > *:nth-child(2) { animation-delay: 0.12s; }
+.rr-kpi:hover .rr-ico > *:nth-child(3) { animation-delay: 0.24s; }
+.rr-kpi:hover .rr-ico > *:nth-child(4) { animation-delay: 0.32s; }
+@keyframes rrDraw { to { stroke-dashoffset: 0; } }
+@keyframes rrDraw2 { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+/* Charts */
+.rr-charts { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+.rr-charts:has(> .rr-chart:only-child) { grid-template-columns: 1fr; }
+.rr-chart {
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 14px;
+  box-shadow: var(--shadow-sm); padding: 14px 16px 6px; min-width: 0;
+}
+.rr-chart h4 { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }
+.rr-chart--click :deep(.apexcharts-bar-area) { cursor: pointer; }
+
+/* The list */
+.rr-list {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: 14px;
+  box-shadow: var(--shadow-sm); padding: 14px 16px;
+}
+.rr-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--border-subtle); }
+.rr-tabs button {
+  position: relative; padding: 8px 2px 10px; border: none; background: none; font: inherit;
+  font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+}
+.rr-tabs button .ltr-number { font-weight: 500; margin-inline-start: 4px; }
+.rr-tabs button.on { color: var(--tab-recruits-ink); }
+.rr-tabs button::after {
+  content: ''; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; border-radius: 2px;
+  background: var(--tab-recruits-ink); transform: scaleX(0); transition: transform 0.3s ease;
+}
+.rr-tabs button.on::after { transform: scaleX(1); }
+.rr-controls, .rd-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rr-search {
+  flex: 1 1 200px; display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 38px;
+  border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--card-bg); color: var(--text-muted);
+}
+.rr-search:focus-within { border-color: var(--tab-recruits); }
+.rr-search input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: 13.5px; color: var(--text); }
+.rr-select {
+  height: 38px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: 10px;
+  background: var(--card-bg); font: inherit; font-size: 13.5px; color: var(--text); cursor: pointer; max-width: 220px;
+}
+.rr-select:focus { outline: none; border-color: var(--tab-recruits); }
+
+.rr-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rr-tbl th {
+  text-align: right; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 8px 10px; border-bottom: 1px solid var(--border-subtle);
+}
+.rr-tbl td { padding: 9px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); vertical-align: middle; }
+.rr-num { text-align: center !important; }
+.rr-row { cursor: pointer; transition: background 0.15s ease; }
+.rr-row:hover { background: var(--tab-recruits-wash); }
+.rr-who { display: flex; flex-direction: column; }
+.rr-who strong { font-size: 14px; font-weight: 700; color: var(--text); }
+.rr-who small { font-size: 12px; color: var(--text-muted); align-self: flex-start; }
+.rr-pill {
+  display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+  background: var(--tab-recruits-wash); color: var(--tab-recruits-ink); white-space: nowrap;
+}
+.rr-pill--miss { background: var(--bg); color: var(--text-secondary); }
+.rr-none { margin: 6px 0; font-size: 13px; color: var(--text-muted); text-align: center; }
+
+.rr-pages { display: flex; justify-content: center; align-items: center; gap: 4px; padding-top: 4px; }
+.rr-pg {
+  min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--border-subtle); border-radius: 8px;
+  background: var(--card-bg); font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.rr-pg:disabled { opacity: 0.4; cursor: default; }
+.rr-pg.on { background: var(--tab-recruits-ink); border-color: var(--tab-recruits-ink); color: #fff; font-weight: 700; }
+.rr-pg-dots { color: var(--text-muted); padding: 0 4px; }
+
+/* Status select ("מה קרה") */
+.status-select-wrap { display: flex; flex-direction: column; gap: 6px; }
 .status-select {
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-primary);
-  font-family: 'Heebo', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: left 10px center;
-  padding-left: 28px;
+  height: 32px; padding: 0 10px; border: 1px solid var(--border-subtle); border-radius: 8px;
+  background: var(--card-bg); font: inherit; font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
 }
-
-.status-select:hover {
-  border-color: var(--primary);
-}
-
-.status-select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
-  outline: none;
-}
-
-.status-select.cs-moved {
-  background-color: rgba(201, 162, 39, 0.08);
-  border-color: rgba(201, 162, 39, 0.3);
-  color: #8A6300;
-}
-
-.status-select.cs-withdrew {
-  background-color: rgba(194, 57, 52, 0.08);
-  border-color: rgba(194, 57, 52, 0.3);
-  color: #C23934;
-}
-
-.status-select.cs-custom {
-  background-color: rgba(127, 86, 217, 0.08);
-  border-color: rgba(127, 86, 217, 0.3);
-  color: #7F56D9;
-}
-
+.status-select:focus { outline: none; border-color: var(--tab-recruits); }
+.status-select.cs-moved, .status-select.cs-custom { background: var(--tab-recruits-wash); border-color: transparent; color: var(--tab-recruits-ink); font-weight: 600; }
+.status-select.cs-withdrew { background: var(--red-light); border-color: transparent; color: var(--red); font-weight: 600; }
+.status-select-sm { height: 30px; font-size: 12px; }
 .status-custom-input {
-  padding: 6px 10px;
-  border: 1px solid var(--primary);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-primary);
-  font-family: 'Heebo', sans-serif;
-  font-size: 12px;
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(24, 24, 24, 0.15);
+  height: 32px; padding: 0 10px; border: 1px solid var(--tab-recruits); border-radius: 8px;
+  background: var(--card-bg); font: inherit; font-size: 12.5px; color: var(--text); outline: none;
+}
+.status-custom-input-sm { height: 30px; font-size: 12px; margin-top: 6px; width: 100%; }
+
+/* ── Drills ── */
+.rd { display: flex; flex-direction: column; gap: 12px; }
+.rd-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--border-subtle); border-radius: 14px; overflow: hidden; }
+.rd-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 16px; min-width: 0; }
+.rd-cell + .rd-cell { border-inline-start: 1px solid var(--border-subtle); }
+.rd-lbl { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.rd-val { font-size: 21px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+.rd-val--sm { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.rd-cell--lead .rd-val { color: var(--tab-recruits-ink); }
+.rd-link { border: none; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--tab-recruits-ink); cursor: pointer; padding: 6px 2px; }
+.rd-link:hover { text-decoration: underline; }
+.rd-more {
+  align-self: center; padding: 8px 16px; border: 1px solid var(--border-subtle); border-radius: 10px;
+  background: var(--card-bg); font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+}
+.rd-actions {
+  position: sticky; bottom: -1px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 4px -20px -16px; padding: 12px 20px; background: var(--card-bg);
+  border-top: 1px solid var(--border-subtle); border-radius: 0 0 16px 16px;
+}
+.rd-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px;
+  border: 1px solid var(--border-subtle); background: var(--card-bg); font: inherit; font-size: 13.5px; font-weight: 600;
+  color: var(--text-secondary); cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.rd-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.rd-btn:disabled { opacity: 0.5; cursor: default; }
+.rd-btn--primary {
+  background: var(--tab-recruits-ink); border-color: var(--tab-recruits-ink); color: #fff;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-recruits-ink) 30%, transparent);
 }
 
-.status-found-label {
-  font-size: 12px;
-  color: #2E844A;
-  font-weight: 600;
+/* One recruit */
+.rd-sec { margin: 4px 0 0; font-size: 13px; font-weight: 700; color: var(--text); display: flex; gap: 6px; align-items: baseline; }
+.rd-sec .ltr-number { color: var(--text-muted); font-weight: 500; }
+.rd-prods { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rd-prods li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 90px; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 12px;
 }
+.rd-prod-name { display: flex; flex-direction: column; font-size: 13.5px; font-weight: 600; color: var(--text); min-width: 0; }
+.rd-prod-name small { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.rd-prod-amt { font-size: 14px; font-weight: 700; color: var(--text); text-align: left; }
+.rd-st { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--bg); color: var(--text-secondary); }
+.rd-st.st-active { background: var(--tab-recruits-wash); color: var(--tab-recruits-ink); }
+.rd-st.st-cancelled { background: var(--red-light); color: var(--red); }
+.rd-total { margin: 0; display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 0 4px; }
+.rd-total strong { font-size: 15px; color: var(--text); }
+.rd-missing { display: flex; flex-direction: column; gap: 10px; }
+.rd-missing p { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.rd-status { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); }
+.rd-status .status-select { flex: 1; }
 
-.modal-status-edit {
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
+@media (max-width: 900px) {
+  .rr-charts { grid-template-columns: 1fr; }
 }
-
-.modal-status-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
+@media (max-width: 640px) {
+  .rr-tbl th:nth-child(2), .rr-tbl td:nth-child(2), .rr-tbl th:nth-child(3), .rr-tbl td:nth-child(3) { display: none; }
+  .rr-list { padding: 12px; }
+  .rd-strip { grid-auto-flow: row; }
+  .rd-cell + .rd-cell { border-inline-start: none; border-top: 1px solid var(--border-subtle); }
+  .rr-select { max-width: none; flex: 1 1 140px; }
 }
-
-.modal-status-edit .status-select {
-  width: 220px;
-  font-size: 13px;
-  padding: 8px 12px;
-}
-
-.modal-status-edit .status-custom-input {
-  width: 220px;
-  font-size: 13px;
-  padding: 8px 12px;
-}
-
-/* ── Missing Modal ── */
-.missing-modal-card {
-  max-width: 800px;
-  width: 95vw;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.mm-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--input-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  color: var(--text-muted);
-}
-
-.mm-filters {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 10px; flex-wrap: wrap;
-}
-.mm-filter-select {
-  padding: 5px 10px; border-radius: 8px; font-size: 12px;
-  font-family: inherit; border: 1px solid var(--border-subtle);
-  background: var(--input-bg); color: var(--text-primary);
-  cursor: pointer; min-width: 100px;
-}
-.mm-filter-count {
-  font-size: 11px; color: var(--text-muted); margin-right: auto;
-}
-
-.mm-search {
-  border: none;
-  background: transparent;
-  outline: none;
-  font-family: 'Heebo', sans-serif;
-  font-size: 13px;
-  color: var(--text-primary);
-  width: 100%;
-}
-
-.mm-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.mm-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-secondary);
-  font-family: 'Heebo', sans-serif;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.mm-action-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(15, 163, 155, 0.06);
-}
-
-.mm-table-wrap {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-}
-
-.mm-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.mm-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.mm-table th {
-  background: var(--header-bg);
-  padding: 10px 12px;
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--text-muted);
-  text-align: right;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.mm-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-}
-
-.mm-row {
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.mm-row:hover {
-  background: rgba(15, 163, 155, 0.04);
-}
-
-.mm-row-selected {
-  background: rgba(15, 163, 155, 0.08);
-}
-.mm-row-selected:hover {
-  background: rgba(15, 163, 155, 0.12);
-}
-
-.th-check,
-.td-check {
-  width: 36px;
-  padding: 6px 8px !important;
-  text-align: center;
-}
-.mm-checkbox {
-  cursor: pointer;
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-}
-.mm-action-primary {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary) !important;
-}
-.mm-action-primary:hover:not(:disabled) {
-  background: var(--primary-deep);
-  border-color: var(--primary-deep) !important;
-}
-.mm-action-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ── Drill-Down Modal Summary ── */
-.drill-summary {
-  display: flex;
-  gap: 12px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.drill-stat {
-  flex: 1;
-  text-align: center;
-  padding: 10px 8px;
-  border-radius: 10px;
-  background: var(--border-subtle);
-}
-
-.drill-stat-val {
-  display: block;
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--accent-emerald);
-  letter-spacing: -0.5px;
-}
-
-.drill-stat-missing { color: #8A6300; }
-.drill-stat-premium { color: var(--primary); font-size: 16px; }
-
-.drill-stat-lbl {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.status-select-sm {
-  padding: 4px 8px;
-  font-size: 11px;
-  padding-left: 22px;
-}
-
-.status-custom-input-sm {
-  padding: 4px 8px;
-  font-size: 11px;
-  width: 100%;
-  margin-top: 4px;
+@media (prefers-reduced-motion: reduce) {
+  .rr-ico > * { animation: none !important; stroke-dashoffset: 0; }
+  .rr-kpi, .rr-ghost { transition: none; }
 }
 </style>
