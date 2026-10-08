@@ -25,6 +25,7 @@ from app.services.portal_automation.companies.harel import HarelPortal
 from app.services.portal_automation.companies.harel_commissions import HarelCommissionsPortal
 from app.services.portal_automation.companies.harel_savings import HarelSavingsPortal
 from app.services.portal_automation.companies.yelin import YelinPortal
+from app.services.portal_automation.companies.harbituach import HarBituachPortal
 from app.services.portal_automation.companies.meitav import MeitavPortal
 from app.services.portal_automation.companies.analyst import AnalystPortal
 
@@ -50,6 +51,8 @@ REGISTRY: dict[str, type[BasePortalAutomation]] = {
     "harel_commissions": HarelCommissionsPortal,
     "harel_savings": HarelSavingsPortal,
     "yelin": YelinPortal,
+    # not an insurer — on-demand customer portfolio (Nifra Agent → harb_requests), never the cycle
+    "harbituach": HarBituachPortal,
     "meitav": MeitavPortal,
     "analyst": AnalystPortal,
 }
@@ -80,6 +83,7 @@ PORTAL_LABELS: dict[str, str] = {
     "harel_commissions": "הראל — ריכוז תשלומי עמלות",
     "harel_savings": "הראל — מוצרי צבירה (פרודוקציה)",
     "yelin": "ילין לפידות — עמלות (נפרעים)",
+    "harbituach": "הר הביטוח — תיק ביטוחי ללקוח",
     "meitav": "מיטב דש — דוח עמלות לסוכן (נפרעים)",
     "analyst": "אנליסט — עמלות סוכנים (נפרעים)",
     "phoenix_terminal": "הפניקס — טרמינל (פרודוקציה)",
@@ -118,6 +122,7 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
     "excellence":           ("אקסלנס", "פרודוקציה", ""),
     "mor":                  ("מור", "נפרעים", "https://join.more.co.il/agentsportal/agents/login"),
     "yelin":                ("ילין לפידות", "נפרעים", "https://online.yl-invest.co.il/agents/"),
+    "harbituach":           ("הר הביטוח", "פוליסות", "https://harb.cma.gov.il/"),
     "meitav":               ("מיטב דש", "נפרעים", "https://customers.meitav.co.il/v2/login/LoginAgent"),
     "analyst":              ("אנליסט", "נפרעים", "https://agent.analyst.co.il/auth/login"),
     "ayalon":               ("איילון", "פרודוקציה", ""),
@@ -147,6 +152,14 @@ PORTAL_META: dict[str, tuple[str, str, str]] = {
 # INVARIANT: the field order here must match `mor.py::_split`. Change one, change
 # the other.
 PORTAL_LOGIN_FIELDS: dict[str, list[dict]] = {
+    # login.gov.il (הזדהות לאומית): ת"ז of the agent + their gov password; the SMS goes to their phone
+    "harbituach": [
+        {"key": "identity", "label": "תעודת זהות", "placeholder": "9 ספרות — של הסוכן המורשה",
+         "type": "text", "target": "username", "secret": False, "required": True},
+        {"key": "password", "label": "סיסמה (הזדהות לאומית)", "placeholder": "",
+         "type": "password", "target": "password", "secret": True, "required": True,
+         "hint": "קוד ה-SMS מגיע לטלפון שלך ונקלט אוטומטית דרך אפליקציית Nifraim"},
+    ],
     "mor": [
         {"key": "license", "label": "מספר רשיון", "placeholder": "מספר רשיון הסוכן",
          "type": "text", "target": "username", "secret": False, "required": True},
@@ -166,6 +179,11 @@ PORTAL_LOGIN_FIELDS: dict[str, list[dict]] = {
          "hint": "אנליסט שולחת את קוד האימות ב-SMS למספר הזה"},
     ],
 }
+
+# Portals that are NOT an insurer the agent sells through: never a cycle company, never an
+# agreement/production company, never counted as "the agent's portals". הר הביטוח is fetched per
+# customer from Nifra (services/policies). Filter on this wherever credentials are counted.
+NON_INSURER_PORTALS: frozenset[str] = frozenset({"harbituach"})
 
 # The pair every other portal uses.
 DEFAULT_LOGIN_FIELDS: list[dict] = [

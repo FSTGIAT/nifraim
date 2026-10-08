@@ -11,6 +11,7 @@ PortalKind = Literal[
     "ayalon", "clal_health", "harel", "harel_commissions", "harel_savings",
     "yelin", "meitav", "analyst",
     "phoenix_terminal",
+    "harbituach",
 ]
 
 ScheduleKind = Literal["manual", "daily", "weekly", "monthly"]

@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 
 REMIND_AFTER = timedelta(days=7)
 FOLLOW_WINDOW = timedelta(days=60)
-INACTIVE_MARKERS = ("לא פעיל", "מבוטל", "בוטל", "סגור", "הסתיים")
+# A cancelled / closed policy has nothing to collect. "לא פעיל" is NOT here: an
+# inactive fund still holds a balance the insurer pays נפרעים on, and QA
+# 2026-10-08 was explicit — status never hides an unpaid product.
+INACTIVE_MARKERS = ("מבוטל", "בוטל", "סגור", "הסתיים")
 
 
 def _key(name: str) -> str:

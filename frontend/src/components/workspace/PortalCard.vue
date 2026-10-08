@@ -66,8 +66,10 @@
     <!-- ─── ACTIONS ─────────────────────────────────────────── -->
     <footer class="pcard__actions">
       <!-- Monthly cycle: agents never run by hand — support (admin) only. -->
+      <!-- הר הביטוח is fetched per customer from Nifra ("תביא לי מהר הביטוח…"), never run by hand -->
+      <span v-if="cred.portal_kind === 'harbituach'" class="pcard__note">מופעל מתוך Nifra</span>
       <button
-        v-if="canRunManually"
+        v-else-if="canRunManually"
         class="pcard__run"
         type="button"
         :disabled="isRunning"
@@ -379,6 +381,7 @@ const cardVars = computed(() => {
   gap: 8px;
   margin-top: auto;
 }
+.pcard__note { font-size: 12px; font-weight: 600; color: var(--text-secondary, #5A6270); }
 .pcard__run {
   display: inline-flex;
   align-items: center;

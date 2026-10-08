@@ -29,9 +29,9 @@
          nothing to earn on — so the comparison lists them apart (QA
          2026-10-01). One quiet line, opens the same customer list. -->
     <button v-if="props.noValueCustomers.length" type="button" class="kpi-novalue"
-            @click="openFilterModal('קופות ריקות או לא פעילות', props.noValueCustomers, $event.currentTarget)">
+            @click="openFilterModal('קופות ריקות', props.noValueCustomers, $event.currentTarget)">
       <span class="ltr-number">{{ props.noValueCustomers.length }}</span>
-      לקוחות עם קופות ריקות או לא פעילות — אין עליהן עמלה, לא נספרו כ"לא שולם"
+      לקוחות עם קופות ריקות (₪0 צבירה) או פנסיה במור — אין עליהן עמלה, לא נספרו כ"לא שולם"
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>
     </button>

@@ -613,6 +613,7 @@ async def _run_inner(
         plugin.cred_last_run_stage = None
 
     password = decrypt(cred.encrypted_password)
+    is_harb = cred.portal_kind == "harbituach"   # on-demand הר הביטוח: per-customer queue, own ingest
 
     download_dir = DOWNLOAD_ROOT / str(run.id)
     screenshot_path = SCREENSHOT_ROOT / f"{run.id}.png"
@@ -825,9 +826,10 @@ async def _run_inner(
             # succeeds, and a full run cannot succeed until the download stage is
             # fixed — which needs getting past login. Stage-aware breaks it.
             _last_stage = None
+            _last_err = ""
             try:
                 _lr = (await db.execute(
-                    select(PortalRun.status, PortalRun.stage)
+                    select(PortalRun.status, PortalRun.stage, PortalRun.error_message)
                     .where(PortalRun.credential_id == cred.id,
                            PortalRun.id != run.id,
                            PortalRun.finished_at.is_not(None))
@@ -835,6 +837,7 @@ async def _run_inner(
                 )).first()
                 if _lr:
                     _last_stage = (_lr[0], _lr[1])      # (status, stage)
+                    _last_err = _lr[2] or ""
             except Exception as _e:
                 logger.warning("could not read last run stage for %s: %s",
                                cred.portal_kind, _e)
@@ -869,7 +872,18 @@ async def _run_inner(
                         "profile (recycle_profile_on_login_failure=False)",
                         cred.portal_kind)
                     _last_failed = False
-            if (profile_was_cold or _last_failed) and profile_dir.exists():
+            # A keep-profile plugin (recycle_profile_on_login_failure=False) keeps it COLD too: "no
+            # success ever recorded" is exactly its state until the reputation is built, so wiping
+            # it there is a deadlock — measured 2026-10-07, הר הביטוח (login.gov.il): every run
+            # "recycled browser profile (no success ever recorded on it)" → COLD → no SMS, forever,
+            # while the same flow on a KEPT profile got the SMS.
+            _keeps = not getattr(plugin, "recycle_profile_on_login_failure", True)
+            # …except when the site's bot wall itself answered the login (הר הביטוח: login.gov.il's
+            # "Radware Page", 3/3 runs on one worker 2026-10-08): that profile is flagged, so even a
+            # keep-profile plugin starts the next run on a clean one.
+            if _keeps and "Radware" in _last_err and profile_dir.exists():
+                _keeps, _last_failed = False, True
+            if (profile_was_cold or _last_failed) and profile_dir.exists() and not _keeps:
                 import shutil as _sh
                 _why = ("no success ever recorded on it" if profile_was_cold
                         else "last run on it was rejected")
@@ -988,7 +1002,9 @@ async def _run_inner(
                     logger.warning("could not mark %s profile warm: %s",
                                    cred.portal_kind, _e)
 
-            if plugin.requires_otp:
+            # a plugin whose login found a still-live session (הר הביטוח's persistent profile) sets
+            # otp_not_needed — no SMS was sent, so don't wait 5 minutes for one
+            if plugin.requires_otp and not getattr(plugin, "otp_not_needed", False):
                 await _set_status(db, run, status="awaiting_otp", stage="otp")
                 otp = await _wait_for_otp(
                     db, run, cred.user_id, otp_since, portal_kind=cred.portal_kind,
@@ -1054,6 +1070,32 @@ async def _run_inner(
                 dl_kwargs["otp_provider"] = _request_otp_mid_download
             if "password" in _dl_params or _accepts_kw:
                 dl_kwargs["password"] = password
+            if is_harb:
+                # הר הביטוח is never production/נפרעים: the plugin drains the user's request queue
+                # in this one login, each customer ingested by harb_done as soon as it's fetched.
+                from app.services.policies import harb_jobs, harb_ingest
+
+                async def _harb_next():
+                    await _raise_if_cancelled(db, run)
+                    return await harb_jobs.claim_next(db, run)
+
+                async def _harb_done(req, xlsx=None, details=None, error=None, not_found=False):
+                    if error:
+                        await harb_jobs.fail_request(db, req, error, not_found=not_found)
+                        return 0
+                    try:
+                        return await harb_ingest.ingest(db, req, xlsx, details)
+                    except Exception as e:  # noqa: BLE001 — one customer's bad file never fails the queue
+                        logger.exception("harb: ingest failed for request %s", req.id)
+                        await db.rollback()
+                        await harb_jobs.fail_request(db, req, f"קריאת הקובץ מהר הביטוח נכשלה: {e}")
+                        return 0
+
+                files = await plugin.download_reports(page, download_dir, harb_next=_harb_next,
+                                                      harb_done=_harb_done, **dl_kwargs)
+                run.downloaded_filename = (files[0].name if files else None)
+                await _set_status(db, run, status="success", stage="done", finished=True)
+                return []
             files = await plugin.download_reports(page, download_dir, **dl_kwargs)
             if not files:
                 raise RuntimeError("Plugin returned no downloaded files")
@@ -1397,6 +1439,9 @@ async def run_automation(run_id: uuid.UUID) -> None:
             cred.last_run_at = datetime.utcnow()
             await _mirror_to_folded(db, cred)
             await db.commit()
+            if cred.portal_kind == "harbituach":
+                from app.services.policies.harb_jobs import finalize
+                await finalize(db, run)
 
 
 async def _mirror_to_folded(db, cred: PortalCredential) -> None:

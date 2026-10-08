@@ -122,8 +122,20 @@ export const COMPANY_BRAND = {
 
 const FALLBACK = { label: '?', color: '#6B7280', iconPath: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 5v6M12 17h.01' }
 
+// Portals that are NOT insurers (no contact address, no chart colour, never matched by label).
+// Kept out of COMPANY_BRAND on purpose: that map's order seeds chart colours and its labels are
+// substring-matched against company names.
+const NON_INSURER_BRAND = {
+  harbituach: {
+    label: 'הר הביטוח',
+    color: '#2C5F6B',
+    // Shield (the customer's whole insurance file)
+    iconPath: 'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3ZM9 12l2 2 4-4',
+  },
+}
+
 export function brandFor(portalKind) {
-  return COMPANY_BRAND[portalKind] || FALLBACK
+  return COMPANY_BRAND[portalKind] || NON_INSURER_BRAND[portalKind] || FALLBACK
 }
 
 /** Look up brand from a Hebrew company label (file_uploads.company_source).

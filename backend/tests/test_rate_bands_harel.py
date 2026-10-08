@@ -185,3 +185,27 @@ def test_pension_with_pension_line_uses_it():
     assert approx(rate, 0.004)
     rate, *_ = rate_for_product(MENORA, "מנורה מבטחים", "מבטחים יותר", None, 0, 0)
     assert approx(rate, 0.004)                                 # not dropped by the insurance floor
+
+
+# QA 2026-10-08 item 4: an agreement with no ביטוח מנהלים line gives נתון חסר,
+# never the company median of its gemel / מגוון lines.
+HAREL_SAVINGS = (
+    _rows("הראל פנסיה וגמל", "קופת גמל לחיסכון / קרנות השתלמות", [(0.0028, "single", None)])
+    + _rows("הראל פנסיה וגמל", "פוליסות מסוג מגוון השקעות פרט", [(0.0036, "single", None)])
+    + _rows("הראל פנסיה וגמל", "פוליסת חסכון מסוג מגוון השקעות נחל", [(0.0032, "single", None)])
+)
+
+
+def test_managers_without_agreement_line_is_missing():
+    from app.services.rate_select import select_rate
+    rate, route = select_rate(HAREL_SAVINGS, 'הראל חברה לביטוח בע"מ',
+                              "הראל - מנהלים", "ביטוח מנהלים", True)
+    assert rate == 0.0 and route.endswith(":no_managers_line")
+
+
+def test_managers_line_in_agreement_still_prices():
+    from app.services.rate_select import select_rate
+    rows = HAREL_SAVINGS + _rows("הראל", "ביטוח מנהלים", [(0.0025, "single", None)])
+    rate, route = select_rate(rows, 'הראל חברה לביטוח בע"מ',
+                              "הראל - מנהלים", "ביטוח מנהלים", True)
+    assert rate == 0.0025 and route.endswith(":product")

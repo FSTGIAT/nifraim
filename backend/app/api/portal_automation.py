@@ -78,6 +78,7 @@ OTP_REGEX = re.compile(r"\b(\d{4,8})\b")
 # dropped as "unknown token". Strip anything that can't be in a real token so
 # such copy-paste corruption still resolves to the correct user.
 _TOKEN_INVALID_RE = re.compile(r"[^A-Za-z0-9_-]")
+_DIAG_ITEM_RE = re.compile(r"\d{2}:\d{2}\|\d{1,6}s(\|(?:[a-z]{1,8}|\d{3})){1,4}")  # calls-diag trail item, no numbers/names
 
 
 def _clean_token(token: str) -> str:
@@ -260,7 +261,7 @@ def _run_to_out(r: PortalRun) -> PortalRunOut:
 
 # Note: the dead-end Ericom `phoenix` terminal is intentionally NOT listed — its
 # real production path is `phoenix_terminal`.
-IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "mor", "altshuler", "yelin", "meitav", "analyst", "hachshara"}
+IMPLEMENTED_PORTALS = {"phoenix_nifraim", "phoenix_nifraim_gemel", "phoenix_sfe", "phoenix_terminal", "migdal", "migdal_apm", "menora", "menora_nifraim", "clal", "clal_nifraim", "harel_commissions", "harel_savings", "mor", "altshuler", "yelin", "meitav", "analyst", "hachshara", "harbituach"}
 
 
 @router.get("/portal-kinds")
@@ -1024,10 +1025,28 @@ def _build_phone_forward_url(token: str | None, request: Request | None = None) 
 async def get_my_phone_forward(
     request: Request,
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    # last_seen = the phone's latest real delivery (forwarded SMS or uploaded call) —
+    # the settings card shows "מחובר" + this instead of re-running the setup wizard.
+    # The site's own test button writes from_number="phone-forward-test", so it never counts.
+    last_seen = None
+    if user.phone_forward_token:
+        from app.models.call_recording import CallRecording
+        sms = (await db.execute(
+            select(func.max(OtpInbox.received_at))
+            .where(OtpInbox.user_id == user.id, OtpInbox.from_number == "phone-forward")
+        )).scalar()
+        call = (await db.execute(
+            select(func.max(CallRecording.created_at))
+            .where(CallRecording.user_id == user.id, CallRecording.source.in_(("phone_android", "phone_ios")))
+        )).scalar()
+        seen = max((t for t in (sms, call) if t), default=None)
+        last_seen = seen.isoformat() + "Z" if seen else None
     return {
         "token": user.phone_forward_token,
         "url": _build_phone_forward_url(user.phone_forward_token, request),
+        "last_seen": last_seen,
     }
 
 
@@ -1206,7 +1225,15 @@ async def phone_forward_calls_diag(token: str, request: Request, db: AsyncSessio
         data = _json.loads((await request.body())[:4000] or b"{}")
     except Exception:  # noqa: BLE001
         data = {}
+    if not isinstance(data, dict):
+        data = {}
     keep = {k: data[k] for k in list(data)[:24] if isinstance(data.get(k), (int, float, bool, str)) and len(str(data[k])) < 60}
+    # app 1.6+: per-recording trail "14:40|95s|log|cust|200" and connected calls with no recording
+    # "14:40|95s|out" — times, lengths and verdicts only; anything shaped otherwise is dropped
+    for k in ("trail", "calls_without_recording"):
+        v = data.get(k)
+        if isinstance(v, list):
+            keep[k] = [x for x in v[:30] if isinstance(x, str) and _DIAG_ITEM_RE.fullmatch(x)]
     logger.warning("CALLS-DIAG %s %s", user.email, _json.dumps(keep, ensure_ascii=False, sort_keys=True))
     return {"ok": True}
 

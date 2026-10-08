@@ -155,6 +155,35 @@ object Prefs {
     fun getClientsVersion(ctx: Context): String = sp(ctx).getString(KEY_CLIENTS_VERSION, "") ?: ""
     fun setClientsVersion(ctx: Context, v: String) = sp(ctx).edit { putString(KEY_CLIENTS_VERSION, v) }
 
+    // ── the decision trail: what happened to each recording (NO numbers) — sent with calls-diag
+    //    so "where is my 14:40 call?" is answered from the server logs ──
+    private const val KEY_TRAIL = "calls_trail"               // JSON object mediaId → {t,dur,m,d,u}
+
+    private fun getTrail(ctx: Context): org.json.JSONObject =
+        try { org.json.JSONObject(sp(ctx).getString(KEY_TRAIL, "{}") ?: "{}") } catch (_: Exception) { org.json.JSONObject() }
+
+    /** Merge fields into one recording's trail entry. Keeps the last 24h, at most 40 entries. */
+    fun trail(ctx: Context, mediaId: Long, vararg kv: Pair<String, Any>) {
+        if (mediaId < 0) return
+        val all = getTrail(ctx)
+        val e = all.optJSONObject(mediaId.toString()) ?: org.json.JSONObject()
+        for ((k, v) in kv) e.put(k, v)
+        all.put(mediaId.toString(), e)
+        val now = System.currentTimeMillis()
+        val keys = all.keys().asSequence().toList()
+            .filter { now - all.getJSONObject(it).optLong("t", now) < 24 * 60 * 60 * 1000L }
+            .sortedByDescending { all.getJSONObject(it).optLong("t") }.take(40)
+        val keep = org.json.JSONObject()
+        for (k in keys) keep.put(k, all.getJSONObject(k))
+        sp(ctx).edit { putString(KEY_TRAIL, keep.toString()) }
+    }
+
+    /** Entries newest first: (time ms, entry). */
+    fun trailEntries(ctx: Context): List<org.json.JSONObject> {
+        val all = getTrail(ctx)
+        return all.keys().asSequence().map { all.getJSONObject(it) }.sortedByDescending { it.optLong("t") }.toList()
+    }
+
     // ── never-upload numbers (hashes) — their recordings never leave the phone ──
     private const val KEY_BLOCK_HASHES = "calls_block_hashes"
     fun getBlockHashes(ctx: Context): Set<String> = sp(ctx).getStringSet(KEY_BLOCK_HASHES, emptySet()) ?: emptySet()

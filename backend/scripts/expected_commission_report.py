@@ -46,13 +46,15 @@ from app.services.rate_select import (  # noqa: E402
 class _Rate:
     """Duck-type of a CommissionRate row — rate_select only reads attributes."""
 
-    __slots__ = ("company_name", "product", "rate", "rate_kind")
+    __slots__ = ("company_name", "product", "rate", "rate_kind", "source_document_id")
 
-    def __init__(self, company_name, product, rate, rate_kind):
+    def __init__(self, company_name, product, rate, rate_kind, source_document_id=None):
         self.company_name = company_name
         self.product = product
         self.rate = rate
         self.rate_kind = rate_kind
+        # Provenance: pension is priced only from agreement-backed lines.
+        self.source_document_id = source_document_id
 
 
 def _db_url() -> str:
@@ -112,12 +114,12 @@ async def collect(out_path: str | None) -> None:
 
         for up in uploads:
             rate_rows = await conn.fetch(
-                "select company_name, product, rate, rate_kind "
+                "select company_name, product, rate, rate_kind, source_document_id "
                 "from commission_rates where user_id = $1",
                 up["user_id"],
             )
             rates = [
-                _Rate(r["company_name"], r["product"], r["rate"], r["rate_kind"])
+                _Rate(r["company_name"], r["product"], r["rate"], r["rate_kind"], r["source_document_id"])
                 for r in rate_rows
             ]
             recs = await conn.fetch(

@@ -193,7 +193,7 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
     except Exception:  # noqa: BLE001 — name detection must never break the answer
         ctx.named_customer = None
     r = router.route(question) if (allow_fast and fresh) else None
-    if r and ctx.named_customer and r.intent not in ("customer_name", "customer", "record_call", "stop_call"):
+    if r and ctx.named_customer and r.intent not in ("customer_name", "customer", "record_call", "stop_call", "harb_fetch"):
         r = None        # e.g. "unpaid" matched a keyword, but the question is about ONE named customer
     if r:
         try:
@@ -210,7 +210,9 @@ async def run(db, user, question: str, history: list[dict] | None = None, mentio
                      ([{"proposal": out["proposal"]}] if out.get("proposal") else [])
             for ev in events:
                 yield ev
-            if not out.get("proposal"):      # an instruction ("record") must never replay from cache
+            # an instruction ("record") must never replay from cache, nor a הר הביטוח gate answer —
+            # "worker offline" is live state (measured: it replayed after the worker came back)
+            if not out.get("proposal") and r.intent != "harb_fetch":
                 cache.put(uid, version, akey, events, ttl=ANSWER_TTL)
             ms = (time.monotonic() - t0) * 1000
             yield {"done": True, "lane": "fast", "intent": r.intent, "ms": int(ms)}
@@ -385,6 +387,10 @@ def proposal_line(p: dict, own_email: str = "") -> str:
         return "מקליט" + (f" את השיחה {p['about']}" if p.get("about") else "") + ". כשתסיימו — לחצו עצור או כתבו 'עצור', והסיכום יגיע לכאן."
     if p.get("kind") == "stop_call":
         return "עצרתי — ההקלטה נשלחה לתמלול וסיכום. אעדכן כאן כשהסיכום מוכן."
+    if p.get("kind") == "harb":
+        who = p.get("customer_name") or "ת.ז " + p["customer_id_number"]
+        return (f"הכנתי שליפה מהר הביטוח ל{who} (ת. לידה {p['birth_date']}, הנפקה {p['issue_date']}). "
+                "אשר — והעובד יתחבר, הקוד יגיע לבד, והתיק הביטוחי יגיע לכאן.")
     if p.get("kind") == "maslaka":
         return f"הכנתי בקשת {p['code']} ({p['code_he']}) ל{p.get('customer_name') or 'ת.ז ' + p['customer_id_number']}. מחכה לאישור שלך."
     if p.get("kind") == "collection":

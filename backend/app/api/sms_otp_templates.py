@@ -21,6 +21,12 @@ router = APIRouter()
 # replace/refine them with real pasted SMS examples. `is_block=True` rows DROP a
 # code-bearing SMS even though fail-open would otherwise forward it.
 DEFAULT_SMS_OTP_TEMPLATES = [
+    # הר הביטוח logs in through the GOVERNMENT identity service (login.gov.il), so its SMS names
+    # no insurer — real wording 2026-10-07: "קוד האימות הוא 835735 להמשך התהליך במערכת ההזדהות
+    # הלאומית". Tagged so an insurer run never takes it (and the harbituach run never takes theirs).
+    {"company_name": "הר הביטוח", "portal_kind": "harbituach",
+     "pattern": r"\d{4,8}.*(ההזדהות הלאומית|הזדהות לאומית|login\.gov)|(ההזדהות הלאומית|הזדהות לאומית).*\d{4,8}",
+     "example": "קוד האימות הוא 835735 להמשך התהליך במערכת ההזדהות הלאומית"},
     # Migdal OTP says "פורטל apmaccess", NOT "מגדל" — anchor on apmaccess.
     {"company_name": "מגדל", "portal_kind": "migdal", "pattern": r"(מגדל|migdal|apmaccess).*\d{4,8}",
      "example": "שלום, סיסמת הכניסה לפורטל apmaccess היא 055543"},

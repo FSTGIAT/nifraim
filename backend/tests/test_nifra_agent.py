@@ -206,12 +206,53 @@ def test_fund_matcher():
     check(category_for_product("קופת גמל לתגמולים ופיצויים") == "gemel", "category: גמל")
 
 
+def test_policies_routing():
+    """הר הביטוח / policies: the fetch verb is an action ONLY toward הר הביטוח, and policy
+    questions never take the customer-card fast lane (the card has no policies)."""
+    from app.services.office_agent import wants_action
+    print("policies routing")
+    for q in ("תביא לי מהר הביטוח 203717186 22/05/1986 10/03/2004", "תבדוק בהר הביטוח את 32489387"):
+        check(wants_action(q, []), f"«{q}» allows actions")
+    for q in ("תביא לי את הלקוחות הגדולים", "מה יש לו בהר הביטוח"):
+        check(not wants_action(q, []), f"«{q}» is a question, not an action")
+    check(wants_action("22/05/1986 10/03/2004", [{"role": "user", "text": "תביא לי מהר הביטוח 203717186"}]),
+          "dates answering the agent's question keep the action alive")
+    for q in ("אילו פוליסות בתוקף יש ללקוח 203717186?", "האם 32489387 מכוסה בסיעוד", "תביא לי מהר הביטוח 203717186"):
+        check(router.route(q) is None, f"«{q}» → agent lane")
+    check(router.route("מי הלקוחות עם הכי הרבה פוליסות").intent == "top", "«הכי הרבה פוליסות» stays fast (top)")
+    names = {t["name"] for t in registry.anthropic_tools()}
+    check({"propose_harb_fetch", "customer_policies", "search_policies", "get_policy_document"} <= names,
+          "the four policy tools are registered")
+
+
+async def test_policies_privacy():
+    """User B never sees user A's policies, and a proposal is never drawn without its gates."""
+    print("policies privacy")
+    async with async_session() as db:
+        b = await _user(db, B_EMAIL)
+        if not b:
+            print("  skip — no user B")
+            return
+        ctx = ToolContext(db=db, user=b)
+        out = str(await registry.dispatch(ctx, "customer_policies", {"id_number": "203717186"}))
+        check('"found": false' in out and "עמיקם" not in out, "B's customer_policies on A's customer → nothing")
+        out = str(await registry.dispatch(ctx, "search_policies", {"query": "ביטוח סיעודי הראל"}))
+        check("301611265" not in out and "עמיקם" not in out, "B's search_policies never returns A's passages")
+        await registry.dispatch(ctx, "propose_harb_fetch", {"id_number": "203717186", "birth_date": "22/05/1986",
+                                                            "issue_date": "10/03/2004"})
+        check(not ctx.proposals, "no credential/worker for B → no הר הביטוח proposal")
+
+
 def main():
     test_registry()
+    test_policies_routing()
     test_router()
     test_fund_matcher()
     test_calls_routing()
-    asyncio.run(test_privacy_and_parity())
+    async def _db_tests():   # one event loop — the async engine's pool is bound to it
+        await test_privacy_and_parity()
+        await test_policies_privacy()
+    asyncio.run(_db_tests())
     print(f"\n{'ALL PASSED' if not FAILS else f'{len(FAILS)} FAILED'}")
     sys.exit(1 if FAILS else 0)
 

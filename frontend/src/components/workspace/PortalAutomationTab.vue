@@ -222,6 +222,7 @@ async function rerunFromError() {
 
 // ─── Per-credential actions ───────────────────────────────
 async function runNow(id) {
+  if (store.credentials.find((c) => c.id === id)?.portal_kind === 'harbituach') return   // per-customer, from Nifra only
   try {
     await store.runNow(id)
   } catch (_) {

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import api from '../api/client.js'
 import { streamAgent, stripMarkdown } from '../utils/agentStream.js'
 import { isCallProposal, runCallProposal } from '../utils/agentCalls.js'
+import { followHarb } from '../utils/agentHarb.js'
 import { getUserFlag, setUserFlag } from '../utils/userFlags.js'
 
 // The office agent ("סוכן המשרד") — services/office_agent.py. One brief that
@@ -126,11 +127,13 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
   // pushed once complete (AiStreamingText types it); meanwhile `askStatus`
   // shows which tool runs ("בודק עמלות שלא שולמו…").
   const askStatus = ref('')
-  async function ask(question, mentions = []) {
+  // `silent`: a follow-up the app asks on the agent's behalf (e.g. "summarise the portfolio that
+  // just arrived") — answered in the thread without echoing a line the agent never typed.
+  async function ask(question, mentions = [], { silent = false } = {}) {
     const q = (question || '').trim()
     if (!q) return
     const history = thread.value.slice(-8).map((m) => ({ role: m.role, text: m.text }))
-    thread.value.push({ role: 'user', text: q })
+    if (!silent) thread.value.push({ role: 'user', text: q })
     busy.value = 'ask'
     askStatus.value = ''
     let text = ''
@@ -172,15 +175,17 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     busy.value = 'act'
     error.value = ''
     try {
-      const { kind, status, ...data } = p
-      await api.post('/office-agent/act', { kind, data })
+      const { kind, status, live, ...data } = p
+      const res = await api.post('/office-agent/act', { kind, data })
       p.status = 'sent'
+      if (kind === 'harb' && res.data?.harb_request_id) trackHarb(p, res.data.harb_request_id)
       return true
     } catch (e) {
       const d = e?.response?.data?.detail
       error.value = d === 'bad_email' ? 'כתובת המייל לא תקינה'
         : d === 'bad_start' ? 'המועד לא תקין'
         : d === 'bad_code' ? 'קוד בקשה לא תקין'
+        : p.kind === 'harb' && typeof d === 'string' ? d
         : e?.response?.status === 503 ? 'המסלקה כבויה בסביבה הזו'
         : e?.response?.status === 403 ? 'השיוך למסלקה עוד לא אושר'
         : message(e)
@@ -188,6 +193,22 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
     } finally {
       busy.value = ''
     }
+  }
+
+  // הר הביטוח: the worker runs in the background; the card shows the live stage, and when the
+  // portfolio is in, Nifra answers with the summary in the thread.
+  function trackHarb(p, requestId) {
+    p.live = { status: 'pending', text: 'נשלח לעובד — מתחבר להר הביטוח…' }
+    const who = p.customer_name || `ת.ז ${p.customer_id_number}`
+    followHarb(requestId, (d) => { p.live = { status: d.status, text: d.status_he } }).then(async (d) => {
+      p.live = { status: d.status, text: d.status === 'done' ? (d.policies_count ? `התקבלו ${d.policies_count} כיסויים` : 'התיק התקבל') : (d.error || d.status_he || 'השליפה נכשלה') }
+      if (d.status === 'done') {
+        thread.value.push({ role: 'agent', text: `התיק הביטוחי של ${who} הגיע מהר הביטוח. הנה התמונה:` })
+        await ask(`סכם את התיק הביטוחי מהר הביטוח של ת.ז ${p.customer_id_number}: קודם מה השתנה מאז השליפה הקודמת אם הייתה (פוליסות חדשות/שנעלמו, שינויי פרמיה), ואז כמה פוליסות, באילו חברות, מה בתוקף, פרמיה חודשית, ומה בולט (כפל כיסויים או חוסר).`, [], { silent: true })
+      } else {
+        thread.value.push({ role: 'agent', text: `השליפה מהר הביטוח עבור ${who} לא הצליחה — ${d.error || 'נסו שוב'}.` })
+      }
+    })
   }
 
   return { popRequest, attention, markPopped, clearPop, checkCallPops, errorCode, notifyCall, askStatus, searchContacts, approve, brief, loading, busy, error, thread, narration, narrating, cards, todoCount, visible, needsMail, load, narrate, act, ask }

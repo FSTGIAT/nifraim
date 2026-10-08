@@ -15,9 +15,9 @@
             <div class="pf-main">
               <header class="pf-header">
                 <span class="pf-kicker" dir="ltr">Nifraim <b>App</b></span>
-                <h2 class="pf-title"><StepTitle :title="active.title" split :accent="A.deep" /></h2>
-                <p class="pf-sub">{{ SUBS[step] }}</p>
-                <div class="pf-progress" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
+                <h2 class="pf-title"><StepTitle :title="connectedView ? 'האפליקציה מחוברת' : active.title" split :accent="A.deep" /></h2>
+                <p class="pf-sub">{{ connectedView ? 'קודי אימות ושיחות מוקלטות מגיעים אלינו מהטלפון.' : SUBS[step] }}</p>
+                <div v-if="!connectedView" class="pf-progress" role="progressbar" :aria-valuenow="step" aria-valuemin="1" aria-valuemax="3">
                   <button
                     v-for="s in STEPS"
                     :key="s.id"
@@ -31,8 +31,37 @@
                 </div>
               </header>
 
+              <!-- ══════════ CONNECTED · setup already done — the wizard stays one tap away ══════════ -->
+              <section v-if="connectedView" class="pf-body">
+                <div class="pf-connected">
+                  <div class="pf-connected-glyph">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="pf-connected-text">
+                    <span class="pf-pill pf-pill--ok">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      מחובר
+                    </span>
+                    <div class="pf-connected-seen">{{ lastSeenText }}</div>
+                  </div>
+                </div>
+
+                <div class="pf-redo">
+                  <div class="pf-redo-text">
+                    <div class="pf-redo-title">עדכון או טלפון חדש</div>
+                    <p class="pf-redo-desc">
+                      עדכון לגרסה חדשה או טלפון חדש? עברו שוב על ההגדרה.<span v-if="apkVersion"> הגרסה האחרונה: <span class="ltr-number">{{ apkVersion }}</span>.</span>
+                    </p>
+                  </div>
+                  <button class="pf-btn pf-btn--ghost" @click="startSetup">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                    הגדרה מחדש
+                  </button>
+                </div>
+              </section>
+
               <!-- ══════════ STEP 1 · DOWNLOAD ══════════ -->
-              <section v-show="step === 1" class="pf-body">
+              <section v-show="!connectedView && step === 1" class="pf-body">
                 <div class="pf-os-toggle" role="tablist" aria-label="בחירת סוג טלפון">
                   <button class="pf-os" :class="{ 'pf-os--active': osTab === 'android' }" role="tab" :aria-selected="osTab === 'android'" @click="osTab = 'android'">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l1.5-3M19 9l-1.5-3M7 9h10M6 9v7a2 2 0 002 2h8a2 2 0 002-2V9M9 18v2M15 18v2"/></svg>
@@ -73,7 +102,7 @@
               </section>
 
               <!-- ══════════ STEP 2 · CONNECT ══════════ -->
-              <section v-show="step === 2" class="pf-body">
+              <section v-show="!connectedView && step === 2" class="pf-body">
                 <!-- Not yet configured: create the secure address -->
                 <div v-if="!configured" class="pf-create">
                   <div class="pf-create-glyph" :style="{ background: active.soft, color: active.deep }">
@@ -151,7 +180,7 @@
               </section>
 
               <!-- ══════════ STEP 3 · TEST & DONE ══════════ -->
-              <section v-show="step === 3" class="pf-body">
+              <section v-show="!connectedView && step === 3" class="pf-body">
                 <div class="pf-status-line">
                   <span class="pf-pill" :class="configured ? 'pf-pill--ok' : 'pf-pill--off'">
                     <svg v-if="configured" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -180,12 +209,13 @@
 
               <!-- ── Footer navigation ── -->
               <div class="pf-nav">
-                <button v-if="step > 1" class="pf-btn pf-btn--ghost" @click="back">
+                <button v-if="!connectedView && step > 1" class="pf-btn pf-btn--ghost" @click="back">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
                   חזרה
                 </button>
                 <span class="pf-nav-spacer" />
-                <button v-if="step < 3" class="pf-btn pf-btn--primary" :style="ctaStyle" @click="next">
+                <button v-if="connectedView" class="pf-btn pf-btn--primary" :style="ctaStyle" @click="close()">סגור</button>
+                <button v-else-if="step < 3" class="pf-btn pf-btn--primary" :style="ctaStyle" @click="next">
                   {{ step === 1 ? 'התקנתי — המשך' : 'המשך' }}
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
                 </button>
@@ -202,16 +232,16 @@
                 <!-- one picture per step; the new one zooms in as the old one zooms out -->
                 <Transition :name="reducedMotion ? 'pf-fade' : 'pf-zoom'">
                   <video
-                    v-if="step === 1 && !reducedMotion" key="v1" :src="phoneVideo" :poster="STEP_PICS[1]"
+                    v-if="visualStep === 1 && !reducedMotion" key="v1" :src="phoneVideo" :poster="STEP_PICS[1]"
                     class="pf-visual-img" autoplay muted loop playsinline preload="auto"
                     aria-hidden="true" disablepictureinpicture
                   ></video>
-                  <img v-else :key="'p' + step" :src="STEP_PICS[step]" alt="" class="pf-visual-img" />
+                  <img v-else :key="'p' + visualStep" :src="STEP_PICS[visualStep]" alt="" class="pf-visual-img" />
                 </Transition>
               </div>
               <div class="pf-visual-scrim" :style="{ background: `linear-gradient(to top, ${A.soft} 0%, transparent 40%)` }"></div>
               <Transition :name="reducedMotion ? 'pf-fade' : 'pf-num'" mode="out-in">
-                <div :key="step" class="pf-visual-num" aria-hidden="true">
+                <div v-if="!connectedView" :key="step" class="pf-visual-num" aria-hidden="true">
                   <span class="pf-visual-num-n ltr-number">0{{ step }}</span>
                   <span class="pf-visual-num-of ltr-number">/03</span>
                 </div>
@@ -297,6 +327,24 @@ const active = computed(() => ({ ...STEPS[step.value - 1], ...A }))
 const mediaIn = ref(false)
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+// once set up, the card opens on "מחובר" — the wizard runs again only when the agent asks
+const connectedView = ref(false)
+const visualStep = computed(() => (connectedView.value ? 3 : step.value))
+function startSetup() { step.value = 1; connectedView.value = false }
+const lastSeenText = computed(() => {
+  const iso = store.phoneForward?.last_seen
+  if (!iso) return 'החיבור מוגדר. ההודעה הראשונה מהטלפון תופיע כאן.'
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  if (mins < 1) return 'הטלפון שלח אלינו עכשיו.'
+  if (mins < 60) return `הטלפון שלח אלינו לפני ${mins} דקות.`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return hrs === 1 ? 'הטלפון שלח אלינו לפני שעה.' : `הטלפון שלח אלינו לפני ${hrs} שעות.`
+  const days = Math.round(hrs / 24)
+  if (days === 1) return 'הטלפון שלח אלינו אתמול.'
+  if (days < 30) return `הטלפון שלח אלינו לפני ${days} ימים.`
+  return `הטלפון שלח אלינו לאחרונה ב-${new Date(iso).toLocaleDateString('he-IL')}.`
+})
+
 function goStep(n) { step.value = Math.min(3, Math.max(1, n)) }
 function next() { goStep(step.value + 1) }
 function back() { goStep(step.value - 1) }
@@ -319,11 +367,15 @@ watch(
   async (v) => {
     if (v) {
       step.value = 1
+      connectedView.value = configured.value // cached from a previous open — no flash of step 1
       mediaIn.value = false
       requestAnimationFrame(() => requestAnimationFrame(() => { mediaIn.value = true }))
       loading.value = true
       api.get('/downloads/android/version').then((r) => { apkVersion.value = r.data?.version || '' }).catch(() => {})
-      try { await store.fetchPhoneForward() } finally { loading.value = false }
+      try {
+        await store.fetchPhoneForward()
+        connectedView.value = configured.value
+      } catch { /* keep whatever the cache said */ } finally { loading.value = false }
       testResult.value = null
     }
   },
@@ -594,6 +646,27 @@ async function onTest() {
 .pf-create-glyph { display: inline-grid; place-items: center; width: 66px; height: 66px; border-radius: 18px; margin-bottom: 14px; }
 .pf-create-title { font-size: 18px; font-weight: 800; color: var(--text, #181818); margin-bottom: 6px; }
 .pf-create-desc { font-size: 13.5px; color: var(--text-tertiary, #706E6B); line-height: 1.55; max-width: 380px; margin: 0 auto 18px; }
+
+/* Connected view */
+.pf-connected {
+  display: flex; align-items: center; gap: 16px;
+  padding: 20px; margin-bottom: 14px;
+  background: #F4FBF8; border: 1.5px solid #CDEBDF; border-radius: var(--radius-lg, 16px);
+}
+.pf-connected-glyph {
+  flex-shrink: 0; display: grid; place-items: center;
+  width: 56px; height: 56px; border-radius: 16px;
+  background: #E4F5F0; color: #1B7F5E;
+}
+.pf-connected-text { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.pf-connected-seen { font-size: 13.5px; color: var(--text-secondary, #3E3E3C); line-height: 1.5; }
+.pf-redo {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 16px 18px; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: var(--radius-lg, 16px);
+}
+.pf-redo-text { flex: 1; min-width: 200px; }
+.pf-redo-title { font-size: 14.5px; font-weight: 800; color: var(--text, #181818); margin-bottom: 3px; }
+.pf-redo-desc { margin: 0; font-size: 13px; color: var(--text-tertiary, #706E6B); line-height: 1.5; }
 
 /* Status / test (step 3) */
 .pf-status-line { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }

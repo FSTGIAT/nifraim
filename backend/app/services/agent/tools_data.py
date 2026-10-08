@@ -104,7 +104,9 @@ async def get_unpaid(ctx, company: str = "", limit: int = 15):
     if not company:
         rows = sorted(({"label": c["company"], "value": _r(c.get("gap")), "unpaid_customers": c.get("unpaid"),
                         "received": _r(c.get("received")), "expected": _r(c.get("expected"))}
-                       for c in s.get("companies", []) if (c.get("gap") or 0) > 0), key=lambda r: -r["value"])
+                       # Any unpaid customer keeps the company listed, even at a ₪0 / unpriced gap.
+                       for c in s.get("companies", []) if (c.get("gap") or 0) > 0 or (c.get("unpaid") or 0) > 0),
+                      key=lambda r: (-r["value"], -(r["unpaid_customers"] or 0)))
         rid = ctx.keep(rows, label="חברה", value="פער (לא שולם)", title="עמלות שלא שולמו לפי חברה")
         return {"total_gap": _r((s.get("totals") or {}).get("gap")), "unpaid_customers": (s.get("totals") or {}).get("unpaid"),
                 "by_company": rows, "result_id": rid}
@@ -121,8 +123,10 @@ async def get_unpaid(ctx, company: str = "", limit: int = 15):
     return {"company": match, "customers_count": len(custs), "total_expected": _r(d.get("total_expected")),
             "company_received": _r(got), "company_expected": _r(exp_all),
             "unpaid_pct_of_expected": round(100 * (exp_all - got) / exp_all) if exp_all >= 1 else None,
-            "note": None if float(d.get("total_expected") or 0) >= 1 else
-                    f"ב{match} אין חוב פתוח: הלקוחות ברשימה הם בצפי ₪0 (לא צפויה עמלה).",
+            # Never call it "no debt" — a ₪0-paid product is unpaid even when
+            # the agreement gives it no figure (QA 2026-10-08).
+            "note": None if float(d.get("total_expected") or 0) > 0 or not custs else
+                    f"ב{match} יש {len(custs)} לקוחות שלא שולמו; להסכם אין אחוז למוצרים האלה, לכן הצפי לא ידוע (נתון חסר).",
             "customers": rows, "result_id": rid}
 
 
@@ -433,7 +437,7 @@ async def get_insights(ctx, kind: str):
     return data_map.render(await ctx.map(), f"{kind}.md")[:6000]
 
 
-@tool("open_page", "פתיחת דף במפת הנתונים (Markdown): index.md, companies.md, companies/<key>.md, customers/<ת.ז>.md, search/<שם>.md, unpaid.md, mail.md, agreements.md, top.md, policy/<מספר>.md — או dict/<קטגוריה>.md במילון הנתונים.",
+@tool("open_page", "פתיחת דף במפת הנתונים (Markdown): index.md, companies.md, companies/<key>.md, customers/<ת.ז>.md, customers/<ת.ז>/policies.md, policies.md, search/<שם>.md, unpaid.md, mail.md, agreements.md, top.md, policy/<מספר>.md — או dict/<קטגוריה>.md במילון הנתונים.",
       {"path": {"type": "string"}}, ["path"], category="navigation", status_he="קורא בנתונים")
 async def open_page(ctx, path: str):
     p = (path or "index.md").strip().lstrip("./")

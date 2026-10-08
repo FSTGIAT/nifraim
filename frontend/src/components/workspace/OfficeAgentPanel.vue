@@ -179,7 +179,7 @@
                       <strong>{{ propTitle(m.proposal) }}</strong>
                       <span v-if="m.proposal.status === 'sent'" class="na-sent">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                        {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : m.proposal.kind === 'call_task' ? 'סומן כבוצע' : 'נשלח' }}
+                        {{ m.proposal.kind === 'meeting' ? 'הזימון נשלח' : m.proposal.kind === 'call_task' ? 'סומן כבוצע' : m.proposal.kind === 'harb' ? 'נשלח לעובד' : 'נשלח' }}
                       </span>
                       <span v-else class="na-prop-sub">הכנתי — עברו, שנו מה שצריך ואשרו</span>
                     </div>
@@ -189,6 +189,13 @@
                       בקשת <b dir="ltr">{{ m.proposal.code }}</b> — {{ m.proposal.code_he }}
                       ל{{ m.proposal.customer_name || 'ת.ז ' + m.proposal.customer_id_number }}. התשובה מגיעה תוך שעות.
                     </p>
+                    <p v-else-if="m.proposal.kind === 'harb'" class="na-prop-sum">
+                      שליפת התיק הביטוחי של <b>{{ m.proposal.customer_name || 'ת.ז ' + m.proposal.customer_id_number }}</b>
+                      · ת.ז <span class="ltr-number">{{ m.proposal.customer_id_number }}</span>
+                      · לידה <span class="ltr-number">{{ m.proposal.birth_date }}</span>
+                      · הנפקה <span class="ltr-number">{{ m.proposal.issue_date }}</span>.
+                      העובד מתחבר, קוד ה-SMS נקלט לבד, והתוצאה תגיע לכאן.
+                    </p>
                     <p v-else-if="m.proposal.kind === 'call_task'" class="na-prop-sum">
                       לסמן כבוצע: <b>{{ m.proposal.text }}</b>{{ m.proposal.customer ? ' · ' + m.proposal.customer : '' }}
                     </p>
@@ -196,8 +203,8 @@
                       {{ m.proposal.case_status === 'sent' ? 'תזכורת' : 'פנייה' }} ל{{ m.proposal.company }} על {{ m.proposal.customers }} לקוחות
                       · צפי <span class="ltr-number">₪{{ Number(m.proposal.expected || 0).toLocaleString('he-IL') }}</span>
                     </p>
-                    <label v-else-if="m.proposal.kind !== 'call_task'" class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
-                    <template v-if="m.proposal.kind === 'maslaka' || m.proposal.kind === 'collection' || m.proposal.kind === 'call_task'"></template>
+                    <label v-else-if="!['call_task', 'harb'].includes(m.proposal.kind)" class="na-f"><span>אל</span><input v-model.trim="m.proposal.to_email" type="email" dir="ltr" /></label>
+                    <template v-if="['maslaka', 'collection', 'call_task', 'harb'].includes(m.proposal.kind)"></template>
                     <template v-else-if="m.proposal.kind === 'meeting'">
                       <label class="na-f"><span>נושא</span><input v-model="m.proposal.title" /></label>
                       <div class="na-f-row">
@@ -213,12 +220,18 @@
                     </template>
                   </fieldset>
                   <div v-if="m.proposal.status !== 'sent'" class="na-row">
-                    <button type="button" class="na-go" :disabled="(!['maslaka', 'call_task'].includes(m.proposal.kind) && !canSend) || store.busy === 'act'" @click="store.approve(m)">
-                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : m.proposal.kind === 'call_task' ? 'אישור — בוצע' : 'אישור ושליחה' }}
+                    <button type="button" class="na-go" :disabled="(!['maslaka', 'call_task', 'harb'].includes(m.proposal.kind) && !canSend) || store.busy === 'act'" @click="store.approve(m)">
+                      {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : m.proposal.kind === 'call_task' ? 'אישור — בוצע' : m.proposal.kind === 'harb' ? 'אישור — יש לי הסכמת הלקוח' : 'אישור ושליחה' }}
                     </button>
                     <button type="button" class="na-link na-link--quiet" @click="m.proposal.status = 'dropped'">ביטול</button>
-                    <span v-if="!canSend && !['maslaka', 'call_task'].includes(m.proposal.kind)" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
+                    <span v-if="!canSend && !['maslaka', 'call_task', 'harb'].includes(m.proposal.kind)" class="na-hint">כדי לשלוח — חברו את Nifraim Mail Agent (Gmail) בהגדרות</span>
                   </div>
+                  <p v-if="m.proposal.kind === 'harb' && m.proposal.live" class="na-live" :class="'na-live--' + m.proposal.live.status">
+                    <i v-if="!['done', 'failed', 'not_found'].includes(m.proposal.live.status)" class="na-live-dot" aria-hidden="true"></i>
+                    <svg v-else-if="m.proposal.live.status === 'done'" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                    <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>
+                    {{ m.proposal.live.text }}
+                  </p>
                   <p v-if="store.error && i === store.thread.length - 1" class="na-err">{{ store.error }}</p>
                 </div>
               </Transition>
@@ -292,7 +305,7 @@ const props = defineProps({
   focusCard: { type: String, default: null }, // opened by itself on a call card → expand that line
 })
 const emit = defineEmits(['update:open', 'open-mail', 'open-vizs', 'open-call'])
-const propTitle = (p) => p.kind === 'call_task' ? 'משימה משיחה' : p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
+const propTitle = (p) => p.kind === 'harb' ? 'שליפה מהר הביטוח' : p.kind === 'call_task' ? 'משימה משיחה' : p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
 const store = useOfficeAgentStore()
 
 // sequential streaming: greeting → line 0 → line 1 …
@@ -738,6 +751,12 @@ async function close() {
 .na-sent--line { display: inline-flex; margin-inline-start: 10px; animation: naIn 0.4s ease both; }
 .na-err .na-link { margin-inline-start: 8px; }
 .na-err { margin: 0; font-size: 13px; font-weight: 700; color: #C23934; }
+.na-live { margin: 8px 0 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--tab-automation-ink, #0A6664); }
+.na-live--done { color: var(--green); }
+.na-live--failed, .na-live--not_found { color: var(--red); }
+.na-live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: naLivePulse 1.2s ease-in-out infinite; }
+@keyframes naLivePulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .na-live-dot { animation: none; } }
 .na-sheet-enter-active { transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
 .na-sheet-leave-active { transition: opacity 0.25s ease, transform 0.3s ease; }
 .na-sheet-enter-from, .na-sheet-leave-to { opacity: 0; transform: translateY(-8px); }

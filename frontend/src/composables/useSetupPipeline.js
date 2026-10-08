@@ -61,7 +61,8 @@ export function useSetupPipeline() {
   // last batch failed, has still finished setup and must not be re-onboarded.
   const workerDone = computed(() => !!(store.workerStatus?.online || store.workerStatus?.ever_connected))
   const phoneDone = computed(() => !!store.phoneForward?.token)
-  const credsDone = computed(() => (store.credentials?.length || 0) > 0)
+  // הר הביטוח is not an insurer portal — saving it must not tick "הוסיפו פורטל ראשון"
+  const credsDone = computed(() => (store.credentials || []).some((c) => c.portal_kind !== 'harbituach'))
   const runDone = computed(() =>
     ['success', 'partial'].includes(store.latestBatch?.status) || !!store.setupStatus?.has_successful_run,
   )

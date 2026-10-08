@@ -22,6 +22,7 @@ from app.models.maslaka_agent_link import MaslakaAgentLink
 from app.models.pension_holding import PensionHolding
 from app.models.pension_inquiry import PensionInquiry
 from app.models.portal_credential import PortalCredential
+from app.services.portal_automation.companies import NON_INSURER_PORTALS
 from app.models.portal_run_batch import PortalRunBatch
 from app.models.user import User
 from app.models.worker_heartbeat import WorkerHeartbeat
@@ -48,7 +49,8 @@ async def operations_overview(db: AsyncSession) -> dict:
     hb = {h.user_id: h for h in (await db.execute(select(WorkerHeartbeat))).scalars().all()}
     creds = dict((await db.execute(
         select(PortalCredential.user_id, func.count(PortalCredential.id))
-        .where(PortalCredential.is_active.is_(True)).group_by(PortalCredential.user_id)
+        .where(PortalCredential.is_active.is_(True), PortalCredential.portal_kind.notin_(NON_INSURER_PORTALS))
+        .group_by(PortalCredential.user_id)
     )).all())
 
     # this cycle's batch per user + the most recent batch of any kind

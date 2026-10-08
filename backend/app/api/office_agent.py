@@ -57,6 +57,8 @@ async def act(body: ActIn, db: AsyncSession = Depends(get_db), user: User = Depe
     from app.services import agent_actions
     from app.services.mail_intake import MailIntakeError
     from app.services.mail_intake.send import NoSendableMailbox
+    if body.kind == "harb":
+        return await _act_harb(db, user, body.data)
     if body.kind == "maslaka":
         return await _act_maslaka(db, user, body.data)
     if body.kind == "call_task":
@@ -101,6 +103,25 @@ async def _act_call_task(db: AsyncSession, user: User, data: dict):
     call.insights = set_task(call.insights, idx, True)
     await db.commit()
     return {"ok": True}
+
+
+async def _act_harb(db: AsyncSession, user: User, data: dict):
+    """The agent approved fetching a customer from הר הביטוח — the click is the consent the site's
+    checkbox asks for. Re-checks every gate (credential, worker online, no open request), then queues
+    it for the agent's local worker. The chat follows GET /api/policies/harb-requests/{id}."""
+    from fastapi import HTTPException
+    from app.services.policies import harb_jobs
+    from app.services.policies.store import norm_id
+    idn = norm_id(data.get("customer_id_number"))
+    birth = harb_jobs.parse_user_date(data.get("birth_date"))
+    issued = harb_jobs.parse_user_date(data.get("issue_date"))
+    if not 5 <= len(idn) <= 9 or not birth or not issued:
+        raise HTTPException(400, "חסרים ת.ז, תאריך לידה או תאריך הנפקה תקינים")
+    try:
+        req = await harb_jobs.enqueue(db, user, idn, birth, issued, data.get("customer_name"))
+    except harb_jobs.HarbGateError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True, "harb_request_id": str(req.id), "customer_id_number": idn}
 
 
 async def _act_maslaka(db: AsyncSession, user: User, data: dict):

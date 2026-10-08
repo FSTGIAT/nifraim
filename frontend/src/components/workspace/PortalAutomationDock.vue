@@ -129,6 +129,7 @@ async function onCredentialSaved(cred) {
 }
 
 async function runNow(credId) {
+  if (store.credentials.find((c) => c.id === credId)?.portal_kind === 'harbituach') return   // per-customer, from Nifra only
   // Don't bubble the axios error — store.error feeds the banner already.
   // Common case: 409 because another run is still in-flight (we hydrate it
   // on mount, but a stale state may slip through).

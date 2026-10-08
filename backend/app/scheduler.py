@@ -297,6 +297,16 @@ def start_scheduler():
         id="collection_poll",
         replace_existing=True,
     )
+    # Policy documents → doc_chunks. הר הביטוח fetches are written by the agent's local worker,
+    # which never loads the embedding model; the cloud indexes them here (services/policies).
+    from app.services.policies.embeddings import sweep as policies_sweep
+    scheduler.add_job(
+        policies_sweep,
+        IntervalTrigger(minutes=2),
+        id="policies_index_sweep",
+        replace_existing=True,
+        max_instances=1,
+    )
     scheduler.add_job(
         purge_old_bodies,
         CronTrigger(hour=3, minute=40, timezone="Asia/Jerusalem"),

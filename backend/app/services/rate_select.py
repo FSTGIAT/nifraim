@@ -161,7 +161,7 @@ def accumulation_based(product_type: str | None, accum: float) -> bool:
     """
     if accum <= 0:
         return False
-    if product_type and "פנסיה" in product_type:
+    if product_type and _PENSION_TYPE_RE.search(product_type):
         return False
     if pure_risk_insurance(product_type):
         return False
@@ -389,6 +389,18 @@ def is_pension_record(product: str | None, product_type: str | None) -> bool:
     return bool(_PENSION_NAME_RE.search(product or ""))
 
 
+# ביטוח מנהלים — the insurer-issued savings policy. Its נפרעים are priced ONLY
+# by an agreement line that names it (see `select_rate` step 1a).
+_MANAGERS_RE = re.compile(r"מנהלים")
+
+
+def is_managers_record(product: str | None, product_type: str | None) -> bool:
+    """A ביטוח מנהלים savings line — not a risk cover that merely says
+    'מנהלים' ('אובדן כושר עבודה מנהלים ועצמאים')."""
+    text = f"{product or ''} {product_type or ''}"
+    return bool(_MANAGERS_RE.search(text)) and not _RISK_COVER_RE.search(text)
+
+
 def is_pension_rate_line(rate_row) -> bool:
     text = getattr(rate_row, "product", None) or ""
     return bool(_PENSION_LINE_RE.search(text)) and not _NOT_NIFRAIM_LINE_RE.search(text)
@@ -519,7 +531,15 @@ def select_rate(user_rates, company: str, product: str | None,
         return 0.0, "none"
     pension = is_pension_record(product, product_type)
     if pension:
-        candidates = [r for r in candidates if is_pension_rate_line(r)]
+        # Only an AGREEMENT line prices pension. A row with no source document
+        # (an orphan of a deleted extraction, a hand entry) is ignored while the
+        # company has document-backed rows: Mor's agreement prints only 'קופות
+        # גמל (לחיסכון, להשקעה, קרן השתלמות)', yet an orphan 'קופות גמל / פנסיה'
+        # row priced every Mor pension fund at the gemel rate (QA 2026-10-08).
+        # A shelf built entirely by hand has no documents and is trusted as is.
+        has_doc = any(not is_seeded(r) for r in candidates)
+        candidates = [r for r in candidates
+                      if is_pension_rate_line(r) and (not has_doc or not is_seeded(r))]
         if not candidates:
             return 0.0, f"{tier}:no_pension_line"
     if ceiling is None:
@@ -627,6 +647,16 @@ def select_rate(user_rates, company: str, product: str | None,
             if _ok(rate) and not ambiguous and not weak and not risk_line:
                 hidden = 0.0 if is_accum else harel_hidden_book(company, product, product_type, matches)
                 return rate + hidden, f"{tier}:product"
+
+    # 1a. ביטוח מנהלים that no agreement line names → no rate (נתון חסר).
+    #     The fallbacks below price it from whatever the company's other lines
+    #     happen to be: kikohib's 'הראל - מנהלים' took the MEDIAN of Harel's
+    #     gemel/מגוון lines (0.32%) and showed a computed expected figure for a
+    #     product the agreement never mentions (QA 2026-10-08: "אין התייחסות
+    #     לנפרע בביטוח מנהלים בהסכם — צריך שיופיע נתון חסר"); מגדל מנהלים took
+    #     3% the same way. Without a line there is nothing to compute from.
+    if is_managers_record(product, product_type):
+        return 0.0, f"{tier}:no_managers_line"
 
     # 1b. הראל only: a life / health record that names no agreement line.
     #     Harel's production lines are generic ('הראל - בריאות', type 'ביטוח

@@ -33,6 +33,11 @@ MAX_CHARS = 9000
 
 NOT_A_NAME = re.compile(r"^(?:על|עם|לגבי|בנוגע|של|את|שלי|הזה|הזאת|ש)\b")
 CALL_Q = re.compile(r"סיכמ|בשיחה|השיחה|שיחות|דיברנו|דיברתי|הקלט")
+# A question about what a policy SAYS (cover, price, terms) — answered from the policy documents,
+# never from commissions. Measured 2026-10-07: "כמה עולה לשאול גולן ביטוח הסיעוד שלו בהראל?" got
+# get_unpaid(הראל) prefetched (the insurer name) and answered "no nursing record" from production.
+POLICY_Q = re.compile(r"סיעוד|כיסוי|מכוס|החרג|מוטב|סכום (?:ה)?ביטוח|אכשר|תרופ|השתל|ניתוח|מחלות קשות|ריסק|"
+                      r"אובדן כושר|אבדן כושר|עולה ל|משלמ?ת? על|תנאי|הנחה|פיצוי")
 
 
 def plan(question: str) -> list[tuple[str, dict]]:
@@ -54,6 +59,10 @@ def plan(question: str) -> list[tuple[str, dict]]:
         n = NAME_RE.search(q)
         if n and not NOT_A_NAME.search(n.group(1)) and not re.search(r"\b(?:הכי|שלי|כולם|בכלל|חדשים)\b", n.group(1)):
             calls.append(("find_customer", {"query": n.group(1).strip()}))
+    if POLICY_Q.search(q) and not re.search(r"עמל|לא שול|נפרע", q):
+        m_id = ID_RE.search(q)
+        calls.append(("search_policies", {"query": q, **({"id_number": m_id.group(1)} if m_id else {}), "limit": 8}))
+        return calls[:3]          # never prime a cover/price question with commission tools
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if FUND_Q.search(q) and not explain:
         for pat, tool_name in FUND_CATS:

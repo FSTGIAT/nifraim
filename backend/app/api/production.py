@@ -295,12 +295,13 @@ async def _configured_company_stems(db: AsyncSession, user_id: uuid.UUID) -> dic
     gemel house, its portal serves נפרעים only.
     """
     from app.models.portal_credential import PortalCredential
-    from app.services.portal_automation.companies import PORTAL_META, PORTAL_LABELS
+    from app.services.portal_automation.companies import NON_INSURER_PORTALS, PORTAL_META, PORTAL_LABELS
 
     result = await db.execute(
         select(PortalCredential.portal_kind).where(
             PortalCredential.user_id == user_id,
             PortalCredential.is_active.is_(True),
+            PortalCredential.portal_kind.notin_(NON_INSURER_PORTALS),
         ).distinct()
     )
     stems: dict[str, dict] = {}

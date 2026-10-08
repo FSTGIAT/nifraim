@@ -82,13 +82,14 @@
                 <div class="es-block">
                   <div class="es-block-head">
                     <span class="es-block-label es-brand" dir="ltr"><span>Nifraim</span> <b>App</b></span>
+                    <span v-if="portalStore.phoneForward?.token" class="es-status-pill active">מחובר</span>
                   </div>
                   <p class="es-help">קודי אימות ושיחות מוקלטות עוברים מהטלפון אלינו — לבד.</p>
                   <button class="es-action" @click="phoneForwardOpen = true">
                     <span class="es-action-ico">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
                     </span>
-                    <span class="es-action-txt">הגדרת האפליקציה</span>
+                    <span class="es-action-txt">{{ portalStore.phoneForward?.token ? 'פרטי החיבור · הגדרה מחדש' : 'הגדרת האפליקציה' }}</span>
                     <svg class="es-action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                   </button>
                 </div>
@@ -396,6 +397,7 @@ watch(() => props.open, (now) => {
   // Fire-and-forget — show whatever's cached, replace when the API answers.
   subStore.fetchStatus?.()
   portalStore.fetchWorkerStatus?.()
+  portalStore.fetchPhoneForward?.().catch(() => {})
   mailbox.fetchConfig?.()
   if (props.openMailbox) {
     activeTab.value = 'automation'
@@ -563,6 +565,7 @@ watch(() => props.open, (now) => {
 .es-block-head { display: flex; align-items: center; gap: 8px; }
 .es-block-label { font-size: 13px; font-weight: 800; color: #181818; }
 .es-block-head .es-worker-pill { margin-inline-start: auto; }
+.es-block-head .es-status-pill { margin-inline-start: auto; }
 /* "Nifraim App" wordmark — ink + the app's sky (= SETUP_ACCENTS.phone.deep) */
 .es-brand { font-family: 'Rubik', 'Heebo', sans-serif; font-size: 14px; unicode-bidi: isolate; }
 .es-brand b { color: #35719A; font-weight: 800; }

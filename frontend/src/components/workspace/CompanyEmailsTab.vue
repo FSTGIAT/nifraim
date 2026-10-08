@@ -40,6 +40,16 @@
             </span>
             <span class="ct-stat-l">חברות</span>
           </button>
+          <button type="button" class="ct-app" aria-label="פוליסות — הר הביטוח ופוליסות שהועלו" @click="polOpen = true">
+            <span ref="polIconEl" class="ct-app-ico ct-app-ico--co">
+              <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
+                <path d="M30 12 l14 6 v10 c0 9 -6 16 -14 20 c-8 -4 -14 -11 -14 -20 V18 z" fill="#fff" opacity="0.96" />
+                <path d="M24 30 l4.5 4.5 l8 -8.5" fill="none" stroke="var(--tab-emails-ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span v-if="policyCustomers" class="ct-app-badge ltr-number">{{ policyCustomers }}</span>
+            </span>
+            <span class="ct-stat-l">פוליסות</span>
+          </button>
           <button type="button" class="ct-app" aria-label="לא להעלות — מספרים ושיחות אישיות" @click="privOpen = true">
             <span ref="privIconEl" class="ct-app-ico ct-app-ico--co">
               <svg viewBox="0 0 60 60" width="100%" height="100%" aria-hidden="true">
@@ -62,6 +72,7 @@
     <ContactsDrill :open="appOpen" :origin="appIconEl" :rows="walkins" @close="appOpen = false"
                    @add="(_, el) => openWalkin(null, el)" @edit="(r, el) => openWalkin(r, el)" @delete="deleteWalkin" />
     <PrivacyDrill :open="privOpen" :origin="privIconEl" @close="privOpen = false" />
+    <PoliciesDrill :open="polOpen" :origin="polIconEl" @close="polOpen = false" @changed="(n) => (policyCustomers = n)" />
     <WalkinFormModal :show="walkinOpen" :editing="editingWalkin" :origin="walkinOrigin"
                      @close="walkinOpen = false" @saved="onWalkinSaved" />
 
@@ -87,6 +98,7 @@ import CompanyLogo from './CompanyLogo.vue'
 import ContactsDrill from './ContactsDrill.vue'
 import WalkinFormModal from './WalkinFormModal.vue'
 import PrivacyDrill from './PrivacyDrill.vue'
+import PoliciesDrill from './PoliciesDrill.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { assignNearestDistinct } from '../../utils/chartPalette.js'
 
@@ -169,6 +181,11 @@ function openApp() { appOpen.value = true }
 // לא להעלות: never-upload numbers + the personal calls that were hidden
 const privOpen = ref(false)
 const privIconEl = ref(null)
+// פוליסות — customers whose policies we hold (הר הביטוח via Nifra, or an uploaded PDF)
+const polOpen = ref(false)
+const polIconEl = ref(null)
+const policyCustomers = ref(0)
+api.get('/policies/customers').then(({ data }) => { policyCustomers.value = (data.customers || []).length }).catch(() => {})
 // the add/edit window (the Kling picture + form) grows out of the button that opened it
 const walkinOpen = ref(false)
 const editingWalkin = ref(null)

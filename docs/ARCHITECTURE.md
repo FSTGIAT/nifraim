@@ -1308,7 +1308,7 @@ flowchart LR
   R -- match --> T1[ONE tool → Hebrew template + chart<br/>no LLM, ~50ms]
   R -- no --> P[prefetch.py<br/>company / customer / fund → run those tools first]
   P --> L[Sonnet 5 · effort low · thinking DISABLED<br/>tools+system prompt-cached 1h · usually 1 call]
-  L --> TOOLS[registry.py — 31 tools]
+  L --> TOOLS[registry.py — 47 tools]
   T1 --> OUT
   L --> OUT
 ```
@@ -1567,3 +1567,90 @@ Other gotchas:
 
 **Speed:** measured real-time factor (RTF) 1.0 on 32 threads (25s of audio in 25s). Railway CPU is slower per call;
 `BEAM_SIZE` defaults to 1 (measured 2026-10-02: 2.0–2.3× faster than 5, RTF 0.35–0.38, identical text on the Hebrew sample; raise it only if noisy real calls lose accuracy). Tune `CPU_THREADS`, or move the transcriber to a GPU host. The queue contract does not change.
+
+---
+
+## 19. הר הביטוח + policy documents — the customer's whole insurance file, as Markdown the AI reads (2026-10-07)
+
+הר הביטוח (harb.cma.gov.il, Ministry of Finance) lists every insurance policy a person holds, at every
+insurer, not only the agent's book. Nifra Agent fetches it ON DEMAND per customer, and policy PDFs the agent
+already has (insurers' העתק פוליסה) join the same store. Both end up as **Markdown** in `policy_documents`,
+embedded into `doc_chunks`, and linked from the data map.
+
+```mermaid
+sequenceDiagram
+    participant A as Agent (Nifra panel)
+    participant API as Cloud API
+    participant DB as PostgreSQL
+    participant W as Local worker (IL)
+    participant H as harb.cma.gov.il → login.gov.il
+    participant P as Agent's phone
+    A->>API: "תביא לי מהר הביטוח 203717186 22/05/1986 10/03/2004"
+    API-->>A: proposal {kind: harb} (propose_harb_fetch — gates checked)
+    A->>API: click "אישור — יש לי הסכמת הלקוח" → /office-agent/act kind=harb
+    API->>DB: harb_requests (pending) + portal_runs (only if none is live)
+    W->>DB: claim the run (worker loop, unchanged)
+    W->>H: כניסת מורשים → #userId/#userPass → SMS
+    H->>P: OTP SMS
+    P->>API: phone-forward → otp_inbox
+    W->>DB: _wait_for_otp → submit
+    loop every pending request of the user (one login)
+        W->>H: מבוטח בגיר → #txtId + Kendo dates → צפיה → כל הביטוחים → Excel + policy details
+        W->>DB: harb_ingest → insurance_policies + policy_documents (Markdown)
+    end
+    API->>DB: policies_index_sweep (2 min) → doc_chunks (embeddings)
+    A->>API: polls /api/policies/harb-requests/{id} → done → Nifra posts the summary
+```
+
+**Where things live**
+| Concern | File |
+|---|---|
+| Portal plugin (login.gov.il SSO, search, Excel, details, queue drain) | `services/portal_automation/companies/harbituach.py` |
+| Queue: enqueue / claim / finalize / gates / date parsing | `services/policies/harb_jobs.py` |
+| Runner hook (kind-gated: `harb_next`/`harb_done`, skips generic ingest) | `services/portal_automation/runner.py` (`is_harb`) |
+| Excel parser (header by name, תחום sections, מתחדש) | `services/policies/harb_parser.py` |
+| Markdown (portfolio + detail pages), store, per-customer picture | `services/policies/markdown.py`, `store.py`, `harb_ingest.py` |
+| PDF → Markdown (text layer + OCR + native PDF, structured outputs) | `services/policies/pdf_policy.py` |
+| Embeddings + hybrid search + sweep | `services/policies/embeddings.py` (reuses `services/calls/embeddings`) |
+| API | `api/policies.py` (`/api/policies/*`), `/office-agent/act` kind `harb` |
+| Agent tools | `services/agent/tools_policies.py`: `propose_harb_fetch`, `customer_policies`, `search_policies`, `get_policy_document` |
+| Data map | `policies.md`, `customers/<id>/policies.md` (active first), customer page fallback |
+| UI | Nifra card + live stage (`OfficeAgentPanel.vue`, `stores/officeAgent.js`, `utils/agentHarb.js`); אנשי קשר → פוליסות (`PoliciesDrill.vue`, `utils/mdLite.js`); Settings → אוטומציה → הר הביטוח |
+| Tables | `harb_requests`, `insurance_policies`, `policy_documents` (`policies_01`), `doc_chunks` (`policies_02`, guarded), history: `is_current` + `harb_requests.changes` (`policies_03`) |
+
+### Invariants
+1. **On demand, worker only, never in the cycle.** `include_in_batch = False`, no "run now" (the card says
+   "מופעל מתוך Nifra", `runNow` ignores the kind). A run with no `harb_next` refuses to start.
+2. **The click is the consent.** The site's checkbox says the user has the insured's authorization; Nifra only
+   proposes, and `/act` re-checks every gate (credential, worker heartbeat ≤ 90s, no open request for the customer).
+   The fetch verb (תביא/שלוף/בדוק…) counts as an action only next to "הר הביטוח" (`HARB_ACTION_RE`).
+3. **One login per queue.** One active `harbituach` run per user; extra requests wait `pending` and the live run
+   drains them ("כניסה לתיק נוסף"). On finalize: leftovers after a success get a fresh run; if the login/OTP
+   never got through, they FAIL with that reason (no retry loop). One customer's failure never fails the others.
+4. **Never production.** The Excel is every insurer's policies, not the agent's book: no `ingest_file_bytes`, no
+   fold into the מאוחד file, separate tables. Don't merge `insurance_policies` into `client_records`.
+5. **History, not overwrite (policies_03).** A re-fetch supersedes the previous fetch (`is_current=false`) — rows and
+   documents are kept, their passages leave search. `diff_snapshots` stores what changed on `harb_requests.changes`
+   (new / removed policies, premium + period changes; duplicate coverage lines are matched as multisets) and writes it
+   into the new portfolio Markdown, so Nifra answers "what changed". Everything that answers (picture, data map,
+   search, sweep) reads `is_current` only; uploaded PDFs are never superseded.
+5b. **Ask before a re-fetch.** A customer fetched within `HARB_REFETCH_ASK_DAYS` (30) gets a question, not a card
+   ("נשלף היום ב-15:00 — לשלוף שוב?"); "כן" → `confirm_refetch=true`; "שוב/מחדש" in the request confirms up front.
+5c. **Limits** (`harb_jobs.check_limits`, settings): `HARB_DAILY_LIMIT` 30/agent/24h, `HARB_CUSTOMER_DAILY_LIMIT`
+   2/customer/24h, `HARB_MAX_QUEUE` 10 open. A fetch that died at login doesn't count.
+6. **The worker never embeds.** It writes rows and Markdown only (no 120MB model on the agent's PC); the cloud
+   sweep indexes. `doc_chunks` is guarded like `call_chunks`; without pgvector search falls back to words.
+7. **Numbers come from the document.** הר הביטוח Markdown is deterministic (no LLM). PDF Markdown copies figures
+   verbatim (structured outputs, Sonnet 5.5 → 4.6; 5.x rejects forced `tool_choice`). Tools return active and ended
+   policies as separate lists, and the policies page lists active first, so a truncated read never drops a live policy.
+8. **Tag the OTP.** The real הר הביטוח SMS wording isn't known yet; until a `portal_kind="harbituach"` template
+   is seeded (`api/sms_otp_templates.py`), the device's fail-open rule forwards it and `_wait_for_otp` accepts it untagged.
+9. **Dates are never guessed.** Missing/invalid birth or issue date → the tool asks; future dates are rejected.
+
+### Status (2026-10-07)
+Built and verified locally: parser + Markdown on the real export (50 coverages, 23 policies), PDF→Markdown on a
+scanned Phoenix and a 15-page Harel policy, embeddings + hybrid search, the 4 tools against the real model,
+`/act` → queue → finalize, the UI drill (Playwright). **The plugin's post-login screens are unverified live**:
+only the login form was recon'd (login.gov.il `#userId/#userPass/#loginSubmit`); the OTP screen, the search
+form's Kendo widgets, the not-found message and the policy-detail views need the first live run (it dumps
+`<run>_harb_*.png/html/txt` at every step).

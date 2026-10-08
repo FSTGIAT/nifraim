@@ -177,7 +177,11 @@ function statusNote(c) {
   }
   // Unpaid here, paid by another company — say who did pay.
   if (c.match_status === 'only_production' && c.partially_paid) {
+    // Unpaid is per product: the same company may have paid this customer's
+    // OTHER products — then say that, not "paid only at X".
+    const unpaidAt = new Set((c.production_products || []).map(p => p.company).filter(Boolean))
     const paidBy = [...new Set((c.commission_products || []).map(p => p.company).filter(Boolean))]
+    if (paidBy.some(co => unpaidAt.has(co))) return 'שולמו רק חלק מהמוצרים'
     if (paidBy.length) return `שולם רק ב${paidBy.join(', ')}`
   }
   // An inactive fund says so — it's why it earns nothing.

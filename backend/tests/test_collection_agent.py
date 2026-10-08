@@ -20,7 +20,8 @@ RESULT = {
     "customers": [
         _cust("1", "only_production", [_prod("מנורה", "A1", 50, product="עדיף"),           # two coverages, one policy
                                        _prod("מנורה", "A1", 25, product="נכות תאונתית")]),
-        _cust("2", "only_production", [_prod("מנורה", "A2", 10, status="לא פעיל")]),        # inactive → skip
+        _cust("2", "only_production", [_prod("מנורה", "A2", 10, status="מבוטל")]),          # cancelled → skip
+        _cust("6", "only_production", [_prod("הפניקס", "P3", 10, status="לא פעיל")]),       # inactive → still claimed (QA 2026-10-08)
         _cust("3", "only_production", [_prod("הראל", "H1", 99)]),                           # no נפרעים from הראל → no data
         _cust("4", "matched", [_prod("הפניקס", "P1", 70)]),                                   # paid → skip
         _cust("5", "only_production", [_prod("הפניקס", "P2", 30)]),
@@ -49,9 +50,10 @@ def test_same_coverage_reported_twice_counts_once():
     assert len(g["items"]) == 1 and g["expected"] == 1814.56 and g["items"][0]["expected"] == 1814.56
 
 
-def test_inactive_products_are_not_claimed():
-    ids = {it["id_number"] for it in unpaid_by_company(RESULT)["מנורה"]["items"]}
-    assert "2" not in ids
+def test_cancelled_not_claimed_but_inactive_is():
+    g = unpaid_by_company(RESULT)
+    assert "2" not in {it["id_number"] for it in g["מנורה"]["items"]}
+    assert "6" in {it["id_number"] for it in g["הפניקס"]["items"]}
 
 
 def test_suggestion_ladder():

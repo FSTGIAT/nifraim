@@ -530,11 +530,25 @@ The back-office AI speaks first: a greeting, then one card per mail or insurer t
 ## Nifra AI v2 — one agent with tools (`services/agent/`)
 
 Both AI ask boxes stream from `POST /api/ai/agent`: answer cache → fast lane (regex router, no LLM, ~50ms) →
-Sonnet 5.5 tool loop (prompt-cached). 31 tools wrap the dashboard's OWN endpoint functions (one source per number),
+Sonnet 5.5 tool loop (prompt-cached). 47 tools wrap the dashboard's OWN endpoint functions (one source per number),
 no tool takes a user id, actions only propose (the agent's click on `/office-agent/act` sends), and
 `users.ai_data_version` (bumped by an `after_flush` hook) keys every cache. Official fund data (גמל-נט/פנסיה-נט/
 ביטוח-נט) comes from data.gov.il into `fund_market_monthly`. Data dictionary: `scripts/build_data_dictionary.py`.
 Tests: `tests/test_nifra_agent.py`; latency: `scripts/agent_latency.py`. **See `docs/ARCHITECTURE.md` §17c.**
+
+## הר הביטוח + policies — the customer's insurance file as Markdown (`services/policies/`)
+
+"תביא לי מהר הביטוח <ת.ז> <ת.לידה> <ת.הנפקה>" in Nifra → `propose_harb_fetch` → the agent's click (= consent) →
+`harb_requests` → the agent's local worker runs the `harbituach` plugin (login.gov.il + hands-free SMS OTP), draining
+the user's whole queue in ONE login → `insurance_policies` + `policy_documents` (Markdown) → cloud sweep embeds into
+`doc_chunks` → Nifra posts the summary. Policy PDFs uploaded in אנשי קשר → פוליסות become Markdown via Claude too.
+- **Never production, never the cycle** — every insurer's policies, separate tables, no "run now".
+- **History**: a re-fetch supersedes (`is_current`), never deletes; `harb_requests.changes` = what changed. Re-fetch within
+  30 days → Nifra asks first; limits 30/agent/day, 2/customer/day, 10 queued (`HARB_*` settings).
+- Agent tools: `customer_policies`, `search_policies`, `get_policy_document`; data map `customers/<id>/policies.md`.
+- Credentials: Settings → אוטומציה → הר הביטוח (the agent's ת"ז + gov password). Never hardcode them.
+- Tests: `tests/test_harb_parser.py`, `tests/test_nifra_agent.py` (policies routing + privacy).
+- **See `docs/ARCHITECTURE.md` §19** (invariants; the post-login screens still need their first live run).
 
 ## Calls (שיחות) — record → ivrit.ai → Claude summary
 

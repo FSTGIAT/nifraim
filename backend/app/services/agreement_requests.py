@@ -88,7 +88,8 @@ async def agent_companies(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
     kinds = (await db.execute(
         select(PortalCredential.portal_kind).where(PortalCredential.user_id == user_id)
     )).scalars().all()
-    names += [PORTAL_META[k][0] for k in kinds if k in PORTAL_META]
+    from app.services.portal_automation.companies import NON_INSURER_PORTALS
+    names += [PORTAL_META[k][0] for k in kinds if k in PORTAL_META and k not in NON_INSURER_PORTALS]
 
     prod = (await db.execute(
         select(ClientRecord.receiving_company)

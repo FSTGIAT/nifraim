@@ -37,7 +37,7 @@ async def current(db: AsyncSession, user_id) -> int:
 # covers the local worker (it runs this code against the prod DB) and admin fixes.
 _WATCHED = ("FileUpload", "CommissionComparison", "Debt", "CommissionRate", "PensionHolding", "PensionInquiry",
             "MailItem", "CollectionCase", "CompanyContact", "ProductionSummary", "ClientRecord", "AiDocument",
-            "MaslakaAgentLink", "AgreementRequest")
+            "MaslakaAgentLink", "AgreementRequest", "InsurancePolicy", "PolicyDocument", "HarbRequest")
 _registered = False
 
 

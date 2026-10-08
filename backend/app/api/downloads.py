@@ -8,7 +8,7 @@ router = APIRouter()
 # The version of app/assets/nifraim-sms.apk — bump with every APK you copy in (android/app/build.gradle
 # versionName). It names the downloaded file and versions the QR link, so a phone that downloaded an
 # older build never opens the stale "nifraim-sms.apk" again (user report 2026-10-05).
-APK_VERSION = "1.5"
+APK_VERSION = "1.6"
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _APK_PATH = _DATA_DIR / "nifraim-sms.apk"

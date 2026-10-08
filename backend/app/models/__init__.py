@@ -53,3 +53,6 @@ _register_ai_version_listeners()
 __all__ = ["User", "FileUpload", "ClientRecord", "CommissionRate", "Recruit", "PayingCompany", "CompanyContact", "Subscription", "CustomerPortalLink", "PortalSnapshot", "AgentPortalOffer", "PortalOfferClick", "VolumeCommissionRate", "VolumeBonusPayment", "ProductionSummary", "Debt", "PortalCredential", "PortalRun", "PortalRunBatch", "OtpInbox", "AgentTwilioNumber", "AiDocument", "CommissionComparison", "FundTrack", "FundTrackFund", "YieldRecommendation", "PensionInquiry", "PensionHolding", "PensionAuditLog", "PensionRawPayload", "MaslakaAgentLink", "SmsOtpTemplate", "WorkerHeartbeat", "DmConversation", "DmMessage", "DmPresence", "MailboxConfig", "MailboxProcessedMessage"]
 from app.models.walkin_customer import WalkinCustomer
 from app.models.blocked_phone import BlockedPhone
+from app.models.harb_request import HarbRequest
+from app.models.insurance_policy import InsurancePolicy
+from app.models.policy_document import PolicyDocument

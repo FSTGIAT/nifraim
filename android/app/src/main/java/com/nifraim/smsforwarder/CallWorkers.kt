@@ -111,21 +111,29 @@ class CallScanWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 fresh++
                 val info = CallSync.matchCall(ctx, rec)
                 info.startedAtMs?.let { Prefs.markCallUsed(ctx, it); matched++ }
+                // how the number was found: the call log / only the file name / not at all
+                val how = when { info.startedAtMs != null -> "log"; CallSync.phoneKey(info.number) != null -> "name"; else -> "none" }
+                val decision: String
                 if (CallSync.isBlocked(ctx, info.number)) {
                     blocked++                                  // never leaves the phone, never asked about
+                    decision = "block"
                 } else if (CallSync.isClient(ctx, info.number)) {
                     clients++
                     CallJobs.upload(ctx, rec, info)
+                    decision = "cust"
                 } else if (CallApproval.ask(ctx, rec, info)) {
                     Skipped.remember(ctx, rec, info)
                     asked++
+                    decision = "ask"
                 } else {
                     Skipped.remember(ctx, rec, info)
                     // the notification could not be shown (notifications off) — never drop it silently:
                     // it waits in the app's "ממתינות לאישור" list
                     CallApproval.keepInApp(ctx, rec, info)
                     pendingInApp++
+                    decision = "inapp"
                 }
+                Prefs.trail(ctx, rec.mediaId, "t" to rec.modifiedMs, "dur" to rec.durationMs / 1000, "m" to how, "d" to decision)
                 Prefs.markHandled(ctx, rec.mediaId)
             }
             CallDiag.save(ctx, found, fresh, matched, clients, asked, pendingInApp, writing, blocked)
@@ -167,7 +175,7 @@ class CallUploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
         )
         try {
             val input = ctx.contentResolver.openInputStream(CallSync.audioUri(mediaId))
-                ?: return@withContext Result.failure()   // file deleted on the phone
+                ?: run { Prefs.trail(ctx, mediaId, "u" to "gone"); return@withContext Result.failure() }   // file deleted on the phone
             val conn = URL(target).openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.doOutput = true
@@ -188,6 +196,7 @@ class CallUploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
             val code = conn.responseCode
             conn.disconnect()
             Prefs.setLastUploadResult(ctx, "$code")
+            Prefs.trail(ctx, mediaId, "u" to "$code")
             CallDiag.send(ctx)
             when {
                 code in 200..299 -> {
@@ -199,9 +208,11 @@ class CallUploadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
             }
         } catch (_: SecurityException) {
             Prefs.setLastUploadResult(ctx, "no-permission")
+            Prefs.trail(ctx, mediaId, "u" to "noperm")
             Result.failure()
         } catch (e: Exception) {
             Prefs.setLastUploadResult(ctx, "error:" + (e.javaClass.simpleName))
+            Prefs.trail(ctx, mediaId, "u" to "err")
             if (runAttemptCount < 6) Result.retry() else Result.failure()
         }
     }
@@ -264,6 +275,7 @@ object CallApproval {
     /** The agent tapped העלה / לא in the app's list. */
     fun resolveInApp(ctx: Context, mediaId: Long, upload: Boolean) {
         Skipped.forget(ctx, mediaId)
+        Prefs.trail(ctx, mediaId, "a" to if (upload) "yes" else "no")
         val arr = Prefs.getPending(ctx)
         val keep = org.json.JSONArray()
         for (i in 0 until arr.length()) {
@@ -283,6 +295,8 @@ class CallApprovalReceiver : BroadcastReceiver() {
         ctx.getSystemService(NotificationManager::class.java).cancel(intent.getIntExtra("notif_id", 0))
         // the agent answered: a "לא" is respected even if the number later becomes a customer
         Skipped.forget(ctx, intent.getLongExtra(CallUploadWorker.KEY_MEDIA_ID, -1))
+        Prefs.trail(ctx, intent.getLongExtra(CallUploadWorker.KEY_MEDIA_ID, -1),
+                    "a" to if (intent.action == CallApproval.ACTION_UPLOAD) "yes" else "no")
         if (intent.action != CallApproval.ACTION_UPLOAD) return
         val rec = CallSync.Recording(
             mediaId = intent.getLongExtra(CallUploadWorker.KEY_MEDIA_ID, -1),
@@ -362,6 +376,7 @@ object Skipped {
                                       o.optLong("start").takeIf { it > 0 }))
                 nm.cancel((id % Int.MAX_VALUE).toInt())
                 CallApproval.dropFromApp(ctx, id)
+                Prefs.trail(ctx, id, "a" to "recheck")
             } else keep.put(o)
         }
         Prefs.setSkipped(ctx, keep)

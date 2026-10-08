@@ -43,10 +43,18 @@
                 <input v-model.trim="form.email" type="email" dir="ltr" placeholder="name@example.com" />
               </label>
 
+              <!-- already in the book: their calls upload on their own, adding them changes nothing -->
+              <p v-if="known.id" class="wfm-known wfm-known--stop" role="status">
+                <b>{{ known.id }}</b> כבר לקוח בתיק — שיחות איתו עולות לבד, אין צורך להוסיף.
+              </p>
+              <p v-else-if="known.phone.length" class="wfm-known" role="status">
+                המספר כבר שייך ל{{ known.phone.join(', ') }} — שיחות ממנו כבר עולות לבד.
+              </p>
+
               <p v-if="error" class="wfm-err" role="alert">{{ error }}</p>
 
               <div class="wfm-actions">
-                <button type="submit" class="wfm-btn wfm-btn--primary" :disabled="!isValid || saving">
+                <button type="submit" class="wfm-btn wfm-btn--primary" :disabled="!isValid || saving || !!known.id">
                   <span v-if="saving" class="wfm-spin" aria-hidden="true"></span>
                   {{ saving ? 'שומר…' : (editing ? 'שמירה' : 'הוספת לקוח') }}
                 </button>
@@ -106,6 +114,26 @@ const isValid = computed(() => {
   const ph = digits(form.phone)
   return !!form.first_name && id.length >= 5 && id.length <= 9 && ph.length >= 9 &&
     (!form.email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email))
+})
+
+// is this ת.ז / phone already in the production book? (asked while typing, debounced)
+const known = reactive({ id: null, phone: [] })
+let checkTimer = null
+let checkSeq = 0
+watch(() => [form.id_number, form.phone, props.show], () => {
+  clearTimeout(checkTimer)
+  const id = digits(form.id_number).replace(/^0+/, '')
+  const ph = digits(form.phone)
+  if (!props.show || (id.length < 5 && ph.length < 9)) { Object.assign(known, { id: null, phone: [] }); return }
+  checkTimer = setTimeout(async () => {
+    const seq = ++checkSeq
+    try {
+      const { data } = await api.get('/walkin-customers/check', {
+        params: { id_number: id.length >= 5 ? id : '', phone: ph.length >= 9 ? ph : '' },
+      })
+      if (seq === checkSeq) Object.assign(known, { id: data?.id || null, phone: data?.phone || [] })
+    } catch { /* the save still checks */ }
+  }, 350)
 })
 
 watch(() => props.show, async (open) => {
@@ -184,6 +212,10 @@ async function submit() {
 .wfm-field input:focus { outline: none; border-color: var(--tab-emails);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--tab-emails) 18%, transparent); }
 
+.wfm-known { margin: 0; padding: 9px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+  color: var(--text-muted); background: var(--tab-emails-wash, var(--bg)); }
+.wfm-known b { color: var(--text); font-weight: 700; }
+.wfm-known--stop { color: var(--text); }
 .wfm-err { margin: 0; font-size: 12.5px; color: var(--red-deep, #C23934); }
 .wfm-actions { display: flex; gap: 10px; margin-top: 8px; }
 .wfm-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 10px;

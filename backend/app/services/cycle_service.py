@@ -466,10 +466,12 @@ async def notify(db: AsyncSession, user, kind: str, period: date) -> bool:
 
 async def _has_active_credentials(db: AsyncSession, user_id: uuid.UUID) -> bool:
     from app.models.portal_credential import PortalCredential
+    from app.services.portal_automation.companies import NON_INSURER_PORTALS
     n = (await db.execute(
         select(func.count(PortalCredential.id)).where(
             PortalCredential.user_id == user_id,
             PortalCredential.is_active.is_(True),
+            PortalCredential.portal_kind.notin_(NON_INSURER_PORTALS),
         )
     )).scalar() or 0
     return n > 0

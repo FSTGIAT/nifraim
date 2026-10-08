@@ -123,8 +123,8 @@
                 <!-- No pension rate in the agreement: say the figure is missing
                      rather than show a gemel rate the agreement never gave (QA
                      2026-10-03). No amount follows — nothing to compute it from. -->
-                <div class="amt" v-if="!rateLabel(p) && p.rate_note === 'no_pension_rate'"
-                     title="בהסכם אין אחוז נפרעים לקרן פנסיה">
+                <div class="amt" v-if="!rateLabel(p) && p.rate_note"
+                     :title="p.rate_note === 'no_managers_rate' ? 'בהסכם אין אחוז נפרעים לביטוח מנהלים' : 'בהסכם אין אחוז נפרעים לקרן פנסיה'">
                   <span class="amt-lbl">אחוז לפי ההסכם</span>
                   <span class="amt-val amt-missing">נתון חסר</span>
                 </div>

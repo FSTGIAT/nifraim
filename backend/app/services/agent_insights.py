@@ -89,8 +89,9 @@ def nifraim_section(ctx, c: dict) -> list[str]:
                 bits.append(f"צפי {_m(exp)}" + (" (משוער)" if p.get("expected_is_estimate") else ""))
                 if suspicious(paid, exp):
                     bits.append("צפי חשוד (כנראה חישוב שגוי)")
-                elif exp - paid > 1:
-                    bits.append(f"**חסר {_m(exp - paid)}**")
+                elif exp - paid > 1 or (paid <= 0 < exp):
+                    # ₪0 on a line that owes anything is unpaid — never "negligible"
+                    bits.append(f"**חסר ₪{exp - paid:,.2f}**" if exp - paid < 1 else f"**חסר {_m(exp - paid)}**")
             if p.get("rate"):
                 bits.append(f"שיעור {_f(p['rate']) * 100:.2f}%")
             lines.append("- " + " · ".join(b for b in bits if b))
@@ -156,7 +157,7 @@ def page_reconcile(ctx) -> str:
             r["paid"] += paid
             r["exp"] += exp
             r["lines"] += 1
-            if exp > 1 and paid <= 0:
+            if exp > 0 and paid <= 0:
                 r["zero"] += 1
             if suspicious(paid, exp):
                 r["sus"] += 1
@@ -172,8 +173,9 @@ def page_reconcile(ctx) -> str:
         if c.get("match_status") != "only_production":
             continue
         for p in c.get("production_products") or []:
+            # Every unpaid product, active or not (QA 2026-10-08).
             k = _key(p.get("company"))
-            if k in reporting and _active(p):
+            if k in reporting:
                 missing_line.setdefault(k, []).append((c, p))
 
     lines = ["# התאמת עמלות — הסכם מול נפרעים",
@@ -184,7 +186,7 @@ def page_reconcile(ctx) -> str:
         lines.append(f"- [{r['name']}](companies/{_slug(k)}.md): שולם {_m(r['paid'])} מול צפי {_m(r['exp'])}"
                      + (f" · **פער {_m(gap)}**" if gap > 1 else "")
                      + f" · {r['lines']} שורות · {r['zero']} שולמו ₪0 · {r['under']} מתחת להסכם"
-                     + (f" · {len(missing_line.get(k, []))} פוליסות פעילות בלי שורת נפרעים" if missing_line.get(k) else ""))
+                     + (f" · {len(missing_line.get(k, []))} מוצרים שלא שולמו (₪0)" if missing_line.get(k) else ""))
         if r["sus"]:
             lines.append(f"  - לא נכלל בפער: {r['sus']} שורות עם צפי חשוד ({_m(r['sus_exp'])}) — ראו למטה")
     if not per:
@@ -204,7 +206,7 @@ def page_reconcile(ctx) -> str:
             lines.append(f"- [{_name(c)}](customers/{c.get('id_number')}.md) · {p.get('company')} · {p.get('product') or ''}"
                          f" · חשבון {p.get('account') or '—'} · שולם {_m(paid)} מול צפי {_m(exp)}")
     if missing_line:
-        lines += ["", "## פוליסות פעילות בלי שורת נפרעים (נעלמו מהדוח?) — ראו גם [לא שולם](unpaid.md)"]
+        lines += ["", "## מוצרים שלא שולמו — בלי שורת נפרעים או ששולמו ₪0 (פעילים ולא פעילים) — ראו [לא שולם](unpaid.md)"]
         for k, rows in missing_line.items():
             exp = sum(_f(p.get("expected_commission")) for _, p in rows)
             lines.append(f"- {reporting.get(k, k)}: {len(rows)} פוליסות · צפי {_m(exp)}")

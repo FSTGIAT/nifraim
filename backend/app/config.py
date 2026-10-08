@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # pre-worker behavior (Railway executes inline). See memory
     # `railway_ip_geoblocked_insurers`.
     WORKER_MODE: bool = False
+    # הר הביטוח (services/policies/harb_jobs.py): ask before re-fetching a customer fetched within
+    # N days; caps so one agent can never hammer the government site.
+    HARB_REFETCH_ASK_DAYS: int = 30
+    HARB_DAILY_LIMIT: int = 30            # fetches per agent per 24h
+    HARB_CUSTOMER_DAILY_LIMIT: int = 2    # fetches of one customer per 24h
+    HARB_MAX_QUEUE: int = 10              # requests waiting at once
 
     # Public (externally reachable) async DB URL the local worker connects to —
     # NOT the Railway-internal DATABASE_URL (postgres.railway.internal is only

@@ -69,6 +69,7 @@ class MapContext:
     names: dict = field(default_factory=dict)           # key -> display name
     extra: dict = field(default_factory=dict)           # id -> customer from production only (@-mentioned, not in the comparison)
     calls: list = field(default_factory=list)           # done CallRecording, newest first
+    policies: dict = field(default_factory=dict)        # id -> policies picture (services/policies/store.build_picture)
 
     # derived
     @property
@@ -148,6 +149,8 @@ async def load(db: AsyncSession, user: User) -> MapContext:
                                     __import__("app.services.calls.privacy", fromlist=["visible"]).visible())
         .order_by(CallRecording.created_at.desc()).limit(300)
     )).scalars().all()
+    from app.services.policies.store import all_pictures
+    ctx.policies = await all_pictures(db, user.id)
     return ctx
 
 
@@ -171,6 +174,7 @@ def page_index(ctx: MapContext) -> str:
         "- [מה פתוח לי היום](tasks.md) — מיילים ומעקב מול חברות",
         "- [לקוחות מובילים](top.md) — הלקוחות הגדולים לפי צבירה, פרמיה ועמלה",
         f"- [שיחות](calls.md) — {len(ctx.calls)} שיחות מוקלטות · לפי נושא · מה הובטח ועוד פתוח",
+        f"- [פוליסות לקוחות](policies.md) — {len(ctx.policies)} לקוחות עם תיק מהר הביטוח או פוליסה שהועלתה · לקוח: `customers/<ת.ז>/policies.md`",
         f"- [הסכמי עמלות](agreements.md) — {sum(len(v) for v in ctx.rates.values())} שיעורים ב-{len(ctx.rates)} חברות",
         "- לקוח לפי ת.ז: `customers/<ת.ז>.md` · חיפוש לפי שם: `search/<שם>.md`",
         "",
@@ -275,6 +279,9 @@ async def add_production_customers(db, ctx: MapContext, ids=None) -> None:
 def page_customer(ctx: MapContext, idn: str) -> str:
     c = next((x for x in ctx.customers if str(x.get("id_number")) == idn), None) or ctx.extra.get(idn.lstrip("0"))
     if not c:
+        if ctx.policies.get(idn.lstrip("0")):   # known only from הר הביטוח / an uploaded policy
+            return (f"# ת.ז {idn} — לא בפרודוקציה, אבל יש פוליסות\n\n"
+                    + page_customer_policies(ctx, idn.lstrip("0")))
         return f"# לא נמצא\nאין לקוח עם ת.ז {idn} בהשוואה האחרונה."
     nm = " ".join(x for x in (c.get("first_name"), c.get("last_name")) if x) or idn
     lines = [f"# {nm} (ת.ז {idn})", f"- סטטוס: **{STATUS_HE.get(c.get('match_status'), c.get('match_status'))}**"]
@@ -292,6 +299,13 @@ def page_customer(ctx: MapContext, idn: str) -> str:
     lines += agent_insights.nifraim_section(ctx, c)
     lines += agent_insights.portfolio_section(c)
     lines += calls_section(ctx, idn)
+    pic = ctx.policies.get(idn.lstrip("0"))
+    if pic:
+        t = pic["totals"]
+        lines += ["", "## פוליסות (הר הביטוח / PDF) — תנאים, כיסויים ומחירים שלא מופיעים בפרודוקציה",
+                  f"- {t['policies']} פוליסות מהר הביטוח, {len(pic['documents'])} מסמכי פוליסה → "
+                  f"[פוליסות](customers/{idn.lstrip('0')}/policies.md) · שאלה על כיסוי/מחיר/תנאים: search_policies id_number={idn.lstrip('0')}"]
+        lines += [f"  - {d['title']}" for d in pic["documents"][:6] if d["status"] == "ready"]
     mails = [m for m in ctx.mails if m.linked_customer_id_number == idn]
     if mails:
         lines += ["", "## מיילים על הלקוח"] + [f"- {m.from_name or m.from_address}: {m.summary or m.subject}" for m in mails]
@@ -358,24 +372,27 @@ def calls_section(ctx: MapContext, idn: str) -> list[str]:
 
 
 def _unpaid_section(c: dict) -> list[str]:
-    """Said outright: products with an expected commission at a company that paid NOTHING for this
-    customer. The card listed "צפי עמלה ₪1,111" (הראל) and a separate Mor payment gap; asked
-    "was his commission paid?" the agent answered only the Mor ₪142 — same numbers as get_unpaid,
-    now in words."""
-    paid = {_key(p.get("company") or p.get("receiving_company")) for p in (c.get("commission_products") or [])}
-    paid |= {_key(p.get("company") or p.get("company_full")) for p in (c.get("paid_production_products") or [])}
-    by: dict[str, float] = {}
-    names: dict[str, str] = {}
-    for p in c.get("production_products") or []:
-        k = _key(p.get("company") or p.get("company_full"))
-        exp = float(p.get("expected_commission") or 0)
-        if k and exp >= 0.5 and k not in paid:
-            by[k] = by.get(k, 0.0) + exp
-            names.setdefault(k, p.get("company") or p.get("company_full"))
-    if not by:
+    """Said outright: every product of this customer that received NO commission — no
+    נפרעים line, or a line that paid ₪0 — whatever its size or status (QA 2026-10-08:
+    the agent hid רונן חיראק's inactive Harel gemel and שרה אשר's ₪10 as "negligible").
+    The comparison already narrowed an unpaid customer's `production_products` to exactly
+    those products, per product, so this lists them as they are."""
+    if c.get("match_status") != "only_production":
         return []
-    return ["", "## לא שולם (אין שום תשלום מהחברה על הלקוח הזה)"] + [
-        f"- {names[k]}: צפי {_money(v)} — לא התקבלה עמלה" for k, v in sorted(by.items(), key=lambda x: -x[1])]
+    rows = []
+    for p in c.get("production_products") or []:
+        exp = float(p.get("expected_commission") or 0)
+        bits = [p.get("company") or p.get("company_full") or "", p.get("product") or p.get("product_type") or ""]
+        if p.get("policy_number"):
+            bits.append(f"פוליסה {p['policy_number']}")
+        if p.get("status"):
+            bits.append(p["status"])
+        bits.append(f"צפי {_money(exp)}" if exp >= 1 else (f"צפי ₪{exp:,.2f}" if exp > 0 else "צפי: נתון חסר (אין אחוז בהסכם)"))
+        rows.append((exp, "- " + " · ".join(b for b in bits if b) + " — לא התקבלה עמלה"))
+    if not rows:
+        return []
+    return ["", "## לא שולם (המוצרים שלא התקבלה עליהם עמלה — כולם, גם סכום קטן וגם קופה לא פעילה)"] + [
+        r for _, r in sorted(rows, key=lambda x: -x[0])]
 
 
 def page_top(ctx: MapContext) -> str:
@@ -475,6 +492,73 @@ def page_search(ctx: MapContext, text: str) -> str:
     return "\n".join(lines)
 
 
+def page_policies(ctx: MapContext) -> str:
+    lines = ["# פוליסות לקוחות", "מקור: הר הביטוח (כל החברות, לא רק של הסוכן) ופוליסות PDF שהועלו.", "",
+             "| לקוח | פוליסות | בתוקף | חברות | פרמיה חודשית בתוקף | מסמכים |", "|---|---|---|---|---|---|"]
+    for idn, p in ctx.policies.items():
+        t = p["totals"]
+        lines.append(f"| [{p.get('customer_name') or idn}](customers/{idn}/policies.md) | {t['policies']} | {t['active_policies']} | "
+                     f"{', '.join(t['companies'][:5])} | {_money(t['monthly_premium_active']) if t['monthly_premium_active'] else ''} | "
+                     f"{len(p['documents'])} |")
+    if not ctx.policies:
+        lines.append("עוד אין פוליסות. אפשר לשלוף מהר הביטוח (ת.ז + תאריך לידה + תאריך הנפקה) או להעלות PDF בכרטיס הלקוח.")
+    return "\n".join(lines)
+
+
+def page_customer_policies(ctx: MapContext, idn: str) -> str:
+    p = ctx.policies.get(idn)
+    if not p:
+        return (f"# אין פוליסות ללקוח {idn}\nעוד לא נשלף מהר הביטוח ולא הועלתה פוליסה. "
+                "אפשר להציע שליפה מהר הביטוח (צריך ת.ז, תאריך לידה ותאריך הנפקת ת.ז).")
+    t = p["totals"]
+    fetched = p["fetched_at"].strftime("%d/%m/%Y") if p.get("fetched_at") else None
+    lines = [f"# הפוליסות של {p.get('customer_name') or idn} (ת.ז {idn})",
+             f"- {t['policies']} פוליסות ({t['coverages']} כיסויים), {t['active_policies']} בתוקף · חברות: {', '.join(t['companies'])}"]
+    if fetched:
+        lines.append(f"- נשלף מהר הביטוח: {fetched}")
+    if t["monthly_premium_active"]:
+        lines.append(f"- פרמיה חודשית משוערת לכיסויים בתוקף: {_money(t['monthly_premium_active'])} (שנתית חולקה ל-12)")
+    ch = p.get("changes")
+    if ch:
+        from app.services.policies.store import changes_md
+        prev = next((h["fetched_at"] for h in p.get("history", [])[1:2]), None)
+        lines += [""] + changes_md(ch, prev).strip().splitlines()
+    if len(p.get("history") or []) > 1:
+        lines += ["", "## שליפות קודמות"] + [
+            f"- {h['fetched_at'].strftime('%d/%m/%Y')}: {h['coverages'] or 0} כיסויים"
+            + (f" · {h['changes']}" if h.get("changes") else "") + ("" if h["current"] else f" · document_id `{h['document_id']}`")
+            for h in p["history"][:10] if h.get("fetched_at")]
+    from app.services.policies.markdown import _money as _pmoney
+
+    def head(pol):
+        return (f"**{pol['branch'] or ''} — {' + '.join(pol['sub_branches'])}** · {pol['company_short']}"
+                + (f" · פוליסה {pol['policy_number']}" if pol["policy_number"] else "")
+                + (f" · {pol['period']}" if pol["period"] else ""))
+
+    # active first and complete (an answer reads from the top; a cut must never drop a live policy)
+    active = [x for x in p["policies"] if x["active"]]
+    ended = [x for x in p["policies"] if not x["active"]]
+    lines += ["", f"## בתוקף ({len(active)})"]
+    for pol in active:
+        lines.append(f"- {head(pol)} · תחום {pol['domain'] or 'אחר'}"
+                     + (f" · ₪{pol['monthly_premium']:,.2f}/חודש" if pol["monthly_premium"] else ""))
+        many = len(pol["sub_branches"]) > 1
+        for c in pol["coverages"][:10]:
+            prem = f"{_pmoney(c['premium'])} {c['premium_type'] or ''}".strip() if c["premium"] else ""
+            lines.append(f"  - {c['product'] or ''}{' · ' + c['sub_branch'] if many and c['sub_branch'] else ''}"
+                         + (f" · {c['period']}" if many and c["period"] != pol["period"] else "")
+                         + (f" · {prem}" if prem else ""))
+    if ended:
+        lines += ["", f"## הסתיימו ({len(ended)})"] + [f"- {head(pol)}" for pol in ended]
+    if p["documents"]:
+        lines += ["", "## מסמכי פוליסה (לפרטים: get_policy_document עם document_id)"]
+        for d in p["documents"]:
+            src = {"harb_portfolio": "הר הביטוח", "harb_policy": "הר הביטוח — פרטי פוליסה", "pdf": "PDF"}.get(d["source"], d["source"])
+            lines.append(f"- {d['title']} · {src}" + (f" · {d['company']}" if d.get("company") else "")
+                         + ("" if d["status"] == "ready" else f" · {d['status']}") + f" · document_id `{d['id']}`")
+    return "\n".join(lines)
+
+
 def render(ctx: MapContext, path: str) -> str:
     path = (path or "index.md").strip().lstrip("./").removeprefix("../")
     if path in ("", "index.md"):
@@ -511,6 +595,11 @@ def render(ctx: MapContext, path: str) -> str:
     m = re.fullmatch(r"search/(.+?)(\.md)?", path)
     if m:
         return page_search(ctx, m.group(1))
+    if path == "policies.md":
+        return page_policies(ctx)
+    m = re.fullmatch(r"customers/(\d+)/policies\.md", path)
+    if m:
+        return page_customer_policies(ctx, m.group(1).lstrip("0") or "0")
     m = re.fullmatch(r"customers/(\d+)\.md", path)
     if m:
         return page_customer(ctx, m.group(1).lstrip("0") or "0")

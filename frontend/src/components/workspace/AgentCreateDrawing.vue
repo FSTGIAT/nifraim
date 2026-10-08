@@ -17,6 +17,19 @@
         <path class="d" style="--d:1.25s;--t:.35s" pathLength="1" stroke-width="2.8" d="M23 36.5 l5 5 l9 -10" />
       </template>
 
+      <template v-else-if="kind === 'harb'">
+        <!-- the customer's insurance file, read line by line under a magnifier -->
+        <path class="d" style="--d:0s;--t:.55s" pathLength="1" stroke-width="2.4"
+              d="M24 22 H50 L56 28 H92 a5 5 0 0 1 5 5 V70 a5 5 0 0 1 -5 5 H29 a5 5 0 0 1 -5 -5 Z" />
+        <g stroke-width="1.6" opacity=".55">
+          <path class="d" style="--d:.5s;--t:.25s" pathLength="1" d="M34 42 H70" />
+          <path class="d" style="--d:.65s;--t:.25s" pathLength="1" d="M34 51 H64" />
+          <path class="d" style="--d:.8s;--t:.25s" pathLength="1" d="M34 60 H58" />
+        </g>
+        <circle class="d acd-accent acd-fill" style="--d:1s;--t:.45s" pathLength="1" cx="82" cy="52" r="11" stroke-width="2.4" fill="var(--acd-bg, #fff)" />
+        <path class="d acd-accent" style="--d:1.4s;--t:.25s" pathLength="1" stroke-width="3" d="M90 60 L100 70" />
+      </template>
+
       <template v-else-if="kind === 'meeting'">
         <rect class="d" style="--d:0s;--t:.6s" pathLength="1" x="22" y="14" width="76" height="62" rx="8" stroke-width="2.4" />
         <path class="d" style="--d:.45s;--t:.3s" pathLength="1" stroke-width="2.4" d="M22 30 H98" />
@@ -50,7 +63,7 @@
 
 <script setup>
 defineProps({
-  kind: { type: String, default: 'email' },   // email | meeting
+  kind: { type: String, default: 'email' },   // email | meeting | harb
   state: { type: String, default: 'open' },   // open (just created) | sent
 })
 </script>

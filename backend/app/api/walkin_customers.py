@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_paid_user as get_current_user
@@ -49,6 +49,51 @@ def _out(w: WalkinCustomer) -> dict:
             "created_at": w.created_at.isoformat() + "Z" if w.created_at else None}
 
 
+async def _in_book(db: AsyncSession, user: User, id_number: str | None, phone: str | None) -> dict:
+    """Who in this month's production book already has this ת.ז or phone.
+
+    A person already in the book is already a customer: their calls upload on their own, so adding
+    them again changes nothing on the phone (2026-10-07: kiko added סרגיי שנקמן, whose number was
+    already in the book for 4 family members, and expected the 3-hour re-check to run — it can't,
+    the app's list didn't grow)."""
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+
+    idn = re.sub(r"\D", "", id_number or "").lstrip("0")
+    key = phone_key(phone)
+    if not (len(idn) >= 5 or key):
+        return {"id": None, "phone": []}
+    ids = await _get_production_upload_ids(db, user.id)
+    if not ids:
+        return {"id": None, "phone": []}
+    conds = []
+    if len(idn) >= 5:
+        conds.append(ClientRecord.id_number.in_([idn, idn.zfill(9)]))
+    if key:
+        conds.append(ClientRecord.client_phone.is_not(None))
+    rows = (await db.execute(
+        select(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name, ClientRecord.client_phone)
+        .where(ClientRecord.user_id == user.id, ClientRecord.upload_id.in_(ids), or_(*conds))
+        .distinct()
+    )).all()
+    by_id, by_phone = None, {}
+    for rid, first, last, ph in rows:
+        rid = (str(rid or "").strip().lstrip("0")) or None
+        name = " ".join(x for x in ((first or "").strip(), (last or "").strip()) if x) or "ללא שם"
+        if rid and rid == idn and not by_id:
+            by_id = name
+        if key and phone_key(ph) == key and rid:
+            by_phone.setdefault(rid, name)
+    return {"id": by_id, "phone": sorted(set(by_phone.values()))}
+
+
+@router.get("/check")
+async def check_walkin(id_number: str = "", phone: str = "",
+                       user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """For the form, while typing: is this person / number already in the book?"""
+    return await _in_book(db, user, id_number, phone)
+
+
 @router.get("")
 async def list_walkins(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(WalkinCustomer).where(WalkinCustomer.user_id == user.id)
@@ -59,6 +104,9 @@ async def list_walkins(user: User = Depends(get_current_user), db: AsyncSession 
 @router.post("")
 async def add_walkin(data: WalkinIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     vals = _clean(data)
+    known = await _in_book(db, user, vals["id_number"], vals["phone"])
+    if known["id"]:
+        raise HTTPException(409, f"{known['id']} כבר לקוח בתיק — שיחות איתו עולות לבד, אין צורך להוסיף.")
     dup = (await db.execute(select(WalkinCustomer).where(WalkinCustomer.user_id == user.id,
                                                           WalkinCustomer.id_number == vals["id_number"]))).scalar_one_or_none()
     if dup:

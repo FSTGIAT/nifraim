@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 
-from app.services.rate_select import rate_for_product, pure_risk_insurance, is_pension_record
+from app.services.rate_select import rate_for_product, pure_risk_insurance, is_pension_record, is_managers_record
 from app.utils.company_norm import company_stem, known_company_stem
 
 logger = logging.getLogger(__name__)
@@ -60,8 +60,11 @@ def _classify_product_type(product_type: str | None) -> str | None:
 
 
 _SAVINGS_WORDS = ("גמל", "השתלמות", "חיסכון", "חסכון")
-# Pension statuses with no monthly deposit → no נפרעים to expect.
-_NO_DEPOSIT_STATUS = ("לא פעיל", "שמירת כיסוי", "מוקפא", "מוקפאת")
+# Companies that pay NO נפרעים on pension funds at all — their agreement has no
+# pension line, so an unpaid pension fund there is not money owed (QA
+# 2026-10-08: "בקרן פנסיה במור אין נפרעים"). Mor only, by the user's decision;
+# every other company's pension stays compared.
+_NO_PENSION_NIFRAIM_STEMS = ("מור",)
 
 
 def _is_savings(product_type: str | None) -> bool:
@@ -108,6 +111,9 @@ def _rate_note(product, product_type, rate):
     — the UI says "אין אחוז פנסיה בהסכם" instead of showing nothing."""
     if (rate is None or not rate) and is_pension_record(product, product_type):
         return "no_pension_rate"
+    # ביטוח מנהלים with no agreement line — same "נתון חסר", not a guessed rate.
+    if (rate is None or not rate) and is_managers_record(product, product_type):
+        return "no_managers_rate"
     return None
 
 
@@ -355,8 +361,9 @@ def compute_comparison(production_records: list[dict], commission_records: list[
     - פנסיה products ARE compared for paid / not paid (since 2026-10-01 —
       excluding them showed 16 paid pension customers as "רק בנפרעים" and never
       flagged the unpaid ones). They carry no expected amount: נפרעים is paid on
-      the monthly deposit, which production doesn't have. An INACTIVE pension
-      fund (no deposits) goes to `no_value_customers`, not unpaid.
+      the monthly deposit, which production doesn't have. Status never
+      hides one — an inactive fund that got ₪0 is unpaid (QA 2026-10-08) —
+      except pension at a company that pays no pension נפרעים (Mor).
 
     Why the category filter is gone
     -------------------------------
@@ -605,11 +612,24 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         if _is_savings(r.get("product_type")) and float(r.get("accumulation") or 0) > 0
     }
     accum_stems.discard("")
+    pension_accum_stems = {
+        company_stem(r.get("receiving_company") or "")
+        for r in filtered_production
+        if is_pension_record(r.get("product"), r.get("product_type")) and float(r.get("accumulation") or 0) > 0
+    }
 
+    # Status never hides a product (QA 2026-10-08: "אין קשר לזה אם הקופה פעילה
+    # או לא פעילה. כל מה שלא שולם צריך להופיע"). Only VALUE does: an empty
+    # savings fund has nothing to earn on.
     def _empty_fund(p):
-        # A pension fund with no deposits (inactive / cover-only) earns nothing.
-        if "פנסיה" in (p.get("product_type") or "") and any(
-                w in (p.get("status") or "") for w in _NO_DEPOSIT_STATUS):
+        # A pension fund with nothing in it and no deposit earns nothing either —
+        # only where the source REPORTS accumulation (a presence-only source's
+        # ₪0 / blank means "not reported", not "empty").
+        if (is_pension_record(p.get("product"), p.get("product_type"))
+                and p.get("accumulation") is not None
+                and not float(p.get("accumulation") or 0)
+                and not float(p.get("premium") or 0)
+                and company_stem(p.get("company_full") or "") in pension_accum_stems):
             return True
         return (_is_savings(p.get("product_type"))
                 and not float(p.get("accumulation") or 0)
@@ -629,6 +649,18 @@ def compute_comparison(production_records: list[dict], commission_records: list[
     def _stem_of(p):
         return company_stem(p.get("company_full") or p.get("company") or "")
 
+    no_pension_stems = {company_stem(s) for s in _NO_PENSION_NIFRAIM_STEMS}
+
+    def _never_pays(p):
+        # Pension at a company that pays no pension נפרעים and whose agreement
+        # has no pension rate — "נתון חסר", never "לא שולם".
+        return (_stem_of(p) in no_pension_stems
+                and is_pension_record(p.get("product"), p.get("product_type"))
+                and not p.get("rate"))
+
+    def _no_value(p):
+        return _empty_fund(p) or _never_pays(p)
+
     # A customer with no נפרעים of their own whose products are paid under the
     # policy owner's ID is paid, not "רק בפרודוקציה". Partly covered → the
     # same partially-paid split the company-level rule below produces.
@@ -643,12 +675,38 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         c["paid_production_products"] = [p for p in prods if is_via(p)]
         c["production_products"] = rest
         c["total_premium"] = sum((p.get("premium") or 0) for p in rest)
-        if any(not _empty_fund(p) for p in rest):
+        if any(not _no_value(p) for p in rest):
             c["partially_paid"] = True
         else:
             c["match_status"] = "matched"
             only_prod_ids.discard(c["id_number"])
             matched_ids.add(c["id_number"])
+
+    # ── Unpaid is judged PER PRODUCT ──
+    # A product the insurer sent NO money for is unpaid — even when the same
+    # company paid this customer's other products, and even when a נפרעים line
+    # for it exists but carries ₪0 (QA 2026-10-08: רונן חיראק's ₪210K Harel
+    # gemel hid behind his paid מנהלים line; שרה אשר's ₪0 מגוון line read as
+    # "paid"). It used to be per company: any payment at a company cleared every
+    # product the customer held there. Products with no policy number can't be
+    # matched one by one, so they keep that company rule. `production_products`
+    # then holds ONLY the unpaid products — every consumer reads it as "the
+    # unpaid products" — and the rest move to `paid_production_products`;
+    # product_matches is left whole for the detail view.
+    # Pension production usually carries the member's ID as its "policy"
+    # (מנורה / אלטשולר / מגדל מקפת), while נפרעים pays it under a fund account
+    # ('מבטחים יותר' 852298610) — no policy match is possible. Such a product is
+    # judged by its FAMILY: paid when the company sent money on a pension line
+    # for this customer. Companies whose נפרעים never names pension fall back to
+    # the company rule.
+    def _is_pension_line(cp):
+        return is_pension_record(cp.get("product") or cp.get("fund_type"), None)
+
+    pension_line_stems = {
+        company_stem(cp.get("company_full") or "")
+        for c in customers for cp in (c.get("commission_products") or [])
+        if _is_pension_line(cp)
+    }
 
     for c in customers:
         if c["match_status"] != "matched" or not covered_stems:
@@ -656,27 +714,66 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         if c.get("paid_production_products") is not None and not c.get("commission_products"):
             continue  # paid entirely via another ID — already split above
         prods = c.get("production_products") or []
-        paid_stems = {company_stem(p.get("company_full") or p.get("company") or "")
-                      for p in c.get("commission_products") or []}
+        comm = c.get("commission_products") or []
+        cid = c["id_number"]
+        pension_paid_stems = {company_stem(cp.get("company_full") or "") for cp in comm
+                              if _is_pension_line(cp) and float(cp.get("commission") or 0) > 0}
+        paid_stems = {company_stem(p.get("company_full") or p.get("company") or "") for p in comm}
         paid_stems |= {company_stem(v.get("company_full") or "") for v in c.get("paid_via") or []}
-        unpaid_stems = {_stem_of(p) for p in prods if not _empty_fund(p)}
-        unpaid_stems = {st for st in unpaid_stems if st and st in covered_stems and st not in paid_stems}
-        if not unpaid_stems:
+        via_keys = {_policy_key(v.get("policy_number")) for v in c.get("paid_via") or []}
+        money_accounts = [cp.get("account") for cp in comm
+                          if cp.get("account") and float(cp.get("commission") or 0) > 0]
+
+        def _got_money(p):
+            pn = p.get("policy_number")
+            key = _policy_key(pn)
+            if key in via_keys:
+                return True
+            return any(_policy_matches(pn, a) or (key and key == _policy_key(a)) for a in money_accounts)
+
+        def _unpaid(p):
+            st = _stem_of(p)
+            if not st or st not in covered_stems or _no_value(p):
+                return False
+            pn = p.get("policy_number")
+            if not pn or _policy_key(pn) == cid:     # no real policy number
+                if (st in pension_line_stems
+                        and is_pension_record(p.get("product"), p.get("product_type"))):
+                    return st not in pension_paid_stems
+                return st not in paid_stems
+            return not _got_money(p)
+
+        unpaid = [p for p in prods if _unpaid(p)]
+        if not unpaid:
             continue
-        c["paid_production_products"] = [p for p in prods if _stem_of(p) not in unpaid_stems]
-        c["production_products"] = [p for p in prods if _stem_of(p) in unpaid_stems]
+        c["paid_production_products"] = [p for p in prods if not _unpaid(p)]
+        c["production_products"] = unpaid
+        c["unpaid_count"] = len(unpaid)
         # Same number type as every other customer's total (Decimal from the DB).
-        c["total_premium"] = sum((p.get("premium") or 0) for p in c["production_products"])
+        c["total_premium"] = sum((p.get("premium") or 0) for p in unpaid)
         c["match_status"] = "only_production"
         c["partially_paid"] = True
         matched_ids.discard(c["id_number"])
         only_prod_ids.add(c["id_number"])
 
+    # An unpaid customer's no-value products (empty savings fund, Mor pension)
+    # are not money owed — they leave the unpaid list (and so never become a
+    # debt) but stay visible on the customer as `no_value_products`.
+    for c in customers:
+        if c["match_status"] != "only_production":
+            continue
+        prods = c.get("production_products") or []
+        nv = [p for p in prods if _no_value(p)]
+        if nv and len(nv) < len(prods):
+            c["production_products"] = [p for p in prods if not _no_value(p)]
+            c["no_value_products"] = nv
+            c["total_premium"] = sum((p.get("premium") or 0) for p in c["production_products"])
+
     no_value_customers = []
     kept = []
     for c in customers:
         prods = c.get("production_products") or []
-        if c["match_status"] == "only_production" and prods and all(_empty_fund(p) for p in prods):
+        if c["match_status"] == "only_production" and prods and all(_no_value(p) for p in prods):
             no_value_customers.append(c)
         else:
             kept.append(c)

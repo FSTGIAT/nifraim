@@ -1,0 +1,67 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>הר הביטוח — תיק (mock)</title>
+<link rel="stylesheet" href="/vendor/kendo.common.min.css">
+<script src="/vendor/jquery.min.js"></script><script src="/vendor/kendo.all.min.js"></script>
+<style>.modal{border:1px solid #888;padding:12px;margin:12px}.hidden{display:none}td{padding:4px 8px;border:1px solid #ccc}</style></head>
+<body>
+<!-- Screens from "תהליך כניסה להר הביטוח.docx": the entry modal, the search form (#txtId, Kendo
+     day/month/year x2, #cbAproveTerm), the portfolio summary (כל הביטוחים / כניסה לתיק נוסף), the grid + Excel. -->
+<div id="entry" class="modal hidden"><h3>כניסה לתיק ביטוחים</h3>
+  <a href="/portal/search"><span class="col-xs-11 font18 full-width">תיק ביטוחים על שם מבוטח בגיר</span></a>
+  <div>תיק ביטוחים על שם קטין</div><div>תיק ביטוחים על שם קרוב שנפטר</div></div>
+
+<div id="search" class="hidden"><h2>חיפוש ביטוחים על שם מבוטח</h2>
+  <input id="txtId" type="text" name="txtId" maxlength="9">
+  <div>תאריך לידה <input id="bDay"><input id="bMonth"><input id="bYear"></div>
+  <div>תאריך הנפקה <input id="iDay"><input id="iMonth"><input id="iYear"></div>
+  <input id="cbAproveTerm" type="checkbox"> אני מסכים/ה לתנאי השימוש
+  <button id="go" type="button">צפיה בתיק הביטוחי</button>
+  <div class="validationMessage" id="msg"></div></div>
+
+<div id="summary" class="hidden"><h2>התיק הביטוחי של:</h2><h1 id="who"></h1>
+  <a id="all" href="#">כל הביטוחים »</a><br><a id="another" href="#">כניסה לתיק נוסף</a><br><a href="/">יציאה מהמערכת</a></div>
+
+<div id="grid" class="hidden"><h2>כל הביטוחים</h2><div class="butExcelGeneral col-sm-12" id="xl">אקסל</div>
+  <table class="k-grid"><thead><tr><th>ענף</th><th>חברה</th><th>מספר פוליסה</th></tr></thead><tbody id="rows"></tbody></table>
+  <div id="detail" class="modal hidden"><div class="modal-content"><span id="dtext"></span> <button class="close" type="button">סגור</button></div></div></div>
+<script>
+// FIXTURE: the one person this mock "knows" (Sharon's ID/birth from the Harel PDF; issue date invented)
+const KNOWN = { id: '032489387', birth: '22/5/1986', issue: '15/3/2004' };
+const path = location.pathname, q = new URLSearchParams(location.search);
+const show = (id) => document.getElementById(id).classList.remove('hidden');
+const days = Array.from({length: 31}, (_, i) => String(i + 1)), months = Array.from({length: 12}, (_, i) => String(i + 1));
+const years = Array.from({length: 110}, (_, i) => String(2026 - i));
+if (path === '/portal' ) show('entry');
+if (path === '/portal/search') {
+  show('search');
+  for (const [id, data, lbl] of [['bDay', days, 'יום'], ['bMonth', months, 'חודש'], ['bYear', years, 'שנה'],
+                                 ['iDay', days, 'יום'], ['iMonth', months, 'חודש'], ['iYear', years, 'שנה']])
+    $('#' + id).kendoDropDownList({ dataSource: data, optionLabel: lbl });
+  const val = (a, b, c) => [a, b, c].map((x) => $('#' + x).data('kendoDropDownList').value()).join('/');
+  document.getElementById('go').onclick = () => {
+    const msg = document.getElementById('msg');
+    if (!document.getElementById('cbAproveTerm').checked) { msg.textContent = 'יש לאשר את תנאי השימוש'; return; }
+    const ok = document.getElementById('txtId').value === KNOWN.id && val('bDay','bMonth','bYear') === KNOWN.birth && val('iDay','iMonth','iYear') === KNOWN.issue;
+    if (ok) location.href = '/portal/summary?id=' + KNOWN.id;
+    else msg.textContent = 'הפרטים שהוזנו אינם תואמים את הרשומים במרשם האוכלוסין';
+  };
+}
+if (path === '/portal/summary') {
+  show('summary'); document.getElementById('who').textContent = q.get('id');
+  document.getElementById('all').href = '/portal/all?id=' + q.get('id');
+  document.getElementById('another').onclick = (e) => { e.preventDefault(); show('entry'); };
+}
+if (path === '/portal/all') {
+  show('grid');
+  const rows = [['ביטוח סיעודי', 'הראל חברה לביטוח בע"מ', '301611265', 'סיעודי · מתחדש · פרמיה חודשית 136.29 ₪ · קבוצתי'],
+                ['ביטוח בריאות', 'הפניקס חברה לביטוח בע"מ', '1136883087', 'מחלות קשות · פיצוי 100,000 ₪ · מתחדש'],
+                ['ביטוח חיים', 'כלל חברה לביטוח בע"מ', '6929303', 'ביטוח חיים למקרה מוות · סכום 75,000 ₪ · 01/05/2019 - 01/05/2027']];
+  const tb = document.getElementById('rows');
+  for (const r of rows) {
+    const tr = document.createElement('tr'); tr.innerHTML = `<td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td>`;
+    tr.onclick = () => { document.getElementById('dtext').textContent = 'פרטי פוליסה ' + r[2] + ': ' + r[3]; show('detail'); };
+    tb.appendChild(tr);
+  }
+  document.querySelector('#detail .close').onclick = () => document.getElementById('detail').classList.add('hidden');
+  document.getElementById('xl').onclick = () => { location.href = '/excel?id=' + q.get('id'); };
+}
+</script></body></html>

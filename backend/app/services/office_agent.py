@@ -253,6 +253,8 @@ def _proposal_line(p: dict, own_email: str = "") -> str:
         return f"הכנתי סימון כבוצע: «{p.get('text', '')}»" + (f" ({p['customer']})" if p.get("customer") else "") + ". מחכה לאישור שלך."
     if kind == "collection":
         return f"הכנתי פנייה ל{p.get('company', 'חברה')} על עמלות שלא שולמו. מחכה לאישור שלך."
+    if kind == "harb":
+        return f"הכנתי שליפה מהר הביטוח עבור {p.get('customer_name') or 'ת.ז ' + p.get('customer_id_number', '')}. מחכה לאישור שלך."
     if kind == "maslaka":
         return f"הכנתי בקשה למסלקה עבור {p.get('customer_name') or p.get('customer_id_number', '')}. מחכה לאישור שלך."
     if not p.get("to_email"):
@@ -286,12 +288,22 @@ ACTION_RE = re.compile(
 )
 
 
+# "תביא לי מהר הביטוח 203717186 …" — a fetch verb is an action only when aimed at הר הביטוח
+# (a plain "תביא לי את הלקוחות" is still a question).
+HARB_ACTION_RE = re.compile(r"(?:תביא|הבא|להביא|תשלוף|שלוף|לשלוף|תמשוך|משוך|למשוך|תוריד|הורד|להוריד|תבדוק|בדוק|לבדוק)"
+                            r".{0,40}הר\s*ה?ביטוח|הר\s*ה?ביטוח.{0,40}(?:תביא|שלוף|תשלוף|משוך|תמשוך|תוריד|הורד|בדוק|תבדוק)")
+
+
+def _is_action(text: str) -> bool:
+    return bool(ACTION_RE.search(text or "") or HARB_ACTION_RE.search(text or ""))
+
+
 def wants_action(question: str, history: list[dict] | None) -> bool:
-    if ACTION_RE.search(question or ""):
+    if _is_action(question):
         return True
     # a follow-up that answers the agent's question about a pending action ("הוא לקוח חדש, המייל…")
     users = [t.get("text") or "" for t in (history or []) if t.get("role") != "agent"]
-    return bool(users) and bool(ACTION_RE.search(users[-1]))
+    return bool(users) and _is_action(users[-1])
 
 
 async def _ask(db: AsyncSession, user: User, question: str, history: list[dict] | None = None, mentions: list[dict] | None = None) -> dict:

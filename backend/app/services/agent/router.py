@@ -82,8 +82,45 @@ def _unexplained_words(q: str, co: str) -> bool:
     return False
 
 
+def harb_request(q: str) -> dict | None:
+    """"תביא לי מהר הביטוח 203717186 תאריך לידה 06091991 הנפקה 30.6.2020" → {id_number, birth_date,
+    issue_date}, or None unless exactly one ID and two valid dates are there. Dates with separators,
+    or 8 digits (ddmmyyyy) after the ID. A label (לידה / הנפקה) right before a date decides which is
+    which; otherwise the earlier date is the birth date (an ID is always issued after birth)."""
+    from app.services.office_agent import HARB_ACTION_RE
+    from app.services.policies.harb_jobs import parse_user_date
+    if not HARB_ACTION_RE.search(q):
+        return None
+    toks = [(m.group(0), m.start()) for m in re.finditer(r"\d{1,4}[/.\-]\d{1,2}[/.\-]\d{2,4}|\d{5,9}", q)]
+    idn, dates = None, []
+    for tok, pos in toks:
+        d = parse_user_date(tok) if (not tok.isdigit() or (idn and len(tok) == 8)) else None
+        if d:
+            label = q[max(0, pos - 25):pos]
+            kind = ("issue" if re.search(r"הנפק", label) and not re.search(r"לידה[^\d]*$", label)
+                    else "birth" if re.search(r"לידה", label) else None)
+            dates.append((d, kind))
+        elif tok.isdigit() and idn is None:
+            idn = tok
+    if not idn or len(dates) != 2:
+        return None
+    birth = next((d for d, k in dates if k == "birth"), None)
+    issue = next((d for d, k in dates if k == "issue"), None)
+    if birth is None or issue is None:
+        birth, issue = sorted(d for d, _ in dates)
+    out = {"id_number": idn, "birth_date": birth.strftime("%d/%m/%Y"), "issue_date": issue.strftime("%d/%m/%Y")}
+    if re.search(r"שוב|מחדש|בכל זאת|עדכני|רענן", q):
+        out["confirm_refetch"] = True          # the agent already said "again"
+    return out
+
+
 def route(question: str) -> Route | None:
     q = " ".join((question or "").split())
+    # a הר הביטוח fetch with everything it needs → the proposal, deterministically (never a model's
+    # "done" — measured 2026-10-07: with policies already stored it answered "השליפה הושלמה" unfetched)
+    hr = harb_request(q)
+    if hr:
+        return Route("harb_fetch", "propose_harb_fetch", hr)
     if q and len(q) <= 60:
         if re.search(r"^(?:תעצור|עצור|תפסיק|הפסק|סיים|תסיים)\b.*(?:הקלט|שיחה)|^(?:עצור|תעצור|stop)[!.\s]*$", q):
             return Route("stop_call", "stop_call_recording", {})
@@ -95,6 +132,8 @@ def route(question: str) -> Route | None:
         return None
     if re.search(r"שיח|(?:^|\s)(?:אמר|אמרה|סיפר|סיפרה|דיבר|דיברה|התלונן|התלוננה)(?:\s|$)", q):
         return None            # calls: the agent lane picks search_calls / calls_stats / open_promises
+    if re.search(r"הר\s*ה?ביטוח|פוליס|כיסוי|מכוסה|מבוטח[תי]? ב|החרג", q) and not re.search(r"הכי הרבה", q):
+        return None            # policies / הר הביטוח: agent lane (customer_policies / search_policies / propose_harb_fetch)
     co = _company(q)
     # "אילו מוצרים יש ללקוחות המובילים" asks WHAT they hold, not who they are — a compound
     # question; the instant ranking would answer only half of it. → agent lane (+prefetch).
@@ -267,6 +306,21 @@ async def answer(ctx, r: Route) -> dict | None:
     t = registry.get(r.tool)
     if not t:
         return None
+    if r.intent == "harb_fetch":
+        out = await t.fn(ctx, **r.args)
+        if not ctx.proposals and str(out).startswith("שאל את הסוכן: "):
+            # fetched recently → ask first ("נשלף היום ב-10:42 — לשלוף שוב?"); "כן" goes to the agent lane
+            return {"text": str(out)[len("שאל את הסוכן: "):], "vizs": [], "status": t.status_he}
+        if not ctx.proposals:
+            # a gate said no (no credential / worker offline / already open) — say exactly that.
+            # Never hand it to the model: measured, it wrote "prepared, awaiting approval" AND "not done".
+            m = re.match(r"לא הוכנה שליפה: (.*?)\s*הסבר לסוכן", str(out))
+            if not m:
+                return None
+            return {"text": f"לא הכנתי שליפה מהר הביטוח — {m.group(1).strip()}", "vizs": [], "status": t.status_he}
+        from app.services.agent.loop import proposal_line
+        p = ctx.proposals[-1]
+        return {"text": proposal_line(p), "vizs": [], "status": t.status_he, "proposal": p}
     if r.intent in ("record_call", "stop_call"):
         await t.fn(ctx, **r.args)
         from app.services.agent.loop import proposal_line

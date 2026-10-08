@@ -1,0 +1,33 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>הזדהות לאומית (mock)</title></head>
+<body>
+<!-- Modeled on the REAL login.gov.il form recon'd 2026-10-07: #userId (tel) #userPass #loginSubmit (disabled until valid).
+     The SMS screen below is a guess (not yet seen live) — it exercises the plugin's fallback selectors. -->
+<h1>הזדהות וכניסה לשירות מבוקש</h1>
+<form class="normal-form login-form" id="credForm" onsubmit="return false">
+  <label>מספר זהות בן 9 ספרות</label><input id="userId" type="tel" class="form-control">
+  <label>סיסמה</label><input id="userPass" type="password" class="form-control userPassword">
+  <button id="loginSubmit" type="button" disabled>כניסה</button>
+</form>
+<div id="otpScreen" style="display:none">
+  <p>קוד אימות נשלח לטלפון הנייד</p>
+  <input id="otpCode" type="tel" maxlength="6">
+  <button id="otpBtn" type="button">אישור</button>
+  <div class="error" id="otpErr"></div>
+</div>
+<div class="error" id="err"></div>
+<script>
+const q = new URLSearchParams(location.search), PORTAL = q.get('back');
+const id = document.getElementById('userId'), pw = document.getElementById('userPass'), btn = document.getElementById('loginSubmit');
+function v(){ btn.disabled = !(id.value.replace(/\D/g,'').length === 9 && pw.value.length > 3); }
+id.addEventListener('input', v); pw.addEventListener('input', v);
+btn.addEventListener('click', () => {
+  if (pw.value === 'wrong-password') { document.getElementById('err').textContent = 'פרטי ההזדהות שגויים'; return; }
+  document.getElementById('credForm').style.display = 'none';
+  document.getElementById('otpScreen').style.display = '';
+});
+document.getElementById('otpBtn').addEventListener('click', () => {
+  const c = document.getElementById('otpCode').value;
+  if (c === '482913') location.href = PORTAL;   // back to the portal host, like SAML
+  else document.getElementById('otpErr').textContent = 'קוד שגוי';
+});
+</script></body></html>
