@@ -1111,7 +1111,10 @@ onMounted(async () => {
 .mk-cm-item {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 8px; border-bottom: 1px solid var(--border-subtle);
+  border-radius: 10px; transition: background 0.2s, border-color 0.2s;
 }
+/* hover colours the row in the tab's wash, like the מה השתנה cards */
+.mk-cm-item:hover { background: var(--tab-maslaka-wash); border-bottom-color: transparent; }
 .mk-cm-item:last-child { border-bottom: none; }
 .mk-cm-logo {
   flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px;

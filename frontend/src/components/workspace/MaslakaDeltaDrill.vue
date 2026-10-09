@@ -343,11 +343,12 @@ watch(() => props.open, (o) => { if (o) { q.value = ''; load() } })
 .md-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .md-li-enter-active { transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 35ms); }
 .md-li-enter-from { opacity: 0; transform: translateY(10px); }
-.md-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg); transition: border-color 0.2s, box-shadow 0.2s; }
+.md-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg); transition: background 0.2s, border-color 0.2s, box-shadow 0.2s; }
+/* hover colours the whole card (row + open fold) in the tab's wash */
+.md-card:hover { background: var(--tab-maslaka-wash); border-color: color-mix(in srgb, var(--tab-maslaka) 35%, var(--border-subtle)); }
 .md-card--open { border-color: color-mix(in srgb, var(--tab-maslaka) 35%, var(--border-subtle)); box-shadow: var(--shadow-sm); }
 .md-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 11px 14px; border: none; background: none;
   cursor: pointer; font-family: inherit; text-align: start; border-radius: 12px; }
-.md-row:hover { background: var(--bg); }
 .md-row:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: -2px; }
 .md-id { flex: 0 0 170px; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .md-id strong { font-size: 14.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
