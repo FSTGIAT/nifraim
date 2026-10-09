@@ -108,7 +108,7 @@ async def download_all(reports=REPORTS, timeout_ms: int = 180_000, end_period: i
     got: dict[tuple, bytes] = {}
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled",
-                                                                "--no-sandbox"])
+                                                                "--no-sandbox", "--disable-dev-shm-usage"])
         try:
             for report, level, radio in reports:
                 ctx = await browser.new_context(locale="he-IL", accept_downloads=True, user_agent=UA)
@@ -135,9 +135,18 @@ async def download_all(reports=REPORTS, timeout_ms: int = 180_000, end_period: i
                 except Exception as e:  # noqa: BLE001 — one report failing keeps the others
                     logger.warning("pensyanet: %s/%s failed: %s", report, level, e)
                 finally:
-                    await ctx.close()
+                    try:
+                        await ctx.close()
+                    except Exception:  # noqa: BLE001 — a crashed browser can't close its context
+                        pass
+                if not browser.is_connected():   # crashed: relaunch for the remaining reports
+                    browser = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled",
+                                                                            "--no-sandbox", "--disable-dev-shm-usage"])
         finally:
-            await browser.close()
+            try:
+                await browser.close()
+            except Exception:  # noqa: BLE001
+                pass
     return got
 
 
