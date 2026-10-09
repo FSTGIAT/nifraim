@@ -67,8 +67,8 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
 | 11 | `maslaka_status` said "10 open requests, nearest expected 15/10" | The expected date was the 15th after **sending**, even for requests that had already answered; the list was capped at 10 before sorting | `delta.answer_due()`: an answered 2000 is done, and an answered 2100 waits for `next_file_due`. All open requests are counted (30) and sorted. The remaining "15/10" rows are bodies that really haven't answered yet | `25ee213` |
 | 12 | `test_maslaka_gateway_claim` failed (no `outbox`) | The test predates the 25–27/9 rules: a 9100 needs a recorded נספח א' consent, and every request needs contact fields | The test records consent and sets test contact values. Its DB tests **stop if pending rows they didn't create exist**: a run had claimed and failed two real local 9100s | `25ee213` |
 
-| 13 | "עדכון מהמסלקה" / the ask form / Nifra's 9100 all said "sent" and every one failed on the Gateway ("needs the נספח א' signature dates") | Since the 25–27/9 rules a 9100 needs the signed נספח א' (both signature dates + the customer's address + excluded-product), and **no screen collected it** | `MaslakaConsentModal` opens on all three paths. The server refuses a 9100 without it (`api/maslaka.consent_record`, Hebrew 400), and `create_inquiry(consent=…)` records it **in the same transaction**, so the Gateway can never claim a 9100 without consent. Dates are never defaulted | (this change) |
-| 14 | The customer card said "נכון ל-9.10.2026" for balances as of 30/09 | `as_of` was the arrival time | `as_of` = the newest `status_date` | (this change) |
+| 13 | "עדכון מהמסלקה" / the ask form / Nifra's 9100 all said "sent" and every one failed on the Gateway ("needs the נספח א' signature dates") | Since the 25–27/9 rules a 9100 needs the signed נספח א' (both signature dates + the customer's address + excluded-product), and **no screen collected it** | `MaslakaConsentModal` opens on all three paths. The server refuses a 9100 without it (`api/maslaka.consent_record`, Hebrew 400), and `create_inquiry(consent=…)` records it **in the same transaction**, so the Gateway can never claim a 9100 without consent. Dates are never defaulted | `635669c` |
+| 14 | The customer card said "נכון ל-9.10.2026" for balances as of 30/09 | `as_of` was the arrival time | `as_of` = the newest `status_date` | `635669c` |
 
 ## Several agents at the same time
 
@@ -84,3 +84,45 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
 - **Not yet proven live:** on 9/10/2026 only **one** agent has an approved שיוך. The multi-agent
   paths are covered by code and tests, not by a real run. Watch the first months with ≥2 agents for
   files stuck in IN (the log says "not routable").
+
+## How a 9100 is sent (since `635669c`)
+
+- **Three ways in, one form:**
+  - the customer card's **"עדכון מהמסלקה"**;
+  - the tab's search, for a ת"ז with no data yet;
+  - Nifra's prepared card ("אישור ושליחה למסלקה").
+- **Each one opens `MaslakaConsentModal` ("טופס נספח א'")**, which collects:
+  - the customer's and the agent's signature dates;
+  - city, street, house number and postcode;
+  - excluded product (כן/לא);
+  - a ✓ for "the signed form is in hand".
+- **Send is disabled** until the form is complete. Dates are capped at today and **never defaulted**,
+  because they are a declaration to a regulator.
+- **Server:** `POST /maslaka/inquiry` and `/office-agent/act` (kind `maslaka`) refuse a 9100 without
+  `consent`, via `consent_record()`, with a Hebrew 400. `create_inquiry(consent=…)` →
+  `record_consent` happens before the single commit.
+- **After sending:** the Gateway claims it within ~15 minutes, and the answer usually comes back within hours.
+- **Still open:** the Nifra path is wired but not render-checked (no Nifra card could be produced in the
+  test run). Prod `313679227` (9/10) failed with no consent; resend it from the card. Two of Roy's
+  local pending 9100s (`313679227`, `331510123`) also have no consent recorded.
+
+## Reading a FEDBKB (משוב ב')
+
+- `SUG-MASHOV=2` = content feedback from the operator or producer, per request GUID.
+- `STATUS-RESHUMA=1` means the **מסלקה** accepted the record. `MAANE-BERAMAT-RESHUMA` is the
+  producer's answer, e.g. **1032 "לא אותרו פוליסות עבור הסוכן"** (no policies found for the agent at that body).
+- It is ingested automatically: `content_feedback` + `operator_refusal` audit events on the
+  matching request.
+- The 9/10 FEDBKB answered four **old 25/9 duplicate** production requests (520023185, Phoenix 513026484).
+  The newer requests to the same bodies did bring the data. It is not a 9100 answer.
+
+## Gateway state + testing rules (9/10/2026)
+
+- **Gateway files now:** `orchestration.py` = `CA53FC2D…`, `mimshak/to_production_xlsx.py` = `86715410…`,
+  `delta.py` = `2786861A…`, `models/pension_holding.py` = `446F4996…`.
+  - `635669c` changed `orchestration.py` (9100 consent, card date) for the website only.
+  - The **next** Gateway push must guard on `CA53FC2D…` and will bring it up to git.
+- **Gateway claim test:** `test_maslaka_gateway_claim.py` claims the **oldest pending rows in the whole DB**.
+  Its DB tests now stop if pending rows they didn't create exist. **Do not run it** (or any 9100 test)
+  while Roy has 9100 work pending, unless he asks.
+
