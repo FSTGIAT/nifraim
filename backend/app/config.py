@@ -230,6 +230,10 @@ class Settings(BaseSettings):
     # "not enabled" and no consumer starts. See docs/ARCHITECTURE.md §18.
     CALLS_ENABLED: bool = False
     REDIS_URL: str = ""
+    # Maslaka Gateway self-update (services/maslaka/gateway_release.py): the shared
+    # secret the Gateway uses to fetch its release bundle and report its state.
+    # Empty = the endpoints answer 404 (feature off).
+    GATEWAY_TOKEN: str = ""
     CALLS_GATEWAY_URL: str = ""                    # http://calls-gateway.railway.internal:<PORT> on Railway
     CALLS_SECRET: str = ""                         # shared with calls-gateway + ivrit-transcriber
     CALLS_MAX_BYTES: int = 60 * 1024 * 1024        # ~4h of 32kbps opus; the UI caps recording at 90 min

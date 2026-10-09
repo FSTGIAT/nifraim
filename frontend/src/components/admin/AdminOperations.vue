@@ -38,6 +38,9 @@
       </div>
     </div>
 
+    <!-- the Maslaka Gateway's release (deploy ≠ Gateway; an admin releases) -->
+    <GatewayReleaseCard />
+
     <!-- filters -->
     <div v-if="data" class="ops-filters">
       <button v-for="f in FILTERS" :key="f.id" type="button" class="ops-filter" :class="{ on: filter === f.id }" @click="filter = f.id">
@@ -184,6 +187,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import GatewayReleaseCard from './GatewayReleaseCard.vue'
 import api from '../../api/client.js'
 
 const CYCLE = {

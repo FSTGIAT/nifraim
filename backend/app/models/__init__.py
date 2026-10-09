@@ -56,3 +56,4 @@ from app.models.blocked_phone import BlockedPhone
 from app.models.harb_request import HarbRequest
 from app.models.insurance_policy import InsurancePolicy
 from app.models.policy_document import PolicyDocument
+from app.models.gateway_state import GatewayState

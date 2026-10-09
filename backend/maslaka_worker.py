@@ -48,7 +48,9 @@ import time as _time
 from datetime import datetime
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent          # repo root (/.../test)
+# repo root (/.../test). On the Gateway a release lives in releases\<v>\backend,
+# so the launcher passes GATEWAY_HOME (C:\Nifraim\app) — .env and the log stay put.
+_ROOT = Path(os.environ["GATEWAY_HOME"]) if os.environ.get("GATEWAY_HOME") else Path(__file__).resolve().parent.parent
 
 # ── .env bootstrap ───────────────────────────────────────────────────────────
 # Mirrors local_worker.py: read the file ourselves rather than trusting the
@@ -77,6 +79,11 @@ for _key in (
     # ran forever instead of exiting.
     if _key not in os.environ and _env.get(_key):
         os.environ[_key] = _env[_key]
+# Every other .env key too (contact fields, GATEWAY_*): app.config looks for its
+# own .env next to the code, which a release folder doesn't have.
+for _key, _val in _env.items():
+    if _key not in os.environ and _val:
+        os.environ[_key] = _val
 os.environ.setdefault("DATABASE_URL_SYNC", os.environ.get("DATABASE_URL", "").replace("+asyncpg", ""))
 
 logging.basicConfig(
@@ -191,12 +198,50 @@ async def main() -> None:
         # loop retries. But say it out loud rather than logging a silent zero.
         log.warning("vault healthcheck FAILED — check the Transporter's folders exist")
 
+    last_check = 0.0
     while True:
+        healthy = False
         try:
             await _tick()
+            healthy = True
         except Exception:
             log.exception("gateway loop error (continuing)")
+        _self_update_step(healthy, force=(_time.monotonic() - last_check) >= UPDATE_CHECK_S)
+        if (_time.monotonic() - last_check) >= UPDATE_CHECK_S:
+            last_check = _time.monotonic()
         await asyncio.sleep(CLAIM_POLL_S)
+
+
+# ── self-update (gateway_updater.py; server side app/api/maslaka_gateway.py) ──
+UPDATE_CHECK_S = float(os.environ.get("GATEWAY_UPDATE_CHECK_SECONDS", "60"))
+_BACKEND = Path(__file__).resolve().parent
+
+
+def _self_update_step(healthy: bool, force: bool) -> None:
+    """Between two ticks, never inside one (per-file commits make this point safe).
+    Clears a release's trial on its first healthy tick, gives up on a trial that
+    expired (the launcher rolls back), and — once a minute — reports to Railway and
+    takes a RELEASED version if there is one."""
+    try:
+        import gateway_updater as gu
+    except ImportError:         # the legacy tree, before the bootstrap
+        return
+    h = gu.home()
+    if healthy:
+        gu.clear_probation(h)
+    elif gu.probation_expired(h):
+        log.error("release trial expired without a healthy tick — handing back to the launcher")
+        raise SystemExit(gu.EXIT_PROBATION)
+    if not force:
+        return
+    base = (os.environ.get("GATEWAY_BASE") or "").rstrip("/")
+    token = os.environ.get("GATEWAY_TOKEN") or ""
+    ev = gu.get_event(h)
+    state = "trial" if gu.probation(h) else (ev.get("state") or "ok")
+    if base and token:
+        gu.report(base, token, gu.running_version(_BACKEND), state, ev.get("detail") or "", tick_ok=healthy)
+    if healthy and not gu.probation(h) and gu.maybe_update(_BACKEND, log=log.info):
+        raise SystemExit(gu.EXIT_SWITCH)
 
 
 if __name__ == "__main__":

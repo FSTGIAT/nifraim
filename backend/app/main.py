@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers, blocked_phones, policies
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers, blocked_phones, policies, maslaka_gateway
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -95,6 +95,7 @@ app.include_router(funds.router, prefix="/api/funds", tags=["funds"])
 app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 app.include_router(yield_recommendations.router, prefix="/api/yield-recommendations", tags=["yield-recommendations"])
 app.include_router(maslaka.router, prefix="/api/maslaka", tags=["maslaka"])
+app.include_router(maslaka_gateway.router, prefix="/api/maslaka/gateway", tags=["maslaka-gateway"])
 app.include_router(downloads.router, prefix="/api/downloads", tags=["downloads"])
 app.include_router(sms_otp_templates.router, prefix="/api/sms-otp-templates", tags=["sms-otp-templates"])
 app.include_router(messenger.router, prefix="/api/messenger", tags=["messenger"])
