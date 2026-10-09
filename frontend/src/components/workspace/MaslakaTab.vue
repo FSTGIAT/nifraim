@@ -1,5 +1,11 @@
 <template>
   <div class="mk">
+    <!-- Remotion: the insurers' files flowing through the clearinghouse into the
+         agent's file — very faint, decorative only (family of the automation
+         gears and the portal connections). -->
+    <div v-if="!reducedMotion" class="mk-bg" aria-hidden="true">
+      <div ref="bgEl" class="mk-bg-mount"></div>
+    </div>
     <!-- Identity hero — same shape as the other tabs: copy at the start edge,
          looping deep-teal scene anchored to the inline-end. The art is
          absolutely positioned and TabHeroLoop removes itself entirely under
@@ -321,17 +327,22 @@
         </Transition>
       </Teleport>
     </template>
+
+    <!-- Reaching the bottom draws the same quiet growth chart as Production
+         and השוואת נפרעים, behind the cards, in the tab's teal. -->
+    <ProdScrollGraph color="var(--tab-maslaka)" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import api from '../../api/client.js'
 import TabHeroLoop from './TabHeroLoop.vue'
 import { resumeSetupIfAway } from '../../utils/setupState.js'
 import { useCycleStore, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 import MaslakaDeltaDrill from './MaslakaDeltaDrill.vue'
+import ProdScrollGraph from './ProdScrollGraph.vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
@@ -593,6 +604,41 @@ function startRefresh() {
 }
 onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
 
+// ── Remotion backdrop (decorative — the tab works without it) ───────────
+const bgEl = ref(null)
+const reducedMotion =
+  typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+let bgRoot = null
+async function mountBg() {
+  if (!bgEl.value || bgRoot) return
+  try {
+    const [rdClient, react, player, comp] = await Promise.all([
+      import('react-dom/client'), import('react'), import('@remotion/player'),
+      import('../../remotion/MaslakaBackdrop'),
+    ])
+    if (!bgEl.value || bgRoot) return
+    // Remotion can't read CSS variables — resolve the tab's teal here.
+    const teal = getComputedStyle(document.documentElement).getPropertyValue('--tab-maslaka').trim() || '#2C5F6B'
+    bgRoot = rdClient.createRoot(bgEl.value)
+    bgRoot.render(react.createElement(player.Player, {
+      component: comp.MaslakaBackdrop,
+      inputProps: { color: teal, ink: teal },
+      durationInFrames: comp.MASLAKA_BG_FRAMES, fps: 30,
+      compositionWidth: comp.MASLAKA_BG_W, compositionHeight: comp.MASLAKA_BG_H,
+      autoPlay: true, loop: true, controls: false, clickToPlay: false,
+      doubleClickToFullscreen: false, showPosterWhenUnplayed: false, acknowledgeRemotionLicense: true,
+      style: { width: '100%', height: '100%', backgroundColor: 'transparent' },
+    }))
+  } catch (e) {
+    console.error('[MaslakaTab] background failed', e)
+  }
+}
+function unmountBg() {
+  if (bgRoot) { try { bgRoot.unmount() } catch { /* ignore */ } bgRoot = null }
+}
+watch(bgEl, (el) => { if (el) mountBg(); else unmountBg() })
+onBeforeUnmount(unmountBg)
+
 onMounted(async () => {
   startRefresh()
   await Promise.all([loadInquiries(), loadAssociation(), loadFiles()])
@@ -601,6 +647,9 @@ onMounted(async () => {
 
 <style scoped>
 .mk {
+  /* Own stacking layer: the backdrop and the bottom growth graph paint above the
+     page canvas but behind every card. */
+  position: relative; z-index: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1074,5 +1123,15 @@ onMounted(async () => {
 }
 @media (prefers-reduced-motion: reduce) {
   .mk-tl--next .mk-tl-dot::after { animation: none; }
+}
+
+.mk-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+/* "cover" for the 16:9 composition: at least the viewport's width AND height. */
+.mk-bg-mount {
+  position: absolute; left: 50%; top: 50%;
+  width: max(100vw, calc(100vh * 16 / 9));
+  aspect-ratio: 1600 / 900;
+  transform: translate(-50%, -50%);
+  direction: ltr; /* RTL root would shift the Remotion composition */
 }
 </style>
