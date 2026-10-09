@@ -38,6 +38,9 @@
 }
 @keyframes formRise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
 
+.form-lockup { align-self: center; display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 36px; }
+.form-lockup-word { margin: 0; font-family: 'Heebo', sans-serif; font-weight: 800; font-size: 50px; line-height: 1; letter-spacing: -0.03em; color: var(--brand-ink); }
+.form-lockup-word span { color: var(--brand-blue); }
 .form-kicker { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: var(--blue); letter-spacing: 0.02em; }
 .form-heading {
   margin: 0; font-weight: 900; font-size: clamp(40px, 4.4vw, 64px); line-height: 1;

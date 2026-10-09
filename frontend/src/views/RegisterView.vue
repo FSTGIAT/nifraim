@@ -2,9 +2,10 @@
   <div class="auth-split" dir="rtl">
     <main class="auth-form-panel">
       <div class="form-content">
-        <p class="form-kicker">חשבון חדש</p>
-        <h1 class="form-heading">הרשמה</h1>
-        <p class="form-subtitle">הזינו את הפרטים שלכם</p>
+        <div class="form-lockup" dir="ltr">
+          <NifraimIcon :size="108" />
+          <p class="form-lockup-word">Nifraim<span>.com</span></p>
+        </div>
 
         <form class="auth-form" @submit.prevent="handleSubmit">
           <div class="field">
@@ -131,6 +132,7 @@
 
 <script setup>
 import AuthMedia from '../components/site/AuthMedia.vue'
+import NifraimIcon from '../components/common/NifraimIcon.vue'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth.js'

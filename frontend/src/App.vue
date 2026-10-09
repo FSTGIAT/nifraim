@@ -46,6 +46,9 @@ const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
 
 :root {
   /* Salesforce Lightning inspired palette */
+  /* Brand wordmark: "Nifraim" in --brand-ink, ".com" + the lighthouse badge in --brand-blue */
+  --brand-blue: #2F73C4;
+  --brand-ink: #26292E;
   --green: #2E844A;
   --green-deep: #1B5E20;
   --green-light: #EBF7EE;

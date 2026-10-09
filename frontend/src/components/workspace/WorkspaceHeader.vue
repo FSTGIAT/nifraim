@@ -2,13 +2,7 @@
   <header class="workspace-header">
     <div class="header-content">
       <div class="brand">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
-        </div>
+        <NifraimIcon :size="36" />
         <span class="brand-name">Nifraim</span>
       </div>
       <!-- Global Search -->
@@ -208,6 +202,7 @@
 </template>
 
 <script setup>
+import NifraimIcon from '../common/NifraimIcon.vue'
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuthStore } from '../../stores/auth.js'
 import { useSubscriptionStore } from '../../stores/subscription.js'
@@ -382,21 +377,10 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.brand-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
 .brand-name {
   font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 800;
+  color: var(--brand-ink);
   letter-spacing: -0.3px;
 }
 

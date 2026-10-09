@@ -5,8 +5,8 @@
          scroll (the page drives `active`); elsewhere they link to /#chapter. -->
     
     <a v-if="home" href="#top" class="sn-brand" dir="ltr" @click.prevent="$emit('go', 'top')"
-       @mouseenter="$emit('brand-hover', true)" @mouseleave="$emit('brand-hover', false)">Nifraim<span>.com</span></a>
-    <router-link v-else to="/" class="sn-brand" dir="ltr">Nifraim<span>.com</span></router-link>
+       @mouseenter="$emit('brand-hover', true)" @mouseleave="$emit('brand-hover', false)"><NifraimIcon :size="30" /><b>Nifraim<span>.com</span></b></a>
+    <router-link v-else to="/" class="sn-brand" dir="ltr"><NifraimIcon :size="30" /><b>Nifraim<span>.com</span></b></router-link>
 
     <nav class="sn-tabs" ref="tabsEl" aria-label="ניווט">
       <template v-for="t in TABS" :key="t.id">
@@ -30,6 +30,7 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import NifraimIcon from '../common/NifraimIcon.vue'
 
 const props = defineProps({
   home: { type: Boolean, default: false },   // on the home page: tabs scroll instead of navigate
@@ -80,10 +81,12 @@ onBeforeUnmount(() => window.removeEventListener('resize', placePill))
   box-shadow: 0 1px 0 rgba(24, 24, 24, 0.06), 0 10px 30px rgba(24, 24, 24, 0.08);
 }
 .sn-brand {
-  justify-self: start; font-weight: 900; font-size: 20px; letter-spacing: -0.03em; color: var(--graphite); text-decoration: none;
+  justify-self: start; display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 800; font-size: 20px; letter-spacing: -0.03em; color: var(--brand-ink); text-decoration: none;
   transition: text-shadow 0.6s ease;
 }
-.sn-brand span { color: var(--blue); }
+.sn-brand b { font-weight: inherit; }
+.sn-brand span { color: var(--brand-blue); }
 .sn-brand:hover { text-shadow: 0 0 18px rgba(255, 236, 170, 0.9); }
 .sn-tabs { position: relative; display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: rgba(24, 24, 24, 0.05); }
 .sn-tab {

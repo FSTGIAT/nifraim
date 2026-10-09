@@ -1,0 +1,30 @@
+<template>
+  <!-- The Nifraim lighthouse badge (same drawing as assets/logo/nifraim-icon.svg), inlined so it
+       needs no request and scales crisply. -->
+  <svg class="nifraim-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"
+       :width="size" :height="size" role="img" aria-label="Nifraim">
+    <circle cx="60" cy="60" r="58" fill="#2F73C4"/>
+    <path d="M52.1 43.8 10.4 30A58 58 0 0 0 2.03 62L52.1 48.2Z M67.9 43.8 109.6 30A58 58 0 0 1 117.97 62L67.9 48.2Z" fill="#fff"/>
+    <g transform="translate(60 64) scale(.72) translate(-60 -62)">
+      <path d="M40 104h40l-7-54H47z" fill="#fff"/>
+      <path d="M45.44 62h29.12l1.03 8H44.41zM42.85 82h34.3l1.04 8H41.81z" fill="#2F73C4"/>
+      <rect x="42" y="45" width="36" height="6" rx="2" fill="#fff"/>
+      <rect x="49" y="28" width="22" height="18" fill="#fff"/>
+      <rect x="53" y="31" width="14" height="12" rx="1" fill="#2F73C4"/>
+      <path d="M45 29.5 60 15l15 14.5z" fill="#fff"/>
+      <circle cx="60" cy="12.5" r="2.6" fill="#fff"/>
+      <rect x="33" y="101" width="54" height="6" rx="3" fill="#fff"/>
+    </g>
+    <path d="M25 101q7-5 14 0t14 0 14 0 14 0 14 0M36 110q6-4.5 12 0t12 0 12 0 12 0" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
+  </svg>
+</template>
+
+<script setup>
+defineProps({
+  size: { type: [Number, String], default: 36 },
+})
+</script>
+
+<style scoped>
+.nifraim-icon { display: block; flex: none; }
+</style>
