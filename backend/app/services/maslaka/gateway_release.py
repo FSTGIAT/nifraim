@@ -10,6 +10,8 @@ hand-picked file pushes left it a patchwork (2026-10-09: 49 of 272 files differe
           separate release folder, switches, and rolls back if the new version
           doesn't complete a healthy tick (gateway_updater.py / gateway_launcher.py)
 
+First end-to-end release test in production: 2026-10-10 (this comment is the change).
+
 Mode A (one-click release) was Roy's choice: a human gate stays in front of the
 regulator-facing machine, and an unfinished working tree never reaches it alone.
 """
