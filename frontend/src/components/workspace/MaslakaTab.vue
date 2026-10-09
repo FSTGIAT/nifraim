@@ -195,13 +195,14 @@
           </h3>
         </div>
 
+        <div class="mk-files-grid" :class="{ 'mk-files-grid--cov': cov?.summary }">
         <ol class="mk-timeline">
           <!-- What's next: the next file, and the cycle that uses it -->
           <li class="mk-tl mk-tl--next">
             <span class="mk-tl-dot" aria-hidden="true"></span>
             <div class="mk-tl-body">
               <span class="mk-tl-kicker">הקובץ הבא</span>
-              <strong class="mk-tl-title">עד <span class="ltr-number">{{ shortDay(files.next_due) }}</span></strong>
+              <strong class="mk-tl-title">עד <span class="ltr-number">{{ shortDay(nextDue) }}</span></strong>
               <span v-if="nextCycleLabel" class="mk-tl-meta">המחזור הבא <span class="ltr-number">{{ nextCycleLabel }}</span></span>
             </div>
           </li>
@@ -244,11 +245,82 @@
             </div>
           </li>
         </ol>
+
+        <!-- The current file against the agent's production: who is already
+             אצלך and who is not, per company. Bars grow in once loaded; the two
+             counts, every bar and every segment drill (MaslakaCoverageDrill). -->
+        <div v-if="cov?.summary" ref="covEl" class="mk-cov" :class="{ 'mk-cov--in': covGrown }">
+          <div class="mk-cov-head">
+            <span class="mk-tl-kicker">{{ monthLabel(cov.as_of) }} מול הפרודוקציה שלך</span>
+          </div>
+          <div class="mk-cov-kpis">
+            <button type="button" class="mk-cov-kpi" @click="openCov('in', '', $event.currentTarget)">
+              <span class="mk-cov-kpi-l"><i class="mk-cov-sw mk-cov-sw--in" aria-hidden="true"></i>אצלך</span>
+              <strong class="mk-cov-kpi-n ltr-number">{{ num(covShown.in) }}</strong>
+              <span class="mk-cov-kpi-s">לקוחות · <span class="ltr-number">{{ num(cov.summary.in_products) }}</span> מוצרים</span>
+            </button>
+            <button type="button" class="mk-cov-kpi mk-cov-kpi--out" @click="openCov('out', '', $event.currentTarget)">
+              <span class="mk-cov-kpi-l"><i class="mk-cov-sw mk-cov-sw--out" aria-hidden="true"></i>לא אצלך</span>
+              <strong class="mk-cov-kpi-n ltr-number">{{ num(covShown.out) }}</strong>
+              <span class="mk-cov-kpi-s">
+                לקוחות · <span class="ltr-number">{{ num(cov.summary.out_products) }}</span> מוצרים<template v-if="cov.summary.out_accumulation >= 0.5"> · <span class="ltr-number">₪{{ compact(cov.summary.out_accumulation) }}</span></template>
+              </span>
+            </button>
+          </div>
+          <ul class="mk-cov-bars">
+            <li v-for="(c, i) in cov.by_company" :key="c.company" class="mk-cov-row" :style="{ '--i': i }">
+              <button type="button" class="mk-cov-name" @click="openCov(c.out_customers ? 'out' : 'in', c.company, $event.currentTarget)">
+                {{ shortCo(c.company) }}
+              </button>
+              <div class="mk-cov-track" :style="{ '--w': covWidth(c) + '%' }">
+                <button
+                  type="button" class="mk-cov-seg mk-cov-seg--in"
+                  :style="{ flexGrow: c.in_customers }" :aria-label="`${shortCo(c.company)} · אצלך ${c.in_customers}`"
+                  @click="openCov('in', c.company, $event.currentTarget)"
+                ></button>
+                <button
+                  v-if="c.out_customers" type="button" class="mk-cov-seg mk-cov-seg--out"
+                  :style="{ flexGrow: c.out_customers }" :aria-label="`${shortCo(c.company)} · לא אצלך ${c.out_customers}`"
+                  @click="openCov('out', c.company, $event.currentTarget)"
+                ></button>
+              </div>
+              <span class="mk-cov-nums">
+                <span class="ltr-number">{{ num(c.in_customers) }}</span><template v-if="c.out_customers"> · <button type="button" class="mk-cov-out-n" @click="openCov('out', c.company, $event.currentTarget)"><span class="ltr-number">{{ num(c.out_customers) }}</span> לא אצלך</button></template>
+              </span>
+            </li>
+          </ul>
+          <!-- Bodies asked but not in this file yet: the file is partial until they answer. -->
+          <div v-if="cov.waiting?.length" class="mk-cov-wait" :class="{ 'mk-cov-wait--open': waitOpen }">
+            <button type="button" class="mk-cov-wait-h" :aria-expanded="waitOpen" @click="waitOpen = !waitOpen">
+              <span>ממתינים למסלקה · <span class="ltr-number">{{ cov.waiting.length }}</span></span>
+              <svg class="mk-cov-wait-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="mk-cov-wait-fold"><div class="mk-cov-wait-in">
+            <ul class="mk-cov-bars mk-cov-bars--wait">
+              <li v-for="(w, i) in cov.waiting" :key="w.code" class="mk-cov-row" :style="{ '--i': i }">
+                <span class="mk-cov-name mk-cov-name--wait">{{ waitName(w.company) }}</span>
+                <span class="mk-cov-ghost" aria-hidden="true"></span>
+                <span class="mk-cov-nums">
+                  <template v-if="w.due">עד <span class="ltr-number">{{ shortDay(w.due) }}</span></template>
+                  <template v-else>בשליחה</template>
+                </span>
+              </li>
+            </ul>
+            </div></div>
+          </div>
+        </div>
+        </div>
       </section>
 
       <MaslakaConsentModal
         :show="consent.show" :origin="consent.origin" :customer-id="consent.id" :customer-name="consent.name"
         :send="sendWithConsent" @close="consent = { ...consent, show: false }" @sent="onConsentSent"
+      />
+      <MaslakaCoverageDrill
+        :open="covOpen" :as-of="cov?.as_of || ''" :origin="covOrigin"
+        :initial-side="covSide" :initial-company="covCompany"
+        @close="covOpen = false" @open-customer="openCustomer"
       />
       <MaslakaDeltaDrill
         :open="!!deltaAsOf" :as-of="deltaAsOf" :origin="deltaOrigin"
@@ -346,6 +418,7 @@ import { resumeSetupIfAway } from '../../utils/setupState.js'
 import { useCycleStore, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 import MaslakaDeltaDrill from './MaslakaDeltaDrill.vue'
+import MaslakaCoverageDrill from './MaslakaCoverageDrill.vue'
 import MaslakaConsentModal from './MaslakaConsentModal.vue'
 import ProdScrollGraph from './ProdScrollGraph.vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
@@ -572,6 +645,7 @@ async function loadFiles() {
     const { data } = await api.get('/maslaka/production-files')
     files.value = data
     loadDeltas(data.files || [])
+    loadCoverage(data.files?.[0]?.as_of)
   } catch {
     /* the section shows its empty state */
   }
@@ -587,6 +661,82 @@ async function loadDeltas(list) {
     } catch { /* the row just shows no delta */ }
   }
 }
+// ── The current file: אצלך / לא אצלך (GET /maslaka/coverage) ─────────────
+const cov = ref(null)
+const covEl = ref(null)
+const covGrown = ref(false)
+const covShown = ref({ in: 0, out: 0 })
+async function loadCoverage(asOf) {
+  if (!asOf) return
+  try {
+    const { data } = await api.get('/maslaka/coverage', { params: { as_of: asOf } })
+    if (!data?.summary) return
+    // the per-file list is drill-only; the card needs the counts
+    cov.value = { as_of: data.as_of, summary: data.summary, by_company: data.by_company, waiting: data.waiting || [] }
+    await nextTick()
+    revealCoverage()
+  } catch { /* the space stays with the timeline alone */ }
+}
+// Grow the bars and count up the first time the panel is on screen.
+let covObs = null
+let covRaf = 0
+function revealCoverage() {
+  const go = () => {
+    covGrown.value = true
+    const to = { in: cov.value.summary.in_customers || 0, out: cov.value.summary.out_customers || 0 }
+    if (reducedMotion) { covShown.value = to; return }
+    const t0 = performance.now(), dur = 1100
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3)
+      covShown.value = { in: Math.round(to.in * e), out: Math.round(to.out * e) }
+      if (p < 1) covRaf = requestAnimationFrame(step)
+    }
+    covRaf = requestAnimationFrame(step)
+  }
+  if (!covEl.value || typeof IntersectionObserver === 'undefined') return go()
+  covObs = new IntersectionObserver((es) => {
+    if (es.some((e) => e.isIntersecting)) { covObs.disconnect(); covObs = null; go() }
+  }, { threshold: 0.3 })
+  covObs.observe(covEl.value)
+}
+onBeforeUnmount(() => { covObs?.disconnect(); cancelAnimationFrame(covRaf) })
+// Bar length = the company's customers against the biggest company's.
+const covMax = computed(() => Math.max(1, ...(cov.value?.by_company || []).map((c) => c.in_customers + c.out_customers)))
+const covWidth = (c) => Math.max(4, ((c.in_customers + c.out_customers) / covMax.value) * 100)
+const covOpen = ref(false)
+const covSide = ref('out')
+const covCompany = ref('')
+const covOrigin = ref(null)
+function openCov(sideId, company, el) {
+  covSide.value = sideId
+  covCompany.value = company
+  covOrigin.value = el
+  covOpen.value = true
+}
+const num = (n) => Number(n || 0).toLocaleString('he-IL')
+function compact(v) {
+  const n = Number(v || 0)
+  if (n >= 1e6) return (n / 1e6).toLocaleString('he-IL', { maximumFractionDigits: 1 }) + 'M'
+  if (n >= 1e3) return Math.round(n / 1e3).toLocaleString('he-IL') + 'K'
+  return Math.round(n).toLocaleString('he-IL')
+}
+// The next thing to arrive: a body still owed THIS file comes before next month's.
+// closed by default — the agent opens it (not remembered)
+const waitOpen = ref(false)
+const nextDue = computed(() => {
+  const owed = (cov.value?.waiting || []).map((w) => w.due).filter(Boolean).sort()[0]
+  const next = files.value.next_due
+  return owed && (!next || owed < next) ? owed : next
+})
+// A brand is often two bodies (פנסיה וגמל + ביטוח): name the kind only when both wait.
+function waitName(company) {
+  const short = shortCo(company)
+  const brand = short.split(' ')[0]
+  const twins = (cov.value?.waiting || []).filter((w) => shortCo(w.company).split(' ')[0] === brand).length > 1
+  return twins ? `${short} · ${/ביטוח/.test(company) ? 'ביטוח' : 'גמל ופנסיה'}` : short
+}
+const shortCo = (c) => String(c || '').replace(/\s*(חברה לביטוח|פנסיה וגמל|גמל ופנסיה|פנסיה מקיפה|בע"מ|בעמ)\s*/g, ' ').trim() || c
+
 const deltaAsOf = ref('')
 const deltaOrigin = ref(null)
 function openDelta(asOf, el) {
@@ -1063,6 +1213,79 @@ onMounted(async () => {
 .mk-tl-delta:hover { transform: translateY(-1px); background: var(--tab-maslaka-wash); border-color: var(--tab-maslaka); }
 .mk-tl-delta:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
 .mk-tl-delta-n { font-weight: 500; color: var(--text-secondary); }
+/* the timeline and the אצלך / לא אצלך panel side by side */
+.mk-files-grid { display: block; }
+.mk-files-grid--cov { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.mk-cov { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding-inline-start: 28px;
+  border-inline-start: 1px solid var(--border-subtle); }
+.mk-cov-head .mk-tl-kicker { color: var(--tab-maslaka); }
+.mk-cov-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mk-cov-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 14px;
+  border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg); cursor: pointer;
+  font-family: inherit; text-align: start; color: var(--text); transition: transform 0.15s, background 0.2s, border-color 0.2s; }
+.mk-cov-kpi:hover { transform: translateY(-1px); background: var(--tab-maslaka-wash); border-color: var(--tab-maslaka); }
+.mk-cov-kpi:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.mk-cov-kpi-l { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--text-muted); }
+.mk-cov-kpi-n { font-size: 24px; font-weight: 800; line-height: 1.15; }
+.mk-cov-kpi--out .mk-cov-kpi-n { color: var(--tab-maslaka); }
+.mk-cov-kpi-s { font-size: 12px; color: var(--text-muted); }
+.mk-cov-sw { width: 9px; height: 9px; border-radius: 3px; }
+.mk-cov-sw--in, .mk-cov-seg--in { background: var(--tab-maslaka); }
+/* לא אצלך: the same teal, hatched — one colour, and the small slice still reads */
+.mk-cov-sw--out, .mk-cov-seg--out {
+  background: repeating-linear-gradient(-45deg, var(--mk-accent-30) 0 3px, color-mix(in srgb, var(--tab-maslaka) 62%, transparent) 3px 6px); }
+
+.mk-cov-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mk-cov-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 128px; align-items: center; gap: 12px; }
+.mk-cov-name { justify-self: start; max-width: 100%; padding: 0; border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-cov-name:hover { color: var(--tab-maslaka); }
+.mk-cov-track { display: flex; gap: 2px; height: 14px; width: 0; border-radius: 5px; overflow: hidden;
+  transition: width 1.1s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 120ms); }
+.mk-cov--in .mk-cov-track { width: var(--w); }
+.mk-cov-seg { flex-basis: 0; min-width: 5px; height: 100%; padding: 0; border: none; cursor: pointer; transition: filter 0.15s; }
+.mk-cov-seg:hover { filter: brightness(1.15); }
+.mk-cov-seg:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.mk-cov-nums { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; opacity: 0;
+  transition: opacity 0.5s ease; transition-delay: calc(0.6s + var(--i) * 120ms); }
+.mk-cov--in .mk-cov-nums { opacity: 1; }
+.mk-cov-nums > .ltr-number { font-weight: 700; color: var(--text); }
+.mk-cov-out-n { padding: 0; border: none; background: none; cursor: pointer; font-family: inherit; font-size: inherit;
+  color: var(--tab-maslaka); font-weight: 700; }
+.mk-cov-out-n:hover { text-decoration: underline; }
+.mk-cov-wait { display: flex; flex-direction: column; gap: 0; padding-top: 10px; border-top: 1px dashed var(--border-subtle); }
+.mk-cov-wait-h { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 0;
+  border: none; background: none; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--text-muted);
+  transition: color 0.2s; }
+.mk-cov-wait-h:hover, .mk-cov-wait--open .mk-cov-wait-h { color: var(--tab-maslaka); }
+.mk-cov-wait-h:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; border-radius: 4px; }
+.mk-cov-wait-chev { transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+.mk-cov-wait--open .mk-cov-wait-chev { transform: rotate(180deg); }
+.mk-cov-wait-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.45s cubic-bezier(0.32, 0.72, 0, 1); }
+.mk-cov-wait--open .mk-cov-wait-fold { grid-template-rows: 1fr; }
+.mk-cov-wait-in { overflow: hidden; min-height: 0; }
+.mk-cov-wait:not(.mk-cov-wait--open) .mk-cov-ghost { width: 0; }
+.mk-cov-wait--open .mk-cov-ghost { transition-delay: calc(0.15s + var(--i) * 60ms); }
+.mk-cov-bars--wait { gap: 6px; padding-top: 8px; }
+.mk-cov-name--wait { cursor: default; font-weight: 600; color: var(--text-muted); }
+/* an empty, breathing track: asked, not answered yet */
+.mk-cov-ghost { height: 10px; width: 0; border-radius: 5px; border: 1px dashed var(--mk-accent-30);
+  background: linear-gradient(90deg, transparent, var(--mk-accent-12), transparent) 0 0 / 200% 100%;
+  transition: width 1.1s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 80ms);
+  animation: mk-cov-breathe 2.8s ease-in-out infinite; }
+.mk-cov--in .mk-cov-ghost { width: 100%; }
+@keyframes mk-cov-breathe { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (max-width: 860px) {
+  .mk-files-grid--cov { grid-template-columns: 1fr; gap: 18px; }
+  .mk-cov { padding-inline-start: 0; padding-top: 16px; border-inline-start: none; border-top: 1px solid var(--border-subtle); }
+}
+@media (max-width: 480px) {
+  .mk-cov-row { grid-template-columns: 72px minmax(0, 1fr); }
+  .mk-cov-nums { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-cov-track, .mk-cov-nums, .mk-cov-ghost { transition: none; animation: none; }
+}
 @keyframes mk-tl-pulse { 50% { transform: scale(0.6); opacity: 0.5; } }
 
 /* ── Customer modal (iPhone-style grow from origin) ───────────── */

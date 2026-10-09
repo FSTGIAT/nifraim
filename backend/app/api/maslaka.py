@@ -246,6 +246,18 @@ async def snapshot_delta(
     return await monthly_delta(db, user.id, as_of)
 
 
+@router.get("/coverage")
+async def file_coverage(
+    as_of: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """One מסלקה production file (default: the newest) split into אצלך (matched a
+    production row) and לא אצלך, per company, with the products behind each."""
+    from app.services.maslaka.delta import file_coverage as _coverage
+    return await _coverage(db, user.id, as_of)
+
+
 @router.post("/association/auto-production")
 async def association_auto_production(
     payload: dict,
@@ -259,7 +271,9 @@ async def association_auto_production(
     enabled = bool(payload.get("enabled"))
     link = await association.get_or_create_link(db, user_id=user.id, agent_name=user.full_name)
     link.auto_production = enabled
-    link.auto_production_at = datetime.utcnow() if enabled else link.auto_production_at
+    # The date marks an explicit choice: off-with-a-date is an opt-out, which
+    # orchestration.auto_production_on respects (off with no date = never asked).
+    link.auto_production_at = datetime.utcnow()
     await db.commit()
     created = await orchestration.ensure_monthly_subscriptions(db, user.id) if enabled else 0
     return {"auto_production": enabled, "created": created}

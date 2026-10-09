@@ -309,41 +309,69 @@ async def agent_bodies(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
     return out
 
 
+def auto_production_on(link) -> bool:
+    """Monthly production is automatic for every approved agent: signing the
+    שיוך is the consent (the form always sends auto_production=true). Only an
+    agent who explicitly turned it OFF (/association/auto-production records
+    when) is skipped — links signed before the consent step have the flag off
+    with no date, and used to get nothing (kiko: 3 bodies never asked)."""
+    return bool(link.auto_production) or link.auto_production_at is None
+
+
+# A body that refused or never answered is not asked again every day.
+RESUBSCRIBE_AFTER_DAYS = 30
+
+
 async def ensure_monthly_subscriptions(db: AsyncSession, user_id: uuid.UUID) -> int:
-    """Open a monthly production subscription (2100) with every body the agent
-    has customers at and is not yet subscribed to. Runs ONLY for an approved
-    agent who consented (`auto_production`). Returns how many were created —
-    as `pending` rows; the Gateway sends them."""
+    """Open a monthly production subscription (2100) with EVERY body the מסלקה
+    can be asked (code_tables.PROVIDER_CODE_TO_COMPANY) — not only the ones in
+    the agent's records: a body the agent's production doesn't list is exactly
+    where "לא אצלך" products hide, and a brand is two bodies (פנסיה וגמל +
+    ביטוח) that production names inconsistently. Skips a body with a live
+    subscription, or with any 2100 sent in the last RESUBSCRIBE_AFTER_DAYS (a
+    refusal is not re-sent daily). Runs for an approved agent with a linked ID
+    (test links carry none). Returns how many were created — as `pending`
+    rows; the Gateway sends them."""
     from app.models.maslaka_agent_link import MaslakaAgentLink
-    from app.services.maslaka.code_tables import label_for_provider
+    from app.services.maslaka.code_tables import PROVIDER_CODE_TO_COMPANY, label_for_provider
 
     link = (await db.execute(
         select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == user_id)
     )).scalar_one_or_none()
-    if link is None or link.status != LINK_APPROVED or not link.auto_production or not link.agent_id_number:
+    if link is None or link.status != LINK_APPROVED or not auto_production_on(link) or not link.agent_id_number:
         return 0
+    since = datetime.utcnow() - timedelta(days=RESUBSCRIBE_AFTER_DAYS)
+    rows = (await db.execute(
+        select(PensionInquiry.target_yatzran_id, PensionInquiry.status, PensionInquiry.created_at).where(
+            PensionInquiry.user_id == user_id,
+            PensionInquiry.interface_code == "events_v007:2100",
+        )
+    )).all()
+    skip = {code for code, status, created in rows
+            if status not in ("failed", "expired") or (created and created >= since)}
     created = 0
-    for b in await agent_bodies(db, user_id):
-        if b["clients"] > 0 and not b["monthly"]:
-            await create_inquiry(
-                db, user_id=user_id, customer_id_number=link.agent_id_number,
-                customer_name=label_for_provider(b["id"]), action_code="2100",
-                target_yatzran_id=b["id"],
-            )
-            created += 1
+    for code in PROVIDER_CODE_TO_COMPANY:
+        if code in skip:
+            continue
+        await create_inquiry(
+            db, user_id=user_id, customer_id_number=link.agent_id_number,
+            customer_name=label_for_provider(code), action_code="2100",
+            target_yatzran_id=code,
+        )
+        created += 1
     if created:
         logger.info("maslaka.auto_production: user %s — opened %d monthly subscription(s)", user_id, created)
     return created
 
 
 async def ensure_all_monthly_subscriptions(db: AsyncSession) -> int:
-    """Daily sweep: every consenting approved agent gets subscriptions for any
-    body that has appeared in their records since."""
+    """Daily sweep: every approved agent (unless they turned it off) gets a
+    subscription with every body they don't have one with yet."""
     from app.models.maslaka_agent_link import MaslakaAgentLink
-    users = (await db.execute(select(MaslakaAgentLink.user_id).where(
+    links = (await db.execute(select(MaslakaAgentLink).where(
         MaslakaAgentLink.status == LINK_APPROVED,
-        MaslakaAgentLink.auto_production == True,  # noqa: E712
     ))).scalars().all()
+    users = [l.user_id for l in links if auto_production_on(l)]
     total = 0
     for uid in users:
         total += await ensure_monthly_subscriptions(db, uid)

@@ -271,6 +271,88 @@ async def monthly_delta(db: AsyncSession, user_id: uuid.UUID, as_of: date | None
     }
 
 
+async def file_coverage(db: AsyncSession, user_id: uuid.UUID, as_of: date | None = None) -> dict:
+    """One מסלקה production file split into what the agent already has (אצלך =
+    the product matched a production row) and what they don't (לא אצלך). Uses the
+    holding's stored match_status — the same field the customer card tags each
+    product with, so the counts and the card always agree."""
+    dates = await snapshot_dates(db, user_id)
+    if not dates:
+        return {"as_of": None, "summary": None, "by_company": [], "products": [], "waiting": []}
+    as_of = as_of if as_of in dates else dates[0]
+    rows = await _snapshot(db, user_id, as_of)
+
+    products, companies = [], defaultdict(lambda: {"in": 0, "out": 0, "in_customers": set(), "out_customers": set()})
+    for h in rows:
+        side = "in" if h.match_status == "matched" else "out"
+        cid, co = _cid(h.customer_id_number), h.receiving_company or ""
+        companies[co][side] += 1
+        companies[co][side + "_customers"].add(cid)
+        products.append({"id_number": cid, "company": co, "product": h.product or h.product_type,
+                         "policy": h.fund_policy_number, "accumulation": _num(h.accumulation),
+                         "account_status": h.account_status, "side": side})
+    names = await _names(db, user_id, {p["id_number"] for p in products})
+    for p in products:
+        p["name"] = names.get(p["id_number"])
+    products.sort(key=lambda p: -(p["accumulation"] or 0))
+
+    def side_sum(side, field):
+        return round(sum(p[field] or 0 for p in products if p["side"] == side), 2)
+
+    in_c = {p["id_number"] for p in products if p["side"] == "in"}
+    out_c = {p["id_number"] for p in products if p["side"] == "out"}
+    return {
+        "as_of": as_of.isoformat(),
+        "summary": {
+            "products": len(products), "customers": len(in_c | out_c),
+            "in_products": sum(p["side"] == "in" for p in products),
+            "out_products": sum(p["side"] == "out" for p in products),
+            # a customer with even one product the agent lacks counts as לא אצלך
+            "in_customers": len(in_c - out_c), "out_customers": len(out_c),
+            "in_accumulation": side_sum("in", "accumulation"),
+            "out_accumulation": side_sum("out", "accumulation"),
+        },
+        "by_company": [
+            {"company": c, "in": v["in"], "out": v["out"],
+             "in_customers": len(v["in_customers"] - v["out_customers"]), "out_customers": len(v["out_customers"])}
+            for c, v in sorted(companies.items(), key=lambda kv: -(kv[1]["in"] + kv[1]["out"]))
+        ],
+        "products": products,
+        "waiting": await _waiting_bodies(db, user_id, {h.provider_code for h in rows if h.provider_code}),
+    }
+
+
+async def _waiting_bodies(db: AsyncSession, user_id: uuid.UUID, answered: set[str]) -> list[dict]:
+    """Bodies asked for production (an open 2000/2100) that are not in this
+    file yet — so a file from 4 of 13 bodies never reads as the whole book.
+    Each with when it was asked and when the answer is due (orchestration's
+    published-rules clock)."""
+    from app.services.maslaka.code_tables import label_for_provider
+    from app.services.maslaka.orchestration import expected_answer_by
+
+    open_rows = (await db.execute(
+        select(PensionInquiry).where(
+            PensionInquiry.user_id == user_id,
+            PensionInquiry.interface_code.in_(PRODUCTION_CODES),
+            PensionInquiry.status.in_(("pending", "submitted", "acknowledged", "partial")),
+            PensionInquiry.target_yatzran_id.is_not(None),
+        )
+    )).scalars().all()
+    by: dict[str, list] = defaultdict(list)
+    for q in open_rows:
+        if q.target_yatzran_id not in answered:
+            by[q.target_yatzran_id].append(q)
+    out = []
+    for code, qs in by.items():
+        dues = [d for d, _ in (expected_answer_by(q) for q in qs) if d]
+        sent = [q.submitted_at or q.created_at for q in qs if (q.submitted_at or q.created_at)]
+        out.append({"code": code, "company": label_for_provider(code) or code,
+                    "sent_at": min(sent).isoformat() if sent else None,
+                    "due": min(dues).date().isoformat() if dues else None,
+                    "queued": all(q.status == "pending" for q in qs)})
+    return sorted(out, key=lambda w: w["company"])
+
+
 def latest_per_company(holdings: list[PensionHolding]) -> list[PensionHolding]:
     """One customer's holdings, keeping only each company's newest valuation date.
     Monthly snapshots are kept side by side; summing all of them would count a
