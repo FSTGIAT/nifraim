@@ -112,7 +112,9 @@ async def maslaka_delta(ctx, as_of: str = ""):
     return {"found": True, "as_of": res["as_of"], "compared_with": vs, "summary": res["summary"],
             "by_company": res["by_company"], "top_new": slim(res["new"]), "top_removed": slim(res["removed"]),
             "top_changed": slim(res["changed"]), "result_id": rid,
-            "rule": "חדש = מוצר שלא היה בצד השני; הוסר = מוצר שהיה ולא הגיע; השתנה = צבירה שזזה ב-₪100 וגם ב-1% לפחות. חברה שלא ענתה בשני הצדדים לא נספרת."}
+            "rule": "חדש = מוצר שלא היה בצד השני; הוסר = מוצר שהיה ולא הגיע בקובץ הזה; השתנה = צבירה שזזה ב-₪100 וגם ב-1% לפחות. חברה שלא ענתה בשני הצדדים לא נספרת. "
+                    "'הוסר' לא אומר שהלקוח עזב: ייתכן שהמוצר נסגר, הועבר לגוף או לסוכן אחר, או פשוט לא נכלל בקובץ. "
+                    "אל תכתוב 'עזב'/'עזבו' — כתוב 'לא הופיע בקובץ המסלקה' והצע לבדוק."}
 
 
 # Only 9100 — exactly what the מסלקה tab sends (/api/maslaka/inquiry: ID + name, no extra
