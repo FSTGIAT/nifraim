@@ -240,7 +240,10 @@
         </ol>
       </section>
 
-      <MaslakaDeltaDrill :open="!!deltaAsOf" :as-of="deltaAsOf" :origin="deltaOrigin" @close="deltaAsOf = ''" />
+      <MaslakaDeltaDrill
+        :open="!!deltaAsOf" :as-of="deltaAsOf" :origin="deltaOrigin"
+        @close="deltaAsOf = ''" @open-customer="openCustomer"
+      />
 
       <p v-if="pictureError" class="mk-error" role="alert">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
@@ -1002,7 +1005,8 @@ onMounted(async () => {
 
 /* ── Customer modal (iPhone-style grow from origin) ───────────── */
 .mk-cm-overlay {
-  position: fixed; inset: 0; z-index: 1010;
+  /* above the "מה השתנה" drill (DataModal 1010) it can be opened from */
+  position: fixed; inset: 0; z-index: 1030;
   display: flex; align-items: center; justify-content: center;
   padding: 16px; background: rgba(0, 0, 0, 0.42);
 }
