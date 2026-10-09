@@ -453,6 +453,9 @@ async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None)
         except Exception as e:
             stats["errors"] += 1
             logger.exception("maslaka.poll: error ingesting %s", vf.name)
+            # Each ingested file is committed on its own, so this only discards
+            # the failed file's partial writes (it stays in the inbox for retry).
+            await db.rollback()
             await audit.log_event(
                 db, user_id=user_id,
                 event_type="ingest_error", actor="system",
@@ -477,6 +480,7 @@ async def _ingest_one(
     if kind == "feedback":
         await _ingest_feedback(db, payload, source_filename=vf.name, scope_user_id=user_id)
         stats["feedback_ingested"] += 1
+        await db.commit()                   # durable BEFORE it leaves the inbox
         await transport.archive(vf.name)
     elif kind == "holdings":
         # Archive ONLY when every customer in the file was routed. An unmatched
@@ -485,6 +489,10 @@ async def _ingest_one(
         # receipt carrying its GUID has been ingested).
         if await _ingest_holdings(db, payload, source_filename=vf.name, scope_user_id=user_id):
             stats["holdings_ingested"] += 1
+            # Commit BEFORE archiving. The poll used to commit once at the end, so
+            # a crash mid-poll (2026-10-09: disk full) rolled the rows back while
+            # the files were already archived — 3 holdings files silently lost.
+            await db.commit()
             await transport.archive(vf.name)
         else:
             stats["unknown"] += 1
@@ -766,12 +774,19 @@ async def _ingest_holdings(
         # discard receipts ingested earlier in the same poll.
         return False
 
+    # One stored copy of the file per agent, not per request: a holdings file
+    # answers many requests at once, and storing it per request multiplied a
+    # ~5MB payload up to 8x (2026-10-09: 1.2GB stored for 258MB of files —
+    # filled the Postgres volume and took login down).
+    raw_by_user: dict[uuid.UUID, PensionRawPayload] = {}
     for inq, recs in routed.values():
-        raw = await _store_raw_payload(
-            db, user_id=inq.user_id, inquiry_id=inq.id,
-            direction="inbound", interface_code="holdings_v009",
-            source_filename=source_filename, plaintext=payload,
-        )
+        raw = raw_by_user.get(inq.user_id)
+        if raw is None:
+            raw = raw_by_user[inq.user_id] = await _store_raw_payload(
+                db, user_id=inq.user_id, inquiry_id=inq.id,
+                direction="inbound", interface_code="holdings_v009",
+                source_filename=source_filename, plaintext=payload,
+            )
         for rec in recs:
             yat = rec.get("_yatzran")
             db.add(PensionHolding(
