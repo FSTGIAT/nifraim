@@ -3,6 +3,7 @@ PROPOSED request (9100/9101/9102) — the agent's click sends it through the sam
 gates as the מסלקה tab (MASLAKA_ENABLED + approved שיוך), never the model."""
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -12,13 +13,22 @@ from sqlalchemy import select
 from app.services.agent.registry import tool
 
 IL = ZoneInfo("Asia/Jerusalem")
+_CO_NOISE = re.compile(r'\s*(חברה לביטוח|פנסיה וגמל|גמל ופנסיה|פנסיה מקיפה|בע"מ|בעמ)\s*')
+
+
+def short_co(name: str | None) -> str:
+    """The tab's shortCo (MaslakaDeltaDrill.vue): 'הפניקס פנסיה וגמל בע"מ' → 'הפניקס'."""
+    return re.sub(r"\s+", " ", _CO_NOISE.sub(" ", name or "")).strip() or (name or "")
 CODE_HE = {
     "9100": "מידע טרום ייעוץ — כל הגופים", "9101": "מידע טרום ייעוץ — גוף אחד",
     "9102": "איתור קופות שהפסיקו לקבל הפקדות", "9200": "החזקות חד-פעמי", "9201": "החזקות שוטף",
     "2000": "דוח פרודוקציה חד-פעמי", "2100": "דוח פרודוקציה חודשי", "1700": "מתן ייפוי כוח", "1900": "ביטול ייפוי כוח",
 }
-STATUS_HE = {"pending": "ממתין לשליחה", "submitted": "נשלח", "acknowledged": "התקבל במסלקה",
-             "partial": "התקבל חלקית", "completed": "הושלם", "failed": "נדחה", "expired": "פג תוקף"}
+# "acknowledged" was "התקבל במסלקה" — the model read it as "the REPORT arrived" and
+# listed the bodies still waiting as the ones that answered (2026-10-10). It only
+# means the מסלקה accepted our REQUEST; data comes later ("partial"/"completed").
+STATUS_HE = {"pending": "ממתין לשליחה", "submitted": "נשלח", "acknowledged": "הבקשה התקבלה במסלקה — ממתין לנתונים",
+             "partial": "הגיעו נתונים (חלקית)", "completed": "הגיעו נתונים", "failed": "נדחה", "expired": "פג תוקף"}
 
 
 async def holdings_lines(ctx, idn: str) -> list[str]:
@@ -39,7 +49,43 @@ async def holdings_lines(ctx, idn: str) -> list[str]:
     return out
 
 
-@tool("maslaka_status", "מצב המסלקה של הסוכן: האם השיוך אושר, בקשות פתוחות ומתי צפויה תשובה, כמה לקוחות עם נתוני מסלקה, ומתי מגיעה הפרודוקציה (15 לחודש).",
+async def latest_file(ctx) -> dict | None:
+    """The newest מסלקה production file: which bodies ANSWERED (and with how much)
+    and which are still waiting. Built from file_coverage — the same source as the
+    מסלקה tab's "<month> מול הפרודוקציה שלך" panel, so Nifra and the tab name the
+    same companies."""
+    from sqlalchemy import func
+    from app.models.pension_holding import PensionHolding
+    from app.models.pension_inquiry import PensionInquiry
+    from app.services.maslaka.delta import PRODUCTION_CODES, file_coverage
+
+    cov = await file_coverage(ctx.db, ctx.user.id)
+    if not cov.get("as_of"):
+        return None
+    from datetime import date
+    as_of = date.fromisoformat(cov["as_of"])
+    arrived = (await ctx.db.execute(
+        select(func.min(PensionHolding.created_at))
+        .join(PensionInquiry, PensionInquiry.id == PensionHolding.inquiry_id)
+        .where(PensionHolding.user_id == ctx.user.id, PensionHolding.status_date == as_of,
+               PensionInquiry.interface_code.in_(PRODUCTION_CODES))
+    )).scalar_one_or_none()
+    return {
+        "valid_as_of": cov["as_of"],
+        "arrived_at": arrived.astimezone(IL).strftime("%d/%m/%Y") if arrived else None,
+        "companies_answered": [
+            {"company": c["company"], "customers": c["in_customers"] + c["out_customers"],
+             "customers_with_a_product_not_in_your_production": c["out_customers"],
+             "products": c["in"] + c["out"],
+             "products_in_your_production": c["in"], "products_not_in_your_production": c["out"]}
+            for c in cov["by_company"]],
+        "companies_waiting": [
+            {"company": w["company"], "answer_expected": w.get("due"), "not_sent_yet": w.get("queued")}
+            for w in cov.get("waiting") or []],
+    }
+
+
+@tool("maslaka_status", "מצב המסלקה של הסוכן: האם השיוך אושר, קובץ הפרודוקציה האחרון מהמסלקה — מתי הגיע, מאילו חברות הגיעו נתונים ואילו עדיין ממתינות — בקשות פתוחות ומתי צפויה תשובה, ומתי הקובץ הבא.",
       category="maslaka", status_he="בודק את המסלקה")
 async def maslaka_status(ctx):
     from app.models.maslaka_agent_link import MaslakaAgentLink
@@ -68,6 +114,7 @@ async def maslaka_status(ctx):
                                       .where(PensionHolding.user_id == ctx.user.id))).scalar_one()
     nxt15 = nxt   # one rule with the מסלקה tab's files list
     return {
+        "latest_production_file": await latest_file(ctx),
         "association": {"status": getattr(link, "status", "not_started"),
                         "approved_at": getattr(link, "approved_at", None), "auto_production": getattr(link, "auto_production", None)},
         "requests_by_status": [{"status": s, "request": c, "count": n} for (s, c), n in by.most_common(12)],
@@ -75,7 +122,9 @@ async def maslaka_status(ctx):
         "open_requests_count": open_count,
         "customers_with_maslaka_data": customers,
         "next_production_date": nxt15.strftime("%d/%m/%Y"),
-        "rule": "דוח פרודוקציה מהמסלקה מגיע ב-15 לחודש למי ששיוכו אושר; 9100 עונה תוך שעות. 0 מותאמים = ממתין למסלקה, לא תקלה.",
+        "rule": "דוח פרודוקציה מהמסלקה מגיע ב-15 לחודש למי ששיוכו אושר; 9100 עונה תוך שעות. 0 מותאמים = ממתין למסלקה, לא תקלה. "
+                "מאילו חברות הגיעו נתונים = רק latest_production_file.companies_answered; companies_waiting עוד לא שלחו. "
+                "בקשה 'התקבלה במסלקה' = הבקשה נקלטה, לא שהגיעו נתונים. מתי הגיע הקובץ = arrived_at, לא הכלל של ה-15.",
     }
 
 
@@ -109,16 +158,30 @@ async def maslaka_delta(ctx, as_of: str = ""):
     base = res["base"] or {}
     vs = ("קובץ המסלקה של " + base.get("as_of", "")) if base.get("kind") == "maslaka" else \
          ("קובץ הפרודוקציה " + (base.get("filename") or "") + (f" ({base['as_of'][:7]})" if base.get("as_of") else ""))
-    rid = ctx.keep([{"label": c["company"], "value": c["new"] + c["removed"] + c["changed"]} for c in res["by_company"]],
+    rid = ctx.keep([{"label": short_co(c["company"]), "value": c["new"] + c["removed"] + c["changed"]} for c in res["by_company"]],
                    label="חברה", value="שינויים", unit="", title="שינויים לפי חברה — מסלקה")
     slim = lambda items: [{k: i.get(k) for k in ("name", "id_number", "company", "product", "old_accumulation",
                                                   "new_accumulation", "accumulation_diff")} for i in items[:10]]
+
+    def split(bucket):   # "15 (מור 8, אלטשולר שחם 3, …)" — written here so the model never re-adds it wrong
+        parts = sorted(((short_co(c["company"]), c[bucket]) for c in res["by_company"] if c[bucket]), key=lambda x: -x[1])
+        return f"{sum(n for _, n in parts)} (" + ", ".join(f"{co} {n}" for co, n in parts) + ")" if parts else "0"
+
+    cust = lambda items: len({i["id_number"] for i in items})
+    from_production = base.get("kind") != "maslaka"
     return {"found": True, "as_of": res["as_of"], "compared_with": vs, "summary": res["summary"],
+            "customers": {"new": cust(res["new"]), "removed": cust(res["removed"]), "changed": cust(res["changed"]),
+                          "any_change": cust(res["new"] + res["removed"] + res["changed"])},
+            "products_by_company": {"new": split("new"), "removed": split("removed"), "changed": split("changed")},
             "by_company": res["by_company"], "top_new": slim(res["new"]), "top_removed": slim(res["removed"]),
             "top_changed": slim(res["changed"]), "result_id": rid,
             "rule": "חדש = מוצר שלא היה בצד השני; הוסר = מוצר שהיה ולא הגיע בקובץ הזה; השתנה = צבירה שזזה ב-₪100 וגם ב-1% לפחות. חברה שלא ענתה בשני הצדדים לא נספרת. "
                     "'הוסר' לא אומר שהלקוח עזב: ייתכן שהמוצר נסגר, הועבר לגוף או לסוכן אחר, או פשוט לא נכלל בקובץ. "
-                    "אל תכתוב 'עזב'/'עזבו' — כתוב 'לא הופיע בקובץ המסלקה' והצע לבדוק."}
+                    "אל תכתוב 'עזב'/'עזבו' — כתוב 'לא הופיע בקובץ המסלקה' והצע לבדוק. "
+                    "פירוט לפי חברה — רק כפי שכתוב ב-products_by_company. נשאלת על לקוחות — ענה במספרי customers. "
+                    "ענה ישר במספרים, בלי משפט פתיחה על מה צריך לבדוק."
+                    + (" ההשוואה היא מול קובץ הפרודוקציה, לא מול קובץ מסלקה קודם: שינויי הצבירה כוללים תשואות של כל התקופה ביניהם — אמור זאת, ואל תציג אותם כפעולות של הלקוחות."
+                       if from_production else "")}
 
 
 # Only 9100 — exactly what the מסלקה tab sends (/api/maslaka/inquiry: ID + name, no extra

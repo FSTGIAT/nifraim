@@ -309,6 +309,13 @@ def render(route_: Route, data) -> tuple[str, str | None]:
         s = "השיוך למסלקה מאושר." if a.get("status") == "approved" else f"השיוך למסלקה: {a.get('status')}."
         if data.get("open_requests"):
             s += f" {data.get('open_requests_count', len(data['open_requests']))} בקשות פתוחות; הקרובה צפויה ב-{data['open_requests'][0]['answer_expected']}."
+        f = data.get("latest_production_file")
+        if f:
+            got = [c["company"] for c in f["companies_answered"]]
+            s += (f" קובץ הפרודוקציה האחרון (נכון ל-{f['valid_as_of']}"
+                  + (f", הגיע ב-{f['arrived_at']}" if f.get("arrived_at") else "") + ")"
+                  + (f" — הגיעו נתונים מ-{len(got)} חברות: {', '.join(got)}" if got else "")
+                  + (f"; עוד {len(f['companies_waiting'])} ממתינות" if f.get("companies_waiting") else "") + ".")
         s += f" {data.get('customers_with_maslaka_data', 0)} לקוחות עם נתוני מסלקה. הפרודוקציה הבאה: {data.get('next_production_date')}."
         return s, None
     if i == "overview":

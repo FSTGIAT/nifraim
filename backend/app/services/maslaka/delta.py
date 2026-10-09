@@ -222,8 +222,11 @@ async def monthly_delta(db: AsyncSession, user_id: uuid.UUID, as_of: date | None
                     if maps_to.get(hs[0].receiving_company or "") == r.receiving_company}
         shown_as = {pco: hco for hco, pco in maps_to.items()}   # one name per company in the summary
         for k in set(cur_g) | set(prod_g):
-            base_list = [r for r in prod_g.get(k, []) if (r.receiving_company, r.product_type) in answered] \
-                if k not in cur_g else prod_g.get(k, [])
+            # Only production rows of a company the מסלקה answered for — also when the
+            # key is in the file. Pension policy numbers are often the saver's ID, so a
+            # Menora row and a Mor holding share (ID, policy); the unpaired Menora row
+            # used to land in "removed" although Menora never answered (kiko, 2026-10-10).
+            base_list = [r for r in prod_g.get(k, []) if (r.receiving_company, r.product_type) in answered]
             # production's status words don't match the מסלקה's codes: pair by balance only
             pairs, cur_left, base_left = _pair(cur_g.get(k, []), base_list,
                                                cur_status=lambda h: None, base_status=lambda r: None,
