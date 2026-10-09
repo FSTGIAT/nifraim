@@ -1,5 +1,7 @@
 # Stage 1: Build frontend
-FROM node:18-alpine AS frontend-build
+# Official Docker images via AWS's public mirror: Docker Hub rate-limits Railway's
+# shared builders (2026-10-10: two deploys failed with "429 Too Many Requests").
+FROM public.ecr.aws/docker/library/node:18-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python backend + built frontend
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
