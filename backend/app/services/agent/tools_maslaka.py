@@ -57,8 +57,8 @@ async def maslaka_status(ctx):
                               "answer_expected": due.astimezone(IL).strftime("%d/%m %H:%M")})
     customers = (await ctx.db.execute(select(func.count(func.distinct(PensionHolding.customer_id_number)))
                                       .where(PensionHolding.user_id == ctx.user.id))).scalar_one()
-    now = datetime.now(IL)
-    nxt15 = now.replace(day=15) if now.day <= 15 else (now.replace(year=now.year + (now.month == 12), month=now.month % 12 + 1, day=15))
+    from app.services.maslaka.delta import next_file_due
+    nxt15 = await next_file_due(ctx.db, ctx.user)   # one rule with the מסלקה tab's files list
     return {
         "association": {"status": getattr(link, "status", "not_started"),
                         "approved_at": getattr(link, "approved_at", None), "auto_production": getattr(link, "auto_production", None)},

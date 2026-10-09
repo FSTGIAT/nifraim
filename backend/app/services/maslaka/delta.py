@@ -282,3 +282,26 @@ def latest_per_company(holdings: list[PensionHolding]) -> list[PensionHolding]:
         if co not in newest or (d is not None and (newest[co] is None or d > newest[co])):
             newest[co] = d
     return [h for h in holdings if h.status_date == newest.get(h.receiving_company or "")]
+
+
+async def next_file_due(db: AsyncSession, user) -> date:
+    """When the next מסלקה production file is due — ONE rule for the files list and
+    Nifra. A month's data (נכון לסוף החודש) arrives by the 15th of the month after
+    it: once September's file is in (9/10), the next is October's, due 15/11 —
+    not "the next 15th" (15/10, already delivered). On the cycle's clock
+    (CYCLE_NOW_OVERRIDE) so it agrees with every other date."""
+    from zoneinfo import ZoneInfo
+    from app.services.cycle_service import user_now
+
+    def fifteenth_after(y, mo, months):
+        mo += months
+        return date(y + (mo - 1) // 12, (mo - 1) % 12 + 1, 15)
+
+    today = user_now(user).astimezone(ZoneInfo("Asia/Jerusalem")).date()
+    due = date(today.year, today.month, 15) if today.day < 15 else fifteenth_after(today.year, today.month, 1)
+    dates = await snapshot_dates(db, user.id)
+    if dates:
+        after_latest = fifteenth_after(dates[0].year, dates[0].month, 2)
+        if after_latest > due:
+            due = after_latest
+    return due

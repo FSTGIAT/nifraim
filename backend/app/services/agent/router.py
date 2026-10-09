@@ -142,6 +142,13 @@ def route(question: str) -> Route | None:
         return None
     about_one_customer = bool(re.search(r"(?:^|\s)(?:ל|ה|של )?לקוח(?:ה)?\s+[א-ת]", q))
     if re.search(r"מסלק", q):
+        # Only a plain status question is instant. What CHANGED in the file, what is
+        # new / removed, or one customer's holdings go to the agent lane, which picks
+        # maslaka_delta / customer_holdings (2026-10-09: every מסלקה question got the
+        # same canned status line, the delta and holdings tools were never reached).
+        if ID_RE.search(q) or about_one_customer or re.search(
+                r"השתנ|שינוי|שינויים|חדש|הוסר|נעלמ|נוספ|לעומת|מול|הפרש|עלה|ירד|צביר|מוצר|לקוחות עם|מי ה", q):
+            return None
         return Route("maslaka_status", "maslaka_status", {})
     m = ID_RE.search(q)
     if m and re.search(r"לקוח|ת\.?ז|תז|מה יש", q):

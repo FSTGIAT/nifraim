@@ -166,9 +166,6 @@ async def production_files(
     the per-body requests behind it — only what arrived and what is next. Each
     month's changes are GET /delta?as_of=<the file's as_of>.
     """
-    from datetime import date as _date
-    from zoneinfo import ZoneInfo
-
     from app.models.pension_holding import PensionHolding
 
     # One "file" per valuation month (the files' תאריך נכונות). Re-sent copies of
@@ -214,28 +211,8 @@ async def production_files(
         )
     )).scalar() or 0
 
-    # Production answers are due by the 15th — the next 15th in Israel time,
-    # on the cycle's clock (CYCLE_NOW_OVERRIDE) so it agrees with every other date.
-    from app.services.cycle_service import user_now
-    today = user_now(user).astimezone(ZoneInfo("Asia/Jerusalem")).date()
-
-    def fifteenth_after(y, mo, months):
-        mo += months
-        y, mo = y + (mo - 1) // 12, (mo - 1) % 12 + 1
-        return _date(y, mo, 15)
-
-    if today.day < 15:
-        next_due = _date(today.year, today.month, 15)
-    else:
-        next_due = fifteenth_after(today.year, today.month, 1)
-    # A month's data (נכון לסוף החודש) arrives by the 15th of the month after it.
-    # Once this month's file is in (September's, on 9/10), the next is October's,
-    # due 15/11, not "the next 15th" (15/10, which had already been delivered).
-    if files:
-        latest = _date.fromisoformat(files[0]["as_of"])
-        after_latest = fifteenth_after(latest.year, latest.month, 2)
-        if after_latest > next_due:
-            next_due = after_latest
+    from app.services.maslaka.delta import next_file_due
+    next_due = await next_file_due(db, user)
 
     return {"files": files, "next_due": next_due.isoformat(), "subscribed_bodies": open_subs}
 
