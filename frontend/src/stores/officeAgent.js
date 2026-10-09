@@ -170,13 +170,14 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
   }
 
   // The agent approved a prepared email / meeting — send it from their mailbox.
-  async function approve(msg) {
+  // `extra` rides along with the proposal — e.g. a 9100's signed נספח א' consent.
+  async function approve(msg, extra = {}) {
     const p = msg.proposal
     busy.value = 'act'
     error.value = ''
     try {
       const { kind, status, live, ...data } = p
-      const res = await api.post('/office-agent/act', { kind, data })
+      const res = await api.post('/office-agent/act', { kind, data: { ...data, ...extra } })
       p.status = 'sent'
       if (kind === 'harb' && res.data?.harb_request_id) trackHarb(p, res.data.harb_request_id)
       return true
@@ -185,7 +186,7 @@ export const useOfficeAgentStore = defineStore('officeAgent', () => {
       error.value = d === 'bad_email' ? 'כתובת המייל לא תקינה'
         : d === 'bad_start' ? 'המועד לא תקין'
         : d === 'bad_code' ? 'קוד בקשה לא תקין'
-        : p.kind === 'harb' && typeof d === 'string' ? d
+        : (p.kind === 'harb' || p.kind === 'maslaka') && typeof d === 'string' ? d
         : e?.response?.status === 503 ? 'המסלקה כבויה בסביבה הזו'
         : e?.response?.status === 403 ? 'השיוך למסלקה עוד לא אושר'
         : message(e)

@@ -67,6 +67,9 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
 | 11 | `maslaka_status` said "10 open requests, nearest expected 15/10" | The expected date was the 15th after **sending**, even for requests that had already answered; the list was capped at 10 before sorting | `delta.answer_due()`: an answered 2000 is done, and an answered 2100 waits for `next_file_due`. All open requests are counted (30) and sorted. The remaining "15/10" rows are bodies that really haven't answered yet | `25ee213` |
 | 12 | `test_maslaka_gateway_claim` failed (no `outbox`) | The test predates the 25–27/9 rules: a 9100 needs a recorded נספח א' consent, and every request needs contact fields | The test records consent and sets test contact values. Its DB tests **stop if pending rows they didn't create exist**: a run had claimed and failed two real local 9100s | `25ee213` |
 
+| 13 | "עדכון מהמסלקה" / the ask form / Nifra's 9100 all said "sent" and every one failed on the Gateway ("needs the נספח א' signature dates") | Since the 25–27/9 rules a 9100 needs the signed נספח א' (both signature dates + the customer's address + excluded-product), and **no screen collected it** | `MaslakaConsentModal` opens on all three paths. The server refuses a 9100 without it (`api/maslaka.consent_record`, Hebrew 400), and `create_inquiry(consent=…)` records it **in the same transaction**, so the Gateway can never claim a 9100 without consent. Dates are never defaulted | (this change) |
+| 14 | The customer card said "נכון ל-9.10.2026" for balances as of 30/09 | `as_of` was the arrival time | `as_of` = the newest `status_date` | (this change) |
+
 ## Several agents at the same time
 
 - **Sending:** one Gateway worker claims one row at a time (`FOR UPDATE SKIP LOCKED`). A second

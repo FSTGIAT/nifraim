@@ -220,7 +220,7 @@
                     </template>
                   </fieldset>
                   <div v-if="m.proposal.status !== 'sent'" class="na-row">
-                    <button type="button" class="na-go" :disabled="(!['maslaka', 'call_task', 'harb'].includes(m.proposal.kind) && !canSend) || store.busy === 'act'" @click="store.approve(m)">
+                    <button type="button" class="na-go" :disabled="(!['maslaka', 'call_task', 'harb'].includes(m.proposal.kind) && !canSend) || store.busy === 'act'" @click="m.proposal.kind === 'maslaka' ? askConsent(m, $event.currentTarget) : store.approve(m)">
                       {{ store.busy === 'act' ? 'שולח…' : m.proposal.kind === 'meeting' ? 'אישור ושליחת זימון' : m.proposal.kind === 'maslaka' ? 'אישור ושליחה למסלקה' : m.proposal.kind === 'call_task' ? 'אישור — בוצע' : m.proposal.kind === 'harb' ? 'אישור — יש לי הסכמת הלקוח' : 'אישור ושליחה' }}
                     </button>
                     <button type="button" class="na-link na-link--quiet" @click="m.proposal.status = 'dropped'">ביטול</button>
@@ -286,6 +286,12 @@
                       @close="letter = null" @sent="(name) => (sentNote[letter.i] = 'נשלח ל' + name)"
                       @dismissed="() => {}" @open-call="(id) => { letter = null; emit('open-call', id) }"
                       @open-mail="letter = null; emit('open-mail')" />
+  <!-- a 9100 Nifra prepared: the signed נספח א' first, then the approval sends it -->
+  <MaslakaConsentModal
+    :show="!!consentFor" :origin="consentFor?.origin" :customer-id="consentFor?.m.proposal.customer_id_number || ''"
+    :customer-name="consentFor?.m.proposal.customer_name || ''" :send="sendConsent"
+    @close="consentFor = null" @sent="consentFor = null"
+  />
 </template>
 
 <script setup>
@@ -298,6 +304,7 @@ import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
 import AiStreamingText from '../ui/AiStreamingText.vue'
 import AgentCreateDrawing from './AgentCreateDrawing.vue'
 import CallFollowupLetter from './CallFollowupLetter.vue'
+import MaslakaConsentModal from './MaslakaConsentModal.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -307,6 +314,13 @@ const props = defineProps({
 const emit = defineEmits(['update:open', 'open-mail', 'open-vizs', 'open-call'])
 const propTitle = (p) => p.kind === 'harb' ? 'שליפה מהר הביטוח' : p.kind === 'call_task' ? 'משימה משיחה' : p.kind === 'maslaka' ? 'בקשה למסלקה' : p.kind === 'collection' ? 'פנייה לחברה' : p.kind === 'meeting' ? (isSelf(p) ? 'תזכורת ביומן' : 'זימון לפגישה') : 'מייל'
 const store = useOfficeAgentStore()
+// A מסלקה 9100 needs the signed נספח א' before the approval can send it.
+const consentFor = ref(null)
+function askConsent(m, el) { consentFor.value = { m, origin: el } }
+async function sendConsent(form) {
+  const ok = await store.approve(consentFor.value.m, { consent: form })
+  if (!ok) throw new Error(store.error || 'השליחה נכשלה')
+}
 
 // sequential streaming: greeting → line 0 → line 1 …
 const step = ref(-1)

@@ -59,6 +59,7 @@ async def create_inquiry(
     action_code: str | None = None,
     target_yatzran_id: str | None = None,
     information_date: str | None = None,
+    consent: dict | None = None,
 ) -> PensionInquiry:
     """Create a `pending` inquiry row. Does NOT send anything to the vault —
     that's `submit_inquiry` (run in a background task). Splitting create/submit
@@ -88,6 +89,12 @@ async def create_inquiry(
         customer_id_number=normalized, event_type="inquiry_created",
         from_status=None, to_status="pending", actor="agent",
     )
+    # The signed נספח א' goes in the SAME transaction: the Gateway claims any
+    # committed `pending` row, and a 9100 claimed before its consent is recorded
+    # is refused there ("needs the נספח א' signature dates") — 2026-10-09, every
+    # 9100 from the tab failed that way.
+    if consent:
+        await record_consent(db, inquiry, **consent)
     await db.commit()
     return inquiry
 
@@ -1080,7 +1087,10 @@ async def get_enriched_picture(
         )).first()
         if rec:
             name = " ".join(x for x in (rec[0], rec[1]) if x) or None
-    as_of = max((h.created_at for h in holdings if getattr(h, "created_at", None)), default=None)
+    # "נכון ל" = the date the balances are FOR (the file's תאריך נכונות), not the
+    # day the file arrived: the card said 9.10.2026 for balances as of 30/09.
+    as_of = (max((h.status_date for h in holdings if h.status_date), default=None)
+             or max((h.created_at for h in holdings if getattr(h, "created_at", None)), default=None))
 
     return {
         "customer_name": name,

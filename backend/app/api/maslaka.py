@@ -139,8 +139,24 @@ async def create_inquiry_endpoint(
         user_id=user.id,
         customer_id_number=payload.customer_id_number,
         customer_name=payload.customer_name,
+        consent=consent_record(payload.consent),
     )
     return _serialize_inquiry(inquiry)
+
+
+def consent_record(consent) -> dict:
+    """A 9100 needs the signed נספח א' — refuse here, with words the agent
+    understands, instead of letting the Gateway fail it silently later."""
+    if consent is None:
+        raise HTTPException(status_code=400, detail=(
+            "בקשת מידע מהמסלקה (9100) דורשת טופס נספח א' חתום: תאריכי החתימה של הלקוח ושלך, "
+            "וכתובת הלקוח. מלאו את הפרטים מהטופס החתום."))
+    try:
+        return consent.to_record()
+    except ValueError as e:
+        msg = {"signature date in the future": "תאריך חתימה לא יכול להיות בעתיד.",
+               "form not confirmed": "יש לאשר שהטופס החתום בידיך."}.get(str(e), "פרטי הטופס לא תקינים.")
+        raise HTTPException(status_code=400, detail=msg)
 
 
 @router.get("/production-report/bodies")

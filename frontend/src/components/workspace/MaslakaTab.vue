@@ -246,6 +246,10 @@
         </ol>
       </section>
 
+      <MaslakaConsentModal
+        :show="consent.show" :origin="consent.origin" :customer-id="consent.id" :customer-name="consent.name"
+        :send="sendWithConsent" @close="consent = { ...consent, show: false }" @sent="onConsentSent"
+      />
       <MaslakaDeltaDrill
         :open="!!deltaAsOf" :as-of="deltaAsOf" :origin="deltaOrigin"
         @close="deltaAsOf = ''" @open-customer="openCustomer"
@@ -318,7 +322,7 @@
               </div>
 
               <footer class="mk-cm-foot">
-                <button class="mk-ghost" :disabled="updateBusy || updateSent" @click="requestUpdate">
+                <button class="mk-ghost" :disabled="updateBusy || updateSent" @click="requestUpdate($event.currentTarget)">
                   <span>{{ updateSent ? 'נשלחה בקשת עדכון' : (updateBusy ? 'שולח…' : 'עדכון מהמסלקה') }}</span>
                 </button>
               </footer>
@@ -342,6 +346,7 @@ import { resumeSetupIfAway } from '../../utils/setupState.js'
 import { useCycleStore, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
 import MaslakaDeltaDrill from './MaslakaDeltaDrill.vue'
+import MaslakaConsentModal from './MaslakaConsentModal.vue'
 import ProdScrollGraph from './ProdScrollGraph.vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
@@ -469,11 +474,12 @@ async function ask() {
     } catch (e) {
       if (e?.response?.status !== 404) throw e
     }
-    await api.post('/maslaka/inquiry', { customer_id_number: id, customer_name: name })
-    idNumber.value = ''
-    customerName.value = ''
-    idTouched.value = false
-    await loadInquiries({ silent: true })
+    // Nothing on file yet → a 9100, which needs the signed נספח א' first.
+    openConsent(id, name, askCardEl.value, () => {
+      idNumber.value = ''
+      customerName.value = ''
+      idTouched.value = false
+    })
   } catch (e) {
     // 403 + X-Maslaka-Association-Status: the server's association gate held
     // (status changed under the tab, e.g. an approval was revoked). Re-read the
@@ -487,21 +493,28 @@ async function ask() {
   }
 }
 
-async function requestUpdate() {
+// A 9100 needs the signed נספח א' — every send opens the consent form first.
+const consent = ref({ show: false, id: '', name: '', origin: null, after: null })
+function openConsent(id, name, originEl, after) {
+  consent.value = { show: true, id, name: name || '', origin: originEl || null, after }
+}
+async function sendWithConsent(form) {
+  await api.post('/maslaka/inquiry', {
+    customer_id_number: consent.value.id,
+    customer_name: consent.value.name || null,
+    consent: form,
+  })
+}
+async function onConsentSent() {
+  const after = consent.value.after
+  consent.value = { ...consent.value, show: false }
+  await loadInquiries({ silent: true })
+  if (after) after()
+}
+
+function requestUpdate(originEl) {
   if (!picture.value || updateBusy.value) return
-  updateBusy.value = true
-  try {
-    await api.post('/maslaka/inquiry', {
-      customer_id_number: picture.value.id_number,
-      customer_name: picture.value.customer_name || null,
-    })
-    updateSent.value = true
-    await loadInquiries({ silent: true })
-  } catch (e) {
-    pictureError.value = e?.response?.data?.detail || 'שליחת בקשת העדכון נכשלה'
-  } finally {
-    updateBusy.value = false
-  }
+  openConsent(picture.value.id_number, picture.value.customer_name, originEl, () => { updateSent.value = true })
 }
 
 // ── Customer modal: grows out of what was tapped, iPhone-style ──────────

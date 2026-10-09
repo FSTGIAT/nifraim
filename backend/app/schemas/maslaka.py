@@ -9,9 +9,39 @@ from pydantic import BaseModel, Field
 
 
 # ─── Requests ──────────────────────────────────────────────────────────────
+class ConsentIn(BaseModel):
+    """The signed נספח א' a 9100 declares to the מסלקה (rules 14/18 + both signature
+    dates, 2026-09-25/27). Typed by the agent from the signed form — the dates are
+    a declaration to a regulator, so nothing here is ever defaulted."""
+    customer_signed: date
+    agent_signed: date
+    country: str = Field(default="ישראל", min_length=2, max_length=40)
+    city: str = Field(..., min_length=2, max_length=60)
+    street: str = Field(..., min_length=1, max_length=80)
+    house: str = Field(..., min_length=1, max_length=10)
+    zip_code: str = Field(..., pattern=r"^\d{5,7}$")
+    excluded_product: str = Field(..., pattern="^[12]$")   # KAYAM-MUTZAR-MUCHRAG: 1 yes / 2 no
+    form_in_hand: bool = Field(..., description="the agent confirms the signed form is in hand")
+
+    def to_record(self) -> dict:
+        from datetime import date as _d
+        today = _d.today()
+        if self.customer_signed > today or self.agent_signed > today:
+            raise ValueError("signature date in the future")
+        if not self.form_in_hand:
+            raise ValueError("form not confirmed")
+        return {"customer_signed": self.customer_signed.strftime("%Y%m%d"),
+                "agent_signed": self.agent_signed.strftime("%Y%m%d"),
+                "country": self.country.strip(), "city": self.city.strip(), "street": self.street.strip(),
+                "house": self.house.strip(), "zip_code": self.zip_code.strip(),
+                "excluded_product": self.excluded_product}
+
+
 class InquiryCreateRequest(BaseModel):
     customer_id_number: str = Field(..., min_length=1, max_length=20)
     customer_name: str | None = Field(default=None, max_length=200)
+    # Required for a 9100 (the only request this route creates) — see ConsentIn.
+    consent: ConsentIn | None = None
 
 
 class ProductionReportRequest(BaseModel):

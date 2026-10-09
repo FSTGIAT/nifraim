@@ -135,8 +135,17 @@ async def _act_maslaka(db: AsyncSession, user: User, data: dict):
         raise HTTPException(400, "bad_code")
     require_maslaka_enabled()
     await require_association_approved(db=db, user=user)
+    from app.api.maslaka import consent_record
+    from app.schemas.maslaka import ConsentIn
+    raw = data.get("consent")
+    try:
+        consent = ConsentIn(**raw) if isinstance(raw, dict) else None
+    except Exception:   # noqa: BLE001 — a malformed form is the agent's to fix
+        from fastapi import HTTPException
+        raise HTTPException(400, "פרטי טופס נספח א' לא תקינים — בדקו תאריכים, מיקוד ומוצר מוחרג.")
     inquiry = await orchestration.create_inquiry(
         db, user_id=user.id, customer_id_number=str(data.get("customer_id_number") or ""),
         customer_name=(data.get("customer_name") or None), action_code=code,
+        consent=consent_record(consent),
     )
     return _serialize_inquiry(inquiry)
