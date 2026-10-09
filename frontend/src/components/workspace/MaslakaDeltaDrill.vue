@@ -15,16 +15,19 @@
       <p v-else-if="!data?.summary" class="md-note">עוד לא הגיע קובץ מהמסלקה.</p>
 
       <template v-else>
-        <!-- 1. the counts -->
+        <!-- 1. the counts — the three cards ARE the type selector: one teal pill
+             glides to the chosen card (the Production tab's view-switch gesture). -->
         <div class="md-kpis md-mod">
-          <button
-            v-for="k in KINDS" :key="k.id" type="button" class="md-kpi"
-            :class="{ 'md-kpi--on': kind === k.id }" @click="pick(k.id, '')"
-          >
-            <span class="md-kpi-label">{{ k.label }}</span>
-            <strong class="md-kpi-n ltr-number">{{ num(shownCounts[k.id]) }}</strong>
-            <span class="md-kpi-bar" :style="{ '--w': share(k.id) }" aria-hidden="true"></span>
-          </button>
+          <div class="md-pick" role="tablist" aria-label="סוג שינוי" :style="{ '--i': kindIndex }">
+            <span class="md-glider" aria-hidden="true"></span>
+            <button
+              v-for="k in KINDS" :key="k.id" type="button" role="tab" class="md-kpi"
+              :class="{ 'md-kpi--on': kind === k.id }" :aria-selected="kind === k.id" @click="pick(k.id, '')"
+            >
+              <span class="md-kpi-label">{{ k.label }}</span>
+              <strong class="md-kpi-n ltr-number">{{ num(shownCounts[k.id]) }}</strong>
+            </button>
+          </div>
           <div class="md-kpi md-kpi--quiet">
             <span class="md-kpi-label">ללא שינוי</span>
             <strong class="md-kpi-n ltr-number">{{ num(shownCounts.unchanged) }}</strong>
@@ -51,31 +54,21 @@
 
         <!-- 3. the list -->
         <section ref="listEl" class="md-mod md-listmod">
-          <div class="md-tabs" role="tablist" aria-label="סוג שינוי">
-            <button
-              v-for="k in KINDS" :key="k.id" type="button" role="tab" class="md-tab"
-              :class="{ 'md-tab--on': kind === k.id }" :aria-selected="kind === k.id"
-              @click="pick(k.id, '')"
-            >{{ k.label }} <span class="ltr-number">{{ num((data[k.id] || []).length) }}</span></button>
+          <!-- one row: search + one company menu (was two rows of text tabs) -->
+          <div class="md-bar">
+            <label class="md-search">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+              <input v-model="q" placeholder="שם או ת.ז" aria-label="חיפוש" @input="limit = PAGE" />
+            </label>
+            <select v-if="companies.length > 1" v-model="company" class="md-co" aria-label="חברה" @change="limit = PAGE">
+              <option value="">כל החברות · {{ num(list.length) }}</option>
+              <option v-for="c in companies" :key="c.name" :value="c.name">{{ c.short }} · {{ num(c.n) }}</option>
+            </select>
           </div>
-          <div v-if="companies.length > 1" class="md-tabs md-tabs--sub" role="tablist" aria-label="חברה">
-            <button
-              type="button" role="tab" class="md-tab" :class="{ 'md-tab--on': !company }" :aria-selected="!company"
-              @click="company = ''; limit = PAGE"
-            >הכל <span class="ltr-number">{{ num(list.length) }}</span></button>
-            <button
-              v-for="c in companies" :key="c.name" type="button" role="tab" class="md-tab"
-              :class="{ 'md-tab--on': company === c.name }" :aria-selected="company === c.name"
-              @click="company = c.name; limit = PAGE"
-            >{{ c.short }} <span class="ltr-number">{{ num(c.n) }}</span></button>
-          </div>
-          <label v-if="list.length > 8" class="md-search">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-            <input v-model="q" placeholder="שם או ת.ז" aria-label="חיפוש" @input="limit = PAGE" />
-          </label>
 
           <p v-if="!shown.length" class="md-note">{{ q ? 'לא נמצא' : 'אין' }}</p>
-          <TransitionGroup tag="ul" name="md-li" class="md-list">
+          <Transition :name="slideDir" mode="out-in">
+          <TransitionGroup :key="kind + '|' + company" tag="ul" name="md-li" class="md-list">
             <li
               v-for="(r, i) in shown.slice(0, limit)" :key="r._k" class="md-card"
               :class="{ 'md-card--open': openKey === r._k }" :style="{ '--i': Math.min(i, 12) }"
@@ -108,6 +101,7 @@
               </div>
             </li>
           </TransitionGroup>
+          </Transition>
           <button v-if="shown.length > limit" type="button" class="md-more" @click="limit += PAGE">
             עוד <span class="ltr-number">{{ num(shown.length - limit) }}</span>
           </button>
@@ -201,10 +195,6 @@ function countUp() {
   raf = requestAnimationFrame(step)
 }
 onBeforeUnmount(() => cancelAnimationFrame(raf))
-const share = (k) => {
-  const all = (s.value.new_count || 0) + (s.value.removed_count || 0) + (s.value.changed_count || 0) + (s.value.unchanged_count || 0)
-  return all ? `${Math.max(4, Math.round((s.value[k + '_count'] || 0) / all * 100))}%` : '0%'
-}
 
 // ── chart: changes by company (stacked, one hue) ────────────────────────
 const coRows = computed(() => (data.value?.by_company || []).filter((c) => c.new + c.removed + c.changed > 0))
@@ -262,7 +252,13 @@ const shown = computed(() => {
     && (!t || `${r.name || ''} ${r.id_number}`.includes(t)))
 })
 
+// The list slides in from the side of the card that was picked (RTL: a card to
+// the LEFT of the current one = a higher index = content enters from the left).
+const kindIndex = computed(() => KINDS.findIndex((k) => k.id === kind.value))
+const slideDir = ref('md-slide-left')
 function pick(k, co) {
+  const to = KINDS.findIndex((x) => x.id === k)
+  slideDir.value = to >= kindIndex.value ? 'md-slide-left' : 'md-slide-right'
   kind.value = k
   company.value = co || ''
   openKey.value = null
@@ -300,22 +296,24 @@ watch(() => props.open, (o) => { if (o) { q.value = ''; load() } })
 .md-listmod.md-mod { animation-delay: 0.36s; }
 @keyframes md-rise { from { opacity: 0; transform: translateY(18px) scale(0.985); } to { opacity: 1; transform: none; } }
 
-/* 1. counts */
-.md-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.md-kpi { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 14px 14px;
-  border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--card-bg); font-family: inherit; text-align: start;
-  cursor: pointer; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
-.md-kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.md-kpi--on { border-color: var(--tab-maslaka); box-shadow: 0 0 0 1px var(--tab-maslaka) inset; }
-.md-kpi--quiet { cursor: default; background: var(--bg); }
-.md-kpi--quiet:hover { transform: none; box-shadow: none; }
-.md-kpi-label { font-size: 12.5px; color: var(--text-muted); }
-.md-kpi-n { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--text); }
-.md-kpi--on .md-kpi-n { color: var(--tab-maslaka); }
-.md-kpi-bar { position: absolute; inset-inline-start: 0; bottom: 0; height: 3px; width: var(--w); background: var(--tab-maslaka);
-  opacity: 0.25; transform-origin: right; animation: md-grow 1s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.md-kpi--on .md-kpi-bar { opacity: 1; }
-@keyframes md-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* 1. counts — the selector with a gliding pill (ProductionDashboard .pd-glider) */
+.md-kpis { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; }
+.md-pick { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 5px;
+  border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--card-bg); }
+.md-glider { position: absolute; top: 5px; bottom: 5px; inset-inline-start: 5px; width: calc((100% - 10px - 16px) / 3);
+  border-radius: 11px; background: var(--tab-maslaka); pointer-events: none;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--tab-maslaka) 30%, transparent);
+  transform: translateX(calc(var(--i, 0) * (-100% - 8px)));
+  transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1); }
+.md-kpi { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 14px; border: none; border-radius: 11px; background: transparent; font-family: inherit; text-align: start;
+  cursor: pointer; color: var(--text); transition: background 0.2s; }
+.md-kpi:hover:not(.md-kpi--on) { background: var(--tab-maslaka-wash); }
+.md-kpi:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.md-kpi-label { font-size: 12.5px; color: var(--text-muted); transition: color 0.4s ease 0.15s; }
+.md-kpi-n { font-size: 26px; font-weight: 800; line-height: 1.1; transition: color 0.4s ease 0.15s; }
+.md-kpi--on .md-kpi-label, .md-kpi--on .md-kpi-n { color: #fff; }
+.md-kpi--quiet { cursor: default; padding: 15px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg); }
 
 /* 2. charts */
 .md-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -325,21 +323,22 @@ watch(() => props.open, (o) => { if (o) { q.value = ''; load() } })
 
 /* 3. list */
 .md-listmod { display: flex; flex-direction: column; gap: 10px; }
-.md-tabs { display: flex; flex-wrap: wrap; gap: 4px 18px; border-bottom: 1px solid var(--border-subtle); }
-.md-tabs--sub { gap: 4px 14px; }
-.md-tab { position: relative; padding: 8px 0; border: none; background: none; cursor: pointer; font-family: inherit;
-  font-size: 14px; font-weight: 600; color: var(--text-muted); }
-.md-tabs--sub .md-tab { font-size: 13px; }
-.md-tab span { font-weight: 700; margin-inline-start: 4px; }
-.md-tab:hover { color: var(--text); }
-.md-tab--on { color: var(--tab-maslaka); }
-.md-tab--on::after { content: ''; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--tab-maslaka); }
-.md-tab:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; border-radius: 4px; }
-
-.md-search { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 10px;
+.md-bar { display: flex; gap: 8px; }
+.md-search { flex: 1; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px;
   background: var(--bg); color: var(--text-muted); }
 .md-search:focus-within { background: var(--card-bg); box-shadow: 0 0 0 2px var(--tab-maslaka); }
 .md-search input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: 14px; color: var(--text); }
+.md-co { flex: none; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg);
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--text); cursor: pointer; }
+.md-co:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 1px; }
+
+/* the list follows the pill: short travel, long settle, a beat behind */
+.md-slide-left-enter-active, .md-slide-right-enter-active {
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.1s, transform 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.1s; }
+.md-slide-left-leave-active, .md-slide-right-leave-active { transition: opacity 0.15s ease; }
+.md-slide-left-leave-to, .md-slide-right-leave-to { opacity: 0; }
+.md-slide-left-enter-from { opacity: 0; transform: translateX(-24px); }
+.md-slide-right-enter-from { opacity: 0; transform: translateX(24px); }
 
 .md-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .md-li-enter-active { transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); transition-delay: calc(var(--i) * 35ms); }
@@ -377,7 +376,9 @@ watch(() => props.open, (o) => { if (o) { q.value = ''; load() } })
 
 @media (max-width: 760px) {
   .md-charts { grid-template-columns: 1fr; }
-  .md-kpis { grid-template-columns: repeat(2, 1fr); }
+  .md-kpis { grid-template-columns: 1fr; }
+  .md-kpi--quiet { flex-direction: row; align-items: baseline; justify-content: space-between; padding: 8px 14px; }
+  .md-kpi--quiet .md-kpi-n { font-size: 17px; }
 }
 @media (max-width: 640px) {
   .md-id { flex-basis: 120px; }
@@ -386,7 +387,7 @@ watch(() => props.open, (o) => { if (o) { q.value = ''; load() } })
   .md-fields { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .md-mod, .md-kpi-bar, .md-li-enter-active { animation: none; transition: none; }
+  .md-mod, .md-li-enter-active, .md-glider, .md-slide-left-enter-active, .md-slide-right-enter-active { animation: none; transition: none; }
   .md-fold, .md-chev { transition: none; }
 }
 </style>
