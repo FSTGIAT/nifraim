@@ -325,6 +325,24 @@ async def test_market_changes():
         await db.rollback()
 
 
+def test_market_prefetch():
+    """'מה השתנה בקרנות ההשתלמות' must prefetch market_changes — "השתל" (השתלה, a policy word) used to
+    match השתלמות, so a customer's policies were fetched instead (2026-10-10, 20s+ and a wrong lead)."""
+    print("prefetch: market questions")
+    from app.services.agent.prefetch import plan
+    cases = {
+        "מה השתנה בקרנות ההשתלמות לעומת החודש שעבר?": [("market_changes", {"category": "hishtalmut"})],
+        "מה השתנה בשוק הפנסיה החודש?": [("market_changes", {"category": "pension"})],
+        "לאן נכנס הכי הרבה כסף בגמל להשקעה?": [("market_changes", {"category": "gemel_invest"})],
+        "מה התשואה בקרנות השתלמות מניות?": [("compare_hishtalmut", {"track": "מניות"})],
+        "מה השתנה במסלקה בקרנות הפנסיה?": [],
+    }
+    for q, want in cases.items():
+        check(plan(q) == want, f"{q} → {want}")
+    check(any(n == "search_policies" for n, _ in plan("יש כיסוי להשתלת כליה בפוליסה של לקוח 310203633?")),
+          "השתלה is still a policy question")
+
+
 def main():
     test_registry()
     test_policies_routing()
@@ -332,6 +350,7 @@ def main():
     test_fund_matcher()
     test_calls_routing()
     test_pensyanet_parse()
+    test_market_prefetch()
     async def _db_tests():   # one event loop — the async engine's pool is bound to it
         await test_privacy_and_parity()
         await test_policies_privacy()

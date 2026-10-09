@@ -22,6 +22,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"קופ(?:ת|ות) גמל|\bגמל\b", "compare_gemel"),
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי ניהול|להשוות|השווא|מומלץ")
+MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|עלו בדירוג|ירדו בדירוג|חדשות")
 TRACKS = ["מניות", "כללי", "S&P", "אג\"ח", "אגח", "לבני 50", "עד 60", "ומעלה", "ומטה", "הלכה", "כספי", "שקלי"]
 # A name ends at punctuation, at "עם/יש/של", or at "ב/מ + an insurer" ("…משה בהפניקס").
 # NOT at any word starting with ב/מ — that cut "אברהם משה" to "אברהם" and "ברק" off names.
@@ -33,10 +34,12 @@ MAX_CHARS = 9000
 
 NOT_A_NAME = re.compile(r"^(?:על|עם|לגבי|בנוגע|של|את|שלי|הזה|הזאת|ש)\b")
 CALL_Q = re.compile(r"סיכמ|בשיחה|השיחה|שיחות|דיברנו|דיברתי|הקלט")
+# "השתל" is for השתלה (transplant). Without (?!מות) every קרן השתלמות question was a policy question:
+# search_policies prefetched a customer's policies and the market tools never ran (2026-10-10).
 # A question about what a policy SAYS (cover, price, terms) — answered from the policy documents,
 # never from commissions. Measured 2026-10-07: "כמה עולה לשאול גולן ביטוח הסיעוד שלו בהראל?" got
 # get_unpaid(הראל) prefetched (the insurer name) and answered "no nursing record" from production.
-POLICY_Q = re.compile(r"סיעוד|כיסוי|מכוס|החרג|מוטב|סכום (?:ה)?ביטוח|אכשר|תרופ|השתל|ניתוח|מחלות קשות|ריסק|"
+POLICY_Q = re.compile(r"סיעוד|כיסוי|מכוס|החרג|מוטב|סכום (?:ה)?ביטוח|אכשר|תרופ|השתל(?!מות)|ניתוח|מחלות קשות|ריסק|"
                       r"אובדן כושר|אבדן כושר|עולה ל|משלמ?ת? על|תנאי|הנחה|פיצוי")
 
 
@@ -64,9 +67,14 @@ def plan(question: str) -> list[tuple[str, dict]]:
         calls.append(("search_policies", {"query": q, **({"id_number": m_id.group(1)} if m_id else {}), "limit": 8}))
         return calls[:3]          # never prime a cover/price question with commission tools
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
-    if FUND_Q.search(q) and not explain:
+    about_customer = bool(calls) or re.search(r"לקוח|שלו\b|שלה\b", q)
+    market_change = MARKET_CHANGE_Q.search(q) and not about_customer
+    if (FUND_Q.search(q) or market_change) and not explain and not re.search(r"מסלק", q):
         for pat, tool_name in FUND_CATS:
             if re.search(pat, q):
+                if market_change:   # what changed in the market this month
+                    calls.append(("market_changes", {"category": tool_name.removeprefix("compare_")}))
+                    break
                 track = next((t for t in TRACKS if t in q), "")
                 calls.append((tool_name, {"track": track} if track else {}))
                 break

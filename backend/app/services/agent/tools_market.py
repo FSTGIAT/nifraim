@@ -95,6 +95,17 @@ def match_fund(track: str | None, company: str | None, funds: list) -> tuple[obj
     return (best, "tokens") if best and score >= 0.75 else (None, "")
 
 
+_LABEL_NOISE = re.compile(r"\s*(?:קרן השתלמות|קרנות השתלמות|השתלמות|קופת גמל להשקעה|קופת גמל|גמל להשקעה|חיסכון לכל ילד|"
+                         r"פנסיה מקיפה|פנסיה|מקיפה|מסלול|קרן|בע\"מ|-)\s*")
+
+
+def fund_label(name: str | None) -> str:
+    """Chart label: company + track, without the category words every bar shares — the bar
+    chart shows ~9 letters ("כלל השתלמות מניות" → "כלל מניות"); the full name is in the data."""
+    s = re.sub(r"\s+", " ", _LABEL_NOISE.sub(" ", name or "")).strip()
+    return s or (name or "")
+
+
 def is_open(f) -> bool:
     """Can a new customer join this fund? Sector/employer-only funds (e.g. רום — local-authority
     employees) and veteran pension funds (קרנות כלליות, closed) are never a switch target or a
@@ -160,7 +171,7 @@ async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield
         "units": "תשואות ודמי ניהול באחוזים; גודל וזרימות במיליוני ₪", "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון, data.gov.il)",
         "disclaimer": DISCLAIMER,
     }
-    keep_args = ([{"label": f.fund_name[:40], "value": round(getattr(f, attr), 2)} for f in top],
+    keep_args = ([{"label": fund_label(f.fund_name)[:40], "value": round(getattr(f, attr), 2)} for f in top],
                  {"label": "קופה", "value": SORT_HE[col], "unit": "%" if col not in ("size", "inflow") else "", "title": f"{CATEGORIES[cat][2]} — {SORT_HE[col]}"})
     out["result_id"] = ctx.keep(keep_args[0], **keep_args[1])
     cache.put("market", 0, key, {**out, "_keep": keep_args}, ttl=6 * 3600)
@@ -385,7 +396,7 @@ async def market_changes(ctx, category: str):
     if not hit.get("found"):
         return hit
     flows = hit.get("top_inflows") or []
-    rid = ctx.keep([{"label": r["fund"][:40], "value": r["net_inflow_m"]} for r in flows[:10]], label="קופה",
+    rid = ctx.keep([{"label": fund_label(r["fund"])[:40], "value": r["net_inflow_m"]} for r in flows[:10]], label="קופה",
                    value="צבירה נטו בחודש (מ' ₪)", unit="", title=f"{label} — הכי הרבה כסף נכנס ({hit['month']})") if flows else None
     return {"category": label, **hit, "result_id": rid, "disclaimer": DISCLAIMER,
             "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון)"}
