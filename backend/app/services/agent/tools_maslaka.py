@@ -26,10 +26,15 @@ async def holdings_lines(ctx, idn: str) -> list[str]:
     pic = await get_enriched_picture(ctx.db, user_id=ctx.user.id, id_number=idn)
     if not pic:
         return []
-    out = ["", "## מהמסלקה"]
+    # Each line says whether the product is in the agent's production file, so the
+    # model never has to guess it from company names (2026-10-09 it told the agent
+    # Mor products were "missing from production" when all 7 were matched).
+    out = ["", "## מהמסלקה (בפרודוקציה = נמצא גם בקובץ הפרודוקציה של הסוכן)"]
     for p in (pic.get("products") or [])[:15]:
         bits = [p.get("company") or p.get("receiving_company"), p.get("product") or p.get("product_type"),
-                f"צבירה ₪{round(float(p.get('accumulation') or 0)):,}" if p.get("accumulation") else None]
+                f"צבירה ₪{round(float(p.get('accumulation') or 0)):,}" if p.get("accumulation") else None,
+                p.get("account_status"),
+                "בפרודוקציה" if p.get("match_status") == "matched" else "לא בפרודוקציה"]
         out.append("- " + " · ".join(str(b) for b in bits if b))
     return out
 
