@@ -60,8 +60,24 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
 - The מסלקה data is **not embedded**: it's structured data read through tools. Only `call_chunks`
   and `doc_chunks` (policies) are embedded.
 
-## Open
+## Resolved after the first pass
 
-- `maslaka_status` still reports the original 2000/2100 requests as "expected 15/10".
-- `test_maslaka_gateway_claim` fails on a missing temp `outbox` directory in the outbound test.
-  Unrelated to ingest, but not yet proven to be pre-existing.
+| # | Symptom | Root cause | Fix | Commit |
+|---|---|---|---|---|
+| 11 | `maslaka_status` said "10 open requests, nearest expected 15/10" | The expected date was the 15th after **sending**, even for requests that had already answered; the list was capped at 10 before sorting | `delta.answer_due()`: an answered 2000 is done, and an answered 2100 waits for `next_file_due`. All open requests are counted (30) and sorted. The remaining "15/10" rows are bodies that really haven't answered yet | `25ee213` |
+| 12 | `test_maslaka_gateway_claim` failed (no `outbox`) | The test predates the 25–27/9 rules: a 9100 needs a recorded נספח א' consent, and every request needs contact fields | The test records consent and sets test contact values. Its DB tests **stop if pending rows they didn't create exist**: a run had claimed and failed two real local 9100s | `25ee213` |
+
+## Several agents at the same time
+
+- **Sending:** one Gateway worker claims one row at a time (`FOR UPDATE SKIP LOCKED`). A second
+  claimer skips a locked row, so nothing is ever sent twice (covered by the gateway-claim test).
+  Many agents' requests just queue and drain, bounded per tick.
+- **Answers:** each product in a real production file carries the `MISPAR-MISLAKA` of the request it
+  answers (checked on 6 real files), so a file routes to that exact request, and therefore that
+  agent. Fallbacks (agent ID in the file → customer → insurer ח.פ) **never guess**: if two agents
+  match, the file stays in IN.
+- **Storage:** every key (replace, dedupe, matching, delta) is scoped by `user_id`. Two agents with
+  the same customer keep separate holdings.
+- **Not yet proven live:** on 9/10/2026 only **one** agent has an approved שיוך. The multi-agent
+  paths are covered by code and tests, not by a real run. Watch the first months with ≥2 agents for
+  files stuck in IN (the log says "not routable").
