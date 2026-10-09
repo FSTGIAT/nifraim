@@ -25,6 +25,24 @@ import tempfile
 import uuid
 from pathlib import Path
 
+
+async def _create_signed(db, **kw):
+    """create_inquiry + the signed נספח א' a 9100 now needs (2026-09-25/27 rules:
+    both signature dates + the customer's address, never defaulted). Without it
+    the send is refused and nothing reaches the OUTBOX — which is what this test
+    hit once those rules landed."""
+    from datetime import date
+    from app.services.maslaka import orchestration
+    inq = await orchestration.create_inquiry(db, **kw)
+    today = date.today().strftime("%Y%m%d")
+    await orchestration.record_consent(
+        db, inq, customer_signed=today, agent_signed=today, note="test",
+        country="ישראל", city="תל אביב", street="הרצל", house="1", zip_code="6100000",
+        excluded_product="2",
+    )
+    await db.commit()
+    return inq
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 FAILURES: list[str] = []
@@ -102,6 +120,11 @@ async def test_claim_and_skip_locked() -> None:
     settings.MASLAKA_LOCAL_ARCHIVE = str(vault / "archive")
     settings.MASLAKA_AGENT_NUMBER = "TEST-AGENT-1"
     settings.MASLAKA_AGENT_ID = "123456789"
+    # Rules 116 + nillable (2026-09-25): no request is built without a real-format
+    # landline + e-mail. Test values for a temp vault — never sent anywhere.
+    settings.MASLAKA_CONTACT_PHONE = "031234567"
+    settings.MASLAKA_CONTACT_EMAIL = "test@example.com"
+    settings.MASLAKA_CONTACT_MOBILE = "0501234567"
     settings.MASLAKA_ENCRYPTION_KEY = __import__("cryptography.fernet", fromlist=["Fernet"]).Fernet.generate_key().decode()
     reset_transport_for_tests()
 
@@ -132,7 +155,7 @@ async def test_claim_and_skip_locked() -> None:
         approval = _ApprovedLink(user.id)
         await approval.__aenter__()
         async with async_session() as db:
-            inq = await orchestration.create_inquiry(
+            inq = await _create_signed(
                 db, user_id=user.id, customer_id_number="058661554", customer_name="בדיקה",
             )
             created.append(inq.id)
@@ -167,7 +190,7 @@ async def test_claim_and_skip_locked() -> None:
 
         # ── SKIP LOCKED: two claimers, one row ──────────────────────────────
         async with async_session() as db:
-            inq2 = await orchestration.create_inquiry(
+            inq2 = await _create_signed(
                 db, user_id=user.id, customer_id_number="11122233", customer_name="נעילה",
             )
             created.append(inq2.id)
@@ -253,7 +276,7 @@ async def test_worker_tick() -> None:
         approval = _ApprovedLink(user.id)
         await approval.__aenter__()
         async with async_session() as db:
-            inq = await orchestration.create_inquiry(
+            inq = await _create_signed(
                 db, user_id=user.id, customer_id_number="99887766", customer_name="tick",
             )
             created.append(inq.id)
@@ -303,7 +326,7 @@ async def test_worker_tick() -> None:
         before_n = len(files)
         async with async_session() as db:
             for i in range(3):
-                inq = await orchestration.create_inquiry(
+                inq = await _create_signed(
                     db, user_id=user.id, customer_id_number=f"9988770{i}", customer_name="batch",
                 )
                 created.append(inq.id)
@@ -372,7 +395,7 @@ async def test_association_gate_and_production_report() -> None:
 
         async with _ApprovedLink(user.id, status="submitted"):
             async with async_session() as db:
-                inq = await orchestration.create_inquiry(
+                inq = await _create_signed(
                     db, user_id=user.id, customer_id_number="040336281",
                     action_code="2000", target_yatzran_id="514956465",
                 )
@@ -390,7 +413,7 @@ async def test_association_gate_and_production_report() -> None:
 
         async with _ApprovedLink(user.id):
             async with async_session() as db:
-                inq2 = await orchestration.create_inquiry(
+                inq2 = await _create_signed(
                     db, user_id=user.id, customer_id_number="040336281",
                     action_code="2000", target_yatzran_id="514956465",
                 )
@@ -464,6 +487,20 @@ if __name__ == "__main__":
     # connections bound to the loop that created them, so a second asyncio.run()
     # fails with "attached to a different loop".
     async def _db_tests() -> None:
+        # Every test below claims / drains the OLDEST pending rows in the whole DB.
+        # On 2026-10-09 a run claimed — and failed — two real 9100s the developer
+        # had pending locally. Never touch rows this test didn't create: stop first.
+        from sqlalchemy import func, select
+        from app.database import async_session
+        from app.models.pension_inquiry import PensionInquiry
+        mine = ("58661554", "11122233", "99887766", "99887700", "99887701", "99887702", "40336281")
+        async with async_session() as db:
+            foreign = (await db.execute(select(func.count()).select_from(PensionInquiry).where(
+                PensionInquiry.status == "pending", PensionInquiry.customer_id_number.not_in(mine)))).scalar_one()
+        if foreign:
+            print(f"\n  SKIP DB TESTS — {foreign} pending inquiry/ies in the local DB were not created by "
+                  "this test; claiming would send (and fail) them. Finish or clear them first.")
+            return
         print("\nClaim / SKIP LOCKED / identity (local dev DB + temp vault):")
         await test_claim_and_skip_locked()
         print("\nWorker _tick() — drain + poll cadence:")

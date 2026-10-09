@@ -320,7 +320,9 @@ async def list_inquiries(
         q = q.where(PensionInquiry.customer_id_number == normalized)
     q = q.order_by(desc(PensionInquiry.created_at)).limit(200)
     rows = (await db.execute(q)).scalars().all()
-    return [_serialize_inquiry(r) for r in rows]
+    from app.services.maslaka.delta import next_file_due
+    next_due = await next_file_due(db, user)
+    return [_serialize_inquiry(r, next_due) for r in rows]
 
 
 @router.get("/inquiry/{inquiry_id}", response_model=InquiryDetailOut)
@@ -342,7 +344,8 @@ async def inquiry_detail(
         select(func.count()).select_from(PensionHolding).where(PensionHolding.inquiry_id == inquiry.id)
     )).scalar_one()
 
-    base = _serialize_inquiry(inquiry)
+    from app.services.maslaka.delta import next_file_due
+    base = _serialize_inquiry(inquiry, await next_file_due(db, user))
     return InquiryDetailOut(
         **base.model_dump(),
         audit=[
@@ -626,9 +629,10 @@ async def preview_request(
 
 
 # ─── Internal: serializer ──────────────────────────────────────────────────
-def _serialize_inquiry(inq: PensionInquiry) -> InquiryOut:
+def _serialize_inquiry(inq: PensionInquiry, next_due=None) -> InquiryOut:
     from app.services.maslaka import feedback_codes
-    expected_by, expected_basis = orchestration.expected_answer_by(inq)
+    from app.services.maslaka.delta import answer_due
+    expected_by, expected_basis = answer_due(inq, next_due)
     return InquiryOut(
         expected_by=expected_by,
         expected_basis=expected_basis,

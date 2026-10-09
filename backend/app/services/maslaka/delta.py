@@ -305,3 +305,24 @@ async def next_file_due(db: AsyncSession, user) -> date:
         if after_latest > due:
             due = after_latest
     return due
+
+
+def answer_due(inquiry, next_due: date | None):
+    """When the agent can expect this request's (next) answer: (tz-aware UTC
+    datetime | None, basis). A production request that has ALREADY answered no
+    longer waits for "the 15th after it was sent": a one-time 2000 is done, and a
+    2100 subscription's next answer is the next monthly file (`next_file_due`).
+    Nifra said "expected 15/10" on 9/10 for requests answered on 7–9/10.
+    Everything else keeps orchestration.expected_answer_by."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    from app.services.maslaka.orchestration import expected_answer_by
+
+    code = (getattr(inquiry, "interface_code", "") or "").rpartition(":")[2]
+    if code in ("2000", "2100") and (getattr(inquiry, "providers_received", 0) or 0) > 0:
+        if code == "2000":
+            return None, "answered"
+        if next_due is not None:
+            due = _dt(next_due.year, next_due.month, next_due.day, 23, 59, tzinfo=ZoneInfo("Asia/Jerusalem"))
+            return due.astimezone(ZoneInfo("UTC")), "next_file"
+    return expected_answer_by(inquiry)

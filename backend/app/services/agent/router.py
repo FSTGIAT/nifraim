@@ -308,7 +308,7 @@ def render(route_: Route, data) -> tuple[str, str | None]:
         a = data.get("association") or {}
         s = "השיוך למסלקה מאושר." if a.get("status") == "approved" else f"השיוך למסלקה: {a.get('status')}."
         if data.get("open_requests"):
-            s += f" {len(data['open_requests'])} בקשות פתוחות; הקרובה צפויה ב-{data['open_requests'][0]['answer_expected']}."
+            s += f" {data.get('open_requests_count', len(data['open_requests']))} בקשות פתוחות; הקרובה צפויה ב-{data['open_requests'][0]['answer_expected']}."
         s += f" {data.get('customers_with_maslaka_data', 0)} לקוחות עם נתוני מסלקה. הפרודוקציה הבאה: {data.get('next_production_date')}."
         return s, None
     if i == "overview":

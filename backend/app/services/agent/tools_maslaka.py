@@ -45,30 +45,34 @@ async def maslaka_status(ctx):
     from app.models.maslaka_agent_link import MaslakaAgentLink
     from app.models.pension_holding import PensionHolding
     from app.models.pension_inquiry import PensionInquiry
-    from app.services.maslaka.orchestration import expected_answer_by
     from sqlalchemy import func
 
     link = (await ctx.db.execute(select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == ctx.user.id))).scalars().first()
     inqs = (await ctx.db.execute(select(PensionInquiry).where(PensionInquiry.user_id == ctx.user.id)
                                  .order_by(PensionInquiry.created_at.desc()).limit(300))).scalars().all()
     by = Counter((STATUS_HE.get(i.status, i.status), CODE_HE.get((i.interface_code or "").rpartition(":")[2], i.interface_code)) for i in inqs)
+    from app.services.maslaka.delta import answer_due, next_file_due
+    nxt = await next_file_due(ctx.db, ctx.user)
     open_rows = []
     for i in inqs:
-        due, _ = expected_answer_by(i)
-        if due and len(open_rows) < 10:
+        due, _ = answer_due(i, nxt)
+        if due:
             open_rows.append({"customer": i.customer_name or i.customer_id_number,
                               "request": CODE_HE.get((i.interface_code or "").rpartition(":")[2], i.interface_code),
                               "status": STATUS_HE.get(i.status, i.status),
-                              "answer_expected": due.astimezone(IL).strftime("%d/%m %H:%M")})
+                              "answer_expected": due.astimezone(IL).strftime("%d/%m %H:%M"), "_due": due})
+    open_rows.sort(key=lambda r: r["_due"])
+    open_count = len(open_rows)
+    open_rows = [{k: v for k, v in r.items() if k != "_due"} for r in open_rows[:10]]
     customers = (await ctx.db.execute(select(func.count(func.distinct(PensionHolding.customer_id_number)))
                                       .where(PensionHolding.user_id == ctx.user.id))).scalar_one()
-    from app.services.maslaka.delta import next_file_due
-    nxt15 = await next_file_due(ctx.db, ctx.user)   # one rule with the מסלקה tab's files list
+    nxt15 = nxt   # one rule with the מסלקה tab's files list
     return {
         "association": {"status": getattr(link, "status", "not_started"),
                         "approved_at": getattr(link, "approved_at", None), "auto_production": getattr(link, "auto_production", None)},
         "requests_by_status": [{"status": s, "request": c, "count": n} for (s, c), n in by.most_common(12)],
         "open_requests": open_rows,
+        "open_requests_count": open_count,
         "customers_with_maslaka_data": customers,
         "next_production_date": nxt15.strftime("%d/%m/%Y"),
         "rule": "דוח פרודוקציה מהמסלקה מגיע ב-15 לחודש למי ששיוכו אושר; 9100 עונה תוך שעות. 0 מותאמים = ממתין למסלקה, לא תקלה.",
