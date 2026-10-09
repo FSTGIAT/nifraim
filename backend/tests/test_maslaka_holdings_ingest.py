@@ -18,7 +18,7 @@ import asyncio
 import re
 import sys
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -123,6 +123,26 @@ async def main() -> None:
         check("a new valuation date is a second snapshot, not a replacement",
               len(both) == 2 * len(rows) and len({h.status_date for h in both}) == 2,
               f"{len(both)} rows, dates {sorted({str(h.status_date) for h in both})}")
+
+        print("\nTwo accounts under one policy number (different status) stay two products:")
+        # 2026-10-09: Altshuler 305392110 = an inactive ₪10,670 account + an active
+        # ₪763,295 one. The parser dropped the second as a "repeat" and ingest
+        # merged them, so the comparison showed a fake ₪752,795 jump.
+        idx = [m.start() for m in re.finditer(rb"<STATUS-POLISA-O-CHESHBON>1<", ing)]
+        two = ing[:idx[1]] + b"<STATUS-POLISA-O-CHESHBON>2<" + ing[idx[1] + len(b"<STATUS-POLISA-O-CHESHBON>1<"):]
+        two = re.sub(rb"<TAARICH-NECHONUT>\d{8}<", b"<TAARICH-NECHONUT>20980131<", two)
+        async with async_session() as db:
+            await orchestration._ingest_holdings(db, two, source_filename="ING-two-accounts.DAT", scope_user_id=None)
+            await db.commit()
+        async with async_session() as db:
+            await orchestration._ingest_holdings(db, two, source_filename="ING-two-accounts-again.DAT", scope_user_id=None)
+            await db.commit()
+            accts = (await db.execute(select(PensionHolding).where(
+                PensionHolding.user_id == user.id, PensionHolding.customer_id_number == "327824520",
+                PensionHolding.status_date == date(2098, 1, 31)))).scalars().all()
+        check("two statuses → two holdings, and a re-send still two", len(accts) == 2,
+              f"{len(accts)} rows, statuses {sorted(str(h.account_status) for h in accts)}")
+        check("each carries its status", len({h.account_status for h in accts}) == 2)
 
         print("\nA file nobody asked for stays in the inbox, nothing written:")
         async with async_session() as db:

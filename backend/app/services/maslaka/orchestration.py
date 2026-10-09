@@ -793,6 +793,7 @@ async def _ingest_holdings(
             yat = rec.get("_yatzran")
             rows.append(sanitize_record({
                 "status_date": valuation_date,
+                "account_status": rec.get("product_status"),
                 "customer_id_number": str(rec.get("id_number") or "").lstrip("0"),
                 "receiving_company": rec.get("receiving_company") or label_for_provider(yat),
                 "provider_code": yat,
@@ -808,8 +809,11 @@ async def _ingest_holdings(
         # 1,199 products, all נכון ל-30/09 (Phoenix x8), so a customer's צבירה
         # summed several times over. A different valuation date is a different
         # month's snapshot and is KEPT: month-over-month comparison needs it.
-        # A product = agent + customer + policy + company; one file never repeats one.
-        keys = {(r["customer_id_number"], r["fund_policy_number"], r["receiving_company"]) for r in rows}
+        # A product = agent + customer + policy + company + ACCOUNT STATUS: one
+        # saver can hold an inactive and an active account under one number
+        # (Altshuler 305392110), and a file may carry only one of them.
+        keys = {(r["customer_id_number"], r["fund_policy_number"], r["receiving_company"],
+                 r.get("account_status") or "") for r in rows}
         if keys:
             same_date = (PensionHolding.status_date.is_(None) if valuation_date is None
                          else PensionHolding.status_date == valuation_date)
@@ -817,7 +821,8 @@ async def _ingest_holdings(
                 PensionHolding.user_id == inq.user_id,
                 same_date,
                 tuple_(PensionHolding.customer_id_number, PensionHolding.fund_policy_number,
-                       PensionHolding.receiving_company).in_(list(keys)),
+                       PensionHolding.receiving_company,
+                       func.coalesce(PensionHolding.account_status, "")).in_(list(keys)),
             ))
         for r in rows:
             db.add(PensionHolding(
@@ -934,13 +939,40 @@ async def reconcile_to_client_records(db: AsyncSession, *, inquiry: PensionInqui
         if k:
             prod_by.setdefault(((r.id_number or "").lstrip("0"), k), r)
 
+    # One production row matches ONE holding. Two accounts under one policy
+    # number (inactive ₪10,670 + active ₪763,295, Altshuler 305392110) both used
+    # to match the single production row, hiding that the active one is missing
+    # from production. The closest balance wins; the other stays clearinghouse_only.
+    # The two accounts can arrive under different requests (a 2000 and a 2100),
+    # so group across all the agent's holdings for these customers and dates.
+    dates = {h.status_date for h in holdings_rows}
+    peers = (await db.execute(
+        select(PensionHolding).where(
+            PensionHolding.user_id == inquiry.user_id,
+            func.ltrim(PensionHolding.customer_id_number, "0").in_(ids),
+            PensionHolding.status_date.in_([d for d in dates if d is not None])
+            if any(d is not None for d in dates) else PensionHolding.status_date.is_(None),
+        )
+    )).scalars().all()
+    groups: dict[tuple, list] = defaultdict(list)
+    for h in {id(x): x for x in list(holdings_rows) + list(peers)}.values():
+        groups[((h.customer_id_number or "").lstrip("0"), pkey(h.fund_policy_number), h.status_date)].append(h)
+
     matched = 0
-    for h in holdings_rows:
-        r = prod_by.get(((h.customer_id_number or "").lstrip("0"), pkey(h.fund_policy_number)))
-        if r is not None:
-            h.matched_client_record_id = r.id
-            h.match_status = "matched"
-            matched += 1
+    for (cid, pol, _d), hs in groups.items():
+        r = prod_by.get((cid, pol))
+        if r is None:
+            continue
+        ref = float(r.accumulation or 0)
+        best = min(hs, key=lambda h: abs(float(h.accumulation or 0) - ref))
+        for h in hs:
+            if h is best:
+                h.matched_client_record_id = r.id
+                h.match_status = "matched"
+                matched += 1
+            elif h.matched_client_record_id == r.id:
+                h.matched_client_record_id = None
+                h.match_status = "clearinghouse_only"
     await db.flush()
     return matched
 
@@ -1085,6 +1117,7 @@ def _holding_to_product(h: PensionHolding) -> dict:
         "fund_policy_number": h.fund_policy_number,
         "track": h.track,
         "status_date": h.status_date.isoformat() if h.status_date else None,
+        "account_status": h.account_status,
         "match_status": h.match_status,
         "insurance_coverage": _maybe_json(h.insurance_coverage),
     }

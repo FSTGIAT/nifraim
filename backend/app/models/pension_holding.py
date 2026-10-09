@@ -61,6 +61,10 @@ class PensionHolding(Base):
     # Valuation / status date from the response.
     status_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # The account's status (STATUS-POLISA-O-CHESHBON, e.g. פעיל / לא פעיל). One
+    # saver can hold two accounts under one policy number; this keeps them apart.
+    account_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
     # Reconciliation against existing production ClientRecord.
     # SET NULL on delete: if a production row is deleted later, we keep the
     # holding visible (just unmatched) so the user can see "this used to match".
