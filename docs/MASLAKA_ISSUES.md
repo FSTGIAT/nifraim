@@ -118,11 +118,29 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
 
 ## Gateway state + testing rules (9/10/2026)
 
-- **Gateway files now:** `orchestration.py` = `CA53FC2D…`, `mimshak/to_production_xlsx.py` = `86715410…`,
+- **(superseded by the self-update below)** Gateway files on 9/10 before it: `orchestration.py` = `CA53FC2D…`, `mimshak/to_production_xlsx.py` = `86715410…`,
   `delta.py` = `2786861A…`, `models/pension_holding.py` = `446F4996…`.
   - `635669c` changed `orchestration.py` (9100 consent, card date) for the website only.
   - The **next** Gateway push must guard on `CA53FC2D…` and will bring it up to git.
 - **Gateway claim test:** `test_maslaka_gateway_claim.py` claims the **oldest pending rows in the whole DB**.
   Its DB tests now stop if pending rows they didn't create exist. **Do not run it** (or any 9100 test)
   while Roy has 9100 work pending, unless he asks.
+
+## Gateway self-update (live since 10/10/2026, `053411f`)
+
+- **Deploy → Admin → תפעול → "גייטוויי מסלקה" → "שחרר לגייטוויי".** That's the whole procedure now.
+  - The Gateway takes **only the released version**, between two rounds.
+  - It stages the whole tree in `releases\<v>`, refuses a `requirements.txt` change (`needs_pip`) and
+    self-tests in a separate process.
+  - It switches through `current.txt`, and `gateway_launcher.py` rolls back a release that crashes
+    twice or has no healthy round within 10 minutes.
+  - "נעל עדכונים" pins it; `GATEWAY_AUTO_UPDATE=false` in its `.env` stops it locally.
+- **Bootstrapped 9/10 21:32 UTC:** release `36750a01` passed its trial, so the Gateway matches git
+  exactly. The legacy `C:\Nifraim\app\backend` tree stays as the rollback target (`previous.txt = legacy`).
+- **Manual scripts are now only a fallback** (e.g. a `needs_pip` install). Rules for any `.ps1`:
+  - **ASCII only, or a UTF-8 BOM.** One em-dash made PS 5.1 reject a whole script silently.
+  - **Parse-check it in Windows PowerShell 5.1 first.**
+  - **Print `value[].message`**, not just stdout.
+  - **One run-command at a time per VM.** A concurrent call is rejected.
+- **Plan and design:** `.claude/plans/gateway-self-update.md`. **Tests:** `tests/test_gateway_self_update.py`.
 
