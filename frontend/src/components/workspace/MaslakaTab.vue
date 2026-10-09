@@ -216,6 +216,19 @@
                 <template v-if="f.received_at">הגיע ב-<span class="ltr-number">{{ shortDay(f.received_at) }}</span> · </template>
                 <span class="ltr-number">{{ f.customers }}</span> לקוחות
               </span>
+              <!-- what changed in this file — opens the delta drill (MaslakaDeltaDrill) -->
+              <button
+                v-if="deltas[f.as_of]" type="button" class="mk-tl-delta"
+                @click="openDelta(f.as_of, $event.currentTarget)"
+              >
+                <span>מה השתנה</span>
+                <span class="mk-tl-delta-n">
+                  <span class="ltr-number">{{ deltas[f.as_of].new_count }}</span> חדשים ·
+                  <span class="ltr-number">{{ deltas[f.as_of].removed_count }}</span> הוסרו ·
+                  <span class="ltr-number">{{ deltas[f.as_of].changed_count }}</span> השתנו
+                </span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+              </button>
             </div>
           </li>
           <li v-if="!files.files.length" class="mk-tl mk-tl--empty">
@@ -226,6 +239,8 @@
           </li>
         </ol>
       </section>
+
+      <MaslakaDeltaDrill :open="!!deltaAsOf" :as-of="deltaAsOf" :origin="deltaOrigin" @close="deltaAsOf = ''" />
 
       <p v-if="pictureError" class="mk-error" role="alert">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
@@ -313,6 +328,7 @@ import TabHeroLoop from './TabHeroLoop.vue'
 import { resumeSetupIfAway } from '../../utils/setupState.js'
 import { useCycleStore, signupLine, maslakaLine, MASLAKA_RULE } from '../../stores/cycle.js'
 import MaslakaAssociationModal from './MaslakaAssociationModal.vue'
+import MaslakaDeltaDrill from './MaslakaDeltaDrill.vue'
 import { useOriginMorph } from '../../composables/useOriginMorph.js'
 import { CHART_PALETTE } from '../../utils/chartPalette.js'
 
@@ -528,9 +544,27 @@ async function loadFiles() {
   try {
     const { data } = await api.get('/maslaka/production-files')
     files.value = data
+    loadDeltas(data.files || [])
   } catch {
     /* the section shows its empty state */
   }
+}
+// Each file's change counts (GET /maslaka/delta?as_of=), shown on its row.
+const deltas = ref({})
+async function loadDeltas(list) {
+  for (const f of list) {
+    if (!f.as_of || deltas.value[f.as_of]) continue
+    try {
+      const { data } = await api.get('/maslaka/delta', { params: { as_of: f.as_of } })
+      if (data?.summary) deltas.value = { ...deltas.value, [f.as_of]: data.summary }
+    } catch { /* the row just shows no delta */ }
+  }
+}
+const deltaAsOf = ref('')
+const deltaOrigin = ref(null)
+function openDelta(asOf, el) {
+  deltaOrigin.value = el
+  deltaAsOf.value = asOf
 }
 const HEB_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
 function monthLabel(iso) {
@@ -957,6 +991,13 @@ onMounted(async () => {
 .mk-tl-title { font-size: 1rem; font-weight: 800; color: var(--text); }
 .mk-tl--next .mk-tl-title { font-size: 1.15rem; }
 .mk-tl-meta { font-size: 0.78rem; color: var(--text-muted); }
+.mk-tl-delta { align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--tab-maslaka) 30%, var(--border-subtle)); border-radius: 10px;
+  background: var(--card-bg); cursor: pointer; font-family: inherit; font-size: 0.8rem; font-weight: 700; color: var(--tab-maslaka);
+  transition: transform 0.15s, background 0.15s, border-color 0.15s; }
+.mk-tl-delta:hover { transform: translateY(-1px); background: var(--tab-maslaka-wash); border-color: var(--tab-maslaka); }
+.mk-tl-delta:focus-visible { outline: 2px solid var(--tab-maslaka); outline-offset: 2px; }
+.mk-tl-delta-n { font-weight: 500; color: var(--text-secondary); }
 @keyframes mk-tl-pulse { 50% { transform: scale(0.6); opacity: 0.5; } }
 
 /* ── Customer modal (iPhone-style grow from origin) ───────────── */

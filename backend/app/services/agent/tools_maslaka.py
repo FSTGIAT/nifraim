@@ -85,6 +85,31 @@ async def customer_holdings(ctx, id_number: str):
     return {"id_number": idn, "found": True, "kpis": pic.get("kpis"), "products": prods[:25], "result_id": rid}
 
 
+@tool("maslaka_delta", "מה השתנה בקובץ הפרודוקציה מהמסלקה לעומת החודש הקודם (או לעומת קובץ הפרודוקציה של הסוכן, אם זה הקובץ הראשון): מוצרים חדשים, מוצרים שהוסרו, וצבירות שהשתנו — לפי חברה, עם הלקוחות הבולטים. as_of = תאריך הנכונות של הקובץ (YYYY-MM-DD), ריק = האחרון.",
+      {"as_of": {"type": "string"}}, [], category="maslaka", status_he="משווה את קובץ המסלקה")
+async def maslaka_delta(ctx, as_of: str = ""):
+    from datetime import date
+    from app.services.maslaka.delta import monthly_delta
+    try:
+        d = date.fromisoformat(as_of) if as_of else None
+    except ValueError:
+        d = None
+    res = await monthly_delta(ctx.db, ctx.user.id, d)
+    if not res.get("summary"):
+        return {"found": False, "note": "עוד לא הגיע קובץ פרודוקציה מהמסלקה."}
+    base = res["base"] or {}
+    vs = ("קובץ המסלקה של " + base.get("as_of", "")) if base.get("kind") == "maslaka" else \
+         ("קובץ הפרודוקציה " + (base.get("filename") or "") + (f" ({base['as_of'][:7]})" if base.get("as_of") else ""))
+    rid = ctx.keep([{"label": c["company"], "value": c["new"] + c["removed"] + c["changed"]} for c in res["by_company"]],
+                   label="חברה", value="שינויים", unit="", title="שינויים לפי חברה — מסלקה")
+    slim = lambda items: [{k: i.get(k) for k in ("name", "id_number", "company", "product", "old_accumulation",
+                                                  "new_accumulation", "accumulation_diff")} for i in items[:10]]
+    return {"found": True, "as_of": res["as_of"], "compared_with": vs, "summary": res["summary"],
+            "by_company": res["by_company"], "top_new": slim(res["new"]), "top_removed": slim(res["removed"]),
+            "top_changed": slim(res["changed"]), "result_id": rid,
+            "rule": "חדש = מוצר שלא היה בצד השני; הוסר = מוצר שהיה ולא הגיע; השתנה = צבירה שזזה ב-₪100 וגם ב-1% לפחות. חברה שלא ענתה בשני הצדדים לא נספרת."}
+
+
 # Only 9100 — exactly what the מסלקה tab sends (/api/maslaka/inquiry: ID + name, no extra
 # consent fields). 9101 needs a target body and 9102 was never sent live; add them here
 # only after the tab supports them and the מסלקה accepted one.

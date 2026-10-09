@@ -23,7 +23,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Iterable
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -778,6 +778,7 @@ async def _ingest_holdings(
     # answers many requests at once, and storing it per request multiplied a
     # ~5MB payload up to 8x (2026-10-09: 1.2GB stored for 258MB of files —
     # filled the Postgres volume and took login down).
+    valuation_date = _valuation_date(payload)
     raw_by_user: dict[uuid.UUID, PensionRawPayload] = {}
     for inq, recs in routed.values():
         raw = raw_by_user.get(inq.user_id)
@@ -787,14 +788,11 @@ async def _ingest_holdings(
                 direction="inbound", interface_code="holdings_v009",
                 source_filename=source_filename, plaintext=payload,
             )
+        rows = []
         for rec in recs:
             yat = rec.get("_yatzran")
-            db.add(PensionHolding(
-                user_id=inq.user_id,
-                inquiry_id=inq.id,
-                raw_payload_id=raw.id,
-                match_status="clearinghouse_only",
-                **sanitize_record({
+            rows.append(sanitize_record({
+                "status_date": valuation_date,
                 "customer_id_number": str(rec.get("id_number") or "").lstrip("0"),
                 "receiving_company": rec.get("receiving_company") or label_for_provider(yat),
                 "provider_code": yat,
@@ -803,7 +801,31 @@ async def _ingest_holdings(
                 "fund_policy_number": rec.get("fund_policy_number"),
                 "accumulation": rec.get("accumulation"),
                 "total_premium": rec.get("total_premium"),
-                })))
+            }))
+        # One holding per product PER VALUATION DATE; a newer file for the same
+        # date replaces it. The מסלקה re-sends the same snapshot once per request
+        # (a 2000 and the 2100, again in later rounds): 2026-10-09, 5,682 rows for
+        # 1,199 products, all נכון ל-30/09 (Phoenix x8), so a customer's צבירה
+        # summed several times over. A different valuation date is a different
+        # month's snapshot and is KEPT: month-over-month comparison needs it.
+        # A product = agent + customer + policy + company; one file never repeats one.
+        keys = {(r["customer_id_number"], r["fund_policy_number"], r["receiving_company"]) for r in rows}
+        if keys:
+            same_date = (PensionHolding.status_date.is_(None) if valuation_date is None
+                         else PensionHolding.status_date == valuation_date)
+            await db.execute(delete(PensionHolding).where(
+                PensionHolding.user_id == inq.user_id,
+                same_date,
+                tuple_(PensionHolding.customer_id_number, PensionHolding.fund_policy_number,
+                       PensionHolding.receiving_company).in_(list(keys)),
+            ))
+        for r in rows:
+            db.add(PensionHolding(
+                user_id=inq.user_id,
+                inquiry_id=inq.id,
+                raw_payload_id=raw.id,
+                match_status="clearinghouse_only",
+                **r))
         await db.flush()
         matched = await reconcile_to_client_records(db, inquiry=inq)
 
@@ -981,6 +1003,9 @@ async def get_enriched_picture(
     )).scalars().all()
     if not holdings:
         return None
+    # Monthly snapshots sit side by side; the picture is each company's newest.
+    from app.services.maslaka.delta import latest_per_company
+    holdings = latest_per_company(holdings)
 
     products = [_holding_to_product(h) for h in holdings]
     total_premium = sum(float(h.total_premium or 0) for h in holdings)
@@ -1228,6 +1253,24 @@ async def _consent_dates(db: AsyncSession, inquiry: PensionInquiry) -> dict:
             **({"info_sender_is_agent": kv["sender"] == "agent"} if "sender" in kv else {}),
             **({"customer_type_override": kv["lakoach_type"]} if kv.get("lakoach_type") in ("1", "2", "3") else {}),
             **({"customer_id_type_override": kv["lakoach_id_type"]} if (kv.get("lakoach_id_type") or "").isdigit() else {})}
+
+
+def _valuation_date(payload: bytes):
+    """The file's תאריך נכונות (TAARICH-NECHONUT): the date its balances are for.
+    The parser doesn't surface it, so read the tag straight off the XML. Every
+    policy in a real file carries the same one (2026-10-09: 100/100); take the
+    most common to be safe. None when absent."""
+    import re
+    from collections import Counter
+    from datetime import date
+    found = Counter(re.findall(rb"<TAARICH-NECHONUT>(\d{8})<", payload or b""))
+    if not found:
+        return None
+    v = found.most_common(1)[0][0].decode()
+    try:
+        return date(int(v[:4]), int(v[4:6]), int(v[6:8]))
+    except ValueError:
+        return None
 
 
 async def _store_raw_payload(

@@ -8,7 +8,7 @@ against records owned by the requesting user; missing → 404.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -161,44 +161,44 @@ async def production_files(
     """The agent's production as the מסלקה delivers it — one "file" per month,
     newest first, plus when the next one is due.
 
-    A month's file is every holding that 2000/2100 answers brought in for that
-    reporting month (information_date, else the month it arrived). The agent
-    never sees the per-body requests behind it — only what arrived and what is
-    next.
+    A month's file is every holding that 2000/2100 answers brought in with that
+    valuation date (status_date = the files' תאריך נכונות). The agent never sees
+    the per-body requests behind it — only what arrived and what is next. Each
+    month's changes are GET /delta?as_of=<the file's as_of>.
     """
     from datetime import date as _date
     from zoneinfo import ZoneInfo
 
     from app.models.pension_holding import PensionHolding
 
+    # One "file" per valuation month (the files' תאריך נכונות). Re-sent copies of
+    # the same snapshot are stored once (orchestration._ingest_holdings), so the
+    # counts are real products, not copies.
     prod_codes = ("events_v007:2000", "events_v007:2100")
     rows = (await db.execute(
         select(
-            PensionInquiry.information_date,
-            func.date_trunc("month", PensionHolding.created_at).label("arrived_month"),
+            PensionHolding.status_date,
             func.max(PensionHolding.created_at).label("received_at"),
-            func.count(func.distinct(PensionInquiry.target_yatzran_id)).label("bodies"),
+            func.count(func.distinct(PensionHolding.receiving_company)).label("bodies"),
             func.count(func.distinct(PensionHolding.customer_id_number)).label("customers"),
             func.count(PensionHolding.id).label("products"),
         )
         .join(PensionInquiry, PensionInquiry.id == PensionHolding.inquiry_id)
         .where(
             PensionHolding.user_id == user.id,
+            PensionHolding.status_date.is_not(None),
             PensionInquiry.interface_code.in_(prod_codes),
         )
-        .group_by(PensionInquiry.information_date, "arrived_month")
+        .group_by(PensionHolding.status_date)
     )).all()
 
     months: dict[str, dict] = {}
     for r in rows:
-        if r.information_date and len(r.information_date) >= 6:
-            key = f"{r.information_date[:4]}-{r.information_date[4:6]}"
-        else:
-            key = r.arrived_month.strftime("%Y-%m")
-        m = months.setdefault(key, {"period": f"{key}-01", "received_at": None,
-                                    "bodies": 0, "customers": 0, "products": 0})
+        key = r.status_date.strftime("%Y-%m")
+        m = months.setdefault(key, {"period": f"{key}-01", "as_of": r.status_date.isoformat(),
+                                    "received_at": None, "bodies": 0, "customers": 0, "products": 0})
         m["bodies"] += r.bodies
-        m["customers"] = max(m["customers"], r.customers)
+        m["customers"] += r.customers
         m["products"] += r.products
         if m["received_at"] is None or r.received_at > m["received_at"]:
             m["received_at"] = r.received_at
@@ -225,6 +225,19 @@ async def production_files(
         next_due = _date(y, mo, 15)
 
     return {"files": files, "next_due": next_due.isoformat(), "subscribed_bodies": open_subs}
+
+
+@router.get("/delta")
+async def snapshot_delta(
+    as_of: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """What changed in one מסלקה production snapshot (default: the newest): new,
+    removed and changed products against the snapshot before it, or against the
+    agent's production file when it is the first. See services/maslaka/delta.py."""
+    from app.services.maslaka.delta import monthly_delta
+    return await monthly_delta(db, user.id, as_of)
 
 
 @router.post("/association/auto-production")

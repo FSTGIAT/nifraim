@@ -15,6 +15,7 @@ What this locks down (all found 2026-09-25, before the first live answer arrived
 """
 
 import asyncio
+import re
 import sys
 import uuid
 from datetime import datetime, timedelta
@@ -100,6 +101,28 @@ async def main() -> None:
         check("rows carry the insurer", all(r.receiving_company for r in rows), rows[0].receiving_company if rows else "")
         check("request counted one answering body", row.providers_received == 1, str(row.providers_received))
         check("9100 → partial (other bodies may still answer)", row.status == "partial", row.status)
+
+        print("\nThe same snapshot re-sent is ONE holding; a new valuation date is kept:")
+        # 2026-10-09: the מסלקה sent the same נכון-ל-30/09 Phoenix snapshot 8 times,
+        # and each copy became another holding (צבירה summed 8x).
+        async with async_session() as db:
+            ok = await orchestration._ingest_holdings(db, ing, source_filename="ING-again.DAT", scope_user_id=None)
+            await db.commit()
+            again = (await db.execute(select(PensionHolding).where(
+                PensionHolding.user_id == user.id, PensionHolding.customer_id_number == "327824520"))).scalars().all()
+        check("re-sent file → still one holding per product", len(again) == len(rows),
+              f"{len(rows)} → {len(again)}")
+        check("its valuation date is stored", all(h.status_date for h in again),
+              str({h.status_date for h in again}))
+        nxt = re.sub(rb"<TAARICH-NECHONUT>\d{8}<", b"<TAARICH-NECHONUT>20991231<", ing)
+        async with async_session() as db:
+            ok = await orchestration._ingest_holdings(db, nxt, source_filename="ING-next-month.DAT", scope_user_id=None)
+            await db.commit()
+            both = (await db.execute(select(PensionHolding).where(
+                PensionHolding.user_id == user.id, PensionHolding.customer_id_number == "327824520"))).scalars().all()
+        check("a new valuation date is a second snapshot, not a replacement",
+              len(both) == 2 * len(rows) and len({h.status_date for h in both}) == 2,
+              f"{len(both)} rows, dates {sorted({str(h.status_date) for h in both})}")
 
         print("\nA file nobody asked for stays in the inbox, nothing written:")
         async with async_session() as db:

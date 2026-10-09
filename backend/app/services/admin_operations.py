@@ -87,7 +87,11 @@ async def operations_overview(db: AsyncSession) -> dict:
         select(PensionInquiry.user_id, func.max(PensionInquiry.submitted_at)).group_by(PensionInquiry.user_id)
     )).all())
     holdings = {uid: (n, c, last) for uid, n, c, last in (await db.execute(
-        select(PensionHolding.user_id, func.count(PensionHolding.id),
+        # distinct products: monthly snapshots are kept side by side
+        select(PensionHolding.user_id,
+               func.count(func.distinct(func.concat(PensionHolding.customer_id_number, "|",
+                                                    PensionHolding.fund_policy_number, "|",
+                                                    PensionHolding.receiving_company))),
                func.count(func.distinct(PensionHolding.customer_id_number)), func.max(PensionHolding.created_at))
         .group_by(PensionHolding.user_id)
     )).all()}
