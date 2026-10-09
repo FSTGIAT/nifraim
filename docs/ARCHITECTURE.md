@@ -773,6 +773,8 @@ graph TD
 
 ## 12. Maslaka Gateway — the clearinghouse is a THIRD plane, and it is LIVE
 
+> **First real answers (2026-10-09): read [`MASLAKA_ISSUES.md`](MASLAKA_ISSUES.md).** It lists 10 issues and the rules they left: a product = customer + policy + company + ACCOUNT (status + KIDOD-ACHID); one holding per valuation date; commit before archive; the Gateway re-ingest procedure.
+
 The מסלקה הפנסיונית is **not a REST API**. It is an asynchronous, file-based vault
 exchange: we drop an XML request into an `OUT` folder, their **Transporter** agent syncs it
 to the clearinghouse, and their answer lands in an `IN` folder minutes-to-days later. There
