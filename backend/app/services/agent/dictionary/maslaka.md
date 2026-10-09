@@ -45,6 +45,7 @@
 | expected_pension | numeric | — | ריק במסלול ה-15 לחודש — לא לנתח |
 | insurance_coverage | text | — |  |
 | status_date | date | — |  |
+| account_status | varchar | — |  |
 | matched_client_record_id | uuid | — |  |
 | match_status | varchar | — |  |
 | raw_payload_id | uuid | — |  |

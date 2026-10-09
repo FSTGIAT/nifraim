@@ -364,3 +364,81 @@ async def market_flows(ctx, category: str):
             "net_inflow_3_months": [{"company": k, "net_m": round(v, 1)} for k, v in ranked],
             "net_inflow_last_month": [{"company": k, "net_m": round(v, 1)} for k, v in sorted(by_co_last.items(), key=lambda kv: -kv[1])],
             "result_id": rid}
+
+
+@tool("market_changes", "מה השתנה בשוק בחודש האחרון לעומת החודש שלפניו, בקטגוריה: שינויי דמי ניהול, קופות שעלו/ירדו בדירוג התשואה בתוך קבוצת השווים, "
+      "הכי הרבה כניסות/יציאות כסף, קופות חדשות וקופות שלא דווחו החודש; בפנסיה גם שינויי חשיפה למניות/חו\"ל/מט\"ח (פנסיה-נט).",
+      {"category": {"type": "string", "enum": list(CATEGORIES)}}, ["category"], category="market", status_he="בודק מה השתנה בשוק")
+async def market_changes(ctx, category: str):
+    from app.services.fund_market.delta import market_delta
+    if category not in CATEGORIES:
+        return {"error": "קטגוריה לא מוכרת."}
+    source, classes, label = CATEGORIES[category]
+    period = await latest_period(ctx.db)
+    key = ("market_changes", category, period)
+    hit = cache.get("market", 0, key)
+    if hit is None:
+        hit = await market_delta(ctx.db, source, classes, open_only=is_open)
+        # don't pin "allocation unavailable" for hours while pensyanet is still importing that month
+        if (hit.get("allocation_shifts") or {}).get("available") is not False:
+            cache.put("market", 0, key, hit, ttl=6 * 3600)
+    if not hit.get("found"):
+        return hit
+    flows = hit.get("top_inflows") or []
+    rid = ctx.keep([{"label": r["fund"][:40], "value": r["net_inflow_m"]} for r in flows[:10]], label="קופה",
+                   value="צבירה נטו בחודש (מ' ₪)", unit="", title=f"{label} — הכי הרבה כסף נכנס ({hit['month']})") if flows else None
+    return {"category": label, **hit, "result_id": rid, "disclaimer": DISCLAIMER,
+            "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון)"}
+
+
+@tool("fund_allocation", "פילוח הנכסים של מסלול פנסיה (פנסיה-נט): 10 קבוצות ראשיות (אג\"ח ממשלתיות, מיועדות, מניות, הלוואות…), רמת סיכון, "
+      "סחיר/לא סחיר, ארץ/חו\"ל, חשיפה למניות/חו\"ל/מט\"ח — החודש האחרון והשינוי מהחודש שלפניו; וגם האיזון האקטוארי של הקרן. "
+      "fund = שם המסלול או מספר הקופה.",
+      {"fund": {"type": "string"}}, ["fund"], category="market", status_he="בודק את פילוח הנכסים")
+async def fund_allocation(ctx, fund: str):
+    from app.models.fund_market import PensyanetData as P
+    from app.services.fund_market.delta import track_allocation
+    period = (await ctx.db.execute(select(func.max(F.report_period)).where(F.source == "pension"))).scalar_one_or_none()
+    rows = (await ctx.db.execute(select(F).where(F.source == "pension", F.report_period == period))).scalars().all()
+    q = (fund or "").strip()
+    if q.isdigit():
+        hits = [f for f in rows if f.fund_id == int(q)]
+    else:
+        words = [w for w in re.split(r"\s+", q.replace('"', "")) if w]
+        hits = [f for f in rows if all(w in (f.fund_name or "").replace('"', "") for w in words)]
+        if not hits and tokens(q):   # "מור מניות" → company + track words
+            stem = company_stem(q)
+            hits = [f for f in rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
+                    and tokens(q) <= tokens(f.fund_name)]
+    if not hits:
+        return {"found": False, "note": "לא נמצא מסלול פנסיה בשם הזה. נסה שם מלא כפי שמופיע בפנסיה-נט, או מספר קופה."}
+    if len(hits) > 1:
+        hits.sort(key=lambda f: -(f.total_assets or 0))
+        if len(hits) > 6:
+            return {"found": False, "candidates": [{"fund_id": f.fund_id, "fund": f.fund_name} for f in hits[:12]],
+                    "note": "יותר מדי מסלולים מתאימים — בחר אחד."}
+    f = hits[0]
+    alloc = await track_allocation(ctx.db, f.fund_id)
+    if not alloc.get("found"):
+        return {"found": False, "fund": f.fund_name, "note": "פילוח הנכסים מפנסיה-נט עוד לא יובא למסלול הזה."}
+    # the track's parent fund (pensyanet 'tracks' rows carry ID_KRN) → its actuarial balance. The site
+    # stopped publishing fund-level yields (financial/demographic) in 01/2017 — those fields are blank.
+    parent = (await ctx.db.execute(select(P.data).where(P.report == "tracks", P.entity_id == f.fund_id)
+                                   .order_by(P.period.desc()).limit(1))).scalar_one_or_none()
+    actuarial = None
+    if parent and parent.get("ID_KRN"):
+        y = (await ctx.db.execute(select(P).where(P.report == "yields", P.level == "fund", P.entity_id == int(parent["ID_KRN"]),
+                                                  P.data.has_key("ODEF_GIRAON_ACTUARI_RIVONI"))
+                                  .order_by(P.period.desc()).limit(1))).scalar_one_or_none()
+        if y:
+            actuarial = {"fund": y.entity_name, "month": f"{y.period % 100:02d}/{y.period // 100}",
+                         "quarterly_pct": y.data.get("ODEF_GIRAON_ACTUARI_RIVONI"),
+                         "fund_assets_m": y.data.get("YIT_NCHASIM_BFOAL")}
+    main = alloc["groups"].get("חלוקת נכסים ל-10 קבוצות ראשיות") or []
+    rid = ctx.keep([{"label": g["item"], "value": g["now_pct"]} for g in main if g.get("now_pct")], label="סוג נכס",
+                   value="% מהנכסים", unit="%", title=f"{f.fund_name} — פילוח נכסים ({alloc['month']})") if main else None
+    others = [{"fund_id": h.fund_id, "fund": h.fund_name} for h in hits[1:6]]
+    return {**alloc, "actuarial_balance": actuarial, "result_id": rid, "other_matches": others or None,
+            "note": "חשיפה למניות יכולה להיות גבוהה מאחזקת המניות הישירה (נגזרים/תעודות סל). איזון אקטוארי = התאמת הזכויות לפי ניסיון התמותה/נכות של הקרן (+ = גירעון/עודף לפי הסימן כפי שמפורסם). "
+                    "תשואה פיננסית/דמוגרפית ברמת הקרן לא מפורסמת מאז 01/2017 — אל תמציא אותה.",
+            "disclaimer": DISCLAIMER}

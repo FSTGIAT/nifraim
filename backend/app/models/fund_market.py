@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -55,4 +56,33 @@ class FundMarketMonthly(Base):
     foreign_exposure: Mapped[float | None] = mapped_column(Float)
     fx_exposure: Mapped[float | None] = mapped_column(Float)
     actuarial_adjustment: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PensyanetData(Base):
+    """pensyanet.cma.gov.il XML export — what data.gov.il's פנסיה-נט resource lacks: asset
+    allocation per track/fund, the fund-level actuarial balance and extra risk stats. GLOBAL, upsert-only (services/fund_market/pensyanet).
+
+    Long format, one row per (report, level, entity, month, group, item):
+      * asset reports  → grp = KVUTZAT_NECHASIM ("חלוקת נכסים ל-10 קבוצות ראשיות" …),
+        item = asset type, amount in ₪ THOUSANDS, pct = share of the entity's assets;
+      * wide reports   → grp = "", item_id = 0, the whole row in `data`.
+    entity_id = FUND_ID of fund_market_monthly for level "track" (ID_MASLUL_RISHUY), the fund
+    id (ID_KRN) for level "fund"."""
+    __tablename__ = "pensyanet_data"
+    __table_args__ = (UniqueConstraint("report", "level", "entity_id", "period", "grp", "item_id",
+                                       name="uq_pensyanet_row"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report: Mapped[str] = mapped_column(String(20), nullable=False, index=True)    # REPORTS key
+    level: Mapped[str] = mapped_column(String(6), nullable=False)                  # fund | track
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    entity_name: Mapped[str | None] = mapped_column(String(200))
+    period: Mapped[int] = mapped_column(Integer, nullable=False, index=True)       # YYYYMM
+    grp: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    item_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    item_name: Mapped[str | None] = mapped_column(String(200))
+    amount: Mapped[float | None] = mapped_column(Float)
+    pct: Mapped[float | None] = mapped_column(Float)
+    data: Mapped[dict | None] = mapped_column(JSONB)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

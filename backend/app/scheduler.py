@@ -42,14 +42,34 @@ async def scrape_fund_tracks_job():
 
 async def sync_fund_market_job():
     """Official גמל-נט / פנסיה-נט / ביטוח-נט (data.gov.il) → fund_market_monthly.
-    Daily on the 1st–15th: the regulator publishes a month 1–2 months late, on no
-    fixed day. A run with nothing new upserts the same rows (idempotent) — cheap."""
+    Every day (was the 1st–15th; a month published after the 15th then waited for the 1st):
+    the regulator publishes a month 1–2 months late, on no fixed day, and data.gov.il refreshes
+    ~07:00 IL. A run with nothing new upserts the same rows (idempotent) — cheap."""
     try:
         from app.services import fund_market
         async with async_session() as db:
             await fund_market.sync(db)
     except Exception as e:
         logger.error(f"fund_market sync job failed: {e}")
+
+
+async def sync_pensyanet_job():
+    """פנסיה-נט XML export (asset allocation, actuarial balance, risk stats) → pensyanet_data.
+    Daily, but a DB check first: the browser runs only when data.gov.il already holds a pension
+    month that pensyanet_data doesn't (both publish the same month). The first run also backfills
+    a year of asset allocation (an asset export holds one month), so month-over-month shifts exist."""
+    try:
+        from sqlalchemy import func, select
+        from app.models.fund_market import PensyanetData
+        from app.services.fund_market import pensyanet
+        async with async_session() as db:
+            res = await pensyanet.sync(db)
+            months = (await db.execute(select(func.count(func.distinct(PensyanetData.period)))
+                                       .where(PensyanetData.report == "assets_main"))).scalar_one()
+            if months < 3 and not res.get("error"):   # also retries a backfill a restart cut short
+                await pensyanet.backfill_assets(db, months=12)
+    except Exception as e:
+        logger.error(f"pensyanet sync job failed: {e}")
 
 
 async def run_maslaka_poll() -> None:
@@ -221,8 +241,16 @@ def start_scheduler():
     )
     scheduler.add_job(
         sync_fund_market_job,
-        CronTrigger(day="1-15", hour=7, minute=10, timezone="Asia/Jerusalem"),
+        CronTrigger(hour=7, minute=10, timezone="Asia/Jerusalem"),
         id="sync_fund_market",
+        replace_existing=True,
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        sync_pensyanet_job,
+        CronTrigger(hour=7, minute=40, timezone="Asia/Jerusalem"),
+        id="sync_pensyanet",
         replace_existing=True,
         misfire_grace_time=6 * 60 * 60,
         coalesce=True,

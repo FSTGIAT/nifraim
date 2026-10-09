@@ -9,7 +9,7 @@
 - **מייל** (`dict/mail.md`) — מיילים מחברות ולקוחות, טיוטות, שולחים במעקב. טבלאות: mail_items, mail_watch_senders, mail_agent_profiles
 - **הורדה אוטומטית ומחזור** (`dict/automation.md`) — ריצות פורטלים, מחזור חודשי ב-21. טבלאות: portal_runs, portal_run_batches, cycle_notifications
 - **פורטל לקוח** (`dict/customers_portal.md`) — קישורים ותמונות מצב שהסוכן שיתף עם לקוחות. טבלאות: customer_portal_links, portal_snapshots
-- **נתוני שוק** (`dict/market.md`) — תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט). טבלאות: fund_market_monthly, fund_tracks, yield_recommendations
+- **נתוני שוק** (`dict/market.md`) — תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט); פילוח נכסים של קרנות הפנסיה (פנסיה-נט). טבלאות: fund_market_monthly, pensyanet_data, fund_tracks, yield_recommendations
 - **זיכרון ה-AI** (`dict/ai.md`) — מה ה-AI למד על הסוכן ואילו שאלות הוא שואל. טבלאות: ai_memories, ai_intent_log
 
 - **אזהרות** (`dict/caveats.md`) — מה לא לנתח ואיך לקרוא יחידות

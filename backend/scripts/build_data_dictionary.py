@@ -33,7 +33,7 @@ CATEGORIES = {
     "mail": ("מייל", "מיילים מחברות ולקוחות, טיוטות, שולחים במעקב", ["mail_items", "mail_watch_senders", "mail_agent_profiles"]),
     "automation": ("הורדה אוטומטית ומחזור", "ריצות פורטלים, מחזור חודשי ב-21", ["portal_runs", "portal_run_batches", "cycle_notifications"]),
     "customers_portal": ("פורטל לקוח", "קישורים ותמונות מצב שהסוכן שיתף עם לקוחות", ["customer_portal_links", "portal_snapshots"]),
-    "market": ("נתוני שוק", "תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט)", ["fund_market_monthly", "fund_tracks", "yield_recommendations"]),
+    "market": ("נתוני שוק", "תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט); פילוח נכסים של קרנות הפנסיה (פנסיה-נט)", ["fund_market_monthly", "pensyanet_data", "fund_tracks", "yield_recommendations"]),
     "ai": ("זיכרון ה-AI", "מה ה-AI למד על הסוכן ואילו שאלות הוא שואל", ["ai_memories", "ai_intent_log"]),
 }
 
@@ -61,6 +61,11 @@ NOTES = {
     "fund_market_monthly.avg_yield_3y": "תשואה שנתית ממוצעת 3 שנים באחוזים",
     "fund_market_monthly.net_monthly_deposits": "צבירה נטו בחודש, מיליוני ₪",
     "fund_market_monthly.total_assets": "גודל הקופה, מיליוני ₪",
+    "pensyanet_data.report": "general/assets_main/assets_full/assets_trad/yields/tracks — דוחות ה-XML של פנסיה-נט",
+    "pensyanet_data.level": "track = מסלול (entity_id = fund_id של fund_market_monthly) · fund = קרן",
+    "pensyanet_data.grp": "קבוצת הפילוח (10 קבוצות ראשיות / רמת סיכון / חשיפות / סחיר / ארץ-חו\"ל)",
+    "pensyanet_data.amount": "באלפי ₪ (דוחות נכסים)",
+    "pensyanet_data.pct": "אחוז מנכסי המסלול/הקרן",
 }
 
 CAVEATS = """# אזהרות נתונים (קרא לפני ניתוח)

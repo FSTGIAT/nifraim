@@ -243,15 +243,100 @@ async def test_policies_privacy():
         check(not ctx.proposals, "no credential/worker for B → no הר הביטוח proposal")
 
 
+async def test_maslaka_file_companies():
+    """'Which companies arrived?' must name the bodies in the newest מסלקה file — the
+    same list as the tab's panel — never the ones whose request was merely accepted
+    (2026-10-10 Nifra listed the 5 still-waiting bodies as the ones that arrived)."""
+    print("maslaka: which companies arrived")
+    from app.services.agent.tools_maslaka import STATUS_HE
+    from app.services.maslaka.delta import file_coverage
+    check("ממתין" in STATUS_HE["acknowledged"], "an accepted request reads as waiting, not as arrived")
+    from app.models.pension_holding import PensionHolding
+    async with async_session() as db:
+        uid = (await db.execute(select(PensionHolding.user_id).limit(1))).scalar_one_or_none()
+        user = (await db.execute(select(User).where(User.id == uid))).scalar_one_or_none() if uid else None
+        if not user:
+            print("  skip  no local user with מסלקה holdings (run against a DB that has one)")
+            return
+        ctx = ToolContext(db=db, user=user)
+        data = await registry.get("maslaka_status").fn(ctx)
+        cov = await file_coverage(db, user.id)
+        f = data.get("latest_production_file")
+        if not cov.get("as_of"):
+            check(f is None, "no production file → no file picture")
+            return
+        got = [c["company"] for c in f["companies_answered"]]
+        check(got == [c["company"] for c in cov["by_company"]], f"answered = the tab's companies ({len(got)})")
+        check(not set(got) & {w["company"] for w in cov["waiting"]}, "no body is both answered and waiting")
+        text, _ = router.render(router.Route("maslaka_status", "maslaka_status", {}), data)
+        check(all(c in text for c in got), "fast-lane sentence names every company that answered")
+        # "מה השתנה" may only count companies that are in the file: a pension policy number
+        # that equals the saver's ID made an unanswered Menora product "removed" (2026-10-10).
+        from app.services.maslaka.delta import monthly_delta
+        delta = await monthly_delta(db, user.id)
+        stray = {c["company"] for c in delta["by_company"]} - set(got)
+        check(not stray, f"מה השתנה counts only companies in the file (stray: {sorted(stray)})")
+        await db.rollback()
+
+
+def test_pensyanet_parse():
+    """פנסיה-נט XML → rows: asset reports long (group + item), wide reports keep the row; the
+    track id is the FUND_ID of fund_market_monthly. And data.gov.il's "S1;P" names are repaired."""
+    print("pensyanet parse + S&P names")
+    from app.services.fund_market import fix_name
+    from app.services.fund_market.pensyanet import parse
+    assets = ("<ROWSET><ROW><ID_KRN>1589</ID_KRN><SHM_KRN>מיטב עוקב</SHM_KRN><TKF_DIVUACH>202608</TKF_DIVUACH>"
+              "<KVUTZAT_NECHASIM>חשיפות</KVUTZAT_NECHASIM><ID_SUG_NECHES>4751</ID_SUG_NECHES><SHM_SUG_NECHES>חשיפה למניות</SHM_SUG_NECHES>"
+              "<SCHUM_SUG_NECHES>3975531.79</SCHUM_SUG_NECHES><ACHUZ_SUG_NECHES>69.73</ACHUZ_SUG_NECHES><ID_MASLUL_RISHUY>1589</ID_MASLUL_RISHUY></ROW></ROWSET>").encode()
+    r = parse(assets, "assets_main", "track")[0]
+    check((r["entity_id"], r["period"], r["grp"], r["item_id"], r["pct"]) == (1589, 202608, "חשיפות", 4751, 69.73), "asset row parsed long")
+    wide = "<ROWSET><ROW><ID>162</ID><SHM_KRN>מגדל</SHM_KRN><AD_TKUFAT_DIVUACH>202608</AD_TKUFAT_DIVUACH><TZVIRA_NETO>18143.91</TZVIRA_NETO><TSUA_MEMUZAAT_LETKUFA></TSUA_MEMUZAAT_LETKUFA></ROW></ROWSET>".encode()
+    w = parse(wide, "general", "fund")[0]
+    check(w["data"] == {"ID": 162.0, "SHM_KRN": "מגדל", "AD_TKUFAT_DIVUACH": 202608.0, "TZVIRA_NETO": 18143.91}, "wide row kept, blanks dropped")
+    check(fix_name("מור עוקב מדד s1;p 500") == "מור עוקב מדד s&p 500", "S1;P → S&P")
+
+
+async def test_market_changes():
+    """market_changes == the delta function, and a change is only ever measured on funds that
+    reported in BOTH months (a missing fund is 'לא דווח החודש', never 'נסגר')."""
+    print("market changes (fund_market delta)")
+    from sqlalchemy import func
+    from app.models.fund_market import FundMarketMonthly as F
+    from app.services.agent.tools_market import CATEGORIES, is_open
+    from app.services.fund_market.delta import market_delta
+    async with async_session() as db:
+        a = (await db.execute(select(User).where(User.email == A_EMAIL))).scalar_one()
+        ctx = ToolContext(db=db, user=a)
+        ps = (await db.execute(select(F.report_period).where(F.source == "pension").distinct()
+                               .order_by(F.report_period.desc()).limit(2))).scalars().all()
+        if len(ps) < 2:
+            print("  skip  fewer than two months of fund data locally")
+            return
+        tool_out = await registry.get("market_changes").fn(ctx, "pension")
+        src, cls, _ = CATEGORIES["pension"]
+        direct = await market_delta(db, src, cls, open_only=is_open)
+        check(tool_out["summary"] == direct["summary"], "tool summary == delta function")
+        ids = lambda p: select(F.fund_id).where(F.source == "pension", F.report_period == p, F.classification.in_(cls))
+        both = (await db.execute(select(func.count()).select_from(ids(ps[0]).intersect(ids(ps[1])).subquery()))).scalar_one()
+        check(direct["summary"]["funds_compared"] == both, f"compared only funds in both months ({both})")
+        text = json.dumps(direct, ensure_ascii=False)
+        check("נסגר" not in text.replace("לא 'נסגרה'", ""), "never calls a missing fund closed")
+        check(all(r["group_size"] >= 5 for r in direct["rank_climbers"] + direct["rank_fallers"]), "rank moves only in peer groups of 5+")
+        await db.rollback()
+
+
 def main():
     test_registry()
     test_policies_routing()
     test_router()
     test_fund_matcher()
     test_calls_routing()
+    test_pensyanet_parse()
     async def _db_tests():   # one event loop — the async engine's pool is bound to it
         await test_privacy_and_parity()
         await test_policies_privacy()
+        await test_maslaka_file_companies()
+        await test_market_changes()
     asyncio.run(_db_tests())
     print(f"\n{'ALL PASSED' if not FAILS else f'{len(FAILS)} FAILED'}")
     sys.exit(1 if FAILS else 0)

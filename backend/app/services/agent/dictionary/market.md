@@ -1,5 +1,5 @@
 # נתוני שוק
-תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט)
+תשואות, דמי ניהול וזרימות רשמיים לכל קופה לפי חודש (גמל-נט/פנסיה-נט/ביטוח-נט); פילוח נכסים של קרנות הפנסיה (פנסיה-נט)
 
 ## fund_market_monthly
 
@@ -37,6 +37,23 @@
 | foreign_exposure | float | — |  |
 | fx_exposure | float | — |  |
 | actuarial_adjustment | float | — |  |
+| fetched_at | datetime | — |  |
+
+## pensyanet_data
+
+| עמודה | סוג | מילוי | הערה |
+|---|---|---|---|
+| report | varchar | — | general/assets_main/assets_full/assets_trad/yields/tracks — דוחות ה-XML של פנסיה-נט |
+| level | varchar | — | track = מסלול (entity_id = fund_id של fund_market_monthly) · fund = קרן |
+| entity_id | integer | — |  |
+| entity_name | varchar | — |  |
+| period | integer | — |  |
+| grp | varchar | — | קבוצת הפילוח (10 קבוצות ראשיות / רמת סיכון / חשיפות / סחיר / ארץ-חו"ל) |
+| item_id | integer | — |  |
+| item_name | varchar | — |  |
+| amount | float | — | באלפי ₪ (דוחות נכסים) |
+| pct | float | — | אחוז מנכסי המסלול/הקרן |
+| data | jsonb | — |  |
 | fetched_at | datetime | — |  |
 
 ## fund_tracks

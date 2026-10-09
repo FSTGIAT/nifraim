@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 
 import httpx
@@ -60,6 +61,15 @@ _STR = {"fund_name": 200, "classification": 80, "specialization": 80, "sub_speci
         "target_population": 80, "parent_company": 200, "managing_corporation": 200}
 
 
+_AMP = re.compile(r"([Ss])1;([Pp])")
+
+
+def fix_name(s: str) -> str:
+    """data.gov.il serves "S&P" as "S1;P" in פנסיה-נט names (725 rows, 2026-10-10) — which also hid
+    those tracks from tools_market.tokens()' sp500 match."""
+    return _AMP.sub(r"\1&\2", s)
+
+
 def to_row(source: str, rec: dict) -> dict | None:
     try:
         fund_id = int(rec["FUND_ID"])
@@ -70,7 +80,7 @@ def to_row(source: str, rec: dict) -> dict | None:
     for k, col in FIELD_MAP.items():
         v = rec.get(k)
         if col in _STR:
-            row[col] = (str(v).strip()[: _STR[col]] if v not in (None, "") else None)
+            row[col] = (fix_name(str(v).strip())[: _STR[col]] if v not in (None, "") else None)
         else:
             try:
                 row[col] = float(v) if v not in (None, "") else None
