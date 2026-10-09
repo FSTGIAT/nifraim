@@ -175,7 +175,7 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
     seen_dat_policies: set[str] = set()
     # Distinct from `seen_dat_policies` (which gates the .MBT top-up passes):
     # this one suppresses a product block the DAT itself repeats verbatim.
-    emitted_policy_rows: set[tuple[str, str, str, str]] = set()
+    emitted_policy_rows: set[tuple[str, str, str, str, str]] = set()
     skipped_duplicate_rows = 0
 
     for policy_elem in root.iter():
@@ -232,8 +232,11 @@ def run(folder: Path, out_path: Path, verbose: bool = False) -> int:
         # inactive ₪10,670 account and an active ₪763,295 one. Without the status
         # in the key the active one was dropped as a "repeat". The status keeps
         # them apart; a verbatim repeat still shares it and is still skipped.
+        # Two ACTIVE accounts exist too (Altshuler 304888373: ₪347,912 + ₪53,849,
+        # one in each of two funds), so the fund's KIDOD-ACHID is in the key as well.
         _row_key = (pol_cid or "", dat_policy_id, str(policy_leaves.get("SUG-MUTZAR") or ""),
-                    str(policy_leaves.get("STATUS-POLISA-O-CHESHBON") or ""))
+                    str(policy_leaves.get("STATUS-POLISA-O-CHESHBON") or ""),
+                    str(policy_leaves.get("KIDOD-ACHID") or ""))
         if _row_key in emitted_policy_rows:
             skipped_duplicate_rows += 1
             continue

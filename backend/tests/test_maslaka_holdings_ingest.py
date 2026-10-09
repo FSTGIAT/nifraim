@@ -144,6 +144,26 @@ async def main() -> None:
               f"{len(accts)} rows, statuses {sorted(str(h.account_status) for h in accts)}")
         check("each carries its status", len({h.account_status for h in accts}) == 2)
 
+        # Two ACTIVE accounts in two funds (Altshuler 304888373: ₪347,912 + ₪53,849,
+        # KIDOD-ACHID …1328… vs …1329…) — the same status, so the fund code splits them.
+        kid = [m.start() for m in re.finditer(rb"<KIDOD-ACHID>", ing)]
+        if len(kid) >= 2:
+            end = ing.index(b"<", kid[1] + len(b"<KIDOD-ACHID>"))
+            funds = ing[:kid[1]] + b"<KIDOD-ACHID>999999999000000000099990000000" + ing[end:]
+            funds = re.sub(rb"<TAARICH-NECHONUT>\d{8}<", b"<TAARICH-NECHONUT>20970131<", funds)
+            for name in ("ING-two-funds.DAT", "ING-two-funds-again.DAT"):
+                async with async_session() as db:
+                    await orchestration._ingest_holdings(db, funds, source_filename=name, scope_user_id=None)
+                    await db.commit()
+            async with async_session() as db:
+                fz = (await db.execute(select(PensionHolding).where(
+                    PensionHolding.user_id == user.id, PensionHolding.customer_id_number == "327824520",
+                    PensionHolding.status_date == date(2097, 1, 31)))).scalars().all()
+            check("two active accounts in two funds → two holdings, a re-send still two", len(fz) == 2,
+                  f"{len(fz)} rows")
+        else:
+            check("fixture carries KIDOD-ACHID twice", False, str(len(kid)))
+
         print("\nA file nobody asked for stays in the inbox, nothing written:")
         async with async_session() as db:
             before = (await db.execute(select(PensionHolding.id))).scalars().all()

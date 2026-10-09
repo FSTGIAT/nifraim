@@ -933,11 +933,11 @@ async def reconcile_to_client_records(db: AsyncSession, *, inquiry: PensionInqui
         v = (v or "").strip()
         return v.lstrip("0") or v
 
-    prod_by = {}
+    prod_by: dict[tuple, list] = defaultdict(list)
     for r in prod_rows:
         k = pkey(r.fund_policy_number)
         if k:
-            prod_by.setdefault(((r.id_number or "").lstrip("0"), k), r)
+            prod_by[((r.id_number or "").lstrip("0"), k)].append(r)
 
     # One production row matches ONE holding. Two accounts under one policy
     # number (inactive ₪10,670 + active ₪763,295, Altshuler 305392110) both used
@@ -958,21 +958,22 @@ async def reconcile_to_client_records(db: AsyncSession, *, inquiry: PensionInqui
     for h in {id(x): x for x in list(holdings_rows) + list(peers)}.values():
         groups[((h.customer_id_number or "").lstrip("0"), pkey(h.fund_policy_number), h.status_date)].append(h)
 
+    # Pair accounts with production rows by closest balance; a policy can carry
+    # two accounts on both sides (Altshuler 304888373: two active funds).
     matched = 0
     for (cid, pol, _d), hs in groups.items():
-        r = prod_by.get((cid, pol))
-        if r is None:
-            continue
-        ref = float(r.accumulation or 0)
-        best = min(hs, key=lambda h: abs(float(h.accumulation or 0) - ref))
-        for h in hs:
-            if h is best:
-                h.matched_client_record_id = r.id
-                h.match_status = "matched"
-                matched += 1
-            elif h.matched_client_record_id == r.id:
-                h.matched_client_record_id = None
-                h.match_status = "clearinghouse_only"
+        rows = list(prod_by.get((cid, pol), []))
+        left = list(hs)
+        while rows and left:
+            h, r = min(((h, r) for h in left for r in rows),
+                       key=lambda hr: abs(float(hr[0].accumulation or 0) - float(hr[1].accumulation or 0)))
+            h.matched_client_record_id = r.id
+            h.match_status = "matched"
+            matched += 1
+            left.remove(h); rows.remove(r)
+        for h in left:
+            h.matched_client_record_id = None
+            h.match_status = "clearinghouse_only"
     await db.flush()
     return matched
 
