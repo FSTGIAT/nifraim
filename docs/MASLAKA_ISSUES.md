@@ -144,3 +144,24 @@ Architecture: `docs/ARCHITECTURE.md` §12. Gateway ops: the `maslaka-gateway` sk
   - **One run-command at a time per VM.** A concurrent call is rejected.
 - **Plan and design:** `.claude/plans/gateway-self-update.md`. **Tests:** `tests/test_gateway_self_update.py`.
 
+### First production release through the card (10/10/2026, 00:44 Israel time)
+
+The "release passed its trial" path, proven live. Gateway log (UTC):
+
+| Time | What happened |
+|---|---|
+| 21:44:23 | admin releases `8f4c8a75` on the card ("ממתין לעדכון") |
+| 21:45:21 | the Gateway sees it between two rounds: `36750a01 → 8f4c8a75` |
+| 21:45:27 | staged + **self-test ok**; the worker exits 75; the launcher switches |
+| 21:45:29 | the new worker starts, vault healthy |
+| 21:45:32 | first healthy round → trial cleared, reports "תקין" on `8f4c8a75` |
+
+- **Click to confirmed: about 70 seconds.** `previous.txt = 36750a01` is the rollback target.
+  Releases on disk are pruned to the last 3.
+- **A grey "שחרר לגייטוויי" button is correct:** server = released = running, so there is nothing to
+  release. It becomes active after the next deploy.
+- **Releasing the version already running is a no-op.** The Gateway keeps reporting and does not restart
+  (tested 21:36).
+- **Not seen live yet:** an automatic rollback. It's covered by `tests/test_gateway_self_update.py`
+  (two crashes on trial, or no healthy round within 10 minutes).
+
