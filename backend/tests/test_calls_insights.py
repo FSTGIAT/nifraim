@@ -59,7 +59,7 @@ def test_brief_and_timed_from_real_shape():
     assert [t["text"] for t in b["undated"]] == ["לעדכן את הלקוח"]           # customer's own task never in the agent's brief
     assert b["sentences_he"][0] == "בוקר טוב קיקו." and b["key"] == "brief:2026-10-11"
     assert [t["key"] for t in out["timed"]] == [f"task:{c.id}:0:2026-10-12T13:30"]   # Sunday's task has no time → no timed alert
-    assert out["timed"][0]["fire_at"] == "2026-10-12T10:15:00Z" and out["timed"][0]["speak_he"].startswith("בעוד רבע שעה")
+    assert out["timed"][0]["fire_at"] == "2026-10-12T10:15:00Z" and out["timed"][0]["speak_he"].startswith("תזכורת, בעוד רבע שעה")
     assert [p["text"] for p in out["proposals"]] == ["לעדכן את הלקוח"]
 
 
@@ -137,7 +137,8 @@ def test_brief_is_light_when_only_undated():
     from zoneinfo import ZoneInfo
     s = R.brief_sentences(datetime(2026, 10, 10, 19, tzinfo=ZoneInfo("Asia/Jerusalem")), "קיקו", [], [],
                           [{"text": "x", "customer": None, "due_time": None, "overdue_days": 0}] * 20)
-    assert s[0] == "ערב טוב קיקו." and s[1] == "להיום אין משהו קבוע." and s[2].startswith("20 דברים שהבטחת ללקוחות")
+    assert s == ["ערב טוב קיקו.", "אין לך משימות להיום.",
+                 "יש 20 דברים שהבטחת ללקוחות ועוד לא קבעת להם תאריך. אפשר לקבוע אותם ב-Nifra Insights."]
 
 
 def test_themes_only_use_given_strings():

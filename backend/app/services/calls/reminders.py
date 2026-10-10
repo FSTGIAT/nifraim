@@ -49,7 +49,7 @@ def _greeting(now_il: datetime, name: str) -> str:
 
 
 def _say(p: dict) -> str:
-    who = f", {p['customer']}" if p.get("customer") else ""
+    who = f" — {p['customer']}" if p.get("customer") else ""   # a dash = a short pause when spoken
     return f"{p['text']}{who}"
 
 
@@ -84,7 +84,7 @@ def build(rows: list[CallRecording], now: datetime | None = None, claimed: set[s
             late = fa + LEAD < now
             timed.append({**item, "key": key, "fire_at": fa.isoformat().replace("+00:00", "Z"),
                           "late_today": late and day == today.isoformat(), "claimed": key in claimed,
-                          "speak_he": (f"הגיע הזמן: {_say(item)}." if late else f"בעוד רבע שעה: {_say(item)}.")})
+                          "speak_he": (f"הגיע הזמן: {_say(item)}." if late else f"תזכורת, בעוד רבע שעה: {_say(item)}.")})
 
     for n, item in enumerate(undated[:MAX_PROPOSALS]):
         c = by_id[item["call_id"]]
@@ -126,21 +126,21 @@ def _n(n: int, one: str, many: str) -> str:
 
 
 def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list, undated: list) -> list[str]:
-    """Short, light, self-explaining — the agent hears it once, cold, between two calls."""
+    """Short, natural Hebrew — the agent hears it once, cold, between two calls."""
     out = [_greeting(now_il, name)]
     if not (due_today or overdue or undated):
-        return out + ["אין משימות פתוחות מהשיחות. יום רגוע!"]
+        return out + ["אין משימות פתוחות מהשיחות. יום טוב!"]
     if due_today:
-        out.append(f"להיום יש לך {_n(len(due_today), 'משימה אחת', 'משימות')} מהשיחות.")
+        out.append("היום יש לך משימה אחת מהשיחות:" if len(due_today) == 1 else f"היום יש לך {len(due_today)} משימות מהשיחות:")
         for t in due_today[:3]:
-            out.append(f"{'ב-' + t['due_time'] + ': ' if t['due_time'] else ''}{_say(t)}.")
-    elif overdue or undated:
-        out.append("להיום אין משהו קבוע.")
+            out.append(f"{'בשעה ' + t['due_time'] + ', ' if t['due_time'] else ''}{_say(t)}.")
+    else:
+        out.append("אין לך משימות להיום.")
     if overdue:
         old = max(overdue, key=lambda t: t["overdue_days"])
-        late = "משימה אחת כבר עברה את המועד" if len(overdue) == 1 else f"{len(overdue)} משימות כבר עברו את המועד"
-        out.append(f"{late}. הכי חשובה: {_say(old)}.")
+        late = "יש משימה אחת שהתאריך שלה כבר עבר" if len(overdue) == 1 else f"יש {len(overdue)} משימות שהתאריך שלהן כבר עבר"
+        out.append(f"{late}. הכי דחופה: {_say(old)}.")
     if undated:
-        out.append(f"{_n(len(undated), 'דבר אחד', 'דברים')} שהבטחת ללקוחות עוד בלי תאריך — "
-                   "ב-Nifra Insights אפשר לקבוע להם יום בלחיצה.")
+        what = "דבר אחד שהבטחת ללקוח" if len(undated) == 1 else f"{len(undated)} דברים שהבטחת ללקוחות"
+        out.append(f"יש {what} ועוד לא קבעת להם תאריך. אפשר לקבוע אותם ב-Nifra Insights.")
     return out
