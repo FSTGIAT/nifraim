@@ -116,6 +116,15 @@ def brand(name: str | None) -> str:
     return hit[1] if hit else ((name or "").replace(",", " ").split() or ["—"])[0]
 
 
+def same_peer(a, b) -> bool:
+    """Same risk level = same classification + track (delta._peer). Pension and savings-policy rows
+    carry no specialization, so equal specialization (None == None) made EVERY policy a peer: a
+    "הפניקס BlackRock כללי" policy was measured against "איילון עוקב מדדים - גמיש" and showed a
+    ₪532K/yr "gap" on ₪2.8M (2026-10-10). The track's key words decide instead."""
+    from app.services.fund_market.delta import _peer
+    return _peer(a) == _peer(b)
+
+
 def is_open(f) -> bool:
     """Can a new customer join this fund? Sector/employer-only funds (e.g. רום — local-authority
     employees) and veteran pension funds (קרנות כלליות, closed) are never a switch target or a
@@ -248,7 +257,7 @@ async def fund_fit(ctx, idn: str) -> dict:
             item["match"] = "לא זוהה מסלול רשמי — אין השוואה"
             res.append(item)
             continue
-        same_risk = [x for x in cands if x.specialization == f.specialization and (x.sub_specialization == f.sub_specialization)
+        same_risk = [x for x in cands if same_peer(x, f)
                      and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None and (is_open(x) or x.fund_id == f.fund_id)]
         best = max((x for x in same_risk if is_open(x)), key=lambda x: x.avg_yield_3y, default=None)
         med_fee = _med([x.mgmt_fee for x in same_risk])
@@ -321,7 +330,7 @@ async def fund_opportunities(ctx, category: str = "", min_gap_ils: int = 1000, n
                 f, _ = match_fund(r.track, r.receiving_company, cands)
                 best = None
                 if f and f.avg_yield_3y is not None:
-                    peers = [x for x in cands if x.specialization == f.specialization and x.sub_specialization == f.sub_specialization
+                    peers = [x for x in cands if same_peer(x, f)
                              and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None and is_open(x)]
                     best = max(peers, key=lambda x: x.avg_yield_3y, default=None)
                 fit_cache[k] = (cat, f, best)
@@ -501,8 +510,13 @@ async def customers_in_market_moves(ctx, direction: str = "down", category: str 
             moves_by_cat[cat] = await rank_moves(ctx.db, src, classes)
         k = (cat, r.track, r.receiving_company)
         if k not in fit:
-            fit[k] = match_fund(r.track, r.receiving_company, rows_by_cat[cat])[0]
-        f = fit[k]
+            fm = match_fund(r.track, r.receiving_company, rows_by_cat[cat])[0]
+            best = None
+            if fm and fm.avg_yield_3y is not None:   # the best open track at the same risk level (fund_opportunities' rule)
+                best = max((x for x in rows_by_cat[cat] if same_peer(x, fm) and (x.total_assets or 0) >= 100
+                            and x.avg_yield_3y is not None and is_open(x)), key=lambda x: x.avg_yield_3y, default=None)
+            fit[k] = (fm, best)
+        f, best = fit[k]
         if not f:
             unmatched += 1
             continue
@@ -518,14 +532,24 @@ async def customers_in_market_moves(ctx, direction: str = "down", category: str 
         c = per_cust[idn]
         c["name"] = " ".join(x for x in (r.first_name, r.last_name) if x) or idn
         c["acc"] += float(r.accumulation)
+        gap = (float(r.accumulation) * (best.avg_yield_3y - f.avg_yield_3y) / 100
+               if best and best.fund_id != f.fund_id and f.avg_yield_3y is not None else 0.0)
+        c["gap"] = c.get("gap", 0.0) + gap
         same = next((it for it in c["items"] if it["fund_id"] == f.fund_id), None)   # two accounts, one track → one line
         if same:
             same["accumulation"] += round(float(r.accumulation)); same["accounts"] += 1
+            if same["annual_gap_vs_best_ils"] is not None:
+                same["annual_gap_vs_best_ils"] += round(gap)
         else:
             c["items"].append({"category": CATEGORIES[cat][2], "track": f.fund_name, "fund_id": f.fund_id, "rank_before": before,
-                               "rank_now": now, "group_size": size, "ytd_now": f.ytd_yield,
+                               "rank_now": now, "group_size": size, "ytd_now": f.ytd_yield, "avg_yield_3y": f.avg_yield_3y,
+                               "best_same_risk": ({"fund": best.fund_name, "avg_yield_3y": best.avg_yield_3y}
+                                                  if best and best.fund_id != f.fund_id else None),
+                               "annual_gap_vs_best_ils": round(gap) if f.avg_yield_3y is not None else None,
+                               **({} if f.avg_yield_3y is not None else {"note": "אין למסלול 3 שנות תשואה — אין פער לחשב"}),
                                "accumulation": round(float(r.accumulation)), "accounts": 1})
-    rows = sorted(({"id_number": k, "name": v["name"], "accumulation": round(v["acc"]), "products": v["items"][:4]}
+    rows = sorted(({"id_number": k, "name": v["name"], "accumulation": round(v["acc"]), "annual_gap_vs_best_ils": round(v.get("gap", 0)),
+                    "products": v["items"][:4]}
                    for k, v in per_cust.items()), key=lambda d: -d["accumulation"])
     top = rows[: max(1, min(int(n or 15), 40))]
     rid = ctx.keep([{"label": d["name"], "value": d["accumulation"], "id_number": d["id_number"]} for d in top],
@@ -537,5 +561,6 @@ async def customers_in_market_moves(ctx, direction: str = "down", category: str 
             "products_matched_to_a_fund": matched, "products_not_matched": unmatched, "result_id": rid,
             "rule": f"דירוג = מקום בתשואה מתחילת השנה בתוך קבוצת השווים (לפחות {MIN_GROUP} קופות), תזוזה של {MIN_RANK_MOVE} מקומות לפחות. "
                     "רק מוצרים שהמסלול שלהם זוהה בוודאות מול הנתונים הרשמיים (products_not_matched לא נבדקו). "
-                    "ירידה בדירוג בחודש אחד אינה סיבה לניוד — הצג כנקודה לבדיקה.",
+                    "ירידה בדירוג בחודש אחד אינה סיבה לניוד — הצג כנקודה לבדיקה. annual_gap_vs_best_ils = צבירה × (תשואה שנתית ממוצעת 3ש "
+                    "של המסלול הטוב באותה רמת סיכון − של המסלול הנוכחי) — אומדן, כבר מחושב כאן; אל תאמר שאין פער כשהוא מופיע.",
             "disclaimer": DISCLAIMER}
