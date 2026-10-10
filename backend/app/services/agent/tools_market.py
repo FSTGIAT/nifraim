@@ -106,6 +106,16 @@ def fund_label(name: str | None) -> str:
     return s or (name or "")
 
 
+def brand(name: str | None) -> str:
+    """Market display name of a managing company. company_stem only knows the insurers we pair
+    commissions for; an unknown one fell back to a suffix-strip — "אינפיניטי השתלמות, גמל ופנסיה
+    בע"מ" showed as "אינפיניטי השתלמות,". Unknown → its first word. Display only: company_stem
+    itself feeds rate matching and production merging, so it isn't touched here."""
+    from app.utils.company_norm import _match_stem
+    hit = _match_stem(name)
+    return hit[1] if hit else ((name or "").replace(",", " ").split() or ["—"])[0]
+
+
 def is_open(f) -> bool:
     """Can a new customer join this fund? Sector/employer-only funds (e.g. רום — local-authority
     employees) and veteran pension funds (קרנות כלליות, closed) are never a switch target or a
@@ -131,7 +141,7 @@ def _med(vals):
 
 
 def _fund_row(f) -> dict:
-    return {"fund_id": f.fund_id, "fund": f.fund_name, "company": company_stem(f.managing_corporation) or f.managing_corporation,
+    return {"fund_id": f.fund_id, "fund": f.fund_name, "company": brand(f.managing_corporation or f.fund_name),
             "track": " · ".join(x for x in (f.specialization, f.sub_specialization) if x),
             "avg_yield_3y": f.avg_yield_3y, "avg_yield_5y": f.avg_yield_5y, "ytd": f.ytd_yield, "month": f.monthly_yield,
             "mgmt_fee": f.mgmt_fee, "deposit_fee": f.deposit_fee, "sharpe": f.sharpe, "std_dev": f.std_dev,
@@ -259,9 +269,14 @@ async def fund_fit(ctx, idn: str) -> dict:
         })
         res.append(item)
     y, m = divmod(period, 100)
-    return {"id_number": idn, "name": prods[0]["name"], "data_month": f"{m:02d}/{y}", "products": res,
+    out = {"id_number": idn, "name": prods[0]["name"], "data_month": f"{m:02d}/{y}", "products": res,
             "how_to_read": "annual_gap_vs_best_ils = צבירה × (תשואה שנתית ממוצעת 3ש של המסלול הטוב באותה רמת סיכון − של המסלול הנוכחי). אומדן, לא הבטחה.",
             "disclaimer": DISCLAIMER}
+    if not res:   # products exist but none can be compared — say why instead of an empty list
+        out["note"] = ("ללקוח יש בפרודוקציה " + str(len(prods)) + " מוצרים, אבל לאף אחד אין גם צבירה וגם סוג מוצר חיסכון שאפשר להשוות לשוק "
+                       "(למשל צבירה ₪0). אין מה להשוות — אל תמציא השוואה.")
+        out["products_seen"] = [{k: p[k] for k in ("company", "product_type", "track", "accumulation")} for p in prods[:6]]
+    return out
 
 
 @tool("get_customer_fund_fit", "עוקב אחרי הכסף של לקוח: לכל מוצר חיסכון (גמל, השתלמות, פנסיה, פוליסה) — המסלול הרשמי שלו, דירוג מול מסלולים באותה רמת סיכון, דמי ניהול מול השוק (₪ בשנה), המסלול הטוב ביותר ופער שנתי משוער ב-₪, ו-12 חודשי תשואה.",
@@ -362,7 +377,7 @@ async def market_flows(ctx, category: str):
     rows = (await ctx.db.execute(q)).scalars().all()
     by_co_last, by_co_3 = defaultdict(float), defaultdict(float)
     for f in rows:
-        co = company_stem(f.managing_corporation or f.fund_name) or f.managing_corporation or "—"
+        co = brand(f.managing_corporation or f.fund_name)
         v = f.net_monthly_deposits or 0
         by_co_3[co] += v
         if f.report_period == period:
@@ -452,4 +467,75 @@ async def fund_allocation(ctx, fund: str):
     return {**alloc, "actuarial_balance": actuarial, "result_id": rid, "other_matches": others or None,
             "note": "חשיפה למניות יכולה להיות גבוהה מאחזקת המניות הישירה (נגזרים/תעודות סל). איזון אקטוארי = התאמת הזכויות לפי ניסיון התמותה/נכות של הקרן (+ = גירעון/עודף לפי הסימן כפי שמפורסם). "
                     "תשואה פיננסית/דמוגרפית ברמת הקרן לא מפורסמת מאז 01/2017 — אל תמציא אותה.",
+            "disclaimer": DISCLAIMER}
+
+
+
+@tool("customers_in_market_moves", "הלקוחות שלי שהכסף שלהם במסלולים שירדו (או עלו) בדירוג התשואה החודש לעומת החודש הקודם, בתוך קבוצת השווים — "
+      "לפי המוצרים בפרודוקציה (גמל, השתלמות, פנסיה, פוליסות). direction: down (ירדו, ברירת מחדל) / up (עלו). category ריק = כל הקטגוריות.",
+      {"direction": {"type": "string", "enum": ["down", "up"]}, "category": {"type": "string", "enum": ["", *CATEGORIES]},
+       "n": {"type": "integer"}},
+      category="market", status_he="מחפש לקוחות במסלולים שזזו בדירוג")
+async def customers_in_market_moves(ctx, direction: str = "down", category: str = "", n: int = 15):
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+    from app.services.fund_market.delta import MIN_GROUP, MIN_RANK_MOVE, rank_moves
+
+    period = await latest_period(ctx.db)
+    ids = await _get_production_upload_ids(ctx.db, ctx.user.id)
+    if not period or not ids:
+        return {"customers": [], "note": "אין פרודוקציה פעילה או נתוני שוק."}
+    recs = (await ctx.db.execute(select(ClientRecord).where(
+        ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(ids),
+        ClientRecord.accumulation > 0, ClientRecord.track.isnot(None)))).scalars().all()
+    moves_by_cat, rows_by_cat, fit = {}, {}, {}
+    per_cust: dict[str, dict] = defaultdict(lambda: {"acc": 0.0, "items": []})
+    matched = unmatched = 0
+    for r in recs:
+        cat = category_for_product(r.product_type, r.product)
+        if not cat or (category and cat != category):
+            continue
+        if cat not in rows_by_cat:
+            src, classes, _ = CATEGORIES[cat]
+            rows_by_cat[cat] = await _category_rows(ctx.db, cat, period)
+            moves_by_cat[cat] = await rank_moves(ctx.db, src, classes)
+        k = (cat, r.track, r.receiving_company)
+        if k not in fit:
+            fit[k] = match_fund(r.track, r.receiving_company, rows_by_cat[cat])[0]
+        f = fit[k]
+        if not f:
+            unmatched += 1
+            continue
+        matched += 1
+        mv = moves_by_cat[cat]["moves"].get(f.fund_id)
+        if not mv or mv[2] < MIN_GROUP:
+            continue
+        before, now, size = mv
+        d = before - now                                   # + = climbed
+        if (direction == "down" and d > -MIN_RANK_MOVE) or (direction == "up" and d < MIN_RANK_MOVE):
+            continue
+        idn = str(r.id_number).lstrip("0")
+        c = per_cust[idn]
+        c["name"] = " ".join(x for x in (r.first_name, r.last_name) if x) or idn
+        c["acc"] += float(r.accumulation)
+        same = next((it for it in c["items"] if it["fund_id"] == f.fund_id), None)   # two accounts, one track → one line
+        if same:
+            same["accumulation"] += round(float(r.accumulation)); same["accounts"] += 1
+        else:
+            c["items"].append({"category": CATEGORIES[cat][2], "track": f.fund_name, "fund_id": f.fund_id, "rank_before": before,
+                               "rank_now": now, "group_size": size, "ytd_now": f.ytd_yield,
+                               "accumulation": round(float(r.accumulation)), "accounts": 1})
+    rows = sorted(({"id_number": k, "name": v["name"], "accumulation": round(v["acc"]), "products": v["items"][:4]}
+                   for k, v in per_cust.items()), key=lambda d: -d["accumulation"])
+    top = rows[: max(1, min(int(n or 15), 40))]
+    rid = ctx.keep([{"label": d["name"], "value": d["accumulation"], "id_number": d["id_number"]} for d in top],
+                   label="לקוח", value="צבירה במסלולים שזזו (₪)", unit="₪",
+                   title="לקוחות במסלולים שירדו בדירוג" if direction == "down" else "לקוחות במסלולים שעלו בדירוג") if top else None
+    any_cat = next(iter(moves_by_cat.values()), {})
+    return {"direction": "ירדו בדירוג" if direction == "down" else "עלו בדירוג", "month": any_cat.get("month"),
+            "compared_with": any_cat.get("compared_with"), "customers_found": len(rows), "customers": top,
+            "products_matched_to_a_fund": matched, "products_not_matched": unmatched, "result_id": rid,
+            "rule": f"דירוג = מקום בתשואה מתחילת השנה בתוך קבוצת השווים (לפחות {MIN_GROUP} קופות), תזוזה של {MIN_RANK_MOVE} מקומות לפחות. "
+                    "רק מוצרים שהמסלול שלהם זוהה בוודאות מול הנתונים הרשמיים (products_not_matched לא נבדקו). "
+                    "ירידה בדירוג בחודש אחד אינה סיבה לניוד — הצג כנקודה לבדיקה.",
             "disclaimer": DISCLAIMER}

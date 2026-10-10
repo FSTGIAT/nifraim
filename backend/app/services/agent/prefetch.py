@@ -67,6 +67,13 @@ def plan(question: str) -> list[tuple[str, dict]]:
         calls.append(("search_policies", {"query": q, **({"id_number": m_id.group(1)} if m_id else {}), "limit": 8}))
         return calls[:3]          # never prime a cover/price question with commission tools
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
+    if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
+        calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))
+        return calls[:3]
+    m_cust = ID_RE.search(q)
+    if m_cust and (FUND_Q.search(q) or any(re.search(p_, q) for p_, _ in FUND_CATS)):
+        calls.append(("get_customer_fund_fit", {"id_number": m_cust.group(1)}))   # this customer's money vs the market
+        return calls[:3]
     about_customer = bool(calls) or re.search(r"לקוח|שלו\b|שלה\b", q)
     market_change = MARKET_CHANGE_Q.search(q) and not about_customer
     if (FUND_Q.search(q) or market_change) and not explain and not re.search(r"מסלק", q):

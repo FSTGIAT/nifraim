@@ -134,6 +134,26 @@ async def market_delta(db: AsyncSession, source: str, classes: tuple[str, ...] =
     return out
 
 
+async def rank_moves(db: AsyncSession, source: str, classes: tuple[str, ...] = ()) -> dict:
+    """{period, compared_with, moves: {fund_id: (rank_before, rank_now, group_size)}} for every fund
+    in both months, ranked by YTD yield inside its peer group (the same rule as market_delta)."""
+    ps = await periods(db, source)
+    if len(ps) < 2:
+        return {"moves": {}}
+
+    async def month(p):
+        q = select(F).where(F.source == source, F.report_period == p)
+        if classes:
+            q = q.where(F.classification.in_(classes))
+        return {f.fund_id: f for f in (await db.execute(q)).scalars()}
+
+    cur, prev = await month(ps[0]), await month(ps[1])
+    both = cur.keys() & prev.keys()
+    r_now, r_prev = _ranks([cur[i] for i in both], "ytd_yield"), _ranks([prev[i] for i in both], "ytd_yield")
+    return {"month": _ym(ps[0]), "compared_with": _ym(ps[1]),
+            "moves": {i: (r_prev[i][0], r_now[i][0], r_now[i][1]) for i in both if i in r_now and i in r_prev}}
+
+
 async def _alloc(db: AsyncSession, period: int, ids: list[int] | None = None) -> dict[int, dict[int, float]]:
     q = select(P.entity_id, P.item_id, P.pct).where(P.report == "assets_main", P.level == "track", P.period == period)
     if ids is not None:
