@@ -128,6 +128,18 @@ def test_analyst_may_not_do_math():
     assert B.guard_narrative(lines, facts) == ["פנסיה מובילה עם 25% מהשיחות", "כדאי לתאם פגישות השבוע"]
 
 
+def test_counts_in_words_are_dropped_too():
+    facts = {"stats": {"agent_open": 60}}
+    assert B.guard_narrative(["שישים משימות פתוחות", "יש 60 משימות פתוחות"], facts) == ["יש 60 משימות פתוחות"]
+
+
+def test_brief_is_light_when_only_undated():
+    from zoneinfo import ZoneInfo
+    s = R.brief_sentences(datetime(2026, 10, 10, 19, tzinfo=ZoneInfo("Asia/Jerusalem")), "קיקו", [], [],
+                          [{"text": "x", "customer": None, "due_time": None, "overdue_days": 0}] * 20)
+    assert s[0] == "ערב טוב קיקו." and s[1] == "להיום אין משהו קבוע." and s[2].startswith("20 דברים שהבטחת ללקוחות")
+
+
 def test_themes_only_use_given_strings():
     out = B.clean_themes([{"name": "פנסיה", "members": ["פנסיה", "המצאה"]}, {"name": "שוב", "members": ["פנסיה"]},
                           {"name": 'ביטוח חיים ואכ"ע', "members": ["ביטוח חיים"]}], {"פנסיה", "ביטוח חיים"})

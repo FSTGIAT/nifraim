@@ -66,7 +66,7 @@
                   <LineTrend :points="weeks" />
                 </section>
               </div>
-              <InsightsPanel :narrative="board.narrative" :status="board.themes_status" @open-calls="openCalls" />
+              <InsightsPanel :narrative="board.narrative" :status="board.themes_status" @open-calls="openCalls" @open-tasks="openTasks" />
             </div>
           </main>
         </div>
@@ -183,21 +183,24 @@ function placePill() {
   const el = periodEls[PERIODS.findIndex((p) => p.days === days.value)]
   if (el) pill.value = { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight }
 }
-function setDays(d) { days.value = d; nextTick(placePill); store.loadBoard(d) }
+function setDays(d) { days.value = d; nextTick(placePill); polls = 0; loadAndPoll(d) }
 onMounted(() => window.addEventListener('resize', placePill))
 onBeforeUnmount(() => { window.removeEventListener('resize', placePill); document.body.classList.remove('mam-open'); clearTimeout(pollT) })
 watch(() => props.open, (v) => document.body.classList.toggle('mam-open', !!v))
 
-// the theme pass runs in the background the first time — re-read the board until it lands
+// the theme pass runs in the background the first time (~30s) — keep re-reading the board until it lands.
+// A watch on themes_status fired once: the 2nd answer was "computing" again, nothing changed, polling died.
 let pollT = 0
 let polls = 0
-watch(() => board.value && board.value.themes_status, (st) => {
+async function loadAndPoll(d = days.value) {
   clearTimeout(pollT)
-  if (st === 'computing' && props.open && polls < 20) {
+  const b = await store.loadBoard(d)
+  if (b && b.themes_status === 'computing' && props.open && polls < 30) {
     polls += 1
-    pollT = setTimeout(() => store.loadBoard(days.value), 4000)
+    pollT = setTimeout(() => loadAndPoll(days.value), 4000)
   }
-})
+}
+watch(() => props.open, (v) => { if (!v) clearTimeout(pollT) })
 
 const morph = useOriginMorph()
 const cardEl = ref(null)
@@ -207,7 +210,7 @@ function onEnter() {
   nextTick(placePill)
   setTimeout(placePill, 900)
   polls = 0
-  store.loadBoard(days.value)
+  loadAndPoll(days.value)
   store.loadReminders()
 }
 async function close() {
@@ -279,16 +282,18 @@ function allTasks() {
   }
   return [...m.values()].sort((a, b) => b.overdue_days - a.overdue_days || (a.due_date || '9').localeCompare(b.due_date || '9'))
 }
+const TASK_FILTER = { open: () => true, late: (t) => t.overdue_days > 0, undated: (t) => !t.due_date }
+const TASK_TITLE = { open: 'משימות', late: 'באיחור', undated: 'בלי תאריך' }
 function openTasks(which, el) {
-  const list = allTasks().filter((t) => which !== 'late' || t.overdue_days > 0)
+  const list = allTasks().filter(TASK_FILTER[which])
   store.hover(null)
   drillOrigin.value = el
-  drill.value = { kind: 'tasks', which, title: which === 'late' ? 'באיחור' : 'משימות', badge: list.length, tasks: list }
+  drill.value = { kind: 'tasks', which, title: TASK_TITLE[which], badge: list.length, tasks: list }
 }
 async function doneTask(t) {
   await store.markDone(t.call_id, t.task_index)
   if (drill.value && drill.value.kind === 'tasks') {
-    const list = allTasks().filter((x) => drill.value.which !== 'late' || x.overdue_days > 0)
+    const list = allTasks().filter(TASK_FILTER[drill.value.which])
     drill.value = { ...drill.value, badge: list.length, tasks: list }
   }
 }

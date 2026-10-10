@@ -23,7 +23,10 @@
           </button>
         </li>
       </ul>
-      <p v-if="moreLate" class="ip-more">ועוד {{ moreLate }} באיחור</p>
+      <button v-if="moreLate" type="button" class="ip-all ip-all--late" @click="$emit('open-tasks', 'late', $event.currentTarget)">
+        ועוד {{ moreLate }} באיחור
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+      </button>
       <p v-if="nextTimed" class="ip-next">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
         <span class="ltr-number">{{ whenLabel(nextTimed) }}</span> <b>{{ nextTimed.text }}</b>
@@ -45,6 +48,11 @@
           </div>
         </li>
       </ul>
+      <button v-if="r.brief.undated.length > r.proposals.length" type="button" class="ip-all"
+              @click="$emit('open-tasks', 'undated', $event.currentTarget)">
+        ועוד {{ r.brief.undated.length - r.proposals.length }} בלי תאריך
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+      </button>
     </section>
 
     <section v-if="narrative.length || status === 'computing'" class="ip-card ip-narr" style="--hv: 214, 51, 108">
@@ -64,7 +72,7 @@ defineProps({
   narrative: { type: Array, default: () => [] },
   status: { type: String, default: '' },
 })
-defineEmits(['open-calls'])
+defineEmits(['open-calls', 'open-tasks'])
 const store = useCallsInsightsStore()
 const r = computed(() => store.reminders)
 
@@ -149,6 +157,9 @@ async function confirm(p) {
 .ip-narr h3 { color: var(--tab-insights-ink); }
 .ip-narr ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; }
 .ip-narr li { padding-inline-start: 12px; border-inline-start: 2px solid var(--tab-insights-soft); }
+.ip-all { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px 8px; border: none; background: none; font: inherit; font-size: 12px; font-weight: 800; color: var(--tab-insights-ink); cursor: pointer; border-radius: 8px; }
+.ip-all:hover { background: rgba(var(--hv), 0.14); }
+.ip-all--late { color: var(--red); }
 .ip-more { margin: 4px 8px 0; font-size: 12px; color: var(--red); font-weight: 700; }
 .ip-narr li { animation: ipIn 0.6s ease both; animation-delay: calc(0.3s + var(--i) * 0.12s); }
 .ip-thinking { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 12px; color: var(--text-secondary, #5C5C5C); }

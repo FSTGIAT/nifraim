@@ -189,7 +189,8 @@ SYSTEM = """אתה אנליסט עסקי של סוכנות ביטוח ופנסי
    ביטוח בריאות, ביטוח חיים, ניהול תיקים...). כל מחרוזת לנושא אחד לכל היותר; העתק אותן בדיוק. מחרוזת שלא שייכת לשום מוצר
    (תקלה טכנית, תמלול לא ברור) — אל תכניס.
 2) narrative: 3–5 תובנות חדות, כמו אנליסט שמדבר עם הסוכן: הזדמנויות (מכירה צולבת, ניוד), סיכונים (התנגדויות, לקוח לא מרוצה),
-   ומה לעשות השבוע. מספרים — רק מתוך העובדות שקיבלת, בלי לחשב חדשים ובלי אחוזים. בלי מספרי שיחות לנושא. בלי שמות לקוחות.
+   ומה לעשות השבוע. מספרים — רק מתוך העובדות שקיבלת, תמיד בספרות (11, לא "אחד-עשר"), בלי לחשב חדשים ובלי אחוזים.
+   בלי מספרי שיחות לנושא. בלי שמות לקוחות.
    עברית, עד 22 מילים לתובנה."""
 
 
@@ -218,13 +219,17 @@ def _facts_numbers(facts: dict) -> set[str]:
     return out
 
 
+_NUMBER_WORDS = re.compile(r"(?<![א-ת])(שתיים|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר|עשרים|שלושים|ארבעים|חמישים|שישים|שבעים|שמונים|תשעים|מאה)")
+
+
 def guard_narrative(lines: list[str], facts: dict) -> list[str]:
-    """Drop any sentence carrying a number the facts don't contain — the analyst may not do math."""
+    """Drop any sentence carrying a number the facts don't contain — the analyst may not do math.
+    A count spelled out in words ("שישים משימות") can't be checked, so it's dropped too."""
     ok = _facts_numbers(facts)
     keep = []
     for ln in lines or []:
         ln = (ln or "").strip()
-        if ln and all(n in ok for n in re.findall(r"\d+(?:\.\d+)?", ln)):
+        if ln and all(n in ok for n in re.findall(r"\d+(?:\.\d+)?", ln)) and not _NUMBER_WORDS.search(ln):
             keep.append(ln)
     return keep[:5]
 
@@ -276,6 +281,8 @@ async def refresh(user_id, fp: str) -> None:
             rows = (await db.execute(select(CallRecording).where(
                 CallRecording.user_id == user_id, CallRecording.status == "done", visible()))).scalars().all()
             themes, narrative, model = await compute(rows)
+            if not themes and not narrative:   # nothing usable — don't freeze an empty answer as "ready"
+                raise RuntimeError("theme pass returned nothing usable")
             row = await db.get(CallsInsightsCache, user_id)
             if row is None:
                 row = CallsInsightsCache(user_id=user_id, fingerprint=fp)

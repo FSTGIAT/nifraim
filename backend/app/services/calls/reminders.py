@@ -117,22 +117,30 @@ def headline(n_today: int, n_over: int, n_undated: int) -> str:
     if n_over:
         parts.append(f"{n_over} באיחור")
     if n_undated:
-        parts.append(f"{n_undated} בלי מועד")
+        parts.append(f"{n_undated} בלי תאריך")
     return " · ".join(parts) or "אין משימות פתוחות מהשיחות"
 
 
+def _n(n: int, one: str, many: str) -> str:
+    return one if n == 1 else f"{n} {many}"
+
+
 def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list, undated: list) -> list[str]:
+    """Short, light, self-explaining — the agent hears it once, cold, between two calls."""
     out = [_greeting(now_il, name)]
     if not (due_today or overdue or undated):
-        return out + ["אין משימות פתוחות מהשיחות. יום טוב."]
+        return out + ["אין משימות פתוחות מהשיחות. יום רגוע!"]
     if due_today:
-        out.append("היום מחכה לך משימה אחת:" if len(due_today) == 1 else f"היום מחכות לך {len(due_today)} משימות:")
-        for t in due_today[:5]:
-            out.append(f"{'בשעה ' + t['due_time'] + ', ' if t['due_time'] else ''}{_say(t)}.")
+        out.append(f"להיום יש לך {_n(len(due_today), 'משימה אחת', 'משימות')} מהשיחות.")
+        for t in due_today[:3]:
+            out.append(f"{'ב-' + t['due_time'] + ': ' if t['due_time'] else ''}{_say(t)}.")
+    elif overdue or undated:
+        out.append("להיום אין משהו קבוע.")
     if overdue:
         old = max(overdue, key=lambda t: t["overdue_days"])
-        out.append(f"{'משימה אחת באיחור' if len(overdue) == 1 else f'{len(overdue)} משימות באיחור'}. "
-                   f"הכי ותיקה: {_say(old)}, {old['overdue_days']} ימים.")
+        late = "משימה אחת כבר עברה את המועד" if len(overdue) == 1 else f"{len(overdue)} משימות כבר עברו את המועד"
+        out.append(f"{late}. הכי חשובה: {_say(old)}.")
     if undated:
-        out.append(f"ועוד {'משימה אחת' if len(undated) == 1 else f'{len(undated)} משימות'} בלי מועד — הצעתי מועדים, אפשר לאשר במסך התובנות.")
+        out.append(f"{_n(len(undated), 'דבר אחד', 'דברים')} שהבטחת ללקוחות עוד בלי תאריך — "
+                   "ב-Nifra Insights אפשר לקבוע להם יום בלחיצה.")
     return out
