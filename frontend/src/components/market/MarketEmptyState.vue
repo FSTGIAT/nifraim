@@ -6,9 +6,9 @@
     <span class="mes-blob mes-blob--b" aria-hidden="true"></span>
     <div class="mes-art" aria-hidden="true">
       <RemotionLoopIsland component="MarketEmpty" frames-key="MARKET_EMPTY_FRAMES" :width="520" :height="220"
-                          :input-props="{ color: '#7A7F2A', tone }">
+                          :input-props="{ color: '#5B8DD6', tone }">
         <svg viewBox="0 0 520 220" class="mes-static"><rect v-for="(h, i) in [70, 110, 92, 140, 120, 96, 128]" :key="i"
-             :x="76 + i * 56" :y="186 - h" width="28" :height="h" rx="14" fill="none" stroke="#7A7F2A" stroke-opacity="0.5" stroke-width="2" /></svg>
+             :x="76 + i * 56" :y="186 - h" width="28" :height="h" rx="14" fill="none" stroke="#5B8DD6" stroke-opacity="0.5" stroke-width="2" /></svg>
       </RemotionLoopIsland>
     </div>
     <h3>{{ title }}</h3>
@@ -37,8 +37,8 @@ defineEmits(['go'])
   padding: 18px 24px 28px; border-radius: 18px; background: #fff; border: 1px solid var(--border-subtle, #E5E5E5);
 }
 .mes-blob { position: absolute; border-radius: 50%; filter: blur(46px); opacity: 0.5; pointer-events: none; animation: mesBob 12s ease-in-out infinite; }
-.mes-blob--a { width: 260px; height: 260px; top: -120px; right: -60px; background: rgba(122, 127, 42, 0.22); }
-.mes-blob--b { width: 220px; height: 220px; bottom: -110px; left: -40px; background: rgba(201, 205, 140, 0.35); animation-delay: -6s; }
+.mes-blob--a { width: 260px; height: 260px; top: -120px; right: -60px; background: rgba(91, 141, 214, 0.22); }
+.mes-blob--b { width: 220px; height: 220px; bottom: -110px; left: -40px; background: rgba(186, 209, 240, 0.35); animation-delay: -6s; }
 .mes-art { position: relative; width: min(420px, 100%); }
 .mes-art :deep(.rli-mount) { direction: ltr; }
 .mes-static { width: 100%; height: auto; }

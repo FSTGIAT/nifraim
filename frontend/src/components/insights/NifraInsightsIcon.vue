@@ -31,21 +31,22 @@ const btnEl = ref(null)
 .nii:focus-visible { outline: 2px solid var(--tab-insights); outline-offset: 6px; border-radius: 50%; }
 .nii-ring {
   position: relative; display: grid; place-items: center; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #FFFFFF 0%, #F2F6F6 60%, #E3ECED 100%);
-  box-shadow: inset 0 0 0 1px rgba(44, 95, 107, 0.16), 0 10px 30px rgba(44, 95, 107, 0.16), 0 2px 6px rgba(24, 24, 24, 0.06);
+  /* filled with Insights' own colour: light teal → deep teal (user 2026-10-10) */
+  background: radial-gradient(circle at 35% 30%, #6FA3AE 0%, #3C7380 45%, #1F4650 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 10px 30px rgba(44, 95, 107, 0.34), 0 2px 6px rgba(24, 24, 24, 0.08);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 .nii--big .nii-ring { width: 118px; height: 118px; }
 .nii--small .nii-ring { width: 54px; height: 54px; }
 .nii--big .nii-art { width: 64px; height: 64px; }
 .nii--small .nii-art { width: 32px; height: 32px; }
-.nii:hover .nii-ring { transform: scale(1.05); box-shadow: inset 0 0 0 1px rgba(44, 95, 107, 0.3), 0 14px 38px rgba(44, 95, 107, 0.24); }
-.nii-base { stroke: rgba(24, 24, 24, 0.18); stroke-width: 1.2; stroke-linecap: round; }
+.nii:hover .nii-ring { transform: scale(1.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 14px 38px rgba(44, 95, 107, 0.44); }
+.nii-base { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.2; stroke-linecap: round; }
 .nii-line {
-  fill: none; stroke: var(--tab-insights); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+  fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: 1; stroke-dashoffset: 1; animation: niiDraw 6s cubic-bezier(0.4, 0.1, 0.2, 1) infinite;
 }
-.nii-dot { fill: #fff; stroke: var(--text-primary, #181818); stroke-width: 1.8; opacity: 0; transform-box: fill-box; transform-origin: center; animation: niiDot 6s ease infinite; }
+.nii-dot { fill: #2C5F6B; stroke: #fff; stroke-width: 1.8; opacity: 0; transform-box: fill-box; transform-origin: center; animation: niiDot 6s ease infinite; }
 .nii-badge {
   position: absolute; top: 4%; inset-inline-start: 4%; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
   display: grid; place-items: center; background: var(--red); color: #fff; font-size: 12px; font-weight: 800;

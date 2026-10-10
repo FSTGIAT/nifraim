@@ -15,7 +15,12 @@
   >
     <span class="nai-ring">
       <span class="nai-glow" aria-hidden="true"></span>
-      <ThinkingOrbIsland class="nai-orb" :state="state" :size="64" color="#0E8C8A" :dot-size="size === 'big' ? 1.25 : 1.6" :dots="1.1" />
+      <!-- Drawn at its real size in the corner (the 32px preset in a 54px ring), not a 64px orb scaled down —
+           the scale didn't always take and the orb spilled over the next circle (user 2026-10-10). -->
+      <span class="nai-orb-clip">
+        <ThinkingOrbIsland class="nai-orb" :state="state" :size="size === 'big' ? 64 : 32" color="#0E8C8A"
+                           :dot-size="size === 'big' ? 1.25 : 1.6" :dots="1.1" />
+      </span>
       <b v-if="store.todoCount" class="nai-badge ltr-number">{{ store.todoCount }}</b>
     </span>
     <span v-if="size === 'big'" class="nai-cap" dir="ltr">Nifra <b>Agent</b></span>
@@ -58,7 +63,8 @@ onMounted(() => { if (!store.narration) store.narrate() })
 }
 .nai--big .nai-ring { width: 118px; height: 118px; }
 .nai--small .nai-ring { width: 54px; height: 54px; }
-.nai--small .nai-orb { transform: scale(0.72); }
+/* the orb never draws outside its ring */
+.nai-orb-clip { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
 .nai--big .nai-orb { transform: scale(1.35); }
 .nai:hover .nai-ring { transform: scale(1.06); box-shadow: inset 0 0 0 1px rgba(14, 140, 138, 0.3), 0 14px 38px rgba(14, 140, 138, 0.28); }
 .nai-glow {

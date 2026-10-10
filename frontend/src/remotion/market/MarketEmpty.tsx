@@ -13,7 +13,7 @@ export const MARKET_EMPTY_FRAMES = LOOP * 360
 
 const BARS = [70, 110, 92, 140, 120, 96, 128]
 
-export const MarketEmpty: React.FC<{ color?: string; tone?: 'empty' | 'ok' }> = ({ color = '#7A7F2A', tone = 'empty' }) => {
+export const MarketEmpty: React.FC<{ color?: string; tone?: 'empty' | 'ok' }> = ({ color = '#5B8DD6', tone = 'empty' }) => {
   const f = useCurrentFrame()
   const t = (f % LOOP) / LOOP
   const draw = interpolate(f, [0, 50], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })

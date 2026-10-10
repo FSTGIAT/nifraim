@@ -133,7 +133,8 @@ onMounted(async () => {
 .mh-wait, .mh-empty { padding: 28px; text-align: center; color: var(--text-secondary, #5C5C5C); background: #fff; border-radius: 14px; }
 .mh-empty p { margin: 0; font-size: 15px; color: var(--text-primary, #181818); }
 .mh-empty .mh-empty-sub { margin-top: 8px; font-size: 13px; color: var(--text-secondary, #5C5C5C); }
-.mh-top { background: #fff; border-radius: 16px; padding: 18px 22px; border: 1px solid var(--border-subtle, #E5E5E5); }
+.mh-top { background: #fff; border-radius: 16px; padding: 18px 22px; border: 1px solid var(--border-subtle, #E5E5E5); transition: background-color 0.2s ease, box-shadow 0.2s ease; }
+.mh-top:hover { background: rgba(91, 141, 214, 0.09); box-shadow: inset 0 0 0 1px rgba(91, 141, 214, 0.32); }
 .mh-count { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .mh-count small { font-size: 13px; color: var(--text-secondary, #5C5C5C); }
 .mh-count b { font-size: clamp(34px, 4.4vw, 52px); font-weight: 900; letter-spacing: -0.03em; color: var(--tab-market-ink); line-height: 1.05; }
@@ -142,7 +143,7 @@ onMounted(async () => {
   margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 999px;
   background: var(--tab-market-wash); color: var(--tab-market-ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
 }
-.mh-how-toggle:hover { background: rgba(122, 127, 42, 0.18); }
+.mh-how-toggle:hover { background: rgba(91, 141, 214, 0.18); }
 .mh-how { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .mh-how.open { grid-template-rows: 1fr; }
 .mh-how-in { overflow: hidden; min-height: 0; }
@@ -154,7 +155,7 @@ onMounted(async () => {
 }
 .mh-steps b { font-size: 14px; font-weight: 800; }
 .mh-steps span { font-size: 13px; line-height: 1.5; color: var(--text-secondary, #5C5C5C); }
-.mh-ex { margin-top: 10px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed rgba(122, 127, 42, 0.45); display: flex; flex-direction: column; gap: 10px; }
+.mh-ex { margin-top: 10px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed rgba(91, 141, 214, 0.45); display: flex; flex-direction: column; gap: 10px; }
 .mh-ex-title { margin: 0; font-size: 14px; font-weight: 800; }
 .mh-ex-bars { display: flex; flex-direction: column; gap: 8px; }
 .mh-ex-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(80px, 1fr) 64px; align-items: center; gap: 10px; font-size: 13px; }

@@ -168,7 +168,10 @@ function countUp() {
 .mm-kpis b { font-size: 22px; font-weight: 800; }
 .mm-kpis > div:first-child b { color: var(--tab-market-ink); }
 .mm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.mm-card { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.mm-card { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease; }
+/* hover fills the card in Market's steel blue, as Nifra Insights does in its teal */
+.mm-card:hover { background: rgba(91, 141, 214, 0.09); box-shadow: inset 0 0 0 1px rgba(91, 141, 214, 0.32); }
 .mm-card--wide { grid-column: 1 / -1; }
 .mm-card header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mm-card h4 { margin: 0; font-size: 15px; font-weight: 800; }

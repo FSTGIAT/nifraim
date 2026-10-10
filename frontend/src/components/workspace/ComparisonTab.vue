@@ -83,7 +83,6 @@
             </svg>
             <span class="toolbar-icon-badge ltr-number">{{ mismatch.count }}</span>
           </button>
-          <RecentFilesPopover @select="onCommissionFileSelect" />
         </div>
       </div>
 
@@ -171,7 +170,6 @@ import ComparisonInsightsDashboard from '../comparison/ComparisonInsightsDashboa
 import CompanyReconciliationSummary from '../comparison/CompanyReconciliationSummary.vue'
 import { useScrollReveal } from '../../composables/useScrollReveal'
 import ProdScrollGraph from './ProdScrollGraph.vue'
-import RecentFilesPopover from '../comparison/RecentFilesPopover.vue'
 import TabHeroLoop from './TabHeroLoop.vue'
 import BigAddButton from './BigAddButton.vue'
 import PointingHand from './PointingHand.vue'

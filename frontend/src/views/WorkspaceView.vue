@@ -80,7 +80,10 @@
       class="ws-cycle-small"
       :class="{ 'ws-cycle-small--below-bell': !bellInRail, 'ws-cycle-small--content': viewMode === 'content' }"
     >
+      <!-- The clock is always on top (user 2026-10-10). Nifra AI follows as one circle of the stack —
+           it was a separate fixed 70px circle that sat on top of Nifra Agent when the bell is in the rail. -->
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
+      <AiAssistantWidget v-if="viewMode === 'content'" size="small" />
       <NifraAgentIcon size="small" @open="openCollector" />
       <NifraMarketIcon v-if="viewMode === 'content'" size="small" @open="openMarket" />
       <NifraInsightsIcon v-if="viewMode === 'content'" size="small" :badge="insightsStore.dueBadge" @open="openInsights" />
@@ -101,9 +104,6 @@
     <!-- Content mode only. The home screen already has AiChatWidget — a full
          assistant panel with its own sources and suggestions — so a second
          entry point to the same AI would be two doors to one room. -->
-    <div v-if="viewMode === 'content'" class="ws-ai-anchor">
-      <AiAssistantWidget />
-    </div>
 
     <!-- ONE sheet for the whole workspace. It used to be rendered per
          dashboard, so each carried its own copy plus its own viz plumbing —
@@ -129,8 +129,11 @@
     <!-- Nifra Market — the fund-rankings studio, in the bottom-left of home (where the insights orbit was,
          removed 2026-10-10). Inside the tabs it's the small circle in the corner stack. -->
     <div v-if="viewMode === 'home'" class="ws-market-spot">
-      <NifraMarketIcon :size="isPhone ? 'small' : 'big'" @open="openMarket" />
       <NifraInsightsIcon :size="isPhone ? 'small' : 'big'" :badge="insightsStore.dueBadge" @open="openInsights" />
+    </div>
+    <!-- Market sits up beside Nifra Calls (user 2026-10-10), tied to the Calls widget's position. -->
+    <div v-if="viewMode === 'home'" class="ws-market-own">
+      <NifraMarketIcon :size="isPhone ? 'small' : 'big'" @open="openMarket" />
     </div>
 
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
@@ -883,13 +886,6 @@ async function openFundDetail(trackId) {
 /* Right rail, reading top to bottom: alerts · assistant · people. Offset far
    enough below the bell that the two never read as one control, and well
    clear of the messenger pill in the bottom corner. */
-.ws-ai-anchor {
-  position: fixed;
-  top: 108px;
-  inset-inline-start: 9px;   /* RTL: visual-RIGHT — 64px orb, so 9px keeps
-                                its CENTRE aligned with the 46px bell above */
-  z-index: 200;
-}
 /* Cycle: big emotion clock, vertically centred in the empty band between the
    cards grid (882px, centred) and the right rail. */
 .ws-emotion-clock {
@@ -904,11 +900,12 @@ async function openFundDetail(trackId) {
    the rail); under the corner bell when that fallback is showing. */
 .ws-cycle-small { position: fixed; top: 44px; inset-inline-start: 18px; z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .ws-cycle-small--below-bell { top: 104px; }
-.ws-cycle-small--below-bell.ws-cycle-small--content { top: 188px; }
+/* the AI widget is inside the stack now — no band to leave above it */
+.ws-cycle-small--below-bell.ws-cycle-small--content { top: 104px; }
 @media (max-width: 720px) {
   .ws-bell-anchor { top: 40px; inset-inline-start: 10px; }
   .ws-cycle-small--below-bell { top: 96px; inset-inline-start: 10px; }
-  .ws-cycle-small--below-bell.ws-cycle-small--content { top: 180px; }
+  .ws-cycle-small--below-bell.ws-cycle-small--content { top: 96px; }
 }
 @media (max-width: 640px) {
   .ws-bell-anchor { top: 8px; }
@@ -933,6 +930,15 @@ async function openFundDetail(trackId) {
 .ws-market-spot { position: fixed; bottom: 86px; left: 105px; z-index: 102; display: flex; align-items: flex-end; gap: 22px; }
 @media (max-width: 720px) { .ws-market-spot { bottom: 18px; left: 18px; } }
 @media print { .ws-market-spot { display: none; } }
+/* Market: to the right of Nifra Calls and a step below it — Calls' own left formula + 101px, never closer
+   to Insights than its old spot beside it (105 + 118 ring + 22 gap). */
+.ws-market-own {
+  position: fixed; z-index: 102;
+  left: max(calc((100vw - 882px) / 4 - 9px + 101px), 245px);
+  bottom: 168px;
+}
+@media (max-width: 720px) { .ws-market-own { bottom: 18px; left: 90px; } }
+@media print { .ws-market-own { display: none; } }
 
 /* ─── Home view blur circles ─── */
 .home-view {

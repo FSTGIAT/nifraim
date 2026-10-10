@@ -175,22 +175,22 @@ const onlyIn = computed(() => {
 /* the scoreboard — calm, classic: ink panel, two names, rolling digits */
 .cd2-board {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 18px 22px; border-radius: 18px;
-  background: linear-gradient(180deg, #2A2D17 0%, #1E2010 100%); color: #F4F4EE;
+  background: linear-gradient(180deg, #1B365D 0%, #12253F 100%); color: #F4F4EE;
   box-shadow: 0 14px 34px rgba(30, 32, 16, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06); transition: opacity 0.2s;
 }
 .cd2-board--busy { opacity: 0.6; }
 .cd2-team { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .cd2-name { font-size: 15px; font-weight: 800; letter-spacing: 0.02em; color: rgba(244, 244, 238, 0.75); }
-.cd2-team.lead .cd2-name { color: #E3E7A4; }
+.cd2-team.lead .cd2-name { color: #C9DBF3; }
 .cd2-digits { display: flex; gap: 6px; }
 .cd2-reel {
   position: relative; width: 46px; height: 64px; overflow: hidden; border-radius: 10px;
-  background: linear-gradient(180deg, #34381D 0%, #2A2D17 50%, #34381D 100%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, #24406A 0%, #1B365D 50%, #24406A 100%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 .cd2-reel::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0, 0, 0, 0.35); }
 .cd2-reel > span { display: flex; flex-direction: column; transition: transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .cd2-reel i { height: 64px; flex-shrink: 0; display: grid; place-items: center; font-style: normal; font-size: 40px; font-weight: 900; color: #F4F4EE; }
-.cd2-team.lead .cd2-reel i { color: #E3E7A4; }
+.cd2-team.lead .cd2-reel i { color: #C9DBF3; }
 .cd2-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .cd2-colon { font-size: 36px; font-weight: 900; color: rgba(244, 244, 238, 0.45); line-height: 1; }
 .cd2-mid small { font-size: 12px; color: rgba(244, 244, 238, 0.6); }

@@ -162,11 +162,12 @@ const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
   --tab-calls: var(--chart-11);
   --tab-calls-wash: rgba(217, 106, 181, 0.12);
   --tab-calls-ink: #A63A86;
-  /* Nifra Market — the fund rankings studio (components/market). Olive = the one validated palette
-     slot no tab owned; the accent fails 4.5:1 as text (4.29) → text and solid buttons use the ink (6.4:1). */
-  --tab-market: var(--chart-3);
-  --tab-market-wash: rgba(122, 127, 42, 0.10);
-  --tab-market-ink: #5E6320;
+  /* Nifra Market — the fund rankings studio (components/market). Navy + steel blue (user 2026-10-10;
+     olive retired): steel blue #5B8DD6 fills bars and washes but fails 4.5:1 as text → text and solid
+     buttons use the navy ink #1B365D (≈12:1). Kept clear of Production cobalt and Insights teal. */
+  --tab-market: #5B8DD6;
+  --tab-market-wash: rgba(91, 141, 214, 0.10);
+  --tab-market-ink: #1B365D;
   /* Nifra Insights — calls → line-drawn charts + reminders (components/insights). Deep teal on ink line art
      (the user's pick, 2026-10-10; purple rejected). 7.6:1 on white. */
   --tab-insights: #2C5F6B;

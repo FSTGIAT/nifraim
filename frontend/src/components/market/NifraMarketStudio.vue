@@ -5,7 +5,6 @@
     <Transition name="nms" @enter="onEnter">
       <div v-if="open" class="nms-overlay" @click.self="close">
         <div ref="cardEl" class="nms" role="dialog" aria-label="Nifra Market">
-          <MarketWaves />
           <header class="nms-head">
             <div class="nms-title">
               <h2 dir="ltr">Nifra <b>Market</b></h2>
@@ -13,7 +12,7 @@
             </div>
             <div class="nms-pulse" aria-hidden="true">
               <RemotionLoopIsland component="MarketPulse" frames-key="MARKET_PULSE_FRAMES" :width="560" :height="180"
-                                  :input-props="{ color: '#7A7F2A' }" />
+                                  :input-props="{ color: '#5B8DD6' }" />
             </div>
             <button type="button" class="nms-x" aria-label="סגירה" @click="close">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -79,7 +78,6 @@ import MarketLadder from './MarketLadder.vue'
 import MarketMoves from './MarketMoves.vue'
 import CompanyDuel from './CompanyDuel.vue'
 import CustomerMarketDrill from './CustomerMarketDrill.vue'
-import MarketWaves from './MarketWaves.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: null, default: null } })
 const emit = defineEmits(['update:open'])
@@ -149,10 +147,10 @@ async function ask() {
   position: relative; width: min(1080px, 100%); height: min(860px, calc(100vh - 32px));
   display: flex; flex-direction: column; overflow: hidden; border-radius: 28px;
   /* its own light surface — a window, not the page: --app-canvas is the agent's chosen page colour and can be dark */
-  background: #F4F4EE; box-shadow: 0 40px 100px rgba(30, 32, 8, 0.32);
+  background: #F3F5F9; box-shadow: 0 40px 100px rgba(12, 25, 45, 0.32);
   font-family: 'Heebo', sans-serif; color: var(--text-primary, #181818);
 }
-/* content above the bottom waves */
+/* content above the studio's own layers */
 .nms-head, .nms-nav, .nms-body, .nms-ask { position: relative; z-index: 1; }
 .nms-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 6px; }
 .nms-title h2 { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.02em; text-align: right; }

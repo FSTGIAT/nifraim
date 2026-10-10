@@ -4,7 +4,7 @@
        (bottom) so the rail reads: alerts · assistant · people. -->
   <button
     class="aiw"
-    :class="{ 'aiw--active': ai.open, 'aiw--ctx': ai.hasContext }"
+    :class="['aiw--' + size, { 'aiw--active': ai.open, 'aiw--ctx': ai.hasContext }]"
     type="button"
     :title="title"
     :aria-label="title"
@@ -12,13 +12,15 @@
   >
     <!-- ThinkingOrb (components/ui/thinking-orbs): "working" at rest,
          "listening" while the conversation is open. -->
-    <ThinkingOrbIsland class="aiw-orb" :state="ai.open ? 'listening' : 'working'" :size="64" :color="ORB_COLOR" :dot-size="1.7" :dots="1.2" />
+    <ThinkingOrbIsland class="aiw-orb" :state="ai.open ? 'listening' : 'working'" :size="size === 'small' ? 32 : 64" :color="ORB_COLOR" :dot-size="1.7" :dots="1.2" />
     <!-- Only when the current screen can actually brief the AI. -->
     <span v-if="ai.hasContext" class="aiw-dot" aria-hidden="true"></span>
   </button>
 </template>
 
 <script setup>
+// small = one 54px circle in the right-hand stack, the same size as its neighbours (user 2026-10-10)
+defineProps({ size: { type: String, default: 'big' } })
 import { computed } from 'vue'
 import { useAiContextStore } from '../../stores/aiContext.js'
 import ThinkingOrbIsland from './ThinkingOrbIsland.vue'
@@ -55,6 +57,9 @@ const title = computed(() =>
 .aiw--active { border-color: #7C4DBE; }
 
 .aiw-orb { width: 64px; height: 64px; }
+.aiw--small { width: 54px; height: 54px; }
+.aiw--small .aiw-orb { width: 32px; height: 32px; }
+.aiw--small .aiw-dot { top: 3px; left: 3px; width: 9px; height: 9px; }
 
 /* A screen the AI can actually speak about. Absent = it still opens, just
    without view context — which is a real difference worth showing. */

@@ -22,7 +22,7 @@ const BASE = 150
 const GAP = 46
 const X0 = 72
 
-export const MarketPulse: React.FC<{ color?: string }> = ({ color = '#7A7F2A' }) => {
+export const MarketPulse: React.FC<{ color?: string }> = ({ color = '#5B8DD6' }) => {
   const f = useCurrentFrame()
   const t = (f % LOOP) / LOOP
   const draw = interpolate(f, [0, 40], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })

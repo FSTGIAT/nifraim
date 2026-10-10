@@ -56,6 +56,7 @@ onMounted(() => requestAnimationFrame(() => { shown.value = true }))
   transition: opacity 0.5s ease calc(var(--i) * 55ms), transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms);
 }
 .rl--in .rl-row { opacity: 1; transform: none; }
+.rl-row:not(.rl-row--me):hover { background-color: rgba(91, 141, 214, 0.09); }
 .rl-row { transition: opacity 0.5s ease calc(var(--i) * 55ms), transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), background-color 0.25s; }
 .rl--in .rl-row:hover { background: var(--tab-market-wash); }
 .rl-row--me { background: var(--tab-market-wash); box-shadow: inset 0 0 0 1.5px var(--rl-accent); font-weight: 700; }
@@ -80,7 +81,7 @@ onMounted(() => requestAnimationFrame(() => { shown.value = true }))
   background: var(--rl-ink); box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--rl-accent);
   animation: rlPulse 2.2s ease-in-out infinite 1.4s;
 }
-@keyframes rlPulse { 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 9px rgba(122, 127, 42, 0.25); } }
+@keyframes rlPulse { 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 9px rgba(91, 141, 214, 0.25); } }
 .rl-val { text-align: center; font-weight: 700; }
 .rl-cust {
   justify-self: start; border: none; cursor: pointer; padding: 3px 10px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700;

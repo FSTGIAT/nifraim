@@ -114,8 +114,9 @@ function howLine(p) {
 .cmd-strip b { font-size: 21px; font-weight: 800; }
 .cmd-strip > div:first-child b { color: var(--tab-market-ink); }
 .cmd-prod { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 0;
-  transition: border-color 0.2s ease; }
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease; }
 .cmd-prod--open { border-color: color-mix(in srgb, var(--tab-market) 40%, transparent); }
+.cmd-prod:hover { background: rgba(91, 141, 214, 0.09); box-shadow: inset 0 0 0 1px rgba(91, 141, 214, 0.32); }
 .cmd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
   width: 100%; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
 .cmd-head:focus-visible { outline: 2px solid var(--tab-market); outline-offset: 4px; border-radius: 8px; }
