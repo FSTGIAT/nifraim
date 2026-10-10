@@ -180,14 +180,27 @@ ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|
                       r"|(?:^|\s)(?:טוב|טובה|טובים|טובות)(?:\s|\?|$)")   # "נילי סורני — הגמל שלה טוב?" (2026-10-10)
 
 
-async def _id_for_name(ctx, full_name: str) -> str | None:
+_HOLD_KIND = (("פנסי", "פנסי"), ("השתלמות", "השתלמות"), ("להשקעה", "להשקעה"), ("גמל", "גמל"))
+
+
+async def _id_for_name(ctx, full_name: str, question: str = "") -> str | None:
+    """The ONE customer with this name. Two "שחר כהן": the one whose מסלקה holdings have the product the
+    question names; else None (find_customer lists both and Nifra asks) — the first match answered
+    about the other שחר's גמל להשקעה (2026-10-10)."""
     m = await ctx.map()
     a, b = (full_name.split() + [""])[:2]
-    for c in [*m.customers, *m.extra.values()]:
-        fn, ln = _norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")
-        if {fn, ln} == {a, b}:
-            return str(c.get("id_number")).lstrip("0")
-    return None
+    ids = list(dict.fromkeys(str(c.get("id_number")).lstrip("0") for c in [*m.customers, *m.extra.values()]
+                             if {_norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")} == {a, b}))
+    if len(ids) <= 1:
+        return ids[0] if ids else None
+    kind = next((k for w, k in _HOLD_KIND if w in question), None)
+    if not kind:
+        return None
+    from sqlalchemy import text
+    rows = (await ctx.db.execute(text(
+        "select distinct ltrim(customer_id_number,'0') from pension_holdings where user_id=:u and product_type like :k "
+        "and ltrim(customer_id_number,'0') = any(:ids)"), {"u": ctx.user.id, "k": f"%{kind}%", "ids": ids})).scalars().all()
+    return rows[0] if len(rows) == 1 else None
 
 
 def companies_in(q: str) -> list[str]:
@@ -254,12 +267,12 @@ async def run_prefetch(ctx, question: str):
     # (plan() or named_customer may have added find_customer; either way the fit never ran — 2026-10-10)
     fc = next((a for n, a in steps if n == "find_customer"), None)
     if fc and CUSTOMER_CHANGE_Q.search(question) and not any(n == "customer_changes" for n, _ in steps):
-        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
+        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "", question)
         if idn:   # "אילת דנה לוי — מה השתנה אצלה מהחודש שעבר?"
             steps = [s_ for s_ in steps if not s_[0] in ("market_changes",) and not s_[0].startswith("compare_")]
             steps.insert(steps.index(("find_customer", fc)) + 1, ("customer_changes", {"id_number": idn}))
     elif fc and ADVICE_Q.search(question) and not any(n == "get_customer_fund_fit" for n, _ in steps):
-        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
+        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "", question)
         if idn:
             steps.insert(steps.index(("find_customer", fc)) + 1, ("get_customer_fund_fit", {"id_number": idn}))
     if any(n == "get_customer_fund_fit" for n, _ in steps):

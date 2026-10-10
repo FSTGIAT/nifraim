@@ -56,7 +56,7 @@ def category_for_product(product_type: str | None, product: str | None = None) -
 
 
 _SYN = [(r"מחקה", "עוקב"), (r"s\s*&\s*p\s*-?\s*500|500\s*s\s*&\s*p", "sp500"), (r"\bשקלי\b", "כספי"),
-        (r"\b05\b", "50"), (r"\b06\b", "60"), (r"(?<!\d)עד\s*50(?!\d)", "לבני 50 ומטה"), (r"(?<!\d)50\s*-\s*60(?!\d)", "לבני 50 עד 60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
+        (r"\b05\b", "50"), (r"\b06\b", "60"), (r"לגילאי", "לבני"), (r"(?<!\d)עד\s*50(?!\d)", "לבני 50 ומטה"), (r"(?<!\d)50\s*-\s*60(?!\d)", "לבני 50 עד 60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
 KEY = {"עוקב", "sp500", "מניות", "כללי", "אגח", "כספי", "הלכה", "הלכתי", "שריעה", "סחיר", "מדדי", "מדד", "לבני", "50", "60",
        "ומטה", "ומעלה", "עד", "קיימות", "פאסיבי", "אקטיבי", "חול", "ישראל", "צמוד", "יעד", "2030", "2040", "פלוס", "משולב"}
 
@@ -730,13 +730,30 @@ async def best_tracks_by_risk(ctx, category: str, level: int, index: bool = Fals
     by_id = {f.fund_id: f for f in rows}
     group = sorted(((by_id[fid], r) for fid, r in ranks.items() if r.get("rank") and r["level"] == level and r["style"] == style),
                    key=lambda t: t[1]["rank"])
+    note = None
+    if not group and not index:
+        # every pension track above 75% stocks is an index/abroad track — "the leader at high risk" is
+        # one of those, not "there are none" (2026-10-10)
+        style = INDEX_STYLE
+        group = sorted(((by_id[fid], r) for fid, r in ranks.items() if r.get("rank") and r["level"] == level and r["style"] == style),
+                       key=lambda t: t[1]["rank"])
+        if group:
+            note = "ברמת סיכון זו כל המסלולים המדורגים הם מסלולי מדד/חו\"ל — אלה המובילים ביניהם."
+    if not group:
+        # pension level 5: 43 tracks, none rankable (all younger than 3 years) — say so, not "אין נתונים"
+        at = [by_id[fid] for fid, r in ranks.items() if r["level"] == level and fid in by_id]
+        if at:
+            young = sum(1 for f in at if f.avg_yield_3y is None)
+            small = sum(1 for f in at if f.avg_yield_3y is not None and (f.total_assets or 0) < 100)
+            note = (f"ברמת סיכון זו יש {len(at)} מסלולים, אף אחד לא מדורג: {young} צעירים מ-3 שנים, {small} קטנים מ-₪100M, "
+                    "השאר סגורים לציבור או בקבוצה של פחות מ-5. אפשר להציג את רמה 4 (מוגבר).")
     top = group[: max(1, min(int(n or 8), 20))]
     y, m = divmod(period, 100)
     label = next(he for _, lv, he in LEVELS if lv == level) + (f" · {style}" if style else "")
     rid = ctx.keep([{"label": fund_label(f.fund_name)[:40], "value": f.avg_yield_3y} for f, _ in top], label="מסלול",
                    value="תשואה שנתית ממוצעת 3ש", unit="%", title=f"{CATEGORIES[category][2]} — רמת סיכון {label}") if top else None
     return {"category": CATEGORIES[category][2], "risk_level": f"{level} {label}", "data_month": f"{m:02d}/{y}",
-            "tracks_in_level": len(group),
+            "tracks_in_level": len(group), **({"note": note} if note else {}),
             "top": [{"rank": r["rank"], "fund": f.fund_name, "company": brand(f.managing_corporation or f.fund_name),
                      "stock_pct": r.get("stock_pct"), "abroad_pct": r.get("abroad_pct"), "yield_12m": r.get("y12"),
                      "avg_yield_3y": f.avg_yield_3y, "avg_yield_5y": f.avg_yield_5y, "sharpe": f.sharpe, "mgmt_fee": f.mgmt_fee,
