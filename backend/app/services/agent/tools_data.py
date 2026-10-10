@@ -510,6 +510,10 @@ async def list_mail(ctx):
     return data_map.page_mail(await ctx.map())[:5000]
 
 
+FAMILY_HE = {"savings": "חיסכון", "life": "חיים", "health": "בריאות", "nursing": "סיעוד", "managers": "מנהלים",
+             "savings_policy": "פוליסות חיסכון", "other": "אחר"}
+
+
 @tool("get_production_changes", "מה השתנה בפרודוקציה מול הקובץ הקודם של אותה חברה: לקוחות חדשים ולקוחות שיצאו (עזבו/בוטלו), לכל חברה.",
       category="production", status_he="משווה לחודש הקודם")
 async def get_production_changes(ctx):
@@ -546,10 +550,15 @@ async def get_production_changes(ctx):
             # history (services/customer_history) keeps every month even after a file is replaced
             from app.services.customer_history import book_changes
             bc = await book_changes(ctx.db, ctx.user.id)
-            out = [{**c, "current_period": bc.get("current"), "previous_period": bc.get("previous"), "source": "היסטוריית לקוחות חודשית"}
-                   for c in bc.get("companies") or []]
+            out = [{**c, "company": f"{c['company']} ({FAMILY_HE.get(c['family'], c['family'])})", "current_period": bc.get("current"),
+                    "previous_period": bc.get("previous"), "source": "היסטוריית לקוחות חודשית"} for c in bc.get("companies") or []]
+            if not out and bc.get("not_comparable"):
+                return {"companies": [], "note": f"יש היסטוריה ל-{bc.get('previous')} ול-{bc.get('current')}, אבל הקבצים מסוג שונה/חלקיים — "
+                        "אין חברה וסוג מוצר שמופיעים בשניהם בכיסוי דומה, אז אי אפשר לקבוע מי עזב. ההשוואה תעבוד כשיגיע קובץ מאותו סוג."}
         return out
     data = await _cached(ctx, ("prod_changes",), compute)
+    if isinstance(data, dict):   # history exists but the months aren't comparable — say why
+        return data
     if not data:
         return {"companies": [], "note": "אין קובץ פרודוקציה קודם להשוואה באף חברה."}
     rid = ctx.keep([{"label": d["company"], "value": d["left"]} for d in data], label="חברה", value="לקוחות שיצאו", unit="",

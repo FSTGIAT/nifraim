@@ -10,7 +10,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,29 +106,52 @@ async def customer_timeline(db: AsyncSession, user_id, idn: str) -> list[dict]:
     return list(by.values())
 
 
+FAMILIES = (("סיעוד", "nursing"), ("בריאות", "health"), ("מנהלים", "managers"), ("פוליסת חיסכון", "savings_policy"),
+            ("חיסכון טהור", "savings_policy"), ("חיים", "life"), ("ריסק", "life"), ("משכנתא", "life"),
+            ("גמל", "savings"), ("השתלמות", "savings"), ("פנסי", "savings"), ("מגוון", "savings"))
+MIN_COVERAGE = 0.6
+MIN_OVERLAP = 0.5
+
+
+def family(product_type: str | None) -> str:
+    t = product_type or ""
+    return next((f for k, f in FAMILIES if k in t), "other")
+
+
 async def book_changes(db: AsyncSession, user_id) -> dict:
-    """Latest month vs the month before, per company: customers new / gone (by ID) and the balance change."""
+    """Latest month vs the month before, like for like: per (company, product family) present in BOTH
+    months with similar coverage (customer counts within MIN_COVERAGE of each other). July's full
+    "products under management" file vs September's merged automation file listed Phoenix Excellence
+    savings 221 → 1 customers — "220 left" was a partial file, not leavers (2026-10-10)."""
     ms = await months(db, user_id)
     if len(ms) < 2:
         return {"months": [m.strftime("%m/%Y") for m in ms], "companies": []}
     cur, prev = ms[-1], ms[-2]
 
     async def side(m):
-        q = select(S.company, S.customer_id_number, S.customer_name, func.sum(S.accumulation)).where(
-            S.user_id == user_id, S.period_month == m).group_by(S.company, S.customer_id_number, S.customer_name)
-        out: dict[str, dict] = {}
-        for co, idn, nm, acc in (await db.execute(q)).all():
-            out.setdefault(co or "—", {})[idn] = (nm, float(acc or 0))
+        q = select(S.company, S.product_type, S.customer_id_number, S.customer_name, S.accumulation).where(
+            S.user_id == user_id, S.period_month == m)
+        out: dict[tuple, dict] = {}
+        for co, pt, idn, nm, acc in (await db.execute(q)).all():
+            d = out.setdefault((co or "—", family(pt)), {})
+            prev_nm, prev_acc = d.get(idn, (None, 0.0))
+            d[idn] = (nm or prev_nm, prev_acc + float(acc or 0))
         return out
     a, b = await side(cur), await side(prev)
-    comps = []
-    for co in sorted(set(a) | set(b)):
-        ca, cb = a.get(co, {}), b.get(co, {})
-        if not ca or not cb:     # a company in one month only = its file is missing, not its customers leaving
+    comps, not_comparable = [], []
+    for key in sorted(set(a) | set(b)):
+        ca, cb = a.get(key, {}), b.get(key, {})
+        co, fam = key
+        overlap = len(set(ca) & set(cb)) / (min(len(ca), len(cb)) or 1)
+        # similar size AND mostly the same people — two files of different scope (Menora life: 50 "new", 48
+        # "left" out of ~100) are not churn
+        if not ca or not cb or min(len(ca), len(cb)) < MIN_COVERAGE * max(len(ca), len(cb)) or overlap < MIN_OVERLAP:
+            not_comparable.append({"company": co, "family": fam, "customers_now": len(ca), "customers_before": len(cb)})
             continue
         new, gone = set(ca) - set(cb), set(cb) - set(ca)
-        comps.append({"company": co, "new": len(new), "left": len(gone),
+        comps.append({"company": co, "family": fam, "new": len(new), "left": len(gone),
                       "accumulation_now": round(sum(v[1] for v in ca.values())), "accumulation_before": round(sum(v[1] for v in cb.values())),
                       "new_names": [ca[i][0] or i for i in list(new)[:8]], "left_names": [cb[i][0] or i for i in list(gone)[:8]]})
     return {"current": cur.strftime("%m/%Y"), "previous": prev.strftime("%m/%Y"), "companies": comps,
-            "rule": "חברה שמופיעה רק בחודש אחד = הקובץ שלה חסר, לא שהלקוחות עזבו — לא נספרת."}
+            "not_comparable": not_comparable,
+            "rule": "משווים רק חברה + סוג מוצר שמופיעים בשני החודשים בכיסוי דומה. אחרת — הקובץ חלקי או מסוג אחר, לא עזיבה."}
