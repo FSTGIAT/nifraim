@@ -44,6 +44,7 @@ from app.models.agreement_request import AgreementRequest
 from app.models.collection_case import CollectionCase
 from app.models.ai_memory import AiMemory, AiIntentLog
 from app.models.fund_market import FundMarketMonthly, PensyanetData
+from app.models.customer_snapshot import CustomerProductSnapshot, CustomerSnapshotUpload
 from app.models.call_recording import CallRecording
 
 # every process that loads the models (API, local worker, scripts) bumps users.ai_data_version on AI-relevant writes

@@ -53,6 +53,17 @@ async def sync_fund_market_job():
         logger.error(f"fund_market sync job failed: {e}")
 
 
+async def customer_history_job():
+    """Snapshot every production upload not yet in customer_product_snapshots (safety net for the
+    after-ingest hook; the first run backfills every file still on disk)."""
+    try:
+        from app.services import customer_history
+        async with async_session() as db:
+            await customer_history.sweep(db)
+    except Exception as e:
+        logger.error(f"customer history job failed: {e}")
+
+
 async def sync_pensyanet_job():
     """פנסיה-נט XML export (asset allocation, actuarial balance, risk stats) → pensyanet_data.
     Daily, but a DB check first: the browser runs only when data.gov.il already holds a pension
@@ -243,6 +254,14 @@ def start_scheduler():
         sync_fund_market_job,
         CronTrigger(hour=7, minute=10, timezone="Asia/Jerusalem"),
         id="sync_fund_market",
+        replace_existing=True,
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        customer_history_job,
+        CronTrigger(hour=5, minute=30, timezone="Asia/Jerusalem"),
+        id="customer_history",
         replace_existing=True,
         misfire_grace_time=6 * 60 * 60,
         coalesce=True,

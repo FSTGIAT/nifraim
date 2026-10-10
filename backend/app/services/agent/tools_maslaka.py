@@ -276,13 +276,17 @@ async def customer_changes(ctx, id_number: str):
         tracks.append({"track": f.fund_name, "category": CATEGORIES[cat][2], "month_yield": f.monthly_yield, "ytd_yield": f.ytd_yield,
                        "yield_12m": y12_by_src[f.source].get(f.fund_id),
                        **({"rank_before": mv[0], "rank_now": mv[1], "group_size": mv[2]} if mv else {})})
+    from app.services.customer_history import customer_timeline
+    timeline = [t for t in await customer_timeline(ctx.db, ctx.user.id, idn) if len(t["months"]) >= 1][:15]
     y, m = divmod(period or 0, 100)
     return {"id_number": idn,
+            # balance per month from every production file ever ingested (kept after a file is replaced)
+            "production_timeline": timeline,
             "maslaka_file": res.get("as_of"),
             "compared_with": ("קובץ המסלקה של " + (base.get("as_of") or "")) if base.get("kind") == "maslaka"
             else ("קובץ הפרודוקציה " + (base.get("as_of") or "")[:7] if base.get("as_of") else None),
             "products": products, "note": unchanged_note,
             "tracks_this_month": tracks, "market_month": f"{m:02d}/{y}" if period else None,
-            "history_available": "הצבירה לאורך זמן: רק שתי נקודות — קובץ הפרודוקציה וקובץ המסלקה האחרון (המסלקה החודשית התחילה ב-09/2026). "
-                                 "תשואות המסלולים — חודשיות מ-2023.",
+            "history_available": "production_timeline = הצבירה בכל חודש שהגיע עליו קובץ פרודוקציה (נשמרת גם אחרי החלפת הקובץ); "
+                                 "products = קובץ המסלקה האחרון מול הקודם. תשואות המסלולים — חודשיות מ-2023.",
             "rule": "שינוי צבירה כולל תשואות של כל התקופה שבין שני הקבצים, לא רק הפקדות. 'לא הופיע' ≠ עזב."}

@@ -402,6 +402,32 @@ async def test_holdings_in_fit():
         await db.rollback()
 
 
+async def test_customer_history():
+    """Every production upload lands in customer_product_snapshots by month; a second sweep does nothing;
+    a customer's timeline and the book's month-over-month changes read from it (per user)."""
+    print("customer history (monthly snapshots)")
+    from app.services import customer_history as H
+    from app.models.customer_snapshot import CustomerProductSnapshot as S
+    async with async_session() as db:
+        await H.sweep(db)
+        again = await H.sweep(db)
+        check(again["uploads"] == 0, "sweep is idempotent (nothing re-captured)")
+        a = (await db.execute(select(User).where(User.email == A_EMAIL))).scalar_one()
+        b = (await db.execute(select(User).where(User.email == B_EMAIL))).scalar_one()
+        idn = (await db.execute(select(S.customer_id_number).where(S.user_id == a.id).limit(1))).scalar_one_or_none()
+        if not idn:
+            print("  skip  no production uploads locally")
+            return
+        check(len(await H.customer_timeline(db, a.id, idn)) >= 1, "A's customer has a timeline")
+        b_ids = set((await db.execute(select(S.customer_id_number).where(S.user_id == b.id))).scalars())
+        if idn not in b_ids:
+            check(await H.customer_timeline(db, b.id, idn) == [], "B gets no timeline for A's customer")
+        bc = await H.book_changes(db, b.id)
+        leaked = {n for c in bc.get("companies") or [] for n in c.get("left_names", []) + c.get("new_names", [])
+                  if n in {idn} and idn not in b_ids}
+        check(not leaked, "B's book changes never show A's customers")
+
+
 def main():
     test_registry()
     test_policies_routing()
@@ -417,6 +443,7 @@ def main():
         await test_maslaka_file_companies()
         await test_market_changes()
         await test_holdings_in_fit()
+        await test_customer_history()
     asyncio.run(_db_tests())
     print(f"\n{'ALL PASSED' if not FAILS else f'{len(FAILS)} FAILED'}")
     sys.exit(1 if FAILS else 0)

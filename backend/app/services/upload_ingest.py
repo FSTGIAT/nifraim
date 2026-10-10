@@ -449,11 +449,23 @@ async def _backfill_bg(user_id: uuid.UUID) -> bool:
         return False
 
 
+async def _customer_history_bg(upload_id: uuid.UUID) -> None:
+    """Month-by-month customer history (services/customer_history) — survives the file's replacement."""
+    from app.database import async_session
+    from app.services.customer_history import snapshot_upload
+    try:
+        async with async_session() as db:
+            await snapshot_upload(db, upload_id)
+    except Exception as e:
+        logger.warning("customer history snapshot failed (upload %s): %s", upload_id, e)
+
+
 async def _after_production_bg(user_id: uuid.UUID, upload_id: uuid.UUID) -> None:
     await _backfill_bg(user_id)
     await asyncio.gather(
         _create_snapshots_bg(user_id, upload_id),
         _compute_summary_bg(user_id, upload_id),
+        _customer_history_bg(upload_id),
     )
     await _bump_ai_version(user_id, "after_production")
 

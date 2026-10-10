@@ -608,6 +608,8 @@ async def upload_production(
     # run in order, so the portal snapshot then reads the filled balances.
     background_tasks.add_task(_compute_summary_bg, user.id, upload.id)
     background_tasks.add_task(_create_snapshots_bg, user.id, upload.id)
+    from app.services.upload_ingest import _customer_history_bg
+    background_tasks.add_task(_customer_history_bg, upload.id)   # month-by-month customer history
     if cycle_period is not None:
         # Monthly cycle: the cycle's נפרעים are already in — compare now.
         from app.services.cycle_service import compare_now

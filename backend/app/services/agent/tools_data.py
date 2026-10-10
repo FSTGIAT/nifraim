@@ -541,6 +541,13 @@ async def get_production_changes(ctx):
                         "previous_period": str(prev.period_month or prev.uploaded_at.date()),
                         "new": len(new), "left": len(gone),
                         "new_names": [a[i] or i for i in list(new)[:8]], "left_names": [b[i] or i for i in list(gone)[:8]]})
+        if not out:
+            # merged / single-file books have no "previous file per company" — the month-by-month customer
+            # history (services/customer_history) keeps every month even after a file is replaced
+            from app.services.customer_history import book_changes
+            bc = await book_changes(ctx.db, ctx.user.id)
+            out = [{**c, "current_period": bc.get("current"), "previous_period": bc.get("previous"), "source": "היסטוריית לקוחות חודשית"}
+                   for c in bc.get("companies") or []]
         return out
     data = await _cached(ctx, ("prod_changes",), compute)
     if not data:
