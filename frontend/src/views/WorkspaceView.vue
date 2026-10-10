@@ -149,6 +149,8 @@
         <!-- Animated waves at bottom -->
         <div class="wave-bg">
           <div class="shimmer"></div>
+          <!-- Nifra Market's surfer drops by on the home waves now and then -->
+          <WaveSurfer :bottom="86" :every="40" :delay="10" :size="46" tone="canvas" />
           <svg class="wave wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
             <defs>
               <linearGradient id="hwg1" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -333,6 +335,7 @@ import NifraAgentIcon from '../components/workspace/NifraAgentIcon.vue'
 import OfficeAgentPanel from '../components/workspace/OfficeAgentPanel.vue'
 import NifraMarketIcon from '../components/market/NifraMarketIcon.vue'
 import NifraMarketStudio from '../components/market/NifraMarketStudio.vue'
+import WaveSurfer from '../components/market/WaveSurfer.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
