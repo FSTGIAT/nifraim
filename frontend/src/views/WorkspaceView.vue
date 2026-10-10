@@ -66,7 +66,6 @@
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
       <!-- סוכן המשרד — the back-office agent (mail + unpaid commission) -->
       <NifraAgentIcon size="big" @open="openCollector" />
-      <NifraMarketIcon size="big" @open="openMarket" />
       <!-- no room on the left band (1360–1399px): the calls widget joins this column -->
       <CallWidget v-if="!roomForCallWidget" size="big" pop-side="left" />
     </div>
@@ -83,7 +82,7 @@
     >
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <NifraAgentIcon size="small" @open="openCollector" />
-      <NifraMarketIcon size="small" @open="openMarket" />
+      <NifraMarketIcon v-if="viewMode === 'content'" size="small" @open="openMarket" />
       <CallWidget size="small" pop-side="left" />
     </div>
     <NifraMarketStudio v-model:open="marketOpen" :origin-el="marketOrigin" />
@@ -123,20 +122,11 @@
          plane, and its presence heartbeat is a person, not a Windows PC. -->
     <MessengerDock v-if="!setupState.modalOpen" />
 
-    <!-- Insights hub: floating radial-orbital launcher in the BOTTOM-LEFT.
-         Two nodes: 3-month commission comparison + yield/track recommendations.
-         HOME view only — inside the tab content it would overlap the working
-         area on every tab, so it's gated like the side rail. -->
-    <RadialOrbitalIsland
-      v-if="viewMode === 'home'"
-      :items="radialItems"
-      :size="280"
-      :orbit-radius="92"
-      class="ws-insights-launcher"
-      @select="onRadialSelect"
-    />
-    <MonthlyCommissionModal v-model:open="monthlyOpen" />
-    <YieldRecommendationsModal v-model:open="yieldOpen" />
+    <!-- Nifra Market — the fund-rankings studio, in the bottom-left of home (where the insights orbit was,
+         removed 2026-10-10). Inside the tabs it's the small circle in the corner stack. -->
+    <div v-if="viewMode === 'home'" class="ws-market-spot">
+      <NifraMarketIcon :size="isPhone ? 'small' : 'big'" @open="openMarket" />
+    </div>
 
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
     <FundTrackVizPanel v-model:open="fundDetailOpen" :viz="fundDetailViz" />
@@ -332,9 +322,6 @@ import { useProductionStore } from '../stores/production.js'
 import { usePortalAutomationStore } from '../stores/portalAutomation.js'
 import { useSetupPipeline } from '../composables/useSetupPipeline.js'
 import { openSetup, setupState, resumeSetup, resumeSetupIfAway } from '../utils/setupState.js'
-import RadialOrbitalIsland from '../components/workspace/RadialOrbitalIsland.vue'
-import MonthlyCommissionModal from '../components/workspace/MonthlyCommissionModal.vue'
-import YieldRecommendationsModal from '../components/workspace/YieldRecommendationsModal.vue'
 import ClientSearchModal from '../components/workspace/ClientSearchModal.vue'
 import EmailSettingsModal from '../components/workspace/EmailSettingsModal.vue'
 import PhoneForwardModal from '../components/workspace/PhoneForwardModal.vue'
@@ -597,6 +584,7 @@ onUnmounted(() => clearInterval(agentTimer))
 const showEmotionClock = computed(() => viewMode.value === 'home' && roomForEmotionClock.value)
 // The calls widget's left band (rail ends at ~100px, cards start at (vw-882)/2) is wide enough from 1400px.
 const roomForCallWidget = useMq('(min-width: 1400px) and (min-height: 700px)')
+const isPhone = useMq('(max-width: 720px)')   // Nifra Market's home spot: the small circle on phones
 
 async function maybeOpenSetup() {
   if (setup.isCompleted()) return
@@ -828,21 +816,6 @@ function onMenuSelect(key, rect) {
   // help — TODO. No-op for now so the menu still closes.
 }
 
-// ── Insights hub (radial-orbital, bottom-left) ─────────────────────────
-// IDs are stable integers so the radial composition can render dependable
-// keys; the React component cares about `id` rather than the Vue-style `key`.
-const RADIAL_MONTHLY = 1
-const RADIAL_YIELD = 2
-const radialItems = [
-  { id: RADIAL_MONTHLY, title: 'עמלות 3 חודשים', iconName: 'BarChart3', energy: 90 },
-  { id: RADIAL_YIELD,   title: 'תשואות וניוד',    iconName: 'TrendingUp', energy: 80 },
-]
-const monthlyOpen = ref(false)
-const yieldOpen = ref(false)
-function onRadialSelect(id) {
-  if (id === RADIAL_MONTHLY) monthlyOpen.value = true
-  else if (id === RADIAL_YIELD) yieldOpen.value = true
-}
 
 // No trigger since the StockTicker strip was removed — kept, with FundTrackVizPanel
 // and stores/fundTicker.js, so a future entry point can re-wire it in one line.
@@ -933,21 +906,10 @@ async function openFundDetail(trackId) {
   bottom: 312px;
   z-index: 50;
 }
-.ws-insights-launcher {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  z-index: 102;
-  pointer-events: none;
-}
-.ws-insights-launcher :deep(*) { pointer-events: auto; }
-@media (max-width: 720px) {
-  .ws-insights-launcher { bottom: 14px; left: 14px; }
-  .ws-insights-launcher :deep(.radial-orbital-island) { transform: scale(0.85); transform-origin: bottom left; }
-}
-@media print {
-  .ws-insights-launcher { display: none; }
-}
+/* Nifra Market's home spot — bottom-left, centred where the 280px insights orbit stood */
+.ws-market-spot { position: fixed; bottom: 86px; left: 105px; z-index: 102; }
+@media (max-width: 720px) { .ws-market-spot { bottom: 18px; left: 18px; } }
+@media print { .ws-market-spot { display: none; } }
 
 /* ─── Home view blur circles ─── */
 .home-view {

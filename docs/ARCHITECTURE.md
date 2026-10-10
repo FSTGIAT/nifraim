@@ -1665,8 +1665,10 @@ form's Kendo widgets, the not-found message and the policy-detail views need the
 
 ## 20. Nifra Market — the fund rankings as a screen (2026-10-10)
 
-A third circle in the workspace ("Nifra **Market**", olive `--tab-market`, ink `--tab-market-ink`) beside Nifra Agent
-and Nifra Calls. Click → `NifraMarketStudio.vue` grows out of it (`useOriginMorph`) with four views and a market-scoped
+A third circle in the workspace ("Nifra **Market**", olive `--tab-market`, ink `--tab-market-ink`). On home it sits in
+the bottom-left `.ws-market-spot`, where the insights orbit (RadialOrbitalIsland — "עמלות 3 חודשים" / "תשואות וניוד",
+MonthlyCommissionModal, YieldRecommendationsModal, stores/insights.js) stood until it was removed on 2026-10-10;
+inside the tabs it is the small circle in the corner stack beside Nifra Agent and Nifra Calls. Click → `NifraMarketStudio.vue` grows out of it (`useOriginMorph`) with four views and a market-scoped
 ask box (`POST /api/ai/agent`, `surface: "market"`).
 
 ```mermaid
