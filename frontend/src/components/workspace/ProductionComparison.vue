@@ -100,7 +100,7 @@
         </div>
 
         <div v-if="changedInsights.totalClients" class="pcx-kpis">
-          <button v-for="k in kpis" :key="k.key" type="button" class="pcx-kpi"
+          <button v-for="k in kpis" :key="k.key" type="button" class="pcx-kpi kpi-slide" style="--slide: var(--tab-production)"
                   :disabled="!k.count" @click="openChangedByType(k.field, $event.currentTarget)">
             <span class="pcx-kpi-val ltr-number">{{ k.value }}</span>
             <span class="pcx-kpi-lbl">{{ k.label }}</span>

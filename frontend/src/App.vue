@@ -34,6 +34,19 @@ const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
 </script>
 
 <style>
+/* KPI cards: on hover a wash of the card's own colour slides in from the
+   right (RTL start), under the content. The card colour is --k, else --slide. */
+.kpi-slide { position: relative; overflow: hidden; isolation: isolate; }
+.kpi-slide::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: color-mix(in srgb, var(--slide, var(--k, var(--tab-production))) 11%, var(--card-bg));
+  transform: scaleX(0); transform-origin: right center;
+  transition: transform 0.55s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.kpi-slide:hover::before { transform: scaleX(1); }
+.kpi-slide:disabled::before { display: none; }
+@media (prefers-reduced-motion: reduce) { .kpi-slide::before { transition: none; } }
+
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
 
 *,

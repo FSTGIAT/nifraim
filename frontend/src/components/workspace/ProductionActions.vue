@@ -26,7 +26,7 @@
 
     <ul v-else class="pact-list">
       <li v-for="(it, i) in items" :key="it.key" :style="{ '--d': i * 50 + 'ms' }">
-        <button class="pact-row" :class="'pact-row--' + it.level" :disabled="!it.open"
+        <button class="pact-row" :class="['pact-row--' + it.level, { 'pact-row--hl': it.highlight }]" :disabled="!it.open"
                 @click="it.open && $emit('open', { ...it.open, el: $event.currentTarget })">
           <span class="pact-icon" aria-hidden="true">
             <svg v-if="it.level === 'loss'" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -118,7 +118,7 @@ const items = computed(() => {
   // Newer production with no נפרעים yet → say it; else when the next run is.
   const newer = newerProductionLine(a.newer_production, cycleStore.status, a.judged_nifraim_period)
   if (newer) {
-    out.push({ key: 'newer-production', level: 'info', title: newer.title, sub: newer.sub })
+    out.push({ key: 'newer-production', level: 'info', title: newer.title, sub: newer.sub, highlight: true })
   } else if ((full || partial) && next) {
     out.push({ key: 'next-nifraim', level: 'info', title: next })
   }
@@ -256,6 +256,20 @@ onMounted(async () => {
 .pact-row--loss .pact-icon { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
 .pact-row--warn .pact-icon { color: var(--amber); background: var(--amber-light); }
 .pact-row--info .pact-icon { color: var(--text-muted); background: var(--bg); }
+/* "No נפרעים yet for the new month" — the line the agent must not miss:
+   a tinted card that breathes softly in the tab's colour (like "לא שולם"). */
+.pact-row--hl {
+  border-color: color-mix(in srgb, var(--tab-production) 45%, transparent);
+  background: color-mix(in srgb, var(--tab-production) 7%, var(--card-bg));
+  animation: pactBreath 3s ease-in-out infinite;
+}
+.pact-row--hl .pact-icon { color: var(--tab-production); background: color-mix(in srgb, var(--tab-production) 13%, var(--card-bg)); }
+.pact-row--hl .pact-title { color: var(--tab-production); }
+@keyframes pactBreath {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-production) 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--tab-production) 14%, transparent), 0 8px 20px color-mix(in srgb, var(--tab-production) 16%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .pact-row--hl { animation: none; } }
 
 .pact-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .pact-title { font-size: 14px; font-weight: 600; }

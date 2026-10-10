@@ -9,7 +9,7 @@
     <div class="kpi-row">
       <div
         v-for="k in kpiCards" :key="k.key"
-        class="kpi-card" :class="{ clickable: !!k.open, 'kpi-card--alert': k.key === 'unpaid' && Number(k.value) > 0 }"
+        class="kpi-card kpi-slide" :class="{ clickable: !!k.open, 'kpi-card--alert': k.key === 'unpaid' && Number(k.value) > 0 }"
         :style="{ '--k': k.color, '--k-ink': k.ink }"
         :title="k.title || null"
         :role="k.open ? 'button' : null" :tabindex="k.open ? 0 : null"
@@ -1498,7 +1498,16 @@ function formatCompact(val) {
   background: color-mix(in srgb, var(--tab-comparison) 8%, var(--card-bg));
   border: 1px solid color-mix(in srgb, var(--tab-comparison) 22%, transparent);
 }
-.kpi-newer strong { color: var(--text-primary); font-weight: 700; font-size: 13.5px; }
+.kpi-newer strong { color: var(--tab-comparison); font-weight: 800; font-size: 14px; }
+.kpi-newer {
+  border-color: color-mix(in srgb, var(--tab-comparison) 45%, transparent);
+  animation: newerBreath 3s ease-in-out infinite;
+}
+@keyframes newerBreath {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-comparison) 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--tab-comparison) 14%, transparent), 0 8px 20px color-mix(in srgb, var(--tab-comparison) 16%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .kpi-newer { animation: none; } }
 .kpi-novalue:hover { color: var(--tab-comparison); }
 .kpi-novalue:focus-visible { outline: 2px solid var(--tab-comparison); outline-offset: 2px; border-radius: 6px; }
 .kpi-panel {

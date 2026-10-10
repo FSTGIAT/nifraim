@@ -31,6 +31,7 @@ class ProductionFileInfo(BaseModel):
     period_month: date | None = None
     # A מסלקה book mixes months: per company, rows per 'YYYY-MM'.
     company_months: dict[str, dict[str, int]] | None = None
+    company_families: dict[str, dict[str, dict[str, int]]] | None = None
 
     model_config = {"from_attributes": True}
 

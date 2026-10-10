@@ -8,7 +8,8 @@
       <div v-if="open" class="dm-overlay" :class="{ 'dm-overlay--morph': morphing }"
            :style="layer ? { zIndex: layer } : null"
            @click.self="requestClose">
-        <div ref="cardEl" class="dm-card" :class="'dm-card--' + size" role="dialog" aria-modal="true">
+        <div ref="cardEl" class="dm-card" :class="'dm-card--' + size" role="dialog" aria-modal="true"
+             :style="accent ? { '--dm-accent': accent } : null">
           <div class="dm-head" :style="accent ? { '--dm-accent': accent } : null">
             <h4>{{ title }}</h4>
             <!-- "דורש טיפול" header style: a count badge and the period beside
@@ -165,4 +166,17 @@ onBeforeUnmount(() => { dropFromStack(); window.removeEventListener('keydown', o
 .dm-overlay--morph.dm-leave-active .dm-card { transition: none; }
 .dm-overlay--morph.dm-enter-from .dm-card,
 .dm-overlay--morph.dm-leave-to .dm-card { transform: none; }
+
+/* Every row in a drill fills on hover, in the drill's colour (user 2026-10-10):
+   the expandable row buttons, the customer-list rows and table rows. */
+.dm-body :deep(button[aria-expanded]),
+.dm-body :deep(.ccl-row), .dm-body :deep(.cd-row), .dm-body :deep(.rr-row),
+.dm-body :deep(.cp-row), .dm-body :deep(.cr-row), .dm-body :deep(.dv-row),
+.dm-body :deep(tbody tr) { transition: background-color 0.18s ease; }
+.dm-body :deep(button[aria-expanded]:hover),
+.dm-body :deep(.ccl-row:hover), .dm-body :deep(.cd-row:hover), .dm-body :deep(.rr-row:hover),
+.dm-body :deep(.cp-row:hover), .dm-body :deep(.cr-row:hover), .dm-body :deep(.dv-row:hover),
+.dm-body :deep(tbody tr:hover) {
+  background-color: color-mix(in srgb, var(--dm-accent, var(--tab-production)) 8%, var(--card-bg));
+}
 </style>

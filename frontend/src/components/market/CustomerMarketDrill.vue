@@ -12,8 +12,9 @@
         <div><small>מוצרים לבחינת מעבר</small><b class="ltr-number">{{ toMove }}</b></div>
         <div><small>מוצרים שהושוו</small><b class="ltr-number">{{ ranked.length }}</b></div>
       </div>
-      <section v-for="(p, i) in products" :key="i" class="cmd-prod">
-        <header class="cmd-head">
+      <section v-for="(p, i) in products" :key="i" class="cmd-prod" :class="{ 'cmd-prod--open': isOpen(i) }">
+        <!-- With more than one product each card starts folded; the header opens it (user 2026-10-10). -->
+        <button type="button" class="cmd-head" :aria-expanded="isOpen(i)" @click="toggle(i)">
           <div>
             <h4>{{ p.official_fund || p.track }}</h4>
             <p>
@@ -26,7 +27,11 @@
             <span v-if="p.risk_level_view && p.risk_level_view.rank" class="cmd-rank ltr-number">{{ p.risk_level_view.rank }}</span>
             <span v-if="p.action && p.action.annual_gain_ils" class="cmd-gain"><span class="ltr-number">{{ ils(p.action.annual_gain_ils) }}</span> בשנה</span>
           </div>
-        </header>
+          <svg v-if="products.length > 1" class="cmd-chev" width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true"><polyline points="6 9 12 15 18 9" /></svg>
+        </button>
+        <div class="cmd-fold" :class="{ 'cmd-fold--open': isOpen(i) }"><div class="cmd-fold-inner">
         <p v-if="p.action" class="cmd-verdict">{{ p.action.action }}<template v-if="p.action.leader && !p.action.action.includes(p.action.leader)"> · המוביל: {{ p.action.leader }}</template></p>
         <p v-if="howLine(p)" class="cmd-how">
           איך: המסלול שלו הניב <span class="ltr-number">{{ howLine(p).me.toFixed(2) }}%</span> בשנה, המוביל
@@ -39,6 +44,7 @@
           מול מסלולים באותו שם: {{ p.same_name_rank.replace(' (מול מסלולים באותו שם)', '') }}
           <template v-if="p.same_name_gap_ils >= 0.5"> · פער <span class="ltr-number">{{ ils(p.same_name_gap_ils) }}</span> בשנה</template>
         </p>
+        </div></div>
       </section>
       <p class="cmd-note">אומדן מתשואות עבר (3 שנים) — תשואות עבר אינן מבטיחות תשואות עתידיות.</p>
     </div>
@@ -60,8 +66,17 @@ defineEmits(['close'])
 const store = useMarketStore()
 const fit = ref(null)
 const loading = ref(false)
+// Which product cards are open. One product → open; more → all folded.
+const opened = ref(new Set())
+const isOpen = (i) => products.value.length <= 1 || opened.value.has(i)
+function toggle(i) {
+  const next = new Set(opened.value)
+  next.has(i) ? next.delete(i) : next.add(i)
+  opened.value = next
+}
 watch(() => props.customerId, async (id) => {
   fit.value = null
+  opened.value = new Set()
   if (!id) return
   loading.value = true
   try { fit.value = await store.loadCustomer(id) } finally { loading.value = false }
@@ -98,8 +113,20 @@ function howLine(p) {
 .cmd-strip small { font-size: 12px; color: var(--text-secondary, #5C5C5C); }
 .cmd-strip b { font-size: 21px; font-weight: 800; }
 .cmd-strip > div:first-child b { color: var(--tab-market-ink); }
-.cmd-prod { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-.cmd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cmd-prod { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 0;
+  transition: border-color 0.2s ease; }
+.cmd-prod--open { border-color: color-mix(in srgb, var(--tab-market) 40%, transparent); }
+.cmd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  width: 100%; padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: start; cursor: pointer; }
+.cmd-head:focus-visible { outline: 2px solid var(--tab-market); outline-offset: 4px; border-radius: 8px; }
+.cmd-chev { flex-shrink: 0; align-self: center; color: var(--text-muted); transition: transform 0.3s ease; }
+.cmd-prod--open .cmd-chev { transform: rotate(180deg); }
+/* the fold: grid rows 0fr → 1fr, the app's open-in-place pattern */
+.cmd-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s cubic-bezier(0.2, 0, 0.2, 1); }
+.cmd-fold--open { grid-template-rows: 1fr; }
+.cmd-fold-inner { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.cmd-fold--open .cmd-fold-inner { padding-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .cmd-fold, .cmd-chev { transition: none; } }
 .cmd-head h4 { margin: 0; font-size: 15px; font-weight: 800; }
 .cmd-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary, #5C5C5C); }
 .cmd-act { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }

@@ -92,7 +92,8 @@ const ov = computed(() => store.overview)
 const counter = ref(0)
 // open by default on a desktop — the amount needs its explanation; folded on phones, where it would push the
 // list a screen down. Not remembered (nifraim-style: a default the user asked for is not stored)
-const howOpen = ref(typeof window === 'undefined' || window.innerWidth > 760)
+// Closed by default (user 2026-10-10) — "איך חישבנו את הסכום?" opens it.
+const howOpen = ref(false)
 // the worked example = the agent's own biggest gap, from the same numbers as the rows below
 const example = computed(() => {
   const c = (ov.value?.customers || []).find((x) => x.top && x.top.track_3y != null && x.top.leader_3y != null)

@@ -193,6 +193,30 @@
             </button>
           </div>
 
+          <!-- A מסלקה book mixes months: a breathing icon beside the file says
+               which company is on which month; hover or focus opens the lines
+               (kiko 2026-10-10: September for 4 companies, the rest July). -->
+          <button v-if="bookMonths.length" ref="bmIconEl" type="button" class="bm-icon"
+                  :aria-expanded="bmOpen" aria-label="איזה חודש לכל חברה"
+                  @mouseenter="openBm" @mouseleave="bmOpen = false" @focus="openBm" @blur="bmOpen = false"
+                  @click="bmOpen ? (bmOpen = false) : openBm()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="17" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+              <path d="M12 14v3l2 1" />
+            </svg>
+            <span class="bm-dot" aria-hidden="true"></span>
+          </button>
+          <!-- At page level so the KPI cards below can never cover it. -->
+          <Teleport to="body">
+            <Transition name="bm-pop">
+              <div v-if="bmOpen && bookMonths.length" class="bm-pop" role="tooltip" :style="bmStyle">
+                <span v-for="(line, i) in bookMonths" :key="i" class="bm-line"
+                      :class="{ 'bm-line-head': i === 0 }" :style="{ '--i': i }">{{ line }}</span>
+              </div>
+            </Transition>
+          </Teleport>
+
           <!-- File pill -->
           <div class="file-pill">
             <div class="pulse-dot"></div>
@@ -238,10 +262,6 @@
             <span class="gate-tip" role="tooltip">{{ uploadGateNote }}</span>
           </span>
         </div>
-
-        <!-- A מסלקה book mixes months: say which company is on which month
-             (kiko 2026-10-10: September arrived for 4 companies, the rest July). -->
-        <p v-if="bookMonths" class="book-months">{{ bookMonths }}</p>
 
         <!-- Uploading indicator -->
         <div v-if="productionStore.uploading" class="uploading-banner">
@@ -421,7 +441,7 @@ import { relativeHebrew } from '../../utils/relativeTime.js'
 import CycleLockedState from './CycleLockedState.vue'
 import ProdSectionHero from './ProdSectionHero.vue'
 import ProdBackdrop from './ProdBackdrop.vue'
-import { useCycleStore, bookMonthsLine } from '../../stores/cycle.js'
+import { useCycleStore, bookMonthsLines } from '../../stores/cycle.js'
 import { useAuthStore } from '../../stores/auth.js'
 
 const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-maslaka', 'navigate'])
@@ -429,7 +449,21 @@ const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()
 const cycleStore = useCycleStore()
-const bookMonths = computed(() => bookMonthsLine(productionStore.currentFile?.company_months))
+const bmIconEl = ref(null)
+const bmOpen = ref(false)
+const bmStyle = ref({})
+// Under the icon, its left edge on the icon's, kept on screen.
+function openBm() {
+  const r = bmIconEl.value?.getBoundingClientRect()
+  if (!r) return
+  const width = Math.min(460, window.innerWidth - 32)
+  const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16))
+  bmStyle.value = { top: `${r.bottom + 10}px`, left: `${left}px`, width: `${width}px`,
+                    '--ox': `${r.left + r.width / 2 - left}px` }
+  bmOpen.value = true
+}
+const bookMonths = computed(() => bookMonthsLines(productionStore.currentFile?.company_months,
+  productionStore.currentFile?.company_families))
 const auth = useAuthStore()
 
 // Monthly cycle: manual production is accepted only in the cycle's window
@@ -1219,9 +1253,25 @@ async function handleCompare(currentId, previousId) {
 .gate-icon:hover .gate-tip, .gate-icon:focus-visible .gate-tip { opacity: 1; transform: none; }
 
 /* Uploading banner */
-.book-months {
-  margin: -4px 4px 12px; font-size: 12.5px; color: var(--text-muted);
+.bm-icon {
+  position: relative; width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--tab-production); color: #fff; border: none; font: inherit;
+  animation: bmBreath 2.2s ease-in-out infinite;
 }
+/* a small dot in the corner: "something here is new" */
+.bm-dot {
+  position: absolute; top: 1px; inset-inline-end: 1px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--red); box-shadow: 0 0 0 2px var(--card-bg);
+}
+.bm-icon:hover, .bm-icon:focus-visible { animation-play-state: paused; }
+.bm-icon:focus-visible { outline: 2px solid var(--tab-production); outline-offset: 2px; }
+@keyframes bmBreath {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tab-production) 45%, transparent); transform: scale(1); }
+  50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--tab-production) 0%, transparent); transform: scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) { .bm-icon { animation: none; } }
+
 .uploading-banner {
   display: flex;
   align-items: center;
@@ -1370,5 +1420,31 @@ async function handleCompare(currentId, previousId) {
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+</style>
+
+<style>
+/* ProductionTab's month card — teleported to <body>, so unscoped. */
+.bm-pop {
+  position: fixed; z-index: 1500; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 5px; padding: 12px 16px; direction: rtl; text-align: start;
+  background: var(--card-bg); color: var(--text-secondary); font-family: inherit; font-size: 12.5px; line-height: 1.55;
+  border: 1px solid color-mix(in srgb, var(--tab-production) 30%, transparent); border-radius: 14px;
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--tab-production) 22%, rgba(0, 0, 0, 0.12));
+  transform-origin: var(--ox, 20px) top;
+}
+.bm-line-head {
+  color: var(--tab-production); font-weight: 700; font-size: 13px;
+  padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px solid var(--border-subtle);
+}
+/* Opens growing out of the icon, its lines arriving one after another. */
+.bm-pop-enter-active { transition: opacity 0.22s ease, transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.bm-pop-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.bm-pop-enter-from, .bm-pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.92); }
+.bm-pop-enter-active .bm-line { animation: bmLineIn 0.4s ease both; animation-delay: calc(0.08s + var(--i) * 0.07s); }
+@keyframes bmLineIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .bm-pop-enter-active, .bm-pop-leave-active { transition: none; }
+  .bm-pop-enter-active .bm-line { animation: none; }
 }
 </style>

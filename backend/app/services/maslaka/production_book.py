@@ -36,7 +36,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.pension_holding import PensionHolding
@@ -74,6 +74,19 @@ def _pol(v) -> str:
 
 def _month(d: date) -> date:
     return date(d.year, d.month, 1)
+
+
+def product_family(product_type: str | None, product: str | None) -> str:
+    """The product family a row belongs to, in the agent's words: פנסיה ·
+    גמל והשתלמות · ביטוח. A מסלקה answer arrives per body and family (Phoenix's
+    September held its gemel/השתלמות, not its pension or insurance)."""
+    from app.services.comparison_service import is_pension_record
+    if is_pension_record(product, product_type):
+        return "פנסיה"
+    text = f"{product_type or ''} {product or ''}"
+    if "גמל" in text or "השתלמות" in text:
+        return "גמל והשתלמות"
+    return "ביטוח"
 
 
 def row_month(rec_processing_date: str | None, upload_period: date | None) -> str | None:
@@ -158,15 +171,66 @@ def _apply_holding(d: dict, h: PensionHolding) -> dict:
     return d
 
 
-def _new_row(h: PensionHolding, names: dict[str, ClientRecord], user_id: uuid.UUID) -> dict:
+async def _names_for(db: AsyncSession, user_id: uuid.UUID, holdings: list[PensionHolding],
+                     known: dict[str, ClientRecord]) -> dict[str, tuple[str | None, str | None]]:
+    """Names for customers the base book doesn't have (kiko 2026-10-10: two new
+    September customers showed as bare IDs). First any other file of the agent
+    (נפרעים, older production), then the מסלקה's own answer — it carries
+    SHEM-PRATI / SHEM-MISHPACHA — decrypted where the key lives (the Gateway)."""
+    want = {_cid(h.customer_id_number) for h in holdings} - set(known) - {""}
+    out: dict[str, tuple] = {}
+    if not want:
+        return out
+    for cid, first, last in (await db.execute(
+        select(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name).where(
+            ClientRecord.user_id == user_id,
+            func.ltrim(ClientRecord.id_number, "0").in_(want),
+            (ClientRecord.first_name.is_not(None)) | (ClientRecord.last_name.is_not(None)))
+    )).all():
+        out.setdefault(_cid(cid), (first, last))
+    missing = want - set(out)
+    if not missing:
+        return out
+    from app.utils.crypto import is_key_configured
+    if not is_key_configured("MASLAKA_ENCRYPTION_KEY"):
+        return out
+    from xml.etree import ElementTree as ET
+    from sqlalchemy import text
+    from app.utils.crypto import decrypt_bytes
+    payload_ids = {h.raw_payload_id for h in holdings
+                   if h.raw_payload_id and _cid(h.customer_id_number) in missing}
+    for pid in payload_ids:
+        try:
+            row = (await db.execute(text("select ciphertext from pension_raw_payloads where id = :i"),
+                                    {"i": pid})).first()
+            if not row or not row[0]:
+                continue
+            ct = row[0] if isinstance(row[0], (bytes, bytearray)) else row[0].encode()
+            root = ET.fromstring(decrypt_bytes(bytes(ct), key_env="MASLAKA_ENCRYPTION_KEY"))
+            for el in root.iter():
+                kids = {c.tag: (c.text or "").strip() for c in el}
+                if not (kids.get("SHEM-PRATI") or kids.get("SHEM-MISHPACHA")):
+                    continue
+                for k, v in kids.items():
+                    if ("ZIHUY" in k or "MEZAHE" in k) and _cid(v) in missing:
+                        out.setdefault(_cid(v), (kids.get("SHEM-PRATI"), kids.get("SHEM-MISHPACHA")))
+        except Exception:
+            logger.warning("production_book: could not read names from payload %s", pid, exc_info=True)
+    return out
+
+
+def _new_row(h: PensionHolding, names: dict[str, ClientRecord], user_id: uuid.UUID,
+             extra: dict[str, tuple] | None = None) -> dict:
     """A product the base book didn't have — built from the holding, with the
     customer's name/contact taken from any other row of theirs."""
     who = names.get(_cid(h.customer_id_number))
+    first, last = (getattr(who, "first_name", None), getattr(who, "last_name", None)) if who else \
+        (extra or {}).get(_cid(h.customer_id_number), (None, None))
     d = {
         "user_id": user_id,
         "id_number": _cid(h.customer_id_number),
-        "first_name": getattr(who, "first_name", None),
-        "last_name": getattr(who, "last_name", None),
+        "first_name": first,
+        "last_name": last,
         "client_phone": getattr(who, "client_phone", None),
         "client_email": getattr(who, "client_email", None),
         "receiving_company": h.receiving_company,
@@ -207,6 +271,7 @@ async def build_book_rows(db: AsyncSession, user_id: uuid.UUID) -> dict | None:
         h_by_key[(_cid(h.customer_id_number), _pol(h.fund_policy_number),
                   company_stem(h.receiving_company))].append(h)
 
+    extra_names = await _names_for(db, user_id, holdings, names)
     rows: list[dict] = []
     replaced: set[uuid.UUID] = set()
     added = 0
@@ -222,7 +287,7 @@ async def build_book_rows(db: AsyncSession, user_id: uuid.UUID) -> dict | None:
             left.remove(h)
             cands.remove(r)
         for h in left:
-            rows.append(_new_row(h, names, user_id))
+            rows.append(_new_row(h, names, user_id, extra_names))
             added += 1
 
     base_iso = base_month.isoformat() if base_month else None
@@ -318,14 +383,34 @@ async def book_months(db: AsyncSession, user_id: uuid.UUID) -> dict | None:
     if book is None:
         return None
     rows = (await db.execute(
-        select(ClientRecord.receiving_company, ClientRecord.processing_date)
+        select(ClientRecord.receiving_company, ClientRecord.processing_date,
+               ClientRecord.product_type, ClientRecord.product)
         .where(ClientRecord.upload_id == book.id)
     )).all()
     out: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for rc, pd_ in rows:
-        out[company_stem(rc) or "—"][row_month(pd_, book.period_month) or "—"] += 1
+    fam: dict[str, dict[str, dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    for rc, pd_, ptype, product in rows:
+        stem, m = company_stem(rc) or "—", row_month(pd_, book.period_month) or "—"
+        out[stem][m] += 1
+        fam[stem][product_family(ptype, product)][m] += 1
+    # When the מסלקה's answer for the book's month landed (not when the book
+    # was rebuilt): the newest holding of that month.
+    arrived = None
+    if book.period_month:
+        nxt = date(book.period_month.year + (book.period_month.month == 12),
+                   book.period_month.month % 12 + 1, 1)
+        arrived = (await db.execute(
+            select(func.max(PensionHolding.created_at)).where(
+                PensionHolding.user_id == user_id,
+                PensionHolding.status_date >= book.period_month,
+                PensionHolding.status_date < nxt)
+        )).scalar()
     return {"month": book.period_month.strftime("%Y-%m") if book.period_month else None,
-            "companies": {k: dict(v) for k, v in out.items()}}
+            "arrived_at": arrived.isoformat() + "Z" if arrived else None,
+            "companies": {k: dict(v) for k, v in out.items()},
+            # Per company, per family — "הפניקס: גמל והשתלמות ספטמבר, פנסיה
+            # וביטוח עדיין יולי" instead of a bare "(חלקי)".
+            "families": {k: {f: dict(m) for f, m in v.items()} for k, v in fam.items()}}
 
 
 def newer_than(months: dict | None, nifraim_ym: str | None) -> dict | None:
@@ -341,4 +426,5 @@ def newer_than(months: dict | None, nifraim_ym: str | None) -> dict | None:
     if not newer:
         return None
     return {"month": max(m for by in months["companies"].values() for m in by if m != "—"),
+            "arrived_at": months.get("arrived_at"),
             "companies": [{"company": k, "rows": v} for k, v in sorted(newer.items(), key=lambda kv: -kv[1])]}

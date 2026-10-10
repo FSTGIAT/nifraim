@@ -142,30 +142,48 @@ export function newerProductionLine(newer, st, judgedYm) {
   const judged = judgedYm ? `"לא שולם" מראה את ${monthOnly(judgedYm)}` : '"לא שולם" מראה את החודש הקודם'
   return {
     title: `אין עדיין נפרעים ל${m}${when}`,
-    sub: `פרודוקציה ${m} הגיעה מהמסלקה עבור ${newer.companies.map(c => c.company).join(', ')}. עד שהנפרעים יגיעו, ${judged}.`,
+    sub: `פרודוקציה ${m} הגיעה מהמסלקה${newer.arrived_at ? ` ב-${shortDate(newer.arrived_at)}` : ''} עבור ${newer.companies.map(c => c.company).join(', ')}. עד שהנפרעים יגיעו, ${judged}.`,
   }
 }
 
 /**
  * Which month each company's production is for, when the book mixes months
- * (a מסלקה book): "ספטמבר: הפניקס, מור · עדיין יולי: הראל, מנורה".
- * A company with rows of both months is marked "(חלקי)".
+ * (a מסלקה book). Lines, the first a summary, then one per company that is
+ * only partly on the new month, naming the families:
+ *   "ספטמבר מהמסלקה: הפניקס, מור · עדיין יולי: הראל, מנורה"
+ *   "הפניקס — גמל והשתלמות: ספטמבר · פנסיה וביטוח: עדיין יולי"
+ * A family counts as arrived once any of its rows did (a few leftovers are
+ * products the new answer no longer lists).
  */
-export function bookMonthsLine(companyMonths) {
-  if (!companyMonths) return ''
+function heJoin(list) {
+  return list.length < 2 ? (list[0] || '') : `${list.slice(0, -1).join(', ')} ו${list[list.length - 1]}`
+}
+export function bookMonthsLines(companyMonths, companyFamilies) {
+  if (!companyMonths) return []
   const months = new Set()
   for (const by of Object.values(companyMonths)) for (const m of Object.keys(by)) if (m !== '—') months.add(m)
-  if (months.size < 2) return ''
+  if (months.size < 2) return []
   const newest = [...months].sort().pop()
-  const fresh = [], stale = new Map()
+  const fresh = [], stale = new Map(), partial = []
   for (const [co, by] of Object.entries(companyMonths)) {
     const ms = Object.keys(by).filter(m => m !== '—')
-    if (ms.includes(newest)) fresh.push(ms.length > 1 ? `${co} (חלקי)` : co)
-    else for (const m of ms) stale.set(m, [...(stale.get(m) || []), co])
+    if (!ms.includes(newest)) {
+      const m = ms.sort().pop()
+      stale.set(m, [...(stale.get(m) || []), co])
+      continue
+    }
+    fresh.push(co)
+    const fams = companyFamilies?.[co] || {}
+    const arrived = Object.keys(fams).filter(f => fams[f][newest])
+    const waiting = Object.keys(fams).filter(f => !fams[f][newest])
+    if (arrived.length && waiting.length) {
+      const was = Object.keys(fams[waiting[0]]).filter(m => m !== '—').sort().pop()
+      partial.push(`${co} — ${heJoin(arrived)}: ${monthOnly(newest)} · ${heJoin(waiting)}: עדיין ${monthOnly(was)}`)
+    }
   }
-  const parts = [`${monthOnly(newest)} מהמסלקה: ${fresh.join(', ')}`]
-  for (const [m, cos] of [...stale.entries()].sort().reverse()) parts.push(`עדיין ${monthOnly(m)}: ${cos.join(', ')}`)
-  return parts.join(' · ')
+  const head = [`${monthOnly(newest)} מהמסלקה: ${fresh.join(', ')}`]
+  for (const [m, cos] of [...stale.entries()].sort().reverse()) head.push(`עדיין ${monthOnly(m)}: ${cos.join(', ')}`)
+  return [head.join(' · '), ...partial]
 }
 
 /** Companies whose production for the judged month hasn't arrived — not checked. */

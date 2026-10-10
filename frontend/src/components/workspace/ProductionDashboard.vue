@@ -4,7 +4,7 @@
     <div class="kpi-row">
       <button
         v-for="k in kpis" :key="k.key" type="button"
-        class="kpi-card" :style="{ '--k': k.color, '--k-ink': k.ink }"
+        class="kpi-card kpi-slide" :style="{ '--k': k.color, '--k-ink': k.ink }"
         :title="k.title || null" @click="openDrilldown(k.drill, $event.currentTarget)"
       >
         <span class="kpi-ghost" aria-hidden="true"><KpiGlyph :name="k.key" :size="92" :stroke="1.2" /></span>

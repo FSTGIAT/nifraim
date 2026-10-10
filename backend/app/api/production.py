@@ -629,6 +629,11 @@ async def upload_production(
     )
 
 
+def _book_month_fields(bm: dict | None) -> dict:
+    return {"company_months": (bm or {}).get("companies"),
+            "company_families": (bm or {}).get("families")}
+
+
 @router.get("/current", response_model=ProductionFileInfo | None)
 async def get_current_production(
     db: AsyncSession = Depends(get_db),
@@ -683,7 +688,7 @@ async def get_current_production(
         uploaded_at=primary.uploaded_at,
         period_month=latest_period,
         companies=companies,
-        company_months=(await book_months(db, user.id) or {}).get("companies"),
+        **_book_month_fields(await book_months(db, user.id)),
     )
 
 
