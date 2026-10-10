@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fund_market import FundMarketMonthly, PensyanetData
+from app.services.fund_market import fix_name
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def parse(xml_bytes: bytes, report: str, level: str) -> list[dict]:
             name = r.get("SHM_KRN")
         if ent is None or period is None:
             continue
+        name = fix_name(name) if name else name   # data.gov.il and this site both serve "S&P" as "S1;P"
         row = {"report": report, "level": lvl, "entity_id": ent, "entity_name": (name or None) and name[:200],
                "period": period, "grp": "", "item_id": 0, "item_name": None, "amount": None, "pct": None,
                "data": None, "fetched_at": now}

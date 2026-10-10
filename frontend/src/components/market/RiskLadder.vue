@@ -56,6 +56,8 @@ onMounted(() => requestAnimationFrame(() => { shown.value = true }))
   transition: opacity 0.5s ease calc(var(--i) * 55ms), transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms);
 }
 .rl--in .rl-row { opacity: 1; transform: none; }
+.rl-row { transition: opacity 0.5s ease calc(var(--i) * 55ms), transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), background-color 0.25s; }
+.rl--in .rl-row:hover { background: var(--tab-market-wash); }
 .rl-row--me { background: var(--tab-market-wash); box-shadow: inset 0 0 0 1.5px var(--rl-accent); font-weight: 700; }
 .rl-rank { color: var(--text-secondary, #5C5C5C); font-weight: 700; }
 .rl-row--lead .rl-rank, .rl-row--me .rl-rank { color: var(--rl-ink); }

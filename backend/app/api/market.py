@@ -113,14 +113,23 @@ async def ladder(category: str = Query(...), level: int = Query(..., ge=1, le=5)
 
 
 @router.get("/moves")
-async def moves(category: str = Query(...), user: User = Depends(get_paid_user), db: AsyncSession = Depends(get_db)):
-    """This month vs last: rank climbers / fallers and flows (market_changes) + the agent's customers in fallers."""
-    from app.services.agent.tools_market import customers_in_market_moves, market_changes
+async def moves(category: str = Query(...), period: int | None = None,
+                user: User = Depends(get_paid_user), db: AsyncSession = Depends(get_db)):
+    """A month vs the month before (market_changes): rank climbers / fallers, flows; the month picker's options;
+    for the newest month, the agent's customers in tracks that fell."""
+    from app.services.agent.tools_market import CATEGORIES, customers_in_market_moves, market_changes
+    from app.services.fund_market.delta import periods
     ctx = await _ctx(db, user)
-    mc = await market_changes(ctx, _cat(category))
+    ps = await periods(db, CATEGORIES[_cat(category)][0])
+    ps = ps[:12]
+    if period not in ps:
+        period = ps[0] if ps else None
+    mc = await market_changes(ctx, category, period)
     out = {k: mc.get(k) for k in ("category", "month", "compared_with", "summary", "rank_climbers", "rank_fallers",
-                                  "top_inflows", "top_outflows", "disclaimer")}
-    if (await ctx.book_state())["production"]:
+                                  "top_inflows", "top_outflows", "fee_changes", "disclaimer")}
+    out["period"] = period
+    out["months"] = [{"period": p, "label": f"{p % 100:02d}/{p // 100}"} for p in ps[:-1]]   # each needs a month before it
+    if ps and period == ps[0] and (await ctx.book_state())["production"]:
         down = await customers_in_market_moves(ctx, direction="down", category=category, n=10)
         out["my_customers_in_fallers"] = down.get("customers", [])
     return out

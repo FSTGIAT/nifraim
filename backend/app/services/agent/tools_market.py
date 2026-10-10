@@ -582,16 +582,17 @@ async def market_flows(ctx, category: str):
 @tool("market_changes", "מה השתנה בשוק בחודש האחרון לעומת החודש שלפניו, בקטגוריה: שינויי דמי ניהול, קופות שעלו/ירדו בדירוג התשואה בתוך קבוצת השווים, "
       "הכי הרבה כניסות/יציאות כסף, קופות חדשות וקופות שלא דווחו החודש; בפנסיה גם שינויי חשיפה למניות/חו\"ל/מט\"ח (פנסיה-נט).",
       {"category": {"type": "string", "enum": list(CATEGORIES)}}, ["category"], category="market", status_he="בודק מה השתנה בשוק")
-async def market_changes(ctx, category: str):
+async def market_changes(ctx, category: str, period: int | None = None):
+    """`period` (YYYYMM, not in the tool schema — Nifra Market's month picker): that month vs the one before."""
     from app.services.fund_market.delta import market_delta
     if category not in CATEGORIES:
         return {"error": "קטגוריה לא מוכרת."}
     source, classes, label = CATEGORIES[category]
-    period = await latest_period(ctx.db)
+    period = period or await latest_period(ctx.db)
     key = ("market_changes", category, period)
     hit = cache.get("market", 0, key)
     if hit is None:
-        hit = await market_delta(ctx.db, source, classes, open_only=is_open)
+        hit = await market_delta(ctx.db, source, classes, period=period, open_only=is_open)
         # don't pin "allocation unavailable" for hours while pensyanet is still importing that month
         if (hit.get("allocation_shifts") or {}).get("available") is not False:
             cache.put("market", 0, key, hit, ttl=6 * 3600)

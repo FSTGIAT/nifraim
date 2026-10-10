@@ -5,6 +5,7 @@
     <Transition name="nms" @enter="onEnter">
       <div v-if="open" class="nms-overlay" @click.self="close">
         <div ref="cardEl" class="nms" role="dialog" aria-label="Nifra Market">
+          <MarketWaves />
           <header class="nms-head">
             <div class="nms-title">
               <h2 dir="ltr">Nifra <b>Market</b></h2>
@@ -27,7 +28,7 @@
 
           <main class="nms-body">
             <Transition name="nms-view" mode="out-in">
-              <MarketHero v-if="view === 'book'" key="book" @open-customer="openCustomer" />
+              <MarketHero v-if="view === 'book'" key="book" @open-customer="openCustomer" @go="(v) => (view = v)" />
               <MarketLadder v-else-if="view === 'ladder'" key="ladder" @customers="openTrackCustomers" />
               <MarketMoves v-else-if="view === 'moves'" key="moves" @open-customer="openCustomer" />
               <CompanyDuel v-else key="duel" />
@@ -78,6 +79,7 @@ import MarketLadder from './MarketLadder.vue'
 import MarketMoves from './MarketMoves.vue'
 import CompanyDuel from './CompanyDuel.vue'
 import CustomerMarketDrill from './CustomerMarketDrill.vue'
+import MarketWaves from './MarketWaves.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false }, originEl: { type: null, default: null } })
 const emit = defineEmits(['update:open'])
@@ -150,7 +152,9 @@ async function ask() {
   background: #F4F4EE; box-shadow: 0 40px 100px rgba(30, 32, 8, 0.32);
   font-family: 'Heebo', sans-serif; color: var(--text-primary, #181818);
 }
-.nms-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 6px; }
+/* content above the bottom waves */
+.nms-head, .nms-nav, .nms-body, .nms-ask { position: relative; z-index: 1; }
+.nms-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 6px; }
 .nms-title h2 { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.02em; text-align: right; }
 .nms-title h2 b { color: var(--tab-market-ink); }
 .nms-title p { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary, #5C5C5C); }

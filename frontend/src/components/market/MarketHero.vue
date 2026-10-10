@@ -3,10 +3,14 @@
   <!-- "הלקוחות שלך מול השוק": the book's yearly gap vs the risk-level leaders rolls up, then the customers
        with the biggest gaps race in as bars. A row opens that customer's ladder drill. -->
     <div v-if="store.loadingOverview && !ov" class="mh-wait">מחשב את התיק מול השוק…</div>
-    <div v-else-if="ov && ov.missing" class="mh-empty">
-      <p>{{ ov.missing }}</p>
-      <p class="mh-empty-sub">סולם הסיכון, מה זז החודש ודו-קרב החברות כבר עובדים — הם מנתוני השוק הציבוריים.</p>
-    </div>
+    <MarketEmptyState v-else-if="ov && ov.missing" title="עוד אין נתונים מהתיק שלך"
+                      :text="ov.missing.replace('עוד אין נתונים מהתיק שלך — ', '')" :actions="marketActions" @go="(v) => $emit('go', v)" />
+    <MarketEmptyState v-else-if="ov && !ov.customers_compared" title="לא מצאנו בתיק מוצרי חיסכון להשוואה"
+                      text="ההשוואה לשוק עובדת על פנסיה, גמל, השתלמות, גמל להשקעה ופוליסות חיסכון — לפי המסלול שבקובץ הפרודוקציה. בקבצים שהועלו אין עדיין מוצרים כאלה עם מסלול מזוהה. בינתיים אפשר לראות את השוק עצמו:"
+                      :actions="marketActions" @go="(v) => $emit('go', v)" />
+    <MarketEmptyState v-else-if="ov && !ov.total_annual_gain_ils" tone="ok" title="אין כרגע לקוחות לבחינת מעבר"
+                      :text="`השווינו ${ov.customers_compared} לקוחות: כל המסלולים שלהם בראש הטבלה או במרכזה ברמת הסיכון שלהם, או שהמוביל לא באמת הרוויח יותר ב-3 השנים האחרונות.`"
+                      :actions="marketActions" @go="(v) => $emit('go', v)" />
     <template v-else-if="ov">
       <div class="mh-top">
         <div class="mh-count">
@@ -79,8 +83,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMarketStore } from '../../stores/market.js'
+import MarketEmptyState from './MarketEmptyState.vue'
 
-defineEmits(['open-customer'])
+defineEmits(['open-customer', 'go'])
+const marketActions = [{ view: 'ladder', label: 'סולם הסיכון' }, { view: 'moves', label: 'מה זז החודש' }, { view: 'duel', label: 'דו-קרב חברות' }]
 const store = useMarketStore()
 const ov = computed(() => store.overview)
 const counter = ref(0)
@@ -173,11 +179,15 @@ onMounted(async () => {
 }
 .mh-race--in li { opacity: 1; transform: none; }
 .mh-row {
+  transition: border-color 0.2s, background-color 0.25s, transform 0.2s;
   width: 100%; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(90px, 1fr) 110px 18px; align-items: center; gap: 12px;
   padding: 10px 14px; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 12px; background: #fff;
-  font: inherit; text-align: start; cursor: pointer; transition: border-color 0.2s, transform 0.2s;
+  font: inherit; text-align: start; cursor: pointer;
 }
-.mh-row:hover { border-color: var(--tab-market); transform: translateY(-1px); }
+.mh-row:hover { border-color: var(--tab-market); background: var(--tab-market-wash); transform: translateY(-1px); }
+.mh-row:hover .mh-bar { background: rgba(255, 255, 255, 0.85); }
+.mh-row:hover .mh-chev { color: var(--tab-market-ink); transform: translateX(-3px); }
+.mh-chev { transition: transform 0.2s, color 0.2s; }
 .mh-name { display: flex; flex-direction: column; font-size: 14px; font-weight: 700; min-width: 0; }
 .mh-name small { font-size: 12px; font-weight: 400; color: var(--text-secondary, #5C5C5C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mh-bar { height: 10px; border-radius: 999px; background: var(--bg, #F3F3F3); direction: ltr; overflow: hidden; }

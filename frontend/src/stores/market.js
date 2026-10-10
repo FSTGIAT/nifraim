@@ -51,9 +51,10 @@ export const useMarketStore = defineStore('market', {
       if (!this.ladders[k]) this.ladders[k] = (await api.get('/market/ladder', { params: { category, level } })).data
       return this.ladders[k]
     },
-    async loadMoves(category) {
-      if (!this.moves[category]) this.moves[category] = (await api.get('/market/moves', { params: { category } })).data
-      return this.moves[category]
+    async loadMoves(category, period = null) {
+      const k = `${category}:${period || 'latest'}`
+      if (!this.moves[k]) this.moves[k] = (await api.get('/market/moves', { params: { category, ...(period ? { period } : {}) } })).data
+      return this.moves[k]
     },
     async loadDuel(category, a, b) {
       const k = `${category}:${a}:${b}`
