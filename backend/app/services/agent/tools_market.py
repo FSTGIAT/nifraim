@@ -56,7 +56,7 @@ def category_for_product(product_type: str | None, product: str | None = None) -
 
 
 _SYN = [(r"מחקה", "עוקב"), (r"s\s*&\s*p\s*-?\s*500|500\s*s\s*&\s*p", "sp500"), (r"\bשקלי\b", "כספי"),
-        (r"\b05\b", "50"), (r"\b06\b", "60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
+        (r"\b05\b", "50"), (r"\b06\b", "60"), (r"(?<!\d)עד\s*50(?!\d)", "לבני 50 ומטה"), (r"(?<!\d)50\s*-\s*60(?!\d)", "לבני 50 עד 60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
 KEY = {"עוקב", "sp500", "מניות", "כללי", "אגח", "כספי", "הלכה", "הלכתי", "שריעה", "סחיר", "מדדי", "מדד", "לבני", "50", "60",
        "ומטה", "ומעלה", "עד", "קיימות", "פאסיבי", "אקטיבי", "חול", "ישראל", "צמוד", "יעד", "2030", "2040", "פלוס", "משולב"}
 
@@ -304,6 +304,22 @@ def holdings_view(f, info: dict | None, accumulation: float, y12: float | None) 
     return {**out, **verdict(f, info, accumulation, y12)}
 
 
+def _label_same_name(r: dict) -> dict:
+    """Every same-name figure says so in its key — "אחרון בקבוצת הסיכון שלו" was written over a same-name 14/14
+    and a "#1 בקבוצתה" over a track that is #9/26 at its risk level (2026-10-10)."""
+    r = dict(r)
+    rank, peers = r.pop("rank_in_peers", None), r.pop("peers", None)
+    if rank:
+        r["same_name_rank"] = f"#{rank} מתוך {peers} (מול מסלולים באותו שם)"
+    if "annual_gap_vs_best_ils" in r:
+        r["same_name_gap_ils"] = r.pop("annual_gap_vs_best_ils")
+    if "best_peer" in r:
+        r["same_name_best"] = r.pop("best_peer")
+    if isinstance(r.get("by_holdings"), dict):
+        r["risk_level_view"] = r.pop("by_holdings")
+    return r
+
+
 def _merge_same_track(items: list[dict]) -> list[dict]:
     """Several accounts in one official track → one line (accumulation and ₪ gaps summed)."""
     out: dict = {}
@@ -391,9 +407,9 @@ async def fund_fit(ctx, idn: str) -> dict:
            # recommended actions FIRST (risk level by holdings); the same-name gaps are the second view —
            # with them first the model ignored the holdings view entirely (2026-10-10)
            "recommended_actions_by_risk_level": actions,
-           "second_view_same_name": {"what": "השוואה משנית: מול מסלולים באותו שם בלבד (rank_in_peers, annual_gap_vs_best_ils בכל מוצר)",
+           "second_view_same_name": {"what": "השוואה משנית: מול מסלולים באותו שם בלבד (same_name_rank / same_name_gap_ils בכל מוצר)",
                                      "total_annual_gap_ils": sum(r["annual_gap_vs_best_ils"] for r in gaps)},
-           "products": res,
+           "products": [_label_same_name(r) for r in res],
             "how_to_read": "ההמלצה = recommended_actions_by_risk_level. annual_gain_ils = צבירה × (תשואה שנתית ממוצעת 3ש של המוביל ברמת הסיכון − של המסלול). "
                            "אומדן מתשואות עבר, לא הבטחה.",
             "disclaimer": DISCLAIMER}
@@ -409,7 +425,7 @@ async def fund_fit(ctx, idn: str) -> dict:
 async def get_customer_fund_fit(ctx, id_number: str):
     idn = "".join(ch for ch in str(id_number) if ch.isdigit()).lstrip("0") or "0"
     out = await fund_fit(ctx, idn)
-    rows = [{"label": f"{p['company']} {p['category']}", "value": p.get("annual_gap_vs_best_ils") or 0} for p in out.get("products", []) if p.get("official_fund")]
+    rows = [{"label": f"{p['company']} {p['category']}", "value": p.get("same_name_gap_ils") or 0} for p in out.get("products", []) if p.get("official_fund")]
     if rows:
         out["result_id"] = ctx.keep(rows, label="מוצר", value="פער שנתי משוער מול הטוב ביותר", title="כמה הלקוח מפסיד בשנה מול המסלול המוביל")
     return out
@@ -820,7 +836,8 @@ def _find_fund(q: str, rows: list, *, loose: bool = True):
         stem = company_stem(co) if co else None
         want = tokens(q)
         kinds = [k for k in ("מקיפה", "כללית", "משלימה") if k in q]
-        hits = [f for f in rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
+        stem = brand(co) if co else None   # brand(): company_stem turns Infinity into "אינפיניטי השתלמות,"
+        hits = [f for f in rows if (not stem or brand(f.managing_corporation or f.fund_name) == stem)
                 and want <= tokens(f.fund_name) and all(k in (f.fund_name or "") for k in kinds)]
         exact = [f for f in hits if tokens(f.fund_name) == want]   # "מניות" beats "עוקב מדדי מניות"
         hits = exact or hits
