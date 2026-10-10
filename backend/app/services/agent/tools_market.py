@@ -84,15 +84,23 @@ def match_fund(track: str | None, company: str | None, funds: list) -> tuple[obj
     tk = tokens(track)
     if not tk:
         return None, ""
-    best, score = None, 0.0
+    scored = []
     for f in cands:
         fk = tokens(f.fund_name)
-        if not fk:
-            continue
-        j = len(tk & fk) / len(tk | fk)
-        if j > score:
-            best, score = f, j
-    return (best, "tokens") if best and score >= 0.75 else (None, "")
+        if fk:
+            scored.append((len(tk & fk) / len(tk | fk), f))
+    if not scored:
+        return None, ""
+    score = max(j for j, _ in scored)
+    if score < 0.75:
+        return None, ""
+    # a tie is broken by the fund, never by list order: "הפניקס גמל מניות" tied with "הפניקס מרכזית לפיצויים
+    # עד 15% מניות" and the severance fund won (2026-10-10). Open funds first, then the name sharing the most
+    # words with the track + company (מקיפה / כללית / גמל), then size.
+    words = set(norm(f"{track} {company or ''}").split())
+    tied = [f for j, f in scored if j == score]
+    best = max(tied, key=lambda f: (is_open(f), len(words & set(norm(f.fund_name).split())), f.total_assets or 0))
+    return best, "tokens"
 
 
 _LABEL_NOISE = re.compile(r"\s*(?:קרן השתלמות|קרנות השתלמות|השתלמות|קופת גמל להשקעה|קופת גמל|גמל להשקעה|חיסכון לכל ילד|"
