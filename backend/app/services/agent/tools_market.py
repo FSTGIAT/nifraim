@@ -747,3 +747,60 @@ async def best_tracks_by_risk(ctx, category: str, level: int, index: bool = Fals
                      "size_m": f.total_assets} for f, r in top],
             "result_id": rid, "disclaimer": DISCLAIMER,
             "rule": "רמת סיכון = לפי חשיפה למניות בפועל, לא לפי שם המסלול. תשואות עבר; דמי הניהול כאן הם ממוצע הקופה, לא של הלקוח."}
+
+
+@tool("track_rank", "באיזה מקום מסלול מסוים: (1) מול מסלולים באותו שם/מאפיין (לבני 50, מניות…) לפי תשואה שנתית ממוצעת 3 שנים, "
+      "(2) מול כל המסלולים באותה רמת סיכון לפי האחזקות בפועל, בציון משולב (12 חודשים, 3 ו-5 שנים, שארפ, דמי ניהול). fund = שם המסלול או מספר קופה.",
+      {"fund": {"type": "string"}}, ["fund"], category="market", status_he="בודק את דירוג המסלול")
+async def track_rank(ctx, fund: str):
+    period = await latest_period(ctx.db)
+    q = (fund or "").strip()
+    # exact / whole-word over every category first; the loose company+track-words match only inside the
+    # category the question names — "הפניקס גמל מניות" resolved to Phoenix השתלמות מניות (2026-10-10)
+    rows_by = {cat: await _category_rows(ctx.db, cat, period) for cat in CATEGORIES}
+    named = category_for_product(q, q)
+    found = None
+    for loose in (False, True):
+        for cat in ([named] if (loose and named) else [] if loose else list(CATEGORIES)):
+            f = _find_fund(q, rows_by[cat], loose=loose)
+            if f:
+                found = (cat, f, rows_by[cat])
+                break
+        if found:
+            break
+    if not found:
+        return {"found": False, "note": "לא נמצא מסלול בשם הזה — נסה שם מלא או מספר קופה."}
+    cat, f, rows = found
+    same = [x for x in rows if same_peer(x, f) and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None
+            and (is_open(x) or x.fund_id == f.fund_id)]
+    by3 = sorted(same, key=lambda x: -x.avg_yield_3y)
+    hold = (await holdings_ranks(ctx.db, cat, period, rows)).get(f.fund_id) or {}
+    y, m = divmod(period, 100)
+    return {"found": True, "fund": f.fund_name, "fund_id": f.fund_id, "category": CATEGORIES[cat][2], "data_month": f"{m:02d}/{y}",
+            "same_name_rank": {"rank": by3.index(f) + 1 if f in by3 else None, "of": len(by3),
+                               "leader": by3[0].fund_name if by3 else None, "avg_yield_3y": f.avg_yield_3y},
+            "risk_level_rank": {"risk_level": f"{hold['level']} {hold['label']}" if hold else None, "rank": hold.get("rank"),
+                                "of": hold.get("of"), "leader": (hold.get("leader") or {}).get("fund")},
+            "note": "שני דירוגים שונים: מול מסלולים באותו שם (תשואה 3ש) ומול רמת הסיכון לפי האחזקות (ציון משולב). ציין את שניהם.",
+            "disclaimer": DISCLAIMER}
+
+
+def _find_fund(q: str, rows: list, *, loose: bool = True):
+    """One track by id, exact name, whole words, or (loose) company + track words."""
+    if q.isdigit():
+        return next((f for f in rows if f.fund_id == int(q)), None)
+    norm = lambda x: re.sub(r"\s+", " ", (x or "").replace('"', "").replace("-", " ")).strip()
+    hits = [f for f in rows if norm(f.fund_name) == norm(q)]
+    if not hits:
+        words = [w for w in norm(q).split() if w]
+        hits = [f for f in rows if set(words) <= set(norm(f.fund_name).split())]
+    if not hits and loose and tokens(q):
+        from app.services.agent.router import _company
+        co = _company(q)
+        stem = company_stem(co) if co else None
+        want = tokens(q)
+        kinds = [k for k in ("מקיפה", "כללית", "משלימה") if k in q]
+        hits = [f for f in rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
+                and want <= tokens(f.fund_name) and all(k in (f.fund_name or "") for k in kinds)]
+    hits.sort(key=lambda f: -(f.total_assets or 0))
+    return hits[0] if hits and len(hits) <= 6 else None
