@@ -17,7 +17,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"חיסכון לכל ילד|חסכון לכל ילד|לילד", "compare_child_savings"),
     (r"גמל להשקעה", "compare_gemel_invest"),
     (r"השתלמות", "compare_hishtalmut"),
-    (r"פנסי", "compare_pension"),
+    (r"פנסי|מקפת", "compare_pension"),   # "מגדל מקפת אישית כללי" is Migdal's pension fund
     (r"פוליס[הות] חיסכון|פוליסות חסכון", "compare_savings_policy"),
     (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])", "compare_gemel"),   # \b fails on "בגמל" (Hebrew letters are all \w)
 ]
@@ -118,7 +118,9 @@ def plan(question: str) -> list[tuple[str, dict]]:
                     break
                 track = next((t for t in TRACKS if t in q), "")
                 cheap = re.search(r"דמי (?:ה)?ניהול", q) and re.search(r"נמוכ|הזול|הכי פחות", q)   # sort by fee, not returns
-                calls.append((tool_name, {**({"track": track} if track else {}), **({"sort_by": "fee"} if cheap else {})}))
+                co_f = next(iter(companies_in(q)), "")   # "מגדל מקפת אישית כללי" — that company's tracks
+                calls.append((tool_name, {**({"track": track} if track else {}), **({"sort_by": "fee"} if cheap else {}),
+                                          **({"company": co_f} if co_f else {})}))
                 break
     co = next(iter(companies_in(q)), "")
     market_q = any(t.startswith("compare_") or t == "market_changes" for t, _ in calls)

@@ -95,7 +95,7 @@ async def get_overview(ctx):
     }
 
 
-@tool("get_unpaid", "עמלות שלא שולמו. בלי company: פער ומספר לקוחות לא משולמים לכל חברה. עם company: רשימת הלקוחות שלא שולמו בחברה, המוצרים והצפי לכל אחד.",
+@tool("get_unpaid", "עמלות שלא שולמו. בלי company: פער ומספר לקוחות לא משולמים לכל חברה + הלקוחות עם הצפי הגבוה ביותר בכל החברות. עם company: רשימת הלקוחות שלא שולמו בחברה, המוצרים והצפי לכל אחד.",
       {"company": {"type": "string", "description": "שם חברה (מגדל, הפניקס...) או ריק לכל החברות"},
        "limit": {"type": "integer", "description": "כמה לקוחות להחזיר (ברירת מחדל 15)"}},
       category="commissions", status_he="בודק עמלות שלא שולמו")
@@ -108,8 +108,17 @@ async def get_unpaid(ctx, company: str = "", limit: int = 15):
                        for c in s.get("companies", []) if (c.get("gap") or 0) > 0 or (c.get("unpaid") or 0) > 0),
                       key=lambda r: (-r["value"], -(r["unpaid_customers"] or 0)))
         rid = ctx.keep(rows, label="חברה", value="פער (לא שולם)", title="עמלות שלא שולמו לפי חברה")
+        # the customers too — "מי הלקוחות עם הכי הרבה שלא שולם" got only per-company totals (2026-10-10)
+        from app.api import comparison as _cmp
+        allc = []
+        for r in rows:
+            d = await _cached(ctx, ("company_unpaid", r["label"]),
+                              lambda co=r["label"]: _cmp.company_unpaid(company=co, db=ctx.db, user=ctx.user))
+            allc += [{"name": c.get("name") or c.get("id_number"), "id_number": c.get("id_number"), "company": r["label"],
+                      "expected": _r(c.get("expected"))} for c in d.get("customers") or []]
+        allc.sort(key=lambda c: -(c["expected"] or 0))
         return {"total_gap": _r((s.get("totals") or {}).get("gap")), "unpaid_customers": (s.get("totals") or {}).get("unpaid"),
-                "by_company": rows, "result_id": rid}
+                "by_company": rows, "top_unpaid_customers": allc[: max(1, min(limit, 20))], "result_id": rid}
     from app.api import comparison
     match = next((c["company"] for c in s.get("companies", []) if _match_company(c["company"], company)), company)
     d = await _cached(ctx, ("company_unpaid", match), lambda: comparison.company_unpaid(company=match, db=ctx.db, user=ctx.user))
