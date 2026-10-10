@@ -176,6 +176,8 @@ async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield
         rows = [f for f in rows if brand(f.managing_corporation or f.fund_name) == stem or stem in (f.fund_name or "")]
     restricted = sum(1 for f in rows if not is_open(f))
     rows = [f for f in rows if is_open(f) and (f.total_assets or 0) >= (min_size_m or 0)]
+    from app.services.fund_market.track_score import yields_12m
+    y12 = await yields_12m(ctx.db, CATEGORIES[cat][0], period)
     col = sort_by if sort_by in SORTS else "yield_3y"
     attr = {"yield_3y": "avg_yield_3y", "yield_5y": "avg_yield_5y", "ytd": "ytd_yield", "month": "monthly_yield", "fee": "mgmt_fee",
             "sharpe": "sharpe", "size": "total_assets", "inflow": "net_monthly_deposits"}[col]
@@ -190,7 +192,7 @@ async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield
         "sorted_by": SORT_HE[col], "track_filter": track or None, "company_filter": company or None,
         "median": {"avg_yield_3y": _med([f.avg_yield_3y for f in rows]), "avg_yield_5y": _med([f.avg_yield_5y for f in rows]),
                    "ytd": _med([f.ytd_yield for f in rows]), "mgmt_fee": _med([f.mgmt_fee for f in rows])},
-        "top": [_fund_row(f) for f in top],
+        "top": [{**_fund_row(f), "yield_12m": y12.get(f.fund_id)} for f in top],
         "units": "תשואות ודמי ניהול באחוזים; גודל וזרימות במיליוני ₪", "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון, data.gov.il)",
         "disclaimer": DISCLAIMER,
     }

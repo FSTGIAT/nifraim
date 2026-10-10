@@ -341,6 +341,11 @@ def test_market_prefetch():
         "מה התשואה בקרנות השתלמות מניות?": [("compare_hishtalmut", {"track": "מניות"})],
         "מה השתנה במסלקה בקרנות הפנסיה?": [],
         "אילו לקוחות שלי נמצאים במסלולים שירדו בדירוג החודש?": [("customers_in_market_moves", {"direction": "down"})],
+        "תשווה בין הפניקס לכלל בגמל": [("compare_gemel", {"company": "הפניקס"}), ("compare_gemel", {"company": "כלל"})],
+        "מה ההבדל בין קרן פנסיה מקיפה לכללית?": [],   # "כללית" is not the company כלל
+        "איך הפנסיה של מגדל השתנתה מתחילת השנה?": [("compare_pension", {"company": "מגדל"})],
+        "מה השתנה אצל הלקוח 22931885 מהחודש שעבר?": [("get_customer", {"id_number": "22931885"}),
+                                                   ("customer_changes", {"id_number": "22931885"})],
         "מה כדאי להציע ללקוח 42251967 לפי התיק שלו?": [("get_customer", {"id_number": "42251967"}),
                                                         ("get_customer_fund_fit", {"id_number": "42251967"})],
         # a customer + fund words → that customer's money vs the market, never a generic market table

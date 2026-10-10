@@ -232,3 +232,57 @@ async def propose_maslaka_request(ctx, code: str, id_number: str, customer_name:
     ctx.proposals.append({"kind": "maslaka", "code": code, "code_he": CODE_HE.get(code, code),
                           "customer_id_number": idn, "customer_name": (customer_name or "")[:120]})
     return "הבקשה הוכנה והוצגה לסוכן לאישור (השיוך מאושר). כתוב משפט אחד: מה הבקשה ומתי צפויה תשובה (9100: תוך שעות)."
+
+
+@tool("customer_changes", "מה השתנה אצל לקוח לאורך זמן: מוצרים חדשים / שלא הופיעו / שהצבירה שלהם זזה — קובץ המסלקה האחרון מול הקודם (או מול קובץ הפרודוקציה), "
+      "עם הצבירה אז ועכשיו; ולכל מסלול שלו — תשואת החודש, מתחילת השנה ו-12 חודשים, ותזוזת הדירוג החודש מול מסלולים דומים.",
+      {"id_number": {"type": "string"}}, ["id_number"], category="maslaka", status_he="בודק מה השתנה אצל הלקוח")
+async def customer_changes(ctx, id_number: str):
+    from app.services.agent.tools_market import (CATEGORIES, _category_rows, _customer_products, category_for_product,
+                                                 latest_period, match_fund)
+    from app.services.fund_market.delta import rank_moves
+    from app.services.fund_market.track_score import yields_12m
+    from app.services.maslaka.delta import monthly_delta
+
+    idn = "".join(ch for ch in str(id_number) if ch.isdigit()).lstrip("0") or "0"
+    res = await monthly_delta(ctx.db, ctx.user.id)
+    base = res.get("base") or {}
+    pick = lambda items: [{k: i.get(k) for k in ("company", "product", "policy", "old_accumulation", "new_accumulation", "accumulation_diff")
+                           if i.get(k) is not None} for i in items if str(i.get("id_number")).lstrip("0") == idn]
+    products = {"new": pick(res.get("new") or []), "not_in_this_file": pick(res.get("removed") or []),
+                "accumulation_changed": pick(res.get("changed") or [])}
+    unchanged_note = None
+    if res.get("as_of") and not any(products.values()):
+        unchanged_note = "אין שינוי מעל הסף (₪100 וגם 1%) באף מוצר של הלקוח בקובץ הזה."
+
+    tracks = []
+    period = await latest_period(ctx.db)
+    rows_by_cat, moves_by_cat, y12_by_src, seen = {}, {}, {}, set()
+    for p in await _customer_products(ctx, idn):
+        cat = category_for_product(p["product_type"], p["product"])
+        if not cat or not period:
+            continue
+        if cat not in rows_by_cat:
+            src, classes, _ = CATEGORIES[cat]
+            rows_by_cat[cat] = await _category_rows(ctx.db, cat, period)
+            moves_by_cat[cat] = await rank_moves(ctx.db, src, classes)
+            if src not in y12_by_src:
+                y12_by_src[src] = await yields_12m(ctx.db, src, period)
+        f = match_fund(p["track"], p["company"], rows_by_cat[cat])[0]
+        if not f or f.fund_id in seen:
+            continue
+        seen.add(f.fund_id)
+        mv = moves_by_cat[cat]["moves"].get(f.fund_id)
+        tracks.append({"track": f.fund_name, "category": CATEGORIES[cat][2], "month_yield": f.monthly_yield, "ytd_yield": f.ytd_yield,
+                       "yield_12m": y12_by_src[f.source].get(f.fund_id),
+                       **({"rank_before": mv[0], "rank_now": mv[1], "group_size": mv[2]} if mv else {})})
+    y, m = divmod(period or 0, 100)
+    return {"id_number": idn,
+            "maslaka_file": res.get("as_of"),
+            "compared_with": ("קובץ המסלקה של " + (base.get("as_of") or "")) if base.get("kind") == "maslaka"
+            else ("קובץ הפרודוקציה " + (base.get("as_of") or "")[:7] if base.get("as_of") else None),
+            "products": products, "note": unchanged_note,
+            "tracks_this_month": tracks, "market_month": f"{m:02d}/{y}" if period else None,
+            "history_available": "הצבירה לאורך זמן: רק שתי נקודות — קובץ הפרודוקציה וקובץ המסלקה האחרון (המסלקה החודשית התחילה ב-09/2026). "
+                                 "תשואות המסלולים — חודשיות מ-2023.",
+            "rule": "שינוי צבירה כולל תשואות של כל התקופה שבין שני הקבצים, לא רק הפקדות. 'לא הופיע' ≠ עזב."}

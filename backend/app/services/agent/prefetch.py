@@ -19,7 +19,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"השתלמות", "compare_hishtalmut"),
     (r"פנסי", "compare_pension"),
     (r"פוליס[הות] חיסכון|פוליסות חסכון", "compare_savings_policy"),
-    (r"קופ(?:ת|ות) גמל|\bגמל\b", "compare_gemel"),
+    (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])", "compare_gemel"),   # \b fails on "בגמל" (Hebrew letters are all \w)
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי ניהול|להשוות|השווא|מומלץ")
 MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|עלו בדירוג|ירדו בדירוג|חדשות"
@@ -72,7 +72,7 @@ def plan(question: str) -> list[tuple[str, dict]]:
     if ALLOC_Q.search(q) and not MARKET_CHANGE_Q.search(q) and not ID_RE.search(q):
         calls.append(("fund_allocation", {"fund": q}))
         return calls[:3]
-    cos = [c for c in COMPANIES if c in q]
+    cos = companies_in(q)
     if len(set(cos)) >= 2 and re.search(r"תשווה|השווה|השוואה|מול|לעומת|בין", q) and not ID_RE.search(q):
         cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
         if cat_tool:   # "תשווה בין מור למיטב בפנסיה" — each company's tracks (was: the market top 10, Mor absent)
@@ -82,6 +82,9 @@ def plan(question: str) -> list[tuple[str, dict]]:
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))
         return calls[:3]
     m_cust = ID_RE.search(q)
+    if m_cust and CUSTOMER_CHANGE_Q.search(q):
+        calls.append(("customer_changes", {"id_number": m_cust.group(1)}))
+        return calls[:3]
     advice = re.search(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד", q)
     if m_cust and (FUND_Q.search(q) or advice or any(re.search(p_, q) for p_, _ in FUND_CATS)):
         calls.append(("get_customer_fund_fit", {"id_number": m_cust.group(1)}))   # this customer's money vs the market
@@ -91,19 +94,30 @@ def plan(question: str) -> list[tuple[str, dict]]:
     if (FUND_Q.search(q) or market_change) and not explain and not re.search(r"מסלק", q):
         for pat, tool_name in FUND_CATS:
             if re.search(pat, q):
+                named = companies_in(q)
+                if market_change and named:   # "איך הפנסיה של מגדל השתנתה?" — that company's tracks (YTD, 12m, rank)
+                    calls += [(tool_name, {"company": c}) for c in named[:2]]
+                    break
                 if market_change:   # what changed in the market this month
                     calls.append(("market_changes", {"category": tool_name.removeprefix("compare_")}))
                     break
                 track = next((t for t in TRACKS if t in q), "")
                 calls.append((tool_name, {"track": track} if track else {}))
                 break
-    co = next((c for c in COMPANIES if c in q), "")
+    co = next(iter(companies_in(q)), "")
+    market_q = any(t.startswith("compare_") or t == "market_changes" for t, _ in calls)
+    if co and not market_q and any(re.search(p_, q) for p_, _ in FUND_CATS) \
+            and re.search(r"תשוא|ביצוע|מתחילת השנה|השתנ|דמי ניהול|הכי טוב", q) and not re.search(r"עמל|לא שול|נפרע|חוב", q):
+        # "איך הפנסיה של מגדל השתנתה מתחילת השנה?" — Migdal's tracks, not Migdal's commissions
+        cat_tool = next(t for p_, t in FUND_CATS if re.search(p_, q))
+        calls.append((cat_tool, {"company": co}))
+        market_q = True
     # "כמה לקוחות יש לי בהראל?" / "כמה צבירה בהפניקס" is the BOOK at that company, not its debt
     # (measured: answered "155 לקוחות לא שולמו" and "I don't have the total")
     book_q = re.search(r"לקוחות|צביר|פרמי|מוצר|פוליסות|תיק", q) and not re.search(r"לא שול|חוב|חייב|פער|גבי|לא שיל|עמל", q)
-    if co and book_q and not any(t.startswith("compare_") for t, _ in calls):
+    if co and book_q and not market_q:
         calls.append(("get_portfolio", {"company": co, "metric": "premium" if "פרמי" in q else "accumulation"}))
-    elif co and not any(t.startswith("compare_") for t, _ in calls):
+    elif co and not market_q:
         calls.append(("get_unpaid", {"company": co}))
         if re.search(r"הסכם|שיעור|אחוז|עמלה|למה|מתעכב|לא שיל", q):
             calls.append(("get_rate", {"company": co}))
@@ -112,6 +126,7 @@ def plan(question: str) -> list[tuple[str, dict]]:
     return calls[:3]
 
 
+CUSTOMER_CHANGE_Q = re.compile(r"השתנ|שינוי|לאורך (?:ה)?זמן|מהחודש שעבר|מגמה|היסטורי|עלה|ירד")
 ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול|להעביר|העברה|מפסיד")
 
 
@@ -123,6 +138,13 @@ async def _id_for_name(ctx, full_name: str) -> str | None:
         if {fn, ln} == {a, b}:
             return str(c.get("id_number")).lstrip("0")
     return None
+
+
+def companies_in(q: str) -> list[str]:
+    """Companies named as WORDS (prefixes ב/ל/מ/ה/ו/ש allowed). "פנסיה מקיפה לכללית" is not כלל — the
+    substring match prefetched Clal's unpaid commissions for a definition question (2026-10-10)."""
+    return [c for c in COMPANIES
+            if re.search(rf"(?:^|[\s,.?!\"'(])(?:[בלמהוש]{{0,2}}){re.escape(c)}(?=$|[\s,.?!\"')])", q)]
 
 
 _PREFIX = "ולבשמה"   # Hebrew one-letter prefixes: לעומר, שעומר, ועומר, מעומר, בעומר, העומר
@@ -166,7 +188,12 @@ async def run_prefetch(ctx, question: str):
     # "מה כדאי להציע ללירן סורני?" — a customer named by NAME also gets the market comparison
     # (plan() or named_customer may have added find_customer; either way the fit never ran — 2026-10-10)
     fc = next((a for n, a in steps if n == "find_customer"), None)
-    if fc and ADVICE_Q.search(question) and not any(n == "get_customer_fund_fit" for n, _ in steps):
+    if fc and CUSTOMER_CHANGE_Q.search(question) and not any(n == "customer_changes" for n, _ in steps):
+        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
+        if idn:   # "אילת דנה לוי — מה השתנה אצלה מהחודש שעבר?"
+            steps = [s_ for s_ in steps if not s_[0] in ("market_changes",) and not s_[0].startswith("compare_")]
+            steps.insert(steps.index(("find_customer", fc)) + 1, ("customer_changes", {"id_number": idn}))
+    elif fc and ADVICE_Q.search(question) and not any(n == "get_customer_fund_fit" for n, _ in steps):
         idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
         if idn:
             steps.insert(steps.index(("find_customer", fc)) + 1, ("get_customer_fund_fit", {"id_number": idn}))
