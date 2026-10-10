@@ -784,7 +784,17 @@ async def track_rank(ctx, fund: str):
         if found:
             break
     if not found:
-        return {"found": False, "note": "לא נמצא מסלול בשם הזה — נסה שם מלא או מספר קופה."}
+        # the company's REAL tracks in the category asked — Nifra invented "מגדל השתלמות כללי לבני 50 ומטה"
+        # as a name to try; השתלמות has no age tracks at all (2026-10-10)
+        from app.services.agent.router import _company
+        co = _company(q)
+        pool = rows_by.get(named) or [r for rs in rows_by.values() for r in rs]
+        tracks = sorted({x.fund_name for x in pool if is_open(x) and (not co or brand(x.managing_corporation or x.fund_name) == brand(co))})
+        age = bool(re.search(r"לבני|לגילאי|ומטה|ומעלה|\b50\b|\b60\b", q))
+        has_age = any(re.search(r"לבני|לגילאי|ומטה|ומעלה", t) for t in tracks)
+        return {"found": False, "note": "לא נמצא מסלול בשם הזה. אל תמציא שם — הצע רק מהרשימה existing_tracks.",
+                **({"no_age_tracks": "אין מסלולי גיל (לבני 50 וכו') בקטגוריה הזו אצל החברה הזו."} if age and tracks and not has_age else {}),
+                "existing_tracks": tracks[:20] or None}
     cat, f, rows = found
     same = [x for x in rows if same_peer(x, f) and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None
             and (is_open(x) or x.fund_id == f.fund_id)]
