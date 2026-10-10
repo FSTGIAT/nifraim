@@ -20,6 +20,8 @@ from app.services.calls.due_time import parse_time, propose
 IL = ZoneInfo("Asia/Jerusalem")
 LEAD = timedelta(minutes=15)
 MAX_PROPOSALS = 3
+WEEK_DAYS = 7          # the week brief: today + the next 7 days
+DAY_HE = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]   # date.weekday(): Mon=0
 
 
 def _first(name: str | None) -> str:
@@ -63,7 +65,8 @@ def build(rows: list[CallRecording], now: datetime | None = None, claimed: set[s
     by_id = {str(c.id): c for c in rows}
     open_tasks = promises(rows, "agent", today)
 
-    timed, due_today, overdue, undated, proposals = [], [], [], [], []
+    timed, due_today, overdue, undated, proposals, upcoming = [], [], [], [], [], []
+    week_end = (today + timedelta(days=WEEK_DAYS)).isoformat()
     for p in open_tasks:
         c = by_id[p["call_id"]]
         a = ((c.insights or {}).get("action_items") or [])[p["task_index"]]
@@ -78,6 +81,8 @@ def build(rows: list[CallRecording], now: datetime | None = None, claimed: set[s
             overdue.append(item)
         elif day == today.isoformat():
             due_today.append(item)
+        elif day <= week_end:
+            upcoming.append(item)
         if hhmm and day >= today.isoformat() and day <= (today + timedelta(days=1)).isoformat():
             fa = fire_at(day, hhmm)
             key = f"task:{p['call_id']}:{p['task_index']}:{day}T{hhmm}"
@@ -97,6 +102,7 @@ def build(rows: list[CallRecording], now: datetime | None = None, claimed: set[s
         proposals.append({**item, **pr})
 
     due_today.sort(key=lambda x: x["due_time"] or "99")
+    week = week_ahead(today, due_today, upcoming)
     brief_key = f"brief:{today.isoformat()}"
     return {
         "now": now.isoformat().replace("+00:00", "Z"), "tz": "Asia/Jerusalem", "today": today.isoformat(),
@@ -105,7 +111,8 @@ def build(rows: list[CallRecording], now: datetime | None = None, claimed: set[s
         "brief": {"key": brief_key, "claimed": brief_key in claimed,
                   "due_today": due_today, "overdue": overdue, "undated": undated,
                   "headline": headline(len(due_today), len(overdue), len(undated)),
-                  "sentences_he": brief_sentences(now_il, _first(agent_name), due_today, overdue, undated)},
+                  "sentences_he": brief_sentences(now_il, _first(agent_name), due_today, overdue, undated, week)},
+        "week": week,
         "proposals": proposals,
     }
 
@@ -125,7 +132,34 @@ def _n(n: int, one: str, many: str) -> str:
     return one if n == 1 else f"{n} {many}"
 
 
-def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list, undated: list) -> list[str]:
+def day_label(d: date, today: date) -> str:
+    if d == today:
+        return "היום"
+    if d == today + timedelta(days=1):
+        return "מחר"
+    return f"יום {DAY_HE[d.weekday()]}"
+
+
+def week_ahead(today: date, due_today: list, upcoming: list) -> dict:
+    """The coming week, day by day — what the agent promised, with a date, from today to +7."""
+    days: dict[str, list] = {}
+    for t in sorted(due_today + upcoming, key=lambda x: (x["due_date"], x["due_time"] or "99")):
+        days.setdefault(t["due_date"], []).append(t)
+    out = [{"date": d, "label": day_label(date.fromisoformat(d), today), "tasks": ts} for d, ts in days.items()]
+    total = sum(len(d["tasks"]) for d in out)
+    if not out:
+        sentences = ["בשבוע הקרוב אין משימות עם תאריך."]
+    else:
+        sentences = ["בשבוע הקרוב יש לך משימה אחת:" if total == 1 else f"בשבוע הקרוב יש לך {total} משימות:"]
+        for d in out:
+            items = [f"{'בשעה ' + t['due_time'] + ', ' if t['due_time'] else ''}{_say(t)}" for t in d["tasks"][:3]]
+            more = f", ועוד {len(d['tasks']) - 3}" if len(d["tasks"]) > 3 else ""
+            sentences.append(f"{d['label']}: {'. '.join(items)}{more}.")
+    return {"days": out, "total": total, "sentences_he": sentences}
+
+
+def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list, undated: list,
+                    week: dict | None = None) -> list[str]:
     """Short, natural Hebrew — the agent hears it once, cold, between two calls."""
     out = [_greeting(now_il, name)]
     if not (due_today or overdue or undated):
@@ -143,4 +177,8 @@ def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list,
     if undated:
         what = "דבר אחד שהבטחת ללקוח" if len(undated) == 1 else f"{len(undated)} דברים שהבטחת ללקוחות"
         out.append(f"יש {what} ועוד לא קבעת להם תאריך. אפשר לקבוע אותם ב-Nifra Insights.")
+    # Sunday opens the Israeli work week — one line about the week ahead
+    later = (week or {}).get("total", 0) - len(due_today)
+    if now_il.weekday() == 6 and later > 0:
+        out.append("בהמשך השבוע מחכה לך עוד משימה אחת." if later == 1 else f"בהמשך השבוע מחכות לך עוד {later} משימות.")
     return out

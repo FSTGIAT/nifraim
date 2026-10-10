@@ -145,3 +145,14 @@ def test_themes_only_use_given_strings():
     out = B.clean_themes([{"name": "פנסיה", "members": ["פנסיה", "המצאה"]}, {"name": "שוב", "members": ["פנסיה"]},
                           {"name": 'ביטוח חיים ואכ"ע', "members": ["ביטוח חיים"]}], {"פנסיה", "ביטוח חיים"})
     assert out == [{"name": "פנסיה", "members": ["פנסיה"]}, {"name": 'ביטוח חיים ואכ"ע', "members": ["ביטוח חיים"]}]
+
+
+def test_week_ahead_day_by_day():
+    c = _call()   # Monday 12/10 13:30 meeting + Sunday 11/10 task + an undated one
+    out = R.build([c], now=SUNDAY_0830, agent_name="קיקו")
+    w = out["week"]
+    assert [(d["label"], len(d["tasks"])) for d in w["days"]] == [("היום", 1), ("מחר", 1)] and w["total"] == 2
+    assert w["sentences_he"][0] == "בשבוע הקרוב יש לך 2 משימות:"
+    assert w["sentences_he"][2] == "מחר: בשעה 13:30, פגישה לסגירת הבחירה — חיים עזר."
+    # Sunday's brief adds one line about the rest of the week
+    assert out["brief"]["sentences_he"][-1] == "בהמשך השבוע מחכה לך עוד משימה אחת."

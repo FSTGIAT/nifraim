@@ -4,13 +4,19 @@
   <aside class="ip">
     <section v-if="r" class="ip-card ip-today" style="--hv: 47, 115, 196">
       <header class="ip-h">
-        <h3>היום</h3>
-        <span v-if="!todayRows.length" class="ip-sub">אין משימות להיום</span>
-        <button type="button" class="ip-play" :class="{ on: playing }" title="השמע את סיכום היום" @click="play">
+        <div class="ip-tabs" role="tablist">
+          <button type="button" role="tab" :aria-selected="view === 'today'" :class="{ on: view === 'today' }" @click="view = 'today'">היום</button>
+          <button type="button" role="tab" :aria-selected="view === 'week'" :class="{ on: view === 'week' }" @click="view = 'week'">
+            השבוע<span v-if="r.week && r.week.total" class="ip-tab-n ltr-number">{{ r.week.total }}</span>
+          </button>
+        </div>
+        <button type="button" class="ip-play" :class="{ on: playing }" :title="view === 'week' ? 'השמע את השבוע הקרוב' : 'השמע את סיכום היום'" @click="play">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13" /></svg>
           השמע
         </button>
       </header>
+      <template v-if="view === 'today'">
+      <p v-if="!todayRows.length" class="ip-empty">אין לך משימות להיום</p>
       <ul v-if="todayRows.length" class="ip-rows">
         <li v-for="t in todayRows" :key="t.call_id + ':' + t.task_index" class="ip-row" :class="{ 'is-late': t.overdue_days > 0, 'is-hot': hot(t.call_id) }"
             @mouseenter="store.hover([t.call_id])" @mouseleave="store.hover(null)">
@@ -27,6 +33,26 @@
         ועוד {{ moreLate }} באיחור
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
       </button>
+      </template>
+      <!-- the week ahead, day by day (same tasks the spoken week brief reads) -->
+      <template v-else>
+        <p v-if="!r.week || !r.week.days.length" class="ip-empty">אין משימות עם תאריך בשבוע הקרוב</p>
+        <div v-for="d in (r.week ? r.week.days : [])" :key="d.date" class="ip-day">
+          <p class="ip-day-h">{{ d.label }} <span class="ltr-number">{{ d.date.split('-').reverse().slice(0, 2).join('/') }}</span></p>
+          <ul class="ip-rows">
+            <li v-for="t in d.tasks" :key="t.call_id + ':' + t.task_index" class="ip-row" :class="{ 'is-hot': hot(t.call_id) }"
+                @mouseenter="store.hover([t.call_id])" @mouseleave="store.hover(null)">
+              <span class="ip-time ltr-number">{{ t.due_time || '' }}</span>
+              <button type="button" class="ip-text" @click="$emit('open-calls', { title: t.customer || 'שיחה', subtitle: t.text, callIds: [t.call_id] }, $event.currentTarget)">
+                <b>{{ t.text }}</b><span v-if="t.customer"> · {{ t.customer }}</span>
+              </button>
+              <button type="button" class="ip-done" title="בוצע" @click="store.markDone(t.call_id, t.task_index)">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </template>
       <p v-if="nextTimed" class="ip-next">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
         <span class="ltr-number">{{ whenLabel(nextTimed) }}</span> <b>{{ nextTimed.text }}</b>
@@ -89,12 +115,14 @@ function whenLabel(t) {
   return `${t.due_date === today ? 'היום' : 'מחר'} ${t.due_time}`
 }
 // on demand: read today's brief aloud (the same sentences the morning reminder speaks)
+const view = ref('today')   // היום | השבוע
 const playing = ref(false)
 async function play() {
   if (playing.value) { stopSpeaking(); playing.value = false; return }
   if (!r.value) return
   playing.value = true
-  if (!(await speak(r.value.brief.sentences_he))) { playing.value = false; return }
+  const lines = view.value === 'week' ? (r.value.week || {}).sentences_he : r.value.brief.sentences_he
+  if (!(await speak(lines || []))) { playing.value = false; return }
   const t = setInterval(() => { if (!isSpeaking()) { playing.value = false; clearInterval(t) } }, 400)
 }
 const key = (p) => p.call_id + ':' + p.task_index
@@ -119,6 +147,14 @@ async function confirm(p) {
 .ip-card:hover { background: rgba(var(--hv, 44, 95, 107), 0.09); box-shadow: inset 0 0 0 1px rgba(var(--hv, 44, 95, 107), 0.32); }
 .ip-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .ip-h h3 { margin: 0; font-size: 15px; font-weight: 900; }
+.ip-tabs { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(24, 24, 24, 0.05); }
+.ip-tabs button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border: none; border-radius: 8px; background: none; font: inherit; font-size: 14px; font-weight: 800; color: var(--text-secondary, #5C5C5C); cursor: pointer; transition: background 0.3s ease, color 0.3s ease; }
+.ip-tabs button.on { background: #fff; color: var(--text-primary, #181818); box-shadow: 0 1px 3px rgba(24, 24, 24, 0.1); }
+.ip-tab-n { min-width: 18px; padding: 0 5px; border-radius: 999px; background: rgb(var(--hv)); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+.ip-empty { margin: 4px 8px 2px; font-size: 13px; color: var(--text-secondary, #5C5C5C); }
+.ip-day + .ip-day { margin-top: 6px; }
+.ip-day-h { margin: 6px 8px 2px; font-size: 12px; font-weight: 800; color: rgb(var(--hv)); }
+.ip-day-h span { font-weight: 600; color: var(--text-secondary, #5C5C5C); margin-inline-start: 4px; }
 .ip-play {
   margin-inline-start: auto; display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px;
   border: 1px solid var(--tab-insights-soft); background: #fff; color: var(--tab-insights-ink); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
