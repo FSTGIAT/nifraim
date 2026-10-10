@@ -266,7 +266,7 @@ def _compound(monthly: list) -> float | None:
     return round((g - 1) * 100, 2)
 
 
-_FIT_KEYS = ("company", "category", "official_fund", "track", "match", "accumulation", "accounts", "rank_in_peers", "peers",
+_FIT_KEYS = ("company", "category", "official_fund", "fund_id", "track", "match", "accumulation", "accounts", "rank_in_peers", "peers",
              "avg_yield_3y", "peer_median_avg_yield_3y", "yield_12m_pct", "mgmt_fee", "peer_median_fee",
              "annual_gap_vs_best_ils", "fee_gap_ils_per_year", "best_peer", "by_holdings")
 
@@ -449,6 +449,38 @@ async def get_customer_fund_fit(ctx, id_number: str):
        "n": {"type": "integer"}},
       category="market", status_he="מחפש לקוחות במסלולים חלשים")
 async def fund_opportunities(ctx, category: str = "", min_gap_ils: int = 1000, n: int = 10):
+    data = await book_opportunities(ctx)
+    if not data:
+        return {"customers": [], "reason": "בפרודוקציה הפעילה אין מוצרי חיסכון (גמל/השתלמות/פנסיה/פוליסה) עם מסלול וצבירה שאפשר להשוות לשוק — "
+                "או שכל המסלולים כבר המובילים ברמת הסיכון שלהם. ההשוואה מבוססת על המסלולים בקבצי הפרודוקציה, לא על המסלקה."}
+    rows = []
+    for d in data:
+        items = [p_ for p_ in d["products"] if p_.get("annual_gain_ils") and (not category or p_["category"] == category)]
+        gap = sum(p_["annual_gain_ils"] for p_ in items)
+        if items and gap >= (min_gap_ils or 0):
+            rows.append({**d, "gap": gap, "items": items})
+    rows.sort(key=lambda d: -d["gap"])
+    top = rows[: max(1, min(int(n or 10), 30))]
+    out = [{"name": d["name"], "id_number": d["id_number"], "accumulation": d["accumulation"], "annual_gap_ils": round(d["gap"]),
+            "products": [{"category": i["category"], "track": i["fund"], "rank": i["rank"], "best": i["leader"], "gap": i["annual_gain_ils"]}
+                         for i in d["items"][:4]]} for d in top]
+    rid = ctx.keep([{"label": d["name"], "value": d["annual_gap_ils"], "id_number": d["id_number"]} for d in out],
+                   label="לקוח", value="פער שנתי משוער", title="לקוחות במסלולים שמפגרים אחרי השוק")
+    # totals FIRST — "מה הפער הכולל של כל הלקוחות" got "hundreds of thousands" when they came after the list
+    return {"total_customers": len(rows), "total_annual_gap_ils": round(sum(d["gap"] for d in rows)), "customers": out,
+            "how_to_read": "רק מוצרים שההמלצה עליהם 'לבחון מעבר' (בחצי התחתון של רמת הסיכון, והמוביל טוב יותר ב-3 שנים). "
+                           "פער = צבירה × (תשואה שנתית ממוצעת 3ש של המוביל ברמת הסיכון − המסלול של הלקוח). אומדן — "
+                           "אותו חישוב כמו בכרטיס הלקוח (get_customer_fund_fit).",
+            "disclaimer": DISCLAIMER, "result_id": rid}
+
+
+async def book_opportunities(ctx) -> list[dict]:
+    """Every customer's savings products against the market at their RISK LEVEL — the same holdings_view /
+    verdict as get_customer_fund_fit, for the whole book in one pass (Nifra Market's hero, fund_opportunities).
+    fund_opportunities used the best SAME-NAME peer while saying "same risk level": kiko's book read ₪3.86M
+    while each customer card read a different figure (2026-10-10). One calculation now.
+    → [{id_number, name, accumulation, annual_gain_ils, watch_gain_ils, products:[{category, fund, fund_id,
+       accumulation, risk_level, rank, leader, action, annual_gain_ils}]}]"""
     from app.api.production import _get_production_upload_ids
     from app.models.record import ClientRecord
 
@@ -459,54 +491,53 @@ async def fund_opportunities(ctx, category: str = "", min_gap_ils: int = 1000, n
             return []
         recs = (await ctx.db.execute(select(ClientRecord).where(
             ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(ids),
-            ClientRecord.accumulation > 0, ClientRecord.track.isnot(None)))).scalars().all()
+            ClientRecord.accumulation > 0))).scalars().all()
         rows_by_cat: dict[str, list] = {}
-        fit_cache: dict[tuple, tuple] = {}
-        per_cust: dict[str, dict] = defaultdict(lambda: {"gap": 0.0, "acc": 0.0, "items": []})
+        ranks_by_cat: dict[str, dict] = {}
+        match_cache: dict[tuple, object] = {}
+        held: dict[tuple, dict] = {}          # (customer, category, fund_id) -> merged accumulation
+        names: dict[str, str] = {}
         for r in recs:
             cat = category_for_product(r.product_type, r.product)
             if not cat:
                 continue
             if cat not in rows_by_cat:
                 rows_by_cat[cat] = await _category_rows(ctx.db, cat, period)
-            k = (cat, r.track, r.receiving_company)
-            if k not in fit_cache:
-                cands = rows_by_cat[cat]
-                f, _ = match_fund(r.track, r.receiving_company, cands)
-                best = None
-                if f and f.avg_yield_3y is not None:
-                    peers = [x for x in cands if same_peer(x, f)
-                             and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None and is_open(x)]
-                    best = max(peers, key=lambda x: x.avg_yield_3y, default=None)
-                fit_cache[k] = (cat, f, best)
-            cat, f, best = fit_cache[k]
-            if not f or not best or best.fund_id == f.fund_id:
+                ranks_by_cat[cat] = await holdings_ranks(ctx.db, cat, period, rows_by_cat[cat])
+            splits = r.track_split if isinstance(r.track_split, list) and r.track_split else None
+            parts = [(x.get("track"), float(x.get("amount") or 0)) for x in splits] if splits else [(r.track, float(r.accumulation or 0))]
+            idn = str(r.id_number or "").lstrip("0")
+            if not idn:
                 continue
-            gap = float(r.accumulation) * (best.avg_yield_3y - f.avg_yield_3y) / 100
-            idn = str(r.id_number).lstrip("0")
-            c = per_cust[idn]
-            c["name"] = " ".join(x for x in (r.first_name, r.last_name) if x) or idn
-            c["gap"] += gap
-            c["acc"] += float(r.accumulation)
-            c["items"].append({"category": cat, "track": f.fund_name, "best": best.fund_name, "gap": round(gap)})
-        return [{"id_number": k, **v} for k, v in per_cust.items()]
+            names.setdefault(idn, " ".join(x for x in (r.first_name, r.last_name) if x) or idn)
+            for trk, amt in parts:
+                k = (cat, trk, r.receiving_company)
+                if k not in match_cache:
+                    match_cache[k] = match_fund(trk, r.receiving_company, rows_by_cat[cat])[0]
+                f = match_cache[k]
+                if f is None or amt <= 0:
+                    continue
+                h = held.setdefault((idn, cat, f.fund_id), {"f": f, "acc": 0.0})
+                h["acc"] += amt
+        per: dict[str, dict] = {}
+        for (idn, cat, fid), h in held.items():
+            f, info = h["f"], ranks_by_cat[cat].get(fid)
+            v = holdings_view(f, info, h["acc"], (info or {}).get("y12"))
+            c = per.setdefault(idn, {"id_number": idn, "name": names.get(idn, idn), "accumulation": 0.0,
+                                     "annual_gain_ils": 0, "watch_gain_ils": 0, "products": []})
+            c["accumulation"] += h["acc"]
+            c["annual_gain_ils"] += v.get("annual_gain_ils") or 0
+            c["watch_gain_ils"] += v.get("annual_gain_vs_leader_ils") or 0
+            c["products"].append({"category": cat, "fund": f.fund_name, "fund_id": fid, "accumulation": round(h["acc"]),
+                                  "risk_level": v.get("risk_level"), "rank": v.get("rank"),
+                                  "leader": (v.get("leader") or {}).get("fund"), "action": v.get("action"),
+                                  "annual_gain_ils": v.get("annual_gain_ils")})
+        for c in per.values():
+            c["accumulation"] = round(c["accumulation"])
+            c["products"].sort(key=lambda p_: -(p_.get("annual_gain_ils") or 0))
+        return sorted(per.values(), key=lambda c: -c["annual_gain_ils"])
 
-    data = await cache_get_or(ctx, ("fund_opps",), compute)
-    if not data:
-        return {"customers": [], "reason": "בפרודוקציה הפעילה אין מוצרי חיסכון (גמל/השתלמות/פנסיה/פוליסה) עם מסלול וצבירה שאפשר להשוות לשוק — "
-                "או שכל המסלולים כבר המובילים ברמת הסיכון שלהם. ההשוואה מבוססת על המסלולים בקבצי הפרודוקציה, לא על המסלקה."}
-    rows = [d for d in data if d["gap"] >= (min_gap_ils or 0)
-            and (not category or any(i["category"] == category for i in d["items"]))]
-    rows.sort(key=lambda d: -d["gap"])
-    top = rows[: max(1, min(int(n or 10), 30))]
-    out = [{"name": d["name"], "id_number": d["id_number"], "accumulation": round(d["acc"]), "annual_gap_ils": round(d["gap"]),
-            "products": d["items"][:4]} for d in top]
-    rid = ctx.keep([{"label": d["name"], "value": d["annual_gap_ils"], "id_number": d["id_number"]} for d in out],
-                   label="לקוח", value="פער שנתי משוער", title="לקוחות במסלולים שמפגרים אחרי השוק")
-    # totals FIRST — "מה הפער הכולל של כל הלקוחות" got "hundreds of thousands" when they came after the list
-    return {"total_customers": len(rows), "total_annual_gap_ils": round(sum(d["gap"] for d in rows)), "customers": out,
-            "how_to_read": "פער = צבירה × (תשואה שנתית ממוצעת 3ש של המסלול המוביל באותה רמת סיכון − המסלול של הלקוח). אומדן.",
-            "disclaimer": DISCLAIMER, "result_id": rid}
+    return await cache_get_or(ctx, ("book_opps",), compute)
 
 
 async def cache_get_or(ctx, key, fn, ttl=1800):
@@ -767,7 +798,7 @@ async def best_tracks_by_risk(ctx, category: str, level: int, index: bool = Fals
                    value="תשואה שנתית ממוצעת 3ש", unit="%", title=f"{CATEGORIES[category][2]} — רמת סיכון {label}") if top else None
     return {"category": CATEGORIES[category][2], "risk_level": f"{level} {label}", "data_month": f"{m:02d}/{y}",
             "tracks_in_level": len(group), **({"note": note} if note else {}),
-            "top": [{"rank": r["rank"], "fund": f.fund_name, "company": brand(f.managing_corporation or f.fund_name),
+            "top": [{"rank": r["rank"], "fund_id": f.fund_id, "fund": f.fund_name, "company": brand(f.managing_corporation or f.fund_name),
                      "stock_pct": r.get("stock_pct"), "abroad_pct": r.get("abroad_pct"), "yield_12m": r.get("y12"),
                      "avg_yield_3y": f.avg_yield_3y, "avg_yield_5y": f.avg_yield_5y, "sharpe": f.sharpe, "mgmt_fee": f.mgmt_fee,
                      "size_m": f.total_assets} for f, r in top],

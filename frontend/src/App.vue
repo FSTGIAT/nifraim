@@ -149,6 +149,11 @@ const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
   --tab-calls: var(--chart-11);
   --tab-calls-wash: rgba(217, 106, 181, 0.12);
   --tab-calls-ink: #A63A86;
+  /* Nifra Market — the fund rankings studio (components/market). Olive = the one validated palette
+     slot no tab owned; the accent fails 4.5:1 as text (4.29) → text and solid buttons use the ink (6.4:1). */
+  --tab-market: var(--chart-3);
+  --tab-market-wash: rgba(122, 127, 42, 0.10);
+  --tab-market-ink: #5E6320;
   /* Text-safe inks for the pastel-yellow (chart-8) CTA surfaces */
   --chart-8-ink: #4A3900;
   --chart-8-deep: #8A6300;

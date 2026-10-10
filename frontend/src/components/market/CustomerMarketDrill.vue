@@ -1,0 +1,99 @@
+<template>
+  <!-- One customer against the market: each savings product in the ladder of its risk level, the action,
+       the yearly ₪ gap, and the same-name view (labelled as such). Grows out of the tapped row. -->
+  <DataModal :open="!!customerId" :origin="origin" :title="name" :subtitle="customerId ? 'ת.ז ' + customerId : ''"
+             :period="fit && fit.data_month ? 'נתוני שוק ' + fit.data_month : ''" accent="var(--tab-market)"
+             :layer="1040" @close="$emit('close')">
+    <div v-if="loading" class="cmd-wait">טוען את הקופות של הלקוח…</div>
+    <div v-else-if="fit && !(fit.products || []).length" class="cmd-wait">{{ fit.note || 'אין ללקוח מוצרי חיסכון שאפשר להשוות לשוק.' }}</div>
+    <div v-else-if="fit" class="cmd">
+      <div v-if="totalGain >= 0.5" class="cmd-strip">
+        <div><small>פער שנתי משוער מול המובילים</small><b class="ltr-number">{{ ils(totalGain) }}</b></div>
+        <div><small>מוצרים לבחינת מעבר</small><b class="ltr-number">{{ toMove }}</b></div>
+        <div><small>מוצרים שהושוו</small><b class="ltr-number">{{ ranked.length }}</b></div>
+      </div>
+      <section v-for="(p, i) in products" :key="i" class="cmd-prod">
+        <header class="cmd-head">
+          <div>
+            <h4>{{ p.official_fund || p.track }}</h4>
+            <p>
+              {{ p.category }}
+              <template v-if="p.accumulation >= 0.5"> · צבירה <span class="ltr-number">{{ ils(p.accumulation) }}</span></template>
+              <template v-if="p.risk_level_view && p.risk_level_view.risk_level"> · רמת סיכון {{ p.risk_level_view.risk_level }}</template>
+            </p>
+          </div>
+          <div class="cmd-act" :class="{ 'cmd-act--move': p.action && p.action.annual_gain_ils }">
+            <span v-if="p.risk_level_view && p.risk_level_view.rank" class="cmd-rank ltr-number">{{ p.risk_level_view.rank }}</span>
+            <span v-if="p.action && p.action.annual_gain_ils" class="cmd-gain"><span class="ltr-number">{{ ils(p.action.annual_gain_ils) }}</span> בשנה</span>
+          </div>
+        </header>
+        <p v-if="p.action" class="cmd-verdict">{{ p.action.action }}<template v-if="p.action.leader && !p.action.action.includes(p.action.leader)"> · המוביל: {{ p.action.leader }}</template></p>
+        <RiskLadder v-if="p.ladder" :tracks="p.ladder.tracks" />
+        <p v-if="p.same_name_rank" class="cmd-same">
+          מול מסלולים באותו שם: {{ p.same_name_rank.replace(' (מול מסלולים באותו שם)', '') }}
+          <template v-if="p.same_name_gap_ils >= 0.5"> · פער <span class="ltr-number">{{ ils(p.same_name_gap_ils) }}</span> בשנה</template>
+        </p>
+      </section>
+      <p class="cmd-note">אומדן מתשואות עבר (3 שנים) — תשואות עבר אינן מבטיחות תשואות עתידיות.</p>
+    </div>
+  </DataModal>
+</template>
+
+<script setup>
+import { computed, ref, watch } from 'vue'
+import DataModal from '../workspace/DataModal.vue'
+import RiskLadder from './RiskLadder.vue'
+import { useMarketStore } from '../../stores/market.js'
+
+const props = defineProps({
+  customerId: { type: String, default: null },
+  customerName: { type: String, default: '' },
+  origin: { type: null, default: null },
+})
+defineEmits(['close'])
+const store = useMarketStore()
+const fit = ref(null)
+const loading = ref(false)
+watch(() => props.customerId, async (id) => {
+  fit.value = null
+  if (!id) return
+  loading.value = true
+  try { fit.value = await store.loadCustomer(id) } finally { loading.value = false }
+}, { immediate: true })
+
+const name = computed(() => props.customerName || fit.value?.name || '')
+const actions = computed(() => fit.value?.recommended_actions_by_risk_level || [])
+const products = computed(() => (fit.value?.products || []).filter((p) => p.official_fund)
+  .map((p) => ({ ...p, action: actions.value.find((a) => a.track === p.official_fund) }))
+  .sort((a, b) => (b.action?.annual_gain_ils || 0) - (a.action?.annual_gain_ils || 0)))
+const ranked = computed(() => products.value.filter((p) => p.risk_level_view?.rank))
+const toMove = computed(() => products.value.filter((p) => p.action?.annual_gain_ils).length)
+const totalGain = computed(() => products.value.reduce((s, p) => s + (p.action?.annual_gain_ils || 0), 0))
+const ils = (v) => '₪' + Math.round(v).toLocaleString('he-IL')
+</script>
+
+<style scoped>
+.cmd { display: flex; flex-direction: column; gap: 14px; }
+.cmd-wait { padding: 30px; text-align: center; color: var(--text-secondary, #5C5C5C); }
+.cmd-strip {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--border-subtle, #E5E5E5);
+  border-radius: 14px; overflow: hidden; background: #fff;
+}
+.cmd-strip > div { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; }
+.cmd-strip > div + div { border-inline-start: 1px solid var(--border-subtle, #E5E5E5); }
+.cmd-strip small { font-size: 12px; color: var(--text-secondary, #5C5C5C); }
+.cmd-strip b { font-size: 21px; font-weight: 800; }
+.cmd-strip > div:first-child b { color: var(--tab-market-ink); }
+.cmd-prod { background: #fff; border: 1px solid var(--border-subtle, #E5E5E5); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cmd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cmd-head h4 { margin: 0; font-size: 15px; font-weight: 800; }
+.cmd-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary, #5C5C5C); }
+.cmd-act { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.cmd-rank { font-size: 18px; font-weight: 800; }
+.cmd-act--move .cmd-rank, .cmd-gain { color: var(--tab-market-ink); }
+.cmd-gain { font-size: 13px; font-weight: 800; }
+.cmd-verdict { margin: 0; font-size: 13px; font-weight: 600; }
+.cmd-same { margin: 0; font-size: 12.5px; color: var(--text-secondary, #5C5C5C); }
+.cmd-note { margin: 0; font-size: 12px; color: var(--text-secondary, #5C5C5C); }
+@media (max-width: 640px) { .cmd-strip { grid-template-columns: 1fr; } .cmd-strip > div + div { border-inline-start: none; border-top: 1px solid var(--border-subtle, #E5E5E5); } }
+</style>

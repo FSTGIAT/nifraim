@@ -273,8 +273,10 @@ async def _agent(ctx: ToolContext, question: str, history, mentions, usage: dict
                                         f"ת.ז {m['id_number']}" if m.get("id_number") else "",
                                         f"מייל {m['email']}" if m.get("email") else "") if x) for m in mentions[:10]]
         q += "\nאנשי קשר שסומנו ב-@ (מדויקים):\n" + "\n".join("- " + r for r in rows)
-    if surface == "panel":
+    if surface in ("panel", "market"):
         q += "\n(ענה בטקסט רגיל בלבד — בלי Markdown, בלי כוכביות ובלי כותרות; רשימה רק עם מקפים פשוטים.)"
+    if surface == "market":   # Nifra Market's ask box: the fund rankings studio
+        q += "\n(השאלה נשאלה ב-Nifra Market — מסך דירוג הקרנות והמסלולים. העדף את כלי השוק: דירוג לפי רמת סיכון, השוואת חברות, מה זז החודש.)"
     if view_context:
         q += "\nמה שהסוכן רואה עכשיו על המסך (הקשר בלבד, המספרים בכלים):\n" + view_context[:4000]
     # a short company-switch follow-up ("ועם הפניקס?") = the previous question about the new company

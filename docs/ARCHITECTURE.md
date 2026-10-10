@@ -115,6 +115,7 @@ Invariants:
 | I need to change / understand… | Go to |
 |---|---|
 | **Nifra AI v2 — any AI answer (chat + Nifra Agent ask), its tools, cache, privacy, fund data** | §17c → `services/agent/` (`loop.py`, `registry.py`, `tools_*.py`), `api/ai_agent.py`, `services/fund_market/`, `utils/agentStream.js`, `tests/test_nifra_agent.py` |
+| **Nifra Market — the fund-rankings studio (circle beside Nifra Agent / Calls)** | §20 → `api/market.py`, `tools_market.book_opportunities`, `components/market/*`, `stores/market.js`, `remotion/market/MarketPulse.tsx`, `tests/test_market_api.py` |
 | **AI chat charts (viz) — why a graph did/didn't open, silk open, hover trace** | §17c + `docs/AI_VIZ.md` → `tools_viz.render_chart`, `ai_service.stream_chat`, `ai_viz_fallback.py`, `AiVizPanel.vue` |
 | **Parse a new insurer Excel format** | `services/parser_service.py` + `utils/hebrew_mappings.py` (see CLAUDE.md "How to Add a Parser") |
 | **Hebrew → DB column mapping / format signatures** | `utils/hebrew_mappings.py` |
@@ -1660,3 +1661,36 @@ scanned Phoenix and a 15-page Harel policy, embeddings + hybrid search, the 4 to
 only the login form was recon'd (login.gov.il `#userId/#userPass/#loginSubmit`); the OTP screen, the search
 form's Kendo widgets, the not-found message and the policy-detail views need the first live run (it dumps
 `<run>_harb_*.png/html/txt` at every step).
+
+
+## 20. Nifra Market — the fund rankings as a screen (2026-10-10)
+
+A third circle in the workspace ("Nifra **Market**", olive `--tab-market`, ink `--tab-market-ink`) beside Nifra Agent
+and Nifra Calls. Click → `NifraMarketStudio.vue` grows out of it (`useOriginMorph`) with four views and a market-scoped
+ask box (`POST /api/ai/agent`, `surface: "market"`).
+
+```mermaid
+flowchart LR
+  ICON[NifraMarketIcon] --> STUDIO[NifraMarketStudio]
+  STUDIO --> HERO[MarketHero<br/>₪ gap counter + bar race] --> OV[GET /api/market/overview]
+  STUDIO --> LAD[MarketLadder<br/>category × risk level 1–5] --> LG[GET /api/market/ladder]
+  STUDIO --> MOV[MarketMoves] --> MV[GET /api/market/moves]
+  STUDIO --> DUEL[CompanyDuel] --> DU[GET /api/market/duel]
+  HERO --> DRILL[CustomerMarketDrill<br/>RiskLadder per product] --> CU[GET /api/market/customer/id]
+  OV & CU --> BOOK[tools_market.book_opportunities / fund_fit<br/>holdings_view → track_score.verdict]
+  LG --> BT[best_tracks_by_risk]
+  MV --> MC[market_changes + customers_in_market_moves]
+  DU --> CC[compare_companies]
+```
+
+**Invariants**
+- **No new math in `api/market.py`.** Every number is a tool's number. The hero's gap and each customer card come from
+  ONE calculation: `book_opportunities` (whole book) applies the same `holdings_view`/`verdict` as `get_customer_fund_fit`
+  (one customer). `fund_opportunities` reads `book_opportunities` too — it used to measure against the best SAME-NAME peer
+  while saying "same risk level" (kiko: ₪3.86M vs the cards' figures). `tests/test_market_api.py` asserts the parity.
+- **The gap counts only "לבחון מעבר" products** (bottom half of the risk group AND the leader beat the track on 3 years).
+- **Market data is public** — ladder / moves / duel work for an agent with no files. Book views return
+  `router.missing_data_line()` instead of zeros.
+- The studio paints its own light surface, never `--app-canvas` (an agent may pick a dark page canvas).
+- View components keep their comments INSIDE the root element: a comment above it makes a fragment, and
+  `<Transition mode="out-in">` then never mounts the next view (dev mode keeps comments).

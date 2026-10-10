@@ -28,7 +28,7 @@ class AgentIn(BaseModel):
     history: list[Turn] = Field(default_factory=list, max_length=20)
     mentions: list[dict] = Field(default_factory=list, max_length=10)
     view_context: str | None = Field(default=None, max_length=6000)   # what the agent is looking at
-    surface: str = Field(default="chat", pattern="^(chat|panel)$")      # panel = Nifra Agent (plain text only)
+    surface: str = Field(default="chat", pattern="^(chat|panel|market)$")   # panel = Nifra Agent, market = Nifra Market (plain text)
 
 
 @router.post("/agent")

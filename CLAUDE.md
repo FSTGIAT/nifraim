@@ -536,6 +536,14 @@ no tool takes a user id, actions only propose (the agent's click on `/office-age
 ביטוח-נט) comes from data.gov.il into `fund_market_monthly`. Data dictionary: `scripts/build_data_dictionary.py`.
 Tests: `tests/test_nifra_agent.py`; latency: `scripts/agent_latency.py`. **See `docs/ARCHITECTURE.md` §17c.**
 
+## Nifra Market — the fund rankings studio (`components/market/`, `api/market.py`)
+
+A circle beside Nifra Agent / Nifra Calls opens a motion studio: the book's yearly gap vs the risk-level leaders
+(counter + bar race → per-customer risk ladder), the market ladder per category × risk level, what moved this month,
+and company duels. Every number comes from `tools_market` (`book_opportunities` = the per-customer `fund_fit` verdict
+for the whole book) — no new math in the API. Public market data works for new agents; book views say what's missing.
+Parity test: `tests/test_market_api.py`. **See `docs/ARCHITECTURE.md` §20.**
+
 ## הר הביטוח + policies — the customer's insurance file as Markdown (`services/policies/`)
 
 "תביא לי מהר הביטוח <ת.ז> <ת.לידה> <ת.הנפקה>" in Nifra → `propose_harb_fetch` → the agent's click (= consent) →

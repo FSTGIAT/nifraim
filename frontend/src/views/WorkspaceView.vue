@@ -66,6 +66,7 @@
       <CycleEmotionClock @select="(tab) => onCardSelect(tab)" />
       <!-- סוכן המשרד — the back-office agent (mail + unpaid commission) -->
       <NifraAgentIcon size="big" @open="openCollector" />
+      <NifraMarketIcon size="big" @open="openMarket" />
       <!-- no room on the left band (1360–1399px): the calls widget joins this column -->
       <CallWidget v-if="!roomForCallWidget" size="big" pop-side="left" />
     </div>
@@ -82,8 +83,10 @@
     >
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <NifraAgentIcon size="small" @open="openCollector" />
+      <NifraMarketIcon size="small" @open="openMarket" />
       <CallWidget size="small" pop-side="left" />
     </div>
+    <NifraMarketStudio v-model:open="marketOpen" :origin-el="marketOrigin" />
     <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" :focus-card="agentFocusCard"
                       @open-mail="collectorOpen = false; mailAgentOpen = true" @open-vizs="onLatestVizs"
                       @open-call="(id) => { collectorOpen = false; callsStore.requestOpenCall(id) }" />
@@ -341,6 +344,8 @@ import CycleRailIcon from '../components/workspace/CycleRailIcon.vue'
 import CycleEmotionClock from '../components/workspace/CycleEmotionClock.vue'
 import NifraAgentIcon from '../components/workspace/NifraAgentIcon.vue'
 import OfficeAgentPanel from '../components/workspace/OfficeAgentPanel.vue'
+import NifraMarketIcon from '../components/market/NifraMarketIcon.vue'
+import NifraMarketStudio from '../components/market/NifraMarketStudio.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'
 import PortalRunProgressFloat from '../components/workspace/PortalRunProgressFloat.vue'
@@ -550,6 +555,10 @@ function useMq(query) {
 const bellInRail = useMq('(min-width: 721px) and (min-height: 721px)')
 const roomForEmotionClock = useMq('(min-width: 1360px) and (min-height: 640px)')
 // ── Collection agent (סוכן גבייה) ──
+// Nifra Market — the fund rankings studio, another circle beside Nifra Agent / Nifra Calls
+const marketOpen = ref(false)
+const marketOrigin = ref(null)
+function openMarket(el) { marketOrigin.value = el || null; marketOpen.value = true }
 const collectorOpen = ref(false)
 const collectorOrigin = ref(null)
 function openCollector(el) {
