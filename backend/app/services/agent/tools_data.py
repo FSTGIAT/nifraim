@@ -353,11 +353,40 @@ async def find_customer(ctx, query: str):
         card = await get_customer(ctx, spoke[0])
         return (f"הכוונה כמעט בוודאות ללקוח שדיברת איתו בשיחה (יש עוד {others} בשם הזה) — ענה עליו, "
                 f"ואמור בחצי משפט שבחרת בו כי דיברתם:\n\n{card}")[:9000]
+    if not ids:
+        ids, alias = await _ids_by_name_any_file(ctx, q)
+        if ids:
+            cards = [await get_customer(ctx, i) for i in ids[:2]]
+            head = (f"הלקוח בשם \"{alias}\" מופיע בקבצים אחרים (נפרעים/קובץ ישן); בתיק הוא רשום בשם אחר — הכרטיס לפי ת.ז:"
+                    if len(ids) == 1 else f"נמצאו {len(ids)} לקוחות בשם הזה בקבצים אחרים — הכרטיסים לפי ת.ז:")
+            return "\n\n".join([head, *cards])[:9000]
     if 1 <= len(ids) <= 2:
         cards = [await get_customer(ctx, i) for i in ids]
         head = "נמצאו 2 לקוחות בשם הזה — שני הכרטיסים:" if len(ids) == 2 else ""
         return "\n\n".join(x for x in [head, *cards] if x)[:9000]
     return page[:4000]
+
+
+async def _ids_by_name_any_file(ctx, q: str) -> tuple[list[str], str]:
+    """A name the data map doesn't know may still be in ANY of the agent's files under another spelling —
+    "גורן אביגדור" is in the נפרעים file, production calls 314969452 "נופר יפה גורן" (2026-10-10).
+    Words in any order; a one-letter prefix (לגורן) is tried without it."""
+    from sqlalchemy import func, select
+    from app.models.record import ClientRecord
+    toks = [w for w in re.sub(r"[^\u0590-\u05FF\s]", " ", q).split() if len(w) >= 2]
+    if len(toks) < 2:
+        return [], q
+    variants = [toks] + ([[toks[0][1:], *toks[1:]]] if toks[0][0] in "לבהומש" and len(toks[0]) > 2 else [])
+    for tk in variants:
+        full = func.concat(func.coalesce(ClientRecord.first_name, ""), " ", func.coalesce(ClientRecord.last_name, ""))
+        cond = [ClientRecord.user_id == ctx.user.id, ClientRecord.id_number.isnot(None), *[full.like(f"%{w}%") for w in tk]]
+        rows = (await ctx.db.execute(select(ClientRecord.id_number, ClientRecord.first_name, ClientRecord.last_name)
+                                     .where(*cond).limit(200))).all()
+        ids = list(dict.fromkeys(str(i).lstrip("0") for i, fn, ln in rows
+                                 if set(tk) <= set(f"{fn or ''} {ln or ''}".split())))
+        if ids:
+            return ids[:5], " ".join(tk)
+    return [], q
 
 
 @tool("get_customer", "כרטיס לקוח מלא לפי ת.ז: כל המוצרים בכל החברות, צבירה ופרמיה, מה שולם ומה לא, תמונת תיק (כפל/חסר), ומה הגיע מהמסלקה.",
