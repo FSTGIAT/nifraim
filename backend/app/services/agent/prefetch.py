@@ -297,5 +297,12 @@ async def run_prefetch(ctx, question: str):
         # pension (2026-10-10); they get a larger share of the MAX_CHARS budget
         cap = 7500 if name in ("get_customer_fund_fit", "market_changes") else (6000 if len(steps[:3]) == 1 else 4000)
         blocks.append(f"### {name}({', '.join(f'{k}={v}' for k, v in args.items())})\n{out[:cap]}")
+    b = await ctx.book_state()
+    if not b["production"] and not b["maslaka_customers"]:
+        # a new agent: their own data isn't in yet — "maybe a wrong ID?" was the answer for an empty account
+        blocks.insert(0, "### מצב התיק\nהתיק של הסוכן עדיין ריק: " + ("יש קובץ נפרעים, " if b["commission"] else "")
+                      + "אין פרודוקציה ואין נתוני מסלקה (שיוך: " + b["association"] + "). על שאלה על לקוח או על התיק — "
+                      "אמור שהנתונים עוד לא הועלו (לא 'אולי טעות בת.ז'), ומה עושים: העלאת פרודוקציה ונפרעים או השלמת השיוך למסלקה. "
+                      "שאלות על קרנות ומסלולים בשוק עונים כרגיל מנתוני גמל-נט / פנסיה-נט הציבוריים.")
     text = "\n\n".join(blocks)
     ctx.prefetched = text[:MAX_CHARS]

@@ -326,7 +326,7 @@ def render(route_: Route, data) -> tuple[str, str | None]:
         return f"ההסכם עם {data['company']}: " + " · ".join(f"{x['product']} {x['rate_pct']}%" + (f" ({x['scope']})" if x.get('scope') else "") for x in r) + ".", None
     if i == "maslaka_status":
         a = data.get("association") or {}
-        s = "השיוך למסלקה מאושר." if a.get("status") == "approved" else f"השיוך למסלקה: {a.get('status')}."
+        s = f"השיוך למסלקה: {ASSOC_HE.get(a.get('status') or 'not_started', a.get('status'))}."
         if data.get("open_requests"):
             s += f" {data.get('open_requests_count', len(data['open_requests']))} בקשות פתוחות; הקרובה צפויה ב-{data['open_requests'][0]['answer_expected']}."
         f = data.get("latest_production_file")
@@ -358,6 +358,28 @@ async def _preferred_metric(ctx) -> str:
                             for t in texts) else "accumulation"
 
 
+_BOOK_INTENTS = {"unpaid", "top", "portfolio", "trend", "changes", "agreement_audit"}
+ASSOC_HE = {"not_started": "עוד לא התחיל", "form_downloaded": "הטופס הורד, עוד לא נשלח", "submitted": "נשלח, ממתין לאישור",
+            "approved": "מאושר", "rejected": "נדחה — צריך לשלוח טופס מתוקן"}
+_HOW = "מעלים קובץ פרודוקציה ונפרעים בלשונית פרודוקציה / השוואת נפרעים, או משלימים את השיוך למסלקה."
+
+
+async def missing_data_line(ctx, intent: str) -> str | None:
+    """A new agent's own data isn't there yet — say what's missing instead of a false "all paid"/"no customers".
+    Market questions never come here: גמל-נט / פנסיה-נט are public and work from day one."""
+    b = await ctx.book_state()
+    if b["production"] or b["maslaka_customers"]:
+        if intent in ("unpaid", "trend", "agreement_audit") and not b["commission"]:
+            return "עוד אין קובץ נפרעים (עמלות) — בלעדיו אי אפשר לבדוק מה שולם. מעלים אותו בלשונית השוואת נפרעים."
+        return None
+    if intent in ("unpaid", "agreement_audit") and b["commission"]:
+        return "יש קובץ נפרעים, אבל עוד אין פרודוקציה להשוות אליו — בלעדיה אי אפשר לדעת מה לא שולם. " + _HOW
+    if intent == "trend" and b["commission"]:
+        return None
+    return "עוד אין נתונים מהתיק שלך — לא הועלתה פרודוקציה ואין נתוני מסלקה. " + _HOW + \
+           " בינתיים אפשר לשאול על קרנות ומסלולים בשוק (גמל-נט / פנסיה-נט)."
+
+
 async def answer(ctx, r: Route) -> dict | None:
     if r.intent == "top" and not r.args.get("metric"):
         r.args["metric"] = await _preferred_metric(ctx)
@@ -384,6 +406,10 @@ async def answer(ctx, r: Route) -> dict | None:
         from app.services.agent.loop import proposal_line
         p = ctx.proposals[-1]
         return {"text": proposal_line(p), "vizs": [], "status": t.status_he, "proposal": p}
+    if r.intent in _BOOK_INTENTS:
+        missing = await missing_data_line(ctx, r.intent)
+        if missing:
+            return {"text": missing, "vizs": [], "status": t.status_he}
     data = await t.fn(ctx, **r.args)
     text, chart = render(r, data)
     if not text:

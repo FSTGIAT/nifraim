@@ -99,7 +99,7 @@ def match_fund(track: str | None, company: str | None, funds: list) -> tuple[obj
     # words with the track + company (מקיפה / כללית / גמל), then size.
     words = set(norm(f"{track} {company or ''}").split())
     tied = [f for j, f in scored if j == score]
-    best = max(tied, key=lambda f: (is_open(f), len(words & set(norm(f.fund_name).split())), f.total_assets or 0))
+    best = max(tied, key=lambda f: (is_open(f), len(words & set(norm(f.fund_name).split())), getattr(f, "total_assets", None) or 0))
     return best, "tokens"
 
 
@@ -141,8 +141,8 @@ def is_open(f) -> bool:
     # "best גמל at moderate risk", 2026-10-10)
     # IRA / בניהול אישי: self-managed, published yield 0.0 — never a peer or a target (track_score.self_managed)
     from app.services.fund_market.track_score import self_managed
-    return (f.target_population in (None, "", "כלל האוכלוסיה")) and f.classification not in ("קרנות כלליות", "מרכזית לפיצויים") \
-        and not self_managed(f)
+    return (getattr(f, "target_population", None) in (None, "", "כלל האוכלוסיה")) \
+        and getattr(f, "classification", None) not in ("קרנות כלליות", "מרכזית לפיצויים") and not self_managed(f)
 
 
 async def latest_period(db) -> int | None:

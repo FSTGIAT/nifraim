@@ -195,6 +195,14 @@ def test_fund_matcher():
              N(fund_id=2, fund_name="מור קרן השתלמות לשכירים ולעצמאים - כללי", managing_corporation='מור גמל ופנסיה בע"מ'),
              N(fund_id=3, fund_name="מור קרן השתלמות לשכירים ולעצמאים - מניות", managing_corporation='מור גמל ופנסיה בע"מ'),
              N(fund_id=4, fund_name="הראל מסלול לבני 50 עד 60", managing_corporation='הראל פנסיה וגמל בע"מ')]
+    # a tie goes to the fund open to the public, never the first in the list: "הפניקס גמל מניות" tied with an
+    # employer-only severance fund and the severance fund won (2026-10-10)
+    sev = N(fund_id=901, fund_name="הפניקס מרכזית לפיצויים עד 15% מניות", managing_corporation='הפניקס פנסיה וגמל בע"מ',
+                          classification="מרכזית לפיצויים", total_assets=900)
+    stk = N(fund_id=902, fund_name="הפניקס גמל מסלול מניות", managing_corporation='הפניקס פנסיה וגמל בע"מ',
+                          classification="תגמולים ואישית לפיצויים", total_assets=100)
+    f, _ = match_fund("הפניקס גמל מניות", 'הפניקס אקסלנס פנסיה וגמל בע"מ', [sev, stk])
+    assert f is stk, f
     f, _ = match_fund("מור השתלמות - כללי", 'מור גמל ופנסיה בע"מ', funds)
     check(f is not None and f.fund_id == 2, "מור כללי → מור כללי (never מיטב)")
     f, _ = match_fund("אלפא מור תגמולים - לבני 50 עד 60", 'מור גמל ופנסיה בע"מ', funds)

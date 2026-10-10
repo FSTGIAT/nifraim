@@ -37,6 +37,27 @@ class ToolContext:
             self._map = hit
         return self._map
 
+    async def book_state(self) -> dict:
+        """What of the agent's OWN data exists yet: production, נפרעים, מסלקה. A new agent has none — the
+        fast lane answered "כל מה שצפוי שולם" on an empty account (2026-10-10). Market data is public and
+        needs none of this."""
+        if getattr(self, "_book", None) is None:
+            from sqlalchemy import func, select
+            from app.models.maslaka_agent_link import MaslakaAgentLink
+            from app.models.pension_holding import PensionHolding
+            from app.models.upload import FileUpload
+            uid = self.user.id
+            prod = (await self.db.execute(select(func.count()).select_from(FileUpload).where(
+                FileUpload.user_id == uid, FileUpload.is_production.is_(True)))).scalar_one()
+            other = (await self.db.execute(select(func.count()).select_from(FileUpload).where(
+                FileUpload.user_id == uid, FileUpload.is_production.is_not(True)))).scalar_one()
+            mas = (await self.db.execute(select(func.count(func.distinct(PensionHolding.customer_id_number))).where(
+                PensionHolding.user_id == uid))).scalar_one()
+            link = (await self.db.execute(select(MaslakaAgentLink.status).where(MaslakaAgentLink.user_id == uid))).scalars().first()
+            self._book = {"production": prod > 0, "commission": other > 0, "maslaka_customers": mas,
+                          "association": link or "not_started"}
+        return self._book
+
     def keep(self, rows: list[dict], *, label: str, value: str, unit: str = "₪", title: str = "",
              chart: str | None = None, table: dict | None = None) -> str:
         """Store chartable rows; returns a result_id the model passes to render_chart.

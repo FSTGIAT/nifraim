@@ -57,7 +57,7 @@ def risk_level(f) -> dict | None:
 def self_managed(f) -> bool:
     """IRA / בניהול אישי accounts: the saver picks the holdings, the published yield is 0.0 — two of them
     padded השתלמות level 4 to 5 tracks and lifted a 5.31%-a-year track to #3 (2026-10-10)."""
-    n = f.fund_name or ""
+    n = getattr(f, "fund_name", None) or ""
     return "IRA" in n.upper() or "בניהול אישי" in n
 
 
