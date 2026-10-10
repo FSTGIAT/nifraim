@@ -194,7 +194,15 @@ defineEmits(['delete', 'personal'])
 const personalOpen = ref(false)
 
 const ins = computed(() => props.call.insights || {})
-const list = (k, max) => (ins.value[k] || []).filter((x) => x && String(x).trim()).slice(0, max)
+// a list field can arrive as ONE string (the model once wrote "<item>…</item><item>…</item>" for key_points
+// and the whole summary went blank) — read it as a list whatever its shape
+function asList(v) {
+  if (Array.isArray(v)) return v
+  if (typeof v !== 'string') return []
+  const tagged = [...v.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1])
+  return tagged.length ? tagged : v.split(/\n+/)
+}
+const list = (k, max) => asList(ins.value[k]).map((x) => String(x || '').trim()).filter(Boolean).slice(0, max)
 // `_i` = the task's index on the server (insights.action_items[_i]) — ticks are saved there
 const actions = computed(() => (ins.value.action_items || []).map((a, i) => ({ ...a, _i: i })).filter((a) => a && a.text).slice(0, 5))
 const keyPoints = computed(() => list('key_points', 4))

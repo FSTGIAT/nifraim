@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from app.services.agent.tools_calls import promises
 from app.services.calls.categories import CATEGORIES, key_for, label
-from app.services.calls.events_consumer import clean_tasks
+from app.services.calls.events_consumer import as_list, clean_tasks
 from app.services.calls.summarize import _untag, when_line
 
 
@@ -71,3 +71,9 @@ def test_passages_one_speaker_turn_each():
     said = [p for p in ps if p["kind"] == "said"]
     assert [p["role"] for p in said] == ["agent", "customer", "agent"]      # never two speakers in one passage
     assert said[2]["start"] == 4 and ps[-1]["kind"] == "summary"
+
+
+def test_list_fields_written_as_one_string_become_lists():
+    assert as_list("<item>קצבה לא נכנסה</item>\n<item>להפעיל מחדש</item>") == ["קצבה לא נכנסה", "להפעיל מחדש"]
+    assert as_list("שורה א\n- שורה ב") == ["שורה א", "שורה ב"]
+    assert as_list(["א", " ", None, "ב"]) == ["א", "ב"] and as_list(None) == [] and as_list({"x": 1}) == []

@@ -94,6 +94,8 @@ async def summarize_into(db, call: CallRecording) -> bool:
         "objections", "sentiment", "follow_up", "customer_quotes",
         "topics", "companies_mentioned", "urgency")}
     insights["action_items"] = clean_tasks(insights.get("action_items"))
+    for k in LIST_FIELDS:
+        insights[k] = as_list(insights.get(k))
     call.category = out.get("category") if out.get("category") in CATEGORIES else "other"
     roles = _clean_roles(out.get("speaker_roles"), call.segments)
     if roles:
@@ -167,6 +169,22 @@ def call_day(call):
     if not at:
         return None
     return at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem")).date()
+
+
+LIST_FIELDS = ("key_points", "customer_needs", "products_mentioned", "objections", "customer_quotes",
+               "topics", "companies_mentioned")
+
+
+def as_list(v) -> list[str]:
+    """A list field the model returned as ONE string ("<item>a</item><item>b</item>", or lines)
+    becomes the list it meant — a string there blanked the whole call summary in the UI."""
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x or "").strip()]
+    if not isinstance(v, str) or not v.strip():
+        return []
+    tagged = re.findall(r"<item>(.*?)</item>", v, flags=re.S)
+    parts = tagged or re.split(r"\n+", v)
+    return [p.strip(" -•\t") for p in parts if p.strip(" -•\t")]
 
 
 def clean_tasks(items) -> list[dict]:
