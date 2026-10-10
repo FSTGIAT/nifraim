@@ -81,8 +81,7 @@ async def overview(user: User = Depends(get_paid_user), db: AsyncSession = Depen
             "customers_to_review": len(act), "customers_compared": len(book), "products_ranked": ranked,
             "customers": [{k: c[k] for k in ("id_number", "name", "accumulation", "annual_gain_ils")}
                           | {"top": next((p for p in c["products"] if p.get("annual_gain_ils")), None)} for c in act[:12]],
-            "rule": "רק מוצרים שההמלצה עליהם 'לבחון מעבר' (בחצי התחתון של רמת הסיכון, והמוביל טוב יותר ב-3 שנים). "
-                    "פער = צבירה × (תשואה ממוצעת 3ש של המוביל − של המסלול). תשואות עבר אינן מבטיחות תשואות עתידיות."}
+            "products_to_review": sum(1 for c in act for p in c["products"] if p.get("annual_gain_ils"))}
 
 
 @router.get("/customer/{id_number}")

@@ -28,6 +28,12 @@
           </div>
         </header>
         <p v-if="p.action" class="cmd-verdict">{{ p.action.action }}<template v-if="p.action.leader && !p.action.action.includes(p.action.leader)"> · המוביל: {{ p.action.leader }}</template></p>
+        <p v-if="howLine(p)" class="cmd-how">
+          איך: המסלול שלו הניב <span class="ltr-number">{{ howLine(p).me.toFixed(2) }}%</span> בשנה, המוביל
+          <span class="ltr-number">{{ howLine(p).lead.toFixed(2) }}%</span> — הפרש <span class="ltr-number">{{ howLine(p).diff.toFixed(2) }}%</span>
+          × צבירה <span class="ltr-number">{{ ils(p.accumulation) }}</span> = <b class="ltr-number">{{ ils(p.action.annual_gain_ils) }}</b> בשנה
+          <small>(ממוצע שנתי של 3 שנים)</small>
+        </p>
         <RiskLadder v-if="p.ladder" :tracks="p.ladder.tracks" />
         <p v-if="p.same_name_rank" class="cmd-same">
           מול מסלולים באותו שם: {{ p.same_name_rank.replace(' (מול מסלולים באותו שם)', '') }}
@@ -70,6 +76,14 @@ const ranked = computed(() => products.value.filter((p) => p.risk_level_view?.ra
 const toMove = computed(() => products.value.filter((p) => p.action?.annual_gain_ils).length)
 const totalGain = computed(() => products.value.reduce((s, p) => s + (p.action?.annual_gain_ils || 0), 0))
 const ils = (v) => '₪' + Math.round(v).toLocaleString('he-IL')
+// the worked example for one product — the two rows of its own ladder, the gain the card already states
+function howLine(p) {
+  const t = p.ladder?.tracks || []
+  const me = t.find((x) => x.is_this)
+  const lead = t.find((x) => x.rank === 1)
+  if (!p.action?.annual_gain_ils || !me || !lead || me.avg_yield_3y == null || lead.avg_yield_3y == null) return null
+  return { me: me.avg_yield_3y, lead: lead.avg_yield_3y, diff: lead.avg_yield_3y - me.avg_yield_3y }
+}
 </script>
 
 <style scoped>
@@ -93,6 +107,9 @@ const ils = (v) => '₪' + Math.round(v).toLocaleString('he-IL')
 .cmd-act--move .cmd-rank, .cmd-gain { color: var(--tab-market-ink); }
 .cmd-gain { font-size: 13px; font-weight: 800; }
 .cmd-verdict { margin: 0; font-size: 13px; font-weight: 600; }
+.cmd-how { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--tab-market-wash); font-size: 13px; line-height: 1.6; }
+.cmd-how b { color: var(--tab-market-ink); }
+.cmd-how small { color: var(--text-secondary, #5C5C5C); }
 .cmd-same { margin: 0; font-size: 12.5px; color: var(--text-secondary, #5C5C5C); }
 .cmd-note { margin: 0; font-size: 12px; color: var(--text-secondary, #5C5C5C); }
 @media (max-width: 640px) { .cmd-strip { grid-template-columns: 1fr; } .cmd-strip > div + div { border-inline-start: none; border-top: 1px solid var(--border-subtle, #E5E5E5); } }

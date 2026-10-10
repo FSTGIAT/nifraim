@@ -531,6 +531,7 @@ async def book_opportunities(ctx) -> list[dict]:
             c["products"].append({"category": cat, "fund": f.fund_name, "fund_id": fid, "accumulation": round(h["acc"]),
                                   "risk_level": v.get("risk_level"), "rank": v.get("rank"),
                                   "leader": (v.get("leader") or {}).get("fund"), "action": v.get("action"),
+                                  "track_3y": f.avg_yield_3y, "leader_3y": (v.get("leader") or {}).get("avg_yield_3y"),
                                   "annual_gain_ils": v.get("annual_gain_ils")})
         for c in per.values():
             c["accumulation"] = round(c["accumulation"])
