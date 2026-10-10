@@ -175,8 +175,8 @@ def brief_sentences(now_il: datetime, name: str, due_today: list, overdue: list,
         late = "יש משימה אחת שהתאריך שלה כבר עבר" if len(overdue) == 1 else f"יש {len(overdue)} משימות שהתאריך שלהן כבר עבר"
         out.append(f"{late}. הכי דחופה: {_say(old)}.")
     if undated:
-        what = "דבר אחד שהבטחת ללקוח" if len(undated) == 1 else f"{len(undated)} דברים שהבטחת ללקוחות"
-        out.append(f"יש {what} ועוד לא קבעת להם תאריך. אפשר לקבוע אותם ב-Nifra Insights.")
+        out.append("יש לך משימה אחת שעוד לא קבעת לה תאריך. אפשר לקבוע אותה ב-Nifra Insights." if len(undated) == 1
+                   else f"יש לך {len(undated)} משימות שעוד לא קבעת להן תאריך. אפשר לקבוע אותן ב-Nifra Insights.")
     # Sunday opens the Israeli work week — one line about the week ahead
     later = (week or {}).get("total", 0) - len(due_today)
     if now_il.weekday() == 6 and later > 0:

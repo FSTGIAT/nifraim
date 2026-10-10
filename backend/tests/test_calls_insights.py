@@ -138,7 +138,7 @@ def test_brief_is_light_when_only_undated():
     s = R.brief_sentences(datetime(2026, 10, 10, 19, tzinfo=ZoneInfo("Asia/Jerusalem")), "קיקו", [], [],
                           [{"text": "x", "customer": None, "due_time": None, "overdue_days": 0}] * 20)
     assert s == ["ערב טוב קיקו.", "אין לך משימות להיום.",
-                 "יש 20 דברים שהבטחת ללקוחות ועוד לא קבעת להם תאריך. אפשר לקבוע אותם ב-Nifra Insights."]
+                 "יש לך 20 משימות שעוד לא קבעת להן תאריך. אפשר לקבוע אותן ב-Nifra Insights."]
 
 
 def test_themes_only_use_given_strings():

@@ -60,7 +60,7 @@
     </section>
 
     <section v-if="r && r.proposals.length" class="ip-card" style="--hv: 111, 168, 44">
-      <header class="ip-h"><h3>לקבוע מועד</h3></header>
+      <header class="ip-h"><h3>לקבוע מועד</h3><span class="ip-tab-n ltr-number">{{ r.brief.undated.length }}</span></header>
       <ul class="ip-props">
         <li v-for="p in r.proposals" :key="p.call_id + ':' + p.task_index" class="ip-prop" :class="{ 'is-hot': hot(p.call_id) }"
             @mouseenter="store.hover([p.call_id])" @mouseleave="store.hover(null)">
@@ -76,7 +76,7 @@
       </ul>
       <button v-if="r.brief.undated.length > r.proposals.length" type="button" class="ip-all"
               @click="$emit('open-tasks', 'undated', $event.currentTarget)">
-        ועוד {{ r.brief.undated.length - r.proposals.length }} בלי תאריך
+        לכל {{ r.brief.undated.length }} המשימות
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
       </button>
     </section>
