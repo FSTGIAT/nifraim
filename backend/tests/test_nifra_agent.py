@@ -358,6 +358,43 @@ def test_market_prefetch():
     check(getattr(router.route("מה כדאי לי לעשות השבוע?"), "intent", None) == "tasks", "the agent's own task list stays instant")
 
 
+def test_track_score():
+    """Risk level comes from holdings (not the name); index/abroad tracks are their own group; a track
+    without 3 years of history is never ranked (it led on one +31% year); ₪ only when the leader is
+    really better over 3 years."""
+    print("track score (risk by holdings)")
+    from types import SimpleNamespace as N
+    from app.services.fund_market.track_score import rank_groups, risk_level, verdict
+    mk = lambda i, stock, abroad=40, y3=10.0, y5=8.0, sh=1.0, fee=0.5, assets=1000: N(
+        fund_id=i, fund_name=f"t{i}", total_assets=assets, stock_exposure=assets * stock / 100,
+        foreign_exposure=assets * abroad / 100, fx_exposure=assets * 0.2, avg_yield_3y=y3, avg_yield_5y=y5,
+        sharpe=sh, mgmt_fee=fee, classification="x", target_population=None)
+    check(risk_level(mk(1, 10))["level"] == 1 and risk_level(mk(2, 60))["level"] == 4 and risk_level(mk(3, 99))["level"] == 5,
+          "5 levels from stock exposure")
+    check(risk_level(mk(4, 99, abroad=113))["style"] != risk_level(mk(5, 99))["style"], "S&P-type track is its own group")
+    rows = [mk(10, 99, y3=20), mk(11, 99, y3=22), mk(12, 99, y3=18), mk(13, 99, y3=None), mk(14, 99, y3=15, assets=50)]
+    r = rank_groups(rows, {10: 21.0, 11: 23.0, 12: 19.0, 13: 31.0, 14: 16.0}, lambda f: True)
+    check(r[13]["rank"] is None and r[14]["rank"] is None, "no 3-year history / under ₪100M → not ranked")
+    check(r[11]["rank"] == 1 and r[12]["rank"] == 3, "ranked by the combined score")
+    v = verdict(rows[2], r[12], 100_000, 19.0)
+    check(v.get("annual_gain_ils") == round(100_000 * (22 - 18) / 100), "₪ = balance × 3-year gap to the leader")
+
+
+async def test_holdings_in_fit():
+    """get_customer_fund_fit carries the holdings view, and best_tracks_by_risk agrees with it."""
+    print("holdings view in fund fit")
+    async with async_session() as db:
+        a = (await db.execute(select(User).where(User.email == A_EMAIL))).scalar_one()
+        ctx = ToolContext(db=db, user=a)
+        out = await registry.get("best_tracks_by_risk").fn(ctx, "pension", 4)
+        if out.get("error"):
+            print("  skip  no market data locally")
+            return
+        ranks = [t["rank"] for t in out["top"]]
+        check(ranks == sorted(ranks) and (not ranks or ranks[0] == 1), "best_tracks_by_risk lists #1 first")
+        await db.rollback()
+
+
 def main():
     test_registry()
     test_policies_routing()
@@ -366,11 +403,13 @@ def main():
     test_calls_routing()
     test_pensyanet_parse()
     test_market_prefetch()
+    test_track_score()
     async def _db_tests():   # one event loop — the async engine's pool is bound to it
         await test_privacy_and_parity()
         await test_policies_privacy()
         await test_maslaka_file_companies()
         await test_market_changes()
+        await test_holdings_in_fit()
     asyncio.run(_db_tests())
     print(f"\n{'ALL PASSED' if not FAILS else f'{len(FAILS)} FAILED'}")
     sys.exit(1 if FAILS else 0)

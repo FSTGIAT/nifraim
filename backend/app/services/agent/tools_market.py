@@ -248,7 +248,7 @@ def _compound(monthly: list) -> float | None:
 
 _FIT_KEYS = ("company", "category", "official_fund", "track", "match", "accumulation", "accounts", "rank_in_peers", "peers",
              "avg_yield_3y", "peer_median_avg_yield_3y", "yield_12m_pct", "mgmt_fee", "peer_median_fee",
-             "annual_gap_vs_best_ils", "fee_gap_ils_per_year", "best_peer")
+             "annual_gap_vs_best_ils", "fee_gap_ils_per_year", "best_peer", "by_holdings")
 
 
 def _slim_fit(r: dict) -> dict:
@@ -268,6 +268,33 @@ def _slim_fit(r: dict) -> dict:
     if y is not None and ym is not None:
         out["yield_vs_peers"] = "מעל החציון" if y > ym + 0.05 else "מתחת לחציון" if y < ym - 0.05 else "כמו החציון"
     return out
+
+
+async def holdings_ranks(db, cat: str, period: int, rows: list) -> dict[int, dict]:
+    """fund_id → risk level + rank inside (category, risk level) — services/fund_market/track_score.
+    Global market data → cached for every agent, keyed by the data month."""
+    from app.services.fund_market.track_score import rank_groups, yields_12m
+    key = ("holdings_ranks", cat, period)
+    hit = cache.get("market", 0, key)
+    if hit is None:
+        y12 = await yields_12m(db, CATEGORIES[cat][0], period)
+        hit = {"y12": y12, "ranks": rank_groups(rows, y12, is_open)}
+        cache.put("market", 0, key, hit, ttl=6 * 3600)
+    return {fid: {**info, "y12": hit["y12"].get(fid)} for fid, info in hit["ranks"].items()}
+
+
+def holdings_view(f, info: dict | None, accumulation: float, y12: float | None) -> dict:
+    """The agent-facing holdings block for one product: risk level, rank, action (+₪ when real)."""
+    from app.services.fund_market.track_score import verdict
+    if not info:
+        return {"action": "אין נתוני חשיפה למסלול — אין דירוג לפי אחזקות"}
+    out = {"risk_level": f"{info['level']} {info['label']}", "stock_pct": info.get("stock_pct"),
+           "abroad_pct": info.get("abroad_pct"), "fx_pct": info.get("fx_pct")}
+    if info.get("rank"):
+        out["rank"] = f"#{info['rank']} מתוך {info['of']}"
+        if info["leader"]["fund_id"] != f.fund_id:
+            out["leader"] = {k: info["leader"].get(k) for k in ("fund", "avg_yield_3y", "yield_12m")}
+    return {**out, **verdict(f, info, accumulation, y12)}
 
 
 def _merge_same_track(items: list[dict]) -> list[dict]:
@@ -293,6 +320,8 @@ async def fund_fit(ctx, idn: str) -> dict:
     if not period or not prods:
         return {"id_number": idn, "products": [], "note": "אין ללקוח מוצרי חיסכון בפרודוקציה, או שאין נתוני שוק."}
     rows_by_cat: dict[str, list] = {}
+    hold_by_cat: dict[str, dict] = {}
+    fund_by_id: dict[int, object] = {}
     res = []
     for p in prods:
         cat = category_for_product(p["product_type"], p["product"])
@@ -300,6 +329,7 @@ async def fund_fit(ctx, idn: str) -> dict:
             continue
         if cat not in rows_by_cat:
             rows_by_cat[cat] = await _category_rows(ctx.db, cat, period)
+            hold_by_cat[cat] = await holdings_ranks(ctx.db, cat, period, rows_by_cat[cat])
         cands = rows_by_cat[cat]
         f, how = match_fund(p["track"], p["company"], cands)
         item = {"company": company_stem(p["company"]) or p["company"], "category": CATEGORIES[cat][2], "track": p["track"],
@@ -308,6 +338,7 @@ async def fund_fit(ctx, idn: str) -> dict:
             item["match"] = "לא זוהה מסלול רשמי — אין השוואה"
             res.append(item)
             continue
+        fund_by_id[f.fund_id] = (f, hold_by_cat[cat].get(f.fund_id))
         same_risk = [x for x in cands if same_peer(x, f)
                      and (x.total_assets or 0) >= 100 and x.avg_yield_3y is not None and (is_open(x) or x.fund_id == f.fund_id)]
         best = max((x for x in same_risk if is_open(x)), key=lambda x: x.avg_yield_3y, default=None)
@@ -330,18 +361,34 @@ async def fund_fit(ctx, idn: str) -> dict:
             "yield_12m_pct": _compound([y for _, y in hist]),
         })
         res.append(item)
-    res = [_slim_fit(r) for r in _merge_same_track(res)]
+    merged = _merge_same_track(res)
+    for r in merged:   # the holdings view, on the merged accumulation (all accounts in the track)
+        f_info = fund_by_id.get(r.get("fund_id"))
+        if f_info:
+            f, info = f_info
+            r["by_holdings"] = holdings_view(f, info, r["accumulation"], r.get("yield_12m_pct"))
+    res = [_slim_fit(r) for r in merged]
+    actions = [{"track": r.get("official_fund"), "risk_level": r["by_holdings"].get("risk_level"), "rank": r["by_holdings"].get("rank"),
+                "action": r["by_holdings"].get("action"),
+                **({"annual_gain_ils": r["by_holdings"]["annual_gain_ils"]} if r["by_holdings"].get("annual_gain_ils") else {}),
+                **({"leader": r["by_holdings"]["leader"]["fund"]} if r["by_holdings"].get("leader") else {})}
+               for r in res if r.get("by_holdings")]
+    for r in res:   # the product line keeps only where it stands; the action lives in the summary
+        if r.get("by_holdings"):
+            r["by_holdings"] = {k: r["by_holdings"][k] for k in ("risk_level", "rank") if r["by_holdings"].get(k)}
     y, m = divmod(period, 100)
     gaps = sorted((r for r in res if r.get("annual_gap_vs_best_ils")), key=lambda r: -r["annual_gap_vs_best_ils"])
     out = {"id_number": idn, "name": prods[0]["name"], "data_month": f"{m:02d}/{y}",
            # first, so a prefetch cut at 4,000 chars still carries it — the model once skipped an ₪11,103
            # pension gap and reported only ₪1,600 of השתלמות gaps (2026-10-10)
-           "summary": {"total_annual_gap_vs_best_ils": sum(r["annual_gap_vs_best_ils"] for r in gaps),
-                       "biggest_gaps": [{"category": r["category"], "track": r.get("official_fund") or r["track"],
-                                         "accumulation": r["accumulation"], "annual_gap_ils": r["annual_gap_vs_best_ils"],
-                                         "best": (r.get("best_peer") or {}).get("fund")} for r in gaps[:4]]},
+           # recommended actions FIRST (risk level by holdings); the same-name gaps are the second view —
+           # with them first the model ignored the holdings view entirely (2026-10-10)
+           "recommended_actions_by_risk_level": actions,
+           "second_view_same_name": {"what": "השוואה משנית: מול מסלולים באותו שם בלבד (rank_in_peers, annual_gap_vs_best_ils בכל מוצר)",
+                                     "total_annual_gap_ils": sum(r["annual_gap_vs_best_ils"] for r in gaps)},
            "products": res,
-            "how_to_read": "annual_gap_vs_best_ils = צבירה × (תשואה שנתית ממוצעת 3ש של המסלול הטוב באותה רמת סיכון − של המסלול הנוכחי). אומדן, לא הבטחה.",
+            "how_to_read": "ההמלצה = recommended_actions_by_risk_level. annual_gain_ils = צבירה × (תשואה שנתית ממוצעת 3ש של המוביל ברמת הסיכון − של המסלול). "
+                           "אומדן מתשואות עבר, לא הבטחה.",
             "disclaimer": DISCLAIMER}
     if not res:   # products exist but none can be compared — say why instead of an empty list
         out["note"] = ("ללקוח יש בפרודוקציה " + str(len(prods)) + " מוצרים, אבל לאף אחד אין גם צבירה וגם סוג מוצר חיסכון שאפשר להשוות לשוק "
@@ -655,3 +702,36 @@ async def customers_in_market_moves(ctx, direction: str = "down", category: str 
                     "ירידה בדירוג בחודש אחד אינה סיבה לניוד — הצג כנקודה לבדיקה. annual_gap_vs_best_ils = צבירה × (תשואה שנתית ממוצעת 3ש "
                     "של המסלול הטוב באותה רמת סיכון − של המסלול הנוכחי) — אומדן, כבר מחושב כאן; אל תאמר שאין פער כשהוא מופיע.",
             "disclaimer": DISCLAIMER}
+
+
+
+@tool("best_tracks_by_risk", "המסלולים המובילים בקטגוריה לפי רמת סיכון שנקבעת מהאחזקות בפועל (חשיפה למניות): 1 נמוך · 2 מתון · 3 בינוני · 4 מוגבר · 5 גבוה; "
+      "index=true = מסלולי מדד/חו\"ל (חשיפה לחו\"ל 85%+) כקבוצה נפרדת. דירוג לפי ציון אחד: תשואה 12 חודשים, 3 ו-5 שנים, שארפ, ודמי ניהול כשיקול משני. "
+      "רק מסלולים פתוחים לציבור, מעל ₪100 מיליון, עם 3 שנות היסטוריה.",
+      {"category": {"type": "string", "enum": list(CATEGORIES)}, "level": {"type": "integer", "minimum": 1, "maximum": 5},
+       "index": {"type": "boolean"}, "n": {"type": "integer"}},
+      ["category", "level"], category="market", status_he="מדרג מסלולים לפי רמת סיכון")
+async def best_tracks_by_risk(ctx, category: str, level: int, index: bool = False, n: int = 8):
+    from app.services.fund_market.track_score import INDEX_STYLE, LEVELS
+    period = await latest_period(ctx.db)
+    if not period or category not in CATEGORIES:
+        return {"error": "אין נתוני שוק."}
+    rows = await _category_rows(ctx.db, category, period)
+    ranks = await holdings_ranks(ctx.db, category, period, rows)
+    style = INDEX_STYLE if index else ""
+    by_id = {f.fund_id: f for f in rows}
+    group = sorted(((by_id[fid], r) for fid, r in ranks.items() if r.get("rank") and r["level"] == level and r["style"] == style),
+                   key=lambda t: t[1]["rank"])
+    top = group[: max(1, min(int(n or 8), 20))]
+    y, m = divmod(period, 100)
+    label = next(he for _, lv, he in LEVELS if lv == level) + (f" · {style}" if style else "")
+    rid = ctx.keep([{"label": fund_label(f.fund_name)[:40], "value": f.avg_yield_3y} for f, _ in top], label="מסלול",
+                   value="תשואה שנתית ממוצעת 3ש", unit="%", title=f"{CATEGORIES[category][2]} — רמת סיכון {label}") if top else None
+    return {"category": CATEGORIES[category][2], "risk_level": f"{level} {label}", "data_month": f"{m:02d}/{y}",
+            "tracks_in_level": len(group),
+            "top": [{"rank": r["rank"], "fund": f.fund_name, "company": brand(f.managing_corporation or f.fund_name),
+                     "stock_pct": r.get("stock_pct"), "abroad_pct": r.get("abroad_pct"), "yield_12m": r.get("y12"),
+                     "avg_yield_3y": f.avg_yield_3y, "avg_yield_5y": f.avg_yield_5y, "sharpe": f.sharpe, "mgmt_fee": f.mgmt_fee,
+                     "size_m": f.total_assets} for f, r in top],
+            "result_id": rid, "disclaimer": DISCLAIMER,
+            "rule": "רמת סיכון = לפי חשיפה למניות בפועל, לא לפי שם המסלול. תשואות עבר; דמי הניהול כאן הם ממוצע הקופה, לא של הלקוח."}

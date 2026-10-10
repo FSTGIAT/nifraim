@@ -32,7 +32,7 @@ TRACKS = ["מניות", "כללי", "S&P", "אג\"ח", "אגח", "לבני 50", 
 _CO = "|".join(COMPANIES)
 NAME_RE = re.compile(r"(?:^|\s)(?:ל|ה|של )?לקוח(?:ה)?\s+([א-ת][א-ת'\"\- ]{2,30}?)"
                      r"(?=\s*(?:\?|$|,|\.| עם\b| יש\b| של\b| לא\b| (?:ב|מ)(?:" + _CO + r")))")
-MAX_CHARS = 9000
+MAX_CHARS = 12000
 
 
 NOT_A_NAME = re.compile(r"^(?:על|עם|לגבי|בנוגע|של|את|שלי|הזה|הזאת|ש)\b")
@@ -174,7 +174,9 @@ async def run_prefetch(ctx, question: str):
             continue
         yield {"status": t.status_he}
         out = await registry.dispatch(ctx, name, args)
-        cap = 6000 if len(steps[:3]) == 1 else 4000   # one tool may use more of the MAX_CHARS budget
+        # the market comparisons carry a summary + one line per product — cutting them hid a customer's
+        # pension (2026-10-10); they get a larger share of the MAX_CHARS budget
+        cap = 7500 if name in ("get_customer_fund_fit", "market_changes") else (6000 if len(steps[:3]) == 1 else 4000)
         blocks.append(f"### {name}({', '.join(f'{k}={v}' for k, v in args.items())})\n{out[:cap]}")
     text = "\n\n".join(blocks)
     ctx.prefetched = text[:MAX_CHARS]
