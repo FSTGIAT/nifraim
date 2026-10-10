@@ -21,7 +21,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"פוליס[הות] חיסכון|פוליסות חסכון", "compare_savings_policy"),
     (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])", "compare_gemel"),   # \b fails on "בגמל" (Hebrew letters are all \w)
 ]
-FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי ניהול|להשוות|השווא|מומלץ")
+FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי (?:ה)?ניהול|להשוות|השווא|מומלץ")
 MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|עלו בדירוג|ירדו בדירוג|חדשות"
                              r"|הגדיל|הקטינ|העלו|הורידו")
 # one track's allocation ("מה הפילוח של מור פנסיה מקיפה לבני 50 ומטה?") — never the insurer's commissions
@@ -69,7 +69,11 @@ def plan(question: str) -> list[tuple[str, dict]]:
         m_id = ID_RE.search(q)
         calls.append(("search_policies", {"query": q, **({"id_number": m_id.group(1)} if m_id else {}), "limit": 8}))
         return calls[:3]          # never prime a cover/price question with commission tools
-    if ALLOC_Q.search(q) and not MARKET_CHANGE_Q.search(q) and not ID_RE.search(q):
+    # one track's allocation — also "מה השתנה בפילוח של X" (fund_allocation carries the change vs last month);
+    # only a market-wide "אילו מסלולים הגדילו חשיפה" goes to market_changes (2026-10-10: the change words
+    # sent "כלל פנסיה כללי" to a returns table and Nifra said it had no allocation)
+    market_wide = re.search(r"(?:^|\s)(?:אילו|איזה|אלו)\s|מסלולים|קרנות", q)
+    if ALLOC_Q.search(q) and not ID_RE.search(q) and (not MARKET_CHANGE_Q.search(q) or not market_wide):
         calls.append(("fund_allocation", {"fund": q}))
         return calls[:3]
     cos = companies_in(q)
@@ -86,6 +90,8 @@ def plan(question: str) -> list[tuple[str, dict]]:
         prod = next((w for w in ("גמל להשקעה", "השתלמות", "פנסיה", "פוליסת חיסכון", "גמל", "חיים", "בריאות", "סיעוד", "מנהלים") if w in q), "")
         trk = next((t for t in TRACKS if t in q), "")
         return [("customers_by_product", {"company": named_co[0], **({"product": prod} if prod else {}), **({"track": trk} if trk else {})})]
+    if re.search(r"מסלול", q) and re.search(r"רוב הלקוחות|הכי הרבה לקוחות|התיק (?:שלי )?לפי מסלול|כמה (?:כסף|צבירה) (?:אצלי )?במסלול", q):
+        return [("tracks_in_book", {"company": next(iter(companies_in(q)), "")})]   # "באיזה מסלול רוב הלקוחות שלי?"
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))
@@ -111,7 +117,8 @@ def plan(question: str) -> list[tuple[str, dict]]:
                     calls.append(("market_changes", {"category": tool_name.removeprefix("compare_")}))
                     break
                 track = next((t for t in TRACKS if t in q), "")
-                calls.append((tool_name, {"track": track} if track else {}))
+                cheap = re.search(r"דמי (?:ה)?ניהול", q) and re.search(r"נמוכ|הזול|הכי פחות", q)   # sort by fee, not returns
+                calls.append((tool_name, {**({"track": track} if track else {}), **({"sort_by": "fee"} if cheap else {})}))
                 break
     co = next(iter(companies_in(q)), "")
     market_q = any(t.startswith("compare_") or t == "market_changes" for t, _ in calls)

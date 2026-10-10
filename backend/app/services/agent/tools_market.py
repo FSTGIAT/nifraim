@@ -576,8 +576,12 @@ async def fund_allocation(ctx, fund: str):
     if q.isdigit():
         hits = [f for f in rows if f.fund_id == int(q)]
     else:
-        words = [w for w in re.split(r"\s+", q.replace('"', "")) if w]
-        hits = [f for f in rows if all(w in (f.fund_name or "").replace('"', "") for w in words)]
+        norm = lambda x: re.sub(r"\s+", " ", (x or "").replace('"', "").replace("-", " ")).strip()
+        hits = [f for f in rows if norm(f.fund_name) == norm(q)]          # the exact name first
+        if not hits:
+            # whole words — "כלל" is a substring of "כללי", so "כלל פנסיה כללי" matched Menora/Harel "כללי" tracks
+            words = [w for w in norm(q).split() if w]
+            hits = [f for f in rows if set(words) <= set(norm(f.fund_name).split())]
         if not hits and tokens(q):   # "מור מניות" / a whole question → company + track words
             from app.services.agent.router import _company
             co = _company(q)

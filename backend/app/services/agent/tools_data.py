@@ -630,3 +630,39 @@ async def customers_by_product(ctx, company: str, product: str = "", track: str 
     return {"company": company, "product": product or None, "track": track or None, "customers_found": len(rows),
             "customers": top, "result_id": rid,
             "note": "הצבירה = רק מה שהלקוח מחזיק בחברה הזו, מקבצי הפרודוקציה (המסלול כפי שמופיע בקובץ)."}
+
+
+@tool("tracks_in_book", "איך התיק מתחלק לפי מסלולי השקעה (מקבצי הפרודוקציה הפעילים): לכל מסלול — כמה לקוחות, כמה מוצרים וכמה צבירה. "
+      "company/product לסינון (לא חובה). לשאלות 'באיזה מסלול רוב הלקוחות שלי', 'כמה כסף אצלי במסלולי מניות'.",
+      {"company": {"type": "string"}, "product": {"type": "string"}, "n": {"type": "integer"}},
+      category="production", status_he="מסכם את התיק לפי מסלולים")
+async def tracks_in_book(ctx, company: str = "", product: str = "", n: int = 15):
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+    from app.utils.company_norm import company_stem
+
+    ids = await _get_production_upload_ids(ctx.db, ctx.user.id)
+    if not ids:
+        return {"tracks": [], "note": "אין קובץ פרודוקציה פעיל."}
+    recs = (await ctx.db.execute(select(ClientRecord.receiving_company, ClientRecord.product_type, ClientRecord.track,
+                                        ClientRecord.id_number, ClientRecord.accumulation).where(
+        ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(ids), ClientRecord.track.isnot(None)))).all()
+    stem = company_stem(company) if company else None
+    agg: dict[tuple, dict] = {}
+    for co, pt, trk, idn, acc in recs:
+        if stem and company_stem(co) != stem:
+            continue
+        if product and product not in (pt or ""):
+            continue
+        k = (company_stem(co) or co or "—", (trk or "").strip())
+        d = agg.setdefault(k, {"company": k[0], "track": k[1], "customers": set(), "products": 0, "accumulation": 0.0})
+        d["customers"].add(str(idn).lstrip("0"))
+        d["products"] += 1
+        d["accumulation"] += float(acc or 0)
+    rows = sorted(agg.values(), key=lambda d: -len(d["customers"]))
+    top = [{"company": d["company"], "track": d["track"], "customers": len(d["customers"]), "products": d["products"],
+            "accumulation": round(d["accumulation"])} for d in rows[: max(1, min(int(n or 15), 40))]]
+    rid = ctx.keep([{"label": f"{t['company']} · {t['track']}"[:40], "value": t["customers"]} for t in top], label="מסלול",
+                   value="לקוחות", unit="", title="התיק לפי מסלולים") if top else None
+    return {"tracks": top, "tracks_total": len(rows), "result_id": rid,
+            "note": "המסלול כפי שמופיע בקובץ הפרודוקציה (שמות משתנים בין חברות); מוצרים בלי מסלול בקובץ לא נספרים."}
