@@ -372,6 +372,8 @@ def test_track_score():
     check(risk_level(mk(1, 10))["level"] == 1 and risk_level(mk(2, 60))["level"] == 4 and risk_level(mk(3, 99))["level"] == 5,
           "5 levels from stock exposure")
     check(risk_level(mk(4, 99, abroad=113))["style"] != risk_level(mk(5, 99))["style"], "S&P-type track is its own group")
+    ann = mk(6, 30); ann.fund_name = "מיטב פנסיה הלכה למקבלי קצבה"
+    check(risk_level(ann)["style"] != risk_level(mk(7, 30))["style"], "annuitant tracks are their own group")
     rows = [mk(10, 99, y3=20), mk(11, 99, y3=22), mk(12, 99, y3=18), mk(13, 99, y3=None), mk(14, 99, y3=15, assets=50)]
     r = rank_groups(rows, {10: 21.0, 11: 23.0, 12: 19.0, 13: 31.0, 14: 16.0}, lambda f: True)
     check(r[13]["rank"] is None and r[14]["rank"] is None, "no 3-year history / under ₪100M → not ranked")

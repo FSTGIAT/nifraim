@@ -27,6 +27,7 @@ from app.models.fund_market import FundMarketMonthly as F
 
 LEVELS = [(15, 1, "נמוך"), (35, 2, "מתון"), (55, 3, "בינוני"), (75, 4, "מוגבר"), (10_000, 5, "גבוה")]
 INDEX_STYLE = "חו\"ל/מדד"
+ANNUITY_STYLE = "מקבלי קצבה"
 WEIGHTS = (("y12", 0.25), ("avg_yield_3y", 0.35), ("avg_yield_5y", 0.25), ("sharpe", 0.15), ("mgmt_fee", -0.10))
 MIN_ASSETS_M = 100
 
@@ -42,7 +43,9 @@ def risk_level(f) -> dict | None:
     if s is None:
         return None
     abroad = pct(f, "foreign_exposure")
-    style = INDEX_STYLE if (abroad or 0) >= 85 else ""
+    # annuitant tracks ("למקבלי קצבה") are for people already drawing a pension — never a saver's switch
+    # target ("ישראלה, 60+: leader = מיטב הלכה למקבלי קצבה", 2026-10-10); index/abroad tracks likewise apart
+    style = ANNUITY_STYLE if "קצבה" in (f.fund_name or "") else INDEX_STYLE if (abroad or 0) >= 85 else ""
     for lim, n, he in LEVELS:
         if s < lim:
             return {"level": n, "label": he + (f" · {style}" if style else ""), "style": style,

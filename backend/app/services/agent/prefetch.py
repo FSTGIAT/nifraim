@@ -72,6 +72,11 @@ def plan(question: str) -> list[tuple[str, dict]]:
     if ALLOC_Q.search(q) and not MARKET_CHANGE_Q.search(q) and not ID_RE.search(q):
         calls.append(("fund_allocation", {"fund": q}))
         return calls[:3]
+    cos = [c for c in COMPANIES if c in q]
+    if len(set(cos)) >= 2 and re.search(r"תשווה|השווה|השוואה|מול|לעומת|בין", q) and not ID_RE.search(q):
+        cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
+        if cat_tool:   # "תשווה בין מור למיטב בפנסיה" — each company's tracks (was: the market top 10, Mor absent)
+            return [(cat_tool, {"company": c}) for c in list(dict.fromkeys(cos))[:3]]
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))
@@ -107,7 +112,7 @@ def plan(question: str) -> list[tuple[str, dict]]:
     return calls[:3]
 
 
-ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול")
+ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול|להעביר|העברה|מפסיד")
 
 
 async def _id_for_name(ctx, full_name: str) -> str | None:
@@ -165,6 +170,10 @@ async def run_prefetch(ctx, question: str):
         idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
         if idn:
             steps.insert(steps.index(("find_customer", fc)) + 1, ("get_customer_fund_fit", {"id_number": idn}))
+    if any(n == "get_customer_fund_fit" for n, _ in steps):
+        # "ישראלה — הפנסיה שלה במסלול טוב?" / "להעביר את בועז לאלטשולר?" — about ONE customer: a market top-10
+        # table or the insurer's unpaid commissions only push the customer's comparison out (2026-10-10)
+        steps = [(n, a) for n, a in steps if not n.startswith("compare_") and n not in ("get_unpaid", "get_rate", "get_commission_trend")]
     for name, args in steps[:3]:
         if args.get("metric") == "pref":          # the agent's remembered ranking (e.g. by premium)
             from app.services.agent.router import _preferred_metric

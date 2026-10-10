@@ -56,7 +56,7 @@ def category_for_product(product_type: str | None, product: str | None = None) -
 
 
 _SYN = [(r"מחקה", "עוקב"), (r"s\s*&\s*p\s*-?\s*500|500\s*s\s*&\s*p", "sp500"), (r"\bשקלי\b", "כספי"),
-        (r"\b05\b", "50"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]
+        (r"\b05\b", "50"), (r"\b06\b", "60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
 KEY = {"עוקב", "sp500", "מניות", "כללי", "אגח", "כספי", "הלכה", "הלכתי", "שריעה", "סחיר", "מדדי", "מדד", "לבני", "50", "60",
        "ומטה", "ומעלה", "עד", "קיימות", "פאסיבי", "אקטיבי", "חול", "ישראל", "צמוד", "יעד", "2030", "2040", "פלוס", "משולב"}
 
@@ -157,11 +157,12 @@ def _fund_row(f) -> dict:
             "size_m": f.total_assets, "net_inflow_m": f.net_monthly_deposits}
 
 
-async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield_3y", n: int = 10, min_size_m: float = 100) -> dict:
+async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield_3y", n: int = 10, min_size_m: float = 100,
+                           company: str = "") -> dict:
     period = await latest_period(ctx.db)
     if not period:
         return {"error": "אין עדיין נתוני שוק — הסנכרון מגמל-נט לא רץ."}
-    key = ("market", cat, track, sort_by, n, min_size_m, period)
+    key = ("market", cat, track, sort_by, n, min_size_m, period, company)
     hit = cache.get("market", 0, key)
     if hit is not None:
         ctx_rid = ctx.keep(hit["_keep"][0], **hit["_keep"][1])
@@ -170,6 +171,9 @@ async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield
     if track:
         tk = tokens(track) or {track}
         rows = [f for f in rows if (tk & tokens(f"{f.fund_name} {f.specialization} {f.sub_specialization}")) or track in (f.specialization or "") or track in (f.fund_name or "")]
+    if company:   # "תשווה בין מור למיטב" — that company's tracks, not just the market's top 10
+        stem = company_stem(company) or company
+        rows = [f for f in rows if brand(f.managing_corporation or f.fund_name) == stem or stem in (f.fund_name or "")]
     restricted = sum(1 for f in rows if not is_open(f))
     rows = [f for f in rows if is_open(f) and (f.total_assets or 0) >= (min_size_m or 0)]
     col = sort_by if sort_by in SORTS else "yield_3y"
@@ -183,7 +187,7 @@ async def compare_category(ctx, cat: str, track: str = "", sort_by: str = "yield
         "category": CATEGORIES[cat][2], "data_month": f"{m:02d}/{y}", "funds_compared": len(rows),
         "excluded_restricted": restricted,
         "note": "רק קופות פתוחות לכלל הציבור (בלי קופות סקטוריאליות/מפעליות וקרנות ותיקות סגורות)",
-        "sorted_by": SORT_HE[col], "track_filter": track or None,
+        "sorted_by": SORT_HE[col], "track_filter": track or None, "company_filter": company or None,
         "median": {"avg_yield_3y": _med([f.avg_yield_3y for f in rows]), "avg_yield_5y": _med([f.avg_yield_5y for f in rows]),
                    "ytd": _med([f.ytd_yield for f in rows]), "mgmt_fee": _med([f.mgmt_fee for f in rows])},
         "top": [_fund_row(f) for f in top],
@@ -201,10 +205,11 @@ def _compare_tool(cat: str, desc: str):
     @tool(f"compare_{cat}", desc + " נתונים רשמיים חודשיים לפי קופה: תשואה (חודש, מתחילת שנה, 3/5 שנים), דמי ניהול, שארפ, גודל וזרימות.",
           {"track": {"type": "string", "description": "סינון מסלול: מניות, כללי, S&P500, אג\"ח, לבני 50 עד 60, הלכה… או ריק"},
            "sort_by": {"type": "string", "enum": list(SORTS)},
-           "n": {"type": "integer", "description": "כמה קופות (ברירת מחדל 10)"}},
+           "n": {"type": "integer", "description": "כמה קופות (ברירת מחדל 10)"},
+           "company": {"type": "string", "description": "רק מסלולים של חברה אחת (מור, מיטב, הפניקס…) — להשוואה בין חברות קרא פעם לכל חברה"}},
           category="market", status_he=f"משווה {CATEGORIES[cat][2]}")
-    async def _f(ctx, track: str = "", sort_by: str = "yield_3y", n: int = 10):
-        return await compare_category(ctx, cat, track, sort_by, n)
+    async def _f(ctx, track: str = "", sort_by: str = "yield_3y", n: int = 10, company: str = ""):
+        return await compare_category(ctx, cat, track, sort_by, n, company=company)
     return _f
 
 
