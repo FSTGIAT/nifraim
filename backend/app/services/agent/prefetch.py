@@ -126,7 +126,7 @@ def plan(question: str) -> list[tuple[str, dict]]:
     if m_cust and CUSTOMER_CHANGE_Q.search(q):
         calls.append(("customer_changes", {"id_number": m_cust.group(1)}))
         return calls[:3]
-    advice = re.search(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד", q)
+    advice = re.search(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|(?:^|\s)(?:טוב|טובה)(?:\s|\?|$)", q)
     if m_cust and (FUND_Q.search(q) or advice or any(re.search(p_, q) for p_, _ in FUND_CATS)):
         calls.append(("get_customer_fund_fit", {"id_number": m_cust.group(1)}))   # this customer's money vs the market
         return calls[:3]
@@ -172,7 +172,8 @@ def plan(question: str) -> list[tuple[str, dict]]:
 
 
 CUSTOMER_CHANGE_Q = re.compile(r"השתנ|שינוי|לאורך (?:ה)?זמן|מהחודש שעבר|מגמה|היסטורי|עלה|ירד")
-ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול|להעביר|העברה|מפסיד")
+ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול|להעביר|העברה|מפסיד"
+                      r"|(?:^|\s)(?:טוב|טובה|טובים|טובות)(?:\s|\?|$)")   # "נילי סורני — הגמל שלה טוב?" (2026-10-10)
 
 
 async def _id_for_name(ctx, full_name: str) -> str | None:
