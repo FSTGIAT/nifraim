@@ -240,7 +240,9 @@ export const useCallsStore = defineStore('calls', () => {
   const studioOpen = ref(false)
   // "open this call in the studio" (e.g. from Nifra Agent's לסיכום המלא)
   const openCallId = ref(null)
-  function requestOpenCall(id) { openCallId.value = id; studioOpen.value = true }
+  // where the agent came from (e.g. 'insights'): the studio shows a way back, and closing returns there
+  const returnTo = ref(null)
+  function requestOpenCall(id, from = null) { openCallId.value = id; returnTo.value = from; studioOpen.value = true }
   async function refreshAgent() {
     try {
       const { useOfficeAgentStore } = await import('./officeAgent.js')
@@ -342,7 +344,7 @@ export const useCallsStore = defineStore('calls', () => {
     enabled, calls, current, loadingList, error,
     recState, elapsed, uploadProgress, analyser, isRecording, micLevel,
     fetchStatus, fetchList, fetchCall, startRecording, cancelRecording, stopAndUpload,
-    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, markPersonal, clearCurrent, notice, studioOpen, openCallId, requestOpenCall, showNotice,
+    pollCall, stopPolling, stopAllPolling, hydrate, openCall, deleteCall, markPersonal, clearCurrent, notice, studioOpen, openCallId, returnTo, requestOpenCall, showNotice,
     studioRequest, requestStudio, setTaskDone,
   }
 })

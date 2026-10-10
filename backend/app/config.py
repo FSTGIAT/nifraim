@@ -237,6 +237,11 @@ class Settings(BaseSettings):
     CALLS_GATEWAY_URL: str = ""                    # http://calls-gateway.railway.internal:<PORT> on Railway
     CALLS_SECRET: str = ""                         # shared with calls-gateway + ivrit-transcriber
     CALLS_MAX_BYTES: int = 60 * 1024 * 1024        # ~4h of 32kbps opus; the UI caps recording at 90 min
+    # Nifra Insights voice (services/tts.py): Azure Speech, resource nifraim-speech (F0 = free tier, 500K
+    # chars/month, never bills — over quota it fails and the browser's own voice takes over). Empty key = off.
+    AZURE_SPEECH_KEY: str = ""
+    AZURE_SPEECH_REGION: str = "northeurope"
+    AZURE_SPEECH_VOICE: str = "he-IL-HilaNeural"   # the agent's choice: a woman's voice (2026-10-10)
 
     model_config = {"env_file": str(Path(__file__).resolve().parent.parent.parent / ".env"), "extra": "ignore"}
 

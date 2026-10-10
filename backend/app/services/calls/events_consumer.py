@@ -170,21 +170,38 @@ def call_day(call):
 
 
 def clean_tasks(items) -> list[dict]:
-    """Tasks as stored: {text, owner, due, due_date: YYYY-MM-DD|"", done: bool}. A due_date that
-    isn't a real date is dropped (never guessed) — open_promises relies on it."""
-    from datetime import date
+    """Tasks as stored: {text, owner, due, due_date: YYYY-MM-DD|"", due_time: HH:MM|"", done: bool}
+    plus, once the agent acted: done_at, sched_date/sched_time (a date/time the agent CONFIRMED
+    for the reminder). A date or time that isn't real is dropped (never guessed) — open_promises
+    and the reminders rely on it. The sweep re-cleans every task, so a field missing here is lost."""
     out = []
     for a in items if isinstance(items, list) else []:
         if not isinstance(a, dict) or not (a.get("text") or "").strip():
             continue
-        d = (a.get("due_date") or "").strip()
-        try:
-            d = date.fromisoformat(d).isoformat() if d else ""
-        except ValueError:
-            d = ""
-        out.append({"text": a["text"].strip(), "owner": a.get("owner") if a.get("owner") in ("agent", "customer") else "agent",
-                    "due": (a.get("due") or "").strip(), "due_date": d, "done": bool(a.get("done"))})
+        t = {"text": a["text"].strip(), "owner": a.get("owner") if a.get("owner") in ("agent", "customer") else "agent",
+             "due": (a.get("due") or "").strip(), "due_date": _iso_day(a.get("due_date")),
+             "due_time": _hhmm(a.get("due_time")), "done": bool(a.get("done"))}
+        if a.get("done_at") and t["done"]:
+            t["done_at"] = str(a["done_at"])[:40]
+        sd = _iso_day(a.get("sched_date"))
+        if sd:
+            t["sched_date"], t["sched_time"] = sd, _hhmm(a.get("sched_time"))
+        out.append(t)
     return out
+
+
+def _iso_day(v) -> str:
+    from datetime import date
+    v = (v or "").strip() if isinstance(v, str) else ""
+    try:
+        return date.fromisoformat(v).isoformat() if v else ""
+    except ValueError:
+        return ""
+
+
+def _hhmm(v) -> str:
+    m = re.fullmatch(r"([01]?\d|2[0-3])[:.]([0-5]\d)", (v or "").strip()) if isinstance(v, str) else None
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m else ""
 
 
 def one_voice_unlabelled(segments: list[dict]) -> list[dict]:

@@ -35,6 +35,11 @@
             </div>
           </dl>
           <span class="cs-fill"></span>
+          <!-- opened from Nifra Insights: one tap back to where the agent was -->
+          <button v-if="store.returnTo === 'insights'" type="button" class="cs-return" @click="close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            <span dir="ltr">Nifra <b>Insights</b></span>
+          </button>
           <button type="button" class="cs-icon" :aria-label="phase === 'recording' ? 'סגירה — ההקלטה ממשיכה' : 'סגירה'" @click="close">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
@@ -106,7 +111,7 @@
           <div class="cs-detail-bar">
             <button type="button" class="cs-back" @click="closeDetail">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6" /></svg>
-              כל השיחות
+              <span v-if="store.returnTo === 'insights'" dir="ltr">Nifra Insights</span><template v-else>כל השיחות</template>
             </button>
             <span class="cs-fill"></span>
             <button v-if="detailCall.status !== 'done'" type="button" class="cs-del" @click="onDelete(detailCall.id)">מחיקה</button>
@@ -283,6 +288,8 @@ watch(() => [props.open, store.openCallId], ([o, id]) => { if (o && id) nextTick
 
 async function closeDetail() {
   if (!detailOpen.value) return
+  // came for this one call from Nifra Insights → closing it goes straight back there
+  if (store.returnTo) { close(); return }
   await morph.shrink(detailEl.value)
   detailOpen.value = false
   detailId.value = null
@@ -399,6 +406,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <style scoped>
+.cs-return {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; margin-inline-end: 8px; border-radius: 999px;
+  border: 1px solid rgba(44, 95, 107, 0.28); background: #fff; color: #181818; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.cs-return b { color: var(--tab-insights-ink); }
+.cs-return svg { color: var(--tab-insights-ink); }
+.cs-return:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(44, 95, 107, 0.16); }
 .cs {
   position: fixed; inset: 0; z-index: 1500; outline: none; overflow: hidden;
   display: flex; flex-direction: column;

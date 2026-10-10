@@ -279,8 +279,8 @@ def promises(rows: list[CallRecording], owner: str = "agent", today: date | None
             if a.get("done") or (owner in ("agent", "customer") and a.get("owner") != owner):
                 continue
             d = None
-            try:
-                d = date.fromisoformat(a["due_date"]) if a.get("due_date") else None
+            try:   # a date the agent confirmed for the reminder beats the one heard in the call
+                d = date.fromisoformat(a.get("sched_date") or a["due_date"]) if (a.get("sched_date") or a.get("due_date")) else None
             except ValueError:
                 pass
             out.append({"call_id": str(c.id), "task_index": i, "text": a.get("text"),

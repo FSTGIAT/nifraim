@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers, blocked_phones, policies, maslaka_gateway, market
+from app.api import auth, uploads, records, commission_rates, comparison, production, recruits, paying_companies, company_contacts, subscription, admin, portal, ai, volume, volume_rates, debts, portal_automation, ai_documents, funds, insights, yield_recommendations, maslaka, downloads, sms_otp_templates, legal, messenger, mailbox, mail_agent, cycle, agreement_requests, collection_agent, office_agent, ai_agent, calls, walkin_customers, blocked_phones, policies, maslaka_gateway, market, calls_insights
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -108,6 +108,7 @@ app.include_router(office_agent.router, prefix="/api/office-agent", tags=["offic
 app.include_router(calls.router, prefix="/api/calls", tags=["calls"])
 app.include_router(policies.router, prefix="/api/policies", tags=["policies"])
 app.include_router(market.router, prefix="/api/market", tags=["market"])
+app.include_router(calls_insights.router, prefix="/api/calls-insights", tags=["calls-insights"])
 # Public legal pages at the site root (no /api prefix). Registered before the SPA
 # catch-all below so GET /privacy returns the policy, not index.html.
 app.include_router(legal.router, tags=["legal"])

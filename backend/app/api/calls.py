@@ -150,6 +150,40 @@ def set_task(insights: dict | None, index: int, done: bool) -> dict:
     return ins
 
 
+class ScheduleIn(BaseModel):
+    date: str = ""      # YYYY-MM-DD, "" clears the confirmation
+    time: str = ""      # HH:MM or ""
+
+
+@router.post("/{call_id}/tasks/{index}/schedule")
+async def schedule_task(call_id: str, index: int, body: ScheduleIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_db)):
+    """The agent confirms when to get back (a Nifra proposal, one tap) — the reminder runs on it."""
+    call = await _own(db, user, call_id)
+    call.insights = set_schedule(call.insights, index, body.date, body.time)
+    await db.commit()
+    return {"ok": True, "action_items": call.insights.get("action_items")}
+
+
+def set_schedule(insights: dict | None, index: int, day: str, hhmm: str) -> dict:
+    from app.services.calls.events_consumer import _hhmm, _iso_day
+    ins = dict(insights or {})
+    items = [dict(a) for a in ins.get("action_items") or []]
+    if not 0 <= index < len(items):
+        raise HTTPException(404, "אין משימה כזו")
+    d, t = _iso_day(day), _hhmm(hhmm)
+    if day and not d:
+        raise HTTPException(400, "תאריך לא תקין")
+    if hhmm and not t:
+        raise HTTPException(400, "שעה לא תקינה")
+    items[index].pop("sched_date", None)
+    items[index].pop("sched_time", None)
+    if d:
+        items[index]["sched_date"], items[index]["sched_time"] = d, t
+    ins["action_items"] = items
+    return ins
+
+
 @router.delete("/{call_id}")
 async def delete_call(call_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     call = await _own(db, user, call_id)

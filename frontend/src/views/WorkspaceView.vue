@@ -83,9 +83,13 @@
       <CycleRailIcon @select="(tab) => onCardSelect(tab)" />
       <NifraAgentIcon size="small" @open="openCollector" />
       <NifraMarketIcon v-if="viewMode === 'content'" size="small" @open="openMarket" />
+      <NifraInsightsIcon v-if="viewMode === 'content'" size="small" :badge="insightsStore.dueBadge" @open="openInsights" />
       <CallWidget size="small" pop-side="left" />
     </div>
     <NifraMarketStudio v-model:open="marketOpen" :origin-el="marketOrigin" />
+    <!-- Nifra Insights — the calls by product + today's promises; its reminders speak on every screen -->
+    <NifraInsightsStudio v-model:open="insightsOpen" :origin-el="insightsOrigin" />
+    <ReminderToasts @open="openInsights" />
     <OfficeAgentPanel v-model:open="collectorOpen" :origin-el="collectorOrigin" :focus-card="agentFocusCard"
                       @open-mail="collectorOpen = false; mailAgentOpen = true" @open-vizs="onLatestVizs"
                       @open-call="(id) => { collectorOpen = false; callsStore.requestOpenCall(id) }" />
@@ -126,6 +130,7 @@
          removed 2026-10-10). Inside the tabs it's the small circle in the corner stack. -->
     <div v-if="viewMode === 'home'" class="ws-market-spot">
       <NifraMarketIcon :size="isPhone ? 'small' : 'big'" @open="openMarket" />
+      <NifraInsightsIcon :size="isPhone ? 'small' : 'big'" :badge="insightsStore.dueBadge" @open="openInsights" />
     </div>
 
     <!-- Fund-track detail viz — opens when user clicks a ticker chip. -->
@@ -335,6 +340,10 @@ import NifraAgentIcon from '../components/workspace/NifraAgentIcon.vue'
 import OfficeAgentPanel from '../components/workspace/OfficeAgentPanel.vue'
 import NifraMarketIcon from '../components/market/NifraMarketIcon.vue'
 import NifraMarketStudio from '../components/market/NifraMarketStudio.vue'
+import NifraInsightsIcon from '../components/insights/NifraInsightsIcon.vue'
+import NifraInsightsStudio from '../components/insights/NifraInsightsStudio.vue'
+import ReminderToasts from '../components/insights/ReminderToasts.vue'
+import { useCallsInsightsStore } from '../stores/callsInsights.js'
 import WaveSurfer from '../components/market/WaveSurfer.vue'
 import CycleNotificationModal from '../components/workspace/CycleNotificationModal.vue'
 import { useCycleStore } from '../stores/cycle.js'
@@ -549,6 +558,11 @@ const roomForEmotionClock = useMq('(min-width: 1360px) and (min-height: 640px)')
 const marketOpen = ref(false)
 const marketOrigin = ref(null)
 function openMarket(el) { marketOrigin.value = el || null; marketOpen.value = true }
+// Nifra Insights — the calls by product, beside Nifra Market
+const insightsStore = useCallsInsightsStore()
+const insightsOpen = ref(false)
+const insightsOrigin = ref(null)
+function openInsights(el) { insightsOrigin.value = el || null; insightsOpen.value = true }
 const collectorOpen = ref(false)
 const collectorOrigin = ref(null)
 function openCollector(el) {
@@ -563,6 +577,12 @@ function openCollector(el) {
 // the studio closes. The orb gets a short attention pulse.
 const officeStore = useOfficeAgentStore()
 const callsStore = useCallsStore()
+// a call opened from Nifra Insights: when the calls studio closes, the agent lands back in Insights
+watch(() => callsStore.studioOpen, (open) => {
+  if (open || callsStore.returnTo !== 'insights') return
+  callsStore.returnTo = null
+  setTimeout(() => openInsights(null), 260)   // after the calls studio's fold
+})
 const agentFocusCard = ref(null)
 watch(
   () => [officeStore.popRequest, callsStore.studioOpen, collectorOpen.value, setupState.modalOpen],
@@ -910,7 +930,7 @@ async function openFundDetail(trackId) {
   z-index: 50;
 }
 /* Nifra Market's home spot — bottom-left, centred where the 280px insights orbit stood */
-.ws-market-spot { position: fixed; bottom: 86px; left: 105px; z-index: 102; }
+.ws-market-spot { position: fixed; bottom: 86px; left: 105px; z-index: 102; display: flex; align-items: flex-end; gap: 22px; }
 @media (max-width: 720px) { .ws-market-spot { bottom: 18px; left: 18px; } }
 @media print { .ws-market-spot { display: none; } }
 

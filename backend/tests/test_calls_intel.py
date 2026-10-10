@@ -43,7 +43,7 @@ def test_calendar_is_a_lookup_not_arithmetic():
 
 def test_clean_tasks_drops_bad_dates():
     t = clean_tasks([{"text": "x", "owner": "agent", "due_date": "יום חמישי"}, {"text": " "}])
-    assert t == [{"text": "x", "owner": "agent", "due": "", "due_date": "", "done": False}]
+    assert t == [{"text": "x", "owner": "agent", "due": "", "due_date": "", "due_time": "", "done": False}]
 
 
 def test_untag_and_escaped_newlines():

@@ -154,6 +154,12 @@ const showNav = computed(() => MARKETING_ROUTE_NAMES.has(route.name))
   --tab-market: var(--chart-3);
   --tab-market-wash: rgba(122, 127, 42, 0.10);
   --tab-market-ink: #5E6320;
+  /* Nifra Insights — calls → line-drawn charts + reminders (components/insights). Deep teal on ink line art
+     (the user's pick, 2026-10-10; purple rejected). 7.6:1 on white. */
+  --tab-insights: #2C5F6B;
+  --tab-insights-wash: rgba(44, 95, 107, 0.08);
+  --tab-insights-soft: rgba(44, 95, 107, 0.24);
+  --tab-insights-ink: #2C5F6B;
   /* Text-safe inks for the pastel-yellow (chart-8) CTA surfaces */
   --chart-8-ink: #4A3900;
   --chart-8-deep: #8A6300;

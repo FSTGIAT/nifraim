@@ -544,6 +544,19 @@ and company duels. Every number comes from `tools_market` (`book_opportunities` 
 for the whole book) — no new math in the API. Public market data works for new agents; book views say what's missing.
 Parity test: `tests/test_market_api.py`. **See `docs/ARCHITECTURE.md` §20.**
 
+## Nifra Insights — calls by product + spoken reminders (`components/insights/`, `api/calls_insights.py`)
+
+A fourth circle beside Nifra Market opens a studio built ONLY from the calls (`call_recordings.insights`):
+line-drawn charts in ink + deep teal (products top 5 + עוד, mood ring, insurers, calls per week — few words; Claude groups the free-text products/topics into themes ONCE per change, cached in
+`calls_insights_cache` by fingerprint — every count is code), today's promises, "Nifra מציעה" dates for undated
+tasks (the agent's tap → `POST /api/calls/{id}/tasks/{i}/schedule`) and an analyst read whose numbers must exist in
+the facts. Reminders (`services/calls/reminders.py`, built on `tools_calls.promises()`): the morning brief the first
+time the agent is in the app each day + a heads-up 15 min before a task's time (said exactly, or confirmed), spoken
+in Hebrew in Azure's woman's voice "Hila" (`services/tts.py`, `POST /api/calls-insights/speak`, Azure Speech F0 free tier,
+resource `nifraim-speech` in `nifraim-speech-rg`; browser voice is the fallback) via `useVoiceReminders` + `ReminderToasts`; the server claim (`reminder_claims`) is the dedupe
+across tabs/devices. Android channel = next version, same `/reminders` payload. `clean_tasks` must whitelist any new
+task field (the sweep re-cleans every task). Tests: `tests/test_calls_insights.py`.
+
 ## הר הביטוח + policies — the customer's insurance file as Markdown (`services/policies/`)
 
 "תביא לי מהר הביטוח <ת.ז> <ת.לידה> <ת.הנפקה>" in Nifra → `propose_harb_fetch` → the agent's click (= consent) →

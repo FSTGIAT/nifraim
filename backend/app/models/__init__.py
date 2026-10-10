@@ -46,6 +46,7 @@ from app.models.ai_memory import AiMemory, AiIntentLog
 from app.models.fund_market import FundMarketMonthly, PensyanetData
 from app.models.customer_snapshot import CustomerProductSnapshot, CustomerSnapshotUpload
 from app.models.call_recording import CallRecording
+from app.models.calls_insights import ReminderClaim, CallsInsightsCache
 
 # every process that loads the models (API, local worker, scripts) bumps users.ai_data_version on AI-relevant writes
 from app.services.agent.versioning import register_listeners as _register_ai_version_listeners  # noqa: E402
