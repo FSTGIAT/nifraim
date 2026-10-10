@@ -92,6 +92,16 @@ def plan(question: str) -> list[tuple[str, dict]]:
         return [("customers_by_product", {"company": named_co[0], **({"product": prod} if prod else {}), **({"track": trk} if trk else {})})]
     if re.search(r"מסלול", q) and re.search(r"רוב הלקוחות|הכי הרבה לקוחות|התיק (?:שלי )?לפי מסלול|כמה (?:כסף|צבירה) (?:אצלי )?במסלול", q):
         return [("tracks_in_book", {"company": next(iter(companies_in(q)), "")})]   # "באיזה מסלול רוב הלקוחות שלי?"
+    if re.search(r"פער", q) and re.search(r"כולל|כל הלקוחות|סך הכל|בסך הכל", q) and re.search(r"שוק|מסלול|תשוא", q):
+        return [("fund_opportunities", {"min_gap_ils": 0})]   # the book's total gap vs the market
+    if re.search(r"הכי גדול|הגדול", q) and not companies_in(q):
+        cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
+        if cat_tool:   # "איזה קרן פנסיה הכי גדולה?" — by size
+            return [(cat_tool, {"sort_by": "size"})]
+    if re.search(r"כמה (?:כסף )?(?:נכנס|יצא|זרם|גייס)", q) and not re.search(r"עמל", q):
+        cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
+        if cat_tool:   # "כמה כסף נכנס לקרנות ההשתלמות החודש?" — market flows
+            return [("market_flows", {"category": cat_tool.removeprefix("compare_")})]
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))

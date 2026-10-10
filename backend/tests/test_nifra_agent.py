@@ -346,6 +346,8 @@ def test_market_prefetch():
         "אילו מסלולי פנסיה הגדילו חשיפה למניות החודש?": [("market_changes", {"category": "pension"})],
         "מה קרן הפנסיה עם דמי הניהול הנמוכים ביותר?": [("compare_pension", {"sort_by": "fee"})],
         "באיזה מסלול רוב הלקוחות שלי?": [("tracks_in_book", {"company": ""})],
+        "איזה קרן פנסיה הכי גדולה?": [("compare_pension", {"sort_by": "size"})],
+        "כמה כסף נכנס לקרנות ההשתלמות החודש?": [("market_flows", {"category": "hishtalmut"})],
         "מה ההבדל בין קרן פנסיה מקיפה לכללית?": [],   # "כללית" is not the company כלל
         "איך הפנסיה של מגדל השתנתה מתחילת השנה?": [("compare_pension", {"company": "מגדל"})],
         "מה השתנה אצל הלקוח 22931885 מהחודש שעבר?": [("get_customer", {"id_number": "22931885"}),
@@ -365,6 +367,10 @@ def test_market_prefetch():
     check(router.route("האם כדאי לנייד את הלקוח 35673813?") is None, "'לנייד?' is not the instant card")
     check(getattr(router.route("מה יש ללקוח 310203633?"), "intent", None) == "customer", "plain 'מה יש ללקוח' stays instant")
     check(getattr(router.route("מה כדאי לי לעשות השבוע?"), "intent", None) == "tasks", "the agent's own task list stays instant")
+    check(router.route("איזה קרן פנסיה הכי גדולה?") is None, "a fund 'biggest' question is not the top-customers list")
+    check(router.route("כמה כסף נכנס לקרנות ההשתלמות החודש?") is None, "fund inflows are not the commission trend")
+    check(getattr(router.route("כמה עמלה קיבלתי החודש?"), "intent", None) == "trend", "commission this month stays instant")
+    check(getattr(router.route("מי הלקוחות הגדולים שלי?"), "intent", None) == "top", "biggest customers stays instant")
 
 
 def test_track_score():

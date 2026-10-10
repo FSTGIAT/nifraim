@@ -474,7 +474,8 @@ async def fund_opportunities(ctx, category: str = "", min_gap_ils: int = 1000, n
             "products": d["items"][:4]} for d in top]
     rid = ctx.keep([{"label": d["name"], "value": d["annual_gap_ils"], "id_number": d["id_number"]} for d in out],
                    label="לקוח", value="פער שנתי משוער", title="לקוחות במסלולים שמפגרים אחרי השוק")
-    return {"customers": out, "total_customers": len(rows), "total_annual_gap_ils": round(sum(d["gap"] for d in rows)),
+    # totals FIRST — "מה הפער הכולל של כל הלקוחות" got "hundreds of thousands" when they came after the list
+    return {"total_customers": len(rows), "total_annual_gap_ils": round(sum(d["gap"] for d in rows)), "customers": out,
             "how_to_read": "פער = צבירה × (תשואה שנתית ממוצעת 3ש של המסלול המוביל באותה רמת סיכון − המסלול של הלקוח). אומדן.",
             "disclaimer": DISCLAIMER, "result_id": rid}
 

@@ -159,7 +159,8 @@ def route(question: str) -> Route | None:
     if re.search(r"הכי הרבה (מוצרים|פוליסות|קופות)|(מוצרים|פוליסות) הכי הרבה|הכי הרבה מוצר", q):
         return Route("top", "top_customers", {"metric": "products", "n": 10})
     if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q) and not re.search(
-            r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית|לא פעיל|קופות", q) and not co:
+            r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית|לא פעיל|קופות|קרן|קרנות|קופ|מסלול|פנסי|גמל|השתלמות|פוליס", q) and not co:
+        # "איזה קרן פנסיה הכי גדולה?" is a FUND question — it got the agent's biggest customers (2026-10-10)
         # "אילו לקוחות עם קופות לא פעילות הכי גדולות" / "הכי גדול במור" are not the all-book top list
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "", "n": 10})
     m = re.search(r"(?:^|\s)(?:מה יש ל|מה עם |כרטיס של |תראה לי את )?(?:ה)?לקוח(?:ה)?\s+([א-ת'\"\- ]{3,30}?)\s*\??$", q)
@@ -184,11 +185,13 @@ def route(question: str) -> Route | None:
         return Route("changes", "get_production_changes", {})
     if re.search(r"הגדול|מובילים|הכי גדול|הכי גדולים|top", q):
         # "אקסלנס גמל הוא לא המוצר הגדול ביותר" is a CORRECTION about a product, not "top customers"
-        if re.search(r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית|לא פעיל|קופות", q) or co:
+        if re.search(r"מוצר|עמל|(?:^|\s)(?:הוא|היא|זה)\s+לא\b|לא נכון|טעית|לא פעיל|קופות|קרן|קרנות|קופ|מסלול|פנסי|גמל|השתלמות|פוליס", q) or co:
             return None
         return Route("top", "top_customers", {"metric": "premium" if "פרמי" in q else "accumulation", "n": 10})
-    if (re.search(r"עמל|נכנס|הכנס|קיבלתי", q) and re.search(r"החודש|חודש שעבר|חודש קודם|מגמה|לפי חודש|קיבלתי", q)) \
-            or re.search(r"כמה נכנס|כמה הרווחתי|כמה הכנסתי", q):
+    if ((re.search(r"עמל|נכנס|הכנס|קיבלתי", q) and re.search(r"החודש|חודש שעבר|חודש קודם|מגמה|לפי חודש|קיבלתי", q))
+            or re.search(r"כמה נכנס|כמה הרווחתי|כמה הכנסתי", q)) \
+            and not (re.search(r"קרן|קרנות|קופ|מסלול|פנסי|גמל|השתלמות|פוליס", q) and not re.search(r"עמל", q)):
+        # "כמה כסף נכנס לקרנות ההשתלמות החודש?" is market flows, not the agent's commissions (2026-10-10)
         # "כמה קיבלתי במרץ?" was answered with the LAST month — a named month is the agent's job;
         # "מה העמלה הצפויה החודש?" got last month's RECEIVED amount (2026-10-10) — expected = agent
         if re.search(r"צפוי|צפי", q) or MONTH_RE.search(q) or (co == "" and re.search(r"(?:^|\s)(?:מ|מה|ב)[א-ת]{3,}(?=\s|\?|$)", q) and _unexplained_words(q, co)):
