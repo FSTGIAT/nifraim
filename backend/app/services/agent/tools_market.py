@@ -777,10 +777,16 @@ async def track_rank(ctx, fund: str):
     hold = (await holdings_ranks(ctx.db, cat, period, rows)).get(f.fund_id) or {}
     y, m = divmod(period, 100)
     return {"found": True, "fund": f.fund_name, "fund_id": f.fund_id, "category": CATEGORIES[cat][2], "data_month": f"{m:02d}/{y}",
+            # the track's OWN figures and the LEADER's, each labelled — with only the track's own 3y return in a
+            # field next to the leader's name, Nifra wrote "מובילה מור עם 14.7%" (14.7% = Phoenix's) (2026-10-10)
+            "this_track": {"avg_yield_3y": f.avg_yield_3y, "yield_12m": (hold or {}).get("y12"), "mgmt_fee": f.mgmt_fee},
             "same_name_rank": {"rank": by3.index(f) + 1 if f in by3 else None, "of": len(by3),
-                               "leader": by3[0].fund_name if by3 else None, "avg_yield_3y": f.avg_yield_3y},
+                               "leader": by3[0].fund_name if by3 else None,
+                               "leader_avg_yield_3y": by3[0].avg_yield_3y if by3 else None,
+                               "median_avg_yield_3y": _med([x.avg_yield_3y for x in by3])},
             "risk_level_rank": {"risk_level": f"{hold['level']} {hold['label']}" if hold else None, "rank": hold.get("rank"),
-                                "of": hold.get("of"), "leader": (hold.get("leader") or {}).get("fund")},
+                                "of": hold.get("of"), "leader": (hold.get("leader") or {}).get("fund"),
+                                "leader_avg_yield_3y": (hold.get("leader") or {}).get("avg_yield_3y")},
             "note": "שני דירוגים שונים: מול מסלולים באותו שם (תשואה 3ש) ומול רמת הסיכון לפי האחזקות (ציון משולב). ציין את שניהם.",
             "disclaimer": DISCLAIMER}
 

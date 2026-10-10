@@ -30,6 +30,7 @@ INDEX_STYLE = "חו\"ל/מדד"
 ANNUITY_STYLE = "מקבלי קצבה"
 WEIGHTS = (("y12", 0.25), ("avg_yield_3y", 0.35), ("avg_yield_5y", 0.25), ("sharpe", 0.15), ("mgmt_fee", -0.10))
 MIN_ASSETS_M = 100
+MIN_GROUP = 5
 
 
 def pct(f, attr: str) -> float | None:
@@ -94,6 +95,8 @@ def rank_groups(rows: list, y12: dict[int, float | None], is_open) -> dict[int, 
         if is_open(f) and (f.total_assets or 0) >= MIN_ASSETS_M and f.avg_yield_3y is not None:
             groups[(r["level"], r["style"])].append(f)
     for members in groups.values():
+        if len(members) < MIN_GROUP:   # "#1 מתוך 2" is not a ranking — those tracks keep their risk level only
+            continue
         vals = {k: [(y12.get(x.fund_id) if k == "y12" else getattr(x, k)) for x in members] for k, _ in WEIGHTS}
 
         def score(x):
@@ -115,7 +118,7 @@ def verdict(f, info: dict, accumulation: float, y12: float | None) -> dict:
     """The action for one product, from its holdings rank. A ₪ figure only when the group leader
     is really better over 3 years (a leader can win on 12 months or stability instead)."""
     if not info or info.get("rank") is None:
-        return {"action": "אין דירוג לפי אחזקות (מסלול צעיר מ-3 שנים, קטן, או סגור לציבור)"}
+        return {"action": "אין דירוג לפי אחזקות (מסלול צעיר מ-3 שנים, קטן, סגור לציבור, או פחות מ-5 מסלולים דומים)"}
     rank, of, lead = info["rank"], info["of"], info["leader"]
     gain = None
     if lead["fund_id"] != f.fund_id and lead.get("avg_yield_3y") is not None and f.avg_yield_3y is not None \

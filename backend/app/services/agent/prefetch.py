@@ -148,7 +148,8 @@ def plan(question: str) -> list[tuple[str, dict]]:
     book_q = re.search(r"לקוחות|צביר|פרמי|מוצר|פוליסות|תיק", q) and not re.search(r"לא שול|חוב|חייב|פער|גבי|לא שיל|עמל", q)
     if co and book_q and not market_q:
         calls.append(("get_portfolio", {"company": co, "metric": "premium" if "פרמי" in q else "accumulation"}))
-    elif co and not market_q:
+    elif co and not market_q and not (any(re.search(p_, q) for p_, _ in FUND_CATS) and not re.search(r"עמל|לא שול|נפרע|חוב|שילמ", q)):
+        # "הראל פנסיה מניות — טובה?" is about Harel's FUND, not Harel's commissions (2026-10-10)
         calls.append(("get_unpaid", {"company": co}))
         if re.search(r"הסכם|שיעור|אחוז|עמלה|למה|מתעכב|לא שיל", q):
             calls.append(("get_rate", {"company": co}))

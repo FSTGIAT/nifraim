@@ -347,6 +347,9 @@ def test_market_prefetch():
         "מה קרן הפנסיה עם דמי הניהול הנמוכים ביותר?": [("compare_pension", {"sort_by": "fee"})],
         "באיזה מסלול רוב הלקוחות שלי?": [("tracks_in_book", {"company": ""})],
         "איזה קרן פנסיה הכי גדולה?": [("compare_pension", {"sort_by": "size"})],
+        "הראל פנסיה מניות — טובה?": [],   # Harel's fund, not Harel's commissions
+        "למה מנורה לא שילמה לי?": [("get_unpaid", {"company": "מנורה"}), ("get_rate", {"company": "מנורה"}),
+                                  ("get_commission_trend", {"company": "מנורה"})],
         "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?": [("track_rank", {"fund": "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?"})],
         "אילו קרנות השתלמות עלו הכי הרבה בדירוג החודש?": [("market_changes", {"category": "hishtalmut"})],
         "כמה כסף נכנס לקרנות ההשתלמות החודש?": [("market_flows", {"category": "hishtalmut"})],
@@ -391,8 +394,10 @@ def test_track_score():
     check(risk_level(mk(4, 99, abroad=113))["style"] != risk_level(mk(5, 99))["style"], "S&P-type track is its own group")
     ann = mk(6, 30); ann.fund_name = "מיטב פנסיה הלכה למקבלי קצבה"
     check(risk_level(ann)["style"] != risk_level(mk(7, 30))["style"], "annuitant tracks are their own group")
-    rows = [mk(10, 99, y3=20), mk(11, 99, y3=22), mk(12, 99, y3=18), mk(13, 99, y3=None), mk(14, 99, y3=15, assets=50)]
-    r = rank_groups(rows, {10: 21.0, 11: 23.0, 12: 19.0, 13: 31.0, 14: 16.0}, lambda f: True)
+    rows = [mk(10, 99, y3=20), mk(11, 99, y3=22), mk(12, 99, y3=18), mk(13, 99, y3=None), mk(14, 99, y3=15, assets=50),
+            mk(15, 99, y3=17), mk(16, 99, y3=16), mk(20, 99, abroad=113, y3=12), mk(21, 99, abroad=113, y3=11)]
+    r = rank_groups(rows, {10: 21.0, 11: 23.0, 12: 19.0, 13: 31.0, 14: 16.0, 15: 18.0, 16: 17.0, 20: 12.0, 21: 11.0}, lambda f: True)
+    check(r[20]["rank"] is None, "a group of 2 is not ranked")
     check(r[13]["rank"] is None and r[14]["rank"] is None, "no 3-year history / under ₪100M → not ranked")
     check(r[11]["rank"] == 1 and r[12]["rank"] == 3, "ranked by the combined score")
     v = verdict(rows[2], r[12], 100_000, 19.0)
