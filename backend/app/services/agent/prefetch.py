@@ -77,6 +77,15 @@ def plan(question: str) -> list[tuple[str, dict]]:
         cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
         if cat_tool:   # "תשווה בין מור למיטב בפנסיה" — each company's tracks (was: the market top 10, Mor absent)
             return [(cat_tool, {"company": c}) for c in list(dict.fromkeys(cos))[:3]]
+    if re.search(r"לא פעיל", q) and re.search(r"הכי|גדול|לקוחות", q) and not ID_RE.search(q):
+        return [("get_insights", {"kind": "retention"})]   # inactive funds with balances — not the all-book top list
+    named_co = companies_in(q)
+    if named_co and re.search(r"(?:^|\s)(?:מי|איזה|אילו)\b.*לקוח|הלקוח(?:ה)? (?:עם|הכי)|הכי (?:גבוה|גדול)", q) \
+            and not re.search(r"לא שול|חוב|עמל|נפרע|מפגר|ירד|עלו|דירוג", q):
+        # "מי הלקוחה עם הצבירה הכי גבוהה במור?" / "איזה לקוחות שלי בגמל מניות בהפניקס?"
+        prod = next((w for w in ("גמל להשקעה", "השתלמות", "פנסיה", "פוליסת חיסכון", "גמל", "חיים", "בריאות", "סיעוד", "מנהלים") if w in q), "")
+        trk = next((t for t in TRACKS if t in q), "")
+        return [("customers_by_product", {"company": named_co[0], **({"product": prod} if prod else {}), **({"track": trk} if trk else {})})]
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))

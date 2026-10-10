@@ -586,3 +586,47 @@ async def get_agreement_doc(ctx, query: str = ""):
     return (f"# {d.filename}\nסוג: {d.doc_type or ''} · חברות: {', '.join(map(str, d.companies_mentioned or []))}\n\n"
             f"## סיכום\n{d.summary or ''}\n\n## תוכן\n{body[:10000]}"
             + (f"\n\n(יש עוד {len(hits) - 1} מסמכים תואמים)" if len(hits) > 1 else ""))
+
+
+@tool("customers_by_product", "הלקוחות שמחזיקים מוצר בחברה מסוימת (מקבצי הפרודוקציה הפעילים), מדורגים לפי הצבירה שלהם בחברה הזו: "
+      "company = החברה; product = סוג מוצר (גמל, השתלמות, פנסיה, גמל להשקעה, פוליסת חיסכון, חיים, בריאות…); track = מילות מסלול (מניות, S&P, לבני 50, כללי…). "
+      "לשאלות 'מי בגמל מניות בהפניקס', 'מי הלקוח הכי גדול במור'.",
+      {"company": {"type": "string"}, "product": {"type": "string"}, "track": {"type": "string"}, "n": {"type": "integer"}},
+      ["company"], category="production", status_he="מחפש לקוחות לפי מוצר")
+async def customers_by_product(ctx, company: str, product: str = "", track: str = "", n: int = 15):
+    from app.api.production import _get_production_upload_ids
+    from app.models.record import ClientRecord
+    from app.services.agent.tools_market import tokens
+    from app.utils.company_norm import company_stem
+
+    ids = await _get_production_upload_ids(ctx.db, ctx.user.id)
+    if not ids:
+        return {"customers": [], "note": "אין קובץ פרודוקציה פעיל."}
+    stem = company_stem(company) or company
+    recs = (await ctx.db.execute(select(ClientRecord).where(ClientRecord.user_id == ctx.user.id, ClientRecord.upload_id.in_(ids),
+                                                            ClientRecord.id_number.isnot(None)))).scalars().all()
+    want_track = tokens(track) if track else set()
+    per: dict[str, dict] = {}
+    for r in recs:
+        if company_stem(r.receiving_company) != stem and stem not in (r.receiving_company or ""):
+            continue
+        kind = f"{r.product_type or ''} {r.product or ''}"
+        if product and not all(w in kind for w in product.replace("קופת", "").split() if len(w) > 1):
+            continue
+        if want_track and not (want_track <= tokens(f"{r.track or ''} {r.product or ''}") or track in (r.track or "")):
+            continue
+        idn = str(r.id_number).lstrip("0")
+        c = per.setdefault(idn, {"id_number": idn, "name": " ".join(x for x in (r.first_name, r.last_name) if x) or idn,
+                                 "accumulation": 0.0, "products": []})
+        c["accumulation"] += float(r.accumulation or 0)
+        c["products"].append(" · ".join(x for x in (r.product or r.product_type, r.track, r.product_status) if x))
+    rows = sorted(per.values(), key=lambda c: -c["accumulation"])
+    top = rows[: max(1, min(int(n or 15), 40))]
+    for c in top:
+        c["accumulation"] = round(c["accumulation"])
+        c["products"] = c["products"][:4]
+    rid = ctx.keep([{"label": c["name"], "value": c["accumulation"], "id_number": c["id_number"]} for c in top], label="לקוח",
+                   value=f"צבירה ב{company}", unit="₪", title=f"לקוחות ב{company}" + (f" · {product}" if product else "") + (f" · {track}" if track else "")) if top else None
+    return {"company": company, "product": product or None, "track": track or None, "customers_found": len(rows),
+            "customers": top, "result_id": rid,
+            "note": "הצבירה = רק מה שהלקוח מחזיק בחברה הזו, מקבצי הפרודוקציה (המסלול כפי שמופיע בקובץ)."}
