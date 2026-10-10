@@ -188,9 +188,11 @@ async def _id_for_name(ctx, full_name: str, question: str = "") -> str | None:
     question names; else None (find_customer lists both and Nifra asks) — the first match answered
     about the other שחר's גמל להשקעה (2026-10-10)."""
     m = await ctx.map()
-    a, b = (full_name.split() + [""])[:2]
+    # the whole name as a set of words: one file splits "נתאי אלעזר | וילנר", another "נתאי | אלעזר וילנר"
+    want = {_norm(w) for w in full_name.split() if _norm(w)}
     ids = list(dict.fromkeys(str(c.get("id_number")).lstrip("0") for c in [*m.customers, *m.extra.values()]
-                             if {_norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")} == {a, b}))
+                             if want and {_norm(w) for w in f"{c.get('first_name') or ''} {c.get('last_name') or ''}".split()
+                                          if _norm(w)} == want))
     if len(ids) <= 1:
         return ids[0] if ids else None
     kind = next((k for w, k in _HOLD_KIND if w in question), None)

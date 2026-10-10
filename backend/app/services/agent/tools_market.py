@@ -58,7 +58,7 @@ def category_for_product(product_type: str | None, product: str | None = None) -
 _SYN = [(r"מחקה", "עוקב"), (r"s\s*&\s*p\s*-?\s*500|500\s*s\s*&\s*p", "sp500"), (r"\bשקלי\b", "כספי"),
         (r"\b05\b", "50"), (r"\b06\b", "60"), (r"לגילאי", "לבני"), (r"(?<!\d)עד\s*50(?!\d)", "לבני 50 ומטה"), (r"(?<!\d)50\s*-\s*60(?!\d)", "לבני 50 עד 60"), (r"אג\"?ח", "אגח"), (r"סחיר", "סחיר")]   # visual-Hebrew files reverse 60 → "06"
 KEY = {"עוקב", "sp500", "מניות", "כללי", "אגח", "כספי", "הלכה", "הלכתי", "שריעה", "סחיר", "מדדי", "מדד", "לבני", "50", "60",
-       "ומטה", "ומעלה", "עד", "קיימות", "פאסיבי", "אקטיבי", "חול", "ישראל", "צמוד", "יעד", "2030", "2040", "פלוס", "משולב"}
+       "ומטה", "ומעלה", "קיימות", "פאסיבי", "אקטיבי", "חול", "ישראל", "צמוד", "יעד", "2030", "2040", "פלוס", "משולב"}
 
 
 def tokens(name: str | None) -> set[str]:
@@ -129,7 +129,9 @@ def is_open(f) -> bool:
     """Can a new customer join this fund? Sector/employer-only funds (e.g. רום — local-authority
     employees) and veteran pension funds (קרנות כלליות, closed) are never a switch target or a
     "best fund" — they're only matched when the customer is already in them."""
-    return (f.target_population in (None, "", "כלל האוכלוסיה")) and f.classification != "קרנות כלליות"
+    # מרכזית לפיצויים = employer-only severance funds ("מנורה מבטחים משתתפת בפנסיה תקציבית" was the #2
+    # "best גמל at moderate risk", 2026-10-10)
+    return (f.target_population in (None, "", "כלל האוכלוסיה")) and f.classification not in ("קרנות כלליות", "מרכזית לפיצויים")
 
 
 async def latest_period(db) -> int | None:
