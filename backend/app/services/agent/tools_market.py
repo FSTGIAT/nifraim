@@ -589,35 +589,15 @@ async def fund_allocation(ctx, fund: str):
     from app.services.fund_market.delta import track_allocation
     period = (await ctx.db.execute(select(func.max(F.report_period)).where(F.source == "pension"))).scalar_one_or_none()
     rows = (await ctx.db.execute(select(F).where(F.source == "pension", F.report_period == period))).scalars().all()
+    # the same lookup as track_rank (question words stripped, whole words, brand(), "עד 50") — its own
+    # word match opened answers with "לא מצאתי" for "מנורה מבטחים פנסיה כללי" (2026-10-10)
     q = (fund or "").strip()
-    if q.isdigit():
-        hits = [f for f in rows if f.fund_id == int(q)]
-    else:
-        norm = lambda x: re.sub(r"\s+", " ", (x or "").replace('"', "").replace("-", " ")).strip()
-        hits = [f for f in rows if norm(f.fund_name) == norm(q)]          # the exact name first
-        if not hits:
-            # whole words — "כלל" is a substring of "כללי", so "כלל פנסיה כללי" matched Menora/Harel "כללי" tracks
-            words = [w for w in norm(q).split() if w]
-            hits = [f for f in rows if set(words) <= set(norm(f.fund_name).split())]
-        if not hits and tokens(q):   # "מור מניות" / a whole question → company + track words
-            from app.services.agent.router import _company
-            co = _company(q)
-            stem = company_stem(co) if co else None
-            want = tokens(q)
-            if "מקיפה" in q or "כללית" in q:   # the fund type narrows Mor's twin tracks
-                kind = "מקיפה" if "מקיפה" in q else "כללית"
-                kind_rows = [f for f in rows if kind in (f.fund_name or "")]
-            else:
-                kind_rows = rows
-            hits = [f for f in kind_rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
-                    and want <= tokens(f.fund_name)]
-    if not hits:
-        return {"found": False, "note": "לא נמצא מסלול פנסיה בשם הזה. נסה שם מלא כפי שמופיע בפנסיה-נט, או מספר קופה."}
-    if len(hits) > 1:
-        hits.sort(key=lambda f: -(f.total_assets or 0))
-        if len(hits) > 6:
-            return {"found": False, "candidates": [{"fund_id": f.fund_id, "fund": f.fund_name} for f in hits[:12]],
-                    "note": "יותר מדי מסלולים מתאימים — בחר אחד."}
+    f = _find_fund(q, rows)
+    if not f:
+        cands = [x for x in rows if set(_clean_track_q(q).split()) & set((x.fund_name or "").split())]
+        return {"found": False, "candidates": [{"fund_id": x.fund_id, "fund": x.fund_name} for x in cands[:10]] or None,
+                "note": "לא נמצא מסלול פנסיה בשם הזה. נסה שם מלא כפי שמופיע בפנסיה-נט, או מספר קופה."}
+    hits = [f]
     f = hits[0]
     alloc = await track_allocation(ctx.db, f.fund_id)
     if not alloc.get("found"):
@@ -795,7 +775,9 @@ async def track_rank(ctx, fund: str):
     return {"found": True, "fund": f.fund_name, "fund_id": f.fund_id, "category": CATEGORIES[cat][2], "data_month": f"{m:02d}/{y}",
             # the track's OWN figures and the LEADER's, each labelled — with only the track's own 3y return in a
             # field next to the leader's name, Nifra wrote "מובילה מור עם 14.7%" (14.7% = Phoenix's) (2026-10-10)
-            "this_track": {"avg_yield_3y": f.avg_yield_3y, "yield_12m": (hold or {}).get("y12"), "mgmt_fee": f.mgmt_fee},
+            "this_track": {"avg_yield_3y": f.avg_yield_3y, "yield_12m": (hold or {}).get("y12"), "ytd_yield": f.ytd_yield,
+                           "month_yield": f.monthly_yield, "avg_yield_5y": f.avg_yield_5y, "sharpe": f.sharpe,
+                           "mgmt_fee": f.mgmt_fee, "deposit_fee": f.deposit_fee, "size_m": f.total_assets},
             "same_name_rank": {"rank": by3.index(f) + 1 if f in by3 else None, "of": len(by3),
                                "leader": by3[0].fund_name if by3 else None,
                                "leader_avg_yield_3y": by3[0].avg_yield_3y if by3 else None,
@@ -808,7 +790,8 @@ async def track_rank(ctx, fund: str):
 
 
 _QWORDS = re.compile(r"(?:^|\s)(?:מה|מהו|מהי|הדירוג|דירוג|של|באיזה|איזה|מקום|במקום|ברמת|רמת|הסיכון|סיכון|שלו|שלה|טוב|טובה|"
-                     r"איך|שווה|מדורג|מדורגת|הפילוח|פילוח|החשיפה|חשיפה|למניות|לחו\"ל|יש|ב|ה|—|-)(?=\s|$)")
+                     r"איך|שווה|מדורג|מדורגת|הפילוח|פילוח|החשיפה|חשיפה|למניות|לחו\"ל|יש|ב|ה|—|-|התשואה|תשואה|ל-12|12|חודשים|החודשים|האחרונים|"
+                     r"מתחילת|השנה|דמי|הניהול|ניהול|השארפ|שארפ|החודשית|חודשית)(?=\s|$)")
 
 
 def _clean_track_q(q: str) -> str:

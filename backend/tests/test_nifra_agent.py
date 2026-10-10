@@ -350,6 +350,7 @@ def test_market_prefetch():
         "הראל פנסיה מניות — טובה?": [("track_rank", {"fund": "הראל פנסיה מניות — טובה?"})],   # the fund's ranks, not Harel's commissions
         "איזו קרן פנסיה עם הכי הרבה כסף שנכנס החודש?": [("market_changes", {"category": "pension"})],
         "מה קרן ההשתלמות הכי טובה בסיכון נמוך?": [("best_tracks_by_risk", {"category": "hishtalmut", "level": 1})],
+        "מה התשואה ל-12 חודשים של כלל תמר עד 50?": [("track_rank", {"fund": "מה התשואה ל-12 חודשים של כלל תמר עד 50?"})],
         "מה המסלול המוביל בהשתלמות ברמת סיכון בינונית?": [("best_tracks_by_risk", {"category": "hishtalmut", "level": 3})],
         "למה מנורה לא שילמה לי?": [("get_unpaid", {"company": "מנורה"}), ("get_rate", {"company": "מנורה"}),
                                   ("get_commission_trend", {"company": "מנורה"})],

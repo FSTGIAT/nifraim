@@ -19,7 +19,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"השתלמות", "compare_hishtalmut"),
     (r"פנסי|מקפת", "compare_pension"),   # "מגדל מקפת אישית כללי" is Migdal's pension fund
     (r"פוליס[הות] חיסכון|פוליסות חסכון", "compare_savings_policy"),
-    (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])", "compare_gemel"),   # \b fails on "בגמל" (Hebrew letters are all \w)
+    (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])|כלל תמר", "compare_gemel"),   # "כלל תמר" = Clal's גמל   # \b fails on "בגמל" (Hebrew letters are all \w)
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי (?:ה)?ניהול|להשוות|השווא|מומלץ")
 MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|כסף שנכנס|כסף שיצא|הכי הרבה כסף|זרם|גייס|(?:עלו|ירדו|טיפס|נפל).{0,15}דירוג|חדשות"
@@ -97,6 +97,10 @@ def plan(question: str) -> list[tuple[str, dict]]:
     named_track = companies_in(q) and any(re.search(p_, q) for p_, _ in FUND_CATS)
     if not ID_RE.search(q) and not re.search(r"לקוח|עלו|ירדו|טיפס|נפל|תשווה|השווה|מול|לעומת", q) and companies_in(q) and (
             re.search(r"דירוג|באיזה מקום|במקום|מדורג", q)
+            # "מה התשואה ל-12 חודשים של כלל תמר עד 50?" — one track's own figures (this_track)
+            or (named_track and re.search(r"תשוא|דמי (?:ה)?ניהול|12 חודשים|מתחילת השנה|שארפ", q)
+                and not re.search(r"עמל|לא שול|נפרע", q) and len(companies_in(q)) == 1 and not MARKET_CHANGE_Q.search(q)
+                and not re.search(r"הכי|מוביל|טוב ביותר|נמוכ|גבוה", q))
             or (named_track and re.search(r"(?:^|\s)(?:טוב|טובה|איך|שווה)(?:\s|\?|$)", q) and len(companies_in(q)) == 1
                 and not MARKET_CHANGE_Q.search(q))):
         return [("track_rank", {"fund": q})]   # "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?"
