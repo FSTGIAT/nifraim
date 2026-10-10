@@ -72,7 +72,15 @@
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
       </svg>
-      יש להם מוצר בפרודוקציה ואין עליו עמלה בדוחות של {{ covered.join(', ') }}. לחץ על לקוח לרשימת הפוליסות.
+      <template v-if="mode === 'partial'">
+        החברה שילמה עמלה על חלק מהמוצרים של הלקוח ועל אחרים לא. הסכום בשורה הוא של המוצרים שלא שולמו; לחץ על לקוח כדי לראות מה התקבל ומה לא.
+      </template>
+      <template v-else-if="mode === 'full'">
+        לא התקבלה עמלה על אף מוצר של הלקוחות האלה בדוחות של {{ covered.join(', ') }}. לחץ על לקוח לרשימת הפוליסות.
+      </template>
+      <template v-else>
+        יש להם מוצר בפרודוקציה ואין עליו עמלה בדוחות של {{ covered.join(', ') }}. לחץ על לקוח לרשימת הפוליסות.
+      </template>
     </p>
 
     <!-- Who -->
@@ -87,7 +95,10 @@
             <span class="ud-name">{{ u.name || u.id_number }}</span>
             <span class="ud-id ltr-number">{{ u.id_number }}</span>
           </span>
-          <span class="ud-cos">{{ u.companies.join(' · ') }}</span>
+          <span class="ud-cos">
+            {{ u.companies.join(' · ') }}
+            <small v-if="u.partially_paid && u.received > 0" class="ud-got">התקבל <span class="ltr-number">{{ money(u.received) }}</span></small>
+          </span>
           <span class="ud-pill ltr-number" :title="`${u.shownItems.length || u.products} מוצרים`">
             {{ u.shownItems.length || u.products }}
           </span>
@@ -103,6 +114,24 @@
         </button>
         <div class="ud-fold" :class="{ 'ud-fold--open': openId === u.id_number }">
           <div class="ud-fold-inner">
+            <!-- Partly paid: what DID arrive, then what didn't. -->
+            <div v-if="u.paid_items?.length" class="ud-policies ud-policies--paid">
+              <p class="ud-sec">התקבלה עמלה</p>
+              <div v-for="(it, i) in u.paid_items" :key="'p' + i" class="ud-policy">
+                <span class="ud-policy-name" :title="it.product || it.product_type">
+                  {{ it.product || it.product_type || 'מוצר ללא שם' }}
+                  <small>{{ it.company }}{{ it.product_type && it.product ? ' · ' + it.product_type : '' }}</small>
+                </span>
+                <span class="ud-policy-no">
+                  <template v-if="it.policy_number">
+                    <small>פוליסה</small>
+                    <span class="ltr-number">{{ it.policy_number }}</span>
+                  </template>
+                </span>
+                <span class="ud-policy-amt ud-policy-amt--paid ltr-number">{{ it.commission ? money(it.commission) : '' }}</span>
+              </div>
+              <p class="ud-sec">לא התקבלה עמלה</p>
+            </div>
             <div class="ud-policies">
               <div v-for="(it, i) in u.shownItems" :key="i" class="ud-policy">
                 <span class="ud-policy-name" :title="it.product || it.product_type">
@@ -134,6 +163,8 @@ import { money } from '../../utils/chartDefaults'
 
 const props = defineProps({
   rows: { type: Array, default: () => [] },       // /production/alerts `unpaid`
+  // 'full' = nothing paid · 'partial' = paid on some products · null = both
+  mode: { type: String, default: null },
   covered: { type: Array, default: () => [] },    // companies checked
 })
 
@@ -315,6 +346,10 @@ function compact(v) {
 .ud-policy-no { display: flex; flex-direction: column; align-items: flex-start; font-size: 12.5px; }
 .ud-policy-no small { font-size: 10.5px; color: var(--text-muted); }
 .ud-policy-amt { text-align: left; font-size: 13px; font-weight: 700; }
+.ud-policy-amt--paid { color: var(--green-deep); }
+.ud-sec { margin: 6px 0 2px; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.ud-policies--paid { margin-bottom: 4px; }
+.ud-got { display: block; font-size: 11.5px; color: var(--text-muted); }
 .ud-policy-none { font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px; margin: 0; }
 
 @media (max-width: 640px) {

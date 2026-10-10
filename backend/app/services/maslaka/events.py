@@ -344,6 +344,19 @@ def build_events_request(
                 "mobile fails the מסלקה's rule 116) and MASLAKA_CONTACT_EMAIL must be set on "
                 f"the host that builds the file (got phone={_landline!r})."
             )
+    # Rules 2651/2654: each contact name needs 2+ letters and no digits. On
+    # 2026-10-10 seven 2100s went out with both names empty and all seven came
+    # back rejected — the missing companies never arrived. Refuse here instead.
+    _bad_names = [
+        k for k, v in (("MASLAKA_CONTACT_FIRST_NAME", settings.MASLAKA_CONTACT_FIRST_NAME),
+                       ("MASLAKA_CONTACT_LAST_NAME", settings.MASLAKA_CONTACT_LAST_NAME))
+        if sum(ch.isalpha() for ch in (v or "")) < 2 or any(ch.isdigit() for ch in (v or ""))
+    ]
+    if _bad_names and not allow_placeholder_identity:
+        raise MaslakaIdentityNotConfigured(
+            f"{' and '.join(_bad_names)} must hold 2+ letters and no digits on the host that "
+            "builds the file (the מסלקה's rules 2651/2654 reject it otherwise)."
+        )
     _sub(sender, "MISPAR-TELEPHONE-KAVI-ISH-KESHER-SHOLECH", _landline)
     _sub(sender, "E-MAIL-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_EMAIL)
     _sub(sender, "MISPAR-CELLULARI-ISH-KESHER-SHOLECH", settings.MASLAKA_CONTACT_MOBILE)

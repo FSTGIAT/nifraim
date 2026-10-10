@@ -136,9 +136,9 @@
       </table>
     </DataModal>
 
-    <DataModal :open="unpaidOpen" :origin="drillOrigin" title="לקוחות שלא התקבל בגינם תשלום"
+    <DataModal :open="unpaidOpen" :origin="drillOrigin" :title="unpaidTitle"
                @close="unpaidOpen = false">
-      <UnpaidClientsDrill :rows="unpaid" :covered="coveredCompanies" />
+      <UnpaidClientsDrill :rows="unpaidShown" :covered="coveredCompanies" :mode="unpaidFilter" />
     </DataModal>
 
     <DataModal :open="!!moverDetail" size="sm"
@@ -165,6 +165,16 @@ const companyMovers = ref([])
 const clientMovers = ref([])
 const previousPeriod = ref(null)
 const unpaidOpen = ref(false)
+// Which list the band row asked for: 'full' (nothing paid) · 'partial' · null (all).
+const unpaidFilter = ref(null)
+const unpaidShown = computed(() =>
+  unpaidFilter.value === 'full' ? unpaid.value.filter(u => !u.partially_paid)
+    : unpaidFilter.value === 'partial' ? unpaid.value.filter(u => u.partially_paid)
+      : unpaid.value)
+const unpaidTitle = computed(() =>
+  unpaidFilter.value === 'full' ? 'לא שולם — לא התקבלה עמלה על אף מוצר'
+    : unpaidFilter.value === 'partial' ? 'שולם חלקית — התקבלה עמלה על חלק מהמוצרים'
+      : 'לקוחות שלא התקבל בגינם תשלום')
 const checkedOpen = ref(false)
 const checkedCompanies = ref([])
 const noValueCompanies = ref([])
@@ -229,7 +239,7 @@ function openFrom(e, which) {
 }
 // Opened from the "דורש טיפול" band, growing out of the row pressed there.
 defineExpose({
-  openUnpaid: (el) => openFrom({ currentTarget: el }, 'unpaid'),
+  openUnpaid: (el, filter = null) => { unpaidFilter.value = filter; openFrom({ currentTarget: el }, 'unpaid') },
   openChecked: (el) => openFrom({ currentTarget: el }, 'checked'),
 })
 

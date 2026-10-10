@@ -25,7 +25,8 @@ is what the category filter was really standing in for.
 
 import logging
 import uuid
-from datetime import datetime
+from collections import defaultdict
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -227,6 +228,71 @@ async def compute_merged_comparison(
 
     out["folded_upload_ids"] = sorted(contributing, key=str)
 
+    # ── Same month on both sides ──
+    # A מסלקה book (services/maslaka/production_book.py) mixes months: each row
+    # carries its own as-of month. Production of one month is never judged
+    # against נפרעים of another (kiko 2026-10-10: September production arrived
+    # while the newest נפרעים were July's — the 21st cycle brings September's):
+    #   * book newer than the נפרעים → judge the agent's own book of the
+    #     נפרעים month (kept, inactive, by the rebuild); the newer months are
+    #     reported as `newer_production` — "no נפרעים for them yet".
+    #   * book of the נפרעים month → its rows of an OLDER month (a body whose
+    #     answer hasn't come yet) are not judged; reported as `waiting_production`.
+    # Ordinary uploads carry no per-row month and are untouched by this.
+    from app.services.maslaka.production_book import (
+        MASLAKA_BOOK_FORMAT, row_month,
+    )
+    _comm_month_list = [u.period_month for u in comm_uploads
+                        if u.id in contributing and u.period_month is not None]
+    nifraim_ym = max(_comm_month_list).strftime("%Y-%m") if _comm_month_list else None
+    newer_production: dict | None = None
+    waiting_production: list[dict] = []
+    if prod_anchor.format_type == MASLAKA_BOOK_FORMAT and nifraim_ym:
+        months = [(d, row_month(d.get("processing_date"), prod_anchor.period_month))
+                  for d in prod_dicts]
+        book_ym = max((m for _d, m in months if m), default=None)
+        if book_ym and book_ym > nifraim_ym:
+            newer = defaultdict(int)
+            for d, m in months:
+                if m and m > nifraim_ym:
+                    newer[company_stem(d.get("receiving_company")) or ""] += 1
+            newer_production = {"month": book_ym, "companies": [
+                {"company": k, "rows": v} for k, v in sorted(newer.items(), key=lambda kv: -kv[1]) if k]}
+            y, m = (int(x) for x in nifraim_ym.split("-"))
+            same_month_book = (await db.execute(
+                select(FileUpload).where(
+                    FileUpload.user_id == user_id,
+                    FileUpload.file_category == "production",
+                    FileUpload.format_type != MASLAKA_BOOK_FORMAT,
+                    FileUpload.period_month == date(y, m, 1),
+                    FileUpload.record_count > 0,
+                    FileUpload.uploaded_at <= prod_anchor.uploaded_at,
+                ).order_by(FileUpload.uploaded_at.desc()).limit(1)
+            )).scalars().first()
+            if same_month_book is not None:
+                prod_anchor = same_month_book
+                prod_dicts = [_record_to_dict(r) for r in (await db.execute(
+                    select(ClientRecord).where(ClientRecord.upload_id == same_month_book.id,
+                                               ClientRecord.user_id == user_id)
+                )).scalars().all()]
+            else:
+                prod_dicts = [d for d, mo in months if mo == nifraim_ym]
+        elif book_ym == nifraim_ym:
+            older = defaultdict(lambda: {"rows": 0, "month": None})
+            keep = []
+            for d, mo in months:
+                if mo and mo < nifraim_ym:
+                    e = older[company_stem(d.get("receiving_company")) or ""]
+                    e["rows"] += 1
+                    e["month"] = max(e["month"] or mo, mo)
+                else:
+                    keep.append(d)
+            prod_dicts = keep
+            waiting_production = [{"company": k, **v} for k, v in older.items() if k]
+        if not prod_dicts:
+            out["skip_reason"] = "no_production"
+            return out
+
     # ── ONE comparison over every folded נפרעים record ──
     # This used to run twice, splitting the records into גמל and ביטוח and
     # persisting a row for each, so the UI — which shows one category at a
@@ -254,6 +320,15 @@ async def compute_merged_comparison(
         )
         if prod_anchor.period_month is not None:
             comparison["period_month"] = prod_anchor.period_month.isoformat()
+        # Both sides' months, so every "לא שולם" label can say which production
+        # was judged against which נפרעים (kiko 2026-10-10: the band said
+        # "החודש" while it compared July with July in October).
+        comparison["production_period"] = comparison.get("period_month")
+        comparison["nifraim_period"] = f"{nifraim_ym}-01" if nifraim_ym else None
+        # Production that arrived for a month with no נפרעים yet, and products
+        # whose month's production hasn't arrived — said, never judged.
+        comparison["newer_production"] = newer_production
+        comparison["waiting_production"] = waiting_production
         comparison["period_files_count"] = len(contributing)
 
         row = CommissionComparison(

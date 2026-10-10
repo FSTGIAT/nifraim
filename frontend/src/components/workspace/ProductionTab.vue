@@ -239,6 +239,10 @@
           </span>
         </div>
 
+        <!-- A מסלקה book mixes months: say which company is on which month
+             (kiko 2026-10-10: September arrived for 4 companies, the rest July). -->
+        <p v-if="bookMonths" class="book-months">{{ bookMonths }}</p>
+
         <!-- Uploading indicator -->
         <div v-if="productionStore.uploading" class="uploading-banner">
           <div class="loader-sm">
@@ -417,7 +421,7 @@ import { relativeHebrew } from '../../utils/relativeTime.js'
 import CycleLockedState from './CycleLockedState.vue'
 import ProdSectionHero from './ProdSectionHero.vue'
 import ProdBackdrop from './ProdBackdrop.vue'
-import { useCycleStore } from '../../stores/cycle.js'
+import { useCycleStore, bookMonthsLine } from '../../stores/cycle.js'
 import { useAuthStore } from '../../stores/auth.js'
 
 const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-maslaka', 'navigate'])
@@ -425,6 +429,7 @@ const emit = defineEmits(['go-to-comparison', 'go-to-portal-automation', 'go-to-
 const productionStore = useProductionStore()
 const volumeStore = useVolumeStore()
 const cycleStore = useCycleStore()
+const bookMonths = computed(() => bookMonthsLine(productionStore.currentFile?.company_months))
 const auth = useAuthStore()
 
 // Monthly cycle: manual production is accepted only in the cycle's window
@@ -1214,6 +1219,9 @@ async function handleCompare(currentId, previousId) {
 .gate-icon:hover .gate-tip, .gate-icon:focus-visible .gate-tip { opacity: 1; transform: none; }
 
 /* Uploading banner */
+.book-months {
+  margin: -4px 4px 12px; font-size: 12.5px; color: var(--text-muted);
+}
 .uploading-banner {
   display: flex;
   align-items: center;

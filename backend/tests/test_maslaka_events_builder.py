@@ -18,6 +18,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# The sender contact is host config (.env) — pin it so this test checks the
+# builder, not this box's .env.
+from app.config import settings as _settings  # noqa: E402
+_settings.MASLAKA_CONTACT_PHONE = _settings.MASLAKA_CONTACT_PHONE or "031234567"
+_settings.MASLAKA_CONTACT_EMAIL = _settings.MASLAKA_CONTACT_EMAIL or "test@example.com"
+_settings.MASLAKA_CONTACT_FIRST_NAME = _settings.MASLAKA_CONTACT_FIRST_NAME or "ישראל"
+_settings.MASLAKA_CONTACT_LAST_NAME = _settings.MASLAKA_CONTACT_LAST_NAME or "ישראלי"
+
 FAILURES: list[str] = []
 
 
@@ -56,6 +64,22 @@ def main() -> None:
         environment_code="2", allow_placeholder_identity=True,
     )
     x = r.xml.decode("utf-8")
+
+    # Rules 2651/2654 (2026-10-10: seven 2100s rejected for empty names).
+    from app.services.maslaka.events import MaslakaIdentityNotConfigured
+    for first, last in (("", "ישראלי"), ("ישראל", "כ"), ("ישראל1", "ישראלי")):
+        saved = (_settings.MASLAKA_CONTACT_FIRST_NAME, _settings.MASLAKA_CONTACT_LAST_NAME)
+        _settings.MASLAKA_CONTACT_FIRST_NAME, _settings.MASLAKA_CONTACT_LAST_NAME = first, last
+        try:
+            build_events_request(action_code="9100", customer_id_number="043417252",
+                                 customer_first_name="ישראל", customer_last_name="ישראלי",
+                                 environment_code="2")
+            refused = False
+        except MaslakaIdentityNotConfigured:
+            refused = True
+        finally:
+            _settings.MASLAKA_CONTACT_FIRST_NAME, _settings.MASLAKA_CONTACT_LAST_NAME = saved
+        check(f"contact name {first!r}/{last!r} is refused before sending", refused)
 
     check("root element is <Mimshak>, not the invented <EventsRequest>",
           x.count("<Mimshak") == 1 and "<EventsRequest" not in x)

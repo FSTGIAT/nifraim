@@ -163,6 +163,20 @@ async def run_maslaka_auto_subscriptions() -> None:
         logger.exception("maslaka.auto_subscriptions failed")
 
 
+async def run_maslaka_monthly_round() -> None:
+    """24th–26th: this month's 2100 to every body for every approved agent; the
+    25th/26th re-send only what failed (orchestration.monthly_production_round)."""
+    if not settings.MASLAKA_ENABLED:
+        return
+    try:
+        async with async_session() as db:
+            n = await maslaka_orchestration.monthly_production_round_all(db)
+            if n:
+                logger.info("maslaka.monthly_round: queued %d 2100 request(s)", n)
+    except Exception:
+        logger.exception("maslaka.monthly_round failed")
+
+
 async def run_maslaka_retention() -> None:
     """Daily retention sweep — null out `pension_raw_payloads.ciphertext` past
     `MASLAKA_RETENTION_DAYS`. Audit + lifecycle rows are preserved."""
@@ -280,6 +294,16 @@ def start_scheduler():
         run_maslaka_auto_subscriptions,
         CronTrigger(hour=6, minute=20, timezone="Asia/Jerusalem"),
         id="maslaka_auto_subscriptions",
+        replace_existing=True,
+        misfire_grace_time=6 * 60 * 60,
+        coalesce=True,
+    )
+    # The monthly round — the 24th sends to every body, the 25th/26th re-send
+    # failures, all before the 26th deadline for the 15th's production.
+    scheduler.add_job(
+        run_maslaka_monthly_round,
+        CronTrigger(day="24-26", hour=6, minute=30, timezone="Asia/Jerusalem"),
+        id="maslaka_monthly_round",
         replace_existing=True,
         misfire_grace_time=6 * 60 * 60,
         coalesce=True,

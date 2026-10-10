@@ -48,6 +48,7 @@ export const STATUS_COLORS = {
   matched: CHART_PALETTE[9],          // forest green — paid
   only_production: CHART_PALETTE[0],  // coral red — not paid
   only_commission: CHART_PALETTE[1],  // sky blue — only in נפרעים
+  partial: CHART_PALETTE[7],          // gold — paid on some products, not all
 }
 
 // Pick a color by index (wraps around for long category lists).

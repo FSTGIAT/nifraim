@@ -28,6 +28,27 @@
     <!-- Empty savings funds (₪0 accumulation, no premium) are not unpaid —
          nothing to earn on — so the comparison lists them apart (QA
          2026-10-01). One quiet line, opens the same customer list. -->
+    <!-- "לא שולם" counts only customers who got NOTHING. A customer paid on
+         some products and not on others is "שולם חלקית" — listed apart so the
+         headline isn't inflated by the per-product rule (kiko 2026-10-10:
+         196 = 72 nothing paid + 124 partly paid). -->
+    <button v-if="kpiPartial.length" type="button" class="kpi-novalue kpi-partial"
+            @click="openFilterModal('שולם חלקית', kpiPartial, $event.currentTarget, { mail: (list, co) => sendAllUnpaidMail(list || kpiPartial, co), excel: (list, co) => downloadUnpaidExcel(list || kpiPartial, co) })">
+      <span class="ltr-number">{{ kpiPartial.length }}</span>
+      לקוחות שולמו חלקית — שולם על חלק מהמוצרים, על מוצר אחד או יותר לא התקבל תשלום
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>
+    </button>
+    <p v-if="periodLabel || nextNifraim" class="kpi-when">
+      <span v-if="periodLabel">{{ periodLabel }}</span>
+      <span v-if="nextNifraim && !newerNote">{{ nextNifraim }}</span>
+    </p>
+    <!-- Production of a month whose נפרעים haven't run yet: said, not judged. -->
+    <div v-if="newerNote" class="kpi-newer" role="note">
+      <strong>{{ newerNote.title }}</strong>
+      <span>{{ newerNote.sub }}</span>
+    </div>
+    <p v-if="waitingNote" class="kpi-when">{{ waitingNote }}</p>
     <button v-if="props.noValueCustomers.length" type="button" class="kpi-novalue"
             @click="openFilterModal('קופות ריקות', props.noValueCustomers, $event.currentTarget)">
       <span class="ltr-number">{{ props.noValueCustomers.length }}</span>
@@ -203,6 +224,7 @@ import { expectedFor } from '../../utils/expectedCommission.js'
 import DataModal from '../workspace/DataModal.vue'
 import { useAiViewContext } from '../../composables/useAiViewContext.js'
 import { useAiContextStore } from '../../stores/aiContext.js'
+import { useCycleStore, judgedMonthsLine, nextNifraimLine, newerProductionLine, waitingProductionLine } from '../../stores/cycle.js'
 
 const props = defineProps({
   customers: { type: Array, required: true },
@@ -222,6 +244,12 @@ const props = defineProps({
   // "עמלות שהתקבלו" KPI labels itself with the period — so the user can
   // see at a glance "this is April's commissions, not lifetime totals".
   periodMonth: { type: String, default: '' },
+  // The נפרעים month the verdict used (saved with the comparison since
+  // 2026-10-10). periodMonth is the PRODUCTION month.
+  nifraimPeriod: { type: String, default: '' },
+  // Production newer than these נפרעים ("no נפרעים yet") / not yet of their month.
+  newerProduction: { type: Object, default: null },
+  waitingProduction: { type: Array, default: () => [] },
   // Sits directly under the tab's file bar → drawn as one card with it.
   joined: { type: Boolean, default: false },
   periodFilesCount: { type: Number, default: 0 },
@@ -340,6 +368,8 @@ const effectiveUnpaidCustomers = computed(() => unpaidOf(onlyProdCustomers.value
 // against the donut's 562).
 const kpiMatched = computed(() => props.customers.filter(c => c.match_status === 'matched'))
 const kpiUnpaid = computed(() => unpaidOf(props.customers.filter(c => c.match_status === 'only_production')))
+const kpiUnpaidFull = computed(() => kpiUnpaid.value.filter(c => !c.partially_paid))
+const kpiPartial = computed(() => kpiUnpaid.value.filter(c => c.partially_paid))
 const kpiOnlyComm = computed(() => props.customers.filter(c => c.match_status === 'only_commission'))
 const kpiTotalCustomers = computed(() =>
   kpiMatched.value.length + kpiUnpaid.value.length + kpiOnlyComm.value.length
@@ -443,10 +473,11 @@ const kpiCards = computed(() => [
     color: 'var(--tab-comparison)', ink: 'var(--tab-comparison)',
     // Opens the bridge: production → checked → + only-in-נפרעים = this number.
     open: props.population ? (el) => { bridgeOrigin.value = el; bridgeOpen.value = true } : null },
-  { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaid.value.length,
+  { key: 'unpaid', glyph: 'unpaid', label: 'לא שולם', value: kpiUnpaidFull.value.length,
+    title: 'לקוחות שלא התקבל עליהם תשלום על אף מוצר',
     color: '#E04B48', ink: '#C23934',
-    open: (el) => openFilterModal('לא שולם', kpiUnpaid.value, el, { mail: (list, co) => sendAllUnpaidMail(list || kpiUnpaid.value, co), excel: (list, co) => downloadUnpaidExcel(list || kpiUnpaid.value, co)}),
-    actions: kpiUnpaid.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaid.value), excel: () => downloadUnpaidExcel(kpiUnpaid.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
+    open: (el) => openFilterModal('לא שולם', kpiUnpaidFull.value, el, { mail: (list, co) => sendAllUnpaidMail(list || kpiUnpaidFull.value, co), excel: (list, co) => downloadUnpaidExcel(list || kpiUnpaidFull.value, co)}),
+    actions: kpiUnpaidFull.value.length ? { mail: () => sendAllUnpaidMail(kpiUnpaidFull.value), excel: () => downloadUnpaidExcel(kpiUnpaidFull.value), mailTitle: 'שלח מייל על כל הלקוחות שלא שולמו' } : null },
   { key: 'only', glyph: 'only-comm', label: 'רק בנפרעים', value: kpiOnlyComm.value.length,
     color: '#4E9DD0', ink: '#35719A',
     open: (el) => openFilterModal('רק בנפרעים', kpiOnlyComm.value, el, { mail: (list) => sendOnlyCommissionMail(list || kpiOnlyComm.value), excel: (list) => downloadOnlyCommissionExcel(list || kpiOnlyComm.value) }, 'only'),
@@ -582,7 +613,8 @@ function onTopClientClick(_event, _chartCtx, config) {
 // every other chart here (they were three off-palette brand hexes).
 const statusItems = computed(() => [
   { key: 'matched', label: 'נמצא בשניהם', count: matchedCustomers.value.length, color: STATUS_COLORS.matched },
-  { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.length, color: STATUS_COLORS.only_production },
+  { key: 'only_production', label: 'לא שולם', count: effectiveUnpaidCustomers.value.filter(c => !c.partially_paid).length, color: STATUS_COLORS.only_production },
+  { key: 'partial', label: 'שולם חלקית', count: effectiveUnpaidCustomers.value.filter(c => c.partially_paid).length, color: STATUS_COLORS.partial },
   { key: 'only_commission', label: 'רק בנפרעים', count: onlyCommCustomers.value.length, color: STATUS_COLORS.only_commission },
 ])
 
@@ -871,7 +903,15 @@ const filteredModalCustomers = computed(() => {
 // The drill grows out of what was pressed (DataModal `origin`).
 const fmOrigin = ref(null)
 const detailOrigin = ref(null)
-const periodLabel = computed(() => (props.periodMonth ? `נפרעים ${String(props.periodMonth).slice(0, 7)}` : ''))
+// periodMonth is the PRODUCTION month — it used to be labelled "נפרעים".
+const periodLabel = computed(() => (props.nifraimPeriod
+  ? judgedMonthsLine(String(props.periodMonth).slice(0, 7), String(props.nifraimPeriod).slice(0, 7))
+  : (props.periodMonth ? `פרודוקציה ${String(props.periodMonth).slice(0, 7)}` : '')))
+const cycleStore = useCycleStore()
+if (!cycleStore.loaded) cycleStore.fetchStatus()
+const nextNifraim = computed(() => nextNifraimLine(cycleStore.status))
+const newerNote = computed(() => newerProductionLine(props.newerProduction, cycleStore.status, String(props.nifraimPeriod || '').slice(0, 7)))
+const waitingNote = computed(() => waitingProductionLine(props.waitingProduction))
 
 function openFilterModal(title, customers, originEl = null, actions = null, kind = null, company = null) {
   fmOrigin.value = originEl
@@ -1004,7 +1044,7 @@ function openDetailFromFilter(c, el = null) {
 // ─── Chart events ───
 
 function onStatusClick(_event, _chartCtx, config) {
-  const keys = ['matched', 'only_production', 'only_commission']
+  const keys = statusItems.value.map(s => s.key)
   const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
   const key = keys[config.dataPointIndex]
   if (key) {
@@ -1013,10 +1053,12 @@ function onStatusClick(_event, _chartCtx, config) {
 }
 
 function onLegendClick(key) {
-  const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', only_commission: 'רק בנפרעים' }
+  const labels = { matched: 'נמצא בשניהם', only_production: 'לא שולם', partial: 'שולם חלקית', only_commission: 'רק בנפרעים' }
   const filtered = key === 'only_production'
-    ? effectiveUnpaidCustomers.value
-    : displayCustomers.value.filter(c => c.match_status === key)
+    ? effectiveUnpaidCustomers.value.filter(c => !c.partially_paid)
+    : key === 'partial'
+      ? effectiveUnpaidCustomers.value.filter(c => c.partially_paid)
+      : displayCustomers.value.filter(c => c.match_status === key)
   openFilterModal(labels[key] || key, filtered)
 }
 
@@ -1445,6 +1487,18 @@ function formatCompact(val) {
   border: none; background: none; font: inherit; font-size: 12.5px; color: var(--text-muted); cursor: pointer;
 }
 .kpi-novalue .ltr-number { font-weight: 700; color: var(--text); }
+.kpi-when {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 10px 0;
+  font-size: 12.5px; color: var(--text-muted);
+}
+.kpi-when span + span::before { content: '·'; margin-inline-end: 14px; }
+.kpi-newer {
+  display: flex; flex-direction: column; gap: 2px; margin: 10px 6px 0; padding: 10px 14px;
+  border-radius: 12px; font-size: 13px; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--tab-comparison) 8%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--tab-comparison) 22%, transparent);
+}
+.kpi-newer strong { color: var(--text-primary); font-weight: 700; font-size: 13.5px; }
 .kpi-novalue:hover { color: var(--tab-comparison); }
 .kpi-novalue:focus-visible { outline: 2px solid var(--tab-comparison); outline-offset: 2px; border-radius: 6px; }
 .kpi-panel {

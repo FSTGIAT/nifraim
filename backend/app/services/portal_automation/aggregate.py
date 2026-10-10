@@ -344,6 +344,17 @@ def commission_category_token(rec: dict) -> str:
     return NIFRAIM_CATEGORY_INSURANCE
 
 
+def _amount_or_blank(v):
+    """An amount rounded to the agora, or "" when the source had none."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ""
+    return "" if f != f else round(f, 2)   # NaN → blank
+
+
 def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
     # Canonicalize יצרן to the same legal-entity names the production merge uses
     # so the production↔נפרעים compare pairs by company instead of fragmenting.
@@ -358,9 +369,11 @@ def _commission_nifraim_row(rec: dict, period_label: str = "") -> list:
         "מס' פוליסה/חשבון": _policy_str(rec.get("fund_policy_number")),
         "פרמיה": round(_f(rec.get("total_premium")), 2),
         "צבירה": round(_f(rec.get("accumulation") or rec.get("balance")), 2),
-        "עמלה ששולמה": round(_f(rec.get("commission_paid")), 2),
-        'עמלה לפני מע"מ': round(_f(rec.get("commission_before_fee")), 2),
-        "סכום בפועל": round(_f(rec.get("actual_amount")), 2),
+        # A blank stays blank: 0.00 here reads as "paid nothing" and stops
+        # the gross fallback in _get_commission (kiko 2026-10-10, 41 lines).
+        "עמלה ששולמה": _amount_or_blank(rec.get("commission_paid")),
+        'עמלה לפני מע"מ': _amount_or_blank(rec.get("commission_before_fee")),
+        "סכום בפועל": _amount_or_blank(rec.get("actual_amount")),
         "שיעור עמלה שנתי": rec.get("annual_commission_pct") or "",
         "שיעור עמלה חודשי": rec.get("monthly_commission_pct") or "",
         # Each row carries ITS OWN source file's month, not the batch's single

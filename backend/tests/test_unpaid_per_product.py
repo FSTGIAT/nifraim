@@ -81,6 +81,49 @@ def test_pension_paid_by_family_line():
     assert _cust(compute_comparison(prod, comm), "4")["match_status"] == "matched"
 
 
+def test_zero_only_customer_is_not_partially_paid():
+    # שרה אשר (kiko 2026-10-10): her only line paid ₪0 — she got nothing, so
+    # she is "לא שולם", not "שולם חלקית".
+    prod = [_prod("69315737", "102647604", HAREL_INS, "הראל - מנהלים", "ביטוח מנהלים", acc=33208)]
+    comm = [_comm("69315737", "102647604", HAREL_GEMEL, "מגוון", 0)]
+    c = _cust(compute_comparison(prod, comm), "69315737")
+    assert c["match_status"] == "only_production" and not c["partially_paid"]
+
+
+def test_empty_fund_is_not_listed_as_paid():
+    # 58297987 (kiko 2026-10-10): an empty inactive fund beside an unpaid
+    # product was listed under paid_production_products — "paid" at a company
+    # that paid nothing. It belongs with the no-value products.
+    prod = [_prod("5", "50", HAREL_INS, "הראל - חיים", "ביטוח חיים", prem=100),
+            _prod("5", "51", MOR, "מור השתלמות", "קרן השתלמות", acc=0, status="לא פעיל"),
+            _prod("5", "52", MOR, "מור השתלמות", "קרן השתלמות", acc=900)]
+    comm = [_comm("5", "52", MOR, "מור השתלמות", 3.0), _comm("9", "9", HAREL_INS, "x", 1.0)]
+    c = _cust(compute_comparison(prod, comm), "5")
+    assert _unpaid_policies(c) == ["50"]
+    assert c["partially_paid"]
+    assert [p["policy_number"] for p in c["paid_production_products"]] == ["52"]
+    assert "51" in [p["policy_number"] for p in c.get("no_value_products") or []]
+
+
+def test_zero_net_with_gross_counts_as_paid():
+    # kiko 2026-10-10: Harel/Migdal lines with net 0.00 and a positive gross —
+    # the merged file had turned a blank net into 0.00. Counted at the gross.
+    prod = [_prod("6", "896553457", HAREL_INS, "הראל בריאות", "בריאות", prem=300)]
+    comm = [{**_comm("6", "896553457", HAREL_INS, "נתוחית", 0), "commission_before_fee": 60.09},
+            _comm("9", "9", HAREL_INS, "x", 1.0)]
+    assert _cust(compute_comparison(prod, comm), "6")["match_status"] == "matched"
+    # A real ₪0 with no gross stays unpaid.
+    comm2 = [{**_comm("6", "896553457", HAREL_INS, "נתוחית", 0), "commission_before_fee": 0},
+             _comm("9", "9", HAREL_INS, "x", 1.0)]
+    assert _cust(compute_comparison(prod, comm2), "6")["match_status"] == "only_production"
+
+
+def test_merged_nifraim_keeps_a_blank_net_blank():
+    from app.services.portal_automation.aggregate import _amount_or_blank
+    assert _amount_or_blank(None) == "" and _amount_or_blank(float("nan")) == ""
+    assert _amount_or_blank(0) == 0 and _amount_or_blank("12.345") == 12.35
+
+
 def _rate(co, product, rate, doc):
     return SimpleNamespace(company_name=co, product=product, rate=rate, rate_kind="single",
                            effective_from=None, effective_to=None, source_document_id=doc)

@@ -150,8 +150,8 @@ useScrollReveal(dashRoot, '.pact, .trend-card, .ra-card, .pa-card, .chart-card')
 const alertsRef = ref(null)
 const auditRef = ref(null)
 // A "דורש טיפול" line opens the drill that answers it, grown out of the line.
-function onAction({ kind, company, el }) {
-  if (kind === 'unpaid') alertsRef.value?.openUnpaid(el)
+function onAction({ kind, company, el, filter }) {
+  if (kind === 'unpaid') alertsRef.value?.openUnpaid(el, filter)
   else if (kind === 'checked') alertsRef.value?.openChecked(el)
   else if (kind === 'company') auditRef.value?.openCompanyByName(company, el)
   else if (kind === 'explain') auditRef.value?.openExplain(el)

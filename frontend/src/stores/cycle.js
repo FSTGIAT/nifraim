@@ -111,6 +111,70 @@ export function signupLine(st) {
   return st?.signup_at ? `נרשמתם ב-${shortDate(st.signup_at)}` : ''
 }
 
+function monthOnly(ym) {
+  if (!ym) return ''
+  const m = Number(String(ym).slice(5, 7))
+  return HE_MONTHS[m - 1] || ''
+}
+
+/** Which months the "לא שולם" verdict compared: "פרודוקציה יולי · נפרעים יולי". */
+export function judgedMonthsLine(productionYm, nifraimYm) {
+  return [productionYm && `פרודוקציה ${monthOnly(productionYm)}`,
+          nifraimYm && `נפרעים ${monthOnly(nifraimYm)}`].filter(Boolean).join(' · ')
+}
+
+/** When the next נפרעים run comes, and that "לא שולם" moves with it. */
+export function nextNifraimLine(st) {
+  if (!st?.next_cycle_at || !st?.next_period) return ''
+  const m = monthOnly(st.next_period)
+  return `נפרעים ${m} ירוצו ב-${shortDate(st.next_cycle_at)} — אז יתעדכן "לא שולם" ל${m}`
+}
+
+/**
+ * Production arrived for a month with no נפרעים yet (the מסלקה's September
+ * before the 21st). `newer` = { month, companies: [{ company, rows }] } from the
+ * server. Says plainly that nothing was checked for that month yet.
+ */
+export function newerProductionLine(newer, st, judgedYm) {
+  if (!newer?.companies?.length) return null
+  const m = monthOnly(newer.month)
+  const when = st?.next_cycle_at ? ` — ירוצו ב-${shortDate(st.next_cycle_at)}` : ''
+  const judged = judgedYm ? `"לא שולם" מראה את ${monthOnly(judgedYm)}` : '"לא שולם" מראה את החודש הקודם'
+  return {
+    title: `אין עדיין נפרעים ל${m}${when}`,
+    sub: `פרודוקציה ${m} הגיעה מהמסלקה עבור ${newer.companies.map(c => c.company).join(', ')}. עד שהנפרעים יגיעו, ${judged}.`,
+  }
+}
+
+/**
+ * Which month each company's production is for, when the book mixes months
+ * (a מסלקה book): "ספטמבר: הפניקס, מור · עדיין יולי: הראל, מנורה".
+ * A company with rows of both months is marked "(חלקי)".
+ */
+export function bookMonthsLine(companyMonths) {
+  if (!companyMonths) return ''
+  const months = new Set()
+  for (const by of Object.values(companyMonths)) for (const m of Object.keys(by)) if (m !== '—') months.add(m)
+  if (months.size < 2) return ''
+  const newest = [...months].sort().pop()
+  const fresh = [], stale = new Map()
+  for (const [co, by] of Object.entries(companyMonths)) {
+    const ms = Object.keys(by).filter(m => m !== '—')
+    if (ms.includes(newest)) fresh.push(ms.length > 1 ? `${co} (חלקי)` : co)
+    else for (const m of ms) stale.set(m, [...(stale.get(m) || []), co])
+  }
+  const parts = [`${monthOnly(newest)} מהמסלקה: ${fresh.join(', ')}`]
+  for (const [m, cos] of [...stale.entries()].sort().reverse()) parts.push(`עדיין ${monthOnly(m)}: ${cos.join(', ')}`)
+  return parts.join(' · ')
+}
+
+/** Companies whose production for the judged month hasn't arrived — not checked. */
+export function waitingProductionLine(waiting) {
+  if (!waiting?.length) return ''
+  const m = monthOnly(waiting[0].month)
+  return `לא נבדקו (הפרודוקציה שלהן עדיין של ${m}): ${waiting.map(w => w.company).join(', ')}`
+}
+
 /** { title, sub, tone } describing where the agent stands with the מסלקה. */
 export function maslakaLine(st) {
   if (!st) return null

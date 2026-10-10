@@ -642,6 +642,7 @@ async def get_current_production(
     The `id` and `filename` reflect the most-recent upload (used by the UI
     as a representative anchor); `companies` lists every contributing one.
     """
+    from app.services.maslaka.production_book import book_months
     uploads = await _get_all_production_uploads(db, user.id)
     if not uploads:
         return None
@@ -682,6 +683,7 @@ async def get_current_production(
         uploaded_at=primary.uploaded_at,
         period_month=latest_period,
         companies=companies,
+        company_months=(await book_months(db, user.id) or {}).get("companies"),
     )
 
 
@@ -1092,10 +1094,33 @@ async def get_production_analytics(
     )
 
 
-async def _unpaid_from_comparison(db, user_id) -> dict | None:
+def _paid_items(c: dict) -> list[dict]:
+    """The customer's paid products with the commission each received (from the
+    comparison's own product matches; None when it was paid by family/owner)."""
+    matched = (c.get("product_matches") or {}).get("matched") or []
+    out = []
+    for p in (c.get("paid_production_products") or [])[:UNPAID_ITEMS_PER_CLIENT]:
+        pol = str(p.get("policy_number") or "")
+        amt = sum(float(m.get("commission") or 0) for m in matched
+                  if pol and str(m.get("policy_number") or "") == pol)
+        out.append({
+            "product": p.get("product") or "",
+            "product_type": p.get("product_type") or "",
+            "policy_number": pol,
+            "company": company_stem(p.get("company_full") or p.get("company") or "") or (p.get("company") or ""),
+            "commission": round(amt, 2) if amt else None,
+        })
+    return out
+
+
+async def _unpaid_from_comparison(db, user_id, periods: dict | None = None) -> dict | None:
     """Unpaid clients (only_production) of the user's latest comparison, in the
-    alerts item shape. None when there is no comparison to read."""
+    alerts item shape. None when there is no comparison to read.
+
+    `periods`, when given, is filled with the months that comparison judged —
+    {"production": "YYYY-MM", "nifraim": "YYYY-MM"} — so the label names them."""
     from app.models.commission_comparison import CommissionComparison
+    from app.services.comparison_service import received_money
     row = (await db.execute(
         select(CommissionComparison)
         .where(CommissionComparison.user_id == user_id)
@@ -1104,6 +1129,14 @@ async def _unpaid_from_comparison(db, user_id) -> dict | None:
     )).scalar_one_or_none()
     if not row or not row.result_json:
         return None
+    if periods is not None:
+        rj = row.result_json
+        periods["production"] = (rj.get("production_period") or rj.get("period_month") or "")[:7] or None
+        periods["nifraim"] = (rj.get("nifraim_period") or "")[:7] or None
+        if periods["production"] is None and row.production_upload_id:
+            pu = await db.get(FileUpload, row.production_upload_id)
+            if pu is not None and pu.period_month is not None:
+                periods["production"] = pu.period_month.strftime("%Y-%m")
     out: dict[str, dict] = {}
     for c in row.result_json.get("customers", []) or []:
         if c.get("match_status") != "only_production":
@@ -1115,6 +1148,13 @@ async def _unpaid_from_comparison(db, user_id) -> dict | None:
             "name": _display_name(c.get("first_name"), c.get("last_name"), c.get("id_number")),
             "companies": set(), "products": 0,
             "premium": 0.0, "accumulation": 0.0, "items": [],
+            # Paid on some products, not all — "שולם חלקית", counted apart
+            # from the customers who got nothing.
+            "partially_paid": received_money(c),
+            # What DID arrive for a partly-paid customer: the money, and on
+            # which products — so "שולם חלקית" reads as "paid X on A, nothing on B".
+            "received": round(float(c.get("total_commission") or 0), 2),
+            "paid_items": _paid_items(c),
         })
         for p in prods:
             stem = company_stem(p.get("company_full") or p.get("company") or "") or (p.get("company") or "")
@@ -1246,7 +1286,8 @@ async def get_production_alerts(
     # it judged pension funds the comparison deliberately leaves out, and
     # treated a ₪0 נפרעים line as "not paid". It stays only as the fallback for
     # a user with no comparison yet.
-    from_cmp = await _unpaid_from_comparison(db, user.id)
+    judged: dict = {}
+    from_cmp = await _unpaid_from_comparison(db, user.id, judged)
     if from_cmp is not None:
         unpaid = from_cmp
 
@@ -1405,9 +1446,24 @@ async def get_production_alerts(
             key=lambda c: -c["rows"],
         )
 
+    from app.services.maslaka.production_book import book_months, newer_than
+    _judged_nif = judged.get("nifraim") or (
+        max((u.period_month for u in comm_uploads if u.period_month), default=None).strftime("%Y-%m")
+        if any(u.period_month for u in comm_uploads) else None)
+    _newer = newer_than(await book_months(db, user.id), _judged_nif)
+
     return {
         "unpaid": unpaid_list[:UNPAID_CLIENTS_MAX],
         "unpaid_total": len(unpaid_list),
+        "unpaid_full_total": sum(1 for u in unpaid_list if not u.get("partially_paid")),
+        "unpaid_partial_total": sum(1 for u in unpaid_list if u.get("partially_paid")),
+        # The months the unpaid verdict compared. The נפרעים side falls back to
+        # the current reports' month for a comparison saved before this field.
+        # Production that arrived for a month with no נפרעים yet (the מסלקה's
+        # September before the 21st): the UI says so instead of judging it.
+        "newer_production": _newer,
+        "judged_production_period": judged.get("production"),
+        "judged_nifraim_period": _judged_nif,
         "checked_companies": checked,
         "no_value_companies": no_value_companies,
         # Naming the companies the check COULD run for is what stops a short

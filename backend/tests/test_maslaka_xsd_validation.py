@@ -31,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.config import settings as _settings  # noqa: E402
 _settings.MASLAKA_CONTACT_PHONE = _settings.MASLAKA_CONTACT_PHONE or "031234567"
 _settings.MASLAKA_CONTACT_EMAIL = _settings.MASLAKA_CONTACT_EMAIL or "test@example.com"
+_settings.MASLAKA_CONTACT_FIRST_NAME = _settings.MASLAKA_CONTACT_FIRST_NAME or "ישראל"
+_settings.MASLAKA_CONTACT_LAST_NAME = _settings.MASLAKA_CONTACT_LAST_NAME or "ישראלי"
 
 XSD_DIR = Path(__file__).parent / "fixtures" / "maslaka" / "xsd"
 SAMPLES = Path(__file__).parent / "fixtures" / "maslaka" / "swiftness_samples"

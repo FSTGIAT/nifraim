@@ -590,8 +590,27 @@ async def latest_comparison(
     row = result.scalar_one_or_none()
     if not row:
         return {"result": None, "computed_at": None}
+    # Name the months judged, and say live when newer production (the מסלקה's
+    # September before the 21st) is waiting for its נפרעים — a saved row
+    # can't know production that arrived after it.
+    from app.services.maslaka.production_book import book_months, newer_than
+    rj = dict(row.result_json or {})
+    if not rj.get("nifraim_period"):
+        newest = (await db.execute(
+            select(func.max(FileUpload.period_month)).where(
+                FileUpload.user_id == user.id, FileUpload.file_category == "commission")
+        )).scalar()
+        rj["nifraim_period"] = newest.isoformat() if newest else None
+    # Saved before 2026-10-10 a ₪0-only customer could read "שולם חלקית".
+    from app.services.comparison_service import received_money
+    rj["customers"] = [
+        {**c, "partially_paid": received_money(c)} if c.get("match_status") == "only_production" else c
+        for c in rj.get("customers") or []
+    ]
+    rj["newer_production"] = newer_than(await book_months(db, user.id),
+                                        (rj.get("nifraim_period") or "")[:7] or None)
     return {
-        "result": row.result_json,
+        "result": rj,
         "computed_at": row.computed_at.isoformat() if row.computed_at else None,
     }
 

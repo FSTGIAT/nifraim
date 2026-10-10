@@ -20,7 +20,7 @@ import json
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import delete, func, or_, select, tuple_, update
@@ -364,6 +364,88 @@ async def ensure_monthly_subscriptions(db: AsyncSession, user_id: uuid.UUID) -> 
     return created
 
 
+# The monthly round: every month on the 24th a fresh 2100 goes to EVERY body for
+# every approved agent; the 25th and 26th re-send only what failed. A form sent
+# by the 26th gives production on the 15th of the next month (the user's rule,
+# 2026-10-10) — so the round is done before the deadline, not only once ever.
+MONTHLY_ROUND_DAYS = (24, 25, 26)
+
+
+def _round_start_utc(now: datetime | None = None) -> datetime:
+    """The 24th of the current month, 00:00 Israel time, as naive UTC (how
+    `created_at` is stored)."""
+    from zoneinfo import ZoneInfo
+    il = ZoneInfo("Asia/Jerusalem")
+    now_il = (now.replace(tzinfo=timezone.utc) if now and now.tzinfo is None else
+              (now or datetime.now(timezone.utc))).astimezone(il)
+    start_il = now_il.replace(day=MONTHLY_ROUND_DAYS[0], hour=0, minute=0, second=0, microsecond=0)
+    return start_il.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+async def monthly_production_round(db: AsyncSession, user_id: uuid.UUID, *,
+                                   now: datetime | None = None) -> int:
+    """Send this month's 2100 to every body for one agent. A body that already
+    has a live 2100 created since this month's 24th is skipped, so the 25th and
+    26th only re-send what failed and nothing doubles. Creates `pending` rows —
+    the Gateway sends them."""
+    from app.models.maslaka_agent_link import MaslakaAgentLink
+    from app.services.maslaka.code_tables import PROVIDER_CODE_TO_COMPANY, label_for_provider
+
+    link = (await db.execute(
+        select(MaslakaAgentLink).where(MaslakaAgentLink.user_id == user_id)
+    )).scalar_one_or_none()
+    if link is None or link.status != LINK_APPROVED or not auto_production_on(link) or not link.agent_id_number:
+        return 0
+    since = _round_start_utc(now)
+    rows = (await db.execute(
+        select(PensionInquiry.target_yatzran_id, PensionInquiry.status).where(
+            PensionInquiry.user_id == user_id,
+            PensionInquiry.interface_code == "events_v007:2100",
+            PensionInquiry.created_at >= since,
+        )
+    )).all()
+    done = {code for code, status in rows if status not in ("failed", "expired")}
+    created = 0
+    for code in PROVIDER_CODE_TO_COMPANY:
+        if code in done:
+            continue
+        await create_inquiry(
+            db, user_id=user_id, customer_id_number=link.agent_id_number,
+            customer_name=label_for_provider(code), action_code="2100",
+            target_yatzran_id=code,
+        )
+        created += 1
+    if created:
+        logger.info("maslaka.monthly_round: user %s — queued %d 2100 request(s)", user_id, created)
+    return created
+
+
+async def monthly_production_round_all(db: AsyncSession, *, now: datetime | None = None) -> int:
+    """The 24th–26th job, for every approved agent (unless they turned it off).
+    Does nothing on any other day, so a late misfire never sends on the 27th."""
+    from zoneinfo import ZoneInfo
+    from app.models.maslaka_agent_link import MaslakaAgentLink
+
+    now_utc = now or datetime.utcnow()
+    day_il = now_utc.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem")).day
+    if day_il not in MONTHLY_ROUND_DAYS:
+        return 0
+    links = (await db.execute(
+        select(MaslakaAgentLink).where(MaslakaAgentLink.status == LINK_APPROVED)
+    )).scalars().all()
+    total = 0
+    for l in links:
+        if not auto_production_on(l):
+            continue
+        try:
+            total += await monthly_production_round(db, l.user_id, now=now_utc)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("maslaka.monthly_round failed for user %s", l.user_id)
+    return total
+
+
 async def ensure_all_monthly_subscriptions(db: AsyncSession) -> int:
     """Daily sweep: every approved agent (unless they turned it off) gets a
     subscription with every body they don't have one with yet."""
@@ -482,6 +564,7 @@ async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None)
     if not files:
         return stats
 
+    poll_started = datetime.utcnow()
     for vf in files:
         try:
             await _ingest_one(db, transport, vf, user_id=user_id, stats=stats)
@@ -498,7 +581,31 @@ async def poll_and_ingest(db: AsyncSession, *, user_id: uuid.UUID | None = None)
             )
 
     await db.commit()
+    if stats["holdings_ingested"]:
+        stats["production_books"] = await _rebuild_books_since(db, poll_started)
     return stats
+
+
+async def _rebuild_books_since(db: AsyncSession, since: datetime) -> int:
+    """A production answer (2000/2100) that arrived in this poll becomes the
+    agent's production book (production_book.py). One agent's failure never
+    stops the others, nor the poll."""
+    from app.services.maslaka.production_book import PRODUCTION_CODES, rebuild_production_book
+    users = (await db.execute(
+        select(PensionHolding.user_id).distinct()
+        .join(PensionInquiry, PensionInquiry.id == PensionHolding.inquiry_id)
+        .where(PensionHolding.created_at >= since,
+               PensionInquiry.interface_code.in_(PRODUCTION_CODES))
+    )).scalars().all()
+    built = 0
+    for uid in users:
+        try:
+            if await rebuild_production_book(db, uid):
+                built += 1
+        except Exception:
+            await db.rollback()
+            logger.exception("maslaka.production_book: rebuild failed for user %s", uid)
+    return built
 
 
 async def _ingest_one(

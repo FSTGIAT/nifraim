@@ -64,6 +64,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { cachedGet } from '../../utils/cachedGet'
 import { signedMoney } from '../../utils/chartDefaults'
+import { useCycleStore, judgedMonthsLine, nextNifraimLine, newerProductionLine } from '../../stores/cycle.js'
+
+const cycleStore = useCycleStore()
 
 defineEmits(['open'])
 
@@ -89,13 +92,35 @@ const items = computed(() => {
   const a = alerts.value || {}
   const companies = audit.value?.companies || []
 
-  if (a.unpaid_total) {
+  // Name the months that were compared, and when the next נפרעים run moves
+  // the verdict (kiko 2026-10-10: "החודש" in October meant July vs July).
+  const months = judgedMonthsLine(a.judged_production_period, a.judged_nifraim_period)
+  const next = nextNifraimLine(cycleStore.status)
+  // Responses from before the split carry only unpaid_total.
+  const full = a.unpaid_full_total ?? a.unpaid_total ?? 0
+  const partial = a.unpaid_partial_total ?? 0
+  if (full) {
     out.push({
       key: 'unpaid', level: 'loss',
-      title: `${a.unpaid_total} לקוחות בלי תשלום עמלה`,
-      sub: 'יש להם מוצר בפרודוקציה, והחברה לא שילמה עליהם החודש',
-      open: { kind: 'unpaid' },
+      title: `${full} לקוחות בלי תשלום עמלה`,
+      sub: [months, 'לא התקבל תשלום על אף מוצר שלהם'].filter(Boolean).join(' · '),
+      open: { kind: 'unpaid', filter: 'full' },
     })
+  }
+  if (partial) {
+    out.push({
+      key: 'unpaid-partial', level: 'warn',
+      title: `${partial} לקוחות שולמו חלקית`,
+      sub: [months, 'התקבלה עמלה על חלק מהמוצרים, על אחרים לא'].filter(Boolean).join(' · '),
+      open: { kind: 'unpaid', filter: 'partial' },
+    })
+  }
+  // Newer production with no נפרעים yet → say it; else when the next run is.
+  const newer = newerProductionLine(a.newer_production, cycleStore.status, a.judged_nifraim_period)
+  if (newer) {
+    out.push({ key: 'newer-production', level: 'info', title: newer.title, sub: newer.sub })
+  } else if ((full || partial) && next) {
+    out.push({ key: 'next-nifraim', level: 'info', title: next })
   }
 
   // Paid below the agreement, biggest first, each naming its worst product —
@@ -149,6 +174,7 @@ const items = computed(() => {
 })
 
 onMounted(async () => {
+  if (!cycleStore.loaded) cycleStore.fetchStatus()
   const [al, au] = await Promise.allSettled([
     cachedGet('/production/alerts'),
     cachedGet('/production/rate-audit'),

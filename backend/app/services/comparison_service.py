@@ -311,11 +311,19 @@ def _get_commission(record: dict):
     that explicitly want expected/estimated commission must read the
     column directly.
     """
-    return _first_set(
-        record.get("commission_paid"),
-        record.get("commission_before_fee"),
-        record.get("actual_amount"),
-    )
+    paid = record.get("commission_paid")
+    gross = record.get("commission_before_fee")
+    # A net of exactly ₪0 beside a positive gross is a MISSING net, not "paid
+    # nothing": the merged נפרעים writer stored blank as 0.00, so the gross
+    # fallback above never fired (kiko 2026-10-10: 41 Harel/Migdal lines, 10
+    # customers wrongly unpaid; where both exist net ≈ 97% of gross). The user
+    # chose to count them as paid at the gross.
+    try:
+        if paid is not None and float(paid) == 0 and gross is not None and float(gross) > 0:
+            return gross
+    except (TypeError, ValueError):
+        pass
+    return _first_set(paid, gross, record.get("actual_amount"))
 
 
 def agent_net_commission(record: dict) -> float:
@@ -746,7 +754,16 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         unpaid = [p for p in prods if _unpaid(p)]
         if not unpaid:
             continue
-        c["paid_production_products"] = [p for p in prods if not _unpaid(p)]
+        # "Not unpaid" is not "paid": an empty fund / Mor pension earned nothing,
+        # and a company that sent no נפרעים wasn't checked. Listing them as paid
+        # counted the customer as paid at that company (kiko 2026-10-10: 11
+        # products, e.g. two empty inactive Altshuler funds).
+        rest = [p for p in prods if not _unpaid(p)]
+        c["paid_production_products"] = [p for p in rest
+                                         if not _no_value(p) and _stem_of(p) in covered_stems]
+        nv_rest = [p for p in rest if _no_value(p)]
+        if nv_rest:
+            c["no_value_products"] = (c.get("no_value_products") or []) + nv_rest
         c["production_products"] = unpaid
         c["unpaid_count"] = len(unpaid)
         # Same number type as every other customer's total (Decimal from the DB).
@@ -766,8 +783,15 @@ def compute_comparison(production_records: list[dict], commission_records: list[
         nv = [p for p in prods if _no_value(p)]
         if nv and len(nv) < len(prods):
             c["production_products"] = [p for p in prods if not _no_value(p)]
-            c["no_value_products"] = nv
+            c["no_value_products"] = (c.get("no_value_products") or []) + nv
             c["total_premium"] = sum((p.get("premium") or 0) for p in c["production_products"])
+
+    # "שולם חלקית" means money ARRIVED for this customer and some product still
+    # got none. A customer whose only נפרעים lines are ₪0 was paid nothing
+    # (kiko 2026-10-10: 12 of 124 "partial" customers had received ₪0).
+    for c in customers:
+        if c["match_status"] == "only_production":
+            c["partially_paid"] = received_money(c)
 
     no_value_customers = []
     kept = []
@@ -914,6 +938,17 @@ def _move_paid_via_other_id(id_num, product_matches: dict, comm_by_policy) -> li
         via.append(entry)
     product_matches["unmatched_production"] = still
     return via
+
+
+def received_money(c: dict) -> bool:
+    """Did any money arrive for this customer — on any נפרעים line of theirs, or
+    under the policy owner's ID? The one test behind "שולם חלקית" (vs "לא שולם"),
+    shared by the comparison and by the readers of comparisons saved earlier."""
+    if float(c.get("total_commission") or 0) > 0:
+        return True
+    if any(float(cp.get("commission") or 0) > 0 for cp in c.get("commission_products") or []):
+        return True
+    return bool(c.get("paid_via"))
 
 
 def _policy_matches(prod_policy: str, comm_policy: str) -> bool:
