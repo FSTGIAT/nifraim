@@ -22,7 +22,7 @@ FUND_CATS = [  # (pattern, tool)
     (r"קופ(?:ת|ות) גמל|(?<![א-ת])[בלהו]?גמל(?![א-ת])", "compare_gemel"),   # \b fails on "בגמל" (Hebrew letters are all \w)
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי (?:ה)?ניהול|להשוות|השווא|מומלץ")
-MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|(?:עלו|ירדו|טיפס|נפל).{0,15}דירוג|חדשות"
+MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|כסף שנכנס|כסף שיצא|הכי הרבה כסף|זרם|גייס|(?:עלו|ירדו|טיפס|נפל).{0,15}דירוג|חדשות"
                              r"|הגדיל|הקטינ|העלו|הורידו")
 # one track's allocation ("מה הפילוח של מור פנסיה מקיפה לבני 50 ומטה?") — never the insurer's commissions
 ALLOC_Q = re.compile(r"פילוח|הרכב (?:ה)?נכסים|חשיפה ל|כמה (?:אג\"ח|מניות|מזומן)|אג\"ח מיועדות|איזון אקטוארי")
@@ -92,8 +92,13 @@ def plan(question: str) -> list[tuple[str, dict]]:
         return [("customers_by_product", {"company": named_co[0], **({"product": prod} if prod else {}), **({"track": trk} if trk else {})})]
     if re.search(r"מסלול", q) and re.search(r"רוב הלקוחות|הכי הרבה לקוחות|התיק (?:שלי )?לפי מסלול|כמה (?:כסף|צבירה) (?:אצלי )?במסלול", q):
         return [("tracks_in_book", {"company": next(iter(companies_in(q)), "")})]   # "באיזה מסלול רוב הלקוחות שלי?"
-    if re.search(r"דירוג|באיזה מקום|במקום|מדורג", q) and not ID_RE.search(q) and not re.search(r"לקוח|עלו|ירדו|טיפס|נפל", q) \
-            and companies_in(q):
+    # a named track: "מה הדירוג / באיזה מקום" — and "X — טובה?" / "איך X?" (unloaded, the model wrote "no such
+    # track" before its tool call returned, 2026-10-10)
+    named_track = companies_in(q) and any(re.search(p_, q) for p_, _ in FUND_CATS)
+    if not ID_RE.search(q) and not re.search(r"לקוח|עלו|ירדו|טיפס|נפל|תשווה|השווה|מול|לעומת", q) and companies_in(q) and (
+            re.search(r"דירוג|באיזה מקום|במקום|מדורג", q)
+            or (named_track and re.search(r"(?:^|\s)(?:טוב|טובה|איך|שווה)(?:\s|\?|$)", q) and len(companies_in(q)) == 1
+                and not MARKET_CHANGE_Q.search(q))):
         return [("track_rank", {"fund": q})]   # "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?"
     if re.search(r"פער", q) and re.search(r"כולל|כל הלקוחות|סך הכל|בסך הכל", q) and re.search(r"שוק|מסלול|תשוא", q):
         return [("fund_opportunities", {"min_gap_ils": 0})]   # the book's total gap vs the market

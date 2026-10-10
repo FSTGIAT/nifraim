@@ -347,7 +347,8 @@ def test_market_prefetch():
         "מה קרן הפנסיה עם דמי הניהול הנמוכים ביותר?": [("compare_pension", {"sort_by": "fee"})],
         "באיזה מסלול רוב הלקוחות שלי?": [("tracks_in_book", {"company": ""})],
         "איזה קרן פנסיה הכי גדולה?": [("compare_pension", {"sort_by": "size"})],
-        "הראל פנסיה מניות — טובה?": [],   # Harel's fund, not Harel's commissions
+        "הראל פנסיה מניות — טובה?": [("track_rank", {"fund": "הראל פנסיה מניות — טובה?"})],   # the fund's ranks, not Harel's commissions
+        "איזו קרן פנסיה עם הכי הרבה כסף שנכנס החודש?": [("market_changes", {"category": "pension"})],
         "למה מנורה לא שילמה לי?": [("get_unpaid", {"company": "מנורה"}), ("get_rate", {"company": "מנורה"}),
                                   ("get_commission_trend", {"company": "מנורה"})],
         "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?": [("track_rank", {"fund": "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?"})],
