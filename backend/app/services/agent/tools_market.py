@@ -791,8 +791,22 @@ async def track_rank(ctx, fund: str):
             "disclaimer": DISCLAIMER}
 
 
+_QWORDS = re.compile(r"(?:^|\s)(?:מה|מהו|מהי|הדירוג|דירוג|של|באיזה|איזה|מקום|במקום|ברמת|רמת|הסיכון|סיכון|שלו|שלה|טוב|טובה|"
+                     r"איך|שווה|מדורג|מדורגת|הפילוח|פילוח|החשיפה|חשיפה|למניות|לחו\"ל|יש|ב|ה|—|-)(?=\s|$)")
+
+
+def _clean_track_q(q: str) -> str:
+    """The track name out of a question — "מה הדירוג של מגדל השתלמות מניות?" → "מגדל השתלמות מניות" (the whole
+    question went into the name match and three real tracks came back "not found", 2026-10-10)."""
+    t = re.sub(r"[?!.,]", " ", q or "")
+    for _ in range(3):
+        t = _QWORDS.sub(" ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def _find_fund(q: str, rows: list, *, loose: bool = True):
     """One track by id, exact name, whole words, or (loose) company + track words."""
+    q = _clean_track_q(q) or q
     if q.isdigit():
         return next((f for f in rows if f.fund_id == int(q)), None)
     norm = lambda x: re.sub(r"\s+", " ", (x or "").replace('"', "").replace("-", " ")).strip()
@@ -808,5 +822,7 @@ def _find_fund(q: str, rows: list, *, loose: bool = True):
         kinds = [k for k in ("מקיפה", "כללית", "משלימה") if k in q]
         hits = [f for f in rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
                 and want <= tokens(f.fund_name) and all(k in (f.fund_name or "") for k in kinds)]
+        exact = [f for f in hits if tokens(f.fund_name) == want]   # "מניות" beats "עוקב מדדי מניות"
+        hits = exact or hits
     hits.sort(key=lambda f: -(f.total_assets or 0))
     return hits[0] if hits and len(hits) <= 6 else None

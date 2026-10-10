@@ -100,6 +100,14 @@ def plan(question: str) -> list[tuple[str, dict]]:
             or (named_track and re.search(r"(?:^|\s)(?:טוב|טובה|איך|שווה)(?:\s|\?|$)", q) and len(companies_in(q)) == 1
                 and not MARKET_CHANGE_Q.search(q))):
         return [("track_rank", {"fund": q})]   # "מה הדירוג של מור פנסיה מקיפה לבני 50 ומטה?"
+    lvl_m = re.search(r"(?:ברמת|רמת|בסיכון)\s*(?:סיכון\s*)?(נמוכה|נמוך|מתונה?|בינונית?|מוגברת?|גבוהה?)", q)
+    if lvl_m and not ID_RE.search(q) and not re.search(r"לקוח", q):
+        cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
+        if cat_tool:   # "המסלול המוביל בהשתלמות ברמת סיכון בינונית" — straight to the risk-level ranking
+            w = lvl_m.group(1)
+            lv = next(n for pre, n in (("נמוכ", 1), ("נמוך", 1), ("מתונ", 2), ("בינונ", 3), ("מוגבר", 4), ("גבוה", 5)) if w.startswith(pre))
+            return [("best_tracks_by_risk", {"category": cat_tool.removeprefix("compare_"), "level": lv,
+                                             **({"index": True} if re.search(r"מדד|חו\"ל|S&P", q) else {})})]
     if re.search(r"פער", q) and re.search(r"כולל|כל הלקוחות|סך הכל|בסך הכל", q) and re.search(r"שוק|מסלול|תשוא", q):
         return [("fund_opportunities", {"min_gap_ils": 0})]   # the book's total gap vs the market
     if re.search(r"הכי גדול|הגדול", q) and not companies_in(q):
@@ -202,11 +210,22 @@ async def named_customer(ctx, question: str) -> str | None:
         return None
     m = await ctx.map()
     names = set()
+    full: list[tuple[str, ...]] = []
     for c in [*m.customers, *m.extra.values()]:
         fn, ln = _norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")
         if fn and ln:
             names.add(f"{fn} {ln}")
             names.add(f"{ln} {fn}")
+            # a two-word surname ("שמעונוביץ מור") — the whole name, word by word
+            parts = tuple(w for w in (_norm(x) for x in f"{c.get('first_name') or ''} {c.get('last_name') or ''}".split()) if w)
+            if len(parts) > 2:
+                full.append(parts)
+    for parts in sorted(full, key=len, reverse=True):
+        n = len(parts)
+        for i in range(len(words) - n + 1):
+            first = words[i][1:] if len(words[i]) > 2 and words[i][0] in _PREFIX and words[i][1:] == parts[0] else words[i]
+            if (first, *words[i + 1:i + n]) == parts:
+                return " ".join(parts)
     for i in range(len(words) - 1):
         a, b = words[i], words[i + 1]
         for first in {a, a[1:] if len(a) > 2 and a[0] in _PREFIX else a}:
@@ -219,6 +238,10 @@ async def run_prefetch(ctx, question: str):
     """Yields status events; returns (via ctx.prefetched) the text block for the prompt."""
     blocks = []
     steps = plan(question)
+    if ctx.named_customer:   # "מיכל שמעונוביץ מור" — a company word inside a customer's NAME is not that company
+        in_name = {c for c in companies_in(question) if c in ctx.named_customer.split()}
+        if in_name:
+            steps = [(n, a) for n, a in steps if a.get("company") not in in_name]
     if ctx.named_customer and not any(n in ("find_customer", "get_customer") for n, _ in steps):
         steps = [("find_customer", {"query": ctx.named_customer})] + steps
 
