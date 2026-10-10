@@ -104,8 +104,10 @@ def nifraim_section(ctx, c: dict) -> list[str]:
 
 
 def portfolio_section(c: dict) -> list[str]:
-    """Rule-based portfolio picture: overlaps, consolidation, gaps — only what the files show."""
-    prods = c.get("production_products") or []
+    """Rule-based portfolio picture: overlaps, consolidation, gaps — only what the files show.
+    Reads the FULL production list when the data map attached one (a comparison customer's
+    production_products is only what was compared — data_map.add_production_customers)."""
+    prods = c.get("all_production_products") or c.get("production_products") or []
     if not prods:
         return []
     active = [p for p in prods if _active(p)]

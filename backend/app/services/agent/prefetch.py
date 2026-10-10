@@ -22,7 +22,10 @@ FUND_CATS = [  # (pattern, tool)
     (r"קופ(?:ת|ות) גמל|\bגמל\b", "compare_gemel"),
 ]
 FUND_Q = re.compile(r"קרן|קרנות|קופ|מסלול|תשוא|הכי טוב|דמי ניהול|להשוות|השווא|מומלץ")
-MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|עלו בדירוג|ירדו בדירוג|חדשות")
+MARKET_CHANGE_Q = re.compile(r"השתנ|שינוי|שינויים|לעומת החודש|החודש שעבר|החודש הקודם|נכנס הכי|יצא הכי|זרם|גייס|עלו בדירוג|ירדו בדירוג|חדשות"
+                             r"|הגדיל|הקטינ|העלו|הורידו")
+# one track's allocation ("מה הפילוח של מור פנסיה מקיפה לבני 50 ומטה?") — never the insurer's commissions
+ALLOC_Q = re.compile(r"פילוח|הרכב (?:ה)?נכסים|חשיפה ל|כמה (?:אג\"ח|מניות|מזומן)|אג\"ח מיועדות|איזון אקטוארי")
 TRACKS = ["מניות", "כללי", "S&P", "אג\"ח", "אגח", "לבני 50", "עד 60", "ומעלה", "ומטה", "הלכה", "כספי", "שקלי"]
 # A name ends at punctuation, at "עם/יש/של", or at "ב/מ + an insurer" ("…משה בהפניקס").
 # NOT at any word starting with ב/מ — that cut "אברהם משה" to "אברהם" and "ברק" off names.
@@ -66,12 +69,16 @@ def plan(question: str) -> list[tuple[str, dict]]:
         m_id = ID_RE.search(q)
         calls.append(("search_policies", {"query": q, **({"id_number": m_id.group(1)} if m_id else {}), "limit": 8}))
         return calls[:3]          # never prime a cover/price question with commission tools
+    if ALLOC_Q.search(q) and not MARKET_CHANGE_Q.search(q) and not ID_RE.search(q):
+        calls.append(("fund_allocation", {"fund": q}))
+        return calls[:3]
     explain = re.search(r"מה ההבדל|מה זה|תסביר|הסבר|איך עובד", q)
     if re.search(r"לקוחות", q) and re.search(r"ירד|עלו|טיפס|נפל", q) and re.search(r"דירוג|מסלול|קרנ|קופ", q):
         calls.append(("customers_in_market_moves", {"direction": "up" if re.search(r"עלו|טיפס", q) else "down"}))
         return calls[:3]
     m_cust = ID_RE.search(q)
-    if m_cust and (FUND_Q.search(q) or any(re.search(p_, q) for p_, _ in FUND_CATS)):
+    advice = re.search(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד", q)
+    if m_cust and (FUND_Q.search(q) or advice or any(re.search(p_, q) for p_, _ in FUND_CATS)):
         calls.append(("get_customer_fund_fit", {"id_number": m_cust.group(1)}))   # this customer's money vs the market
         return calls[:3]
     about_customer = bool(calls) or re.search(r"לקוח|שלו\b|שלה\b", q)
@@ -98,6 +105,19 @@ def plan(question: str) -> list[tuple[str, dict]]:
         if re.search(r"למה|מתעכב|מגמה|חודש|עיכוב", q):
             calls.append(("get_commission_trend", {"company": co}))
     return calls[:3]
+
+
+ADVICE_Q = re.compile(r"הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד|ביחס לשוק|תשוא|מסלול")
+
+
+async def _id_for_name(ctx, full_name: str) -> str | None:
+    m = await ctx.map()
+    a, b = (full_name.split() + [""])[:2]
+    for c in [*m.customers, *m.extra.values()]:
+        fn, ln = _norm(c.get("first_name") or ""), _norm(c.get("last_name") or "")
+        if {fn, ln} == {a, b}:
+            return str(c.get("id_number")).lstrip("0")
+    return None
 
 
 _PREFIX = "ולבשמה"   # Hebrew one-letter prefixes: לעומר, שעומר, ועומר, מעומר, בעומר, העומר
@@ -137,6 +157,14 @@ async def run_prefetch(ctx, question: str):
     steps = plan(question)
     if ctx.named_customer and not any(n in ("find_customer", "get_customer") for n, _ in steps):
         steps = [("find_customer", {"query": ctx.named_customer})] + steps
+
+    # "מה כדאי להציע ללירן סורני?" — a customer named by NAME also gets the market comparison
+    # (plan() or named_customer may have added find_customer; either way the fit never ran — 2026-10-10)
+    fc = next((a for n, a in steps if n == "find_customer"), None)
+    if fc and ADVICE_Q.search(question) and not any(n == "get_customer_fund_fit" for n, _ in steps):
+        idn = await _id_for_name(ctx, ctx.named_customer or fc.get("query") or "")
+        if idn:
+            steps.insert(steps.index(("find_customer", fc)) + 1, ("get_customer_fund_fit", {"id_number": idn}))
     for name, args in steps[:3]:
         if args.get("metric") == "pref":          # the agent's remembered ranking (e.g. by premium)
             from app.services.agent.router import _preferred_metric
@@ -146,6 +174,7 @@ async def run_prefetch(ctx, question: str):
             continue
         yield {"status": t.status_he}
         out = await registry.dispatch(ctx, name, args)
-        blocks.append(f"### {name}({', '.join(f'{k}={v}' for k, v in args.items())})\n{out[:4000]}")
+        cap = 6000 if len(steps[:3]) == 1 else 4000   # one tool may use more of the MAX_CHARS budget
+        blocks.append(f"### {name}({', '.join(f'{k}={v}' for k, v in args.items())})\n{out[:cap]}")
     text = "\n\n".join(blocks)
     ctx.prefetched = text[:MAX_CHARS]

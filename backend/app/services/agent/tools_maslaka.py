@@ -170,8 +170,11 @@ async def maslaka_delta(ctx, as_of: str = ""):
     cust = lambda items: len({i["id_number"] for i in items})
     from_production = base.get("kind") != "maslaka"
     return {"found": True, "as_of": res["as_of"], "compared_with": vs, "summary": res["summary"],
-            "customers": {"new": cust(res["new"]), "removed": cust(res["removed"]), "changed": cust(res["changed"]),
-                          "any_change": cust(res["new"] + res["removed"] + res["changed"])},
+            # customers WITH a new / missing / changed product — not "new customers" (the model wrote
+            # "21 לקוחות חדשים" for 21 customers who each got a new product, 2026-10-10)
+            "customers": {"with_a_new_product": cust(res["new"]), "with_a_product_not_in_this_file": cust(res["removed"]),
+                          "with_an_accumulation_change": cust(res["changed"]),
+                          "with_any_change": cust(res["new"] + res["removed"] + res["changed"])},
             "products_by_company": {"new": split("new"), "removed": split("removed"), "changed": split("changed")},
             "by_company": res["by_company"], "top_new": slim(res["new"]), "top_removed": slim(res["removed"]),
             "top_changed": slim(res["changed"]), "result_id": rid,

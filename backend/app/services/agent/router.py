@@ -151,7 +151,10 @@ def route(question: str) -> Route | None:
             return None
         return Route("maslaka_status", "maslaka_status", {})
     m = ID_RE.search(q)
-    if m and re.search(r"לקוח|ת\.?ז|תז|מה יש", q):
+    if m and re.search(r"לקוח|ת\.?ז|תז|מה יש", q) and not re.search(
+            r"שוק|תשוא|מסלול|דמי ניהול|פער|פילוח|חשיפ|הציע|הצעה|המלצ|להמליץ|כדאי|חסר|לנייד|ניוד|לשפר|לשדרג|לאחד|איחוד"
+            r"|אצלי|אצל סוכן|לא אצל|מסלק", q):
+        # "הלקוח X — המסלול שלו ביחס לשוק?" / "מה כדאי להציע ל-X?" need advice, not the raw card (2026-10-10)
         return Route("customer", "get_customer", {"id_number": m.group(1)})
     if re.search(r"הכי הרבה (מוצרים|פוליסות|קופות)|(מוצרים|פוליסות) הכי הרבה|הכי הרבה מוצר", q):
         return Route("top", "top_customers", {"metric": "products", "n": 10})
@@ -191,9 +194,12 @@ def route(question: str) -> Route | None:
         return Route("trend", "get_commission_trend", {"company": co})
     if re.search(r"צביר|פרמי", q) and re.search(r"לפי חברה|בתיק|כמה יש|סך", q):
         return Route("portfolio", "get_portfolio", {"company": co, "metric": "premium" if "פרמי" in q else "accumulation"})
-    if re.search(r"מה (כדאי|לעשות|פתוח)|משימות|מה מחכה", q):
+    if re.search(r"מה (כדאי|לעשות|פתוח)|משימות|מה מחכה", q) and not ID_RE.search(q) and not re.search(r"ל?לקוח|הציע|להמליץ", q):
+        # "מה כדאי להציע ללקוח X" is advice for ONE customer, not the agent's task list (2026-10-10)
         return Route("tasks", "get_insights", {"kind": "tasks"})
     if re.search(r"תמונת מצב|איך אני עומד|סיכום (של )?התיק|סיכום כללי|כמה לקוחות (יש לי|בתיק)", q):
+        if co:   # "כמה לקוחות יש לי במגדל?" answered the whole book (2,175) — 2026-10-10
+            return Route("portfolio", "get_portfolio", {"company": co, "metric": "accumulation"})
         return Route("overview", "get_overview", {})
     return None
 
@@ -256,6 +262,14 @@ def render(route_: Route, data) -> tuple[str, str | None]:
         rows = data.get("companies") or []
         if not rows:
             return "אין קובץ פרודוקציה פעיל.", None
+        if len(rows) == 1 and rows[0].get("clients"):
+            r = rows[0]
+            bits = [f"{r['clients']} לקוחות", f"{r.get('products') or 0} מוצרים"]
+            if r.get("accumulation"):
+                bits.append(f"צבירה {_m(r['accumulation'])}")
+            if r.get("premium"):
+                bits.append(f"פרמיה {_m(r['premium'])}")
+            return f"ב{r['label']}: " + " · ".join(bits) + ".", None
         tot_acc = sum(r["accumulation"] for r in rows)
         tot_pr = sum(r["premium"] for r in rows)
         bits = []
@@ -276,7 +290,8 @@ def render(route_: Route, data) -> tuple[str, str | None]:
     if i == "changes":
         rows = data.get("companies") or []
         if not rows:
-            return data.get("note") or "אין שינויים להצגה.", None
+            return ((data.get("note") or "אין שינויים להצגה.")
+                    + " קובץ המסלקה כן מושווה לפרודוקציה — שאלו \"מה השתנה בקובץ המסלקה?\""), None
         parts = [f"{r['company']}: {r['new']} חדשים, {r['left']} יצאו" for r in rows]
         return "מול הקובץ הקודם — " + " · ".join(parts) + ".", "bar" if sum(r["left"] for r in rows) else None
     if i == "agreement_audit":

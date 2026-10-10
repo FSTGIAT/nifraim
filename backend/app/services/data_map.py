@@ -257,9 +257,22 @@ async def add_production_customers(db, ctx: MapContext, ids=None) -> None:
             return
         cond.append(or_(ClientRecord.id_number.in_(want), func.ltrim(ClientRecord.id_number, "0").in_(want)))
     recs = (await db.execute(select(ClientRecord).where(*cond))).scalars().all()
+    in_comparison = {str(c.get("id_number")).lstrip("0"): c for c in ctx.customers}
     for r in recs:
         idn = str(r.id_number).lstrip("0")
         if idn in have:
+            # The comparison narrows a customer's production_products to what it compared (and the
+            # unpaid logic depends on that), so the FULL production list rides alongside: the card's
+            # product list and portfolio picture read it. 34300624 showed 2 of 14 products and
+            # "אין קרן פנסיה" over a ₪344,909 Mor pension (2026-10-10).
+            cc = in_comparison.get(idn)
+            if cc is not None:
+                cc.setdefault("all_production_products", []).append({
+                    "company": r.receiving_company, "product": r.product, "product_type": r.product_type,
+                    "policy_number": r.fund_policy_number, "status": r.product_status,
+                    "accumulation": float(r.accumulation) if r.accumulation else None,
+                    "premium": float(r.total_premium) if r.total_premium else None,
+                })
             continue
         c = ctx.extra.setdefault(idn, {
             "id_number": idn, "first_name": r.first_name, "last_name": r.last_name,
@@ -288,7 +301,11 @@ def page_customer(ctx: MapContext, idn: str) -> str:
     if c.get("client_email") or c.get("client_phone"):
         lines.append(f"- קשר: {c.get('client_email') or ''} {c.get('client_phone') or ''}")
     lines += ["", "## מוצרים"]
-    for p in (c.get("production_products") or [])[:20]:
+    listed = list(c.get("production_products") or [])
+    seen = {(_key(p.get("company")), str(p.get("policy_number") or "")) for p in listed}
+    extra = [p for p in (c.get("all_production_products") or [])
+             if (_key(p.get("company")), str(p.get("policy_number") or "")) not in seen]
+    for p in (listed + extra)[:25]:
         k = _key(p.get("company"))
         lines.append(f"- [{p.get('company')}](../companies/{_slug(k)}.md) · {p.get('product') or p.get('product_type') or ''}"
                      f" · פוליסה {p.get('policy_number') or '—'} · סטטוס {p.get('status') or '—'}"

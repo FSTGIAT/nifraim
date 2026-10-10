@@ -236,6 +236,57 @@ async def _customer_products(ctx, idn: str) -> list[dict]:
     return out
 
 
+def _compound(monthly: list) -> float | None:
+    vals = [v for v in monthly if v is not None]
+    if len(vals) < 12:
+        return None
+    g = 1.0
+    for v in vals[:12]:
+        g *= 1 + v / 100
+    return round((g - 1) * 100, 2)
+
+
+_FIT_KEYS = ("company", "category", "official_fund", "track", "match", "accumulation", "accounts", "rank_in_peers", "peers",
+             "avg_yield_3y", "peer_median_avg_yield_3y", "yield_12m_pct", "mgmt_fee", "peer_median_fee",
+             "annual_gap_vs_best_ils", "fee_gap_ils_per_year", "best_peer")
+
+
+def _slim_fit(r: dict) -> dict:
+    """Only what an answer uses — a prefetch reaches the model cut at 4,000 chars (2026-10-10: a
+    customer's pension sat past the cut and Nifra said it had no pension comparison)."""
+    out = {k: r[k] for k in _FIT_KEYS if r.get(k) is not None}
+    if out.get("official_fund"):
+        out.pop("track", None)
+        out.pop("match", None)
+    if isinstance(out.get("best_peer"), dict):
+        out["best_peer"] = {k: out["best_peer"].get(k) for k in ("fund", "avg_yield_3y")}
+    # the direction in words — the model wrote "דמי ניהול נמוכים (0.19% מול 0.14% חציון)" (2026-10-10)
+    f, m = out.get("mgmt_fee"), out.get("peer_median_fee")
+    if f is not None and m is not None:
+        out["fee_vs_peers"] = "גבוה מהחציון" if f > m + 0.005 else "נמוך מהחציון" if f < m - 0.005 else "כמו החציון"
+    y, ym = out.get("avg_yield_3y"), out.get("peer_median_avg_yield_3y")
+    if y is not None and ym is not None:
+        out["yield_vs_peers"] = "מעל החציון" if y > ym + 0.05 else "מתחת לחציון" if y < ym - 0.05 else "כמו החציון"
+    return out
+
+
+def _merge_same_track(items: list[dict]) -> list[dict]:
+    """Several accounts in one official track → one line (accumulation and ₪ gaps summed)."""
+    out: dict = {}
+    for it in items:
+        k = it.get("fund_id") or ("—", it.get("category"), it.get("track"))
+        if k not in out:
+            out[k] = {**it, "accounts": 1}
+            out[k].pop("policy", None)
+            continue
+        o = out[k]
+        o["accounts"] += 1
+        for f in ("accumulation", "annual_gap_vs_best_ils", "fee_gap_ils_per_year"):
+            if it.get(f) is not None:
+                o[f] = (o.get(f) or 0) + it[f]
+    return sorted(out.values(), key=lambda r: -(r.get("accumulation") or 0))
+
+
 async def fund_fit(ctx, idn: str) -> dict:
     period = await latest_period(ctx.db)
     prods = await _customer_products(ctx, idn)
@@ -274,11 +325,22 @@ async def fund_fit(ctx, idn: str) -> dict:
                           "mgmt_fee": best.mgmt_fee} if best and best.fund_id != f.fund_id else None,
             "annual_gap_vs_best_ils": round(p["accumulation"] * (best.avg_yield_3y - f.avg_yield_3y) / 100)
             if best and f.avg_yield_3y is not None and best.fund_id != f.fund_id else 0,
-            "last_12_months_yield": [{"month": f"{pp % 100:02d}/{pp // 100}", "yield": y} for pp, y in reversed(hist)],
+            # one number, not a 12-row list per product (a 14-product customer was 14,500 chars and the
+            # model never saw the pension at the end — 2026-10-10)
+            "yield_12m_pct": _compound([y for _, y in hist]),
         })
         res.append(item)
+    res = [_slim_fit(r) for r in _merge_same_track(res)]
     y, m = divmod(period, 100)
-    out = {"id_number": idn, "name": prods[0]["name"], "data_month": f"{m:02d}/{y}", "products": res,
+    gaps = sorted((r for r in res if r.get("annual_gap_vs_best_ils")), key=lambda r: -r["annual_gap_vs_best_ils"])
+    out = {"id_number": idn, "name": prods[0]["name"], "data_month": f"{m:02d}/{y}",
+           # first, so a prefetch cut at 4,000 chars still carries it — the model once skipped an ₪11,103
+           # pension gap and reported only ₪1,600 of השתלמות gaps (2026-10-10)
+           "summary": {"total_annual_gap_vs_best_ils": sum(r["annual_gap_vs_best_ils"] for r in gaps),
+                       "biggest_gaps": [{"category": r["category"], "track": r.get("official_fund") or r["track"],
+                                         "accumulation": r["accumulation"], "annual_gap_ils": r["annual_gap_vs_best_ils"],
+                                         "best": (r.get("best_peer") or {}).get("fund")} for r in gaps[:4]]},
+           "products": res,
             "how_to_read": "annual_gap_vs_best_ils = צבירה × (תשואה שנתית ממוצעת 3ש של המסלול הטוב באותה רמת סיכון − של המסלול הנוכחי). אומדן, לא הבטחה.",
             "disclaimer": DISCLAIMER}
     if not res:   # products exist but none can be compared — say why instead of an empty list
@@ -422,8 +484,29 @@ async def market_changes(ctx, category: str):
     flows = hit.get("top_inflows") or []
     rid = ctx.keep([{"label": fund_label(r["fund"])[:40], "value": r["net_inflow_m"]} for r in flows[:10]], label="קופה",
                    value="צבירה נטו בחודש (מ' ₪)", unit="", title=f"{label} — הכי הרבה כסף נכנס ({hit['month']})") if flows else None
-    return {"category": label, **hit, "result_id": rid, "disclaimer": DISCLAIMER,
-            "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון)"}
+    # Compact, most useful first: a prefetched tool reaches the model cut at 4,000 chars — the full
+    # payload was 14,000 and the exposure shifts (at char 10,091) never arrived (2026-10-10).
+    N = 6
+    slim = lambda rows, keys: [{k: r[k] for k in keys if r.get(k) is not None} for r in (rows or [])[:N]]
+    out = {"category": label, "month": hit["month"], "compared_with": hit["compared_with"], "summary": hit["summary"]}
+    sh = hit.get("allocation_shifts")
+    if sh and sh.get("available"):
+        out["exposure_shifts_pp"] = {k: slim(v, ("fund", "before_pct", "now_pct", "change_pp")) for k, v in sh.items() if k != "available"}
+    elif sh:
+        out["exposure_shifts_pp"] = sh
+    out |= {
+        "fee_changes": slim(hit.get("fee_changes"), ("fund", "fee", "old", "new")),
+        "rank_climbers": slim(hit.get("rank_climbers"), ("fund", "rank_before", "rank_now", "group_size")),
+        "rank_fallers": slim(hit.get("rank_fallers"), ("fund", "rank_before", "rank_now", "group_size")),
+        "top_inflows": slim(hit.get("top_inflows"), ("fund", "net_inflow_m")),
+        "top_outflows": slim(hit.get("top_outflows"), ("fund", "net_inflow_m")),
+        "new_funds": slim(hit.get("new_funds"), ("fund", "assets_m")),
+        "not_reported": slim(hit.get("not_reported"), ("fund", "last_reported")),
+        "rule": f"כל רשימה כאן מקוצרת ל-{N} שורות — לספירות (כמה קרנות חדשות, כמה שינויי דמי ניהול) השתמש רק ב-summary. "
+                + (hit.get("rule") or ""),
+        "result_id": rid, "disclaimer": DISCLAIMER, "source": "גמל-נט/פנסיה-נט/ביטוח-נט (רשות שוק ההון)",
+    }
+    return out
 
 
 @tool("fund_allocation", "פילוח הנכסים של מסלול פנסיה (פנסיה-נט): 10 קבוצות ראשיות (אג\"ח ממשלתיות, מיועדות, מניות, הלוואות…), רמת סיכון, "
@@ -441,10 +524,18 @@ async def fund_allocation(ctx, fund: str):
     else:
         words = [w for w in re.split(r"\s+", q.replace('"', "")) if w]
         hits = [f for f in rows if all(w in (f.fund_name or "").replace('"', "") for w in words)]
-        if not hits and tokens(q):   # "מור מניות" → company + track words
-            stem = company_stem(q)
-            hits = [f for f in rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
-                    and tokens(q) <= tokens(f.fund_name)]
+        if not hits and tokens(q):   # "מור מניות" / a whole question → company + track words
+            from app.services.agent.router import _company
+            co = _company(q)
+            stem = company_stem(co) if co else None
+            want = tokens(q)
+            if "מקיפה" in q or "כללית" in q:   # the fund type narrows Mor's twin tracks
+                kind = "מקיפה" if "מקיפה" in q else "כללית"
+                kind_rows = [f for f in rows if kind in (f.fund_name or "")]
+            else:
+                kind_rows = rows
+            hits = [f for f in kind_rows if (not stem or company_stem(f.managing_corporation or f.fund_name) == stem)
+                    and want <= tokens(f.fund_name)]
     if not hits:
         return {"found": False, "note": "לא נמצא מסלול פנסיה בשם הזה. נסה שם מלא כפי שמופיע בפנסיה-נט, או מספר קופה."}
     if len(hits) > 1:

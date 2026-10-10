@@ -87,7 +87,11 @@ async def test_privacy_and_parity():
         from app.models.record import ClientRecord
         a_ids = {str(x).lstrip("0") for x in (await db.execute(select(ClientRecord.id_number).where(ClientRecord.user_id == a.id))).scalars() if x}
         b_ids = {str(x).lstrip("0") for x in (await db.execute(select(ClientRecord.id_number).where(ClientRecord.user_id == b.id))).scalars() if x}
-        only_a = {i for i in a_ids - b_ids if len(i) >= 6}
+        # B's own policy numbers are B's data even when one equals an A-only ID number (local data has a
+        # Migdal policy 20534274 at B and a record with ID 20534274 at A) — not a leak.
+        b_pols = {str(x).lstrip("0") for x in (await db.execute(select(ClientRecord.fund_policy_number).where(
+            ClientRecord.user_id == b.id))).scalars() if x}
+        only_a = {i for i in a_ids - b_ids - b_pols if len(i) >= 6}
         ctx_b = ToolContext(db=db, user=b)
         calls = [("get_overview", {}), ("get_unpaid", {}), ("get_unpaid", {"company": "הפניקס"}), ("top_customers", {"n": 30}),
                  ("get_portfolio", {}), ("get_commission_trend", {}), ("get_production_changes", {}),
@@ -337,6 +341,8 @@ def test_market_prefetch():
         "מה התשואה בקרנות השתלמות מניות?": [("compare_hishtalmut", {"track": "מניות"})],
         "מה השתנה במסלקה בקרנות הפנסיה?": [],
         "אילו לקוחות שלי נמצאים במסלולים שירדו בדירוג החודש?": [("customers_in_market_moves", {"direction": "down"})],
+        "מה כדאי להציע ללקוח 42251967 לפי התיק שלו?": [("get_customer", {"id_number": "42251967"}),
+                                                        ("get_customer_fund_fit", {"id_number": "42251967"})],
         # a customer + fund words → that customer's money vs the market, never a generic market table
         "הלקוח 310203633 — המסלול שלו בפנסיה, איך הוא ביחס לשוק?": [("get_customer", {"id_number": "310203633"}),
                                                                    ("get_customer_fund_fit", {"id_number": "310203633"})],
@@ -345,6 +351,11 @@ def test_market_prefetch():
         check(plan(q) == want, f"{q} → {want}")
     check(any(n == "search_policies" for n, _ in plan("יש כיסוי להשתלת כליה בפוליסה של לקוח 310203633?")),
           "השתלה is still a policy question")
+    from app.services.agent import router
+    check(router.route("מה כדאי להציע ללקוח 42251967 לפי התיק שלו?") is None, "advice for a customer is not the instant card / task list")
+    check(router.route("האם כדאי לנייד את הלקוח 35673813?") is None, "'לנייד?' is not the instant card")
+    check(getattr(router.route("מה יש ללקוח 310203633?"), "intent", None) == "customer", "plain 'מה יש ללקוח' stays instant")
+    check(getattr(router.route("מה כדאי לי לעשות השבוע?"), "intent", None) == "tasks", "the agent's own task list stays instant")
 
 
 def main():
