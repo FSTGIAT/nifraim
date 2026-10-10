@@ -10,7 +10,7 @@ one. Both views go to the agent (tools_market.fund_fit).
   * rank = position inside (category, level, style) by one score: 12-month return (compounded from
     the monthly yields) 25%, 3-year average 35%, 5-year average 25%, Sharpe 15%, management fee −10%,
     each as a z-score in the group; weights are spread over the fields a track HAS.
-  * ranked only: open to the public, ≥ ₪100M, with 3 years of history — else a young track with one
+  * ranked only: open to the public, ≥ ₪100M, with 3 years of history, not a self-managed IRA account — else a young track with one
     great year leads the table (measured: "כלל תמר מניות סחיר", +31% in 12 months, no 3-year data).
 Measured on kiko's 34300624 (2026-10-10): Mor pension לבני 50 ומטה is #1 of 8 by name and #14 of 34
 by holdings — both true, the agent sees both.
@@ -54,6 +54,13 @@ def risk_level(f) -> dict | None:
     return None
 
 
+def self_managed(f) -> bool:
+    """IRA / בניהול אישי accounts: the saver picks the holdings, the published yield is 0.0 — two of them
+    padded השתלמות level 4 to 5 tracks and lifted a 5.31%-a-year track to #3 (2026-10-10)."""
+    n = f.fund_name or ""
+    return "IRA" in n.upper() or "בניהול אישי" in n
+
+
 def _compound(monthly: list) -> float | None:
     if len(monthly) < 12 or any(v is None for v in monthly[:12]):
         return None
@@ -92,7 +99,7 @@ def rank_groups(rows: list, y12: dict[int, float | None], is_open) -> dict[int, 
         if not r:
             continue
         out[f.fund_id] = {**r, "rank": None, "of": None}
-        if is_open(f) and (f.total_assets or 0) >= MIN_ASSETS_M and f.avg_yield_3y is not None:
+        if is_open(f) and (f.total_assets or 0) >= MIN_ASSETS_M and f.avg_yield_3y is not None and not self_managed(f):
             groups[(r["level"], r["style"])].append(f)
     for members in groups.values():
         if len(members) < MIN_GROUP:   # "#1 מתוך 2" is not a ranking — those tracks keep their risk level only

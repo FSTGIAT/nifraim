@@ -131,7 +131,10 @@ def is_open(f) -> bool:
     "best fund" — they're only matched when the customer is already in them."""
     # מרכזית לפיצויים = employer-only severance funds ("מנורה מבטחים משתתפת בפנסיה תקציבית" was the #2
     # "best גמל at moderate risk", 2026-10-10)
-    return (f.target_population in (None, "", "כלל האוכלוסיה")) and f.classification not in ("קרנות כלליות", "מרכזית לפיצויים")
+    # IRA / בניהול אישי: self-managed, published yield 0.0 — never a peer or a target (track_score.self_managed)
+    from app.services.fund_market.track_score import self_managed
+    return (f.target_population in (None, "", "כלל האוכלוסיה")) and f.classification not in ("קרנות כלליות", "מרכזית לפיצויים") \
+        and not self_managed(f)
 
 
 async def latest_period(db) -> int | None:
@@ -764,6 +767,57 @@ async def best_tracks_by_risk(ctx, category: str, level: int, index: bool = Fals
             "rule": "רמת סיכון = לפי חשיפה למניות בפועל, לא לפי שם המסלול. תשואות עבר; דמי הניהול כאן הם ממוצע הקופה, לא של הלקוח."}
 
 
+@tool("compare_companies", "השוואה בין שתי חברות באותה קטגוריה: מסלול מול מסלול מאותו סוג (מניות מול מניות, לבני 50 מול לבני 50…), "
+      "תשואה 3 ו-5 שנים, 12 חודשים, דמי ניהול וגודל, ומי מנצחת בכמה זוגות. category = pension/gemel/hishtalmut/gemel_invest.",
+      {"category": {"type": "string", "enum": [c for c in CATEGORIES if c != "savings_policy"]},
+       "company_a": {"type": "string"}, "company_b": {"type": "string"}},
+      ["category", "company_a", "company_b"], category="market", status_he="משווה בין החברות")
+async def compare_companies(ctx, category: str, company_a: str, company_b: str):
+    """Pairs, not two lists: "תשווה בין כלל לאלטשולר בפנסיה" opened with "כלל מובילה" over a higher
+    Altshuler median, and Mor's "לבני 50 ומטה" was set against Meitav's "עוקב מדדי מניות" (2026-10-10).
+    Per company and track type the LARGEST open track stands for it (the main fund, not a side one)."""
+    from app.services.fund_market.delta import _peer
+    period = await latest_period(ctx.db)
+    if not period or category not in CATEGORIES:
+        return {"error": "אין נתוני שוק."}
+    rows = [f for f in await _category_rows(ctx.db, category, period) if is_open(f) and (f.total_assets or 0) >= 100]
+    a, b = brand(company_a), brand(company_b)
+    main: dict[str, dict] = {a: {}, b: {}}
+    for f in rows:
+        co = brand(f.managing_corporation or f.fund_name)
+        if co in main:
+            k = _peer(f)
+            if k not in main[co] or (f.total_assets or 0) > (main[co][k].total_assets or 0):
+                main[co][k] = f
+    if not main[a] or not main[b]:
+        return {"found": False, "note": f"אין מסלולים פתוחים של {a if not main[a] else b} בקטגוריה הזו."}
+    y12 = (await holdings_ranks(ctx.db, category, period, rows))
+    pairs, wins = [], {a: 0, b: 0, "תיקו": 0}
+    for k in main[a].keys() & main[b].keys():
+        fa, fb = main[a][k], main[b][k]
+        if fa.avg_yield_3y is None or fb.avg_yield_3y is None:
+            continue
+        d = round(fa.avg_yield_3y - fb.avg_yield_3y, 2)
+        w = a if d > 0.05 else b if d < -0.05 else "תיקו"
+        wins[w] += 1
+        pairs.append({"track_type": fund_label(fa.fund_name), "winner_3y": w, "gap_3y_pp": abs(d),
+                      a: {"fund": fa.fund_name, "avg_yield_3y": fa.avg_yield_3y, "avg_yield_5y": fa.avg_yield_5y,
+                          "yield_12m": (y12.get(fa.fund_id) or {}).get("y12"), "mgmt_fee": fa.mgmt_fee, "size_m": fa.total_assets},
+                      b: {"fund": fb.fund_name, "avg_yield_3y": fb.avg_yield_3y, "avg_yield_5y": fb.avg_yield_5y,
+                          "yield_12m": (y12.get(fb.fund_id) or {}).get("y12"), "mgmt_fee": fb.mgmt_fee, "size_m": fb.total_assets}})
+    pairs.sort(key=lambda p_: -((p_[a]["size_m"] or 0) + (p_[b]["size_m"] or 0)))
+    y, m = divmod(period, 100)
+    lead = a if wins[a] > wins[b] else b if wins[b] > wins[a] else None
+    return {"category": CATEGORIES[category][2], "data_month": f"{m:02d}/{y}", "companies": [a, b],
+            "verdict": (f"{lead} טובה יותר ב-{max(wins[a], wins[b])} מתוך {len(pairs)} זוגות מסלולים מאותו סוג (תשואה 3ש)"
+                        if lead else f"תיקו: {wins[a]} מול {wins[b]} מתוך {len(pairs)} זוגות"),
+            "wins_3y": wins, "pairs": pairs[:12],
+            "only_in": {a: [fund_label(f.fund_name) for k, f in main[a].items() if k not in main[b]][:8],
+                        b: [fund_label(f.fund_name) for k, f in main[b].items() if k not in main[a]][:8]},
+            "rule": "השווה רק בתוך זוג (אותו סוג מסלול). פתח ב-verdict. אל תשווה חציונים של כל החברה — הם תלויים בתמהיל המסלולים. "
+                    "תשואות עבר אינן מבטיחות תשואות עתידיות.", "disclaimer": DISCLAIMER}
+
+
 @tool("track_rank", "באיזה מקום מסלול מסוים: (1) מול מסלולים באותו שם/מאפיין (לבני 50, מניות…) לפי תשואה שנתית ממוצעת 3 שנים, "
       "(2) מול כל המסלולים באותה רמת סיכון לפי האחזקות בפועל, בציון משולב (12 חודשים, 3 ו-5 שנים, שארפ, דמי ניהול). fund = שם המסלול או מספר קופה.",
       {"fund": {"type": "string"}}, ["fund"], category="market", status_he="בודק את דירוג המסלול")
@@ -820,7 +874,7 @@ async def track_rank(ctx, fund: str):
 
 _QWORDS = re.compile(r"(?:^|\s)(?:מה|מהו|מהי|הדירוג|דירוג|של|באיזה|איזה|מקום|במקום|ברמת|רמת|הסיכון|סיכון|שלו|שלה|טוב|טובה|"
                      r"איך|שווה|מדורג|מדורגת|הפילוח|פילוח|החשיפה|חשיפה|למניות|לחו\"ל|יש|ב|ה|—|-|התשואה|תשואה|ל-12|12|חודשים|החודשים|האחרונים|"
-                     r"מתחילת|השנה|דמי|הניהול|ניהול|השארפ|שארפ|החודשית|חודשית|השתנה|השתנו|בפילוח|מהחודש|החודש|שעבר|הקודם|לעומת)(?=\s|$)")
+                     r"מתחילת|השנה|דמי|הניהול|ניהול|השארפ|שארפ|החודשית|חודשית|ל-3|ל-5|3|5|שנים|השנים|שלוש|חמש|השתנה|השתנו|בפילוח|מהחודש|החודש|שעבר|הקודם|לעומת)(?=\s|$)")
 
 
 def _clean_track_q(q: str) -> str:

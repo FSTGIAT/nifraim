@@ -79,8 +79,11 @@ def plan(question: str) -> list[tuple[str, dict]]:
     cos = companies_in(q)
     if len(set(cos)) >= 2 and re.search(r"תשווה|השווה|השוואה|מול|לעומת|בין", q) and not ID_RE.search(q):
         cat_tool = next((t for p_, t in FUND_CATS if re.search(p_, q)), None)
-        if cat_tool:   # "תשווה בין מור למיטב בפנסיה" — each company's tracks (was: the market top 10, Mor absent)
-            return [(cat_tool, {"company": c}) for c in list(dict.fromkeys(cos))[:3]]
+        two = list(dict.fromkeys(cos))
+        if cat_tool and len(two) == 2:   # "תשווה בין כלל לאלטשולר בפנסיה" — track-type pairs, not two lists (2026-10-10)
+            return [("compare_companies", {"category": cat_tool.removeprefix("compare_"), "company_a": two[0], "company_b": two[1]})]
+        if cat_tool:   # three companies — each company's tracks (was: the market top 10, Mor absent)
+            return [(cat_tool, {"company": c}) for c in two[:3]]
     if re.search(r"לא פעיל", q) and re.search(r"הכי|גדול|לקוחות", q) and not ID_RE.search(q):
         return [("get_insights", {"kind": "retention"})]   # inactive funds with balances — not the all-book top list
     named_co = companies_in(q)
